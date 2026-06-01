@@ -6,6 +6,10 @@ import { dirname, join } from "node:path";
 import { newSnapshotId, newVolumeId, type SnapshotId, type VolumeId } from "../domain/ids";
 import type { Snapshot, StorageProvider, Volume } from "./storage-provider";
 
+function isFileNotFound(err: unknown): boolean {
+  return err instanceof Error && "code" in err && err.code === "ENOENT";
+}
+
 /**
  * Filesystem-backed StorageProvider for unit/CI tests. Each volume and snapshot
  * is a directory; a snapshot is a deep copy of the volume tree, and hydrating a
@@ -44,7 +48,7 @@ export class FakeStorageProvider implements StorageProvider {
     try {
       return await readFile(join(this.volumeDir(volumeId), path));
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+      if (isFileNotFound(err)) return null;
       throw err;
     }
   }
