@@ -12,6 +12,7 @@
     "test:integ": "vitest run --config vitest.integ.config.ts"
   },
   "dependencies": {
+    "@edd/api-client": "workspace:*",
     "@edd/api-contracts": "workspace:*",
     "@edd/auth": "workspace:*",
     "@edd/authz": "workspace:*",

@@ -38,6 +38,9 @@ importers:
 
   apps/web:
     dependencies:
+      '@edd/api-client':
+        specifier: workspace:*
+        version: link:../../packages/api-client
       '@edd/api-contracts':
         specifier: workspace:*
         version: link:../../packages/api-contracts
@@ -84,9 +87,6 @@ importers:
       '@edd/api-contracts':
         specifier: workspace:*
         version: link:../api-contracts
-      '@edd/core':
-        specifier: workspace:*
-        version: link:../core
     devDependencies:
       '@types/node':
         specifier: ^25.9.1

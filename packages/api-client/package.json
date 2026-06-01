@@ -12,8 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@edd/api-contracts": "workspace:*",
-    "@edd/core": "workspace:*"
+    "@edd/api-contracts": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.9.1"

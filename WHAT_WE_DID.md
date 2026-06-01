@@ -252,3 +252,35 @@ outdated` honours it, so the `check-deps` gate stays read-only and age-aware.
 ### Filed
 
 - (none)
+
+---
+
+## 2026-06-01 — Phase 6: User portal + Admin UI
+
+### Done
+
+- Built the **Next.js portal UI** over the existing API + Auth.js: a workspaces
+  grid (server-rendered via the control plane), **create from the golden-image
+  catalog**, and per-workspace **lifecycle actions** (start/stop/snapshot/delete)
+  that drive the state machine — actions/availability mirror the backend.
+- **RBAC-gated**: members manage their own; admins get an **"all" view** with
+  owners; viewers are read-only. Session-driven (Auth.js) with a sign-in CTA.
+- Distinctive **"infra control room" aesthetic** (Chakra Petch + IBM Plex Sans/Mono,
+  blueprint grid + grain, phosphor accent, status badges with glow), hand-written
+  CSS — no generic AI look.
+- Client action components use **`@edd/api-client`** (string ids at the HTTP edge
+  so the browser bundle stays free of `node:` deps). Pure presentational logic
+  (`statusMeta`, `availableActions`) unit-tested.
+
+### Tried
+
+- Inline CSS custom properties needed either a `CSSProperties` augmentation or an
+  object-literal cast (both fought the lint rules) — switched to **`data-status`
+  attributes** mapped to `--status` in CSS. Cleaner, no augmentation.
+- Reverted the api-client id params from `WorkspaceId` to `string`: importing
+  `@edd/core` into client components pulls `node:fs`/`node:crypto` (via the fakes)
+  into the browser bundle. Branding stays server-side.
+
+### Filed
+
+- (none)
