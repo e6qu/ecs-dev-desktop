@@ -7,8 +7,9 @@
 
 ## Current phase
 
-**Phase 0 — Foundations & repo scaffold** — _scaffold + live Tier-2 harness
-(DynamoDB Local) landed; real AWS infra resources remain._
+**Phase 2 — Control-plane API** — _implemented to the engineering-standards
+charter (branded domain types, FCIS, strict lint, SAST/scan gates, pre-commit);
+on branch `phase-2/control-plane-api`, not yet merged. Real AWS infra remains._
 
 ## What exists
 
@@ -29,11 +30,19 @@
     `infra/images` placeholder, `docker-compose.tier2.yml`.
 - **Live Tier-2 harness:** `docker-compose.tier2.yml` (DynamoDB Local) +
   `pnpm test:integ`; `@edd/db` integration test exercises put/get + both GSIs.
+- **Control-plane API** (`apps/web`): workspace lifecycle endpoints
+  (create/list/get/stop/start/snapshot/delete) with CASL RBAC; `@edd/control-plane`
+  `WorkspaceService` (imperative shell) over ElectroDB + the pure functional core.
+- **Functional core (FCIS):** branded domain ids, `Workspace` domain object +
+  pure lifecycle functions, typed `@edd/config` (endpoints/ports), no magic values.
 - **CI** (`.github/workflows/ci.yml`): `build-test`, `integration` (DynamoDB
-  Local service), `check-deps` (Node + Terraform freshness), `terraform`
-  (fmt/validate). Manual real-AWS tier skeleton (`e2e-aws.yml`).
-- Verified locally: lint 10/10, build 10/10, **24 tests pass**, freshness gate
-  green. All deps on latest (TS 6, ESLint 10, Vitest 4, Next 16, zod 4, CASL 7).
+  Local), `check-deps`, `terraform`, `shellcheck` (ubuntu+macOS), **`sast`**
+  (Semgrep), **`vuln-scan`** (Trivy deps/IaC/secret, fail HIGH/CRITICAL). Manual
+  real-AWS tier skeleton (`e2e-aws.yml`).
+- **pre-commit**: format/type-check/lint/unit-tests/actionlint for all languages
+  - commit-msg AI-attribution stripper.
+- Verified locally: **strict lint 11/11**, build 11/11, unit 17 tasks, integ 8
+  tests, Semgrep 0 findings, Trivy 0 HIGH/CRITICAL.
 
 ## What is deployed / working
 

@@ -188,3 +188,38 @@ outdated` honours it, so the `check-deps` gate stays read-only and age-aware.
 ### Filed
 
 - (none)
+
+---
+
+## 2026-06-01 — Phase 2 control-plane API + engineering-standards charter
+
+### Done
+
+- Built the **control-plane API** (`apps/web`): workspace lifecycle endpoints
+  (create/list/get/stop/start/snapshot/delete) with CASL RBAC; new
+  `@edd/control-plane` `WorkspaceService` orchestrating ElectroDB + the state
+  machine + storage/compute ports; `ComputeProvider` port + fake.
+  Integration-tested vs DynamoDB Local (control-plane + web + db).
+- Recorded the full **engineering-standards charter** in `AGENTS.md` §6 and
+  applied it repo-wide: branded domain types (no bare-string ids), `Workspace`
+  domain object across boundaries (no untyped dicts/lists), FCIS (pure core +
+  thin imperative shell), magic→named constants, typed `@edd/config` for
+  endpoints/ports (no hardcoded `:8000`), explicit named exports (no `export *`),
+  no-silent-fallbacks/fail-loudly.
+- Enabled **strict type-aware lint** (`strictTypeChecked` + `stylisticTypeChecked`
+  - bans) + `eslint-config-prettier`; fixed all violations. Green across 11 pkgs.
+- Added **security gates**: `sast` (Semgrep, fail high/critical) and `vuln-scan`
+  (Trivy deps/IaC/secret, fail HIGH/CRITICAL) — verified locally.
+- Added a **`pre-commit`** setup (format/type-check/lint/unit-tests/actionlint;
+  revs pinned latest ≥1-day-old) + a `commit-msg` hook that **strips AI
+  attribution** (mirrors sockerless).
+
+### Tried
+
+- `export *` barrel in `@edd/core` — replaced with explicit named exports after
+  it caused a `VolumeId`/`SnapshotId` collision (textbook wildcard antipattern).
+- Removed the hand-rolled DynamoDB `keys` helper — redundant with ElectroDB.
+
+### Filed
+
+- (none)

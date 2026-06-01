@@ -27,6 +27,13 @@
 
 ## Next tasks
 
+### Phase 2 — Control-plane API (done, on branch `phase-2/control-plane-api`)
+
+- [x] Lifecycle endpoints + CASL RBAC; `@edd/control-plane` WorkspaceService (FCIS).
+- [x] Engineering-standards charter (`AGENTS.md` §6) applied repo-wide.
+- [x] Strict type-aware lint; `sast` (Semgrep) + `vuln-scan` (Trivy) gates; pre-commit.
+- [ ] Phase 3: real Auth.js (GitHub + Entra) to replace the dev-header principal shim.
+
 ### Phase 0 — remaining
 
 - [x] **Tier-2 harness**: DynamoDB Local via `docker-compose.tier2.yml`,

@@ -33,8 +33,6 @@ jobs:
         image: amazon/dynamodb-local:latest
         ports:
           - 8000:8000
-    env:
-      DYNAMODB_ENDPOINT: http://localhost:8000
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -104,3 +102,30 @@ jobs:
             bash -n "$f"
             zsh -n "$f"
           done
+
+  sast:
+    name: sast
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install semgrep
+      - name: Semgrep SAST (fail on high/critical = ERROR severity)
+        run: semgrep scan --config p/default --severity ERROR --error --metrics off packages apps services
+
+  vuln-scan:
+    name: vuln-scan
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Trivy (deps + IaC + secrets; fail on HIGH/CRITICAL)
+        uses: aquasecurity/trivy-action@0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,misconfig,secret
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          skip-dirs: node_modules
