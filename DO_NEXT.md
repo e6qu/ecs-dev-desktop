@@ -103,9 +103,11 @@
 
 ### Blocked on upstream (sockerless) — see BUGS.md
 
-- **EXT-001 / #347 (EBS snapshots): RESOLVED** — `completed` + code verified in
-  `ec2.go` (host-dir-backed volumes/snapshots). Next: wire a sockerless
-  `StorageProvider` adapter through the round-trip contract test (gated on EXT-004).
+- **EXT-001 / #347 (EBS lifecycle): landed**, BUT snapshot→restore is blocked by
+  **[#359](https://github.com/e6qu/sockerless/issues/359)** (snapshots never reach
+  `completed` → `CreateVolume(SnapshotId)` fails `IncorrectState`). Filed by us. A
+  standard EBS **lifecycle** adapter (endpoint-only, per §6.8) is straightforward
+  once #359 lands; **data** fidelity needs the compute layer, not the storage port.
 - **EXT-004:** running the sockerless sim in Tier-2 — published image unconfirmed;
   fallback is building the sim from source. Tier-2 is **DynamoDB Local only** now.
 - **EXT-002:** #336 (VPC/ENI) **done**; still open: #333 (compute microVMs), #334

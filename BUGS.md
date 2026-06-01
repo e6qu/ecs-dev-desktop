@@ -13,18 +13,22 @@ _None yet — no application code has been written._
 These are not bugs in our code; they are simulator gaps in `e6qu/sockerless` that
 limit Tier-2 (integration) coverage until resolved. See `TESTING.md`.
 
-### EXT-001 — sockerless AWS sim EBS volume lifecycle + snapshots — RESOLVED
+### EXT-001 — sockerless AWS sim EBS lifecycle landed; snapshot **restore broken**
 
-- Upstream: **sockerless #347** (epic #341) — closed with `state_reason=completed`.
-- **Verified** (closed ≠ done, so we checked the code, not just the issue):
-  `simulators/aws/ec2.go` implements `CreateVolume`/`CreateSnapshot`/
-  `DescribeSnapshots`/`DeleteSnapshot` with an `EC2Volume`/`EC2Snapshot` store and
-  **host-directory-backed data** (`ebsVolumeHostDirPath`, `ebsSnapshotHostDirPath`,
-  `ebsPrepareVolumeHostPath`) — so a write→snapshot→hydrate round-trip persists
-  real bytes.
-- Status: **unblocked.** Next: run a sockerless-backed `StorageProvider` adapter
-  through our existing round-trip contract test — gated on EXT-004 (running the
-  sim). Until then: `StorageProvider` fake (Tier 1) + manual real-AWS (Tier 3).
+- **#347 (EBS lifecycle) is `completed`** and code-verified: `ec2.go` implements
+  `CreateVolume`/`CreateSnapshot`/`DescribeSnapshots`/`DeleteSnapshot` with
+  host-dir-backed data.
+- **But snapshot→restore is blocked by a new bug: [sockerless #359](https://github.com/e6qu/sockerless/issues/359)**
+  — snapshots never transition `pending → completed`, so `CreateVolume(SnapshotId)`
+  always fails `IncorrectState`. We filed it (with SDK repro + code pointer).
+- **Design note (standard APIs only — no sim special-casing):** the standard EBS
+  API has **no** way to write/read a volume's _files_ without attaching it to a
+  running task. So a standard `StorageProvider` adapter can do volume/snapshot
+  **lifecycle** (EC2 API, endpoint-configurable) but **not** the data round-trip;
+  proving data fidelity needs the **compute layer** (ECS task writes/reads the
+  mounted volume) — a future compute e2e, or the manual real-AWS Tier 3.
+- Status: a standard EBS lifecycle adapter is straightforward once **#359** lands;
+  deferred until then. The fs-on-`SIM_EBS_DATA_DIR` hack was rejected (special case).
 
 ### EXT-002 — sockerless compute/SG/LB still metadata-only (partial)
 

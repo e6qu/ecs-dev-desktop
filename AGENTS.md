@@ -297,3 +297,18 @@ otherwise. They deliberately favour type safety over TypeScript brevity.
   tools) so commits stay clean.
 - **Pinned hook revs follow the ≥1-day-old-latest policy** (§6.5) — verify a
   rev is the newest release at least a day old before bumping.
+
+### 6.8 Simulators are endpoint-only (HARD RULE)
+
+- Code targeting a simulator — **sockerless** or **LocalStack** — MUST differ
+  from the real-cloud path by **endpoint configuration only**. **No** sim-specific
+  code paths, branches, feature flags, host-filesystem access, or any other
+  special-casing. Adapters use the standard cloud SDK/API the same way against the
+  sim and against real AWS.
+- If standard SDK/API behaviour against the sim differs from real cloud, that is a
+  **simulator bug** — **file it upstream** (`e6qu/sockerless`) and reference it;
+  do **not** work around it in our code.
+- Consequence: anything not expressible through standard cloud APIs (e.g. an EBS
+  volume's file contents, which require attaching the volume to a task) is
+  validated through the **real path** (the compute layer) or the manual real-AWS
+  tier — never by reaching into simulator internals.
