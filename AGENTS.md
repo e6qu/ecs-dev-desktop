@@ -28,6 +28,13 @@ This file is the entry point for any human or AI agent working in this repo.
    (authn, authz, SSH, crypto, session handling). Do not hand-roll.
 6. **Components are independently buildable.** A change in one component must not
    require rebuilding another to validate it. Respect the package boundaries.
+7. **Develop test-first (TDD).** For new features, write a failing test first,
+   make it pass, then refactor. No feature code merges without a test that
+   exercises it.
+8. **All code must be testable locally and in CI.** Hide every external
+   dependency (AWS, IdP, Teleport, the proxy) behind an adapter with a fake.
+   Behavior only real AWS/IdP can prove runs in the gated `e2e-aws` suite. See
+   [`TESTING.md`](./TESTING.md) and §5 below.
 
 ---
 
@@ -48,6 +55,8 @@ This file is the entry point for any human or AI agent working in this repo.
 | IaC                  | **Terraform**                                                   |
 | Monorepo             | **Turborepo + pnpm workspaces**                                 |
 | Reverse proxy / IAP  | Identity-aware proxy (e.g. Pomerium) for wildcard workspace routing |
+| Testing              | **TDD**; ports-and-adapters; **sockerless** sim + bleephub per-PR; **manual** real-AWS e2e on `main` (see §5) |
+| License              | **AGPL-3.0-or-later** (SPDX header on new source files)          |
 
 > **VS Code distro:** use **code-server** or **OpenVSCode Server** (MIT), *not*
 > Microsoft's official server (marketplace ToS). Extensions via **Open VSX**.
@@ -136,3 +145,52 @@ ecs-dev-desktop/
   do not advance a phase until its testing gate is green.
 - Security-sensitive code uses libraries (Auth.js, CASL, Teleport, AWS SDK) —
   flag in review any place we'd be rolling our own.
+
+---
+
+## 5. Testing & TDD
+
+**Develop test-first.** Every new feature: write a failing test → make it pass →
+refactor. Detailed tooling lives in [`TESTING.md`](./TESTING.md).
+
+### Ports-and-adapters (what makes TDD viable here)
+
+Wrap every external dependency behind an interface in `packages/core`; provide a
+**fake** (for unit/contract tests) and a **real** adapter (for integration). This
+keeps ~80% of the system fully testable locally and in CI; the irreducible AWS/
+IdP behavior is isolated behind adapters and covered by the gated `e2e-aws` suite.
+
+### Test tiers
+
+| Tier | Runs | Backed by |
+|------|------|-----------|
+| **Unit / contract** | every commit, local + CI | pure logic + fakes (CASL, Zod, state machine, claim→role) |
+| **Integration** | every PR, local + CI | **sockerless** (`simulators/aws` + `bleephub`), DynamoDB Local, Teleport-in-Docker, mock-oauth2-server, Playwright |
+| **`e2e-aws`** | **manual (`workflow_dispatch`) on `main`** | real AWS account/region, real IdP smoke |
+
+**Substrate:** [`sockerless`](https://github.com/e6qu/sockerless) is the primary
+integration substrate (it runs real containers, unlike LocalStack). **When the
+simulator lacks/incorrectly models something we need, file or comment on an issue
+in `e6qu/sockerless`** and track it in `BUGS.md` → *External blockers*. Known
+today: EBS snapshots unimplemented (**#347**); compute/VPC/SG/LB are metadata-only
+(#332–#336); no Entra user-login OIDC sim. Until #347 lands, the `StorageProvider`
+**fake** TDDs the snapshot round-trip logic.
+
+**`e2e-aws` policy:** GitHub **OIDC→AWS role** (no static keys), unique run
+prefix, **mandatory auto-teardown** even on failure, cost budget cap. Small and
+parallel.
+
+### What CANNOT be tested without real AWS/IdP (covered only by `e2e-aws`)
+
+1. **EBS snapshot stateful round-trip** — write → snapshot → hydrate new task →
+   data present. (Emulators mock the API, not the data/latency behavior.)
+2. **Real Fargate scheduling / ENI / cold-start.**
+3. **Cold-start latency & 200+ load** (performance numbers are real-env only).
+4. **Real GitHub / Azure Entra federation** (live group claims, org membership).
+5. **DNS wildcard + ACM cert issuance + Route 53.**
+6. **IAM least-privilege actually enforcing.**
+7. **KMS grants, cross-region snapshot copy, DR drills.**
+8. **Wake-on-connect end-to-end** (real editor activity → heartbeat → wake).
+
+Everything else (pure logic, RBAC, contracts, DynamoDB access patterns, UI,
+adapter call-shapes) is fully TDD-able locally + in CI.

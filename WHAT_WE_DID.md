@@ -22,25 +22,64 @@
     stateful + snapshottable + scale-to-zero.
   - Idle policy: **scale-to-zero** with snapshot/hydrate.
   - Workspace images: **curated golden base images**; extensions via Open VSX.
-- Authored continuity files (`STATUS.md`, `WHAT_WE_DID.md`, `BUGS.md`,
-  `DO_NEXT.md`), `PLAN.md` (7 phases with deliverables + testing gates),
-  `AGENTS.md`, and the `CLAUDE.md → AGENTS.md` symlink.
-- Analyzed **DynamoDB vs Aurora** for control-plane state: concluded DynamoDB is
-  cheaper (~$11/mo heartbeats vs ~$43/mo Aurora v2 floor) and a good fit given
-  known access patterns; accepted implications (GSI-per-pattern, no joins,
-  analytics via Streams→S3→Athena, heartbeat discipline).
+- Authored continuity files, `PLAN.md` (7 phases with deliverables + testing
+  gates), `AGENTS.md`, and the `CLAUDE.md → AGENTS.md` symlink.
+- Analyzed **DynamoDB vs Aurora**: chose DynamoDB + ElectroDB (cheaper, fits
+  access patterns); accepted GSI-per-pattern / no-joins / analytics-via-Streams.
 
 ### Tried
-- Considered **Aurora Postgres + Prisma/Drizzle** for state — set aside in favor
-  of DynamoDB + ElectroDB on cost and operational-simplicity grounds (revisit
-  only if relational reporting needs grow; see `DO_NEXT.md`).
-- Considered **Fargate constraints** for performance (16 vCPU / 120 GB ceiling,
-  no GPU) — accepted because the workload is "light editor + builds"; noted an
-  EC2-backed escape hatch is out of scope unless heavy/GPU needs appear.
-- Considered **direct per-workspace SSH** and a **web-proxy SSH tunnel** —
-  rejected in favor of Teleport for centralized auth/audit at 200+ scale.
+- Considered **Aurora Postgres + Prisma/Drizzle** — set aside for DynamoDB.
+- Considered **direct per-workspace SSH** and **web-proxy SSH tunnel** — rejected
+  for Teleport (central auth/audit at scale).
 - Considered **dynamic ALB host rules per workspace** — rejected (ALB ~100
-  rule/listener cap); chose an identity-aware reverse proxy with wildcard DNS.
+  rule/listener cap); chose an identity-aware reverse proxy + wildcard DNS.
 
 ### Filed
-- (none yet — see `BUGS.md`)
+- (none)
+
+---
+
+## 2026-06-01 — Repo bootstrap, branch protection, identity
+
+### Done
+- Created the public GitHub repo **`e6qu/ecs-dev-desktop`** containing
+  `README.md`, `AGENTS.md`, `CLAUDE.md` (symlink), `PLAN.md`, and the continuity
+  files; pushed the initial commit.
+- Set the **local** git identity to `e6qu <2966430+e6qu@users.noreply.github.com>`
+  (global identity untouched); switched the remote to HTTPS and pushed via the
+  `gh` token so the `adrian-marza-monite` SSH key is never used.
+- Enabled a **branch-protection ruleset** on `main`: PR required, direct/force
+  push + deletion blocked, no admin bypass, 0 required approvals (solo-friendly).
+
+### Tried
+- Pushing over **SSH** failed — the machine's SSH key authenticated as
+  `adrian-marza-monite`. Resolved by using HTTPS + the `gh` credential helper.
+
+### Filed
+- (none)
+
+---
+
+## 2026-06-01 — TDD / testability strategy, sockerless evaluation, licensing
+
+### Done
+- Adopted **TDD** for new features and a **ports-and-adapters** rule so external
+  dependencies are faked; recorded in `AGENTS.md` §5 and `TESTING.md`.
+- Defined three test tiers: unit/contract (every commit), integration on the
+  **sockerless** substrate every PR, and a **manual `workflow_dispatch`
+  real-AWS** suite on `main`.
+- Evaluated **sockerless** vs LocalStack as the substrate; chose sockerless
+  (covers our ECS/EBS/DynamoDB/IAM/Route53/ACM/KMS surface and **runs real
+  containers**; `bleephub` provides GitHub OAuth) and dogfoods our own tool.
+- Licensed the project **AGPL-3.0-or-later** (matching sockerless); added
+  `LICENSE` and the SPDX-header convention.
+
+### Tried
+- **LocalStack (Community)** as substrate — kept only as an optional cross-check;
+  ECS doesn't run containers and EBS/snapshots are Pro + API-level only.
+
+### Filed
+- Identified sockerless simulator gaps to file/track (see `DO_NEXT.md` /
+  `BUGS.md`): **#347** EBS volume lifecycle + snapshots unimplemented (blocks our
+  core snapshot round-trip at the sim level); #332–#336 compute/VPC/SG/LB are
+  metadata-only; no Entra user-login OIDC simulator.
