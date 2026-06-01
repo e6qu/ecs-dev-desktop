@@ -84,5 +84,34 @@
 
 ## Blocked / waiting
 
-- Real Terraform + manual `e2e-aws` gated on decision #4 (AWS account/region).
-- Sim-level snapshot round-trip gated on sockerless #347 (EXT-001).
+### Blocked on a decision from the user
+
+- **AWS account/region + data-residency** (decision #4) — blocks the **real
+  `infra/terraform` baseline**, **Phase 1** (golden image + Fargate task + EBS),
+  **Phase 4** (SSH/Teleport), **Phase 7** (scale/DR), the reconciler **cron
+  runner**, and execution of the manual **`e2e-aws`** tier. _This is the single
+  biggest blocker — most remaining phases sit behind it._
+- **Domain & DNS owner** (decision #3) — blocks the identity-aware **proxy
+  (Pomerium)** + `*.devbox.<domain>` routing and **ACM** certs.
+- **VS Code distro** (decision #2) — blocks the **golden image** (Phase 1) if any
+  MS-exclusive extensions are required (could force a redesign).
+
+### Blocked on external credentials / accounts
+
+- **Real GitHub OAuth app + Azure Entra tenant/app registration** — block the
+  **real end-to-end login** test (Tier-3 manual). Mock-OIDC covers Tier-2.
+
+### Blocked on upstream (sockerless) — see BUGS.md
+
+- **EXT-001 / #347 (EBS snapshots): RESOLVED upstream (closed).** Next: verify
+  snapshot data fidelity + wire a sockerless `StorageProvider` adapter — gated on
+  EXT-004 (no published image yet).
+- **EXT-004:** no published sockerless container image → Tier-2 still **DynamoDB
+  Local only**; can't run the sockerless backend.
+- **EXT-002 / #332–#336 (compute/VPC/SG/LB metadata-only, OPEN):** only blocks
+  sim-level real Fargate networking / proxy routing — not our current testing.
+
+### Not blocked (decision-free, available now)
+
+- Admin **base-image catalog** + quotas/cost views; **Playwright e2e** for the UI;
+  broader unit/integration coverage; the `idle-agent` heartbeat shape.

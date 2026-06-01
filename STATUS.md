@@ -51,7 +51,13 @@ Phases 2 (#4), 3 (#5), 6 (#6) merged._
 
 ## Immediate focus
 
-- Real `infra/terraform` resources — needs AWS account/region (`DO_NEXT` #4).
-- Wire the **sockerless** backend into the Tier-2 harness once its image +
-  EBS-snapshot support (sockerless #347) are available (currently DynamoDB Local
-  only).
+**At a decision gate** — most remaining phases are blocked (see `DO_NEXT.md` →
+_Blocked / waiting_):
+
+- **AWS account/region** (`DO_NEXT` #4) is the biggest blocker: real Terraform,
+  Phase 1 (Fargate + EBS), Phase 4 (SSH), Phase 7, the reconciler cron, and the
+  `e2e-aws` tier all sit behind it.
+- **Domain/DNS** (#3) blocks the auth proxy + workspace routing.
+- Sockerless **#347 (EBS snapshots) is now resolved upstream**; wiring it needs a
+  published sockerless image (EXT-004) — Tier-2 is DynamoDB Local only meanwhile.
+- Decision-free work still available: admin base-image catalog, Playwright e2e.
