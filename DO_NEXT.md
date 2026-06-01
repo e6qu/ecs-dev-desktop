@@ -1,88 +1,53 @@
 # DO_NEXT.md — ecs-dev-desktop
 
-> Prioritized next tasks and open decisions awaiting the user.
-> Update after every task; past tense at PR close for completed items.
+> Prioritized next tasks, open decisions, and blockers. Update after every task;
+> past tense at PR close for completed items.
 
 ---
 
 ## Open decisions (need the user)
 
-1. **VS Code distro:** confirm **code-server / OpenVSCode + Open VSX**, or flag
-   any **MS-exclusive extensions** users depend on (Pylance, official Remote/C++).
-2. **Identity-aware proxy:** confirm **Pomerium** (vs Authentik / in-house).
-3. **Domain & DNS:** base domain for `*.devbox.<domain>` and DNS/cert owner.
-4. **AWS account/region & data-residency** — **gates real Terraform resources and
-   the manual `e2e-aws` tier.**
-5. **Heartbeat interval & idle threshold** (scale-to-zero tuning).
-6. **Entra interactive login flow:** verify in Phase 3 whether sockerless covers
-   `/authorize`→login→code (token/JWKS exist per #261/#272); file a precise issue
-   only if an endpoint is missing (EXT-003).
+1. **AWS account/region & data-residency** — **the top blocker.** Gates real
+   Terraform, Phase 1 (Fargate + EBS), Phase 4 (SSH), Phase 7, the reconciler
+   cron, and the manual `e2e-aws` tier.
+2. **Domain & DNS owner** — base domain for `*.devbox.<domain>` + cert/DNS owner.
+   Gates the identity-aware proxy and ACM certs.
+3. **VS Code distro** — confirm **code-server / OpenVSCode + Open VSX**, or flag
+   any MS-exclusive extensions users need (Pylance, official Remote/C++). Gates
+   the Phase 1 golden image.
+4. **Identity-aware proxy** — confirm **Pomerium** (vs Authentik / in-house).
+5. **Heartbeat interval & idle threshold** — scale-to-zero tuning.
 
-## Resolved decisions
+Resolved: DynamoDB + ElectroDB · sockerless substrate · manual real-AWS on `main`
+· AGPL-3.0-or-later · Turborepo + pnpm · CASL · dep floor `minimumReleaseAge: 1440`.
 
-- State store: **DynamoDB** (single-table + ElectroDB). Test substrate:
-  **sockerless**. Real-AWS tier: **manual on `main`**. License: **AGPL-3.0-or-later**.
-  Repo tooling: **Turborepo + pnpm**. RBAC: **CASL**. Dep policy: **latest version
-  that is ≥ 1 day old** (pnpm `minimumReleaseAge: 1440`; enforced by `check-deps`).
+## Available now (decision-free)
 
-## Next tasks
+- **Playwright e2e** for the portal flows (Tier-2; app + DynamoDB + mock-OIDC or
+  `EDD_DEV_AUTH`).
+- Admin **base-image catalog** management, quotas, cost dashboard.
+- **idle-agent heartbeat** shape (editor/terminal/SSH → `lastActivity`).
+- Scheduled point-in-time snapshots + **orphan volume/snapshot GC** logic (pure
+  core + fakes; the cron runner itself needs AWS).
+- GitHub org/team → role (teams API call in the jwt callback; GitHub groups are
+  empty today).
+- Broader unit/integration coverage.
 
-### Phase 2 — Control-plane API (done, on branch `phase-2/control-plane-api`)
+## Blocked
 
-- [x] Lifecycle endpoints + CASL RBAC; `@edd/control-plane` WorkspaceService (FCIS).
-- [x] Engineering-standards charter (`AGENTS.md` §6) applied repo-wide.
-- [x] Strict type-aware lint; `sast` (Semgrep) + `vuln-scan` (Trivy) gates; pre-commit.
-- [x] Phase 3 (auth core): Auth.js (GitHub + Entra) + JWT, replacing the dev-header
-      principal shim with the session.
+**On decision #1 (AWS):** real `infra/terraform` baseline (VPC, ECS, ECR,
+DynamoDB+GSIs, KMS, IAM, remote state); Phase 1 golden image + Fargate task + EBS;
+Phase 4 SSH/Teleport; Phase 7 scale/DR; the reconciler cron runner; `e2e-aws`
+execution (OIDC→AWS role + ephemeral env + auto-teardown).
 
-### Phase 3 — remaining
+**On decision #2 (DNS):** identity-aware proxy (Pomerium) + `*.devbox.<domain>`
+routing + ACM.
 
-- [ ] Identity-aware proxy (Pomerium) + wildcard `*.devbox.<domain>` routing —
-      needs the domain/DNS decision.
-- [ ] mock-OIDC integration test of the full Auth.js login flow (Tier-2); real
-      GitHub/Entra federation is Tier-3 manual (verify Entra `/authorize`, EXT-003).
-- [ ] GitHub org/team → role (needs a teams API call in the jwt callback; groups
-      are empty for GitHub today).
+**On real IdP credentials:** end-to-end GitHub/Entra login (Tier-3 manual);
+mock-OIDC covers Tier-2.
 
-### Phase 6 — Portal UI (done) + remaining
-
-- [x] Workspaces portal (list/create/start/stop/snapshot/delete, RBAC-gated) +
-      admin "all" view, on the existing API + Auth.js.
-- [ ] **Playwright e2e** for the UI flows (Tier-2; needs the app + DynamoDB + a
-      session — mock-OIDC or `EDD_DEV_AUTH`).
-- [ ] Admin **base-image catalog** management, quotas, and a cost dashboard.
-
-### Phase 5 — Reconciler (idle pass done) + remaining
-
-- [x] Idle reconcile pass: `listActive` → pure `selectIdle` → stop (snapshot +
-      tear down), with unit + DynamoDB-Local integration tests.
-- [ ] idle-agent heartbeats (editor/terminal/SSH activity → `lastActivity`).
-- [ ] Scheduled point-in-time snapshots + **orphan volume/snapshot GC**.
-- [ ] The runner/cron (ECS scheduled task / EventBridge) — needs AWS.
-
-### Phase 0 — remaining
-
-- [x] **Tier-2 harness**: DynamoDB Local via `docker-compose.tier2.yml`,
-      `pnpm test:integ`, `@edd/db` integration test + CI `integration` job.
-- [x] **ElectroDB** Workspace entity in `@edd/db` over the single-table keys.
-- [ ] Wire the **sockerless** backend into Tier-2 (pending its image + #347).
-- [ ] `infra/terraform` real baseline (VPC, ECS, ECR, DynamoDB + GSIs, KMS, IAM,
-      remote state) — **blocked on decision #4**.
-- [ ] Flesh out `e2e-aws.yml`: OIDC→AWS role + ephemeral env + auto-teardown.
-
-### Phase 1 (next)
-
-- [ ] Golden base image (code-server + Teleport/sshd + idle-agent) in
-      `infra/images`; Fargate task def with ECS-managed EBS volume.
-- [ ] Add a **sockerless-backed `StorageProvider` adapter** and run it through the
-      existing contract test (lands when sockerless #347 ships EBS snapshots).
-
-## Upstream (sockerless)
-
-- [x] Commented on **#347** with our snapshot data-round-trip requirement.
-- [ ] Verify Entra `/authorize` login flow in Phase 3 (EXT-003).
-
-## Blocked / waiting
-
-- Real Terraform + manual `e2e-aws` gated on decision #4 (AWS account/region).
-- Sim-level snapshot round-trip gated on sockerless #347 (EXT-001).
+**On upstream sockerless (see `BUGS.md`):** wiring the sockerless backend into
+Tier-2 (EXT-004, no published image — Tier-2 is DynamoDB Local only); the EBS
+lifecycle `StorageProvider` adapter (EXT-001 / [#359](https://github.com/e6qu/sockerless/issues/359));
+sim-level Fargate execution + SG/LB (EXT-002); verify Entra `/authorize` in
+Phase 3 (EXT-003).

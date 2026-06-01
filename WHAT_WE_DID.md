@@ -1,311 +1,115 @@
 # WHAT_WE_DID.md — ecs-dev-desktop
 
-> Append-only history. Three lenses per entry: **Done**, **Tried** (incl. dead
-> ends and rejected options), **Filed** (bugs/issues raised). Past tense.
+> Concise dated history. Each entry: what was **done**, and (where it informs
+> future work) the key **lesson** or **filing**. Past tense.
 
 ---
 
-## 2026-06-01 — Project planning & scaffolding decisions
-
-### Done
-
-- Established the project goal: per-user VS Code workspaces on AWS ECS Fargate
-  with SSH, stateful+snapshottable storage, login UI, and an admin control plane.
-- Locked architecture decisions (recorded in `AGENTS.md` §1):
-  - Compute: **ECS Fargate**; scale target **200+**.
-  - Auth: **GitHub OAuth + Azure Entra ID**, groups → roles.
-  - RBAC: **CASL**, shared across API and UI.
-  - SSH: **Teleport** (chosen over custom gateway / Node SSH proxy).
-  - Web + control-plane API: **Next.js**, API-first.
-  - State store: **DynamoDB** single-table + **ElectroDB** (pending final confirm).
-  - IaC: **Terraform**; monorepo: **Turborepo + pnpm**.
-  - Persistence model: **EBS snapshot as the unit of persistence**, unifying
-    stateful + snapshottable + scale-to-zero.
-  - Idle policy: **scale-to-zero** with snapshot/hydrate.
-  - Workspace images: **curated golden base images**; extensions via Open VSX.
-- Authored continuity files, `PLAN.md` (7 phases with deliverables + testing
-  gates), `AGENTS.md`, and the `CLAUDE.md → AGENTS.md` symlink.
-- Analyzed **DynamoDB vs Aurora**: chose DynamoDB + ElectroDB (cheaper, fits
-  access patterns); accepted GSI-per-pattern / no-joins / analytics-via-Streams.
-
-### Tried
-
-- Considered **Aurora Postgres + Prisma/Drizzle** — set aside for DynamoDB.
-- Considered **direct per-workspace SSH** and **web-proxy SSH tunnel** — rejected
-  for Teleport (central auth/audit at scale).
-- Considered **dynamic ALB host rules per workspace** — rejected (ALB ~100
-  rule/listener cap); chose an identity-aware reverse proxy + wildcard DNS.
-
-### Filed
-
-- (none)
-
----
-
-## 2026-06-01 — Repo bootstrap, branch protection, identity
-
-### Done
-
-- Created the public GitHub repo **`e6qu/ecs-dev-desktop`** containing
-  `README.md`, `AGENTS.md`, `CLAUDE.md` (symlink), `PLAN.md`, and the continuity
-  files; pushed the initial commit.
-- Set the **local** git identity to `e6qu <2966430+e6qu@users.noreply.github.com>`
-  (global identity untouched); switched the remote to HTTPS and pushed via the
-  `gh` token so the `adrian-marza-monite` SSH key is never used.
-- Enabled a **branch-protection ruleset** on `main`: PR required, direct/force
-  push + deletion blocked, no admin bypass, 0 required approvals (solo-friendly).
-
-### Tried
-
-- Pushing over **SSH** failed — the machine's SSH key authenticated as
-  `adrian-marza-monite`. Resolved by using HTTPS + the `gh` credential helper.
-
-### Filed
-
-- (none)
-
----
-
-## 2026-06-01 — TDD / testability strategy, sockerless evaluation, licensing
-
-### Done
-
-- Adopted **TDD** for new features and a **ports-and-adapters** rule so external
-  dependencies are faked; recorded in `AGENTS.md` §5 and `TESTING.md`.
-- Defined three test tiers: unit/contract (every commit), integration on the
-  **sockerless** substrate every PR, and a **manual `workflow_dispatch`
-  real-AWS** suite on `main`.
-- Evaluated **sockerless** vs LocalStack as the substrate; chose sockerless
-  (covers our ECS/EBS/DynamoDB/IAM/Route53/ACM/KMS surface and **runs real
-  containers**; `bleephub` provides GitHub OAuth) and dogfoods our own tool.
-- Licensed the project **AGPL-3.0-or-later** (matching sockerless); added
-  `LICENSE` and the SPDX-header convention.
-
-### Tried
-
-- **LocalStack (Community)** as substrate — kept only as an optional cross-check;
-  ECS doesn't run containers and EBS/snapshots are Pro + API-level only.
-
-### Filed
-
-- Identified sockerless simulator gaps to file/track (see `DO_NEXT.md` /
-  `BUGS.md`): **#347** EBS volume lifecycle + snapshots unimplemented (blocks our
-  core snapshot round-trip at the sim level); #332–#336 compute/VPC/SG/LB are
-  metadata-only; no Entra user-login OIDC simulator.
-- Commented on sockerless **#347** registering our snapshot data-round-trip
-  requirement.
-
----
-
-## 2026-06-01 — Phase 0 scaffold (Turborepo, components, CI)
-
-### Done
-
-- Stood up the **Turborepo + pnpm** monorepo: every component builds/tests in
-  isolation (`pnpm --filter <name> ...`). Scope `@edd/*`.
-- Built the TDD centerpiece in `packages/core`: a `StorageProvider` **port**, a
-  filesystem-backed **fake**, a reusable **round-trip contract test** (write →
-  snapshot → hydrate → bytes present), and the workspace lifecycle state machine.
-- Scaffolded `config`, `api-contracts` (zod), `authz` (CASL), `auth`
-  (claim→role), `db` (single-table keys), `api-client`; `services/reconciler`,
-  `services/ssh-gateway`; `apps/web` (Next.js + `/api/healthz`).
-- Added `infra/terraform` baseline + committed cross-platform provider lock,
-  `infra/images` placeholder, and `docker-compose.tier2.yml`.
-- Authored **CI** (`ci.yml`): `build-test`, `check-deps` (Node + Terraform
-  freshness, mirroring sockerless's check-deps), `terraform` fmt/validate; plus
-  the manual `e2e-aws.yml` skeleton. Added `scripts/check-latest-deps.sh`.
-- Brought all dependencies to **latest** so the freshness gate is green
-  (TS 6, ESLint 10, Vitest 4, Next 16, zod 4, CASL 7, @types/node 25, vite 8).
-- Verified: lint 10/10, build 10/10, **24 tests pass**, freshness gate green.
-
-### Tried
-
-- **TS 6** dropped automatic `@types/node` discovery under pnpm's isolated
-  layout → `node:`/`Buffer`/`process` unresolved. Fixed by declaring
-  `@types/node` and setting `types: ["node"]` in `core`/`config`/`api-client`.
-- **Vitest 4** failed to start against a stray **vite 5** (`./module-runner`
-  missing). Fixed by adding latest **vite 8** at the workspace root.
-- Kept library `build` as `tsc --noEmit` (typecheck) for the scaffold; Turbo
-  emits harmless "no output files" warnings for those tasks.
-
-### Filed
-
-- (none)
-
----
-
-## 2026-06-01 — Tier-2 integration harness (DynamoDB Local + ElectroDB)
-
-### Done
-
-- Added **ElectroDB** to `@edd/db`: a Workspace entity over the single table with
-  `byOwner` (GSI1) and `byState` (GSI2) indexes, a `CreateTable`/`DeleteTable`
-  schema helper, and an env-driven DynamoDB client (`DYNAMODB_ENDPOINT`).
-- Wrote the first **integration test** (`*.integ.ts`, separated from the unit
-  run) covering put/get + both GSIs, verified locally against **DynamoDB Local**
-  (3/3 pass).
-- Wired `pnpm test:integ` (Turbo) + a CI **`integration`** job using an
-  `amazon/dynamodb-local` service container.
-- Added deps at latest (electrodb 3, @aws-sdk/client-dynamodb 3); freshness gate
-  stayed green. Verified: lint 10/10, build 10/10, unit 24/24, integration 3/3.
-
-### Tried
-
-- Separated integration from unit by suffix (`*.integ.ts`) + a dedicated
-  `vitest.integ.config.ts`, so `pnpm test` never needs Docker.
-- Left the **sockerless** backend commented in `docker-compose.tier2.yml`: no
-  published image yet and EBS snapshots unimplemented (sockerless #347), so
-  Tier-2 currently covers DynamoDB Local only.
-
-### Filed
-
-- (none)
-
----
-
-## 2026-06-01 — Dep prune, 1-day min release age, portable shell scripts
-
-### Done
-
-- Audited deps with `depcheck` (surface already lean). Pruned the only two unused
-  declarations: `@edd/core` from `services/reconciler` and `@types/react-dom`
-  from `apps/web`.
-- Added supply-chain safeguard **`minimumReleaseAge: 1440`**
-  (`pnpm-workspace.yaml`): no version adopted until public ≥ 1 day. `pnpm
-outdated` honours it, so the `check-deps` gate stays read-only and age-aware.
-- Made the one shell script **portable + `shellcheck`-clean** (no `BASH_SOURCE`/
-  `pushd`; `$0`-derived path; `unset CDPATH`); runs under **bash and zsh**.
-- Added a **`shellcheck` CI job** matrixed over **ubuntu + macOS** that runs
-  shellcheck + `bash -n` + `zsh -n` on every `*.sh`.
-
-### Tried
-
-- `pnpm update --latest -r` under the floor **downgraded** vite 8.0.16→8.0.14 and
-  vitest 4.1.8→4.1.7 (published <24h) — kept the age-compliant versions.
-- An `update --latest` + `git diff` freshness gate — rejected: it conflated
-  uncommitted edits with drift. `pnpm outdated` is read-only and age-aware.
-
-### Filed
-
-- (none)
-
----
-
-## 2026-06-01 — Phase 2 control-plane API + engineering-standards charter
-
-### Done
-
-- Built the **control-plane API** (`apps/web`): workspace lifecycle endpoints
-  (create/list/get/stop/start/snapshot/delete) with CASL RBAC; new
-  `@edd/control-plane` `WorkspaceService` orchestrating ElectroDB + the state
-  machine + storage/compute ports; `ComputeProvider` port + fake.
-  Integration-tested vs DynamoDB Local (control-plane + web + db).
-- Recorded the full **engineering-standards charter** in `AGENTS.md` §6 and
-  applied it repo-wide: branded domain types (no bare-string ids), `Workspace`
-  domain object across boundaries (no untyped dicts/lists), FCIS (pure core +
-  thin imperative shell), magic→named constants, typed `@edd/config` for
-  endpoints/ports (no hardcoded `:8000`), explicit named exports (no `export *`),
-  no-silent-fallbacks/fail-loudly.
-- Enabled **strict type-aware lint** (`strictTypeChecked` + `stylisticTypeChecked`
-  - bans) + `eslint-config-prettier`; fixed all violations. Green across 11 pkgs.
-- Added **security gates**: `sast` (Semgrep, fail high/critical) and `vuln-scan`
-  (Trivy deps/IaC/secret, fail HIGH/CRITICAL) — verified locally.
-- Added a **`pre-commit`** setup (format/type-check/lint/unit-tests/actionlint;
-  revs pinned latest ≥1-day-old) + a `commit-msg` hook that **strips AI
-  attribution** (mirrors sockerless).
-
-### Tried
-
-- `export *` barrel in `@edd/core` — replaced with explicit named exports after
-  it caused a `VolumeId`/`SnapshotId` collision (textbook wildcard antipattern).
-- Removed the hand-rolled DynamoDB `keys` helper — redundant with ElectroDB.
-
-### Filed
-
-- (none)
-
----
-
-## 2026-06-01 — Phase 3: Auth.js (GitHub + Entra) login + RBAC
-
-### Done
-
-- Wired **Auth.js (NextAuth v5)** into `apps/web` with **GitHub** + **Microsoft
-  Entra ID** providers and **JWT sessions** (`auth.ts`, `app/api/auth/[...nextauth]`).
-- Derived the role from IdP groups at sign-in: pure `normalizeClaims` (Zod-parsed
-  per provider) → `@edd/auth` `mapClaimsToRole` → JWT/session; env-driven group→role
-  config (`EDD_ADMIN_GROUPS`/`EDD_MEMBER_GROUPS`).
-- Replaced the principal source: `getPrincipal` now reads the Auth.js session;
-  the dev-header shim is gated by `EDD_DEV_AUTH` (tests only). Auth.js is
-  lazily imported so the module stays test-safe outside the Next runtime.
-- Added a minimal **login page** + `.env.example`; unit tests for claims, role
-  config, and session→principal. All gates green (lint 11, build 11, unit 18,
-  integ 8).
-
-### Tried
-
-- Importing `auth.ts` (NextAuth) in vitest failed (`next/server` unresolved) —
-  fixed by lazy `import("../auth")` inside `getPrincipal` (dev path never loads it).
-- `delete process.env[...]` in a test tripped `no-dynamic-delete` — switched to
-  `vi.stubEnv` / `vi.unstubAllEnvs`.
-
-### Filed
-
-- (none)
-
----
-
-## 2026-06-01 — Phase 6: User portal + Admin UI
-
-### Done
-
-- Built the **Next.js portal UI** over the existing API + Auth.js: a workspaces
-  grid (server-rendered via the control plane), **create from the golden-image
-  catalog**, and per-workspace **lifecycle actions** (start/stop/snapshot/delete)
-  that drive the state machine — actions/availability mirror the backend.
-- **RBAC-gated**: members manage their own; admins get an **"all" view** with
-  owners; viewers are read-only. Session-driven (Auth.js) with a sign-in CTA.
-- Distinctive **"infra control room" aesthetic** (Chakra Petch + IBM Plex Sans/Mono,
-  blueprint grid + grain, phosphor accent, status badges with glow), hand-written
-  CSS — no generic AI look.
-- Client action components use **`@edd/api-client`** (string ids at the HTTP edge
-  so the browser bundle stays free of `node:` deps). Pure presentational logic
-  (`statusMeta`, `availableActions`) unit-tested.
-
-### Tried
-
-- Inline CSS custom properties needed either a `CSSProperties` augmentation or an
-  object-literal cast (both fought the lint rules) — switched to **`data-status`
-  attributes** mapped to `--status` in CSS. Cleaner, no augmentation.
-- Reverted the api-client id params from `WorkspaceId` to `string`: importing
-  `@edd/core` into client components pulls `node:fs`/`node:crypto` (via the fakes)
-  into the browser bundle. Branding stays server-side.
-
-### Filed
-
-- (none)
-
----
-
-## 2026-06-01 — Phase 5: Reconciler (scale-to-zero)
-
-### Done
-
-- Built the **idle reconcile pass** (FCIS): `WorkspaceService.listActive()`
-  (byState GSI query for running/idle) → pure **`selectIdle`** (idle past the
-  threshold) → `stop` each via the control plane (snapshot + tear down).
-- `@edd/reconciler` exposes a `ReconcilerService` **port** (so it's decoupled and
-  unit-tested with a fake; `WorkspaceService` satisfies it structurally) + the
-  `Reconciler` shell; default idle window from `DEFAULT_IDLE_THRESHOLD_MS`.
-- Unit tests (pure `selectIdle` + `runOnce` with a fake) + an **integration test**
-  against DynamoDB Local driving the real `WorkspaceService` (idle workspace →
-  stopped). Re-added `@edd/core` to the reconciler (now genuinely used).
-
-### Tried
-
-- Kept the reconciler decoupled from `@edd/control-plane` at runtime via the port;
-  control-plane/db are devDeps only (for the integration test).
-
-### Filed
-
-- (none)
+## 2026-06-01 — Planning, architecture, repo bootstrap
+
+- Locked the architecture (see `AGENTS.md` §1): ECS Fargate; GitHub OAuth + Azure
+  Entra → CASL RBAC; Teleport SSH; Next.js API-first; DynamoDB single-table +
+  ElectroDB; EBS-snapshot-as-persistence with scale-to-zero; golden images + Open
+  VSX; Terraform; Turborepo + pnpm; AGPL-3.0-or-later.
+- Authored `PLAN.md` (7 phases, each with a testing gate), `AGENTS.md`, the
+  continuity files, and the `CLAUDE.md → AGENTS.md` symlink.
+- Created public repo **`e6qu/ecs-dev-desktop`**; protected `main` (PR required,
+  no force-push/delete, no admin bypass, 0 approvals for solo work).
+- **Lessons:** DynamoDB over Aurora (cost, fits access patterns; accept
+  GSI-per-pattern, no joins). Teleport over a custom SSH gateway (central
+  auth/audit at scale). Identity-aware proxy + wildcard DNS over per-workspace ALB
+  rules (ALB ~100-rule/listener cap). Git pushes over **HTTPS + `gh`** (the SSH
+  key authed as `adrian-marza-monite`); local identity pinned to `e6qu` noreply.
+
+## 2026-06-01 — Test strategy & substrate
+
+- Adopted TDD + **ports-and-adapters** (fake + real adapter per external dep) and
+  three tiers: unit/contract (commit) · integration (PR) · manual real-AWS (main).
+- Chose **sockerless** as the integration substrate over LocalStack (runs real
+  containers; covers our ECS/EBS/DynamoDB/IAM/Route53/ACM/KMS surface; dogfoods
+  our own tool). LocalStack kept only as an optional cross-check.
+
+## 2026-06-01 — Phase 0 scaffold (Turborepo + CI)
+
+- Stood up the `@edd/*` monorepo; every component builds/tests in isolation.
+- Built the TDD centerpiece in `packages/core`: `StorageProvider` port + fake +
+  reusable round-trip **contract test** + the workspace lifecycle state machine.
+- Scaffolded `config`, `api-contracts`, `authz`, `auth`, `db`, `api-client`,
+  `services/reconciler`, `services/ssh-gateway`, `apps/web`; `infra/terraform`
+  baseline + committed provider lock; `docker-compose.tier2.yml`.
+- Authored CI (`build-test`, `check-deps`, `terraform`) + the manual `e2e-aws`
+  skeleton; brought all deps to latest so the freshness gate is green.
+- **Lesson:** TS 6 under pnpm needs explicit `@types/node` + `types: ["node"]`;
+  Vitest 4 needs vite ≥ 6 (added vite 8 at root).
+
+## 2026-06-01 — Tier-2 harness (DynamoDB Local + ElectroDB)
+
+- Added the **ElectroDB** Workspace entity to `@edd/db` (single table; `byOwner`
+  GSI1, `byState` GSI2) + an env-driven client; first integration test
+  (put/get + both GSIs) green against DynamoDB Local; wired `pnpm test:integ` +
+  the CI `integration` job. Integration files use the `*.integ.ts` suffix so
+  `pnpm test` never needs Docker.
+
+## 2026-06-01 — Dep hygiene & portable shell
+
+- Pruned the only two unused deps (`depcheck`). Added the supply-chain floor
+  **`minimumReleaseAge: 1440`**; `pnpm outdated` honours it so `check-deps` stays
+  read-only and age-aware. Made the shell script portable + `shellcheck`-clean
+  (bash & zsh, ubuntu & macOS CI matrix).
+
+## 2026-06-01 — Phase 2: control-plane API + standards charter
+
+- Built the control-plane API (`apps/web`): lifecycle endpoints
+  (create/list/get/stop/start/snapshot/delete) with CASL RBAC, over a new
+  `@edd/control-plane` `WorkspaceService` (imperative shell) on ElectroDB + the
+  pure core; added the `ComputeProvider` port + fake. Integration-tested.
+- Recorded the **engineering-standards charter** (`AGENTS.md` §6) and applied it
+  repo-wide: branded ids, domain objects across boundaries, FCIS, named
+  constants, typed `@edd/config`, explicit named exports, fail-loudly.
+- Enabled strict type-aware lint; added **`sast`** (Semgrep) + **`vuln-scan`**
+  (Trivy) gates and **`pre-commit`** (with a `commit-msg` AI-attribution stripper).
+- **Lesson:** an `export *` barrel caused a `VolumeId`/`SnapshotId` collision —
+  switched to explicit named exports (the wildcard antipattern in practice).
+
+## 2026-06-01 — Phase 3: Auth.js (GitHub + Entra) + RBAC
+
+- Wired **Auth.js (NextAuth v5)** with GitHub + Entra and JWT sessions; role
+  derived at sign-in via pure `normalizeClaims` (Zod) → `mapClaimsToRole`, with
+  env-driven group→role config. `getPrincipal` now reads the session; the
+  dev-header shim is gated by `EDD_DEV_AUTH` (tests only).
+- **Lesson:** Auth.js (`next/server`) breaks under vitest — lazy `import("../auth")`
+  inside `getPrincipal` keeps the module test-safe.
+
+## 2026-06-01 — Phase 6: user portal + admin UI
+
+- Built the Next.js portal over the existing API + Auth.js: server-rendered
+  workspaces grid, create-from-catalog, per-workspace lifecycle actions; **RBAC-
+  gated** (members own theirs; admins get an "all" view; viewers read-only).
+  Distinctive "infra control room" aesthetic, hand-written CSS.
+- **Lessons:** drove CSS-var theming via **`data-status` attributes** (inline
+  custom-property styles fought the lint rules). Kept `@edd/api-client` ids as
+  `string` at the HTTP edge so the browser bundle stays free of `node:` deps.
+
+## 2026-06-01 — Phase 5: reconciler (scale-to-zero)
+
+- Built the **idle reconcile pass** (FCIS): `WorkspaceService.listActive()` →
+  pure **`selectIdle`** → `stop` each (snapshot + tear down). `@edd/reconciler`
+  exposes a `ReconcilerService` port (unit-tested with a fake; `WorkspaceService`
+  satisfies it structurally) + the `Reconciler` shell. Unit + DynamoDB-Local
+  integration tests green. (Scheduled snapshots, orphan GC, and the cron runner
+  remain — see `DO_NEXT.md`.)
+
+## 2026-06-01 — Sockerless re-evaluation & storage findings
+
+- Re-checked sockerless after upstream changes; verified status **per issue**
+  (state_reason + code), since "closed" can mean rejected: **#347** (EBS
+  lifecycle) and **#336** (VPC/ENI) genuinely landed; EKS #348 / SES #349 were
+  `not_planned`.
+- **Filed [#359](https://github.com/e6qu/sockerless/issues/359):** EBS snapshots
+  never transition `pending → completed`, so `CreateVolume(SnapshotId)` always
+  fails `IncorrectState` — blocks snapshot→restore (SDK repro + code pointer).
+- **Key decision:** rejected a special-cased fs-on-`SIM_EBS_DATA_DIR` storage
+  adapter (violates the §6.8 endpoint-only rule); removed it. The standard EBS
+  API can't read/write a volume's _files_ without attaching it to a task, so a
+  standard `StorageProvider` adapter does lifecycle only — **data fidelity needs
+  the compute layer** (compute e2e / real-AWS tier), not the storage port.
