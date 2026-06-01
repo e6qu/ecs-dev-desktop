@@ -13,8 +13,6 @@ describe("reconciler decideAction", () => {
   });
 
   it("leaves an active workspace alone", () => {
-    expect(
-      decideAction({ state: "running", msSinceActivity: 1000, idleThresholdMs }),
-    ).toBe("noop");
+    expect(decideAction({ state: "running", msSinceActivity: 1000, idleThresholdMs })).toBe("noop");
   });
 });

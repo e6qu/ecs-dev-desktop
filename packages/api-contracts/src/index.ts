@@ -22,7 +22,7 @@ export const workspace = z.object({
   ownerId: z.string(),
   baseImage: z.string(),
   state: workspaceState,
-  createdAt: z.string().datetime(),
+  createdAt: z.iso.datetime(),
 });
 export type WorkspaceDto = z.infer<typeof workspace>;
 

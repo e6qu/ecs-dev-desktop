@@ -1,23 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { randomUUID } from "node:crypto";
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import type {
-  Snapshot,
-  SnapshotId,
-  StorageProvider,
-  Volume,
-  VolumeId,
-} from "./storage-provider";
+import { newSnapshotId, newVolumeId, type SnapshotId, type VolumeId } from "../domain/ids";
+import type { Snapshot, StorageProvider, Volume } from "./storage-provider";
+
+function isFileNotFound(err: unknown): boolean {
+  return err instanceof Error && "code" in err && err.code === "ENOENT";
+}
 
 /**
  * Filesystem-backed StorageProvider for unit/CI tests. Each volume and snapshot
- * is a directory on disk; a snapshot is a deep copy of the volume tree, and
- * hydrating a volume from a snapshot copies that tree back. This faithfully
- * reproduces the snapshot DATA round-trip (it does NOT model EBS latency /
- * lazy-load — that is the manual `e2e-aws` tier's job).
+ * is a directory; a snapshot is a deep copy of the volume tree, and hydrating a
+ * volume from a snapshot copies that tree back. This reproduces the snapshot
+ * DATA round-trip (not EBS latency/lazy-load — that is the `e2e-aws` tier's job).
  */
 export class FakeStorageProvider implements StorageProvider {
   private constructor(private readonly root: string) {}
@@ -38,7 +35,7 @@ export class FakeStorageProvider implements StorageProvider {
   }
 
   async createVolume(opts?: { fromSnapshot?: SnapshotId }): Promise<Volume> {
-    const id = `vol-${randomUUID()}`;
+    const id = newVolumeId();
     const dir = this.volumeDir(id);
     await mkdir(dir, { recursive: true });
     if (opts?.fromSnapshot) {
@@ -51,7 +48,7 @@ export class FakeStorageProvider implements StorageProvider {
     try {
       return await readFile(join(this.volumeDir(volumeId), path));
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return null;
+      if (isFileNotFound(err)) return null;
       throw err;
     }
   }
@@ -63,7 +60,7 @@ export class FakeStorageProvider implements StorageProvider {
   }
 
   async createSnapshot(volumeId: VolumeId): Promise<Snapshot> {
-    const id = `snap-${randomUUID()}`;
+    const id = newSnapshotId();
     await cp(this.volumeDir(volumeId), this.snapshotDir(id), { recursive: true });
     return { id, sourceVolumeId: volumeId };
   }

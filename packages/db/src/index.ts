@@ -1,30 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * DynamoDB single-table key design. ElectroDB entities (wired once DynamoDB
- * Local is added to the Tier-2 harness) will build on these access patterns:
- *
- *   PK / SK            — item identity
- *   GSI1 (byOwner)     — list a user's workspaces
- *   GSI2 (byStateAt)   — reconciler scan: workspaces in a state, oldest-activity first
- *
- * Keys are pure functions so they are unit-testable without a database.
+ * `@edd/db` — the DynamoDB single-table persistence layer. ElectroDB
+ * (`entities.ts`) owns the concrete key formatting; the table schema lives in
+ * `table.ts`. No hand-rolled key strings (that duplicated ElectroDB).
  */
-export const TABLE = "ecs-dev-desktop";
 
-export const keys = {
-  workspace: (id: string) => ({ PK: `WORKSPACE#${id}`, SK: `WORKSPACE#${id}` }),
-  snapshot: (workspaceId: string, snapshotId: string) => ({
-    PK: `WORKSPACE#${workspaceId}`,
-    SK: `SNAPSHOT#${snapshotId}`,
-  }),
-  byOwner: (ownerId: string) => ({ GSI1PK: `USER#${ownerId}`, GSI1SK: "WORKSPACE#" }),
-  byStateActivity: (state: string, lastActivityIso: string) => ({
-    GSI2PK: `STATE#${state}`,
-    GSI2SK: `ACTIVITY#${lastActivityIso}`,
-  }),
-} as const;
+import { DEFAULT_DYNAMODB_TABLE, dynamodbLocal } from "@edd/config";
+
+/** Default single-table name (from the typed config). */
+export const TABLE = DEFAULT_DYNAMODB_TABLE;
+
+/** DynamoDB Local connection config (Tier-2 harness / integration tests). */
+export { dynamodbLocal };
 
 export { createDynamoClient } from "./client";
-export { ensureTable, dropTable, tableDefinition } from "./table";
+export { dropTable, ensureTable, tableDefinition } from "./table";
 export { makeWorkspaceEntity, type WorkspaceEntity } from "./entities";

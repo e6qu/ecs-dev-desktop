@@ -1,0 +1,80 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Local pre-commit hooks: fast file-level checks, auto-format + type-check for
+# every language used, and UNIT tests. Wider/integration tests run in CI
+# (.github/workflows/ci.yml). Hook revs are pinned to the latest release that is
+# >= 1 day old, matching the dependency-freshness policy (AGENTS.md §6.5).
+default_stages: [pre-commit]
+default_install_hook_types: [pre-commit, commit-msg]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-yaml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+
+  # Shell auto-format (downloads the shfmt binary; no local install needed).
+  - repo: https://github.com/scop/pre-commit-shfmt
+    rev: v3.13.1-1
+    hooks:
+      - id: shfmt
+        args: [-w, -i, "2", -ci]
+
+  # GitHub Actions workflow lint.
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.12
+    hooks:
+      - id: actionlint
+
+  # Terraform format + validate (HCL "type-check").
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.106.0
+    hooks:
+      - id: terraform_fmt
+      - id: terraform_validate
+
+  - repo: local
+    hooks:
+      # Auto-format JS/TS/JSON/YAML/Markdown/CSS.
+      - id: prettier
+        name: prettier (format)
+        language: node
+        additional_dependencies: ["prettier@3.8.3"]
+        entry: prettier --write --ignore-unknown
+        types_or: [javascript, jsx, ts, tsx, json, yaml, markdown, css]
+
+      # Quality lint with auto-fix.
+      - id: eslint
+        name: eslint (fix)
+        language: system
+        entry: pnpm exec eslint --fix
+        files: \.(ts|tsx|mjs|cjs|js)$
+
+      # TypeScript type-check (whole graph; Turbo-cached).
+      - id: tsc
+        name: tsc (type-check)
+        language: system
+        entry: pnpm build
+        pass_filenames: false
+        types_or: [ts, tsx]
+
+      # Unit tests only — integration/e2e run in CI.
+      - id: unit-tests
+        name: unit tests
+        language: system
+        entry: pnpm test
+        pass_filenames: false
+        types_or: [ts, tsx]
+
+      # Strip AI attribution trailers from commit messages (commit-msg stage).
+      - id: strip-ai-attribution
+        name: strip AI attribution from commit messages
+        language: system
+        entry: bash scripts/strip-ai-attribution.sh
+        stages: [commit-msg]

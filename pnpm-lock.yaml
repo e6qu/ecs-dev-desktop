@@ -17,6 +17,9 @@ importers:
       eslint:
         specifier: ^10.4.1
         version: 10.4.1
+      eslint-config-prettier:
+        specifier: ^10.1.8
+        version: 10.1.8(eslint@10.4.1)
       turbo:
         specifier: ^2.9.16
         version: 2.9.16
@@ -35,6 +38,21 @@ importers:
 
   apps/web:
     dependencies:
+      '@edd/api-contracts':
+        specifier: workspace:*
+        version: link:../../packages/api-contracts
+      '@edd/authz':
+        specifier: workspace:*
+        version: link:../../packages/authz
+      '@edd/control-plane':
+        specifier: workspace:*
+        version: link:../../packages/control-plane
+      '@edd/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+      '@edd/db':
+        specifier: workspace:*
+        version: link:../../packages/db
       next:
         specifier: ^16.2.6
         version: 16.2.6(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
@@ -45,6 +63,9 @@ importers:
         specifier: ^19.2.6
         version: 19.2.6(react@19.2.6)
     devDependencies:
+      '@types/node':
+        specifier: ^25.9.1
+        version: 25.9.1
       '@types/react':
         specifier: ^19.2.15
         version: 19.2.15
@@ -54,6 +75,9 @@ importers:
       '@edd/api-contracts':
         specifier: workspace:*
         version: link:../api-contracts
+      '@edd/core':
+        specifier: workspace:*
+        version: link:../core
     devDependencies:
       '@types/node':
         specifier: ^25.9.1
@@ -83,6 +107,22 @@ importers:
         specifier: ^25.9.1
         version: 25.9.1
 
+  packages/control-plane:
+    dependencies:
+      '@edd/api-contracts':
+        specifier: workspace:*
+        version: link:../api-contracts
+      '@edd/core':
+        specifier: workspace:*
+        version: link:../core
+      '@edd/db':
+        specifier: workspace:*
+        version: link:../db
+    devDependencies:
+      '@types/node':
+        specifier: ^25.9.1
+        version: 25.9.1
+
   packages/core:
     devDependencies:
       '@types/node':
@@ -94,6 +134,9 @@ importers:
       '@aws-sdk/client-dynamodb':
         specifier: ^3.1057.0
         version: 3.1057.0
+      '@edd/config':
+        specifier: workspace:*
+        version: link:../config
       electrodb:
         specifier: ^3.9.0
         version: 3.9.0(@aws-sdk/client-dynamodb@3.1057.0)
@@ -883,6 +926,12 @@ packages:
   escape-string-regexp@4.0.0:
     resolution: {integrity: sha512-TtpcNJ3XAzx3Gq8sWRzJaVajRs0uVxA2YAkdb1jm2YkPz4G6egUFAyA3n5vtEIZefPk5Wa4UXbKuS5fKkJWdgA==}
     engines: {node: '>=10'}
+
+  eslint-config-prettier@10.1.8:
+    resolution: {integrity: sha512-82GZUjRS0p/jganf6q1rEO25VSoHH0hKPCTrgillPjdI/3bgBhAE1QzHrHTizjpRvy6pGAvKjDJtk2pF9NDq8w==}
+    hasBin: true
+    peerDependencies:
+      eslint: '>=7.0.0'
 
   eslint-scope@9.1.2:
     resolution: {integrity: sha512-xS90H51cKw0jltxmvmHy2Iai1LIqrfbw57b79w/J7MfvDfkIkFZ+kj6zC3BjtUwh150HsSSdxXZcsuv72miDFQ==}
@@ -2209,6 +2258,10 @@ snapshots:
   es-module-lexer@2.1.0: {}
 
   escape-string-regexp@4.0.0: {}
+
+  eslint-config-prettier@10.1.8(eslint@10.4.1):
+    dependencies:
+      eslint: 10.4.1
 
   eslint-scope@9.1.2:
     dependencies:

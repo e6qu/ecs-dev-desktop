@@ -27,7 +27,15 @@
 
 ## Next tasks
 
+### Phase 2 — Control-plane API (done, on branch `phase-2/control-plane-api`)
+
+- [x] Lifecycle endpoints + CASL RBAC; `@edd/control-plane` WorkspaceService (FCIS).
+- [x] Engineering-standards charter (`AGENTS.md` §6) applied repo-wide.
+- [x] Strict type-aware lint; `sast` (Semgrep) + `vuln-scan` (Trivy) gates; pre-commit.
+- [ ] Phase 3: real Auth.js (GitHub + Entra) to replace the dev-header principal shim.
+
 ### Phase 0 — remaining
+
 - [x] **Tier-2 harness**: DynamoDB Local via `docker-compose.tier2.yml`,
       `pnpm test:integ`, `@edd/db` integration test + CI `integration` job.
 - [x] **ElectroDB** Workspace entity in `@edd/db` over the single-table keys.
@@ -37,6 +45,7 @@
 - [ ] Flesh out `e2e-aws.yml`: OIDC→AWS role + ephemeral env + auto-teardown.
 
 ### Phase 1 (next)
+
 - [ ] Golden base image (code-server + Teleport/sshd + idle-agent) in
       `infra/images`; Fargate task def with ECS-managed EBS volume.
 - [ ] Add a **sockerless-backed `StorageProvider` adapter** and run it through the

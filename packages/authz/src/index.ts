@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import {
-  AbilityBuilder,
-  createMongoAbility,
-  type MongoAbility,
-} from "@casl/ability";
+import { AbilityBuilder, createMongoAbility, type MongoAbility } from "@casl/ability";
 
 /**
  * RBAC, defined once and enforced in both the API and the UI.

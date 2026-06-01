@@ -25,6 +25,7 @@ See `AGENTS.md` for architecture decisions and component layout.
 **Goal:** A building, deployable skeleton with infra baseline and CI.
 
 **Deliverables**
+
 - Turborepo + pnpm workspace with all `apps/`, `services/`, `packages/`,
   `infra/` dirs stubbed and building.
 - `packages/config` (shared tsconfig/eslint/env schema).
@@ -35,6 +36,7 @@ See `AGENTS.md` for architecture decisions and component layout.
 - CI: install → lint → typecheck → build → `terraform plan`.
 
 **Testing gate**
+
 - `pnpm build && pnpm lint && pnpm test` green at root and per-component.
 - `terraform validate` + `terraform plan` clean; `apply` succeeds in a sandbox.
 - Smoke: deployed Next app returns 200 on `/healthz`.
@@ -47,6 +49,7 @@ See `AGENTS.md` for architecture decisions and component layout.
 storage — driven by hand.
 
 **Deliverables**
+
 - `infra/images`: golden base image = **code-server** + `sshd`/Teleport agent +
   idle-agent, extensions via Open VSX.
 - Fargate task definition with an **ECS-managed EBS volume** mounted at
@@ -55,6 +58,7 @@ storage — driven by hand.
   snapshot volume → relaunch task hydrated from `snapshotId` → file present.
 
 **Testing gate**
+
 - Manual e2e: file written in workspace survives **stop → snapshot → wake** from
   snapshot.
 - Volume hydrate-from-snapshot verified; cold-start time recorded as a baseline.
@@ -67,6 +71,7 @@ storage — driven by hand.
 **Goal:** Programmatic workspace lifecycle via a typed API.
 
 **Deliverables**
+
 - `packages/api-contracts`: Zod schemas for create / start / stop / snapshot /
   restore / clone / delete / list / get.
 - `packages/db`: ElectroDB entities (workspace, snapshot, volume, baseImage,
@@ -78,6 +83,7 @@ storage — driven by hand.
 - `packages/api-client`: typed client generated from contracts.
 
 **Testing gate**
+
 - Contract tests (schema round-trips) pass.
 - Integration tests against **DynamoDB Local** + mocked/LocalStack ECS.
 - E2e via API: create → snapshot → restore → clone → delete, asserting state
@@ -91,6 +97,7 @@ storage — driven by hand.
 workspaces.
 
 **Deliverables**
+
 - `packages/auth`: Auth.js with **GitHub OAuth** + **Azure Entra ID**; map IdP
   groups/claims → roles (`admin`, group-scoped, `user`).
 - `packages/authz`: **CASL** abilities; enforced in API route handlers and used
@@ -99,6 +106,7 @@ workspaces.
   `*.devbox.<domain>` routing to the correct workspace via the registry.
 
 **Testing gate**
+
 - Unit: CASL ability matrix (admin vs group vs user × each action).
 - E2e: login via GitHub **and** Entra; unauthorized actions return 403 in API
   and are hidden in UI.
@@ -111,11 +119,13 @@ workspaces.
 **Goal:** Audited SSH + VS Code Remote-SSH into workspaces.
 
 **Deliverables**
+
 - `services/ssh-gateway`: Teleport cluster, workspaces enrolled as nodes,
   identity federated from Entra/GitHub, session recording on.
 - Wake-on-connect: SSH to a scaled-to-zero workspace triggers a wake.
 
 **Testing gate**
+
 - E2e: `tsh ssh` / `ssh` and VS Code Remote-SSH connect to a workspace.
 - Audit log + session recording captured; unauthorized user denied.
 - SSH to a stopped workspace wakes it and connects.
@@ -127,6 +137,7 @@ workspaces.
 **Goal:** Hands-off cost control and persistence.
 
 **Deliverables**
+
 - idle-agent emits activity heartbeats (editor/terminal/SSH), written on
   transitions / coarse interval (heartbeat discipline).
 - `services/reconciler`: stop idle workspaces (snapshot + tear down), wake on
@@ -134,6 +145,7 @@ workspaces.
 - Optional warm pool + SOCI lazy image pull to cut cold-start.
 
 **Testing gate**
+
 - E2e: idle → auto-stop → snapshot → wake-from-snapshot, state intact.
 - GC removes orphaned volumes/snapshots and nothing live.
 - Cold-start budget measured; cost-savings metric emitted.
@@ -145,12 +157,14 @@ workspaces.
 **Goal:** Full self-service + operations UIs over the API.
 
 **Deliverables**
+
 - User portal: sign in, create workspace from **base-image catalog**, start/stop,
   manage snapshots, SSH instructions, "Open in VS Code".
 - Admin UI: fleet list/filter, start/stop/restart/kill, snapshot/restore/clone,
   base-image catalog management, users/roles/quotas, cost dashboard.
 
 **Testing gate**
+
 - Playwright e2e for both portals; RBAC-gated views verified.
 - Admin actions reflected in DynamoDB + ECS; accessibility smoke pass.
 
@@ -161,11 +175,13 @@ workspaces.
 **Goal:** Production-ready at 200+.
 
 **Deliverables**
+
 - Autoscaling, warm pools, SOCI; cross-region snapshot copy; secrets in Secrets
   Manager; full audit; quota enforcement.
 - DR runbook; load test to 200+ concurrent workspaces.
 
 **Testing gate**
+
 - Load test sustains 200+ workspaces within latency budget.
 - DR drill (restore from cross-region snapshots) succeeds.
 - `/security-review` clean; pen-test checklist completed.

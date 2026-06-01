@@ -7,6 +7,7 @@ import {
   type ListWorkspacesResponse,
   type WorkspaceDto,
 } from "@edd/api-contracts";
+import type { WorkspaceId } from "@edd/core";
 
 /**
  * Typed control-plane client generated from the contracts. The UI and external
@@ -27,20 +28,49 @@ export class ApiClient {
     this.fetchImpl = opts.fetch ?? globalThis.fetch;
   }
 
+  private async send(path: string, init?: RequestInit): Promise<Response> {
+    const res = await this.fetchImpl(`${this.baseUrl}${path}`, init);
+    if (!res.ok)
+      throw new Error(`${init?.method ?? "GET"} ${path} failed: ${res.status.toString()}`);
+    return res;
+  }
+
   async listWorkspaces(): Promise<ListWorkspacesResponse> {
-    const res = await this.fetchImpl(`${this.baseUrl}/api/workspaces`);
-    if (!res.ok) throw new Error(`listWorkspaces failed: ${res.status}`);
+    const res = await this.send("/api/workspaces");
     return listWorkspacesResponse.parse(await res.json());
   }
 
   async createWorkspace(req: CreateWorkspaceRequest): Promise<WorkspaceDto> {
     const body = createWorkspaceRequest.parse(req);
-    const res = await this.fetchImpl(`${this.baseUrl}/api/workspaces`, {
+    const res = await this.send("/api/workspaces", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!res.ok) throw new Error(`createWorkspace failed: ${res.status}`);
     return workspace.parse(await res.json());
+  }
+
+  async getWorkspace(id: WorkspaceId): Promise<WorkspaceDto> {
+    const res = await this.send(`/api/workspaces/${id}`);
+    return workspace.parse(await res.json());
+  }
+
+  async stopWorkspace(id: WorkspaceId): Promise<WorkspaceDto> {
+    const res = await this.send(`/api/workspaces/${id}/stop`, { method: "POST" });
+    return workspace.parse(await res.json());
+  }
+
+  async startWorkspace(id: WorkspaceId): Promise<WorkspaceDto> {
+    const res = await this.send(`/api/workspaces/${id}/start`, { method: "POST" });
+    return workspace.parse(await res.json());
+  }
+
+  async snapshotWorkspace(id: WorkspaceId): Promise<WorkspaceDto> {
+    const res = await this.send(`/api/workspaces/${id}/snapshot`, { method: "POST" });
+    return workspace.parse(await res.json());
+  }
+
+  async deleteWorkspace(id: WorkspaceId): Promise<void> {
+    await this.send(`/api/workspaces/${id}`, { method: "DELETE" });
   }
 }
