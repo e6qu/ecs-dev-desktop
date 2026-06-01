@@ -1,22 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { WorkspaceDto, WorkspaceStateDto } from "@edd/api-contracts";
+import type { WorkspaceDto } from "@edd/api-contracts";
+import type { Workspace } from "@edd/core";
 
-/** The subset of a persisted workspace record needed to build the public DTO. */
-export interface WorkspaceRecordLike {
-  id: string;
-  ownerId: string;
-  baseImage: string;
-  state: WorkspaceStateDto;
-  createdAt: string;
-}
-
-/** Map an internal workspace record to the public API DTO (drops runtime bindings). */
-export function toWorkspaceDto(record: WorkspaceRecordLike): WorkspaceDto {
+/** Map the Workspace domain object to the public API DTO (drops runtime bindings). */
+export function toWorkspaceDto(ws: Workspace): WorkspaceDto {
   return {
-    id: record.id,
-    ownerId: record.ownerId,
-    baseImage: record.baseImage,
-    state: record.state,
-    createdAt: record.createdAt,
+    id: ws.id,
+    ownerId: ws.ownerId,
+    baseImage: ws.baseImage,
+    state: ws.state,
+    createdAt: ws.createdAt,
   };
 }

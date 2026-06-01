@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import { createWorkspaceRequest } from "@edd/api-contracts";
 import { defineAbilityFor } from "@edd/authz";
+import { baseImage, ownerId } from "@edd/core";
 
 import { authenticate, badRequest, forbidden, isResponse } from "../../../lib/api";
 import { getControlPlane } from "../../../lib/control-plane";
@@ -14,7 +15,9 @@ export async function GET(req: Request) {
 
   const cp = await getControlPlane();
   const workspaces =
-    principal.role === "admin" ? await cp.list() : await cp.list({ ownerId: principal.id });
+    principal.role === "admin"
+      ? await cp.list()
+      : await cp.list({ ownerId: ownerId(principal.id) });
   return NextResponse.json({ workspaces });
 }
 
@@ -24,14 +27,19 @@ export async function POST(req: Request) {
   if (isResponse(principal)) return principal;
   if (!defineAbilityFor(principal).can("create", "Workspace")) return forbidden();
 
-  let body;
+  let raw: unknown;
   try {
-    body = createWorkspaceRequest.parse(await req.json());
+    raw = await req.json();
   } catch {
     return badRequest();
   }
+  const parsed = createWorkspaceRequest.safeParse(raw);
+  if (!parsed.success) return badRequest();
 
   const cp = await getControlPlane();
-  const workspace = await cp.create({ ownerId: principal.id, baseImage: body.baseImage });
+  const workspace = await cp.create({
+    ownerId: ownerId(principal.id),
+    baseImage: baseImage(parsed.data.baseImage),
+  });
   return NextResponse.json(workspace, { status: 201 });
 }

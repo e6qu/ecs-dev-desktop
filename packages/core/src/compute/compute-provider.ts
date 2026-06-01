@@ -1,21 +1,20 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import type { BaseImage, TaskId, VolumeId, WorkspaceId } from "../domain/ids";
 
 /**
- * ComputeProvider — the port that abstracts running a workspace's container
- * task. The real adapter (ECS Fargate RunTask/StopTask) lands with the AWS
- * infra; a {@link FakeComputeProvider} backs unit/integration tests so the
- * control plane is exercisable without AWS.
+ * ComputeProvider — the port abstracting running a workspace's container task.
+ * The real adapter (ECS Fargate RunTask/StopTask) lands with the AWS infra; a
+ * {@link FakeComputeProvider} backs unit/integration tests so the control plane
+ * is exercisable without AWS.
  */
-export type TaskId = string;
-
 export interface ComputeTask {
   readonly id: TaskId;
 }
 
 export interface RunTaskInput {
-  workspaceId: string;
-  baseImage: string;
-  volumeId: string;
+  workspaceId: WorkspaceId;
+  baseImage: BaseImage;
+  volumeId: VolumeId;
 }
 
 export interface ComputeProvider {

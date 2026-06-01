@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 
 import { defineAbilityFor } from "@edd/authz";
+import { workspaceId } from "@edd/core";
 
 import { authenticate, forbidden, isResponse, notFound, ownsOrAdmin } from "../../../../lib/api";
 import { getControlPlane } from "../../../../lib/control-plane";
@@ -14,7 +15,7 @@ export async function GET(req: Request, { params }: Ctx) {
   if (isResponse(principal)) return principal;
 
   const { id } = await params;
-  const ws = await (await getControlPlane()).get(id);
+  const ws = await (await getControlPlane()).get(workspaceId(id));
   if (!ws) return notFound();
   if (!ownsOrAdmin(principal, ws.ownerId)) return forbidden();
   return NextResponse.json(ws);
@@ -27,11 +28,12 @@ export async function DELETE(req: Request, { params }: Ctx) {
   if (!defineAbilityFor(principal).can("delete", "Workspace")) return forbidden();
 
   const { id } = await params;
+  const wsId = workspaceId(id);
   const cp = await getControlPlane();
-  const ws = await cp.get(id);
+  const ws = await cp.get(wsId);
   if (!ws) return notFound();
   if (!ownsOrAdmin(principal, ws.ownerId)) return forbidden();
 
-  await cp.remove(id);
+  await cp.remove(wsId);
   return new NextResponse(null, { status: 204 });
 }

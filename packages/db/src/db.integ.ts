@@ -2,10 +2,16 @@
 import type { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createDynamoClient, dropTable, ensureTable, makeWorkspaceEntity } from "./index";
+import {
+  createDynamoClient,
+  dropTable,
+  dynamodbLocal,
+  ensureTable,
+  makeWorkspaceEntity,
+} from "./index";
 
 // Tier-2: runs against DynamoDB Local (docker-compose.tier2.yml / CI service).
-process.env.DYNAMODB_ENDPOINT ??= "http://localhost:8000";
+process.env.DYNAMODB_ENDPOINT ??= dynamodbLocal.endpoint;
 
 const TEST_TABLE = "ecs-dev-desktop-integ";
 

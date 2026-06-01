@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { NextResponse } from "next/server";
 
-import { conflict, isResponse, loadOwnedWorkspace } from "../../../../../lib/api";
+import { conflict, errorMessage, isResponse, loadOwnedWorkspace } from "../../../../../lib/api";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -12,6 +12,6 @@ export async function POST(req: Request, { params }: Ctx) {
   try {
     return NextResponse.json(await ctx.cp.stop(ctx.id));
   } catch (err) {
-    return conflict((err as Error).message);
+    return conflict(errorMessage(err));
   }
 }

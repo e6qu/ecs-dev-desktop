@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { FakeComputeProvider, FakeStorageProvider, systemClock } from "@edd/core";
 import { WorkspaceService } from "@edd/control-plane";
-import { createDynamoClient, makeWorkspaceEntity } from "@edd/db";
+import { createDynamoClient, makeWorkspaceEntity, TABLE } from "@edd/db";
 
 /**
  * Process-wide control plane. Persistence (DynamoDB) is real; storage and

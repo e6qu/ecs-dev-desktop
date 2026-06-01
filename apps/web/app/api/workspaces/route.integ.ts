@@ -1,18 +1,26 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-process.env.EDD_DEV_AUTH = "1";
-process.env.DYNAMODB_ENDPOINT ??= "http://localhost:8000";
-process.env.DYNAMODB_TABLE = "ecs-dev-desktop-web-integ";
-
-import { createDynamoClient, dropTable, ensureTable } from "@edd/db";
+import { listWorkspacesResponse, workspace } from "@edd/api-contracts";
+import { createDynamoClient, dropTable, dynamodbLocal, ensureTable } from "@edd/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import {
+  DEV_AUTH_ENABLED,
+  DEV_AUTH_ENV,
+  ROLE_HEADER,
+  USER_ID_HEADER,
+} from "../../../lib/constants";
 import { GET, POST } from "./route";
 
-const TABLE = "ecs-dev-desktop-web-integ";
+const TEST_TABLE = "ecs-dev-desktop-web-integ";
+
+process.env[DEV_AUTH_ENV] = DEV_AUTH_ENABLED;
+process.env.DYNAMODB_ENDPOINT ??= dynamodbLocal.endpoint;
+process.env.DYNAMODB_TABLE = TEST_TABLE;
+
 const url = "http://localhost/api/workspaces";
 const headers = {
-  "x-edd-user-id": "alice",
-  "x-edd-role": "member",
+  [USER_ID_HEADER]: "alice",
+  [ROLE_HEADER]: "member",
   "content-type": "application/json",
 };
 
@@ -21,12 +29,12 @@ describe("workspaces API end-to-end (DynamoDB Local)", () => {
 
   beforeAll(async () => {
     client = createDynamoClient();
-    await dropTable(client, TABLE);
-    await ensureTable(client, TABLE);
+    await dropTable(client, TEST_TABLE);
+    await ensureTable(client, TEST_TABLE);
   });
 
   afterAll(async () => {
-    if (client) await dropTable(client, TABLE);
+    if (client) await dropTable(client, TEST_TABLE);
   });
 
   it("creates (201) then lists the workspace for its owner", async () => {
@@ -38,12 +46,14 @@ describe("workspaces API end-to-end (DynamoDB Local)", () => {
       }),
     );
     expect(createRes.status).toBe(201);
-    const ws = (await createRes.json()) as { id: string; ownerId: string };
+    const createdJson: unknown = await createRes.json();
+    const ws = workspace.parse(createdJson);
     expect(ws.ownerId).toBe("alice");
 
     const listRes = await GET(new Request(url, { headers }));
     expect(listRes.status).toBe(200);
-    const body = (await listRes.json()) as { workspaces: { id: string }[] };
+    const listJson: unknown = await listRes.json();
+    const body = listWorkspacesResponse.parse(listJson);
     expect(body.workspaces.map((w) => w.id)).toContain(ws.id);
   });
 });

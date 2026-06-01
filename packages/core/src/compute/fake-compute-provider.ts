@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { randomUUID } from "node:crypto";
-
-import type { ComputeProvider, ComputeTask, RunTaskInput, TaskId } from "./compute-provider";
+import { newTaskId, type TaskId } from "../domain/ids";
+import type { ComputeProvider, ComputeTask, RunTaskInput } from "./compute-provider";
 
 /** In-memory ComputeProvider for unit/integration tests. */
 export class FakeComputeProvider implements ComputeProvider {
   private readonly running = new Map<TaskId, RunTaskInput>();
 
   async runTask(input: RunTaskInput): Promise<ComputeTask> {
-    const id = `task-${randomUUID()}`;
+    const id = newTaskId();
     this.running.set(id, input);
     return { id };
   }

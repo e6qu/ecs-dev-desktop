@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import type { WorkspaceDto } from "@edd/api-contracts";
 import { defineAbilityFor, type Action, type Principal } from "@edd/authz";
 import type { WorkspaceService } from "@edd/control-plane";
+import { workspaceId, type WorkspaceId } from "@edd/core";
 
 import { getControlPlane } from "./control-plane";
 import { getPrincipal } from "./principal";
@@ -14,6 +15,11 @@ export const notFound = () => NextResponse.json({ error: "not found" }, { status
 export const badRequest = (message = "invalid request") =>
   NextResponse.json({ error: message }, { status: 400 });
 export const conflict = (message: string) => NextResponse.json({ error: message }, { status: 409 });
+
+/** Narrow an unknown thrown value to a message without an assertion. */
+export function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
 
 /** Resolve the principal or return a 401 response to short-circuit the handler. */
 export function authenticate(req: Request): Principal | NextResponse {
@@ -31,7 +37,7 @@ export function ownsOrAdmin(principal: Principal, ownerId: string): boolean {
 
 export interface OwnedWorkspace {
   cp: WorkspaceService;
-  id: string;
+  id: WorkspaceId;
   ws: WorkspaceDto;
 }
 
@@ -49,9 +55,10 @@ export async function loadOwnedWorkspace(
   if (!defineAbilityFor(principal).can(action, "Workspace")) return forbidden();
 
   const { id } = await params;
+  const wsId = workspaceId(id);
   const cp = await getControlPlane();
-  const ws = await cp.get(id);
+  const ws = await cp.get(wsId);
   if (!ws) return notFound();
   if (!ownsOrAdmin(principal, ws.ownerId)) return forbidden();
-  return { cp, id, ws };
+  return { cp, id: wsId, ws };
 }

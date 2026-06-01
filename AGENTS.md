@@ -260,7 +260,20 @@ otherwise. They deliberately favour type safety over TypeScript brevity.
   core (`@edd/core`); ECS/EBS/DynamoDB/HTTP calls live in the shell. Maximize the
   core, minimize the shell.
 
-### 6.5 Security gates (CI, required)
+### 6.5 No silent fallbacks — fail loudly
+
+- **Discourage fallbacks/defaults that mask errors.** If required input,
+  config, or state is missing or invalid, **throw a clear error** (or return an
+  explicit error response) rather than guessing a default and continuing. Surface
+  problems at their source.
+- A documented, intentional default (named constant) is fine; a silent `?? x` /
+  swallowed `catch {}` that hides a real failure is not. Returning `null`/an
+  empty result for a genuine "absent" case is fine; doing so to paper over an
+  error is not.
+- No wildcard re-exports (`export *`) either — see §6.1; explicit named exports
+  keep the public surface deliberate.
+
+### 6.6 Security gates (CI, required)
 
 - **SAST** (Semgrep): fails the build on **high/critical** (ERROR-severity)
   findings.
@@ -270,7 +283,7 @@ otherwise. They deliberately favour type safety over TypeScript brevity.
 - Combined with the existing `check-deps` (latest, ≥1-day-old) policy, this keeps
   the supply chain both fresh and vetted.
 
-### 6.6 Local pre-commit
+### 6.7 Local pre-commit
 
 - The repo uses the **`pre-commit`** framework (`.pre-commit-config.yaml`). Run
   `pre-commit install` once (installs the `pre-commit` and `commit-msg` hooks).
