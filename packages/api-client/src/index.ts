@@ -7,7 +7,6 @@ import {
   type ListWorkspacesResponse,
   type WorkspaceDto,
 } from "@edd/api-contracts";
-import type { WorkspaceId } from "@edd/core";
 
 /**
  * Typed control-plane client generated from the contracts. The UI and external
@@ -50,27 +49,27 @@ export class ApiClient {
     return workspace.parse(await res.json());
   }
 
-  async getWorkspace(id: WorkspaceId): Promise<WorkspaceDto> {
+  async getWorkspace(id: string): Promise<WorkspaceDto> {
     const res = await this.send(`/api/workspaces/${id}`);
     return workspace.parse(await res.json());
   }
 
-  async stopWorkspace(id: WorkspaceId): Promise<WorkspaceDto> {
+  async stopWorkspace(id: string): Promise<WorkspaceDto> {
     const res = await this.send(`/api/workspaces/${id}/stop`, { method: "POST" });
     return workspace.parse(await res.json());
   }
 
-  async startWorkspace(id: WorkspaceId): Promise<WorkspaceDto> {
+  async startWorkspace(id: string): Promise<WorkspaceDto> {
     const res = await this.send(`/api/workspaces/${id}/start`, { method: "POST" });
     return workspace.parse(await res.json());
   }
 
-  async snapshotWorkspace(id: WorkspaceId): Promise<WorkspaceDto> {
+  async snapshotWorkspace(id: string): Promise<WorkspaceDto> {
     const res = await this.send(`/api/workspaces/${id}/snapshot`, { method: "POST" });
     return workspace.parse(await res.json());
   }
 
-  async deleteWorkspace(id: WorkspaceId): Promise<void> {
+  async deleteWorkspace(id: string): Promise<void> {
     await this.send(`/api/workspaces/${id}`, { method: "DELETE" });
   }
 }

@@ -7,10 +7,10 @@
 
 ## Current phase
 
-**Phase 3 — Auth + RBAC** — _Auth.js (NextAuth v5) login (GitHub + Entra) + JWT
-sessions wired; principal from session (dev-header shim gated by `EDD_DEV_AUTH`);
-on branch `phase-3/auth-rbac`. Identity-aware proxy/routing + real-IdP e2e remain.
-Phase 2 (control-plane API + standards charter) merged in #4._
+**Phase 6 — User portal + Admin UI** — _Next.js UI over the API + Auth.js: a
+workspaces portal (list/create/start/stop/snapshot/delete, RBAC-gated) and an
+admin "all" view, with a distinctive control-room aesthetic; on branch
+`phase-6/portal-ui`. Phases 2 (#4) + 3 (#5) merged._
 
 ## What exists
 

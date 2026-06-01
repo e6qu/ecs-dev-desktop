@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { workspaceId } from "@edd/core";
 import { describe, expect, it } from "vitest";
 
 import { ApiClient } from "./index";
@@ -41,7 +40,7 @@ describe("ApiClient", () => {
     };
 
     const client = new ApiClient({ baseUrl: "http://x", fetch: fetchImpl });
-    const ws = await client.stopWorkspace(workspaceId("ws-1"));
+    const ws = await client.stopWorkspace("ws-1");
     expect(ws.state).toBe("stopped");
     expect(calls).toEqual([{ url: "http://x/api/workspaces/ws-1/stop", method: "POST" }]);
   });

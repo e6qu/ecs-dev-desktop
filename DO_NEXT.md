@@ -44,6 +44,14 @@
 - [ ] GitHub org/team → role (needs a teams API call in the jwt callback; groups
       are empty for GitHub today).
 
+### Phase 6 — Portal UI (done) + remaining
+
+- [x] Workspaces portal (list/create/start/stop/snapshot/delete, RBAC-gated) +
+      admin "all" view, on the existing API + Auth.js.
+- [ ] **Playwright e2e** for the UI flows (Tier-2; needs the app + DynamoDB + a
+      session — mock-OIDC or `EDD_DEV_AUTH`).
+- [ ] Admin **base-image catalog** management, quotas, and a cost dashboard.
+
 ### Phase 0 — remaining
 
 - [x] **Tier-2 harness**: DynamoDB Local via `docker-compose.tier2.yml`,

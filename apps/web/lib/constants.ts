@@ -16,3 +16,6 @@ export const ROLE_HEADER = "x-edd-role";
 export const ADMIN_GROUPS_ENV = "EDD_ADMIN_GROUPS";
 /** Comma-separated IdP group ids/slugs that grant the member role. */
 export const MEMBER_GROUPS_ENV = "EDD_MEMBER_GROUPS";
+
+/** Curated golden base-image catalog (admin-managed catalog lands in a later phase). */
+export const BASE_IMAGES = ["golden/node:20", "golden/go:1.22", "golden/python:3.12"] as const;
