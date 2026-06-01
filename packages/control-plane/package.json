@@ -1,0 +1,23 @@
+{
+  "name": "@edd/control-plane",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:integ": "vitest run --config vitest.integ.config.ts"
+  },
+  "dependencies": {
+    "@edd/api-contracts": "workspace:*",
+    "@edd/core": "workspace:*",
+    "@edd/db": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1"
+  }
+}

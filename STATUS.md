@@ -7,8 +7,8 @@
 
 ## Current phase
 
-**Phase 0 — Foundations & repo scaffold** — *scaffold + live Tier-2 harness
-(DynamoDB Local) landed; real AWS infra resources remain.*
+**Phase 0 — Foundations & repo scaffold** — _scaffold + live Tier-2 harness
+(DynamoDB Local) landed; real AWS infra resources remain._
 
 ## What exists
 

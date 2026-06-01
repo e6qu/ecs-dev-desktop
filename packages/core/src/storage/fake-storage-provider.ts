@@ -4,13 +4,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
-import type {
-  Snapshot,
-  SnapshotId,
-  StorageProvider,
-  Volume,
-  VolumeId,
-} from "./storage-provider";
+import type { Snapshot, SnapshotId, StorageProvider, Volume, VolumeId } from "./storage-provider";
 
 /**
  * Filesystem-backed StorageProvider for unit/CI tests. Each volume and snapshot

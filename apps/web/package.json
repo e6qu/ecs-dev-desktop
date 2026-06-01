@@ -8,14 +8,21 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:integ": "vitest run --config vitest.integ.config.ts"
   },
   "dependencies": {
+    "@edd/api-contracts": "workspace:*",
+    "@edd/authz": "workspace:*",
+    "@edd/control-plane": "workspace:*",
+    "@edd/core": "workspace:*",
+    "@edd/db": "workspace:*",
     "next": "^16.2.6",
     "react": "^19.2.6",
     "react-dom": "^19.2.6"
   },
   "devDependencies": {
+    "@types/node": "^25.9.1",
     "@types/react": "^19.2.15"
   }
 }

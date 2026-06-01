@@ -28,10 +28,7 @@ export interface RoleMappingConfig {
   defaultRole: Role;
 }
 
-export function mapClaimsToRole(
-  claims: IdentityClaims,
-  config: RoleMappingConfig,
-): Role {
+export function mapClaimsToRole(claims: IdentityClaims, config: RoleMappingConfig): Role {
   const groups = new Set(claims.groups);
   if (config.adminGroups.some((g) => groups.has(g))) return "admin";
   if (config.memberGroups.some((g) => groups.has(g))) return "member";

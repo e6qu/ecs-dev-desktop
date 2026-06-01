@@ -8,6 +8,7 @@
 ## 2026-06-01 — Project planning & scaffolding decisions
 
 ### Done
+
 - Established the project goal: per-user VS Code workspaces on AWS ECS Fargate
   with SSH, stateful+snapshottable storage, login UI, and an admin control plane.
 - Locked architecture decisions (recorded in `AGENTS.md` §1):
@@ -28,6 +29,7 @@
   access patterns); accepted GSI-per-pattern / no-joins / analytics-via-Streams.
 
 ### Tried
+
 - Considered **Aurora Postgres + Prisma/Drizzle** — set aside for DynamoDB.
 - Considered **direct per-workspace SSH** and **web-proxy SSH tunnel** — rejected
   for Teleport (central auth/audit at scale).
@@ -35,6 +37,7 @@
   rule/listener cap); chose an identity-aware reverse proxy + wildcard DNS.
 
 ### Filed
+
 - (none)
 
 ---
@@ -42,6 +45,7 @@
 ## 2026-06-01 — Repo bootstrap, branch protection, identity
 
 ### Done
+
 - Created the public GitHub repo **`e6qu/ecs-dev-desktop`** containing
   `README.md`, `AGENTS.md`, `CLAUDE.md` (symlink), `PLAN.md`, and the continuity
   files; pushed the initial commit.
@@ -52,10 +56,12 @@
   push + deletion blocked, no admin bypass, 0 required approvals (solo-friendly).
 
 ### Tried
+
 - Pushing over **SSH** failed — the machine's SSH key authenticated as
   `adrian-marza-monite`. Resolved by using HTTPS + the `gh` credential helper.
 
 ### Filed
+
 - (none)
 
 ---
@@ -63,6 +69,7 @@
 ## 2026-06-01 — TDD / testability strategy, sockerless evaluation, licensing
 
 ### Done
+
 - Adopted **TDD** for new features and a **ports-and-adapters** rule so external
   dependencies are faked; recorded in `AGENTS.md` §5 and `TESTING.md`.
 - Defined three test tiers: unit/contract (every commit), integration on the
@@ -75,10 +82,12 @@
   `LICENSE` and the SPDX-header convention.
 
 ### Tried
+
 - **LocalStack (Community)** as substrate — kept only as an optional cross-check;
   ECS doesn't run containers and EBS/snapshots are Pro + API-level only.
 
 ### Filed
+
 - Identified sockerless simulator gaps to file/track (see `DO_NEXT.md` /
   `BUGS.md`): **#347** EBS volume lifecycle + snapshots unimplemented (blocks our
   core snapshot round-trip at the sim level); #332–#336 compute/VPC/SG/LB are
@@ -91,6 +100,7 @@
 ## 2026-06-01 — Phase 0 scaffold (Turborepo, components, CI)
 
 ### Done
+
 - Stood up the **Turborepo + pnpm** monorepo: every component builds/tests in
   isolation (`pnpm --filter <name> ...`). Scope `@edd/*`.
 - Built the TDD centerpiece in `packages/core`: a `StorageProvider` **port**, a
@@ -109,6 +119,7 @@
 - Verified: lint 10/10, build 10/10, **24 tests pass**, freshness gate green.
 
 ### Tried
+
 - **TS 6** dropped automatic `@types/node` discovery under pnpm's isolated
   layout → `node:`/`Buffer`/`process` unresolved. Fixed by declaring
   `@types/node` and setting `types: ["node"]` in `core`/`config`/`api-client`.
@@ -118,6 +129,7 @@
   emits harmless "no output files" warnings for those tasks.
 
 ### Filed
+
 - (none)
 
 ---
@@ -125,6 +137,7 @@
 ## 2026-06-01 — Tier-2 integration harness (DynamoDB Local + ElectroDB)
 
 ### Done
+
 - Added **ElectroDB** to `@edd/db`: a Workspace entity over the single table with
   `byOwner` (GSI1) and `byState` (GSI2) indexes, a `CreateTable`/`DeleteTable`
   schema helper, and an env-driven DynamoDB client (`DYNAMODB_ENDPOINT`).
@@ -137,6 +150,7 @@
   stayed green. Verified: lint 10/10, build 10/10, unit 24/24, integration 3/3.
 
 ### Tried
+
 - Separated integration from unit by suffix (`*.integ.ts`) + a dedicated
   `vitest.integ.config.ts`, so `pnpm test` never needs Docker.
 - Left the **sockerless** backend commented in `docker-compose.tier2.yml`: no
@@ -144,6 +158,7 @@
   Tier-2 currently covers DynamoDB Local only.
 
 ### Filed
+
 - (none)
 
 ---
@@ -151,22 +166,25 @@
 ## 2026-06-01 — Dep prune, 1-day min release age, portable shell scripts
 
 ### Done
+
 - Audited deps with `depcheck` (surface already lean). Pruned the only two unused
   declarations: `@edd/core` from `services/reconciler` and `@types/react-dom`
   from `apps/web`.
 - Added supply-chain safeguard **`minimumReleaseAge: 1440`**
   (`pnpm-workspace.yaml`): no version adopted until public ≥ 1 day. `pnpm
-  outdated` honours it, so the `check-deps` gate stays read-only and age-aware.
+outdated` honours it, so the `check-deps` gate stays read-only and age-aware.
 - Made the one shell script **portable + `shellcheck`-clean** (no `BASH_SOURCE`/
   `pushd`; `$0`-derived path; `unset CDPATH`); runs under **bash and zsh**.
 - Added a **`shellcheck` CI job** matrixed over **ubuntu + macOS** that runs
   shellcheck + `bash -n` + `zsh -n` on every `*.sh`.
 
 ### Tried
+
 - `pnpm update --latest -r` under the floor **downgraded** vite 8.0.16→8.0.14 and
   vitest 4.1.8→4.1.7 (published <24h) — kept the age-compliant versions.
 - An `update --latest` + `git diff` freshness gate — rejected: it conflated
   uncommitted edits with drift. `pnpm outdated` is read-only and age-aware.
 
 ### Filed
+
 - (none)

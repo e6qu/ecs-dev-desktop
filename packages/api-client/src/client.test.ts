@@ -5,8 +5,8 @@ import { ApiClient } from "./index";
 
 describe("ApiClient", () => {
   it("parses a successful listWorkspaces response", async () => {
-    const fetchImpl = vi.fn(async () =>
-      new Response(JSON.stringify({ workspaces: [] }), { status: 200 }),
+    const fetchImpl = vi.fn(
+      async () => new Response(JSON.stringify({ workspaces: [] }), { status: 200 }),
     ) as unknown as typeof globalThis.fetch;
 
     const client = new ApiClient({ baseUrl: "http://x/", fetch: fetchImpl });
@@ -15,8 +15,8 @@ describe("ApiClient", () => {
   });
 
   it("throws on a non-ok response", async () => {
-    const fetchImpl = vi.fn(async () =>
-      new Response("nope", { status: 500 }),
+    const fetchImpl = vi.fn(
+      async () => new Response("nope", { status: 500 }),
     ) as unknown as typeof globalThis.fetch;
 
     const client = new ApiClient({ baseUrl: "http://x", fetch: fetchImpl });

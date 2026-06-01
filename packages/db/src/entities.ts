@@ -23,6 +23,10 @@ export function makeWorkspaceEntity(client: DynamoDBClient, table = TABLE) {
         },
         lastActivity: { type: "string", required: true },
         createdAt: { type: "string", required: true },
+        // Runtime bindings (absent while stopped/scaled-to-zero).
+        volumeId: { type: "string", required: false },
+        taskId: { type: "string", required: false },
+        latestSnapshotId: { type: "string", required: false },
       },
       indexes: {
         primary: {

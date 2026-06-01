@@ -1,0 +1,37 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+import { NextResponse } from "next/server";
+
+import { defineAbilityFor } from "@edd/authz";
+
+import { authenticate, forbidden, isResponse, notFound, ownsOrAdmin } from "../../../../lib/api";
+import { getControlPlane } from "../../../../lib/control-plane";
+
+type Ctx = { params: Promise<{ id: string }> };
+
+// GET /api/workspaces/:id
+export async function GET(req: Request, { params }: Ctx) {
+  const principal = authenticate(req);
+  if (isResponse(principal)) return principal;
+
+  const { id } = await params;
+  const ws = await (await getControlPlane()).get(id);
+  if (!ws) return notFound();
+  if (!ownsOrAdmin(principal, ws.ownerId)) return forbidden();
+  return NextResponse.json(ws);
+}
+
+// DELETE /api/workspaces/:id
+export async function DELETE(req: Request, { params }: Ctx) {
+  const principal = authenticate(req);
+  if (isResponse(principal)) return principal;
+  if (!defineAbilityFor(principal).can("delete", "Workspace")) return forbidden();
+
+  const { id } = await params;
+  const cp = await getControlPlane();
+  const ws = await cp.get(id);
+  if (!ws) return notFound();
+  if (!ownsOrAdmin(principal, ws.ownerId)) return forbidden();
+
+  await cp.remove(id);
+  return new NextResponse(null, { status: 204 });
+}

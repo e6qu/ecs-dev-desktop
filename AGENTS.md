@@ -17,7 +17,7 @@ This file is the entry point for any human or AI agent working in this repo.
    until `STATUS.md`, `WHAT_WE_DID.md`, `BUGS.md`, and `DO_NEXT.md` reflect
    reality.
 3. **Continuity files must be written in the past tense at the end of a pull
-   request**, describing what *was* done — never "we are doing X". This keeps
+   request**, describing what _was_ done — never "we are doing X". This keeps
    merges to `main` consistent: every branch describes completed history, so
    concurrent PRs append rather than conflict on tense/intent.
 4. **Ask the user questions when a decision is needed.** Do not silently pick an
@@ -40,25 +40,25 @@ This file is the entry point for any human or AI agent working in this repo.
 
 ## 1. Architecture summary (decisions locked)
 
-| Dimension            | Decision                                                        |
-|----------------------|-----------------------------------------------------------------|
-| Compute              | AWS **ECS Fargate** (light editor + build workloads)            |
-| Scale target         | **200+** concurrent workspaces                                  |
-| Persistence model    | **EBS snapshot = unit of persistence** (stateful + snapshot + scale-to-zero in one mechanism) |
-| Idle policy          | **Scale-to-zero**: stop idle task → snapshot → hydrate on wake  |
-| Auth                 | **GitHub OAuth + Azure Entra ID** (dual IdP), groups → roles    |
-| Authz / RBAC         | **CASL** ability model, shared by API + UI                      |
-| SSH                  | **Teleport** (auth, audit, session recording, Remote-SSH)       |
-| Web/API              | **Next.js** — login UI + admin UI + control-plane API (API-first) |
-| State store          | **DynamoDB** single-table + **ElectroDB** (see DO_NEXT to confirm) |
-| Workspace images     | **Curated golden base images** in ECR (Open VSX for extensions) |
-| IaC                  | **Terraform**                                                   |
-| Monorepo             | **Turborepo + pnpm workspaces**                                 |
-| Reverse proxy / IAP  | Identity-aware proxy (e.g. Pomerium) for wildcard workspace routing |
-| Testing              | **TDD**; ports-and-adapters; **sockerless** sim + bleephub per-PR; **manual** real-AWS e2e on `main` (see §5) |
-| License              | **AGPL-3.0-or-later** (SPDX header on new source files)          |
+| Dimension           | Decision                                                                                                      |
+| ------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Compute             | AWS **ECS Fargate** (light editor + build workloads)                                                          |
+| Scale target        | **200+** concurrent workspaces                                                                                |
+| Persistence model   | **EBS snapshot = unit of persistence** (stateful + snapshot + scale-to-zero in one mechanism)                 |
+| Idle policy         | **Scale-to-zero**: stop idle task → snapshot → hydrate on wake                                                |
+| Auth                | **GitHub OAuth + Azure Entra ID** (dual IdP), groups → roles                                                  |
+| Authz / RBAC        | **CASL** ability model, shared by API + UI                                                                    |
+| SSH                 | **Teleport** (auth, audit, session recording, Remote-SSH)                                                     |
+| Web/API             | **Next.js** — login UI + admin UI + control-plane API (API-first)                                             |
+| State store         | **DynamoDB** single-table + **ElectroDB** (see DO_NEXT to confirm)                                            |
+| Workspace images    | **Curated golden base images** in ECR (Open VSX for extensions)                                               |
+| IaC                 | **Terraform**                                                                                                 |
+| Monorepo            | **Turborepo + pnpm workspaces**                                                                               |
+| Reverse proxy / IAP | Identity-aware proxy (e.g. Pomerium) for wildcard workspace routing                                           |
+| Testing             | **TDD**; ports-and-adapters; **sockerless** sim + bleephub per-PR; **manual** real-AWS e2e on `main` (see §5) |
+| License             | **AGPL-3.0-or-later** (SPDX header on new source files)                                                       |
 
-> **VS Code distro:** use **code-server** or **OpenVSCode Server** (MIT), *not*
+> **VS Code distro:** use **code-server** or **OpenVSCode Server** (MIT), _not_
 > Microsoft's official server (marketplace ToS). Extensions via **Open VSX**.
 
 ---
@@ -101,33 +101,34 @@ ecs-dev-desktop/
 
 ### Component responsibilities (the "what are all the components" map)
 
-| Component            | Responsibility                                                  | Builds to            |
-|----------------------|-----------------------------------------------------------------|----------------------|
-| `apps/web`           | Login UI, admin UI, control-plane REST API (Next route handlers / server actions). Owns workspace lifecycle endpoints. | Next.js app (ECS svc) |
-| `services/reconciler`| Consumes activity signals, stops idle workspaces, wakes on demand, schedules snapshots, GCs orphaned volumes/snapshots. | Node worker (ECS svc) |
-| `services/ssh-gateway`| Teleport config: enrolls workspaces, federates Entra/GitHub identity, records sessions, enables VS Code Remote-SSH. | Teleport cluster (infra) |
-| `packages/api-contracts`| Zod/OpenAPI contracts — the API-first source of truth.       | TS lib               |
-| `packages/api-client`| Typed client over the contracts, used by UI and services.       | TS lib               |
-| `packages/authz`     | CASL ability definitions; maps roles (admin / group / user) to permissions. | TS lib   |
-| `packages/auth`      | Auth.js providers (GitHub + Entra), maps IdP groups/claims → roles. | TS lib            |
-| `packages/db`        | DynamoDB single-table design + ElectroDB entities + access patterns/GSIs. | TS lib         |
-| `packages/core`      | Shared domain types + the workspace lifecycle state machine.    | TS lib               |
-| `infra/terraform`    | All AWS infrastructure.                                         | Terraform state      |
-| `infra/images`       | Golden workspace base images (code-server + sshd/Teleport agent + idle-agent). | ECR images |
+| Component                | Responsibility                                                                                                          | Builds to                |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| `apps/web`               | Login UI, admin UI, control-plane REST API (Next route handlers / server actions). Owns workspace lifecycle endpoints.  | Next.js app (ECS svc)    |
+| `services/reconciler`    | Consumes activity signals, stops idle workspaces, wakes on demand, schedules snapshots, GCs orphaned volumes/snapshots. | Node worker (ECS svc)    |
+| `services/ssh-gateway`   | Teleport config: enrolls workspaces, federates Entra/GitHub identity, records sessions, enables VS Code Remote-SSH.     | Teleport cluster (infra) |
+| `packages/api-contracts` | Zod/OpenAPI contracts — the API-first source of truth.                                                                  | TS lib                   |
+| `packages/api-client`    | Typed client over the contracts, used by UI and services.                                                               | TS lib                   |
+| `packages/authz`         | CASL ability definitions; maps roles (admin / group / user) to permissions.                                             | TS lib                   |
+| `packages/auth`          | Auth.js providers (GitHub + Entra), maps IdP groups/claims → roles.                                                     | TS lib                   |
+| `packages/db`            | DynamoDB single-table design + ElectroDB entities + access patterns/GSIs.                                               | TS lib                   |
+| `packages/core`          | Shared domain types + the workspace lifecycle state machine.                                                            | TS lib                   |
+| `infra/terraform`        | All AWS infrastructure.                                                                                                 | Terraform state          |
+| `infra/images`           | Golden workspace base images (code-server + sshd/Teleport agent + idle-agent).                                          | ECR images               |
 
 ---
 
 ## 3. Continuity files (keep in sync, past tense at PR close)
 
-| File              | Purpose                                                            |
-|-------------------|-------------------------------------------------------------------|
-| `STATUS.md`       | Snapshot of where the project is **right now** (current phase, what's deployed/working). |
-| `WHAT_WE_DID.md`  | Append-only history: what was **done**, what was **tried** (incl. dead ends), and what was **filed** (bugs/issues raised). |
-| `BUGS.md`         | Open and resolved bugs with repro + status.                        |
-| `DO_NEXT.md`      | Prioritized upcoming tasks and **open decisions awaiting the user**.|
-| `PLAN.md`         | The phased plan. Update only when scope/phases change.             |
+| File             | Purpose                                                                                                                    |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `STATUS.md`      | Snapshot of where the project is **right now** (current phase, what's deployed/working).                                   |
+| `WHAT_WE_DID.md` | Append-only history: what was **done**, what was **tried** (incl. dead ends), and what was **filed** (bugs/issues raised). |
+| `BUGS.md`        | Open and resolved bugs with repro + status.                                                                                |
+| `DO_NEXT.md`     | Prioritized upcoming tasks and **open decisions awaiting the user**.                                                       |
+| `PLAN.md`        | The phased plan. Update only when scope/phases change.                                                                     |
 
 **Workflow contract for every task:**
+
 1. Read `STATUS.md` → `DO_NEXT.md` → `BUGS.md` (and `PLAN.md` for context).
 2. Do the work.
 3. Update `WHAT_WE_DID.md` (done / tried / filed), `BUGS.md`, `STATUS.md`,
@@ -171,16 +172,16 @@ IdP behavior is isolated behind adapters and covered by the gated `e2e-aws` suit
 
 ### Test tiers
 
-| Tier | Runs | Backed by |
-|------|------|-----------|
-| **Unit / contract** | every commit, local + CI | pure logic + fakes (CASL, Zod, state machine, claim→role) |
-| **Integration** | every PR, local + CI | **sockerless** (`simulators/aws` + `bleephub`), DynamoDB Local, Teleport-in-Docker, mock-oauth2-server, Playwright |
-| **`e2e-aws`** | **manual (`workflow_dispatch`) on `main`** | real AWS account/region, real IdP smoke |
+| Tier                | Runs                                       | Backed by                                                                                                          |
+| ------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| **Unit / contract** | every commit, local + CI                   | pure logic + fakes (CASL, Zod, state machine, claim→role)                                                          |
+| **Integration**     | every PR, local + CI                       | **sockerless** (`simulators/aws` + `bleephub`), DynamoDB Local, Teleport-in-Docker, mock-oauth2-server, Playwright |
+| **`e2e-aws`**       | **manual (`workflow_dispatch`) on `main`** | real AWS account/region, real IdP smoke                                                                            |
 
 **Substrate:** [`sockerless`](https://github.com/e6qu/sockerless) is the primary
 integration substrate (it runs real containers, unlike LocalStack). **When the
 simulator lacks/incorrectly models something we need, file or comment on an issue
-in `e6qu/sockerless`** and track it in `BUGS.md` → *External blockers*. Known
+in `e6qu/sockerless`** and track it in `BUGS.md` → _External blockers_. Known
 today: EBS snapshots unimplemented (**#347**); compute/VPC/SG/LB are metadata-only
 (#332–#336); Entra interactive login flow unverified (token endpoint/JWKS exist
 per #261/#272). Until #347 lands, the `StorageProvider` **fake** TDDs the
@@ -204,3 +205,82 @@ parallel.
 
 Everything else (pure logic, RBAC, contracts, DynamoDB access patterns, UI,
 adapter call-shapes) is fully TDD-able locally + in CI.
+
+---
+
+## 6. Engineering standards (enforced)
+
+These are hard standards, enforced by lint/CI where possible and by review
+otherwise. They deliberately favour type safety over TypeScript brevity.
+
+### 6.1 Strong typing
+
+- **No `any`. No `object`.** Use a precise type, a generic, `unknown` (then
+  narrow), or `Record<K, V>` with concrete `K`/`V`. (`@typescript-eslint/no-explicit-any` = error; `object` banned.)
+- **No `@ts-ignore` / `@ts-nocheck`.** `@ts-expect-error` only with a written
+  justification, and only when there is genuinely no typed alternative.
+- **Type assertions (`as`) are exceptional.** Prefer type guards, discriminated
+  unions, and schema parsing (Zod) to _prove_ types. `as const` is fine; object-literal
+  assertions are banned. If you must cast, comment why.
+- **Domain types over primitives.** Identifiers and domain values are
+  **branded/nominal types** — `WorkspaceId`, `OwnerId`, `BaseImage`, `SnapshotId`,
+  `VolumeId`, `TaskId`, `Role`, etc. — not bare `string`/`number`. Bare primitives
+  only in the most trivial, local cases. We accept the extra ceremony for the
+  type safety (e.g. you cannot pass a `VolumeId` where a `SnapshotId` is expected).
+- **No untyped objects/dicts across boundaries.** Pass **domain objects** with
+  named, typed fields — never bare `Record<string, unknown>`/dictionaries between
+  modules. Untyped shapes are allowed only at the very edge (raw JSON), where they
+  are immediately parsed into a domain type (Zod `.parse`).
+- **No untyped lists.** Collections are typed by their element domain type
+  (`ReadonlyArray<Workspace>`, not `unknown[]`/`object[]`). A bare array is fine
+  only where it is genuinely _just multiplicity_ of an already-typed element.
+
+### 6.2 Magic values
+
+- **No unexplained literals.** Numbers/strings with meaning are named
+  **constants** (e.g. `IDLE_THRESHOLD_MS`, `DEFAULT_REGION`, `TABLE_NAME`), defined
+  once near their domain and documented with a comment on _why_ that value.
+
+### 6.3 Lint
+
+- **typescript-eslint `strictTypeChecked` + `stylisticTypeChecked`** (type-aware),
+  plus the bans above. Lint is a **required CI check**; warnings are not tolerated
+  in CI (treat as errors).
+
+### 6.4 Functional core, imperative shell (FCIS)
+
+- Structure code as a **pure functional core** + a thin **imperative shell**
+  (Gary Bernhardt). All decisions/transformations are **pure functions** — data
+  in, domain objects/decisions out, no I/O, no mutation, no side effects — so the
+  core is unit-tested with **no test doubles**.
+- The **shell** (route handlers, adapters, `WorkspaceService` orchestration) does
+  the I/O: it gathers inputs, calls the core to compute the next state + the
+  effects to perform, then enacts those effects. Keep it thin, with few branches.
+- Practically: the lifecycle decisions (what state, what effects) live in the
+  core (`@edd/core`); ECS/EBS/DynamoDB/HTTP calls live in the shell. Maximize the
+  core, minimize the shell.
+
+### 6.5 Security gates (CI, required)
+
+- **SAST** (Semgrep): fails the build on **high/critical** (ERROR-severity)
+  findings.
+- **Dependency + IaC + secret scan** (Trivy): fails on **HIGH/CRITICAL**
+  vulnerabilities/misconfigurations. **Medium and low are acceptable** (reported,
+  non-blocking).
+- Combined with the existing `check-deps` (latest, ≥1-day-old) policy, this keeps
+  the supply chain both fresh and vetted.
+
+### 6.6 Local pre-commit
+
+- The repo uses the **`pre-commit`** framework (`.pre-commit-config.yaml`). Run
+  `pre-commit install` once (installs the `pre-commit` and `commit-msg` hooks).
+- Hooks (fast, local): trailing-whitespace, end-of-file, LF line endings,
+  yaml/json checks; **auto-format** every language (Prettier for JS/TS/JSON/YAML/
+  MD, `shfmt` for shell, `terraform fmt`); **type-check** (TS via `pnpm build`,
+  `terraform validate`); **lint** (eslint, actionlint); and **unit tests**
+  (`pnpm test`). Wider integration/e2e tests run in CI, not here.
+- A `commit-msg` hook (`scripts/strip-ai-attribution.sh`) **strips AI-attribution
+  trailers** ("Generated with …", `Co-Authored-By:`/`Authored-by:` naming AI
+  tools) so commits stay clean.
+- **Pinned hook revs follow the ≥1-day-old-latest policy** (§6.5) — verify a
+  rev is the newest release at least a day old before bumping.
