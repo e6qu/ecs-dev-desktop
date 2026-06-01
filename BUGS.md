@@ -1,64 +1,40 @@
 # BUGS.md — ecs-dev-desktop
 
-> Open and resolved bugs, plus external blockers tracked upstream. Each entry:
-> ID, severity, status, repro, notes. Past tense for resolved entries at PR close
-> (see `AGENTS.md` §0).
+> Open/resolved bugs in **our** code, plus external blockers tracked upstream.
+> Past tense for resolved entries at PR close (see `AGENTS.md` §0).
 
 ## Open
 
-_None yet — no application code has been written._
+_None._
 
-## External blockers (tracked upstream)
+## External blockers (upstream — `e6qu/sockerless`)
 
-These are not bugs in our code; they are simulator gaps in `e6qu/sockerless` that
-limit Tier-2 (integration) coverage until resolved. See `TESTING.md`.
+Simulator gaps that limit Tier-2 (integration) coverage. Not bugs in our code.
+Per `AGENTS.md` §6.8 we file these upstream rather than work around them.
 
-### EXT-001 — sockerless AWS sim EBS lifecycle landed; snapshot **restore broken**
+**EXT-001 — EBS snapshot→restore broken ([#359](https://github.com/e6qu/sockerless/issues/359), we filed).**
+EBS lifecycle (#347) landed, but snapshots never transition `pending →
+completed`, so `CreateVolume(SnapshotId)` always fails `IncorrectState`. A
+standard (endpoint-only) `StorageProvider` lifecycle adapter is straightforward
+once this lands; deferred until then. Note: the standard EBS API can't read/write
+a volume's _files_ without a running task, so **data fidelity needs the compute
+layer**, not the storage port (compute e2e / real-AWS tier).
 
-- **#347 (EBS lifecycle) is `completed`** and code-verified: `ec2.go` implements
-  `CreateVolume`/`CreateSnapshot`/`DescribeSnapshots`/`DeleteSnapshot` with
-  host-dir-backed data.
-- **But snapshot→restore is blocked by a new bug: [sockerless #359](https://github.com/e6qu/sockerless/issues/359)**
-  — snapshots never transition `pending → completed`, so `CreateVolume(SnapshotId)`
-  always fails `IncorrectState`. We filed it (with SDK repro + code pointer).
-- **Design note (standard APIs only — no sim special-casing):** the standard EBS
-  API has **no** way to write/read a volume's _files_ without attaching it to a
-  running task. So a standard `StorageProvider` adapter can do volume/snapshot
-  **lifecycle** (EC2 API, endpoint-configurable) but **not** the data round-trip;
-  proving data fidelity needs the **compute layer** (ECS task writes/reads the
-  mounted volume) — a future compute e2e, or the manual real-AWS Tier 3.
-- Status: a standard EBS lifecycle adapter is straightforward once **#359** lands;
-  deferred until then. The fs-on-`SIM_EBS_DATA_DIR` hack was rejected (special case).
+**EXT-002 — compute/LB/SG still metadata-only.** #336 (VPC/ENI) landed; still
+open: #333 (compute → microVMs), #334 (LB traffic), #335 (SG enforcement). Only
+blocks sim-level Fargate _execution_ and SG/LB behaviour — real behaviour is the
+manual real-AWS tier regardless. (Verify "closed" per-issue: EKS #348 / SES #349
+were `not_planned`.)
 
-### EXT-002 — sockerless compute/SG/LB still metadata-only (partial)
+**EXT-003 — Entra interactive login unverified.** Token endpoint + JWKS exist
+(#261, #272); the interactive `/authorize`→login→code flow an Auth.js RP needs is
+unverified. Mock-OIDC covers Tier-2; real Entra is Tier-3. Verify in Phase 3 and
+file a precise issue only if a specific endpoint is missing.
 
-- **#336 (VPC fabric / NIC/ENI/IP allocation): completed** — real ENI/IP now.
-- Still **OPEN**: #333 (compute → Firecracker microVMs), #334 (LB traffic), #335
-  (security-group enforcement), #332 (umbrella).
-- Impact: blocks **sim-level** real Fargate task _execution_ and SG/LB behaviour —
-  not our control-plane or snapshot-logic testing. Real behaviour is the manual
-  real-AWS (Tier 3) job anyway.
-- Note: several recent AWS-sim closes were `not_planned` (e.g. EKS #348, SES #349),
-  i.e. rejected — don't assume "closed" means implemented; verify per-issue.
-
-### EXT-004 — no published sockerless container image
-
-- Upstream: sockerless ships a `publish-container-images` workflow, but no GHCR
-  image is consumable yet.
-- Impact: the Tier-2 harness cannot run the **sockerless backend** — it currently
-  covers **DynamoDB Local only**. Blocks adopting sockerless as the integration
-  substrate (and the now-unblocked EBS adapter, EXT-001).
-- Status: watch for a published image; then wire `docker-compose.tier2.yml`.
-
-### EXT-003 — Entra interactive authorization-code/login flow (verify)
-
-- Upstream: token-endpoint + JWKS already exist (sockerless **#261**, **#272**,
-  both closed). The **interactive `/authorize` → login → code** flow that an
-  Auth.js OIDC relying party needs is **unverified**.
-- Impact: Entra _user login_ may or may not be integration-testable locally.
-- Mitigation: `mock-oauth2-server` stand-in in Tier 2; real Entra in Tier 3.
-- Status: **verify in Phase 3**; file a precise issue only if a specific endpoint
-  is missing. Do not file on the false premise that "no Entra sim exists".
+**EXT-004 — no consumable sockerless image.** Upstream has a
+`publish-container-images` workflow but no usable GHCR image yet, so Tier-2 runs
+**DynamoDB Local only**; wiring the sockerless backend (and the EXT-001 adapter)
+waits on a published image.
 
 ## Resolved
 
@@ -66,14 +42,12 @@ _None yet._
 
 ---
 
-### Entry template
+Template:
 
 ```
-### BUG-NNN — <short title>
+### BUG-NNN — <title>
 - Severity: blocker | high | medium | low
 - Status: open | in-progress | resolved (<date>)
-- Component: apps/web | services/reconciler | infra/terraform | ...
-- Repro: <steps>
-- Expected vs actual: <...>
-- Notes / fix: <...>
+- Component: <path>
+- Repro / expected vs actual / fix: <...>
 ```

@@ -1,63 +1,53 @@
 # STATUS.md — ecs-dev-desktop
 
-> Snapshot of where the project is right now. Update after every task.
-> Past tense at PR close (see `AGENTS.md` §0).
+> Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-01
+**Last updated:** 2026-06-02
 
 ## Current phase
 
-**Phase 5 — Reconciler (scale-to-zero)** — _idle reconcile pass: `listActive` →
-pure `selectIdle` → stop (snapshot + tear down) via the control plane; on branch
-`phase-5/reconciler`. Scheduled snapshots + orphan GC + the cron runner remain.
-Phases 2 (#4), 3 (#5), 6 (#6) merged._
+**At a decision gate.** The locally-testable spine is built and green (Phases 0,
+2, 3, 6, and Phase 5's idle pass merged). Most remaining work is blocked on user
+decisions and upstream simulator fixes — see `DO_NEXT.md`.
 
-## What exists
+## What works (built, tested, merged)
 
-- Planning + architecture in `PLAN.md` / `AGENTS.md`; decisions locked.
-- GitHub repo `e6qu/ecs-dev-desktop` (public), `main` protected (PR required).
-- TDD + testability strategy (`AGENTS.md` §5, `TESTING.md`).
-- **Monorepo scaffold (Turborepo + pnpm), all components building/testing in
-  isolation:**
-  - `packages/core` — `StorageProvider` port + filesystem **fake** + reusable
-    **round-trip contract test** + workspace lifecycle state machine.
-  - `packages/config`, `api-contracts`, `authz` (CASL), `auth` (claim→role),
-    `db` (single-table keys + **ElectroDB** Workspace entity + GSIs),
-    `api-client` (typed, injectable fetch).
-  - `services/reconciler` (idle decision), `services/ssh-gateway` (Teleport
-    principal helper).
-  - `apps/web` — Next.js app with `/api/healthz`.
-  - `infra/terraform` baseline (`versions.tf` + committed provider lock),
-    `infra/images` placeholder, `docker-compose.tier2.yml`.
-- **Live Tier-2 harness:** `docker-compose.tier2.yml` (DynamoDB Local) +
-  `pnpm test:integ`; `@edd/db` integration test exercises put/get + both GSIs.
-- **Control-plane API** (`apps/web`): workspace lifecycle endpoints
-  (create/list/get/stop/start/snapshot/delete) with CASL RBAC; `@edd/control-plane`
-  `WorkspaceService` (imperative shell) over ElectroDB + the pure functional core.
-- **Functional core (FCIS):** branded domain ids, `Workspace` domain object +
-  pure lifecycle functions, typed `@edd/config` (endpoints/ports), no magic values.
-- **CI** (`.github/workflows/ci.yml`): `build-test`, `integration` (DynamoDB
-  Local), `check-deps`, `terraform`, `shellcheck` (ubuntu+macOS), **`sast`**
-  (Semgrep), **`vuln-scan`** (Trivy deps/IaC/secret, fail HIGH/CRITICAL). Manual
-  real-AWS tier skeleton (`e2e-aws.yml`).
-- **pre-commit**: format/type-check/lint/unit-tests/actionlint for all languages
+- **Monorepo** (Turborepo + pnpm, `@edd/*`): every component builds/tests in
+  isolation. Repo `e6qu/ecs-dev-desktop`, `main` protected (PR required).
+- **Functional core** (`@edd/core`): branded domain ids, `Workspace` object +
+  pure lifecycle functions, lifecycle state machine, `Storage`/`Compute` ports +
+  fakes, reusable round-trip **contract test**.
+- **Control-plane API** (`apps/web`): lifecycle endpoints
+  (create/list/get/stop/start/snapshot/delete) with CASL RBAC, over
+  `@edd/control-plane` `WorkspaceService` on ElectroDB + the core.
+- **Auth** (`apps/web` + `@edd/auth`): Auth.js (GitHub + Entra) JWT sessions;
+  claim→role mapping; `getPrincipal` from session (dev-header shim behind
+  `EDD_DEV_AUTH`).
+- **Portal UI** (`apps/web`): RBAC-gated workspaces grid, create-from-catalog,
+  lifecycle actions, admin "all" view.
+- **Reconciler** (`services/reconciler`): idle reconcile pass (`listActive` →
+  pure `selectIdle` → stop+snapshot) via a `ReconcilerService` port.
+- **Tier-2 harness**: `docker-compose.tier2.yml` (DynamoDB Local) + `@edd/db`
+  ElectroDB entity (single table, `byOwner`/`byState` GSIs).
+- **CI**: `build-test`, `integration`, `check-deps`, `terraform`, `shellcheck`
+  (ubuntu+macOS), `sast` (Semgrep), `vuln-scan` (Trivy). Manual `e2e-aws` skeleton.
+- **Local quality gates**: `pre-commit` (format/type-check/lint/unit/actionlint)
   - commit-msg AI-attribution stripper.
-- Verified locally: **strict lint 11/11**, build 11/11, unit 17 tasks, integ 8
-  tests, Semgrep 0 findings, Trivy 0 HIGH/CRITICAL.
 
-## What is deployed / working
+**Verified locally (2026-06-02):** lint 11/11, build 11/11, unit 47 tests / 19
+files, integration 9 tests / 4 files (DynamoDB Local). Semgrep + Trivy clean.
 
-- Nothing deployed to AWS. No cloud infrastructure provisioned.
+## Deployed
+
+- Nothing on AWS — no cloud infrastructure provisioned yet.
 
 ## Immediate focus
 
-**At a decision gate** — most remaining phases are blocked (see `DO_NEXT.md` →
-_Blocked / waiting_):
-
-- **AWS account/region** (`DO_NEXT` #4) is the biggest blocker: real Terraform,
-  Phase 1 (Fargate + EBS), Phase 4 (SSH), Phase 7, the reconciler cron, and the
-  `e2e-aws` tier all sit behind it.
+- **AWS account/region** (`DO_NEXT` #4) is the top blocker: real Terraform, Phase
+  1 (Fargate + EBS), Phase 4 (SSH), Phase 7, the reconciler cron, and `e2e-aws`
+  all sit behind it.
 - **Domain/DNS** (#3) blocks the auth proxy + workspace routing.
-- Sockerless **#347 (EBS snapshots) is now resolved upstream**; wiring it needs a
-  published sockerless image (EXT-004) — Tier-2 is DynamoDB Local only meanwhile.
-- Decision-free work still available: admin base-image catalog, Playwright e2e.
+- Sockerless **[#359](https://github.com/e6qu/sockerless/issues/359)** (snapshots
+  never reach `completed`) blocks snapshot→restore at the sim level; an EBS
+  lifecycle adapter is deferred until it lands (`BUGS.md` EXT-001).
+- **Available now (decision-free):** admin base-image catalog, Playwright e2e.
