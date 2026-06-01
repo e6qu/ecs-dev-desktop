@@ -27,11 +27,14 @@ limit Tier-2 (integration) coverage until resolved. See `TESTING.md`.
   fabricated. Integration tests must not depend on real packet flow / SG denial.
 - Status: open upstream.
 
-### EXT-003 — no Azure Entra user-login OIDC simulator
-- Upstream: none yet (bleephub covers GitHub only).
-- Impact: Entra login can't be integration-tested locally. Mitigation:
-  `mock-oauth2-server` stand-in in Tier 2; real Entra in manual Tier 3.
-- Status: candidate issue — decide whether it is in sockerless's scope.
+### EXT-003 — Entra interactive authorization-code/login flow (verify)
+- Upstream: token-endpoint + JWKS already exist (sockerless **#261**, **#272**,
+  both closed). The **interactive `/authorize` → login → code** flow that an
+  Auth.js OIDC relying party needs is **unverified**.
+- Impact: Entra *user login* may or may not be integration-testable locally.
+- Mitigation: `mock-oauth2-server` stand-in in Tier 2; real Entra in Tier 3.
+- Status: **verify in Phase 3**; file a precise issue only if a specific endpoint
+  is missing. Do not file on the false premise that "no Entra sim exists".
 
 ## Resolved
 

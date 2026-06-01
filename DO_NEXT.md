@@ -31,8 +31,10 @@
 - [ ] Comment on **sockerless #347** with our requirement: snapshot **data**
       round-trip fidelity (bytes written to a volume must appear on a volume
       created from its snapshot) — `ecs-dev-desktop` persistence depends on it.
-- [ ] Decide + (if in scope) file an issue for an **Entra/AAD user-login OIDC**
-      simulator (EXT-003).
+- [ ] **Verify in Phase 3** whether sockerless's Entra sim supports the
+      interactive `/authorize`→login→code flow (token endpoint + JWKS already
+      exist per #261/#272). File a precise issue only if an endpoint is missing
+      (EXT-003) — do not assume "no Entra sim exists".
 
 ## Next tasks (Phase 0 — Foundations)
 

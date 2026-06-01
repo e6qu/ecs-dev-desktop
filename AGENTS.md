@@ -173,8 +173,9 @@ integration substrate (it runs real containers, unlike LocalStack). **When the
 simulator lacks/incorrectly models something we need, file or comment on an issue
 in `e6qu/sockerless`** and track it in `BUGS.md` → *External blockers*. Known
 today: EBS snapshots unimplemented (**#347**); compute/VPC/SG/LB are metadata-only
-(#332–#336); no Entra user-login OIDC sim. Until #347 lands, the `StorageProvider`
-**fake** TDDs the snapshot round-trip logic.
+(#332–#336); Entra interactive login flow unverified (token endpoint/JWKS exist
+per #261/#272). Until #347 lands, the `StorageProvider` **fake** TDDs the
+snapshot round-trip logic.
 
 **`e2e-aws` policy:** GitHub **OIDC→AWS role** (no static keys), unique run
 prefix, **mandatory auto-teardown** even on failure, cost budget cap. Small and
