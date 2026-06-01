@@ -32,7 +32,17 @@
 - [x] Lifecycle endpoints + CASL RBAC; `@edd/control-plane` WorkspaceService (FCIS).
 - [x] Engineering-standards charter (`AGENTS.md` §6) applied repo-wide.
 - [x] Strict type-aware lint; `sast` (Semgrep) + `vuln-scan` (Trivy) gates; pre-commit.
-- [ ] Phase 3: real Auth.js (GitHub + Entra) to replace the dev-header principal shim.
+- [x] Phase 3 (auth core): Auth.js (GitHub + Entra) + JWT, replacing the dev-header
+      principal shim with the session.
+
+### Phase 3 — remaining
+
+- [ ] Identity-aware proxy (Pomerium) + wildcard `*.devbox.<domain>` routing —
+      needs the domain/DNS decision.
+- [ ] mock-OIDC integration test of the full Auth.js login flow (Tier-2); real
+      GitHub/Entra federation is Tier-3 manual (verify Entra `/authorize`, EXT-003).
+- [ ] GitHub org/team → role (needs a teams API call in the jwt callback; groups
+      are empty for GitHub today).
 
 ### Phase 0 — remaining
 

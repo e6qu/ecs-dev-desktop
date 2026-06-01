@@ -22,8 +22,8 @@ export function errorMessage(err: unknown): string {
 }
 
 /** Resolve the principal or return a 401 response to short-circuit the handler. */
-export function authenticate(req: Request): Principal | NextResponse {
-  return getPrincipal(req) ?? unauthorized();
+export async function authenticate(req: Request): Promise<Principal | NextResponse> {
+  return (await getPrincipal(req)) ?? unauthorized();
 }
 
 export function isResponse(x: unknown): x is NextResponse {
@@ -50,7 +50,7 @@ export async function loadOwnedWorkspace(
   params: Promise<{ id: string }>,
   action: Action,
 ): Promise<OwnedWorkspace | NextResponse> {
-  const principal = authenticate(req);
+  const principal = await authenticate(req);
   if (isResponse(principal)) return principal;
   if (!defineAbilityFor(principal).can(action, "Workspace")) return forbidden();
 

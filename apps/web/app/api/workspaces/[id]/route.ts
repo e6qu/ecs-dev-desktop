@@ -13,7 +13,7 @@ interface Ctx {
 
 // GET /api/workspaces/:id
 export async function GET(req: Request, { params }: Ctx) {
-  const principal = authenticate(req);
+  const principal = await authenticate(req);
   if (isResponse(principal)) return principal;
 
   const { id } = await params;
@@ -25,7 +25,7 @@ export async function GET(req: Request, { params }: Ctx) {
 
 // DELETE /api/workspaces/:id
 export async function DELETE(req: Request, { params }: Ctx) {
-  const principal = authenticate(req);
+  const principal = await authenticate(req);
   if (isResponse(principal)) return principal;
   if (!defineAbilityFor(principal).can("delete", "Workspace")) return forbidden();
 

@@ -223,3 +223,32 @@ outdated` honours it, so the `check-deps` gate stays read-only and age-aware.
 ### Filed
 
 - (none)
+
+---
+
+## 2026-06-01 — Phase 3: Auth.js (GitHub + Entra) login + RBAC
+
+### Done
+
+- Wired **Auth.js (NextAuth v5)** into `apps/web` with **GitHub** + **Microsoft
+  Entra ID** providers and **JWT sessions** (`auth.ts`, `app/api/auth/[...nextauth]`).
+- Derived the role from IdP groups at sign-in: pure `normalizeClaims` (Zod-parsed
+  per provider) → `@edd/auth` `mapClaimsToRole` → JWT/session; env-driven group→role
+  config (`EDD_ADMIN_GROUPS`/`EDD_MEMBER_GROUPS`).
+- Replaced the principal source: `getPrincipal` now reads the Auth.js session;
+  the dev-header shim is gated by `EDD_DEV_AUTH` (tests only). Auth.js is
+  lazily imported so the module stays test-safe outside the Next runtime.
+- Added a minimal **login page** + `.env.example`; unit tests for claims, role
+  config, and session→principal. All gates green (lint 11, build 11, unit 18,
+  integ 8).
+
+### Tried
+
+- Importing `auth.ts` (NextAuth) in vitest failed (`next/server` unresolved) —
+  fixed by lazy `import("../auth")` inside `getPrincipal` (dev path never loads it).
+- `delete process.env[...]` in a test tripped `no-dynamic-delete` — switched to
+  `vi.stubEnv` / `vi.unstubAllEnvs`.
+
+### Filed
+
+- (none)

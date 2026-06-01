@@ -11,3 +11,8 @@ export const DEV_AUTH_ENABLED = "1";
 export const USER_ID_HEADER = "x-edd-user-id";
 /** Header carrying the caller's role under dev-header auth. */
 export const ROLE_HEADER = "x-edd-role";
+
+/** Comma-separated IdP group ids/slugs that grant the admin role. */
+export const ADMIN_GROUPS_ENV = "EDD_ADMIN_GROUPS";
+/** Comma-separated IdP group ids/slugs that grant the member role. */
+export const MEMBER_GROUPS_ENV = "EDD_MEMBER_GROUPS";
