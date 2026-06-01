@@ -121,7 +121,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Trivy (deps + IaC + secrets; fail on HIGH/CRITICAL)
-        uses: aquasecurity/trivy-action@0.36.0
+        uses: aquasecurity/trivy-action@v0.36.0
         with:
           scan-type: fs
           scan-ref: .
