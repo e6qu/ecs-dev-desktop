@@ -11,7 +11,8 @@
     },
     "test:integ": {
       "dependsOn": ["^build"],
-      "cache": false
+      "cache": false,
+      "env": ["DYNAMODB_ENDPOINT", "AWS_REGION"]
     }
   }
 }

@@ -119,3 +119,54 @@
 
 ### Filed
 - (none)
+
+---
+
+## 2026-06-01 — Tier-2 integration harness (DynamoDB Local + ElectroDB)
+
+### Done
+- Added **ElectroDB** to `@edd/db`: a Workspace entity over the single table with
+  `byOwner` (GSI1) and `byState` (GSI2) indexes, a `CreateTable`/`DeleteTable`
+  schema helper, and an env-driven DynamoDB client (`DYNAMODB_ENDPOINT`).
+- Wrote the first **integration test** (`*.integ.ts`, separated from the unit
+  run) covering put/get + both GSIs, verified locally against **DynamoDB Local**
+  (3/3 pass).
+- Wired `pnpm test:integ` (Turbo) + a CI **`integration`** job using an
+  `amazon/dynamodb-local` service container.
+- Added deps at latest (electrodb 3, @aws-sdk/client-dynamodb 3); freshness gate
+  stayed green. Verified: lint 10/10, build 10/10, unit 24/24, integration 3/3.
+
+### Tried
+- Separated integration from unit by suffix (`*.integ.ts`) + a dedicated
+  `vitest.integ.config.ts`, so `pnpm test` never needs Docker.
+- Left the **sockerless** backend commented in `docker-compose.tier2.yml`: no
+  published image yet and EBS snapshots unimplemented (sockerless #347), so
+  Tier-2 currently covers DynamoDB Local only.
+
+### Filed
+- (none)
+
+---
+
+## 2026-06-01 — Dep prune, 1-day min release age, portable shell scripts
+
+### Done
+- Audited deps with `depcheck` (surface already lean). Pruned the only two unused
+  declarations: `@edd/core` from `services/reconciler` and `@types/react-dom`
+  from `apps/web`.
+- Added supply-chain safeguard **`minimumReleaseAge: 1440`**
+  (`pnpm-workspace.yaml`): no version adopted until public ≥ 1 day. `pnpm
+  outdated` honours it, so the `check-deps` gate stays read-only and age-aware.
+- Made the one shell script **portable + `shellcheck`-clean** (no `BASH_SOURCE`/
+  `pushd`; `$0`-derived path; `unset CDPATH`); runs under **bash and zsh**.
+- Added a **`shellcheck` CI job** matrixed over **ubuntu + macOS** that runs
+  shellcheck + `bash -n` + `zsh -n` on every `*.sh`.
+
+### Tried
+- `pnpm update --latest -r` under the floor **downgraded** vite 8.0.16→8.0.14 and
+  vitest 4.1.8→4.1.7 (published <24h) — kept the age-compliant versions.
+- An `update --latest` + `git diff` freshness gate — rejected: it conflated
+  uncommitted edits with drift. `pnpm outdated` is read-only and age-aware.
+
+### Filed
+- (none)

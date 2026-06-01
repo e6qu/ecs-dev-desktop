@@ -22,16 +22,16 @@
 
 - State store: **DynamoDB** (single-table + ElectroDB). Test substrate:
   **sockerless**. Real-AWS tier: **manual on `main`**. License: **AGPL-3.0-or-later**.
-  Repo tooling: **Turborepo + pnpm**. RBAC: **CASL**. Dep policy: **stay on latest**
-  (enforced by `check-deps`).
+  Repo tooling: **Turborepo + pnpm**. RBAC: **CASL**. Dep policy: **latest version
+  that is ≥ 1 day old** (pnpm `minimumReleaseAge: 1440`; enforced by `check-deps`).
 
 ## Next tasks
 
 ### Phase 0 — remaining
-- [ ] Add a real **Tier-2 harness**: bring up sockerless + DynamoDB Local via
-      `docker-compose.tier2.yml`, wire `pnpm test:integ` with a first
-      `@edd/db` integration test against DynamoDB Local.
-- [ ] Wire **ElectroDB** entities in `@edd/db` on top of the single-table keys.
+- [x] **Tier-2 harness**: DynamoDB Local via `docker-compose.tier2.yml`,
+      `pnpm test:integ`, `@edd/db` integration test + CI `integration` job.
+- [x] **ElectroDB** Workspace entity in `@edd/db` over the single-table keys.
+- [ ] Wire the **sockerless** backend into Tier-2 (pending its image + #347).
 - [ ] `infra/terraform` real baseline (VPC, ECS, ECR, DynamoDB + GSIs, KMS, IAM,
       remote state) — **blocked on decision #4**.
 - [ ] Flesh out `e2e-aws.yml`: OIDC→AWS role + ephemeral env + auto-teardown.

@@ -9,6 +9,14 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:integ": "vitest run --config vitest.integ.config.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1057.0",
+    "electrodb": "^3.9.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1"
   }
 }

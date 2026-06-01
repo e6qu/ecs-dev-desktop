@@ -24,3 +24,7 @@ export const keys = {
     GSI2SK: `ACTIVITY#${lastActivityIso}`,
   }),
 } as const;
+
+export { createDynamoClient } from "./client";
+export { ensureTable, dropTable, tableDefinition } from "./table";
+export { makeWorkspaceEntity, type WorkspaceEntity } from "./entities";
