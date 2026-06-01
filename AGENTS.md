@@ -11,11 +11,17 @@ This file is the entry point for any human or AI agent working in this repo.
 
 ## 0. Rules of engagement (read every time)
 
-1. **Always read the continuity files before starting any task** (see §3). They
-   are the source of truth for current state, open bugs, and what to do next.
-2. **Keep the continuity files in sync after every task.** A task is not "done"
+> **Why these are hard rules:** an LLM's context is ephemeral — it is lost across
+> compaction and fresh sessions. So you cannot rely on memory of what was done or
+> what was "already broken." The continuity files are the only durable memory, and
+> every issue must be treated as live. The rules below exist because of this.
+
+1. **Read the continuity files at the START of every task** (see §3) — they are
+   the only source of truth for current state, open bugs, and what to do next.
+2. **Sync the continuity files at the END of every task.** A task is not "done"
    until `STATUS.md`, `WHAT_WE_DID.md`, `BUGS.md`, and `DO_NEXT.md` reflect
-   reality.
+   reality. Keeping them in sync at the start and end of each task is critical
+   precisely because context does not survive between tasks.
 3. **Continuity files must be written in the past tense at the end of a pull
    request**, describing what _was_ done — never "we are doing X". This keeps
    merges to `main` consistent: every branch describes completed history, so
@@ -35,6 +41,12 @@ This file is the entry point for any human or AI agent working in this repo.
    dependency (AWS, IdP, Teleport, the proxy) behind an adapter with a fake.
    Behavior only real AWS/IdP can prove runs in the gated `e2e-aws` suite. See
    [`TESTING.md`](./TESTING.md) and §5 below.
+9. **Never ignore an error, warning, or anomaly — including a seemingly
+   "pre-existing" one.** Because context is ephemeral (see above), you cannot
+   know whether a failing test, lint/type warning, broken build, or odd result
+   pre-dates your change — "pre-existing" is unverifiable and is not an excuse to
+   skip it. Investigate and fix every issue you encounter, or surface it
+   explicitly in `BUGS.md`/`DO_NEXT.md`. Never step around one or silence it.
 
 ---
 
