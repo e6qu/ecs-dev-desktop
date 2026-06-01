@@ -34,7 +34,7 @@ describe("workspaces API end-to-end (DynamoDB Local)", () => {
   });
 
   afterAll(async () => {
-    if (client) await dropTable(client, TEST_TABLE);
+    await dropTable(client, TEST_TABLE);
   });
 
   it("creates (201) then lists the workspace for its owner", async () => {

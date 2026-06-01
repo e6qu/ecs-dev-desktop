@@ -6,14 +6,15 @@ import type { ComputeProvider, ComputeTask, RunTaskInput } from "./compute-provi
 export class FakeComputeProvider implements ComputeProvider {
   private readonly running = new Map<TaskId, RunTaskInput>();
 
-  async runTask(input: RunTaskInput): Promise<ComputeTask> {
+  runTask(input: RunTaskInput): Promise<ComputeTask> {
     const id = newTaskId();
     this.running.set(id, input);
-    return { id };
+    return Promise.resolve({ id });
   }
 
-  async stopTask(taskId: TaskId): Promise<void> {
+  stopTask(taskId: TaskId): Promise<void> {
     this.running.delete(taskId);
+    return Promise.resolve();
   }
 
   /** Test helper: is a task currently running? */

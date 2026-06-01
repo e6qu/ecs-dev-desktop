@@ -27,7 +27,7 @@ describe("@edd/db ElectroDB against DynamoDB Local", () => {
   });
 
   afterAll(async () => {
-    if (client) await dropTable(client, TEST_TABLE);
+    await dropTable(client, TEST_TABLE);
   });
 
   it("puts and reads back a workspace", async () => {

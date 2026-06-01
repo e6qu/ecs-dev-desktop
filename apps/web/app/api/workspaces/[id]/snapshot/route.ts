@@ -3,7 +3,9 @@ import { NextResponse } from "next/server";
 
 import { conflict, errorMessage, isResponse, loadOwnedWorkspace } from "../../../../../lib/api";
 
-type Ctx = { params: Promise<{ id: string }> };
+interface Ctx {
+  params: Promise<{ id: string }>;
+}
 
 // POST /api/workspaces/:id/snapshot — point-in-time snapshot.
 export async function POST(req: Request, { params }: Ctx) {

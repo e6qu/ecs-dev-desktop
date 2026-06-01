@@ -7,7 +7,9 @@ import { workspaceId } from "@edd/core";
 import { authenticate, forbidden, isResponse, notFound, ownsOrAdmin } from "../../../../lib/api";
 import { getControlPlane } from "../../../../lib/control-plane";
 
-type Ctx = { params: Promise<{ id: string }> };
+interface Ctx {
+  params: Promise<{ id: string }>;
+}
 
 // GET /api/workspaces/:id
 export async function GET(req: Request, { params }: Ctx) {

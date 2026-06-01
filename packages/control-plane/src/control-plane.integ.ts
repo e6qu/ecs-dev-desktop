@@ -42,7 +42,7 @@ describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
   });
 
   afterAll(async () => {
-    if (client) await dropTable(client, TEST_TABLE);
+    await dropTable(client, TEST_TABLE);
   });
 
   it("create → list → get", async () => {
