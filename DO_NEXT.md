@@ -22,8 +22,8 @@
 
 - State store: **DynamoDB** (single-table + ElectroDB). Test substrate:
   **sockerless**. Real-AWS tier: **manual on `main`**. License: **AGPL-3.0-or-later**.
-  Repo tooling: **Turborepo + pnpm**. RBAC: **CASL**. Dep policy: **stay on latest**
-  (enforced by `check-deps`).
+  Repo tooling: **Turborepo + pnpm**. RBAC: **CASL**. Dep policy: **latest version
+  that is ≥ 1 day old** (pnpm `minimumReleaseAge: 1440`; enforced by `check-deps`).
 
 ## Next tasks
 

@@ -145,3 +145,28 @@
 
 ### Filed
 - (none)
+
+---
+
+## 2026-06-01 — Dep prune, 1-day min release age, portable shell scripts
+
+### Done
+- Audited deps with `depcheck` (surface already lean). Pruned the only two unused
+  declarations: `@edd/core` from `services/reconciler` and `@types/react-dom`
+  from `apps/web`.
+- Added supply-chain safeguard **`minimumReleaseAge: 1440`**
+  (`pnpm-workspace.yaml`): no version adopted until public ≥ 1 day. `pnpm
+  outdated` honours it, so the `check-deps` gate stays read-only and age-aware.
+- Made the one shell script **portable + `shellcheck`-clean** (no `BASH_SOURCE`/
+  `pushd`; `$0`-derived path; `unset CDPATH`); runs under **bash and zsh**.
+- Added a **`shellcheck` CI job** matrixed over **ubuntu + macOS** that runs
+  shellcheck + `bash -n` + `zsh -n` on every `*.sh`.
+
+### Tried
+- `pnpm update --latest -r` under the floor **downgraded** vite 8.0.16→8.0.14 and
+  vitest 4.1.8→4.1.7 (published <24h) — kept the age-compliant versions.
+- An `update --latest` + `git diff` freshness gate — rejected: it conflated
+  uncommitted edits with drift. `pnpm outdated` is read-only and age-aware.
+
+### Filed
+- (none)

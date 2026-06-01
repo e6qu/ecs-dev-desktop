@@ -1,40 +1,53 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# Dependency-freshness gate, mirroring sockerless's check-deps job, for every
+# Dependency-freshness gate, mirroring sockerless's check-deps, for every
 # language in this repo: TypeScript/Node (pnpm) and Terraform (providers).
-# Fails if anything is behind the latest release.
-set -euo pipefail
+#
+# Policy: stay on the latest version that is >= 1 day old (pnpm
+# `minimumReleaseAge` in pnpm-workspace.yaml — a supply-chain safeguard against
+# freshly-published malicious/broken releases). `pnpm outdated` honours that age
+# floor, so this check is read-only.
+#
+# Portable: passes shellcheck and runs under bash and zsh, on macOS and Linux.
+# Avoids bashisms (BASH_SOURCE, pushd/popd, arrays).
+set -eu
+set -o pipefail
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-cd "$repo_root"
+# Guard cd against a user's CDPATH (common in zsh setups); covers subshells too.
+unset CDPATH 2>/dev/null || true
+
+# Script dir via $0 (works in bash and zsh when executed).
+repo_root=$(cd -- "$(dirname -- "$0")/.." && pwd)
+cd -- "$repo_root" || exit 1
 
 fail=0
 
-echo "=== Node/TypeScript: pnpm outdated (workspace-wide) ==="
-# `pnpm outdated -r` exits non-zero if any dependency is behind latest.
-if ! pnpm outdated -r; then
-  echo "::error::JS/TS dependencies are out of date — run 'pnpm update --latest -r'."
-  fail=1
+echo "=== Node/TypeScript: pnpm outdated (latest version >= 1 day old) ==="
+if pnpm outdated -r; then
+  echo "All JS/TS dependencies are on the latest age-eligible version."
 else
-  echo "All JS/TS dependencies are on latest."
+  echo "::error::JS/TS deps behind the latest age-eligible version — run 'pnpm update --latest -r' and commit."
+  fail=1
 fi
 
 echo
 echo "=== Terraform: provider lock on latest ==="
 if command -v terraform >/dev/null 2>&1; then
-  pushd infra/terraform >/dev/null
-  terraform init -backend=false -upgrade -input=false >/dev/null
-  # If a newer provider exists, -upgrade rewrites the lock; a committed lock then
-  # shows a diff. (Loose check while infra is empty; tightens once it grows.)
-  if [ -f .terraform.lock.hcl ] && ! git diff --quiet -- .terraform.lock.hcl; then
-    echo "::error::Terraform provider lock is behind latest — commit the updated .terraform.lock.hcl."
-    git --no-pager diff -- .terraform.lock.hcl || true
-    fail=1
-  else
+  if (
+    cd -- infra/terraform || exit 1
+    terraform init -backend=false -upgrade -input=false >/dev/null
+    if [ -f .terraform.lock.hcl ] && ! git diff --quiet -- .terraform.lock.hcl; then
+      echo "::error::Terraform provider lock is behind latest — commit the updated .terraform.lock.hcl."
+      git --no-pager diff -- .terraform.lock.hcl || true
+      exit 1
+    fi
     echo "Terraform providers are on latest."
+  ); then
+    :
+  else
+    fail=1
   fi
-  popd >/dev/null
 else
   echo "terraform not installed; skipping provider freshness."
 fi

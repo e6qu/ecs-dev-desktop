@@ -74,3 +74,33 @@ jobs:
       - run: terraform -chdir=infra/terraform fmt -check
       - run: terraform -chdir=infra/terraform init -backend=false -input=false
       - run: terraform -chdir=infra/terraform validate
+
+  shellcheck:
+    name: shellcheck
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install shellcheck + zsh
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            brew install shellcheck
+          else
+            sudo apt-get update && sudo apt-get install -y shellcheck zsh
+          fi
+      - name: shellcheck + bash/zsh parse on every shell script
+        shell: bash
+        run: |
+          set -euo pipefail
+          files=$(git ls-files '*.sh')
+          if [ -z "$files" ]; then echo "no shell scripts"; exit 0; fi
+          for f in $files; do
+            echo "== $f =="
+            shellcheck "$f"
+            bash -n "$f"
+            zsh -n "$f"
+          done

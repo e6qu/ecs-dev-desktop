@@ -141,10 +141,19 @@ ecs-dev-desktop/
 
 - `pnpm install` at root; `pnpm build` / `pnpm test` / `pnpm lint` run via Turbo.
 - Per-component: `pnpm --filter <name> <script>` — must succeed in isolation.
+- **Dependencies stay on the latest version that is ≥ 1 day old** — pnpm
+  `minimumReleaseAge: 1440` (`pnpm-workspace.yaml`) is a supply-chain safeguard
+  that won't adopt a just-published (possibly malicious/broken) release. The
+  `check-deps` CI job enforces freshness via `pnpm outdated`, which honours the
+  age floor. Don't add an unused dependency; declare only what a package imports.
 - Each phase in `PLAN.md` defines its own **deliverables** and **testing** gate;
   do not advance a phase until its testing gate is green.
 - Security-sensitive code uses libraries (Auth.js, CASL, Teleport, AWS SDK) —
   flag in review any place we'd be rolling our own.
+- **Shell scripts must pass `shellcheck` and run under both `bash` and `zsh`, on
+  macOS and Linux** (the full matrix). Write portable POSIX-ish shell: no
+  `BASH_SOURCE`/arrays/`pushd`/GNU-only flags; derive paths from `$0`; guard `cd`
+  (`unset CDPATH`). The `shellcheck` CI job (ubuntu + macOS) enforces it.
 
 ---
 
