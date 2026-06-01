@@ -9,6 +9,15 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:integ": "vitest run --config vitest.integ.config.ts"
+  },
+  "dependencies": {
+    "@edd/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@edd/control-plane": "workspace:*",
+    "@edd/db": "workspace:*",
+    "@types/node": "^25.9.1"
   }
 }

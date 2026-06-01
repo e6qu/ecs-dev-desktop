@@ -52,6 +52,14 @@
       session — mock-OIDC or `EDD_DEV_AUTH`).
 - [ ] Admin **base-image catalog** management, quotas, and a cost dashboard.
 
+### Phase 5 — Reconciler (idle pass done) + remaining
+
+- [x] Idle reconcile pass: `listActive` → pure `selectIdle` → stop (snapshot +
+      tear down), with unit + DynamoDB-Local integration tests.
+- [ ] idle-agent heartbeats (editor/terminal/SSH activity → `lastActivity`).
+- [ ] Scheduled point-in-time snapshots + **orphan volume/snapshot GC**.
+- [ ] The runner/cron (ECS scheduled task / EventBridge) — needs AWS.
+
 ### Phase 0 — remaining
 
 - [x] **Tier-2 harness**: DynamoDB Local via `docker-compose.tier2.yml`,

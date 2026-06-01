@@ -284,3 +284,28 @@ outdated` honours it, so the `check-deps` gate stays read-only and age-aware.
 ### Filed
 
 - (none)
+
+---
+
+## 2026-06-01 — Phase 5: Reconciler (scale-to-zero)
+
+### Done
+
+- Built the **idle reconcile pass** (FCIS): `WorkspaceService.listActive()`
+  (byState GSI query for running/idle) → pure **`selectIdle`** (idle past the
+  threshold) → `stop` each via the control plane (snapshot + tear down).
+- `@edd/reconciler` exposes a `ReconcilerService` **port** (so it's decoupled and
+  unit-tested with a fake; `WorkspaceService` satisfies it structurally) + the
+  `Reconciler` shell; default idle window from `DEFAULT_IDLE_THRESHOLD_MS`.
+- Unit tests (pure `selectIdle` + `runOnce` with a fake) + an **integration test**
+  against DynamoDB Local driving the real `WorkspaceService` (idle workspace →
+  stopped). Re-added `@edd/core` to the reconciler (now genuinely used).
+
+### Tried
+
+- Kept the reconciler decoupled from `@edd/control-plane` at runtime via the port;
+  control-plane/db are devDeps only (for the integration test).
+
+### Filed
+
+- (none)
