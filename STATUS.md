@@ -7,8 +7,8 @@
 
 ## Current phase
 
-**Phase 0 — Foundations & repo scaffold** — *scaffold landed; infra resources and
-the live Tier-2 harness remain.*
+**Phase 0 — Foundations & repo scaffold** — *scaffold + live Tier-2 harness
+(DynamoDB Local) landed; real AWS infra resources remain.*
 
 ## What exists
 
@@ -20,15 +20,18 @@ the live Tier-2 harness remain.*
   - `packages/core` — `StorageProvider` port + filesystem **fake** + reusable
     **round-trip contract test** + workspace lifecycle state machine.
   - `packages/config`, `api-contracts`, `authz` (CASL), `auth` (claim→role),
-    `db` (single-table keys), `api-client` (typed, injectable fetch).
+    `db` (single-table keys + **ElectroDB** Workspace entity + GSIs),
+    `api-client` (typed, injectable fetch).
   - `services/reconciler` (idle decision), `services/ssh-gateway` (Teleport
     principal helper).
   - `apps/web` — Next.js app with `/api/healthz`.
   - `infra/terraform` baseline (`versions.tf` + committed provider lock),
     `infra/images` placeholder, `docker-compose.tier2.yml`.
-- **CI** (`.github/workflows/ci.yml`): `build-test`, `check-deps`
-  (Node + Terraform freshness), `terraform` (fmt/validate). Manual real-AWS
-  tier skeleton (`e2e-aws.yml`, `workflow_dispatch` on `main`).
+- **Live Tier-2 harness:** `docker-compose.tier2.yml` (DynamoDB Local) +
+  `pnpm test:integ`; `@edd/db` integration test exercises put/get + both GSIs.
+- **CI** (`.github/workflows/ci.yml`): `build-test`, `integration` (DynamoDB
+  Local service), `check-deps` (Node + Terraform freshness), `terraform`
+  (fmt/validate). Manual real-AWS tier skeleton (`e2e-aws.yml`).
 - Verified locally: lint 10/10, build 10/10, **24 tests pass**, freshness gate
   green. All deps on latest (TS 6, ESLint 10, Vitest 4, Next 16, zod 4, CASL 7).
 
@@ -38,6 +41,7 @@ the live Tier-2 harness remain.*
 
 ## Immediate focus
 
-- Land branch-protection required checks + up-to-date gate.
-- Then: real `infra/terraform` resources (needs AWS account/region, `DO_NEXT` #5)
-  and the live Tier-2 sockerless harness.
+- Real `infra/terraform` resources — needs AWS account/region (`DO_NEXT` #4).
+- Wire the **sockerless** backend into the Tier-2 harness once its image +
+  EBS-snapshot support (sockerless #347) are available (currently DynamoDB Local
+  only).

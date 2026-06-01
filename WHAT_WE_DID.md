@@ -119,3 +119,29 @@
 
 ### Filed
 - (none)
+
+---
+
+## 2026-06-01 — Tier-2 integration harness (DynamoDB Local + ElectroDB)
+
+### Done
+- Added **ElectroDB** to `@edd/db`: a Workspace entity over the single table with
+  `byOwner` (GSI1) and `byState` (GSI2) indexes, a `CreateTable`/`DeleteTable`
+  schema helper, and an env-driven DynamoDB client (`DYNAMODB_ENDPOINT`).
+- Wrote the first **integration test** (`*.integ.ts`, separated from the unit
+  run) covering put/get + both GSIs, verified locally against **DynamoDB Local**
+  (3/3 pass).
+- Wired `pnpm test:integ` (Turbo) + a CI **`integration`** job using an
+  `amazon/dynamodb-local` service container.
+- Added deps at latest (electrodb 3, @aws-sdk/client-dynamodb 3); freshness gate
+  stayed green. Verified: lint 10/10, build 10/10, unit 24/24, integration 3/3.
+
+### Tried
+- Separated integration from unit by suffix (`*.integ.ts`) + a dedicated
+  `vitest.integ.config.ts`, so `pnpm test` never needs Docker.
+- Left the **sockerless** backend commented in `docker-compose.tier2.yml`: no
+  published image yet and EBS snapshots unimplemented (sockerless #347), so
+  Tier-2 currently covers DynamoDB Local only.
+
+### Filed
+- (none)

@@ -28,10 +28,10 @@
 ## Next tasks
 
 ### Phase 0 — remaining
-- [ ] Add a real **Tier-2 harness**: bring up sockerless + DynamoDB Local via
-      `docker-compose.tier2.yml`, wire `pnpm test:integ` with a first
-      `@edd/db` integration test against DynamoDB Local.
-- [ ] Wire **ElectroDB** entities in `@edd/db` on top of the single-table keys.
+- [x] **Tier-2 harness**: DynamoDB Local via `docker-compose.tier2.yml`,
+      `pnpm test:integ`, `@edd/db` integration test + CI `integration` job.
+- [x] **ElectroDB** Workspace entity in `@edd/db` over the single-table keys.
+- [ ] Wire the **sockerless** backend into Tier-2 (pending its image + #347).
 - [ ] `infra/terraform` real baseline (VPC, ECS, ECR, DynamoDB + GSIs, KMS, IAM,
       remote state) — **blocked on decision #4**.
 - [ ] Flesh out `e2e-aws.yml`: OIDC→AWS role + ephemeral env + auto-teardown.
