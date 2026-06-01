@@ -7,9 +7,10 @@
 
 ## Current phase
 
-**Phase 2 — Control-plane API** — _implemented to the engineering-standards
-charter (branded domain types, FCIS, strict lint, SAST/scan gates, pre-commit);
-on branch `phase-2/control-plane-api`, not yet merged. Real AWS infra remains._
+**Phase 3 — Auth + RBAC** — _Auth.js (NextAuth v5) login (GitHub + Entra) + JWT
+sessions wired; principal from session (dev-header shim gated by `EDD_DEV_AUTH`);
+on branch `phase-3/auth-rbac`. Identity-aware proxy/routing + real-IdP e2e remain.
+Phase 2 (control-plane API + standards charter) merged in #4._
 
 ## What exists
 

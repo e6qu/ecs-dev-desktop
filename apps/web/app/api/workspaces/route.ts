@@ -10,7 +10,7 @@ import { getControlPlane } from "../../../lib/control-plane";
 
 // GET /api/workspaces — admins see all; everyone else sees their own.
 export async function GET(req: Request) {
-  const principal = authenticate(req);
+  const principal = await authenticate(req);
   if (isResponse(principal)) return principal;
 
   const cp = await getControlPlane();
@@ -23,7 +23,7 @@ export async function GET(req: Request) {
 
 // POST /api/workspaces — create a workspace owned by the caller.
 export async function POST(req: Request) {
-  const principal = authenticate(req);
+  const principal = await authenticate(req);
   if (isResponse(principal)) return principal;
   if (!defineAbilityFor(principal).can("create", "Workspace")) return forbidden();
 
