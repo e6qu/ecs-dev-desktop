@@ -103,13 +103,15 @@
 
 ### Blocked on upstream (sockerless) — see BUGS.md
 
-- **EXT-001 / #347 (EBS snapshots): RESOLVED upstream (closed).** Next: verify
-  snapshot data fidelity + wire a sockerless `StorageProvider` adapter — gated on
-  EXT-004 (no published image yet).
-- **EXT-004:** no published sockerless container image → Tier-2 still **DynamoDB
-  Local only**; can't run the sockerless backend.
-- **EXT-002 / #332–#336 (compute/VPC/SG/LB metadata-only, OPEN):** only blocks
-  sim-level real Fargate networking / proxy routing — not our current testing.
+- **EXT-001 / #347 (EBS snapshots): RESOLVED** — `completed` + code verified in
+  `ec2.go` (host-dir-backed volumes/snapshots). Next: wire a sockerless
+  `StorageProvider` adapter through the round-trip contract test (gated on EXT-004).
+- **EXT-004:** running the sockerless sim in Tier-2 — published image unconfirmed;
+  fallback is building the sim from source. Tier-2 is **DynamoDB Local only** now.
+- **EXT-002:** #336 (VPC/ENI) **done**; still open: #333 (compute microVMs), #334
+  (LB traffic), #335 (SG enforcement). Only blocks sim-level Fargate execution /
+  proxy routing — not our control-plane/snapshot testing. (NB: EKS/SES closes were
+  `not_planned` = rejected; verify "closed" per-issue, don't assume done.)
 
 ### Not blocked (decision-free, available now)
 

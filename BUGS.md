@@ -13,25 +13,29 @@ _None yet — no application code has been written._
 These are not bugs in our code; they are simulator gaps in `e6qu/sockerless` that
 limit Tier-2 (integration) coverage until resolved. See `TESTING.md`.
 
-### EXT-001 — sockerless AWS sim lacks EBS volume lifecycle + snapshots
+### EXT-001 — sockerless AWS sim EBS volume lifecycle + snapshots — RESOLVED
 
-- Upstream: **sockerless #347** (and epic #341) — both now **CLOSED**.
-- Impact (was): our **core snapshot round-trip** (write → snapshot → hydrate →
-  assert) could not be certified at the sim level.
-- Status: **unblocked upstream.** Next: verify the sim's snapshot **data**
-  fidelity and, once a sockerless image is published (EXT-004), implement a
-  sockerless-backed `StorageProvider` adapter through the existing round-trip
-  contract test. Until then: `StorageProvider` fake (Tier 1) + manual real-AWS
-  (Tier 3).
+- Upstream: **sockerless #347** (epic #341) — closed with `state_reason=completed`.
+- **Verified** (closed ≠ done, so we checked the code, not just the issue):
+  `simulators/aws/ec2.go` implements `CreateVolume`/`CreateSnapshot`/
+  `DescribeSnapshots`/`DeleteSnapshot` with an `EC2Volume`/`EC2Snapshot` store and
+  **host-directory-backed data** (`ebsVolumeHostDirPath`, `ebsSnapshotHostDirPath`,
+  `ebsPrepareVolumeHostPath`) — so a write→snapshot→hydrate round-trip persists
+  real bytes.
+- Status: **unblocked.** Next: run a sockerless-backed `StorageProvider` adapter
+  through our existing round-trip contract test — gated on EXT-004 (running the
+  sim). Until then: `StorageProvider` fake (Tier 1) + manual real-AWS (Tier 3).
 
-### EXT-002 — sockerless compute/VPC/SG/LB are metadata-only
+### EXT-002 — sockerless compute/SG/LB still metadata-only (partial)
 
-- Upstream: sockerless #332, #333, #334, #335, #336 — all **OPEN**.
-- Impact: no real network routing; security groups not enforced; ENIs/LB traffic
-  fabricated. Blocks **sim-level** real Fargate networking / ENI / proxy-routing
-  tests. Does NOT block our control-plane or snapshot-logic testing.
-- Status: open upstream; only relevant once we sim real Fargate networking / the
-  identity-aware proxy. Real behaviour is the manual real-AWS (Tier 3) job anyway.
+- **#336 (VPC fabric / NIC/ENI/IP allocation): completed** — real ENI/IP now.
+- Still **OPEN**: #333 (compute → Firecracker microVMs), #334 (LB traffic), #335
+  (security-group enforcement), #332 (umbrella).
+- Impact: blocks **sim-level** real Fargate task _execution_ and SG/LB behaviour —
+  not our control-plane or snapshot-logic testing. Real behaviour is the manual
+  real-AWS (Tier 3) job anyway.
+- Note: several recent AWS-sim closes were `not_planned` (e.g. EKS #348, SES #349),
+  i.e. rejected — don't assume "closed" means implemented; verify per-issue.
 
 ### EXT-004 — no published sockerless container image
 
