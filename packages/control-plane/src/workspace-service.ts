@@ -18,6 +18,7 @@ import {
   type BaseImage,
   type Clock,
   type ComputeProvider,
+  type IsoTimestamp,
   type OwnerId,
   type StorageProvider,
   type Workspace,
@@ -33,6 +34,12 @@ export interface WorkspaceServiceDeps {
   storage: StorageProvider;
   compute: ComputeProvider;
   clock: Clock;
+}
+
+/** Projection of an active workspace used by the reconciler. */
+export interface ActiveWorkspace {
+  id: WorkspaceId;
+  lastActivity: IsoTimestamp;
 }
 
 export class WorkspaceNotFoundError extends Error {
@@ -110,6 +117,20 @@ export class WorkspaceService {
   async get(id: WorkspaceId): Promise<WorkspaceDto | null> {
     const ws = await this.find(id);
     return ws === null ? null : toWorkspaceDto(ws);
+  }
+
+  /** Active (running/idle) workspaces with last-activity — the reconciler's input. */
+  async listActive(): Promise<ActiveWorkspace[]> {
+    const states: readonly WorkspaceState[] = ["running", "idle"];
+    const pages = await Promise.all(
+      states.map((state) => this.deps.workspaces.query.byState({ state }).go()),
+    );
+    return pages.flatMap((page) =>
+      page.data.map((r: WorkspaceRecord) => ({
+        id: workspaceId(r.id),
+        lastActivity: isoTimestamp(r.lastActivity),
+      })),
+    );
   }
 
   /** Scale to zero: snapshot the volume, tear it down, stop the task. */

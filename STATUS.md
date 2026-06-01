@@ -7,10 +7,10 @@
 
 ## Current phase
 
-**Phase 6 — User portal + Admin UI** — _Next.js UI over the API + Auth.js: a
-workspaces portal (list/create/start/stop/snapshot/delete, RBAC-gated) and an
-admin "all" view, with a distinctive control-room aesthetic; on branch
-`phase-6/portal-ui`. Phases 2 (#4) + 3 (#5) merged._
+**Phase 5 — Reconciler (scale-to-zero)** — _idle reconcile pass: `listActive` →
+pure `selectIdle` → stop (snapshot + tear down) via the control plane; on branch
+`phase-5/reconciler`. Scheduled snapshots + orphan GC + the cron runner remain.
+Phases 2 (#4), 3 (#5), 6 (#6) merged._
 
 ## What exists
 

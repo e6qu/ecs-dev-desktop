@@ -154,7 +154,21 @@ importers:
         specifier: ^25.9.1
         version: 25.9.1
 
-  services/reconciler: {}
+  services/reconciler:
+    dependencies:
+      '@edd/core':
+        specifier: workspace:*
+        version: link:../../packages/core
+    devDependencies:
+      '@edd/control-plane':
+        specifier: workspace:*
+        version: link:../../packages/control-plane
+      '@edd/db':
+        specifier: workspace:*
+        version: link:../../packages/db
+      '@types/node':
+        specifier: ^25.9.1
+        version: 25.9.1
 
   services/ssh-gateway: {}
 
