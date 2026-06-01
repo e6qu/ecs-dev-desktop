@@ -36,3 +36,12 @@ UI, and an admin control plane. Think self-hosted Coder / GitHub Codespaces.
 `main` is protected: all changes past the initial commit go through a pull
 request. See [`AGENTS.md`](./AGENTS.md) for the workflow and continuity-file
 rules.
+
+## License
+
+Licensed under the **GNU Affero General Public License v3.0 or later**
+(`AGPL-3.0-or-later`). See [`LICENSE`](./LICENSE). New source files should carry:
+
+```
+SPDX-License-Identifier: AGPL-3.0-or-later
+```
