@@ -83,3 +83,39 @@
   `BUGS.md`): **#347** EBS volume lifecycle + snapshots unimplemented (blocks our
   core snapshot round-trip at the sim level); #332–#336 compute/VPC/SG/LB are
   metadata-only; no Entra user-login OIDC simulator.
+- Commented on sockerless **#347** registering our snapshot data-round-trip
+  requirement.
+
+---
+
+## 2026-06-01 — Phase 0 scaffold (Turborepo, components, CI)
+
+### Done
+- Stood up the **Turborepo + pnpm** monorepo: every component builds/tests in
+  isolation (`pnpm --filter <name> ...`). Scope `@edd/*`.
+- Built the TDD centerpiece in `packages/core`: a `StorageProvider` **port**, a
+  filesystem-backed **fake**, a reusable **round-trip contract test** (write →
+  snapshot → hydrate → bytes present), and the workspace lifecycle state machine.
+- Scaffolded `config`, `api-contracts` (zod), `authz` (CASL), `auth`
+  (claim→role), `db` (single-table keys), `api-client`; `services/reconciler`,
+  `services/ssh-gateway`; `apps/web` (Next.js + `/api/healthz`).
+- Added `infra/terraform` baseline + committed cross-platform provider lock,
+  `infra/images` placeholder, and `docker-compose.tier2.yml`.
+- Authored **CI** (`ci.yml`): `build-test`, `check-deps` (Node + Terraform
+  freshness, mirroring sockerless's check-deps), `terraform` fmt/validate; plus
+  the manual `e2e-aws.yml` skeleton. Added `scripts/check-latest-deps.sh`.
+- Brought all dependencies to **latest** so the freshness gate is green
+  (TS 6, ESLint 10, Vitest 4, Next 16, zod 4, CASL 7, @types/node 25, vite 8).
+- Verified: lint 10/10, build 10/10, **24 tests pass**, freshness gate green.
+
+### Tried
+- **TS 6** dropped automatic `@types/node` discovery under pnpm's isolated
+  layout → `node:`/`Buffer`/`process` unresolved. Fixed by declaring
+  `@types/node` and setting `types: ["node"]` in `core`/`config`/`api-client`.
+- **Vitest 4** failed to start against a stray **vite 5** (`./module-runner`
+  missing). Fixed by adding latest **vite 8** at the workspace root.
+- Kept library `build` as `tsc --noEmit` (typecheck) for the scaffold; Turbo
+  emits harmless "no output files" warnings for those tasks.
+
+### Filed
+- (none)

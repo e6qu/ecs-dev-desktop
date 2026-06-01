@@ -7,31 +7,37 @@
 
 ## Current phase
 
-**Phase 0 — Foundations & repo scaffold** — *not yet started (planning + repo
-bootstrap complete).*
+**Phase 0 — Foundations & repo scaffold** — *scaffold landed; infra resources and
+the live Tier-2 harness remain.*
 
 ## What exists
 
-- Architecture and phased plan were recorded in `PLAN.md` and `AGENTS.md`; core
-  decisions were locked (see `AGENTS.md` §1).
-- The GitHub repo `e6qu/ecs-dev-desktop` was created (public) with the planning +
-  continuity docs, and `main` was protected (PR required, no direct/force push,
-  0 approvals).
-- The local git identity was set to `e6qu` with the GitHub no-reply email; the
-  repo pushes over HTTPS via the `gh` token (no `adrian-marza-monite` SSH path).
-- A **TDD + testability strategy** was defined (`AGENTS.md` §5, `TESTING.md`):
-  - Tier 1 unit/contract; Tier 2 integration on the **sockerless** substrate
-    (sim + bleephub) every PR; Tier 3 real-AWS **manual on `main`**.
-  - `sockerless` was evaluated as the integration substrate; gaps were found
-    (EBS snapshots unimplemented — sockerless **#347**; compute/net metadata-only;
-    no Entra OIDC sim). Tracked under *External blockers* in `BUGS.md`.
-- Project licensed **AGPL-3.0-or-later**.
+- Planning + architecture in `PLAN.md` / `AGENTS.md`; decisions locked.
+- GitHub repo `e6qu/ecs-dev-desktop` (public), `main` protected (PR required).
+- TDD + testability strategy (`AGENTS.md` §5, `TESTING.md`).
+- **Monorepo scaffold (Turborepo + pnpm), all components building/testing in
+  isolation:**
+  - `packages/core` — `StorageProvider` port + filesystem **fake** + reusable
+    **round-trip contract test** + workspace lifecycle state machine.
+  - `packages/config`, `api-contracts`, `authz` (CASL), `auth` (claim→role),
+    `db` (single-table keys), `api-client` (typed, injectable fetch).
+  - `services/reconciler` (idle decision), `services/ssh-gateway` (Teleport
+    principal helper).
+  - `apps/web` — Next.js app with `/api/healthz`.
+  - `infra/terraform` baseline (`versions.tf` + committed provider lock),
+    `infra/images` placeholder, `docker-compose.tier2.yml`.
+- **CI** (`.github/workflows/ci.yml`): `build-test`, `check-deps`
+  (Node + Terraform freshness), `terraform` (fmt/validate). Manual real-AWS
+  tier skeleton (`e2e-aws.yml`, `workflow_dispatch` on `main`).
+- Verified locally: lint 10/10, build 10/10, **24 tests pass**, freshness gate
+  green. All deps on latest (TS 6, ESLint 10, Vitest 4, Next 16, zod 4, CASL 7).
 
 ## What is deployed / working
 
-- Nothing deployed. No application code or AWS infrastructure exists yet.
+- Nothing deployed to AWS. No cloud infrastructure provisioned.
 
 ## Immediate focus
 
-- Confirm the open decisions in `DO_NEXT.md` (DynamoDB; VS Code distro; proxy).
-- File/track the sockerless simulator issues, then begin Phase 0 scaffolding.
+- Land branch-protection required checks + up-to-date gate.
+- Then: real `infra/terraform` resources (needs AWS account/region, `DO_NEXT` #5)
+  and the live Tier-2 sockerless harness.
