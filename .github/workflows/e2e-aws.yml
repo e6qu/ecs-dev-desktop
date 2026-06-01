@@ -1,0 +1,31 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Manual real-AWS tier (see TESTING.md / AGENTS.md §5). Certifies what no
+# simulator can: EBS snapshot durability/latency, real Fargate, real Entra/
+# GitHub federation, IAM enforcement, ACM/DNS, perf, KMS/DR.
+#
+# Triggered manually, only on `main`. Uses GitHub OIDC -> AWS role (no static
+# keys) and MUST auto-teardown even on failure. Wired in later phases.
+name: e2e-aws (manual)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  e2e-aws:
+    name: e2e-aws
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Guard
+        run: |
+          echo "Manual real-AWS e2e tier — skeleton."
+          echo "TODO (gated on DO_NEXT #5 AWS account/region):"
+          echo "  - configure-aws-credentials via OIDC role"
+          echo "  - provision ephemeral env (unique prefix)"
+          echo "  - run EBS snapshot round-trip + federation + IAM + perf suites"
+          echo "  - ALWAYS teardown (trap/always()) + cost budget guardrail"

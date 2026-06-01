@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Tier-2 integration harness (see TESTING.md). Brings up the local substrate the
+# integration tests run against. `pnpm test:integ` will orchestrate this.
+#
+# NOTE: sockerless wiring is pending its published image + EBS snapshot support
+# (sockerless#347). DynamoDB Local is live and usable now.
+
+services:
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
+    ports:
+      - "8000:8000"
+
+  # sockerless:
+  #   image: ghcr.io/e6qu/sockerless-backend-ecs:latest   # pending publish
+  #   environment:
+  #     SOCKERLESS_TEST_TARGET: "sim"
+  #   ports:
+  #     - "3375:3375"   # Docker-compatible REST API
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock

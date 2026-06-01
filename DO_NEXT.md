@@ -7,50 +7,47 @@
 
 ## Open decisions (need the user)
 
-1. **Confirm DynamoDB** as the state store (analysis favors DynamoDB + ElectroDB).
-   *(Default if no objection: DynamoDB.)*
-2. **VS Code distro:** confirm **code-server / OpenVSCode + Open VSX**, or flag
+1. **VS Code distro:** confirm **code-server / OpenVSCode + Open VSX**, or flag
    any **MS-exclusive extensions** users depend on (Pylance, official Remote/C++).
-3. **Identity-aware proxy:** confirm **Pomerium** (vs Authentik / in-house).
-4. **Domain & DNS:** base domain for `*.devbox.<domain>` and DNS/cert owner.
-5. **AWS account/region & data-residency** (gates Terraform baseline + manual
-   `e2e-aws`).
-6. **Heartbeat interval & idle threshold** (scale-to-zero tuning).
-7. **sockerless issues:** confirm filing/commenting (see *Upstream* below) —
-   notably whether an **Entra OIDC sim** is in sockerless's scope (EXT-003).
+2. **Identity-aware proxy:** confirm **Pomerium** (vs Authentik / in-house).
+3. **Domain & DNS:** base domain for `*.devbox.<domain>` and DNS/cert owner.
+4. **AWS account/region & data-residency** — **gates real Terraform resources and
+   the manual `e2e-aws` tier.**
+5. **Heartbeat interval & idle threshold** (scale-to-zero tuning).
+6. **Entra interactive login flow:** verify in Phase 3 whether sockerless covers
+   `/authorize`→login→code (token/JWKS exist per #261/#272); file a precise issue
+   only if an endpoint is missing (EXT-003).
 
 ## Resolved decisions
 
-- **Test substrate:** sockerless (sim + bleephub) primary; LocalStack optional
-  cross-check.
-- **Real-AWS tier:** manual `workflow_dispatch` on `main`.
-- **License:** AGPL-3.0-or-later.
+- State store: **DynamoDB** (single-table + ElectroDB). Test substrate:
+  **sockerless**. Real-AWS tier: **manual on `main`**. License: **AGPL-3.0-or-later**.
+  Repo tooling: **Turborepo + pnpm**. RBAC: **CASL**. Dep policy: **stay on latest**
+  (enforced by `check-deps`).
 
-## Upstream (sockerless) — file/track
+## Next tasks
 
-- [ ] Comment on **sockerless #347** with our requirement: snapshot **data**
-      round-trip fidelity (bytes written to a volume must appear on a volume
-      created from its snapshot) — `ecs-dev-desktop` persistence depends on it.
-- [ ] **Verify in Phase 3** whether sockerless's Entra sim supports the
-      interactive `/authorize`→login→code flow (token endpoint + JWKS already
-      exist per #261/#272). File a precise issue only if an endpoint is missing
-      (EXT-003) — do not assume "no Entra sim exists".
+### Phase 0 — remaining
+- [ ] Add a real **Tier-2 harness**: bring up sockerless + DynamoDB Local via
+      `docker-compose.tier2.yml`, wire `pnpm test:integ` with a first
+      `@edd/db` integration test against DynamoDB Local.
+- [ ] Wire **ElectroDB** entities in `@edd/db` on top of the single-table keys.
+- [ ] `infra/terraform` real baseline (VPC, ECS, ECR, DynamoDB + GSIs, KMS, IAM,
+      remote state) — **blocked on decision #4**.
+- [ ] Flesh out `e2e-aws.yml`: OIDC→AWS role + ephemeral env + auto-teardown.
 
-## Next tasks (Phase 0 — Foundations)
+### Phase 1 (next)
+- [ ] Golden base image (code-server + Teleport/sshd + idle-agent) in
+      `infra/images`; Fargate task def with ECS-managed EBS volume.
+- [ ] Add a **sockerless-backed `StorageProvider` adapter** and run it through the
+      existing contract test (lands when sockerless #347 ships EBS snapshots).
 
-- [ ] Scaffold Turborepo + pnpm workspace; create `packages/config`.
-- [ ] Stub all components so each builds in isolation.
-- [ ] Define the `StorageProvider` **port** + filesystem/loopback **fake** to TDD
-      the snapshot round-trip before sockerless #347 lands.
-- [ ] Stand up the Tier-2 harness: sockerless + DynamoDB Local + Docker, wired to
-      `pnpm test:integ`.
-- [ ] Author `infra/terraform` baseline (VPC, ECS, ECR, DynamoDB + GSIs, KMS,
-      IAM, remote state).
-- [ ] CI: install → lint → typecheck → unit → integration; `terraform plan`.
-- [ ] Manual `e2e-aws` workflow (`workflow_dispatch` on `main`) skeleton with
-      OIDC→AWS role + auto-teardown.
+## Upstream (sockerless)
+
+- [x] Commented on **#347** with our snapshot data-round-trip requirement.
+- [ ] Verify Entra `/authorize` login flow in Phase 3 (EXT-003).
 
 ## Blocked / waiting
 
-- Terraform baseline gated on decision #5 (AWS account/region).
-- Sim-level snapshot round-trip coverage gated on sockerless #347 (EXT-001).
+- Real Terraform + manual `e2e-aws` gated on decision #4 (AWS account/region).
+- Sim-level snapshot round-trip gated on sockerless #347 (EXT-001).
