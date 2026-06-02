@@ -331,3 +331,24 @@ fromSnapshot?}) → {taskId, volumeId}` — the compute layer **creates** the ta
   build 13/13, unit 66, e2e 2.
 - `apps/web` still uses the fakes (the real adapters need a cluster/subnets/role
   that Terraform provides — gated on the AWS account/region decision).
+
+## 2026-06-03 — Mock-free GitHub auth e2e (bleephub)
+
+- Resumed the auth e2e after sockerless PR #385 fixed **#384** (we filed it):
+  bleephub now serves `GET /api/v3/user/teams`, the endpoint our
+  `fetchGithubTeamGroups` needs. Bumped the submodule to `ea8c79d`.
+- Stood up **bleephub** from source in the e2e harness: `infra/sim/bleephub.Dockerfile`
+  (builds `bleephub/cmd` with `-tags noui`, since bleephub ships only an
+  integration-test Dockerfile) + a `bleephub` service in `docker-compose.e2e.yml`;
+  `@edd/config` gained the `bleephub` endpoints.
+- Added **`apps/web/lib/github-auth.e2e.ts`**: a fully **mock-free** GitHub login —
+  OAuth authorization-code flow against bleephub (`authorize?...auto=1` → `code` →
+  form-encoded `access_token`), then our real `normalizeClaims` +
+  `fetchGithubTeamGroups` + `mapClaimsToRole` derive the role from the user's team
+  (`acme/platform-admins` → admin; empty config → viewer). Retires the mock-OIDC
+  stand-in for the GitHub path.
+- `apps/web` gained a `test:e2e` script + `vitest.e2e.config.ts`; the CI `e2e` job
+  already runs `pnpm test:e2e` against the harness. e2e total: 3. lint 14/14,
+  build 13/13, unit 66.
+- **Next:** the Entra path (azure sim auth-code #368) — probe for group claims,
+  file/halt if missing.

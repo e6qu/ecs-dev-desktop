@@ -28,7 +28,8 @@ decisions and upstream simulator fixes — see `DO_NEXT.md`.
   `EDD_DEV_AUTH`). **GitHub org/team → role**: the `read:org` scope + a
   `/user/teams` fetch at sign-in yields `org/team` groups (GitHub OAuth profiles
   carry no teams), matched against `EDD_ADMIN_GROUPS`/`EDD_MEMBER_GROUPS` like
-  Entra groups; endpoint-overridable for the bleephub sim.
+  Entra groups. **Validated mock-free** against the bleephub sim (OAuth-code login
+  → `/user/teams` → role) — `apps/web/lib/github-auth.e2e.ts`.
 - **Portal UI** (`apps/web`): RBAC-gated workspaces grid, create-from-catalog,
   lifecycle actions, admin "all" view.
 - **Reconciler** (`services/reconciler`): idle reconcile pass (`listActive` →
@@ -60,8 +61,10 @@ decisions and upstream simulator fixes — see `DO_NEXT.md`.
 - **Local quality gates**: `pre-commit` (format/type-check/lint/unit/actionlint)
   - commit-msg AI-attribution stripper.
 
-**Verified locally (2026-06-02):** lint 14/14, build 13/13, unit 66 tests, integration
-13, e2e 2 (DynamoDB Local + the from-source sockerless AWS sim, process & container modes).
+**Verified locally (2026-06-03):** lint 14/14, build 13/13, unit 66 tests, integration
+13, e2e 3 (workspace data-fidelity + lifecycle on the container-mode AWS sim;
+GitHub auth via bleephub). Harness: `docker-compose.e2e.yml` (DynamoDB Local +
+container-mode sockerless AWS sim + bleephub).
 
 ## Deployed
 

@@ -46,6 +46,16 @@ export const awsSim = {
   endpoint: `http://${AWS_SIM_HOST}:${AWS_SIM_PORT}`,
 } as const;
 
+const BLEEPHUB_HOST = "127.0.0.1";
+const BLEEPHUB_PORT = 5555;
+
+/** bleephub — the sockerless GitHub server (e2e auth harness). `url` is the OAuth
+ * root (`/login/oauth/*`); `apiUrl` is the REST base (`/api/v3`). */
+export const bleephub = {
+  url: `http://${BLEEPHUB_HOST}:${BLEEPHUB_PORT}`,
+  apiUrl: `http://${BLEEPHUB_HOST}:${BLEEPHUB_PORT}/api/v3`,
+} as const;
+
 /**
  * Runtime environment schema. Components parse `process.env` through this so
  * misconfiguration fails fast at startup rather than at first use.

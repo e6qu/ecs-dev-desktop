@@ -40,9 +40,11 @@ Resolved: DynamoDB + ElectroDB · sockerless substrate · manual real-AWS on `ma
   - [ ] **Teleport/Pomerium in Docker** for SSH/proxy e2e.
   - [ ] wire `apps/web` to the real adapters (needs the cluster/subnets/role from
         Terraform → gated on the AWS account/region decision).
-- **Mock-free auth e2e** (verifiable now): bleephub GitHub + Entra (#362)
-  auth-code flow against the sim (HTTP only) — retires the mock-OIDC Tier-2
-  stand-in. The teams fetcher is already endpoint-overridable for bleephub.
+- **Mock-free auth e2e** — **GitHub done** (`apps/web/lib/github-auth.e2e.ts`
+  against bleephub; sockerless #384 fixed by PR #385). Next: the **Entra** path —
+  drive the azure sim's auth-code flow (#368) and assert `normalizeClaims("entra")`
+  - role mapping from the id token; probe whether the sim issues **group claims**
+    (our role mapping needs them) and file/halt if not.
 - **Playwright e2e** for the portal flows (Tier-2; app + DynamoDB + mock-OIDC or
   `EDD_DEV_AUTH`).
 - Admin **base-image catalog** management, quotas, cost dashboard.
@@ -66,7 +68,8 @@ mock-OIDC covers Tier-2.
 
 **On upstream sockerless:** _nothing — every gap we hit is fixed._ EBS #359/#360
 (PR #361), LB/SG #334/#335 (PR #364), Entra #362 (PR #368), build/docs #366/#367
-(PR #370), real compute **#333** (PR #372), and the control/data-plane split
-**#381** (PR #382) are all resolved; we consume the sim from source (submodule @
-`8a01c62`). The container-mode e2e runs with plain Docker (no KVM/nft needed —
-ECS managed EBS uses Docker named volumes, VPC/Subnet store metadata).
+(PR #370), real compute **#333** (PR #372), control/data-plane split **#381**
+(PR #382), and bleephub `/user/teams` **#384** (PR #385) are all resolved; we
+consume the sim from source (submodule @ `ea8c79d`). The container-mode e2e runs
+with plain Docker (no KVM/nft — ECS managed EBS uses Docker named volumes,
+VPC/Subnet store metadata).

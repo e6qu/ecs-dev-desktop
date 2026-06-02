@@ -15,6 +15,14 @@ container-mode sim.
 
 ## Resolved
 
+**bleephub `/user/teams` missing (resolved 2026-06-03, upstream).** We filed
+[#384](https://github.com/e6qu/sockerless/issues/384): bleephub served org-scoped
+teams but not `GET /api/v3/user/teams` (404) — the endpoint our
+`fetchGithubTeamGroups` calls — blocking the mock-free GitHub auth e2e. Fixed by
+PR #385 (`handleListAuthUserTeams`). The GitHub auth e2e now passes against
+bleephub. (Aside also noted there: bleephub ships only an integration-test
+Dockerfile; we build the server from `bleephub/cmd` with `-tags noui`.)
+
 **EXT-005 — control/data-plane coupling (resolved 2026-06-02, upstream).** We
 filed [#381](https://github.com/e6qu/sockerless/issues/381): a containerized sim
 couldn't share managed-EBS volume bytes with the sibling task containers it
