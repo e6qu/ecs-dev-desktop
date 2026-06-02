@@ -11,15 +11,12 @@ _None._
 
 **None block us.** A mock-free e2e audit (2026-06-02) confirmed sockerless already
 provides everything our full e2e needs — GitHub OAuth + org/teams (bleephub),
-Entra auth-code (#362), ECS real container exec, **ECS-managed-EBS data fidelity**
-(RunTask bind-mounts the volume host dir; `CreateSnapshot` copies it →
-write→snapshot→restore→read works), EBS lifecycle, LB/SG/VPC. Per `AGENTS.md`
-§6.8 we file gaps upstream rather than work around them.
-
-Tracked, **non-blocking**: [#378](https://github.com/e6qu/sockerless/issues/378) —
-EC2 `AttachVolume` is metadata-only (no data wiring into the Firecracker guest),
-inconsistent with the working ECS-managed-EBS path. Doesn't block us (we use
-managed EBS).
+Entra auth-code (#362), ECS real container exec, EBS **data fidelity on both
+models** — ECS-managed EBS (RunTask bind-mounts the volume host dir) and EC2 +
+`AttachVolume` (#378/PR #379 wires it into the Firecracker guest) — with
+`CreateSnapshot` capturing writes (write→snapshot→restore→read works), EBS
+lifecycle, LB/SG/VPC. Per `AGENTS.md` §6.8 we file gaps upstream rather than work
+around them.
 
 Caveat (env, not a sockerless gap): real container/VM execution needs a **runtime**
 — ECS task exec needs Docker, EC2/Firecracker needs KVM. Our default Tier-2
@@ -28,6 +25,14 @@ DynamoDB, EC2 metadata); mock-free execution + data fidelity need a **Docker/KVM
 e2e CI job**, not our default Tier-2.
 
 ## Resolved
+
+**#378 — EC2 `AttachVolume` was metadata-only (resolved 2026-06-02, upstream).**
+We filed it: an attached EBS volume wasn't wired into the Firecracker guest, so
+guest writes didn't persist/snapshot (inconsistent with the ECS-managed-EBS path).
+Fixed by PR #379 (sparse block-image backing; `AttachVolume`/`DetachVolume`/
+`ModifyVolume` patch the running guest's drives; snapshot/restore data round-trip
+covered by the Firecracker smoke). Both EBS models now have data fidelity. (Never
+blocked us — we use managed EBS.)
 
 **EXT-002 — compute execution metadata-only (resolved 2026-06-02, upstream).**
 sockerless was a Docker-API daemon whose compute (EC2/ECS) was metadata-only, so

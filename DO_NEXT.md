@@ -35,8 +35,9 @@ Resolved: DynamoDB + ElectroDB · sockerless substrate · manual real-AWS on `ma
   real GitHub/Entra login, ECS exec, and ECS-managed-EBS data fidelity. Gated on
   **our** infra, not sockerless: (a) a **Docker/KVM-capable e2e CI job** (the sim
   needs a real runtime; `SIM_RUNTIME=process` won't run containers), (b) the real
-  ECS `ComputeProvider` using **managed EBS** (not pre-create + AttachVolume — see
-  #378), (c) Teleport/Pomerium in Docker for SSH/proxy.
+  ECS `ComputeProvider` (either EBS model now has sim data fidelity — managed EBS,
+  or pre-create + AttachVolume now that #378/PR #379 wired it), (c)
+  Teleport/Pomerium in Docker for SSH/proxy.
 - **Playwright e2e** for the portal flows (Tier-2; app + DynamoDB + mock-OIDC or
   `EDD_DEV_AUTH`).
 - Admin **base-image catalog** management, quotas, cost dashboard.

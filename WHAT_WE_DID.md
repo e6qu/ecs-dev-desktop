@@ -236,3 +236,6 @@ self`); `readFile`/`writeFile` throw — volume _file_ I/O needs a running task
   EC2 `AttachVolume` is metadata-only — attached EBS isn't wired into the
   Firecracker guest, so guest writes don't persist/snapshot (inconsistent with the
   working ECS-managed-EBS path). We use managed EBS, so it doesn't block us.
+  **Resolved same day by PR #379** (EBS wired into Firecracker guests via sparse
+  block images; attach/detach/resize patch the running guest; snapshot/restore
+  round-trip covered) — both EBS models now have sim data fidelity.
