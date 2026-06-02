@@ -12,21 +12,29 @@ _None._
 Simulator gaps that limit Tier-2 (integration) coverage. Not bugs in our code.
 Per `AGENTS.md` §6.8 we file these upstream rather than work around them.
 
-**EXT-002 — compute/LB/SG still metadata-only.** #336 (VPC/ENI) landed; still
-open: #333 (compute → microVMs), #334 (LB traffic), #335 (SG enforcement). Only
-blocks sim-level Fargate _execution_ and SG/LB behaviour — real behaviour is the
-manual real-AWS tier regardless. (Verify "closed" per-issue: EKS #348 / SES #349
-were `not_planned`.)
+**EXT-002 — compute/networking metadata-only.** #336 (VPC/ENI) landed; still
+**open**: #332 (umbrella), #333 (compute → real Firecracker microVMs), #334 (LB
+traffic + health), #335 (SG/nftables enforcement). This is the deeper blocker —
+sockerless is a Docker-API daemon that runs real containers, and its compute is
+not yet backed by real execution, so we cannot actually run a workspace task or
+prove a mounted volume's data survives a snapshot **at the sim level**. That
+fidelity is the manual real-AWS tier regardless. (Verify "closed" per-issue: EKS
+#348 / SES #349 were `not_planned`.)
 
-**EXT-003 — Entra interactive login unverified.** Token endpoint + JWKS exist
-(#261, #272); the interactive `/authorize`→login→code flow an Auth.js RP needs is
-unverified. Mock-OIDC covers Tier-2; real Entra is Tier-3. Verify in Phase 3 and
-file a precise issue only if a specific endpoint is missing.
+**EXT-003 — Entra interactive `/authorize` flow missing
+([#362](https://github.com/e6qu/sockerless/issues/362), we filed).** Verified in
+source: `simulators/azure/auth.go` serves the token endpoint + JWKS (#261, #272)
+and its discovery doc advertises `authorization_endpoint`, but no GET
+`/oauth2/v2.0/authorize` handler exists, so an Auth.js OIDC relying party can't
+complete interactive login. Mock-OIDC covers Tier-2; real Entra is Tier-3.
 
-**EXT-004 — no consumable sockerless image.** Upstream has a
-`publish-container-images` workflow but no usable GHCR image yet, so Tier-2 runs
-**DynamoDB Local only**; wiring the sockerless backend (and the EXT-001 adapter)
-waits on a published image.
+**EXT-004 — no consumable/pinnable sockerless distribution
+([#363](https://github.com/e6qu/sockerless/issues/363), we filed).** The
+`publish-container-images` workflow only fires on `v*` tags (or manual dispatch)
+and no `v*` tag exists (only a `wasm` pre-release), so no GHCR images are
+published to pin. Tier-2 stays **DynamoDB Local only** until a versioned release
+ships the simulator images (esp. `sockerless-simulator-aws`). This is the
+"consume sockerless as a whole" gap, broader than any single cloud-API stub.
 
 ## Resolved
 

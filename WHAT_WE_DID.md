@@ -137,6 +137,17 @@
 - **Upstream:** sockerless **#359** (EBS restore) and **#360** (`DeleteItem`
   returns) were fixed by PR #361; EXT-001 resolved. The endpoint-only EBS adapter
   is now API-unblocked, gated only by EXT-004 (a runnable sim image) and AWS.
+- **Audited the remaining sockerless blockers and filed the gaps that lacked
+  issues** (existing EXT-002 #332–#335 were already open):
+  - **#362** (EXT-003) — Azure Entra sim advertises `authorization_endpoint` in
+    discovery but implements no GET `/oauth2/v2.0/authorize`; verified in
+    `simulators/azure/auth.go` (only token + JWKS exist), so an OIDC RP can't
+    complete interactive login.
+  - **#363** (EXT-004) — no consumable/pinnable distribution: the
+    `publish-container-images` workflow only fires on `v*` tags and none exist
+    (only a `wasm` pre-release), so no GHCR images are publishable to pin. Noted
+    the broader "consume sockerless as a whole" gap (the daemon, not just the
+    per-cloud simulators).
 - **Stopped at the e2e boundary** (per the user): GC/snapshot logic is green on
   fakes + DynamoDB Local; running it against the real EBS sim / cron is the next,
   still-gated step.

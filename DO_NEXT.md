@@ -44,9 +44,12 @@ routing + ACM.
 **On real IdP credentials:** end-to-end GitHub/Entra login (Tier-3 manual);
 mock-OIDC covers Tier-2.
 
-**On upstream sockerless (see `BUGS.md`):** wiring the sockerless backend into
-Tier-2 (EXT-004, no runnable image — Tier-2 is DynamoDB Local only); sim-level
-Fargate execution + SG/LB (EXT-002); verify Entra `/authorize` in Phase 3
-(EXT-003). _EBS snapshot→restore (EXT-001 / #359) and `DeleteItem` returns (#360)
-were fixed upstream — the EBS lifecycle `StorageProvider` adapter is now
-API-unblocked, gated only by EXT-004 (to run it) and AWS (data-fidelity e2e)._
+**On upstream sockerless (see `BUGS.md`):** consuming the sim in Tier-2 needs a
+published release (EXT-004 / [#363](https://github.com/e6qu/sockerless/issues/363)
+— Tier-2 is DynamoDB Local only meanwhile); real workspace execution + volume
+data-fidelity at the sim level need real compute (EXT-002 / #332–#335); Entra
+interactive login needs the `/authorize` endpoint (EXT-003 /
+[#362](https://github.com/e6qu/sockerless/issues/362)). _EBS restore (#359) and
+`DeleteItem` returns (#360) were fixed by PR #361 — the EBS lifecycle
+`StorageProvider` adapter is API-unblocked, gated only by EXT-004 (to run it) and
+AWS (data-fidelity e2e)._
