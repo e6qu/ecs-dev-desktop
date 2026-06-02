@@ -8,7 +8,9 @@ COPY third_party/sockerless/bleephub/ ./
 RUN GOWORK=off CGO_ENABLED=0 go build -tags noui -o /bleephub ./cmd
 
 FROM alpine:3.20
-RUN apk add --no-cache wget
+RUN apk add --no-cache wget \
+  && adduser -D -u 10001 bleephub
 COPY --from=builder /bleephub /usr/local/bin/bleephub
+USER bleephub
 EXPOSE 5555
 ENTRYPOINT ["bleephub", "-addr", ":5555"]
