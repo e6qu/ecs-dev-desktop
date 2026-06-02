@@ -52,8 +52,8 @@ Resolved: DynamoDB + ElectroDB · sockerless substrate · manual real-AWS on `ma
   `EDD_DEV_AUTH`).
 - Admin **base-image catalog** management, quotas, cost dashboard.
 - **idle-agent heartbeat** shape (editor/terminal/SSH → `lastActivity`).
-- GitHub org/team → role (teams API call in the jwt callback; GitHub groups are
-  empty today).
+- [x] GitHub org/team → role — `read:org` scope + `/user/teams` fetch in the jwt
+      callback yields `org/team` groups; endpoint-overridable for bleephub. Done.
 - Broader unit/integration coverage.
 
 ## Blocked

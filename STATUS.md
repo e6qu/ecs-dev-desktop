@@ -25,7 +25,10 @@ decisions and upstream simulator fixes — see `DO_NEXT.md`.
   `StorageProvider` owns snapshots + restore-lifecycle + GC on that volume id.
 - **Auth** (`apps/web` + `@edd/auth`): Auth.js (GitHub + Entra) JWT sessions;
   claim→role mapping; `getPrincipal` from session (dev-header shim behind
-  `EDD_DEV_AUTH`).
+  `EDD_DEV_AUTH`). **GitHub org/team → role**: the `read:org` scope + a
+  `/user/teams` fetch at sign-in yields `org/team` groups (GitHub OAuth profiles
+  carry no teams), matched against `EDD_ADMIN_GROUPS`/`EDD_MEMBER_GROUPS` like
+  Entra groups; endpoint-overridable for the bleephub sim.
 - **Portal UI** (`apps/web`): RBAC-gated workspaces grid, create-from-catalog,
   lifecycle actions, admin "all" view.
 - **Reconciler** (`services/reconciler`): idle reconcile pass (`listActive` →
@@ -46,7 +49,7 @@ decisions and upstream simulator fixes — see `DO_NEXT.md`.
 - **Local quality gates**: `pre-commit` (format/type-check/lint/unit/actionlint)
   - commit-msg AI-attribution stripper.
 
-**Verified locally (2026-06-02):** lint 12/12, build 12/12, unit 57 tests, integration
+**Verified locally (2026-06-02):** lint 12/12, build 12/12, unit 64 tests, integration
 13 tests (DynamoDB Local + the from-source sockerless AWS sim).
 
 ## Deployed

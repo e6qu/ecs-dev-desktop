@@ -16,6 +16,7 @@
     "@edd/api-contracts": "workspace:*",
     "@edd/auth": "workspace:*",
     "@edd/authz": "workspace:*",
+    "@edd/config": "workspace:*",
     "@edd/control-plane": "workspace:*",
     "@edd/core": "workspace:*",
     "@edd/db": "workspace:*",

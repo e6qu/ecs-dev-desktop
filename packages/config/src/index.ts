@@ -9,6 +9,10 @@ import { z } from "zod";
 export const DEFAULT_AWS_REGION = "us-east-1";
 export const DEFAULT_DYNAMODB_TABLE = "ecs-dev-desktop";
 
+/** GitHub REST API base. Override (env) points at GitHub Enterprise or the
+ * bleephub simulator's `/api/v3`; default is public GitHub. */
+export const DEFAULT_GITHUB_API_URL = "https://api.github.com";
+
 const DYNAMODB_LOCAL_HOST = "127.0.0.1";
 const DYNAMODB_LOCAL_PORT = 8000;
 

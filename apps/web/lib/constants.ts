@@ -17,5 +17,8 @@ export const ADMIN_GROUPS_ENV = "EDD_ADMIN_GROUPS";
 /** Comma-separated IdP group ids/slugs that grant the member role. */
 export const MEMBER_GROUPS_ENV = "EDD_MEMBER_GROUPS";
 
+/** Override the GitHub REST API base URL (GitHub Enterprise, or the bleephub sim). */
+export const GITHUB_API_URL_ENV = "AUTH_GITHUB_API_URL";
+
 /** Curated golden base-image catalog (admin-managed catalog lands in a later phase). */
 export const BASE_IMAGES = ["golden/node:20", "golden/go:1.22", "golden/python:3.12"] as const;
