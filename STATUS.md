@@ -60,11 +60,14 @@ decisions and upstream simulator fixes — see `DO_NEXT.md`.
   all sit behind it.
 - **Domain/DNS** (#2) blocks the auth proxy + workspace routing.
 - Sockerless: we **consume the AWS sim from source** (submodule @ `41480ae`,
-  upstream `simulators/aws/Dockerfile`). **No sockerless gaps block us anymore** —
-  EBS lifecycle (#359/#360), LB/SG (#334/#335), Entra `/authorize` (#362),
-  build-context/`SIM_RUNTIME` docs (#366/#367), and now **real compute #333**
-  (Firecracker microVMs, PR #372) are all fixed. Caveat: real compute needs KVM,
-  so sim-level workspace _execution_ + volume _data_ fidelity is a KVM-CI /
-  real-AWS concern, not our default `SIM_RUNTIME=process` Tier-2.
-- **Available now (decision-free):** admin base-image catalog, Playwright e2e,
-  idle-agent heartbeat shape.
+  upstream `simulators/aws/Dockerfile`). Many gaps fixed upstream — EBS lifecycle
+  (#359/#360), LB/SG (#334/#335), Entra `/authorize` (#362), build/docs
+  (#366/#367), real compute #333 (PR #372). **The one open blocker is #381**
+  (EXT-005): control/data-plane coupling stops the mock-free workspace e2e (below).
+- **Mock-free workspace e2e:** foundation merged (managed-EBS `ComputeProvider`);
+  container-mode e2e harness added. **Blocked on sockerless #381** (control/
+  data-plane coupling: containerized sim can't share EBS bytes with sibling task
+  containers; `CreateVpc` needs `nft`/`CAP_NET_ADMIN`/`CAP_SYS_ADMIN`). Needs #381
+  - a Linux host with those caps. See `BUGS.md` EXT-005.
+- **Available now (decision-free):** mock-free **auth** e2e (bleephub + Entra, not
+  #381-blocked), admin base-image catalog, Playwright e2e, idle-agent heartbeat.

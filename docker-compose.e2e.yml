@@ -1,0 +1,29 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Tier-2.5 e2e harness: the sockerless AWS sim in CONTAINER mode (it executes real
+# task containers, unlike the process-mode Tier-2 sim) so we can prove the full
+# workspace data-fidelity loop. Needs a container runtime: the Docker/podman
+# socket mounted + --privileged. Consumed endpoint-only (AGENTS.md §6.8).
+#
+# Built from the pinned third_party/sockerless submodule (same image as Tier-2).
+
+services:
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
+    ports:
+      - "8000:8000"
+
+  sockerless-aws-exec:
+    build:
+      context: ./third_party/sockerless/simulators
+      dockerfile: aws/Dockerfile
+    privileged: true
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "4566:4566"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4566/"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
