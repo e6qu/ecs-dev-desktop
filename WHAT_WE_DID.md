@@ -256,5 +256,27 @@ fromSnapshot?}) → {taskId, volumeId}` — the compute layer **creates** the ta
   Updated every fake construction site. Foundation only — fully green on fakes +
   the from-source sim (lint 12/12, build 12/12, unit 57, integration 15).
 - Verified the **container-mode sim runs locally** (`--privileged` + the
-  Docker/podman socket → health 200), so the data-fidelity e2e will be locally
-  verifiable. Next: the real `EcsComputeProvider` + a container-mode e2e job.
+  Docker/podman socket → health 200). Next: the real `EcsComputeProvider` + a
+  container-mode e2e job.
+
+## 2026-06-02 — Mock-free e2e attempt → filed control/data-plane bug (#381)
+
+- Added the container-mode e2e harness (`docker-compose.e2e.yml`: sim with
+  `--privileged` + the Docker socket so it executes real task containers). It
+  boots; plain (no-volume) ECS tasks **exec to exit 0**.
+- But running the actual workspace loop surfaced a hard **control/data-plane
+  coupling** in the sim, which the user flagged and we **filed as
+  [#381](https://github.com/e6qu/sockerless/issues/381)** (EXT-005):
+  - ECS **managed-EBS task exits 1** — the sim stores volume bytes on its _own_
+    filesystem (`HostPath`) and launches task containers as **siblings** via the
+    host socket, so their bind-mount can't reach the data. Mounting an identical
+    host path fails on macOS/podman (`mkdir /sim-ebs: operation not permitted`).
+  - **`CreateVpc` hard-fails in _both_ runtime modes** without data-plane caps
+    (`missing … command:nft, cap:CAP_NET_ADMIN, cap:CAP_SYS_ADMIN`). So `awsvpc`
+    Fargate tasks can't run, and a §6.8-clean `EcsComputeProvider` (must use
+    `awsvpc`) can't be verified, on this box.
+- **Decision:** the mock-free _workspace_ e2e is blocked on #381 + a Linux host
+  with the networking caps. Did **not** ship unverified adapter code (discipline).
+  The control-plane lifecycle (DynamoDB + EBS create/snapshot/restore/GC) remains
+  fully green in process-mode Tier-2. The mock-free **auth** e2e (bleephub +
+  Entra, HTTP-only) is unblocked and a good alternative meanwhile.

@@ -31,17 +31,23 @@ Resolved: DynamoDB + ElectroDB · sockerless substrate · manual real-AWS on `ma
   (now wired in Tier-2) to broaden the AWS API surface beyond DynamoDB Local.
 - [x] Wired `Ec2StorageProvider` GC into the reconciler against the sim (with
       managed-resource tagging so GC never touches unmanaged EBS) — verified.
-- **Mock-free workspace e2e** (in progress). Foundation done: the `ComputeProvider`
-  port + control-plane flow now use the **Fargate managed-EBS** model. Next:
-  - [ ] real **`EcsComputeProvider`** (ECS RunTask with managed-EBS volume config + snapshot restore; DescribeTasks for the volume id/status; StopTask).
-  - [ ] a **container-mode sim e2e** running the full loop (create → task writes a
-        file → stop/snapshot → start/restore → file present). The sim runs locally
-        in container mode with `--privileged` + the Docker/podman socket
-        (verified); set it up as a dedicated e2e compose + CI job (not the default
-        `SIM_RUNTIME=process` Tier-2).
+- **Mock-free workspace e2e** — **blocked on sockerless #381** (EXT-005). Foundation
+  done (`ComputeProvider` + flow on the managed-EBS model); the container-mode e2e
+  harness exists (`docker-compose.e2e.yml`, verified to boot). But running the loop
+  surfaced the control/data-plane coupling: the containerized sim can't share EBS
+  volume bytes with the sibling task containers it launches, and `CreateVpc` needs
+  host caps (`nft`/`CAP_NET_ADMIN`/`CAP_SYS_ADMIN`) absent on macOS/podman. Gated
+  next steps, once #381 lands (+ a Linux host with those caps):
+  - [ ] real **`EcsComputeProvider`** (ECS RunTask managed-EBS + snapshot restore;
+        DescribeTasks for the volume id; StopTask) — §6.8-clean (`awsvpc`, no
+        sim-special-casing), so it needs a networking-capable host to verify.
+  - [ ] the container-mode data-fidelity e2e (write → stop/snapshot → start/restore
+        → file present, asserted via task exit code).
   - [ ] Teleport/Pomerium in Docker for SSH/proxy e2e.
-        Sockerless itself is ready (GitHub/Entra login, ECS exec, managed-EBS data
-        fidelity all present) — the remaining work is ours.
+- **Mock-free auth e2e** (NOT blocked — verifiable now): bleephub GitHub +
+  Entra (#362) auth-code flow against the process-mode sim (HTTP only, no runtime
+  caps) — retires the mock-OIDC Tier-2 stand-in. A good alternative while #381 is
+  open.
 - **Playwright e2e** for the portal flows (Tier-2; app + DynamoDB + mock-OIDC or
   `EDD_DEV_AUTH`).
 - Admin **base-image catalog** management, quotas, cost dashboard.

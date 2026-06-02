@@ -66,5 +66,10 @@ decisions and upstream simulator fixes — see `DO_NEXT.md`.
   (Firecracker microVMs, PR #372) are all fixed. Caveat: real compute needs KVM,
   so sim-level workspace _execution_ + volume _data_ fidelity is a KVM-CI /
   real-AWS concern, not our default `SIM_RUNTIME=process` Tier-2.
-- **Available now (decision-free):** admin base-image catalog, Playwright e2e,
-  idle-agent heartbeat shape.
+- **Mock-free workspace e2e:** foundation merged (managed-EBS `ComputeProvider`);
+  container-mode e2e harness added. **Blocked on sockerless #381** (control/
+  data-plane coupling: containerized sim can't share EBS bytes with sibling task
+  containers; `CreateVpc` needs `nft`/`CAP_NET_ADMIN`/`CAP_SYS_ADMIN`). Needs #381
+  - a Linux host with those caps. See `BUGS.md` EXT-005.
+- **Available now (decision-free):** mock-free **auth** e2e (bleephub + Entra, not
+  #381-blocked), admin base-image catalog, Playwright e2e, idle-agent heartbeat.
