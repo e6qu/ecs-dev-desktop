@@ -21,13 +21,6 @@ run a workspace task or prove a mounted volume's _file_ data survives a snapshot
 SG #335 were resolved by PR #364. (Verify "closed" per-issue: EKS #348 / SES #349
 were `not_planned`.)
 
-**EXT-003 — Entra interactive `/authorize` flow missing
-([#362](https://github.com/e6qu/sockerless/issues/362), we filed).** Verified in
-source: `simulators/azure/auth.go` serves the token endpoint + JWKS (#261, #272)
-and its discovery doc advertises `authorization_endpoint`, but no GET
-`/oauth2/v2.0/authorize` handler exists, so an Auth.js OIDC relying party can't
-complete interactive login. Mock-OIDC covers Tier-2; real Entra is Tier-3.
-
 **EXT-004 — from-source build/run friction (we filed, non-blocking).** We
 consume sockerless **from source** (pinned submodule), so no release is needed —
 [#363](https://github.com/e6qu/sockerless/issues/363) (cut a release) was closed.
@@ -40,6 +33,15 @@ and **[#367](https://github.com/e6qu/sockerless/issues/367)** (the API-only
 container runtime). Neither blocks us now.
 
 ## Resolved
+
+**EXT-003 — Entra interactive `/authorize` flow (resolved 2026-06-02, upstream).**
+We filed [#362](https://github.com/e6qu/sockerless/issues/362): `simulators/azure/auth.go`
+advertised `authorization_endpoint` in discovery but served no GET
+`/oauth2/v2.0/authorize`, so an OIDC relying party couldn't complete interactive
+login. Fixed by sockerless PR #368 (auth-code flow with PKCE, state, response
+modes, and RS256 id/access/refresh tokens). Entra interactive login is now
+integration-testable against the from-source sim once the submodule is bumped to
+include #368.
 
 **EXT-001 — EBS snapshot→restore broken (resolved 2026-06-02, upstream).** We
 filed [#359](https://github.com/e6qu/sockerless/issues/359): EBS snapshots never

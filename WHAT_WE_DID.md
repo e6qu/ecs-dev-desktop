@@ -178,3 +178,12 @@ self`); `readFile`/`writeFile` throw — volume _file_ I/O needs a running task
     sim otherwise FATALs "Install Docker or Podman".
 - Net remaining sockerless blockers for us: **#333** (real compute → workspace
   execution + volume data fidelity at sim level) and **#362** (Entra `/authorize`).
+
+## 2026-06-02 — sockerless #362 resolved (Entra auth-code)
+
+- sockerless PR #368 implemented the Azure Entra **authorization-code flow** (GET
+  `/oauth2/v2.0/authorize`, PKCE, state/response-modes, RS256 id/access/refresh) —
+  **#362 closed**, EXT-003 resolved. Entra interactive login is now
+  integration-testable against the from-source sim (bump the submodule past #368
+  - add an OIDC auth-code test). **#333** (compute execution) is now our sole
+    remaining functional sockerless blocker; #366/#367 (build/doc) stay open.

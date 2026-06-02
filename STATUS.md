@@ -57,9 +57,10 @@ decisions and upstream simulator fixes — see `DO_NEXT.md`.
   all sit behind it.
 - **Domain/DNS** (#2) blocks the auth proxy + workspace routing.
 - Sockerless: we now **consume the AWS sim from source** (no release awaited —
-  #363 closed). The EBS lifecycle works against it (#359/#360 fixed by PR #361;
-  #334/#335 by PR #364). Still open and relevant: **#333** (real compute — gates
-  workspace execution + volume _data_ fidelity at the sim level), **#362** (Entra
-  `/authorize`), plus build/doc fixes **#366**/**#367** we filed while wiring it.
+  #363 closed). EBS lifecycle (#359/#360 via PR #361), LB/SG (#334/#335 via PR
+  #364), and Entra `/authorize` (#362 via PR #368) all work. The **one remaining
+  functional blocker** is **#333** (real compute — gates workspace execution +
+  volume _data_ fidelity at the sim level); build/doc fixes **#366**/**#367** we
+  filed are still open and non-blocking.
 - **Available now (decision-free):** admin base-image catalog, Playwright e2e,
   idle-agent heartbeat shape.
