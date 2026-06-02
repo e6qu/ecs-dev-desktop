@@ -8,7 +8,7 @@
     "test:e2e": "vitest run --config vitest.e2e.config.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-ecs": "^3.1057.0",
+    "@aws-sdk/client-ecs": "^3.1058.0",
     "@edd/config": "workspace:*",
     "@edd/core": "workspace:*",
     "@edd/storage-ec2": "workspace:*"
