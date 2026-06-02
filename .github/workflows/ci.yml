@@ -50,6 +50,26 @@ jobs:
       - if: always()
         run: docker compose -f docker-compose.tier2.yml down
 
+  e2e:
+    name: e2e
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          submodules: recursive # third_party/sockerless — the sim is built from source
+      - uses: pnpm/action-setup@v6.0.8
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - name: Build & start the CONTAINER-MODE sim (executes real task containers)
+        run: docker compose -f docker-compose.e2e.yml up -d --build --wait sockerless-aws-exec
+      - run: pnpm test:e2e
+      - if: always()
+        run: docker compose -f docker-compose.e2e.yml down
+
   check-deps:
     name: check-deps
     runs-on: ubuntu-latest

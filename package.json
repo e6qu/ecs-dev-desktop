@@ -10,6 +10,7 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "test:integ": "turbo run test:integ",
+    "test:e2e": "turbo run test:e2e",
     "check-deps": "bash scripts/check-latest-deps.sh"
   },
   "devDependencies": {
@@ -19,7 +20,7 @@
     "eslint-config-prettier": "^10.1.8",
     "turbo": "^2.9.16",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.60.0",
+    "typescript-eslint": "^8.60.1",
     "vite": "^8.0.16",
     "vitest": "^4.1.8"
   }

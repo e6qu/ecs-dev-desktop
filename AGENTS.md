@@ -113,11 +113,12 @@ Per task: read them first → do the work → update them (past tense at PR clos
 TDD; **ports-and-adapters** (every external dependency has a fake + a real
 adapter). Detailed tooling in [`TESTING.md`](./TESTING.md).
 
-| Tier            | Runs                         | Backed by                                             |
-| --------------- | ---------------------------- | ----------------------------------------------------- |
-| unit / contract | every commit                 | pure core + fakes                                     |
-| integration     | every PR                     | DynamoDB Local, sockerless sim, mock-OIDC, Playwright |
-| `e2e-aws`       | manual (`workflow_dispatch`) | real AWS account/region + real IdP                    |
+| Tier            | Runs                         | Backed by                                                                                                 |
+| --------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------- |
+| unit / contract | every commit                 | pure core + fakes                                                                                         |
+| integration     | every PR                     | DynamoDB Local + the from-source sockerless sim (`SIM_RUNTIME=process`, API surface)                      |
+| `e2e`           | every PR                     | the **container-mode** sockerless sim — executes real task containers (full workspace data-fidelity loop) |
+| `e2e-aws`       | manual (`workflow_dispatch`) | real AWS account/region + real IdP                                                                        |
 
 `e2e-aws` covers only what simulators **cannot**: EBS data durability/latency,
 real Fargate/ENI/cold-start, perf & 200+ load, real GitHub/Entra federation,

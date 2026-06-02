@@ -293,3 +293,22 @@ fromSnapshot?}) → {taskId, volumeId}` — the compute layer **creates** the ta
   downgrade a role — §6.5). Base URL is endpoint-overridable (`AUTH_GITHUB_API_URL`,
   default public GitHub) so it can target the bleephub sim. Unit-tested (7).
 - Not #381-blocked (auth is HTTP-only). lint 12/12, build 12/12, unit 64.
+
+## 2026-06-02 — Mock-free workspace e2e works (sockerless #381 fixed by #382)
+
+- sockerless PR #382 resolved the control/data-plane coupling (#381 / EXT-005):
+  ECS managed EBS now uses Docker **named volumes** (daemon-managed → sibling task
+  containers mount them regardless of where the sim runs), and `CreateVpc`/
+  `CreateSubnet` store metadata unconditionally (real netns best-effort). Bumped
+  the submodule to `8a01c62`.
+- **Re-ran the loop → data fidelity PROVEN**: a task writes a file to its
+  managed-EBS volume, snapshot via `Ec2StorageProvider`, a new task hydrates from
+  the snapshot and finds the marker (container exit 0). No `nft`/KVM needed —
+  plain Docker + `network-mode none` is enough for the storage thesis.
+- Added **`packages/e2e`** (`@edd/e2e`): the data-fidelity loop as a vitest e2e
+  (`pnpm test:e2e`) against the **container-mode** sim (`docker-compose.e2e.yml`),
+  plus a CI **`e2e`** job (checkout submodules → build+run the container-mode sim →
+  `pnpm test:e2e`). Verified locally green.
+- Net: the mock-free _workspace_ thesis (stateful, snapshottable workspaces) is
+  validated end-to-end on the sim. Next: drive it through `WorkspaceService` via a
+  real `EcsComputeProvider` (product flow, not just the SDK loop).
