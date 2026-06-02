@@ -30,15 +30,21 @@ decisions and upstream simulator fixes — see `DO_NEXT.md`.
   (`selectDueForSnapshot`), and **orphan volume/snapshot GC** (`selectOrphan*` +
   storage enumeration) via a `ReconcilerService` port. Decision logic is pure
   `@edd/core`; the cron _runner_ that invokes a sweep needs AWS.
-- **Tier-2 harness**: `docker-compose.tier2.yml` (DynamoDB Local) + `@edd/db`
-  ElectroDB entity (single table, `byOwner`/`byState` GSIs).
+- **Storage adapter** (`packages/storage-ec2`): real EBS `StorageProvider` over
+  the EC2 API (`Ec2StorageProvider`) — endpoint-only, identical against the sim or
+  real AWS; lifecycle (create/snapshot/restore/delete/enumerate) works, file I/O
+  deferred to the compute layer (sockerless #333).
+- **Tier-2 harness**: `docker-compose.tier2.yml` — DynamoDB Local + the
+  **sockerless AWS simulator built from source** (`third_party/sockerless`
+  submodule, `SIM_RUNTIME=process`). `@edd/db` ElectroDB entity (single table,
+  `byOwner`/`byState` GSIs).
 - **CI**: `build-test`, `integration`, `check-deps`, `terraform`, `shellcheck`
   (ubuntu+macOS), `sast` (Semgrep), `vuln-scan` (Trivy). Manual `e2e-aws` skeleton.
 - **Local quality gates**: `pre-commit` (format/type-check/lint/unit/actionlint)
   - commit-msg AI-attribution stripper.
 
-**Verified locally (2026-06-02):** lint 11/11, build 11/11, unit 56 tests, integration
-12 tests / 4 files (DynamoDB Local).
+**Verified locally (2026-06-02):** lint 12/12, build 12/12, unit 57 tests, integration
+14 tests (DynamoDB Local + the from-source sockerless AWS sim).
 
 ## Deployed
 
@@ -46,13 +52,14 @@ decisions and upstream simulator fixes — see `DO_NEXT.md`.
 
 ## Immediate focus
 
-- **AWS account/region** (`DO_NEXT` #4) is the top blocker: real Terraform, Phase
+- **AWS account/region** (`DO_NEXT` #1) is the top blocker: real Terraform, Phase
   1 (Fargate + EBS), Phase 4 (SSH), Phase 7, the reconciler cron, and `e2e-aws`
   all sit behind it.
-- **Domain/DNS** (#3) blocks the auth proxy + workspace routing.
-- Sockerless **#359** (EBS restore) + **#360** (DynamoDB `DeleteItem` returns)
-  were **fixed upstream** (PR #361). The EBS lifecycle `StorageProvider` adapter
-  is now API-unblocked; wiring it into Tier-2 still waits on a runnable sockerless
-  image (`BUGS.md` EXT-004), and compute-backed data fidelity needs AWS.
+- **Domain/DNS** (#2) blocks the auth proxy + workspace routing.
+- Sockerless: we now **consume the AWS sim from source** (no release awaited —
+  #363 closed). The EBS lifecycle works against it (#359/#360 fixed by PR #361;
+  #334/#335 by PR #364). Still open and relevant: **#333** (real compute — gates
+  workspace execution + volume _data_ fidelity at the sim level), **#362** (Entra
+  `/authorize`), plus build/doc fixes **#366**/**#367** we filed while wiring it.
 - **Available now (decision-free):** admin base-image catalog, Playwright e2e,
   idle-agent heartbeat shape.

@@ -1,0 +1,11 @@
+# Keep the Docker build context small. The Tier-2 sim build (infra/sim/aws.Dockerfile)
+# only needs third_party/sockerless/simulators; exclude everything heavy.
+**/node_modules
+**/.next
+**/.turbo
+**/dist
+**/coverage
+**/*.tsbuildinfo
+.git
+third_party/sockerless/.git
+**/.DS_Store

@@ -12,14 +12,14 @@ _None._
 Simulator gaps that limit Tier-2 (integration) coverage. Not bugs in our code.
 Per `AGENTS.md` §6.8 we file these upstream rather than work around them.
 
-**EXT-002 — compute/networking metadata-only.** #336 (VPC/ENI) landed; still
-**open**: #332 (umbrella), #333 (compute → real Firecracker microVMs), #334 (LB
-traffic + health), #335 (SG/nftables enforcement). This is the deeper blocker —
-sockerless is a Docker-API daemon that runs real containers, and its compute is
-not yet backed by real execution, so we cannot actually run a workspace task or
-prove a mounted volume's data survives a snapshot **at the sim level**. That
-fidelity is the manual real-AWS tier regardless. (Verify "closed" per-issue: EKS
-#348 / SES #349 were `not_planned`.)
+**EXT-002 — compute execution metadata-only ([#332](https://github.com/e6qu/sockerless/issues/332)
+umbrella, [#333](https://github.com/e6qu/sockerless/issues/333) reopened).** The
+deeper blocker — sockerless is a Docker-API daemon that runs real containers, but
+compute (EC2/ECS task execution) isn't yet backed by real microVMs, so we cannot
+run a workspace task or prove a mounted volume's _file_ data survives a snapshot
+**at the sim level** (that fidelity is the real-AWS tier regardless). LB #334 and
+SG #335 were resolved by PR #364. (Verify "closed" per-issue: EKS #348 / SES #349
+were `not_planned`.)
 
 **EXT-003 — Entra interactive `/authorize` flow missing
 ([#362](https://github.com/e6qu/sockerless/issues/362), we filed).** Verified in
@@ -28,13 +28,16 @@ and its discovery doc advertises `authorization_endpoint`, but no GET
 `/oauth2/v2.0/authorize` handler exists, so an Auth.js OIDC relying party can't
 complete interactive login. Mock-OIDC covers Tier-2; real Entra is Tier-3.
 
-**EXT-004 — no consumable/pinnable sockerless distribution
-([#363](https://github.com/e6qu/sockerless/issues/363), we filed).** The
-`publish-container-images` workflow only fires on `v*` tags (or manual dispatch)
-and no `v*` tag exists (only a `wasm` pre-release), so no GHCR images are
-published to pin. Tier-2 stays **DynamoDB Local only** until a versioned release
-ships the simulator images (esp. `sockerless-simulator-aws`). This is the
-"consume sockerless as a whole" gap, broader than any single cloud-API stub.
+**EXT-004 — from-source build/run friction (we filed, non-blocking).** We
+consume sockerless **from source** (pinned submodule), so no release is needed —
+[#363](https://github.com/e6qu/sockerless/issues/363) (cut a release) was closed.
+While wiring it we filed: **[#366](https://github.com/e6qu/sockerless/issues/366)**
+(the per-cloud sim Dockerfiles + `publish-container-images` use context
+`simulators/<cloud>` but each module replaces `../realexec`, so the image build
+fails — we work around it with `infra/sim/aws.Dockerfile` at repo-root context)
+and **[#367](https://github.com/e6qu/sockerless/issues/367)** (the API-only
+`SIM_RUNTIME=process` mode is undocumented; the sim otherwise FATALs without a
+container runtime). Neither blocks us now.
 
 ## Resolved
 

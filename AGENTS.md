@@ -65,13 +65,20 @@ packages/
                      machine, ports (Storage/Compute) + fakes, Clock
   control-plane/     WorkspaceService (imperative shell over core + db + ports)
   db/                DynamoDB single-table + ElectroDB entities
+  storage-ec2/       real EBS StorageProvider over the EC2 API (sim or AWS)
   api-contracts/     Zod contracts — single source of API truth
   api-client/        typed HTTP client over the contracts
   authz/             CASL abilities (admin/member/viewer)
   auth/              IdP claim→role mapping
   config/            typed config: endpoints, ports, defaults, env schema
-infra/terraform/     all AWS infra        infra/images/  golden base images
+infra/terraform/     all AWS infra        infra/images/   golden base images
+infra/sim/           Tier-2 sim build     third_party/sockerless/  pinned submodule
 ```
+
+The Tier-2 AWS substrate is the **sockerless** simulator built from source
+(`third_party/sockerless` submodule, `infra/sim/aws.Dockerfile`), run via
+`docker-compose.tier2.yml` with `SIM_RUNTIME=process`. Consumed endpoint-only
+(§6.8); no published release is awaited.
 
 ---
 

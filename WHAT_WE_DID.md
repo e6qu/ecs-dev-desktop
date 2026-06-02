@@ -151,3 +151,30 @@
 - **Stopped at the e2e boundary** (per the user): GC/snapshot logic is green on
   fakes + DynamoDB Local; running it against the real EBS sim / cron is the next,
   still-gated step.
+
+## 2026-06-02 — Consume sockerless from source; real EBS adapter
+
+- **Decision (from the user):** no sockerless release is coming soon, so we
+  consume it **straight from source** rather than wait on a published image —
+  closed #363; reframed EXT-004.
+- Wired the **sockerless AWS simulator built from source** into Tier-2: pinned
+  `third_party/sockerless` submodule (@ 4e0fcbb) + `infra/sim/aws.Dockerfile`
+  (repo-root context) + a `sockerless-aws` service in `docker-compose.tier2.yml`
+  running `SIM_RUNTIME=process` (API-only, no Docker socket). CI `integration`
+  job checks out submodules and builds/runs the sim.
+- Added **`@edd/storage-ec2`** — `Ec2StorageProvider`, a real EBS `StorageProvider`
+  over the EC2 API (`@aws-sdk/client-ec2`), endpoint-only (sim or AWS). Implements
+  the lifecycle (create/snapshot/restore/delete + paginated enumerate, `OwnerIds:
+self`); `readFile`/`writeFile` throw — volume _file_ I/O needs a running task
+  (#333). Integration test exercises the full lifecycle incl. the #359 restore
+  path against the sim (verified locally).
+- **Upstream this session:** PR #364 resolved **#334** (LB) + **#335** (SG) —
+  verified AWS SG enforcement in `ec2_realexec.go`. Filed while wiring from source:
+  - **#366** — the per-cloud sim Dockerfiles + `publish-container-images` build
+    with context `simulators/<cloud>`, but each module replaces `../realexec`, so
+    the image build fails for aws/gcp/azure (verified; our Dockerfile works around
+    it with repo-root context).
+  - **#367** — `SIM_RUNTIME=process` (API-only, no runtime) is undocumented; the
+    sim otherwise FATALs "Install Docker or Podman".
+- Net remaining sockerless blockers for us: **#333** (real compute → workspace
+  execution + volume data fidelity at sim level) and **#362** (Entra `/authorize`).

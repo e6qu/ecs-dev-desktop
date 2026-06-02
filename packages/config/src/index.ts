@@ -19,6 +19,20 @@ export const dynamodbLocal = {
   endpoint: `http://${DYNAMODB_LOCAL_HOST}:${DYNAMODB_LOCAL_PORT}`,
 } as const;
 
+const AWS_SIM_HOST = "127.0.0.1";
+const AWS_SIM_PORT = 4566;
+
+/**
+ * Sockerless AWS simulator (Tier-2 harness, built from source). One endpoint
+ * serves the AWS API surface (EC2/EBS, DynamoDB, ECS, …); SDK clients reach it
+ * via `AWS_ENDPOINT_URL`. Endpoint-only consumption — see `AGENTS.md` §6.8.
+ */
+export const awsSim = {
+  host: AWS_SIM_HOST,
+  port: AWS_SIM_PORT,
+  endpoint: `http://${AWS_SIM_HOST}:${AWS_SIM_PORT}`,
+} as const;
+
 /**
  * Runtime environment schema. Components parse `process.env` through this so
  * misconfiguration fails fast at startup rather than at first use.

@@ -154,6 +154,22 @@ importers:
         specifier: ^25.9.1
         version: 25.9.1
 
+  packages/storage-ec2:
+    dependencies:
+      '@aws-sdk/client-ec2':
+        specifier: ^3.1057.0
+        version: 3.1057.0
+      '@edd/config':
+        specifier: workspace:*
+        version: link:../config
+      '@edd/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^25.9.1
+        version: 25.9.1
+
   services/reconciler:
     dependencies:
       '@edd/core':
@@ -209,6 +225,10 @@ packages:
     resolution: {integrity: sha512-S0feh4mSWsqxQ8SGWIqAX5CQ9w+wBFxpNx4QVNy4rfQVMY6PvPuWT6kolfIHqMoIvuVGd9zD71BvzCK3CHip8Q==}
     engines: {node: '>=20.0.0'}
 
+  '@aws-sdk/client-ec2@3.1057.0':
+    resolution: {integrity: sha512-YcpS6MeOWIZpqfBnkpru1tY3I8FhIqR98H6OkobpXSDuEQ9rfj02KvJ9yjNV7m+4ENYQMCWK835EwapMPpePZQ==}
+    engines: {node: '>=20.0.0'}
+
   '@aws-sdk/core@3.974.15':
     resolution: {integrity: sha512-UpA0rTGW/tHGITcCqHisbuuEPraYg9GG+mWmXjY5+RxZBMLGe6aL9oe0ix50LztwAcPIkGZLH0yWdMIkCM10hw==}
     engines: {node: '>=20.0.0'}
@@ -261,6 +281,10 @@ packages:
 
   '@aws-sdk/middleware-endpoint-discovery@3.972.15':
     resolution: {integrity: sha512-L1wbvrAb0hv7Vx6eTEyqQwXaNETSj/L30BVCkSxD0k6Ve5cZUM0SLUvBn8aA/B4YtIpMzCbzNaVytZY7uOzJSw==}
+    engines: {node: '>=20.0.0'}
+
+  '@aws-sdk/middleware-sdk-ec2@3.972.29':
+    resolution: {integrity: sha512-O9AlIwcnRSNlV57J9dQy9a4dLZRx9m+pnZkd/07Yy1Rx5bksoPIKokTmwqbM0s73EzAxGj2WmBvcXWN6Giu/0w==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/nested-clients@3.997.13':
@@ -1598,6 +1622,20 @@ snapshots:
       '@smithy/types': 4.14.2
       tslib: 2.8.1
 
+  '@aws-sdk/client-ec2@3.1057.0':
+    dependencies:
+      '@aws-crypto/sha256-browser': 5.2.0
+      '@aws-crypto/sha256-js': 5.2.0
+      '@aws-sdk/core': 3.974.15
+      '@aws-sdk/credential-provider-node': 3.972.47
+      '@aws-sdk/middleware-sdk-ec2': 3.972.29
+      '@aws-sdk/types': 3.973.9
+      '@smithy/core': 3.24.5
+      '@smithy/fetch-http-handler': 5.4.5
+      '@smithy/node-http-handler': 4.7.5
+      '@smithy/types': 4.14.2
+      tslib: 2.8.1
+
   '@aws-sdk/core@3.974.15':
     dependencies:
       '@aws-sdk/types': 3.973.9
@@ -1719,6 +1757,15 @@ snapshots:
       '@aws-sdk/endpoint-cache': 3.972.5
       '@aws-sdk/types': 3.973.9
       '@smithy/core': 3.24.5
+      '@smithy/types': 4.14.2
+      tslib: 2.8.1
+
+  '@aws-sdk/middleware-sdk-ec2@3.972.29':
+    dependencies:
+      '@aws-sdk/core': 3.974.15
+      '@aws-sdk/types': 3.973.9
+      '@smithy/core': 3.24.5
+      '@smithy/signature-v4': 5.4.5
       '@smithy/types': 4.14.2
       tslib: 2.8.1
 

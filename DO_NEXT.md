@@ -23,6 +23,11 @@ Resolved: DynamoDB + ElectroDB · sockerless substrate · manual real-AWS on `ma
 
 ## Available now (decision-free)
 
+- Point the control plane / `@edd/db` at the **from-source sockerless AWS sim**
+  (now wired in Tier-2) to broaden the AWS API surface beyond DynamoDB Local.
+- Wire `Ec2StorageProvider` into the reconciler **GC** path as the real
+  (endpoint-only) storage adapter against the sim (lifecycle only; data fidelity
+  awaits #333).
 - **Playwright e2e** for the portal flows (Tier-2; app + DynamoDB + mock-OIDC or
   `EDD_DEV_AUTH`).
 - Admin **base-image catalog** management, quotas, cost dashboard.
@@ -44,12 +49,10 @@ routing + ACM.
 **On real IdP credentials:** end-to-end GitHub/Entra login (Tier-3 manual);
 mock-OIDC covers Tier-2.
 
-**On upstream sockerless (see `BUGS.md`):** consuming the sim in Tier-2 needs a
-published release (EXT-004 / [#363](https://github.com/e6qu/sockerless/issues/363)
-— Tier-2 is DynamoDB Local only meanwhile); real workspace execution + volume
-data-fidelity at the sim level need real compute (EXT-002 / #332–#335); Entra
-interactive login needs the `/authorize` endpoint (EXT-003 /
-[#362](https://github.com/e6qu/sockerless/issues/362)). _EBS restore (#359) and
-`DeleteItem` returns (#360) were fixed by PR #361 — the EBS lifecycle
-`StorageProvider` adapter is API-unblocked, gated only by EXT-004 (to run it) and
-AWS (data-fidelity e2e)._
+**On upstream sockerless (see `BUGS.md`):** real workspace **execution** + volume
+_data_-fidelity at the sim level need real compute — **#333** (EXT-002, reopened);
+**Entra interactive login** needs the `/authorize` endpoint — **#362** (EXT-003).
+_Resolved: EBS restore #359 + `DeleteItem` #360 (PR #361); LB #334 + SG #335 (PR
+#364). We consume the sim **from source** (submodule), so no release is needed —
+#363 closed; build/doc fixes #366/#367 filed. The `Ec2StorageProvider` lifecycle
+is verified against the sim; data fidelity through a running task still needs #333._
