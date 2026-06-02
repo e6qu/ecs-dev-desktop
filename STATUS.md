@@ -19,7 +19,10 @@ decisions and upstream simulator fixes — see `DO_NEXT.md`.
   fakes, reusable round-trip **contract test**.
 - **Control-plane API** (`apps/web`): lifecycle endpoints
   (create/list/get/stop/start/snapshot/delete) with CASL RBAC, over
-  `@edd/control-plane` `WorkspaceService` on ElectroDB + the core.
+  `@edd/control-plane` `WorkspaceService` on ElectroDB + the core. Uses the
+  **Fargate managed-EBS model**: `ComputeProvider.runTask` creates the task's EBS
+  volume (hydrating from a snapshot on wake) and releases it on `stopTask`; the
+  `StorageProvider` owns snapshots + restore-lifecycle + GC on that volume id.
 - **Auth** (`apps/web` + `@edd/auth`): Auth.js (GitHub + Entra) JWT sessions;
   claim→role mapping; `getPrincipal` from session (dev-header shim behind
   `EDD_DEV_AUTH`).

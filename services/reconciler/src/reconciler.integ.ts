@@ -58,7 +58,7 @@ describe("Reconciler against DynamoDB Local", () => {
     const service = new WorkspaceService({
       workspaces: makeWorkspaceEntity(client, TEST_TABLE),
       storage,
-      compute: new FakeComputeProvider(),
+      compute: new FakeComputeProvider(storage),
       clock,
     });
     const reconciler = new Reconciler({

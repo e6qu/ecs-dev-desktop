@@ -33,10 +33,11 @@ describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
   });
 
   beforeEach(async () => {
+    const storage = await FakeStorageProvider.create();
     service = new WorkspaceService({
       workspaces: makeWorkspaceEntity(client, TEST_TABLE),
-      storage: await FakeStorageProvider.create(),
-      compute: new FakeComputeProvider(),
+      storage,
+      compute: new FakeComputeProvider(storage),
       clock: fixedClock(),
     });
   });

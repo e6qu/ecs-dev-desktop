@@ -18,10 +18,11 @@ export function getControlPlane(): Promise<WorkspaceService> {
 async function build(): Promise<WorkspaceService> {
   const client = createDynamoClient();
   const table = process.env.DYNAMODB_TABLE ?? TABLE;
+  const storage = await FakeStorageProvider.create();
   return new WorkspaceService({
     workspaces: makeWorkspaceEntity(client, table),
-    storage: await FakeStorageProvider.create(),
-    compute: new FakeComputeProvider(),
+    storage,
+    compute: new FakeComputeProvider(storage),
     clock: systemClock,
   });
 }
