@@ -26,16 +26,25 @@ decisions and upstream simulator fixes — see `DO_NEXT.md`.
 - **Portal UI** (`apps/web`): RBAC-gated workspaces grid, create-from-catalog,
   lifecycle actions, admin "all" view.
 - **Reconciler** (`services/reconciler`): idle reconcile pass (`listActive` →
-  pure `selectIdle` → stop+snapshot) via a `ReconcilerService` port.
-- **Tier-2 harness**: `docker-compose.tier2.yml` (DynamoDB Local) + `@edd/db`
-  ElectroDB entity (single table, `byOwner`/`byState` GSIs).
+  pure `selectIdle` → stop+snapshot), **scheduled point-in-time snapshots**
+  (`selectDueForSnapshot`), and **orphan volume/snapshot GC** (`selectOrphan*` +
+  storage enumeration) via a `ReconcilerService` port. Decision logic is pure
+  `@edd/core`; the cron _runner_ that invokes a sweep needs AWS.
+- **Storage adapter** (`packages/storage-ec2`): real EBS `StorageProvider` over
+  the EC2 API (`Ec2StorageProvider`) — endpoint-only, identical against the sim or
+  real AWS; lifecycle (create/snapshot/restore/delete/enumerate) works, file I/O
+  deferred to the compute layer (sockerless #333).
+- **Tier-2 harness**: `docker-compose.tier2.yml` — DynamoDB Local + the
+  **sockerless AWS simulator built from source** (`third_party/sockerless`
+  submodule, `SIM_RUNTIME=process`). `@edd/db` ElectroDB entity (single table,
+  `byOwner`/`byState` GSIs).
 - **CI**: `build-test`, `integration`, `check-deps`, `terraform`, `shellcheck`
   (ubuntu+macOS), `sast` (Semgrep), `vuln-scan` (Trivy). Manual `e2e-aws` skeleton.
 - **Local quality gates**: `pre-commit` (format/type-check/lint/unit/actionlint)
   - commit-msg AI-attribution stripper.
 
-**Verified locally (2026-06-02):** lint 11/11, build 11/11, unit 47 tests / 19
-files, integration 9 tests / 4 files (DynamoDB Local). Semgrep + Trivy clean.
+**Verified locally (2026-06-02):** lint 12/12, build 12/12, unit 57 tests, integration
+13 tests (DynamoDB Local + the from-source sockerless AWS sim).
 
 ## Deployed
 
@@ -43,11 +52,16 @@ files, integration 9 tests / 4 files (DynamoDB Local). Semgrep + Trivy clean.
 
 ## Immediate focus
 
-- **AWS account/region** (`DO_NEXT` #4) is the top blocker: real Terraform, Phase
+- **AWS account/region** (`DO_NEXT` #1) is the top blocker: real Terraform, Phase
   1 (Fargate + EBS), Phase 4 (SSH), Phase 7, the reconciler cron, and `e2e-aws`
   all sit behind it.
-- **Domain/DNS** (#3) blocks the auth proxy + workspace routing.
-- Sockerless **[#359](https://github.com/e6qu/sockerless/issues/359)** (snapshots
-  never reach `completed`) blocks snapshot→restore at the sim level; an EBS
-  lifecycle adapter is deferred until it lands (`BUGS.md` EXT-001).
-- **Available now (decision-free):** admin base-image catalog, Playwright e2e.
+- **Domain/DNS** (#2) blocks the auth proxy + workspace routing.
+- Sockerless: we **consume the AWS sim from source** (submodule @ `41480ae`,
+  upstream `simulators/aws/Dockerfile`). **No sockerless gaps block us anymore** —
+  EBS lifecycle (#359/#360), LB/SG (#334/#335), Entra `/authorize` (#362),
+  build-context/`SIM_RUNTIME` docs (#366/#367), and now **real compute #333**
+  (Firecracker microVMs, PR #372) are all fixed. Caveat: real compute needs KVM,
+  so sim-level workspace _execution_ + volume _data_ fidelity is a KVM-CI /
+  real-AWS concern, not our default `SIM_RUNTIME=process` Tier-2.
+- **Available now (decision-free):** admin base-image catalog, Playwright e2e,
+  idle-agent heartbeat shape.

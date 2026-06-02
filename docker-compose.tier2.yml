@@ -1,9 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Tier-2 integration harness (see TESTING.md). Brings up the local substrate the
-# integration tests run against. `pnpm test:integ` will orchestrate this.
+# integration tests run against; `pnpm test:integ` targets it by endpoint only
+# (AGENTS.md §6.8).
 #
-# NOTE: sockerless wiring is pending its published image + EBS snapshot support
-# (sockerless#347). DynamoDB Local is live and usable now.
+# `sockerless-aws` is built FROM SOURCE from the pinned `third_party/sockerless`
+# submodule (no published release — see WHAT_WE_DID.md). It runs with
+# SIM_RUNTIME=process so the AWS API surface (EC2/EBS lifecycle, etc.) serves
+# without a container runtime; real container execution would additionally need a
+# runtime + sockerless #333.
 
 services:
   dynamodb-local:
@@ -12,11 +16,17 @@ services:
     ports:
       - "8000:8000"
 
-  # sockerless:
-  #   image: ghcr.io/e6qu/sockerless-backend-ecs:latest   # pending publish
-  #   environment:
-  #     SOCKERLESS_TEST_TARGET: "sim"
-  #   ports:
-  #     - "3375:3375"   # Docker-compatible REST API
-  #   volumes:
-  #     - /var/run/docker.sock:/var/run/docker.sock
+  sockerless-aws:
+    build:
+      # Upstream Dockerfile, shared simulators/ context (fixed by sockerless #370).
+      context: ./third_party/sockerless/simulators
+      dockerfile: aws/Dockerfile
+    environment:
+      SIM_RUNTIME: process # API-only startup mode, no container runtime — sockerless #367
+    ports:
+      - "4566:4566"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4566/"]
+      interval: 3s
+      timeout: 3s
+      retries: 20

@@ -27,6 +27,8 @@ export function makeWorkspaceEntity(client: DynamoDBClient, table = TABLE) {
         volumeId: { type: "string", required: false },
         taskId: { type: "string", required: false },
         latestSnapshotId: { type: "string", required: false },
+        // When the latest snapshot was taken (drives scheduled-snapshot timing).
+        latestSnapshotAt: { type: "string", required: false },
       },
       indexes: {
         primary: {

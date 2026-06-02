@@ -113,3 +113,104 @@
   API can't read/write a volume's _files_ without attaching it to a task, so a
   standard `StorageProvider` adapter does lifecycle only — **data fidelity needs
   the compute layer** (compute e2e / real-AWS tier), not the storage port.
+
+## 2026-06-02 — Streamlined docs; Phase 5 GC + scheduled snapshots
+
+- Streamlined `AGENTS.md` and the continuity files (cut ~half the lines): merged
+  the duplicate component listing, added the missing no-hardcoded-endpoints
+  standard (§6.2), moved live sim status to `BUGS.md`, restructured `DO_NEXT.md`
+  into decisions / available-now / blocked.
+- Extended Phase 5 with two more maintenance passes, decision-free and fully
+  testable with fakes + DynamoDB Local (the cron runner that invokes them stays
+  AWS-gated):
+  - **Orphan GC** — pure `selectOrphanVolumes` / `selectOrphanSnapshots` (reap
+    storage no workspace references, past a grace window) + `Reconciler.collectGarbage`
+    over new endpoint-only `StorageProvider.listVolumes`/`listSnapshots`/`deleteSnapshot`
+    (the `DescribeVolumes`/`DescribeSnapshots`/`DeleteSnapshot` shape) and a new
+    `WorkspaceService.listReferencedStorage` keep-set.
+  - **Scheduled snapshots** — pure `selectDueForSnapshot` + `Reconciler.snapshotDue`
+    over `WorkspaceService.listSnapshotCandidates`; added `latestSnapshotAt` to the
+    `Workspace` domain object / DB entity to time them.
+- Fixed a latent correctness gap (§0 rule 5): `listActive` (and the new scans)
+  now paginate with ElectroDB `{ pages: "all" }` instead of a single page —
+  matters at the 200+ target.
+- **Upstream:** sockerless **#359** (EBS restore) and **#360** (`DeleteItem`
+  returns) were fixed by PR #361; EXT-001 resolved. The endpoint-only EBS adapter
+  is now API-unblocked, gated only by EXT-004 (a runnable sim image) and AWS.
+- **Audited the remaining sockerless blockers and filed the gaps that lacked
+  issues** (existing EXT-002 #332–#335 were already open):
+  - **#362** (EXT-003) — Azure Entra sim advertises `authorization_endpoint` in
+    discovery but implements no GET `/oauth2/v2.0/authorize`; verified in
+    `simulators/azure/auth.go` (only token + JWKS exist), so an OIDC RP can't
+    complete interactive login.
+  - **#363** (EXT-004) — no consumable/pinnable distribution: the
+    `publish-container-images` workflow only fires on `v*` tags and none exist
+    (only a `wasm` pre-release), so no GHCR images are publishable to pin. Noted
+    the broader "consume sockerless as a whole" gap (the daemon, not just the
+    per-cloud simulators).
+- **Stopped at the e2e boundary** (per the user): GC/snapshot logic is green on
+  fakes + DynamoDB Local; running it against the real EBS sim / cron is the next,
+  still-gated step.
+
+## 2026-06-02 — Consume sockerless from source; real EBS adapter
+
+- **Decision (from the user):** no sockerless release is coming soon, so we
+  consume it **straight from source** rather than wait on a published image —
+  closed #363; reframed EXT-004.
+- Wired the **sockerless AWS simulator built from source** into Tier-2: pinned
+  `third_party/sockerless` submodule (@ 4e0fcbb) + `infra/sim/aws.Dockerfile`
+  (repo-root context) + a `sockerless-aws` service in `docker-compose.tier2.yml`
+  running `SIM_RUNTIME=process` (API-only, no Docker socket). CI `integration`
+  job checks out submodules and builds/runs the sim.
+- Added **`@edd/storage-ec2`** — `Ec2StorageProvider`, a real EBS `StorageProvider`
+  over the EC2 API (`@aws-sdk/client-ec2`), endpoint-only (sim or AWS). Implements
+  the lifecycle (create/snapshot/restore/delete + paginated enumerate, `OwnerIds:
+self`); `readFile`/`writeFile` throw — volume _file_ I/O needs a running task
+  (#333). Integration test exercises the full lifecycle incl. the #359 restore
+  path against the sim (verified locally).
+- **Upstream this session:** PR #364 resolved **#334** (LB) + **#335** (SG) —
+  verified AWS SG enforcement in `ec2_realexec.go`. Filed while wiring from source:
+  - **#366** — the per-cloud sim Dockerfiles + `publish-container-images` build
+    with context `simulators/<cloud>`, but each module replaces `../realexec`, so
+    the image build fails for aws/gcp/azure (verified; our Dockerfile works around
+    it with repo-root context).
+  - **#367** — `SIM_RUNTIME=process` (API-only, no runtime) is undocumented; the
+    sim otherwise FATALs "Install Docker or Podman".
+- Net remaining sockerless blockers for us: **#333** (real compute → workspace
+  execution + volume data fidelity at sim level) and **#362** (Entra `/authorize`).
+
+## 2026-06-02 — sockerless #362 resolved (Entra auth-code)
+
+- sockerless PR #368 implemented the Azure Entra **authorization-code flow** (GET
+  `/oauth2/v2.0/authorize`, PKCE, state/response-modes, RS256 id/access/refresh) —
+  **#362 closed**, EXT-003 resolved. Entra interactive login is now
+  integration-testable against the from-source sim (bump the submodule past #368
+  - add an OIDC auth-code test).
+
+## 2026-06-02 — sockerless #366/#367 resolved; dropped our workaround
+
+- sockerless PR #370 fixed the sim build-context (**#366**) and documented
+  `SIM_RUNTIME=process` (**#367**): the per-cloud Dockerfiles now build with the
+  shared `simulators/` context and ship a `simulators/.dockerignore`.
+- Bumped the `third_party/sockerless` submodule to **`41480ae`** (incl. #368 +
+  #370), **removed our workaround** (`infra/sim/aws.Dockerfile` + repo-root
+  `.dockerignore`), and pointed `docker-compose.tier2.yml` at the upstream
+  `simulators/aws/Dockerfile` (context `third_party/sockerless/simulators`).
+  Re-verified: the EBS lifecycle integration test passes against the bumped sim.
+- **#333** (real compute → workspace execution + volume data fidelity at the sim
+  level) is now our **sole remaining functional sockerless blocker**.
+
+## 2026-06-02 — sockerless #333 resolved (real Firecracker compute)
+
+- sockerless PR #372 implemented **real Firecracker microVM compute** for EC2/ECS
+  (TAP networking, deterministic IP/MAC, IMDS metadata, async ECS `StopTask`) —
+  **#333 closed**. With LB/SG/VPC/EBS/Entra already done, **no sockerless gap
+  blocks us anymore** (#332 umbrella effectively complete, pending closure).
+- **Caveat captured:** real compute runs on Firecracker + **KVM** with a
+  non-`process` `SIM_RUNTIME`. Our default Tier-2 (macOS/podman, `process` mode)
+  has no `/dev/kvm`, so sim-level workspace _execution_ and volume _file_-data
+  fidelity need a **KVM-capable CI job** or the real-AWS tier — left as an opt-in
+  future job, not verifiable in this env. The API surface (EBS lifecycle,
+  DynamoDB, EC2 metadata) stays fully covered by our process-mode Tier-2.
+- Milestone: every sockerless issue we filed (#359/#360/#362/#363/#366/#367) plus
+  the capability gaps (#333/#334/#335/#336) are resolved upstream.

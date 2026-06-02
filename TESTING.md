@@ -10,18 +10,21 @@ in a **manual** suite on `main`.
 ## Substrate decision
 
 - **Primary integration substrate: [`sockerless`](https://github.com/e6qu/sockerless)**
-  (its `simulators/aws` + `bleephub` GitHub server). It covers our
-  ECS/ECR/DynamoDB/IAM/Route53/ACM/KMS control-plane surface **and actually
-  executes containers** (Docker-API → local Docker), which LocalStack Community
-  does not. We dogfood it.
+  (its `simulators/aws` + `bleephub` GitHub server), **built from source** from a
+  pinned `third_party/sockerless` submodule (no release awaited). It covers our
+  ECS/ECR/DynamoDB/IAM/Route53/ACM/KMS control-plane surface; run with
+  `SIM_RUNTIME=process` it serves the AWS API surface without a container runtime
+  (real container _execution_ needs a runtime + sockerless #333). We dogfood it.
 - **When the simulator is missing/incorrect for something we need, we file (or
   comment on) an issue in `e6qu/sockerless`** and track it in `BUGS.md` under
   _External blockers_. Known today:
-  - **EBS volume lifecycle + snapshots** — not implemented (sockerless **#347**).
-    Blocks sim-level coverage of our core snapshot round-trip.
-  - Compute/VPC/SG/LB are **metadata-only fakes** (sockerless #332–#336): no real
-    network routing, SGs not enforced.
-  - **No Azure Entra user-login OIDC** simulator (`bleephub` covers GitHub only).
+  - **Compute (EC2/ECS) execution** is metadata-only (sockerless #332/#333): no
+    real task/container execution, so a mounted volume's _file_ data round-trip
+    can't be proven at the sim level (it's the real-AWS tier's job). EBS volume
+    **lifecycle** + snapshots work (#347; restore fixed by #359); LB/SG enforced
+    (#334/#335); VPC/ENI real (#336).
+  - **No Azure Entra interactive `/authorize`** flow (sockerless #362); `bleephub`
+    covers GitHub. Token + JWKS exist (#261/#272).
 - **LocalStack** is kept only as an optional cross-check where sockerless is
   immature; not a primary gate.
 
@@ -39,7 +42,8 @@ Pure logic + adapters-with-fakes. No network, no Docker.
 - `packages/auth` — claim/group → role mapping with synthetic IdP claims.
 - **Adapter contract tests** run the _same_ suite against the fake and the real
   adapter, keeping them honest. The `StorageProvider` fake (filesystem/loopback)
-  lets us TDD the **snapshot round-trip logic** today, before sockerless #347.
+  TDDs the **snapshot round-trip logic**, incl. data fidelity the EC2 adapter
+  can't cover without compute (sockerless #333).
 
 Tooling: **Vitest**.
 
@@ -85,8 +89,13 @@ CI on `infra/terraform`. Real `apply` runs only in the manual `e2e-aws` job.
 ## Local quickstart (wired in Phase 0)
 
 ```
-pnpm test                  # tier 1 (unit + contract)
-pnpm test:integ            # tier 2, brings up sockerless + DynamoDB Local + Docker
+pnpm test                  # tier 1 (unit + contract) — no Docker
+# tier 2: start the harness first (DynamoDB Local + the from-source AWS sim), then test
+docker compose -f docker-compose.tier2.yml up -d --build --wait
+pnpm test:integ
 pnpm --filter <pkg> test   # one component in isolation
 # tier 3 (e2e-aws): workflow_dispatch on main, or local only with explicit AWS creds
 ```
+
+The sim is built from the pinned `third_party/sockerless` submodule — clone with
+`git submodule update --init` (CI uses `submodules: recursive`).

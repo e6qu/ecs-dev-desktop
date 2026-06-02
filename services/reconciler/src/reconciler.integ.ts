@@ -4,9 +4,9 @@ import {
   baseImage,
   FakeComputeProvider,
   FakeStorageProvider,
-  fixedClock,
   ownerId,
   workspaceId,
+  type Clock,
 } from "@edd/core";
 import {
   createDynamoClient,
@@ -15,7 +15,7 @@ import {
   ensureTable,
   makeWorkspaceEntity,
 } from "@edd/db";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { Reconciler } from "./index";
 
@@ -23,12 +23,20 @@ process.env.DYNAMODB_ENDPOINT ??= dynamodbLocal.endpoint;
 
 const TEST_TABLE = "ecs-dev-desktop-recon-integ";
 const THIRTY_MIN = 30 * 60 * 1000;
+const ONE_HOUR = 60 * 60 * 1000;
+const T0 = "2026-06-01T00:00:00.000Z";
+const LATER = "2026-06-01T02:00:00.000Z"; // 2h after T0
 
 describe("Reconciler against DynamoDB Local", () => {
   let client: ReturnType<typeof createDynamoClient>;
 
-  beforeAll(async () => {
+  beforeAll(() => {
     client = createDynamoClient();
+  });
+
+  // Each test starts from an empty table so cross-test workspaces don't leak
+  // into the reconciler's table-wide scans (GC keep-set, snapshot candidates).
+  beforeEach(async () => {
     await dropTable(client, TEST_TABLE);
     await ensureTable(client, TEST_TABLE);
   });
@@ -37,27 +45,86 @@ describe("Reconciler against DynamoDB Local", () => {
     await dropTable(client, TEST_TABLE);
   });
 
-  it("scales an idle workspace to zero, leaving a fresh one running", async () => {
+  /**
+   * A service + reconciler sharing ONE storage and ONE clock. The clock starts
+   * at T0 (so creation/`createdAt` are in the past) and `advance()` moves it to
+   * simulate the reconciler running later — matching production, where the
+   * service stamps snapshots at the same wall clock the reconciler decides on.
+   */
+  async function harness(gcGraceMs = ONE_HOUR) {
+    let current = T0;
+    const clock: Clock = { now: () => current };
+    const storage = await FakeStorageProvider.create(clock);
     const service = new WorkspaceService({
       workspaces: makeWorkspaceEntity(client, TEST_TABLE),
-      storage: await FakeStorageProvider.create(),
+      storage,
       compute: new FakeComputeProvider(),
-      clock: fixedClock("2026-06-01T00:00:00.000Z"),
+      clock,
     });
-
-    const stale = await service.create({ ownerId: ownerId("alice"), baseImage: baseImage("img") });
-
-    // The reconciler's clock is one hour ahead of the workspace's last activity.
     const reconciler = new Reconciler({
       service,
-      clock: fixedClock("2026-06-01T01:00:00.000Z"),
+      storage,
+      clock,
       idleThresholdMs: THIRTY_MIN,
+      snapshotIntervalMs: THIRTY_MIN,
+      gcGraceMs,
     });
+    const advance = (iso: string): void => {
+      current = iso;
+    };
+    return { storage, service, reconciler, advance };
+  }
 
-    const result = await reconciler.runOnce();
-    expect(result.stopped).toBe(1);
+  it("scales an idle workspace to zero", async () => {
+    const { service, reconciler, advance } = await harness();
+    const stale = await service.create({ ownerId: ownerId("alice"), baseImage: baseImage("img") });
 
-    const after = await service.get(workspaceId(stale.id));
-    expect(after?.state).toBe("stopped");
+    advance(LATER);
+    expect((await reconciler.runOnce()).stopped).toBe(1);
+    expect((await service.get(workspaceId(stale.id)))?.state).toBe("stopped");
+  });
+
+  it("takes a scheduled snapshot of a due running workspace", async () => {
+    const { storage, service, reconciler, advance } = await harness();
+    await service.create({ ownerId: ownerId("bob"), baseImage: baseImage("img") });
+
+    advance(LATER);
+    const before = (await storage.listSnapshots()).length;
+    expect(await reconciler.snapshotDue()).toEqual({ scanned: 1, snapshotted: 1 });
+    expect((await storage.listSnapshots()).length).toBe(before + 1);
+
+    // Just snapshotted at "now", it is no longer due on the next pass.
+    expect((await reconciler.snapshotDue()).snapshotted).toBe(0);
+  });
+
+  it("garbage-collects an orphaned volume, sparing referenced storage", async () => {
+    const { storage, service, reconciler, advance } = await harness();
+    const live = await service.create({ ownerId: ownerId("carol"), baseImage: baseImage("img") });
+    const orphan = await storage.createVolume(); // exists in storage, no workspace refers to it
+
+    advance(LATER); // past the grace window
+    const result = await reconciler.collectGarbage();
+    expect(result.volumesDeleted).toBe(1);
+
+    const remaining = (await storage.listVolumes()).map((v) => v.id);
+    expect(remaining).not.toContain(orphan.id);
+    // carol's live workspace still has its volume.
+    expect((await service.get(workspaceId(live.id)))?.state).toBe("running");
+    expect(remaining.length).toBe(1);
+  });
+
+  it("reaps the snapshot superseded after a stop→start cycle", async () => {
+    // grace 0 so the just-superseded snapshot is immediately eligible.
+    const { storage, service, reconciler } = await harness(0);
+    const ws = await service.create({ ownerId: ownerId("dave"), baseImage: baseImage("img") });
+
+    await service.stop(workspaceId(ws.id)); // snapshot #1 (becomes latest)
+    await service.start(workspaceId(ws.id)); // hydrates a new volume from snapshot #1
+    await service.snapshot(workspaceId(ws.id)); // snapshot #2 (now latest; #1 unreferenced)
+
+    expect((await storage.listSnapshots()).length).toBe(2);
+    const gc = await reconciler.collectGarbage();
+    expect(gc.snapshotsDeleted).toBe(1); // only the superseded snapshot #1
+    expect((await storage.listSnapshots()).length).toBe(1);
   });
 });

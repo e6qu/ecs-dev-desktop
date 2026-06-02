@@ -23,12 +23,23 @@ Resolved: DynamoDB + ElectroDB · sockerless substrate · manual real-AWS on `ma
 
 ## Available now (decision-free)
 
+- **Entra interactive login** is now testable against the from-source sim
+  (sockerless #362 fixed by PR #368) — bump the `third_party/sockerless` submodule
+  past #368 and add an OIDC auth-code integration test (replaces the mock-OIDC
+  stand-in for Tier-2).
+- Point the control plane / `@edd/db` at the **from-source sockerless AWS sim**
+  (now wired in Tier-2) to broaden the AWS API surface beyond DynamoDB Local.
+- Wire `Ec2StorageProvider` into the reconciler **GC** path as the real
+  (endpoint-only) storage adapter against the sim (lifecycle).
+- **Phase 1 sim-level runtime** is now possible (sockerless #333 — real Firecracker
+  compute): run a workspace task on the sim, mount an EBS volume, prove the
+  write→snapshot→restore **data** round-trip. Needs a **KVM-capable CI job**
+  (Firecracker, non-`process` runtime) — not our default Tier-2; not verifiable on
+  macOS/podman. Scope it as an opt-in job.
 - **Playwright e2e** for the portal flows (Tier-2; app + DynamoDB + mock-OIDC or
   `EDD_DEV_AUTH`).
 - Admin **base-image catalog** management, quotas, cost dashboard.
 - **idle-agent heartbeat** shape (editor/terminal/SSH → `lastActivity`).
-- Scheduled point-in-time snapshots + **orphan volume/snapshot GC** logic (pure
-  core + fakes; the cron runner itself needs AWS).
 - GitHub org/team → role (teams API call in the jwt callback; GitHub groups are
   empty today).
 - Broader unit/integration coverage.
@@ -46,8 +57,9 @@ routing + ACM.
 **On real IdP credentials:** end-to-end GitHub/Entra login (Tier-3 manual);
 mock-OIDC covers Tier-2.
 
-**On upstream sockerless (see `BUGS.md`):** wiring the sockerless backend into
-Tier-2 (EXT-004, no published image — Tier-2 is DynamoDB Local only); the EBS
-lifecycle `StorageProvider` adapter (EXT-001 / [#359](https://github.com/e6qu/sockerless/issues/359));
-sim-level Fargate execution + SG/LB (EXT-002); verify Entra `/authorize` in
-Phase 3 (EXT-003).
+**On upstream sockerless:** _nothing — every gap we hit is fixed._ EBS #359/#360
+(PR #361), LB/SG #334/#335 (PR #364), Entra #362 (PR #368), build/docs #366/#367
+(PR #370), and real compute **#333** (PR #372) are all resolved; we consume the
+sim from source (submodule @ `41480ae`). Real compute needs **KVM**, so sim-level
+workspace execution + data fidelity is a KVM-CI / real-AWS concern (see above),
+not our default Tier-2.

@@ -1,0 +1,3 @@
+[submodule "third_party/sockerless"]
+	path = third_party/sockerless
+	url = https://github.com/e6qu/sockerless.git

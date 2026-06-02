@@ -35,6 +35,8 @@ jobs:
           - 8000:8000
     steps:
       - uses: actions/checkout@v6.0.2
+        with:
+          submodules: recursive # third_party/sockerless — the sim is built from source
       - uses: pnpm/action-setup@v6.0.8
       - uses: actions/setup-node@v6.4.0
         with:
@@ -42,7 +44,11 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      - name: Build & start the sockerless AWS simulator (from source, API-only mode)
+        run: docker compose -f docker-compose.tier2.yml up -d --build --wait sockerless-aws
       - run: pnpm test:integ
+      - if: always()
+        run: docker compose -f docker-compose.tier2.yml down
 
   check-deps:
     name: check-deps

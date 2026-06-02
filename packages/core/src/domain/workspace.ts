@@ -27,6 +27,8 @@ export interface Workspace {
   readonly volumeId?: VolumeId;
   readonly taskId?: TaskId;
   readonly latestSnapshotId?: SnapshotId;
+  /** When the latest snapshot was taken — drives scheduled-snapshot timing. */
+  readonly latestSnapshotAt?: IsoTimestamp;
 }
 
 export interface ProvisionParams {
@@ -52,10 +54,14 @@ export function provision(params: ProvisionParams): Workspace {
   };
 }
 
-/** Compute the stopped (scaled-to-zero) workspace. Throws if not stoppable. */
+/**
+ * Compute the stopped (scaled-to-zero) workspace. Throws if not stoppable.
+ * `freshSnapshot` is the snapshot just taken while stopping (if the workspace had
+ * a live volume); when absent the prior snapshot reference is carried over.
+ */
 export function markStopped(
   ws: Workspace,
-  snapshot: SnapshotId | undefined,
+  freshSnapshot: { id: SnapshotId; at: IsoTimestamp } | undefined,
   at: IsoTimestamp,
 ): Workspace {
   const state: WorkspaceState = transition(ws.state, "stop");
@@ -63,7 +69,8 @@ export function markStopped(
     ...ws,
     state,
     lastActivity: at,
-    latestSnapshotId: snapshot ?? ws.latestSnapshotId,
+    latestSnapshotId: freshSnapshot?.id ?? ws.latestSnapshotId,
+    latestSnapshotAt: freshSnapshot?.at ?? ws.latestSnapshotAt,
     volumeId: undefined,
     taskId: undefined,
   };
@@ -82,7 +89,7 @@ export function markStarted(
 
 /** Record a point-in-time snapshot on a running workspace. */
 export function recordSnapshot(ws: Workspace, snapshot: SnapshotId, at: IsoTimestamp): Workspace {
-  return { ...ws, latestSnapshotId: snapshot, lastActivity: at };
+  return { ...ws, latestSnapshotId: snapshot, latestSnapshotAt: at, lastActivity: at };
 }
 
 /** Validate that the workspace may be terminated; throws otherwise. */
