@@ -22,10 +22,6 @@ Resolved: DynamoDB+ElectroDB · sockerless substrate (from source) · Fargate
 
 ## Available now (decision-free)
 
-- **Entra mock-free auth e2e** — drive the azure sim's auth-code flow (sockerless
-  #368) and assert `normalizeClaims("entra")` + role mapping from the id token.
-  **Probe whether the sim issues `groups` claims** (our role mapping needs them);
-  file + halt if missing (per the standing policy). Mirror the bleephub harness.
 - **Teleport/Pomerium in Docker** — SSH + identity-aware proxy e2e (Phase 4 + the
   Phase 3 routing piece) against the harness.
 - Admin **base-image catalog** management, quotas, cost dashboard (Phase 6 remainder).
@@ -42,8 +38,11 @@ Resolved: DynamoDB+ElectroDB · sockerless substrate (from source) · Fargate
 - **On DNS (#2):** identity-aware proxy + `*.devbox.<domain>` routing + ACM.
 - **On real IdP credentials:** real GitHub/Entra federation (Tier-3 manual);
   bleephub + the azure sim cover the mock-free path.
-- **On upstream sockerless:** _nothing._ Every gap we filed is fixed (see `BUGS.md`).
-  We consume the sim from source (submodule pinned; currently `ea8c79d`).
+- **On upstream sockerless #387:** the **Entra mock-free auth e2e** — the azure sim
+  mints id tokens with no `groups` claim (and no Graph `memberOf` / no group seeding),
+  so the group→role RBAC path can't be exercised mock-free. Filed + halted per policy
+  (analog of bleephub #384/#385). We consume the sim from source (submodule pinned;
+  currently `ea8c79d`).
 
 ## Working notes (durable)
 

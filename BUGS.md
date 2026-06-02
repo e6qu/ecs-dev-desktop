@@ -9,10 +9,13 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-**None.** Every gap we hit while building against the sim has been fixed upstream
-(see Resolved). Policy (`AGENTS.md` §6.8 + standing user directive): consume the
-sim endpoint-only, **file gaps upstream and halt** pending the fix — never work
-around them.
+| Filed                                                 | What                                                                                                                                 | Blocks                                     | Status   |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------ | -------- |
+| [#387](https://github.com/e6qu/sockerless/issues/387) | Azure/Entra sim id token has no `groups` claim, no Graph `memberOf`, no user/group seeding (identity claims are hardcoded constants) | Entra mock-free auth e2e (group→role RBAC) | **open** |
+
+Policy (`AGENTS.md` §6.8 + standing user directive): consume the sim endpoint-only,
+**file gaps upstream and halt** pending the fix — never work around them. #387 is
+the direct Entra analog of the bleephub gap fixed in #384 / PR #385.
 
 ## Resolved (sockerless, all fixed upstream — `we filed` unless noted)
 

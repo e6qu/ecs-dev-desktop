@@ -48,8 +48,10 @@ restores it → data present (`packages/e2e`). `EcsComputeProvider` + the full
 ✅ Auth.js (GitHub + Entra), CASL abilities, GitHub org/team→role, GitHub login
 proven mock-free vs bleephub.
 
-- ⬜ **Remaining:** Entra mock-free auth e2e (azure sim #368 — probe group claims);
-  identity-aware proxy (**Pomerium**) + `*.devbox.<domain>` routing (needs DNS #2).
+- ⬜ **Remaining:** Entra mock-free auth e2e — **blocked on sockerless #387** (azure
+  sim id token has no `groups` claim / no Graph `memberOf` / no group seeding, so
+  group→role can't be exercised mock-free); identity-aware proxy (**Pomerium**) +
+  `*.devbox.<domain>` routing (needs DNS #2).
 - **Gate:** CASL matrix ✅; mock-free GitHub login ✅; Entra login + proxy routing ⬜.
 
 ## Phase 4 — SSH via Teleport — ⬜ pending

@@ -51,5 +51,7 @@ deployment; sockerless has no open blockers.
 - **AWS account/region** (`DO_NEXT` #1) — top blocker for real Terraform, Phase 1
   deploy, SSH (Phase 4), the reconciler cron, scale/DR (Phase 7), `e2e-aws`.
 - **Domain/DNS** (#2) — blocks the identity-aware proxy + workspace routing.
-- **Next decision-free work:** Entra mock-free auth e2e (azure sim #368);
-  Teleport/Pomerium-in-Docker SSH/proxy e2e; admin base-image catalog. See `DO_NEXT`.
+- **Entra mock-free auth e2e is blocked** on sockerless #387 (azure sim id token has
+  no `groups` claim / no Graph `memberOf` / no group seeding) — filed + halted.
+- **Next decision-free work:** Teleport/Pomerium-in-Docker SSH/proxy e2e; admin
+  base-image catalog; Playwright portal e2e. See `DO_NEXT`.
