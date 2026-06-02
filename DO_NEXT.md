@@ -29,13 +29,15 @@ Resolved: DynamoDB + ElectroDB · sockerless substrate · manual real-AWS on `ma
   stand-in for Tier-2).
 - Point the control plane / `@edd/db` at the **from-source sockerless AWS sim**
   (now wired in Tier-2) to broaden the AWS API surface beyond DynamoDB Local.
-- Wire `Ec2StorageProvider` into the reconciler **GC** path as the real
-  (endpoint-only) storage adapter against the sim (lifecycle).
-- **Phase 1 sim-level runtime** is now possible (sockerless #333 — real Firecracker
-  compute): run a workspace task on the sim, mount an EBS volume, prove the
-  write→snapshot→restore **data** round-trip. Needs a **KVM-capable CI job**
-  (Firecracker, non-`process` runtime) — not our default Tier-2; not verifiable on
-  macOS/podman. Scope it as an opt-in job.
+- [x] Wired `Ec2StorageProvider` GC into the reconciler against the sim (with
+      managed-resource tagging so GC never touches unmanaged EBS) — verified.
+- **Full mock-free e2e** is sockerless-ready (audit 2026-06-02): the sim provides
+  real GitHub/Entra login, ECS exec, and ECS-managed-EBS data fidelity. Gated on
+  **our** infra, not sockerless: (a) a **Docker/KVM-capable e2e CI job** (the sim
+  needs a real runtime; `SIM_RUNTIME=process` won't run containers), (b) the real
+  ECS `ComputeProvider` (either EBS model now has sim data fidelity — managed EBS,
+  or pre-create + AttachVolume now that #378/PR #379 wired it), (c)
+  Teleport/Pomerium in Docker for SSH/proxy.
 - **Playwright e2e** for the portal flows (Tier-2; app + DynamoDB + mock-OIDC or
   `EDD_DEV_AUTH`).
 - Admin **base-image catalog** management, quotas, cost dashboard.

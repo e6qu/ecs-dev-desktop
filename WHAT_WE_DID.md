@@ -214,3 +214,28 @@ self`); `readFile`/`writeFile` throw — volume _file_ I/O needs a running task
   DynamoDB, EC2 metadata) stays fully covered by our process-mode Tier-2.
 - Milestone: every sockerless issue we filed (#359/#360/#362/#363/#366/#367) plus
   the capability gaps (#333/#334/#335/#336) are resolved upstream.
+
+## 2026-06-02 — GC via the real adapter (tagged, safe) + mock-free e2e audit
+
+- Wired `Ec2StorageProvider` GC into the reconciler against the sim and added
+  **managed-resource tagging**: created volumes/snapshots carry `edd:managed=true`
+  (+ optional `edd:scope`), and enumeration filters to them (server-side `tag:`
+  Filters for real AWS + client-side for the sim, which ignores Filters). **Fixes
+  a real safety bug**: GC could otherwise have deleted unrelated EBS volumes in
+  the account. The scope tag also isolates the sim-backed GC integration test from
+  other suites sharing the simulator.
+- Tests: storage-ec2 integ +scoping (2), reconciler integ +sim-backed GC (5).
+  Full gate green: lint 12/12, build 12/12, unit 57, integration 15.
+- **Mock-free e2e audit:** traced the full path through the sim source — GitHub
+  OAuth + org/teams (bleephub), Entra auth-code (#362), ECS real container exec,
+  and **ECS-managed-EBS data fidelity** (RunTask bind-mounts the volume host dir,
+  `CreateSnapshot` copies it) are all present. So mock-free e2e is **sockerless-
+  ready**; the gate is our own infra (a Docker/KVM e2e CI job + the real ECS
+  managed-EBS `ComputeProvider` + Teleport/Pomerium in Docker), not a sim gap.
+- **Filed [#378](https://github.com/e6qu/sockerless/issues/378)** (non-blocking):
+  EC2 `AttachVolume` is metadata-only — attached EBS isn't wired into the
+  Firecracker guest, so guest writes don't persist/snapshot (inconsistent with the
+  working ECS-managed-EBS path). We use managed EBS, so it doesn't block us.
+  **Resolved same day by PR #379** (EBS wired into Firecracker guests via sparse
+  block images; attach/detach/resize patch the running guest; snapshot/restore
+  round-trip covered) — both EBS models now have sim data fidelity.
