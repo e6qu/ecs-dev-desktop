@@ -35,4 +35,17 @@ describe("Ec2StorageProvider against the sockerless AWS sim", () => {
     expect(afterVols).not.toContain(vol.id);
     expect(afterVols).not.toContain(restored.id);
   });
+
+  it("scopes enumeration to its own managed resources (GC safety)", async () => {
+    const a = Ec2StorageProvider.fromEnv({ scope: "edd-itest-scope-a" });
+    const b = Ec2StorageProvider.fromEnv({ scope: "edd-itest-scope-b" });
+
+    const volA = await a.createVolume();
+    // `a` sees its own volume; `b` (a different scope) never does — so b's GC
+    // could never reap a's volume.
+    expect((await a.listVolumes()).map((v) => v.id)).toContain(volA.id);
+    expect((await b.listVolumes()).map((v) => v.id)).not.toContain(volA.id);
+
+    await a.deleteVolume(volA.id);
+  });
 });

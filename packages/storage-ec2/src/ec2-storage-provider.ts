@@ -9,6 +9,8 @@ import {
   paginateDescribeVolumes,
   waitUntilSnapshotCompleted,
   waitUntilVolumeAvailable,
+  type Filter,
+  type Tag,
 } from "@aws-sdk/client-ec2";
 import { DEFAULT_AWS_REGION } from "@edd/config";
 import {
@@ -29,11 +31,23 @@ const DEFAULT_VOLUME_SIZE_GIB = 8;
 /** Max seconds a create/snapshot waiter polls for the resource to settle. */
 const SETTLE_WAIT_SECONDS = 60;
 
+/**
+ * Tag every volume/snapshot we create carries. Enumeration (and therefore GC)
+ * only ever considers resources bearing it — so GC can never delete an EBS
+ * resource this control plane did not create, even in a shared AWS account.
+ */
+const MANAGED_TAG_KEY = "edd:managed";
+const MANAGED_TAG_VALUE = "true";
+/** Optional partition within managed resources (e.g. environment, or test run). */
+const SCOPE_TAG_KEY = "edd:scope";
+
 export interface Ec2StorageProviderDeps {
   client: EC2Client;
   /** AZ for new volumes; defaults to `${region}a`. */
   availabilityZone?: string;
   region?: string;
+  /** Restrict managed resources to this scope (tagged + filtered on enumerate). */
+  scope?: string;
 }
 
 /** Throw if a required field the cloud should have returned is absent. */
@@ -49,18 +63,25 @@ function required<T>(value: T | undefined, field: string): T {
  * delete/enumerate); a volume's **file** contents cannot be read/written through
  * the EC2 API without attaching the volume to a running task, so `readFile`/
  * `writeFile` are deferred to the compute layer (sockerless #333 / real-AWS tier).
+ *
+ * Created resources are tagged `edd:managed=true` (+ an optional `edd:scope`), and
+ * enumeration filters to those tags both server-side (`tag:` Filters, honoured by
+ * real AWS) and client-side (the returned `Tags`, for the sim which ignores
+ * Filters) — so GC stays scoped to what we manage.
  */
 export class Ec2StorageProvider implements StorageProvider {
   private readonly client: EC2Client;
   private readonly availabilityZone: string;
+  private readonly scope?: string;
 
   constructor(deps: Ec2StorageProviderDeps) {
     this.client = deps.client;
     this.availabilityZone = deps.availabilityZone ?? `${deps.region ?? DEFAULT_AWS_REGION}a`;
+    this.scope = deps.scope;
   }
 
   /** Build a provider from the ambient AWS env (`AWS_ENDPOINT_URL` → the sim). */
-  static fromEnv(): Ec2StorageProvider {
+  static fromEnv(opts: { scope?: string } = {}): Ec2StorageProvider {
     const region = process.env.AWS_REGION ?? DEFAULT_AWS_REGION;
     const endpoint = process.env.AWS_ENDPOINT_URL;
     const client = new EC2Client({
@@ -69,7 +90,28 @@ export class Ec2StorageProvider implements StorageProvider {
         ? { endpoint, credentials: { accessKeyId: "local", secretAccessKey: "local" } }
         : {}),
     });
-    return new Ec2StorageProvider({ client, region });
+    return new Ec2StorageProvider({ client, region, ...opts });
+  }
+
+  private managedTags(): Tag[] {
+    const tags: Tag[] = [{ Key: MANAGED_TAG_KEY, Value: MANAGED_TAG_VALUE }];
+    if (this.scope !== undefined) tags.push({ Key: SCOPE_TAG_KEY, Value: this.scope });
+    return tags;
+  }
+
+  private managedFilters(): Filter[] {
+    const filters: Filter[] = [{ Name: `tag:${MANAGED_TAG_KEY}`, Values: [MANAGED_TAG_VALUE] }];
+    if (this.scope !== undefined)
+      filters.push({ Name: `tag:${SCOPE_TAG_KEY}`, Values: [this.scope] });
+    return filters;
+  }
+
+  /** Client-side equivalent of {@link managedFilters} (the sim ignores Filters). */
+  private isManaged(tags: Tag[] | undefined): boolean {
+    const has = (key: string, value: string): boolean =>
+      (tags ?? []).some((t) => t.Key === key && t.Value === value);
+    if (!has(MANAGED_TAG_KEY, MANAGED_TAG_VALUE)) return false;
+    return this.scope === undefined || has(SCOPE_TAG_KEY, this.scope);
   }
 
   async createVolume(opts?: { fromSnapshot?: SnapshotId }): Promise<Volume> {
@@ -79,6 +121,7 @@ export class Ec2StorageProvider implements StorageProvider {
         ...(opts?.fromSnapshot
           ? { SnapshotId: opts.fromSnapshot }
           : { Size: DEFAULT_VOLUME_SIZE_GIB }),
+        TagSpecifications: [{ ResourceType: "volume", Tags: this.managedTags() }],
       }),
     );
     const id = volumeId(required(out.VolumeId, "VolumeId"));
@@ -90,7 +133,12 @@ export class Ec2StorageProvider implements StorageProvider {
   }
 
   async createSnapshot(volume: VolumeId): Promise<Snapshot> {
-    const out = await this.client.send(new CreateSnapshotCommand({ VolumeId: volume }));
+    const out = await this.client.send(
+      new CreateSnapshotCommand({
+        VolumeId: volume,
+        TagSpecifications: [{ ResourceType: "snapshot", Tags: this.managedTags() }],
+      }),
+    );
     const id = snapshotId(required(out.SnapshotId, "SnapshotId"));
     await waitUntilSnapshotCompleted(
       { client: this.client, maxWaitTime: SETTLE_WAIT_SECONDS },
@@ -109,8 +157,12 @@ export class Ec2StorageProvider implements StorageProvider {
 
   async listVolumes(): Promise<readonly VolumeRef[]> {
     const refs: VolumeRef[] = [];
-    for await (const page of paginateDescribeVolumes({ client: this.client }, {})) {
+    for await (const page of paginateDescribeVolumes(
+      { client: this.client },
+      { Filters: this.managedFilters() },
+    )) {
       for (const v of page.Volumes ?? []) {
+        if (!this.isManaged(v.Tags)) continue;
         refs.push({
           id: volumeId(required(v.VolumeId, "VolumeId")),
           createdAt: isoTimestamp(required(v.CreateTime, "CreateTime").toISOString()),
@@ -125,9 +177,10 @@ export class Ec2StorageProvider implements StorageProvider {
     // OwnerIds=self — without it real AWS returns every public snapshot.
     for await (const page of paginateDescribeSnapshots(
       { client: this.client },
-      { OwnerIds: ["self"] },
+      { OwnerIds: ["self"], Filters: this.managedFilters() },
     )) {
       for (const s of page.Snapshots ?? []) {
+        if (!this.isManaged(s.Tags)) continue;
         refs.push({
           id: snapshotId(required(s.SnapshotId, "SnapshotId")),
           createdAt: isoTimestamp(required(s.StartTime, "StartTime").toISOString()),

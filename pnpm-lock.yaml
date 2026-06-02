@@ -176,12 +176,18 @@ importers:
         specifier: workspace:*
         version: link:../../packages/core
     devDependencies:
+      '@edd/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@edd/control-plane':
         specifier: workspace:*
         version: link:../../packages/control-plane
       '@edd/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@edd/storage-ec2':
+        specifier: workspace:*
+        version: link:../../packages/storage-ec2
       '@types/node':
         specifier: ^25.9.1
         version: 25.9.1

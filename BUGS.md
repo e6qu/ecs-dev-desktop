@@ -9,15 +9,23 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-**None open.** Every sockerless gap we hit has been fixed upstream (see Resolved
-below). Per `AGENTS.md` §6.8 we file gaps upstream rather than work around them.
+**None block us.** A mock-free e2e audit (2026-06-02) confirmed sockerless already
+provides everything our full e2e needs — GitHub OAuth + org/teams (bleephub),
+Entra auth-code (#362), ECS real container exec, **ECS-managed-EBS data fidelity**
+(RunTask bind-mounts the volume host dir; `CreateSnapshot` copies it →
+write→snapshot→restore→read works), EBS lifecycle, LB/SG/VPC. Per `AGENTS.md`
+§6.8 we file gaps upstream rather than work around them.
 
-Caveat (not a blocker): real sim compute (#333) runs on **Firecracker microVMs +
-KVM** with a non-`process` `SIM_RUNTIME`. Our default Tier-2 (macOS/podman,
-`SIM_RUNTIME=process`, fast every-PR) has no `/dev/kvm`, so sim-level workspace
-_execution_ and volume _file_-data fidelity need a **KVM-capable CI job or the
-real-AWS tier** — not our default Tier-2. The API surface (EBS lifecycle,
-DynamoDB, EC2 metadata) runs fine in process mode.
+Tracked, **non-blocking**: [#378](https://github.com/e6qu/sockerless/issues/378) —
+EC2 `AttachVolume` is metadata-only (no data wiring into the Firecracker guest),
+inconsistent with the working ECS-managed-EBS path. Doesn't block us (we use
+managed EBS).
+
+Caveat (env, not a sockerless gap): real container/VM execution needs a **runtime**
+— ECS task exec needs Docker, EC2/Firecracker needs KVM. Our default Tier-2
+(macOS/podman, `SIM_RUNTIME=process`) runs the **API surface only** (EBS lifecycle,
+DynamoDB, EC2 metadata); mock-free execution + data fidelity need a **Docker/KVM
+e2e CI job**, not our default Tier-2.
 
 ## Resolved
 

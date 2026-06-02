@@ -16,8 +16,10 @@
     "@edd/core": "workspace:*"
   },
   "devDependencies": {
+    "@edd/config": "workspace:*",
     "@edd/control-plane": "workspace:*",
     "@edd/db": "workspace:*",
+    "@edd/storage-ec2": "workspace:*",
     "@types/node": "^25.9.1"
   }
 }
