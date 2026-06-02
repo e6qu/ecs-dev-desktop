@@ -28,7 +28,12 @@ export {
 } from "./domain/ids";
 
 // Domain constants.
-export { DEFAULT_IDLE_THRESHOLD_MS, ID_PREFIX } from "./domain/constants";
+export {
+  DEFAULT_GC_GRACE_MS,
+  DEFAULT_IDLE_THRESHOLD_MS,
+  DEFAULT_SNAPSHOT_INTERVAL_MS,
+  ID_PREFIX,
+} from "./domain/constants";
 
 // Workspace domain object + pure lifecycle functions (functional core).
 export type { ProvisionParams, Workspace } from "./domain/workspace";
@@ -45,9 +50,23 @@ export type { WorkspaceEvent, WorkspaceState } from "./lifecycle/workspace-state
 export { can, InvalidTransitionError, transition } from "./lifecycle/workspace-state-machine";
 
 // Storage port + fake + contract.
-export type { Snapshot, StorageProvider, Volume } from "./storage/storage-provider";
+export type {
+  Snapshot,
+  SnapshotRef,
+  StorageProvider,
+  Volume,
+  VolumeRef,
+} from "./storage/storage-provider";
 export { FakeStorageProvider } from "./storage/fake-storage-provider";
 export { storageProviderContract } from "./storage/storage-provider-contract";
+
+// Maintenance functional core (orphan GC + scheduled-snapshot decisions).
+export type { ReferencedStorage, SnapshotCandidate } from "./maintenance/select";
+export {
+  selectDueForSnapshot,
+  selectOrphanSnapshots,
+  selectOrphanVolumes,
+} from "./maintenance/select";
 
 // Compute port + fake.
 export type { ComputeProvider, ComputeTask, RunTaskInput } from "./compute/compute-provider";

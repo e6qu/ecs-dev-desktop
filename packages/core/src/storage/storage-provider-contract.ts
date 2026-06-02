@@ -45,5 +45,20 @@ export function storageProviderContract(
       const v = await sp.createVolume();
       expect(await sp.readFile(v.id, "missing")).toBeNull();
     });
+
+    it("enumerates volumes and snapshots, dropping deleted ones", async () => {
+      const sp = await makeProvider();
+      const v = await sp.createVolume();
+      const snap = await sp.createSnapshot(v.id);
+
+      expect((await sp.listVolumes()).map((x) => x.id)).toContain(v.id);
+      expect((await sp.listSnapshots()).map((x) => x.id)).toContain(snap.id);
+
+      await sp.deleteVolume(v.id);
+      await sp.deleteSnapshot(snap.id);
+
+      expect((await sp.listVolumes()).map((x) => x.id)).not.toContain(v.id);
+      expect((await sp.listSnapshots()).map((x) => x.id)).not.toContain(snap.id);
+    });
   });
 }

@@ -27,8 +27,6 @@ Resolved: DynamoDB + ElectroDB · sockerless substrate · manual real-AWS on `ma
   `EDD_DEV_AUTH`).
 - Admin **base-image catalog** management, quotas, cost dashboard.
 - **idle-agent heartbeat** shape (editor/terminal/SSH → `lastActivity`).
-- Scheduled point-in-time snapshots + **orphan volume/snapshot GC** logic (pure
-  core + fakes; the cron runner itself needs AWS).
 - GitHub org/team → role (teams API call in the jwt callback; GitHub groups are
   empty today).
 - Broader unit/integration coverage.
@@ -47,7 +45,8 @@ routing + ACM.
 mock-OIDC covers Tier-2.
 
 **On upstream sockerless (see `BUGS.md`):** wiring the sockerless backend into
-Tier-2 (EXT-004, no published image — Tier-2 is DynamoDB Local only); the EBS
-lifecycle `StorageProvider` adapter (EXT-001 / [#359](https://github.com/e6qu/sockerless/issues/359));
-sim-level Fargate execution + SG/LB (EXT-002); verify Entra `/authorize` in
-Phase 3 (EXT-003).
+Tier-2 (EXT-004, no runnable image — Tier-2 is DynamoDB Local only); sim-level
+Fargate execution + SG/LB (EXT-002); verify Entra `/authorize` in Phase 3
+(EXT-003). _EBS snapshot→restore (EXT-001 / #359) and `DeleteItem` returns (#360)
+were fixed upstream — the EBS lifecycle `StorageProvider` adapter is now
+API-unblocked, gated only by EXT-004 (to run it) and AWS (data-fidelity e2e)._

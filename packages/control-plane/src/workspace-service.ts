@@ -20,7 +20,11 @@ import {
   type ComputeProvider,
   type IsoTimestamp,
   type OwnerId,
+  type ReferencedStorage,
+  type SnapshotCandidate,
+  type SnapshotId,
   type StorageProvider,
+  type VolumeId,
   type Workspace,
   type WorkspaceId,
   type WorkspaceState,
@@ -60,6 +64,7 @@ interface WorkspaceRecord {
   volumeId?: string;
   taskId?: string;
   latestSnapshotId?: string;
+  latestSnapshotAt?: string;
 }
 
 /** Brand a persisted record into a domain object (imperative-shell boundary). */
@@ -74,6 +79,8 @@ function toWorkspace(r: WorkspaceRecord): Workspace {
     volumeId: r.volumeId === undefined ? undefined : volumeId(r.volumeId),
     taskId: r.taskId === undefined ? undefined : taskId(r.taskId),
     latestSnapshotId: r.latestSnapshotId === undefined ? undefined : snapshotId(r.latestSnapshotId),
+    latestSnapshotAt:
+      r.latestSnapshotAt === undefined ? undefined : isoTimestamp(r.latestSnapshotAt),
   };
 }
 
@@ -121,16 +128,44 @@ export class WorkspaceService {
 
   /** Active (running/idle) workspaces with last-activity — the reconciler's input. */
   async listActive(): Promise<ActiveWorkspace[]> {
-    const states: readonly WorkspaceState[] = ["running", "idle"];
-    const pages = await Promise.all(
-      states.map((state) => this.deps.workspaces.query.byState({ state }).go()),
-    );
-    return pages.flatMap((page) =>
-      page.data.map((r: WorkspaceRecord) => ({
+    const records = await this.recordsByStates(["running", "idle"]);
+    return records.map((r) => ({
+      id: workspaceId(r.id),
+      lastActivity: isoTimestamp(r.lastActivity),
+    }));
+  }
+
+  /** Workspaces with a live volume that the reconciler may snapshot on schedule. */
+  async listSnapshotCandidates(): Promise<SnapshotCandidate[]> {
+    const records = await this.recordsByStates(["running", "idle"]);
+    return records
+      .filter((r) => r.volumeId !== undefined)
+      .map((r) => ({
         id: workspaceId(r.id),
-        lastActivity: isoTimestamp(r.lastActivity),
-      })),
+        ...(r.latestSnapshotAt === undefined
+          ? {}
+          : { latestSnapshotAt: isoTimestamp(r.latestSnapshotAt) }),
+      }));
+  }
+
+  /** Every volume/snapshot id still referenced by a workspace — GC's keep-set. */
+  async listReferencedStorage(): Promise<ReferencedStorage> {
+    const { data } = await this.deps.workspaces.scan.go({ pages: "all" });
+    const volumeIds: VolumeId[] = [];
+    const snapshotIds: SnapshotId[] = [];
+    data.forEach((r: WorkspaceRecord) => {
+      if (r.volumeId !== undefined) volumeIds.push(volumeId(r.volumeId));
+      if (r.latestSnapshotId !== undefined) snapshotIds.push(snapshotId(r.latestSnapshotId));
+    });
+    return { volumeIds, snapshotIds };
+  }
+
+  /** Fetch all workspace records in the given lifecycle states (fully paginated). */
+  private async recordsByStates(states: readonly WorkspaceState[]): Promise<WorkspaceRecord[]> {
+    const pages = await Promise.all(
+      states.map((state) => this.deps.workspaces.query.byState({ state }).go({ pages: "all" })),
     );
+    return pages.flatMap((page) => page.data.map((r: WorkspaceRecord) => r));
   }
 
   /** Scale to zero: snapshot the volume, tear it down, stop the task. */
@@ -138,13 +173,14 @@ export class WorkspaceService {
     const ws = await this.require(id);
     transition(ws.state, "stop"); // validate-first (pure); throws on illegal
     const at = isoTimestamp(this.deps.clock.now());
-    let snapshot = ws.latestSnapshotId;
+    let freshSnapshot: { id: SnapshotId; at: IsoTimestamp } | undefined;
     if (ws.volumeId !== undefined) {
-      snapshot = (await this.deps.storage.createSnapshot(ws.volumeId)).id;
+      const snap = await this.deps.storage.createSnapshot(ws.volumeId);
       await this.deps.storage.deleteVolume(ws.volumeId);
+      freshSnapshot = { id: snap.id, at };
     }
     if (ws.taskId !== undefined) await this.deps.compute.stopTask(ws.taskId);
-    const next = markStopped(ws, snapshot, at);
+    const next = markStopped(ws, freshSnapshot, at);
     await this.persist(next);
     return toWorkspaceDto(next);
   }
@@ -212,6 +248,7 @@ export class WorkspaceService {
         ...(ws.volumeId === undefined ? {} : { volumeId: ws.volumeId }),
         ...(ws.taskId === undefined ? {} : { taskId: ws.taskId }),
         ...(ws.latestSnapshotId === undefined ? {} : { latestSnapshotId: ws.latestSnapshotId }),
+        ...(ws.latestSnapshotAt === undefined ? {} : { latestSnapshotAt: ws.latestSnapshotAt }),
       })
       .go();
   }

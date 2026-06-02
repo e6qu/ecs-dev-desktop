@@ -12,14 +12,6 @@ _None._
 Simulator gaps that limit Tier-2 (integration) coverage. Not bugs in our code.
 Per `AGENTS.md` §6.8 we file these upstream rather than work around them.
 
-**EXT-001 — EBS snapshot→restore broken ([#359](https://github.com/e6qu/sockerless/issues/359), we filed).**
-EBS lifecycle (#347) landed, but snapshots never transition `pending →
-completed`, so `CreateVolume(SnapshotId)` always fails `IncorrectState`. A
-standard (endpoint-only) `StorageProvider` lifecycle adapter is straightforward
-once this lands; deferred until then. Note: the standard EBS API can't read/write
-a volume's _files_ without a running task, so **data fidelity needs the compute
-layer**, not the storage port (compute e2e / real-AWS tier).
-
 **EXT-002 — compute/LB/SG still metadata-only.** #336 (VPC/ENI) landed; still
 open: #333 (compute → microVMs), #334 (LB traffic), #335 (SG enforcement). Only
 blocks sim-level Fargate _execution_ and SG/LB behaviour — real behaviour is the
@@ -38,7 +30,18 @@ waits on a published image.
 
 ## Resolved
 
-_None yet._
+**EXT-001 — EBS snapshot→restore broken (resolved 2026-06-02, upstream).** We
+filed [#359](https://github.com/e6qu/sockerless/issues/359): EBS snapshots never
+transitioned `pending → completed`, so `CreateVolume(SnapshotId)` always failed
+`IncorrectState`. Fixed upstream by sockerless PR #361 (settles snapshots on the
+public `DescribeSnapshots` / `CreateVolume(SnapshotId)` paths). The same PR fixed
+[#360](https://github.com/e6qu/sockerless/issues/360) (`DeleteItem
+ReturnValues=ALL_OLD` returned empty attributes — relevant to our `remove()`).
+The standard (endpoint-only) EBS lifecycle `StorageProvider` adapter is now
+API-unblocked; running it in Tier-2 still waits on EXT-004, and proving a
+volume's _file_ contents survive a snapshot still needs the compute layer
+(compute e2e / real-AWS tier), since no standard EBS API reads volume files
+without an attached task.
 
 ---
 

@@ -26,7 +26,10 @@ decisions and upstream simulator fixes — see `DO_NEXT.md`.
 - **Portal UI** (`apps/web`): RBAC-gated workspaces grid, create-from-catalog,
   lifecycle actions, admin "all" view.
 - **Reconciler** (`services/reconciler`): idle reconcile pass (`listActive` →
-  pure `selectIdle` → stop+snapshot) via a `ReconcilerService` port.
+  pure `selectIdle` → stop+snapshot), **scheduled point-in-time snapshots**
+  (`selectDueForSnapshot`), and **orphan volume/snapshot GC** (`selectOrphan*` +
+  storage enumeration) via a `ReconcilerService` port. Decision logic is pure
+  `@edd/core`; the cron _runner_ that invokes a sweep needs AWS.
 - **Tier-2 harness**: `docker-compose.tier2.yml` (DynamoDB Local) + `@edd/db`
   ElectroDB entity (single table, `byOwner`/`byState` GSIs).
 - **CI**: `build-test`, `integration`, `check-deps`, `terraform`, `shellcheck`
@@ -34,8 +37,8 @@ decisions and upstream simulator fixes — see `DO_NEXT.md`.
 - **Local quality gates**: `pre-commit` (format/type-check/lint/unit/actionlint)
   - commit-msg AI-attribution stripper.
 
-**Verified locally (2026-06-02):** lint 11/11, build 11/11, unit 47 tests / 19
-files, integration 9 tests / 4 files (DynamoDB Local). Semgrep + Trivy clean.
+**Verified locally (2026-06-02):** lint 11/11, build 11/11, unit 56 tests, integration
+12 tests / 4 files (DynamoDB Local).
 
 ## Deployed
 
@@ -47,7 +50,9 @@ files, integration 9 tests / 4 files (DynamoDB Local). Semgrep + Trivy clean.
   1 (Fargate + EBS), Phase 4 (SSH), Phase 7, the reconciler cron, and `e2e-aws`
   all sit behind it.
 - **Domain/DNS** (#3) blocks the auth proxy + workspace routing.
-- Sockerless **[#359](https://github.com/e6qu/sockerless/issues/359)** (snapshots
-  never reach `completed`) blocks snapshot→restore at the sim level; an EBS
-  lifecycle adapter is deferred until it lands (`BUGS.md` EXT-001).
-- **Available now (decision-free):** admin base-image catalog, Playwright e2e.
+- Sockerless **#359** (EBS restore) + **#360** (DynamoDB `DeleteItem` returns)
+  were **fixed upstream** (PR #361). The EBS lifecycle `StorageProvider` adapter
+  is now API-unblocked; wiring it into Tier-2 still waits on a runnable sockerless
+  image (`BUGS.md` EXT-004), and compute-backed data fidelity needs AWS.
+- **Available now (decision-free):** admin base-image catalog, Playwright e2e,
+  idle-agent heartbeat shape.

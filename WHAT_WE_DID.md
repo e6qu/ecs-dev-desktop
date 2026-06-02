@@ -113,3 +113,30 @@
   API can't read/write a volume's _files_ without attaching it to a task, so a
   standard `StorageProvider` adapter does lifecycle only — **data fidelity needs
   the compute layer** (compute e2e / real-AWS tier), not the storage port.
+
+## 2026-06-02 — Streamlined docs; Phase 5 GC + scheduled snapshots
+
+- Streamlined `AGENTS.md` and the continuity files (cut ~half the lines): merged
+  the duplicate component listing, added the missing no-hardcoded-endpoints
+  standard (§6.2), moved live sim status to `BUGS.md`, restructured `DO_NEXT.md`
+  into decisions / available-now / blocked.
+- Extended Phase 5 with two more maintenance passes, decision-free and fully
+  testable with fakes + DynamoDB Local (the cron runner that invokes them stays
+  AWS-gated):
+  - **Orphan GC** — pure `selectOrphanVolumes` / `selectOrphanSnapshots` (reap
+    storage no workspace references, past a grace window) + `Reconciler.collectGarbage`
+    over new endpoint-only `StorageProvider.listVolumes`/`listSnapshots`/`deleteSnapshot`
+    (the `DescribeVolumes`/`DescribeSnapshots`/`DeleteSnapshot` shape) and a new
+    `WorkspaceService.listReferencedStorage` keep-set.
+  - **Scheduled snapshots** — pure `selectDueForSnapshot` + `Reconciler.snapshotDue`
+    over `WorkspaceService.listSnapshotCandidates`; added `latestSnapshotAt` to the
+    `Workspace` domain object / DB entity to time them.
+- Fixed a latent correctness gap (§0 rule 5): `listActive` (and the new scans)
+  now paginate with ElectroDB `{ pages: "all" }` instead of a single page —
+  matters at the 200+ target.
+- **Upstream:** sockerless **#359** (EBS restore) and **#360** (`DeleteItem`
+  returns) were fixed by PR #361; EXT-001 resolved. The endpoint-only EBS adapter
+  is now API-unblocked, gated only by EXT-004 (a runnable sim image) and AWS.
+- **Stopped at the e2e boundary** (per the user): GC/snapshot logic is green on
+  fakes + DynamoDB Local; running it against the real EBS sim / cron is the next,
+  still-gated step.
