@@ -40,24 +40,28 @@ decisions and upstream simulator fixes — see `DO_NEXT.md`.
   the EC2 API (`Ec2StorageProvider`) — endpoint-only, identical against the sim or
   real AWS; lifecycle (create/snapshot/restore/delete/enumerate) works, file I/O
   deferred to the compute layer (sockerless #333).
+- **Compute adapter** (`packages/compute-ecs`): real Fargate `ComputeProvider`
+  (`EcsComputeProvider`) — registers a task def per base image, RunTask with an
+  **ECS-managed EBS** volume (fresh or snapshot-hydrated) on `awsvpc`, returns the
+  task + the volume id ECS attached; StopTask releases it. Endpoint-only.
 - **Tier-2 harness**: `docker-compose.tier2.yml` — DynamoDB Local + the
   **sockerless AWS simulator built from source** (`third_party/sockerless`
   submodule, `SIM_RUNTIME=process`). `@edd/db` ElectroDB entity (single table,
   `byOwner`/`byState` GSIs).
-- **Mock-free workspace e2e** (`packages/e2e`, `docker-compose.e2e.yml`): the full
-  data-fidelity loop against the **container-mode** sim (executes real task
-  containers) — a task writes a file to a managed-EBS volume → snapshot via
-  `Ec2StorageProvider` → a new task hydrates from the snapshot → the marker is
-  present (asserted via container exit code). Proves the stateful-workspace thesis
-  with no mocks.
+- **Mock-free workspace e2e** (`packages/e2e`, `docker-compose.e2e.yml`, against the
+  **container-mode** sim): (1) data fidelity — a task writes a file to a managed-EBS
+  volume → snapshot via `Ec2StorageProvider` → a new task hydrates from the
+  snapshot → the marker is present (container exit code); (2) the full **product
+  lifecycle through `WorkspaceService`** with the real `EcsComputeProvider` +
+  `Ec2StorageProvider`: create → stop (snapshot) → start (restore) → remove.
 - **CI**: `build-test`, `integration`, **`e2e`**, `check-deps`, `terraform`,
   `shellcheck` (ubuntu+macOS), `sast` (Semgrep), `vuln-scan` (Trivy). Manual
   `e2e-aws` skeleton.
 - **Local quality gates**: `pre-commit` (format/type-check/lint/unit/actionlint)
   - commit-msg AI-attribution stripper.
 
-**Verified locally (2026-06-02):** lint 13/13, build 12/12, unit 64 tests, integration
-13, e2e 1 (DynamoDB Local + the from-source sockerless AWS sim, process & container modes).
+**Verified locally (2026-06-02):** lint 14/14, build 13/13, unit 66 tests, integration
+13, e2e 2 (DynamoDB Local + the from-source sockerless AWS sim, process & container modes).
 
 ## Deployed
 
@@ -73,8 +77,9 @@ decisions and upstream simulator fixes — see `DO_NEXT.md`.
   **No open blockers** — every gap we hit is fixed upstream (EBS #359/#360,
   LB/SG #334/#335, Entra #362, build/docs #366/#367, compute #333, and now the
   control/data-plane split **#381 via PR #382**). The mock-free workspace e2e runs.
-- **Next (mock-free workspace e2e is proven):** wire `WorkspaceService` through a
-  real `EcsComputeProvider` so the _product_ (not just the SDK loop) drives the
-  container-mode e2e; then Teleport/Pomerium in Docker for SSH/proxy.
+- **Next:** the product lifecycle now runs mock-free through `EcsComputeProvider`.
+  Remaining for a full workspace e2e: Teleport/Pomerium in Docker for SSH/proxy;
+  and wiring `apps/web` to the real adapters (gated on the AWS account/region +
+  the Terraform that provides the cluster/subnets/role).
 - **Available now (decision-free):** mock-free **auth** e2e (bleephub + Entra),
   admin base-image catalog, Playwright e2e, idle-agent heartbeat.

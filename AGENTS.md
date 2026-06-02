@@ -66,6 +66,7 @@ packages/
   control-plane/     WorkspaceService (imperative shell over core + db + ports)
   db/                DynamoDB single-table + ElectroDB entities
   storage-ec2/       real EBS StorageProvider over the EC2 API (sim or AWS)
+  compute-ecs/       real Fargate ComputeProvider (managed EBS; sim or AWS)
   api-contracts/     Zod contracts — single source of API truth
   api-client/        typed HTTP client over the contracts
   authz/             CASL abilities (admin/member/viewer)

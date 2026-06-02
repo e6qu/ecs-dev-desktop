@@ -64,8 +64,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      - name: Build & start the CONTAINER-MODE sim (executes real task containers)
-        run: docker compose -f docker-compose.e2e.yml up -d --build --wait sockerless-aws-exec
+      - name: Build & start the e2e harness (container-mode sim + DynamoDB Local)
+        run: docker compose -f docker-compose.e2e.yml up -d --build --wait
       - run: pnpm test:e2e
       - if: always()
         run: docker compose -f docker-compose.e2e.yml down
