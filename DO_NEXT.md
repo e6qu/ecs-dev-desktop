@@ -32,13 +32,14 @@ Resolved: DynamoDB + ElectroDB · sockerless substrate · manual real-AWS on `ma
 - [x] Wired `Ec2StorageProvider` GC into the reconciler against the sim (with
       managed-resource tagging so GC never touches unmanaged EBS) — verified.
 - **Mock-free workspace e2e** — **DONE** (sockerless #381 fixed by PR #382). The
-  data-fidelity loop (task writes a file → snapshot via `Ec2StorageProvider` →
-  restore into a new task → marker present) passes against the container-mode sim,
-  locally + a CI `e2e` job (`packages/e2e`, `docker-compose.e2e.yml`). Follow-ons:
-  - [ ] real **`EcsComputeProvider`** (ECS RunTask managed-EBS + snapshot restore;
-        DescribeTasks for the volume id; StopTask), then drive the e2e _through
-        `WorkspaceService`_ so the product flow (not just the SDK loop) is covered.
-  - [ ] Teleport/Pomerium in Docker for SSH/proxy e2e.
+  data-fidelity loop + the **full product lifecycle through `WorkspaceService`**
+  (create → stop → start → remove) run mock-free against the container-mode sim,
+  locally + a CI `e2e` job (`packages/e2e`, `docker-compose.e2e.yml`). The real
+  `EcsComputeProvider` (`packages/compute-ecs`, managed-EBS Fargate) is done.
+  Follow-ons:
+  - [ ] **Teleport/Pomerium in Docker** for SSH/proxy e2e.
+  - [ ] wire `apps/web` to the real adapters (needs the cluster/subnets/role from
+        Terraform → gated on the AWS account/region decision).
 - **Mock-free auth e2e** (verifiable now): bleephub GitHub + Entra (#362)
   auth-code flow against the sim (HTTP only) — retires the mock-OIDC Tier-2
   stand-in. The teams fetcher is already endpoint-overridable for bleephub.

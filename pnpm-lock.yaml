@@ -109,6 +109,22 @@ importers:
         specifier: ^7.0.0
         version: 7.0.0
 
+  packages/compute-ecs:
+    dependencies:
+      '@aws-sdk/client-ecs':
+        specifier: ^3.1058.0
+        version: 3.1058.0
+      '@edd/config':
+        specifier: workspace:*
+        version: link:../config
+      '@edd/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^25.9.1
+        version: 25.9.1
+
   packages/config:
     dependencies:
       zod:
@@ -159,15 +175,27 @@ importers:
 
   packages/e2e:
     dependencies:
+      '@aws-sdk/client-ec2':
+        specifier: ^3.1058.0
+        version: 3.1058.0
       '@aws-sdk/client-ecs':
         specifier: ^3.1058.0
         version: 3.1058.0
+      '@edd/compute-ecs':
+        specifier: workspace:*
+        version: link:../compute-ecs
       '@edd/config':
         specifier: workspace:*
         version: link:../config
+      '@edd/control-plane':
+        specifier: workspace:*
+        version: link:../control-plane
       '@edd/core':
         specifier: workspace:*
         version: link:../core
+      '@edd/db':
+        specifier: workspace:*
+        version: link:../db
       '@edd/storage-ec2':
         specifier: workspace:*
         version: link:../storage-ec2

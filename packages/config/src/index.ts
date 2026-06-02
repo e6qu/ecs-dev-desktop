@@ -13,6 +13,15 @@ export const DEFAULT_DYNAMODB_TABLE = "ecs-dev-desktop";
  * bleephub simulator's `/api/v3`; default is public GitHub. */
 export const DEFAULT_GITHUB_API_URL = "https://api.github.com";
 
+/** ECS Fargate workspace-runtime defaults (cluster / subnets / role are
+ * deployment-specific and supplied by config, not defaulted). */
+export const DEFAULT_ECS_CLUSTER = "edd-workspaces";
+export const DEFAULT_WORKSPACE_CONTAINER = "workspace";
+export const DEFAULT_WORKSPACE_MOUNT_PATH = "/home/coder";
+export const DEFAULT_WORKSPACE_VOLUME_GIB = 8;
+export const DEFAULT_WORKSPACE_CPU = "512";
+export const DEFAULT_WORKSPACE_MEMORY = "1024";
+
 const DYNAMODB_LOCAL_HOST = "127.0.0.1";
 const DYNAMODB_LOCAL_PORT = 8000;
 

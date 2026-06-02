@@ -312,3 +312,22 @@ fromSnapshot?}) → {taskId, volumeId}` — the compute layer **creates** the ta
 - Net: the mock-free _workspace_ thesis (stateful, snapshottable workspaces) is
   validated end-to-end on the sim. Next: drive it through `WorkspaceService` via a
   real `EcsComputeProvider` (product flow, not just the SDK loop).
+
+## 2026-06-02 — Real EcsComputeProvider (Fargate managed EBS)
+
+- Added **`packages/compute-ecs`** (`@edd/compute-ecs`): `EcsComputeProvider`
+  implementing the `ComputeProvider` port for real Fargate — registers a task def
+  per base image (cached), `RunTask` with an ECS-managed EBS volume (fresh, or
+  `snapshotId`-hydrated on wake) on `awsvpc`, polls `DescribeTasks` for the
+  attached volume id, and `StopTask` (ECS releases the managed volume via
+  `deleteOnTermination`). Endpoint-only (§6.8) — identical against the sim or AWS.
+  Config (cluster/subnets/EBS role/sizes) is typed via `@edd/config`.
+- **e2e proof through the product:** `packages/e2e` gained a lifecycle test that
+  drives **`WorkspaceService`** with the real `EcsComputeProvider` +
+  `Ec2StorageProvider` + DynamoDB Local against the container-mode sim:
+  create → stop (snapshot) → start (restore from snapshot) → remove, all green.
+  So the _product_ (not just an SDK loop) runs stateful workspaces mock-free.
+- No sockerless gaps surfaced — the lifecycle worked end-to-end. lint 14/14,
+  build 13/13, unit 66, e2e 2.
+- `apps/web` still uses the fakes (the real adapters need a cluster/subnets/role
+  that Terraform provides — gated on the AWS account/region decision).
