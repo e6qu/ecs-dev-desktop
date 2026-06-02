@@ -31,13 +31,17 @@ Resolved: DynamoDB + ElectroDB · sockerless substrate · manual real-AWS on `ma
   (now wired in Tier-2) to broaden the AWS API surface beyond DynamoDB Local.
 - [x] Wired `Ec2StorageProvider` GC into the reconciler against the sim (with
       managed-resource tagging so GC never touches unmanaged EBS) — verified.
-- **Full mock-free e2e** is sockerless-ready (audit 2026-06-02): the sim provides
-  real GitHub/Entra login, ECS exec, and ECS-managed-EBS data fidelity. Gated on
-  **our** infra, not sockerless: (a) a **Docker/KVM-capable e2e CI job** (the sim
-  needs a real runtime; `SIM_RUNTIME=process` won't run containers), (b) the real
-  ECS `ComputeProvider` (either EBS model now has sim data fidelity — managed EBS,
-  or pre-create + AttachVolume now that #378/PR #379 wired it), (c)
-  Teleport/Pomerium in Docker for SSH/proxy.
+- **Mock-free workspace e2e** (in progress). Foundation done: the `ComputeProvider`
+  port + control-plane flow now use the **Fargate managed-EBS** model. Next:
+  - [ ] real **`EcsComputeProvider`** (ECS RunTask with managed-EBS volume config + snapshot restore; DescribeTasks for the volume id/status; StopTask).
+  - [ ] a **container-mode sim e2e** running the full loop (create → task writes a
+        file → stop/snapshot → start/restore → file present). The sim runs locally
+        in container mode with `--privileged` + the Docker/podman socket
+        (verified); set it up as a dedicated e2e compose + CI job (not the default
+        `SIM_RUNTIME=process` Tier-2).
+  - [ ] Teleport/Pomerium in Docker for SSH/proxy e2e.
+        Sockerless itself is ready (GitHub/Entra login, ECS exec, managed-EBS data
+        fidelity all present) — the remaining work is ours.
 - **Playwright e2e** for the portal flows (Tier-2; app + DynamoDB + mock-OIDC or
   `EDD_DEV_AUTH`).
 - Admin **base-image catalog** management, quotas, cost dashboard.

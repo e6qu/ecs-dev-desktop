@@ -95,17 +95,13 @@ export class WorkspaceService {
   async create(input: { ownerId: OwnerId; baseImage: BaseImage }): Promise<WorkspaceDto> {
     const id = newWorkspaceId();
     const at = isoTimestamp(this.deps.clock.now());
-    const volume = await this.deps.storage.createVolume();
-    const task = await this.deps.compute.runTask({
-      workspaceId: id,
-      baseImage: input.baseImage,
-      volumeId: volume.id,
-    });
+    // ECS creates the managed EBS volume at task launch and returns its id.
+    const task = await this.deps.compute.runTask({ workspaceId: id, baseImage: input.baseImage });
     const ws = provision({
       id,
       ownerId: input.ownerId,
       baseImage: input.baseImage,
-      volumeId: volume.id,
+      volumeId: task.volumeId,
       taskId: task.id,
       at,
     });
@@ -168,7 +164,8 @@ export class WorkspaceService {
     return pages.flatMap((page) => page.data.map((r: WorkspaceRecord) => r));
   }
 
-  /** Scale to zero: snapshot the volume, tear it down, stop the task. */
+  /** Scale to zero: snapshot the managed volume, then stop the task (which
+   * releases the volume). Snapshot first — stopping the task tears the volume down. */
   async stop(id: WorkspaceId): Promise<WorkspaceDto> {
     const ws = await this.require(id);
     transition(ws.state, "stop"); // validate-first (pure); throws on illegal
@@ -176,7 +173,6 @@ export class WorkspaceService {
     let freshSnapshot: { id: SnapshotId; at: IsoTimestamp } | undefined;
     if (ws.volumeId !== undefined) {
       const snap = await this.deps.storage.createSnapshot(ws.volumeId);
-      await this.deps.storage.deleteVolume(ws.volumeId);
       freshSnapshot = { id: snap.id, at };
     }
     if (ws.taskId !== undefined) await this.deps.compute.stopTask(ws.taskId);
@@ -185,7 +181,7 @@ export class WorkspaceService {
     return toWorkspaceDto(next);
   }
 
-  /** Wake from a snapshot: hydrate a fresh volume, run a new task. */
+  /** Wake from a snapshot: launch a task whose managed volume is hydrated from it. */
   async start(id: WorkspaceId): Promise<WorkspaceDto> {
     const ws = await this.require(id);
     transition(transition(ws.state, "wake"), "provisioned"); // validate-first
@@ -193,13 +189,12 @@ export class WorkspaceService {
       throw new Error(`cannot start ${id}: no snapshot to hydrate from`);
     }
     const at = isoTimestamp(this.deps.clock.now());
-    const volume = await this.deps.storage.createVolume({ fromSnapshot: ws.latestSnapshotId });
     const task = await this.deps.compute.runTask({
       workspaceId: ws.id,
       baseImage: ws.baseImage,
-      volumeId: volume.id,
+      fromSnapshot: ws.latestSnapshotId,
     });
-    const next = markStarted(ws, volume.id, task.id, at);
+    const next = markStarted(ws, task.volumeId, task.id, at);
     await this.persist(next);
     return toWorkspaceDto(next);
   }
@@ -218,8 +213,11 @@ export class WorkspaceService {
   async remove(id: WorkspaceId): Promise<void> {
     const ws = await this.require(id);
     assertTerminable(ws);
-    if (ws.volumeId !== undefined) await this.deps.storage.deleteVolume(ws.volumeId);
+    // Running: stopping the task releases its managed volume. Stopped: the volume
+    // was already released; reap the retained snapshot.
     if (ws.taskId !== undefined) await this.deps.compute.stopTask(ws.taskId);
+    if (ws.latestSnapshotId !== undefined)
+      await this.deps.storage.deleteSnapshot(ws.latestSnapshotId);
     await this.deps.workspaces.delete({ id }).go();
   }
 

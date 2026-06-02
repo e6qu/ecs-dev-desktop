@@ -239,3 +239,22 @@ self`); `readFile`/`writeFile` throw — volume _file_ I/O needs a running task
   **Resolved same day by PR #379** (EBS wired into Firecracker guests via sparse
   block images; attach/detach/resize patch the running guest; snapshot/restore
   round-trip covered) — both EBS models now have sim data fidelity.
+
+## 2026-06-02 — Compute ports evolved to the Fargate managed-EBS model
+
+- Decision (with the user): for the mock-free e2e, model the workspace runtime as
+  **ECS-managed EBS** (the real Fargate pattern the sim supports) rather than the
+  prior pre-create-volume + attach split.
+- Evolved the `ComputeProvider` port: `runTask({workspaceId, baseImage,
+fromSnapshot?}) → {taskId, volumeId}` — the compute layer **creates** the task's
+  managed EBS volume (hydrating from a snapshot on wake) and **releases** it on
+  `stopTask`; the `StorageProvider` keeps snapshots, restore-lifecycle, and GC on
+  that volume id. `FakeComputeProvider` now models this via an injected
+  `StorageProvider`.
+- Reworked `WorkspaceService` create/start/stop/remove accordingly (no separate
+  `storage.createVolume`; stop snapshots then `stopTask` releases the volume).
+  Updated every fake construction site. Foundation only — fully green on fakes +
+  the from-source sim (lint 12/12, build 12/12, unit 57, integration 15).
+- Verified the **container-mode sim runs locally** (`--privileged` + the
+  Docker/podman socket → health 200), so the data-fidelity e2e will be locally
+  verifiable. Next: the real `EcsComputeProvider` + a container-mode e2e job.

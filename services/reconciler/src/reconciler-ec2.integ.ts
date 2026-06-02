@@ -54,7 +54,7 @@ describe("Reconciler GC against the sim via Ec2StorageProvider", () => {
     const service = new WorkspaceService({
       workspaces: makeWorkspaceEntity(client, TEST_TABLE),
       storage,
-      compute: new FakeComputeProvider(),
+      compute: new FakeComputeProvider(storage),
       clock: systemClock,
     });
     const reconciler = new Reconciler({ service, storage, clock: systemClock, gcGraceMs: 0 });
