@@ -1,187 +1,85 @@
 # PLAN.md — ecs-dev-desktop
 
-Phased roadmap for building the platform. Each phase lists **Goal**,
-**Deliverables**, and a **Testing gate** that must be green before advancing.
+Phased roadmap. Each phase: **Goal**, **Status**, remaining **Deliverables**, and
+a **Gate**. Status: ✅ done · 🟡 partial · ⬜ pending. See `AGENTS.md` for the
+architecture and `STATUS.md`/`DO_NEXT.md` for live state.
 
-See `AGENTS.md` for architecture decisions and component layout.
+**Guiding principles:** API-first (contracts before endpoints/UI) · independently
+buildable components · snapshot = persistence · prefer libraries for security ·
+RBAC everywhere · sockerless sim consumed endpoint-only.
 
----
-
-## Guiding principles
-
-- **API-first.** Define contracts (`packages/api-contracts`) before
-  implementing endpoints or UI. The UI consumes the same API as external clients.
-- **Independently buildable components.** Every component builds and tests in
-  isolation (`pnpm --filter <name> build|test`).
-- **Snapshot = persistence.** Stateful, snapshottable, and scale-to-zero are one
-  mechanism (EBS snapshot hydrate/restore).
-- **Prefer libraries for security.** Auth.js, CASL, Teleport, AWS SDK.
-- **RBAC everywhere.** Same CASL abilities enforced in API and reflected in UI.
+The build is **test-first against the sockerless sim**, so most phases are proven
+mock-free _before_ AWS. The recurring gate is the **AWS account/region** decision,
+which unlocks real Terraform + deployment for every phase below.
 
 ---
 
-## Phase 0 — Foundations & repo scaffold
+## Phase 0 — Foundations & repo scaffold — ✅ done
 
-**Goal:** A building, deployable skeleton with infra baseline and CI.
+Monorepo (Turborepo+pnpm, all components build/test in isolation), `@edd/config`,
+CI (build-test/lint/typecheck/integration/e2e/check-deps/terraform/shellcheck/
+sast/vuln-scan), `infra/terraform` baseline (`versions.tf` + provider lock).
 
-**Deliverables**
+- ⬜ **Remaining (AWS-gated):** real Terraform baseline (VPC, ECS, ECR, DynamoDB+
+  GSIs, KMS, IAM, remote state) + `terraform apply` in a sandbox.
 
-- Turborepo + pnpm workspace with all `apps/`, `services/`, `packages/`,
-  `infra/` dirs stubbed and building.
-- `packages/config` (shared tsconfig/eslint/env schema).
-- `infra/terraform` baseline: VPC (public+private subnets), ECS cluster, ECR,
-  **DynamoDB table** (single-table + GSIs), KMS keys, IAM scaffolding, remote
-  state backend.
-- Empty `apps/web` Next.js app deploys to ECS Fargate behind an ALB.
-- CI: install → lint → typecheck → build → `terraform plan`.
+## Phase 1 — Single workspace runtime — 🟡 proven on the sim
 
-**Testing gate**
+The stateful-workspace mechanism is **proven mock-free**: a real Fargate task on
+the container-mode sim writes to an ECS-managed EBS volume → snapshot → a new task
+restores it → data present (`packages/e2e`). `EcsComputeProvider` + the full
+`WorkspaceService` lifecycle run against it.
 
-- `pnpm build && pnpm lint && pnpm test` green at root and per-component.
-- `terraform validate` + `terraform plan` clean; `apply` succeeds in a sandbox.
-- Smoke: deployed Next app returns 200 on `/healthz`.
+- ⬜ **Remaining:** `infra/images` golden base (code-server + Teleport/sshd +
+  idle-agent, Open VSX); real Fargate deploy; cold-start baseline; image vuln scan.
+- **Gate:** done at sim level (write survives stop→snapshot→wake). Real EBS
+  durability/latency + cold-start → the manual `e2e-aws` tier.
 
----
+## Phase 2 — Control-plane API — ✅ done
 
-## Phase 1 — Single workspace runtime
+`@edd/api-contracts` (Zod), `@edd/db` (ElectroDB), `@edd/core` state machine,
+`apps/web` route handlers + CASL RBAC, `@edd/api-client`, and the real endpoint-only
+`Ec2StorageProvider` + `EcsComputeProvider`.
 
-**Goal:** One real VS Code workspace on Fargate with persistent, snapshottable
-storage — driven by hand.
+- **Gate:** contract + integration (DynamoDB Local + sim) + e2e lifecycle — green.
 
-**Deliverables**
+## Phase 3 — Auth + RBAC + workspace routing — 🟡
 
-- `infra/images`: golden base image = **code-server** + `sshd`/Teleport agent +
-  idle-agent, extensions via Open VSX.
-- Fargate task definition with an **ECS-managed EBS volume** mounted at
-  `/home/<user>` + `/workspaces`.
-- Documented manual flow: `RunTask` → reach code-server in browser → write file →
-  snapshot volume → relaunch task hydrated from `snapshotId` → file present.
+✅ Auth.js (GitHub + Entra), CASL abilities, GitHub org/team→role, GitHub login
+proven mock-free vs bleephub.
 
-**Testing gate**
+- ⬜ **Remaining:** Entra mock-free auth e2e (azure sim #368 — probe group claims);
+  identity-aware proxy (**Pomerium**) + `*.devbox.<domain>` routing (needs DNS #2).
+- **Gate:** CASL matrix ✅; mock-free GitHub login ✅; Entra login + proxy routing ⬜.
 
-- Manual e2e: file written in workspace survives **stop → snapshot → wake** from
-  snapshot.
-- Volume hydrate-from-snapshot verified; cold-start time recorded as a baseline.
-- Image vulnerability scan passes in CI.
+## Phase 4 — SSH via Teleport — ⬜ pending
 
----
+- Teleport cluster; workspaces enrolled as nodes; identity federated from Entra/
+  GitHub; session recording; wake-on-connect (SSH to a scaled-to-zero workspace).
+- **Gate:** `tsh ssh` / Remote-SSH connect; audit + recording; SSH wakes a stopped
+  workspace. (Teleport-in-Docker for the e2e; real federation = `e2e-aws`.)
 
-## Phase 2 — Control-plane API (Next.js, API-first)
+## Phase 5 — Scale-to-zero + snapshot automation — 🟡
 
-**Goal:** Programmatic workspace lifecycle via a typed API.
+✅ Reconciler: idle stop+snapshot, scheduled point-in-time snapshots, orphan
+volume/snapshot GC (pure selectors + `ReconcilerService` port), verified vs the sim.
 
-**Deliverables**
+- ⬜ **Remaining:** idle-agent activity heartbeats; the cron runner (EventBridge /
+  ECS scheduled task — AWS-gated); optional warm pool + SOCI.
+- **Gate:** idle→stop→snapshot→wake ✅; GC reaps orphans only ✅; cron + cost metric ⬜.
 
-- `packages/api-contracts`: Zod schemas for create / start / stop / snapshot /
-  restore / clone / delete / list / get.
-- `packages/db`: ElectroDB entities (workspace, snapshot, volume, baseImage,
-  user, auditLog) + access patterns/GSIs (`byUser`, `byStatus+lastActivity`).
-- `packages/core`: workspace lifecycle **state machine** (provisioning → running
-  → idle → stopped/snapshotted → terminating).
-- `apps/web` route handlers implementing the contracts, calling ECS
-  `RunTask`/`StopTask` + EBS snapshot APIs.
-- `packages/api-client`: typed client generated from contracts.
+## Phase 6 — Admin UI + user portal — 🟡
 
-**Testing gate**
+✅ User portal (sign in, create-from-catalog, start/stop/snapshot/delete, RBAC-
+gated) + admin "all" view.
 
-- Contract tests (schema round-trips) pass.
-- Integration tests against **DynamoDB Local** + mocked/LocalStack ECS.
-- E2e via API: create → snapshot → restore → clone → delete, asserting state
-  machine transitions and DynamoDB records.
+- ⬜ **Remaining:** admin base-image catalog mgmt, quotas, cost dashboard; Playwright
+  e2e for both portals.
+- **Gate:** Playwright e2e + RBAC views ⬜; admin actions reflected in DynamoDB/ECS.
 
----
-
-## Phase 3 — Auth + RBAC + workspace routing
-
-**Goal:** Real login (both IdPs), enforced RBAC, and authenticated routing to
-workspaces.
-
-**Deliverables**
-
-- `packages/auth`: Auth.js with **GitHub OAuth** + **Azure Entra ID**; map IdP
-  groups/claims → roles (`admin`, group-scoped, `user`).
-- `packages/authz`: **CASL** abilities; enforced in API route handlers and used
-  to gate UI affordances.
-- Identity-aware reverse proxy (e.g. **Pomerium**) with wildcard
-  `*.devbox.<domain>` routing to the correct workspace via the registry.
-
-**Testing gate**
-
-- Unit: CASL ability matrix (admin vs group vs user × each action).
-- E2e: login via GitHub **and** Entra; unauthorized actions return 403 in API
-  and are hidden in UI.
-- Proxy routes `alice.devbox.<domain>` to Alice's workspace; denies others.
-
----
-
-## Phase 4 — SSH via Teleport
-
-**Goal:** Audited SSH + VS Code Remote-SSH into workspaces.
-
-**Deliverables**
-
-- `services/ssh-gateway`: Teleport cluster, workspaces enrolled as nodes,
-  identity federated from Entra/GitHub, session recording on.
-- Wake-on-connect: SSH to a scaled-to-zero workspace triggers a wake.
-
-**Testing gate**
-
-- E2e: `tsh ssh` / `ssh` and VS Code Remote-SSH connect to a workspace.
-- Audit log + session recording captured; unauthorized user denied.
-- SSH to a stopped workspace wakes it and connects.
-
----
-
-## Phase 5 — Scale-to-zero + snapshot automation
-
-**Goal:** Hands-off cost control and persistence.
-
-**Deliverables**
-
-- idle-agent emits activity heartbeats (editor/terminal/SSH), written on
-  transitions / coarse interval (heartbeat discipline).
-- `services/reconciler`: stop idle workspaces (snapshot + tear down), wake on
-  access, scheduled point-in-time snapshots, **orphan volume/snapshot GC**.
-- Optional warm pool + SOCI lazy image pull to cut cold-start.
-
-**Testing gate**
-
-- E2e: idle → auto-stop → snapshot → wake-from-snapshot, state intact.
-- GC removes orphaned volumes/snapshots and nothing live.
-- Cold-start budget measured; cost-savings metric emitted.
-
----
-
-## Phase 6 — Admin UI + user portal
-
-**Goal:** Full self-service + operations UIs over the API.
-
-**Deliverables**
-
-- User portal: sign in, create workspace from **base-image catalog**, start/stop,
-  manage snapshots, SSH instructions, "Open in VS Code".
-- Admin UI: fleet list/filter, start/stop/restart/kill, snapshot/restore/clone,
-  base-image catalog management, users/roles/quotas, cost dashboard.
-
-**Testing gate**
-
-- Playwright e2e for both portals; RBAC-gated views verified.
-- Admin actions reflected in DynamoDB + ECS; accessibility smoke pass.
-
----
-
-## Phase 7 — Hardening, scale & DR
-
-**Goal:** Production-ready at 200+.
-
-**Deliverables**
+## Phase 7 — Hardening, scale & DR — ⬜ pending (AWS-gated)
 
 - Autoscaling, warm pools, SOCI; cross-region snapshot copy; secrets in Secrets
-  Manager; full audit; quota enforcement.
-- DR runbook; load test to 200+ concurrent workspaces.
-
-**Testing gate**
-
-- Load test sustains 200+ workspaces within latency budget.
-- DR drill (restore from cross-region snapshots) succeeds.
-- `/security-review` clean; pen-test checklist completed.
+  Manager; full audit; quota enforcement; DR runbook; load test to 200+.
+- **Gate:** 200+ load within latency budget; DR drill (cross-region restore);
+  `/security-review` clean; pen-test checklist. (Real AWS only.)

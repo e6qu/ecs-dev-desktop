@@ -27,3 +27,16 @@ services:
       interval: 3s
       timeout: 3s
       retries: 30
+
+  # bleephub: the sockerless GitHub server (mock-free auth e2e).
+  bleephub:
+    build:
+      context: .
+      dockerfile: infra/sim/bleephub.Dockerfile
+    ports:
+      - "5555:5555"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5555/api/v3/rate_limit"]
+      interval: 3s
+      timeout: 3s
+      retries: 20

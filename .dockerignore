@@ -1,0 +1,10 @@
+# Keep the repo-root build context small (the bleephub image build uses it).
+**/node_modules
+**/.next
+**/.turbo
+**/dist
+**/coverage
+**/*.tsbuildinfo
+.git
+third_party/sockerless/.git
+**/.DS_Store
