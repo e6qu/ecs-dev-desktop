@@ -57,10 +57,11 @@ decisions and upstream simulator fixes — see `DO_NEXT.md`.
   all sit behind it.
 - **Domain/DNS** (#2) blocks the auth proxy + workspace routing.
 - Sockerless: we **consume the AWS sim from source** (submodule @ `41480ae`,
-  upstream `simulators/aws/Dockerfile`). EBS lifecycle (#359/#360 via PR #361),
-  LB/SG (#334/#335 via PR #364), Entra `/authorize` (#362 via PR #368), and the
-  build-context + `SIM_RUNTIME` docs we filed (#366/#367 via PR #370) are all
-  resolved. The **sole remaining functional blocker** is **#333** (real compute —
-  gates workspace execution + volume _data_ fidelity at the sim level).
+  upstream `simulators/aws/Dockerfile`). **No sockerless gaps block us anymore** —
+  EBS lifecycle (#359/#360), LB/SG (#334/#335), Entra `/authorize` (#362),
+  build-context/`SIM_RUNTIME` docs (#366/#367), and now **real compute #333**
+  (Firecracker microVMs, PR #372) are all fixed. Caveat: real compute needs KVM,
+  so sim-level workspace _execution_ + volume _data_ fidelity is a KVM-CI /
+  real-AWS concern, not our default `SIM_RUNTIME=process` Tier-2.
 - **Available now (decision-free):** admin base-image catalog, Playwright e2e,
   idle-agent heartbeat shape.

@@ -9,19 +9,26 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-Simulator gaps that limit Tier-2 (integration) coverage. Not bugs in our code.
-Per `AGENTS.md` §6.8 we file these upstream rather than work around them.
+**None open.** Every sockerless gap we hit has been fixed upstream (see Resolved
+below). Per `AGENTS.md` §6.8 we file gaps upstream rather than work around them.
 
-**EXT-002 — compute execution metadata-only ([#332](https://github.com/e6qu/sockerless/issues/332)
-umbrella, [#333](https://github.com/e6qu/sockerless/issues/333) reopened).** The
-deeper blocker — sockerless is a Docker-API daemon that runs real containers, but
-compute (EC2/ECS task execution) isn't yet backed by real microVMs, so we cannot
-run a workspace task or prove a mounted volume's _file_ data survives a snapshot
-**at the sim level** (that fidelity is the real-AWS tier regardless). LB #334 and
-SG #335 were resolved by PR #364. (Verify "closed" per-issue: EKS #348 / SES #349
-were `not_planned`.)
+Caveat (not a blocker): real sim compute (#333) runs on **Firecracker microVMs +
+KVM** with a non-`process` `SIM_RUNTIME`. Our default Tier-2 (macOS/podman,
+`SIM_RUNTIME=process`, fast every-PR) has no `/dev/kvm`, so sim-level workspace
+_execution_ and volume _file_-data fidelity need a **KVM-capable CI job or the
+real-AWS tier** — not our default Tier-2. The API surface (EBS lifecycle,
+DynamoDB, EC2 metadata) runs fine in process mode.
 
 ## Resolved
+
+**EXT-002 — compute execution metadata-only (resolved 2026-06-02, upstream).**
+sockerless was a Docker-API daemon whose compute (EC2/ECS) was metadata-only, so
+a workspace task couldn't actually run. Fixed by PR #372 ([#333](https://github.com/e6qu/sockerless/issues/333)
+— real Firecracker microVM lifecycle for EC2/ECS, TAP networking, IMDS, async
+ECS `StopTask`). Earlier: LB #334 + SG #335 (PR #364), VPC/ENI #336. The umbrella
+[#332](https://github.com/e6qu/sockerless/issues/332) is effectively complete
+(all children done), pending closure. (Verify "closed" per-issue: EKS #348 / SES
+#349 were `not_planned`.) See the KVM caveat above.
 
 **EXT-004 — from-source build/run friction (resolved 2026-06-02, upstream).** We
 consume sockerless **from source** (pinned submodule) — [#363](https://github.com/e6qu/sockerless/issues/363)

@@ -199,3 +199,18 @@ self`); `readFile`/`writeFile` throw — volume _file_ I/O needs a running task
   Re-verified: the EBS lifecycle integration test passes against the bumped sim.
 - **#333** (real compute → workspace execution + volume data fidelity at the sim
   level) is now our **sole remaining functional sockerless blocker**.
+
+## 2026-06-02 — sockerless #333 resolved (real Firecracker compute)
+
+- sockerless PR #372 implemented **real Firecracker microVM compute** for EC2/ECS
+  (TAP networking, deterministic IP/MAC, IMDS metadata, async ECS `StopTask`) —
+  **#333 closed**. With LB/SG/VPC/EBS/Entra already done, **no sockerless gap
+  blocks us anymore** (#332 umbrella effectively complete, pending closure).
+- **Caveat captured:** real compute runs on Firecracker + **KVM** with a
+  non-`process` `SIM_RUNTIME`. Our default Tier-2 (macOS/podman, `process` mode)
+  has no `/dev/kvm`, so sim-level workspace _execution_ and volume _file_-data
+  fidelity need a **KVM-capable CI job** or the real-AWS tier — left as an opt-in
+  future job, not verifiable in this env. The API surface (EBS lifecycle,
+  DynamoDB, EC2 metadata) stays fully covered by our process-mode Tier-2.
+- Milestone: every sockerless issue we filed (#359/#360/#362/#363/#366/#367) plus
+  the capability gaps (#333/#334/#335/#336) are resolved upstream.

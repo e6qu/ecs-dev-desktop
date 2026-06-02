@@ -30,8 +30,12 @@ Resolved: DynamoDB + ElectroDB · sockerless substrate · manual real-AWS on `ma
 - Point the control plane / `@edd/db` at the **from-source sockerless AWS sim**
   (now wired in Tier-2) to broaden the AWS API surface beyond DynamoDB Local.
 - Wire `Ec2StorageProvider` into the reconciler **GC** path as the real
-  (endpoint-only) storage adapter against the sim (lifecycle only; data fidelity
-  awaits #333).
+  (endpoint-only) storage adapter against the sim (lifecycle).
+- **Phase 1 sim-level runtime** is now possible (sockerless #333 — real Firecracker
+  compute): run a workspace task on the sim, mount an EBS volume, prove the
+  write→snapshot→restore **data** round-trip. Needs a **KVM-capable CI job**
+  (Firecracker, non-`process` runtime) — not our default Tier-2; not verifiable on
+  macOS/podman. Scope it as an opt-in job.
 - **Playwright e2e** for the portal flows (Tier-2; app + DynamoDB + mock-OIDC or
   `EDD_DEV_AUTH`).
 - Admin **base-image catalog** management, quotas, cost dashboard.
@@ -53,11 +57,9 @@ routing + ACM.
 **On real IdP credentials:** end-to-end GitHub/Entra login (Tier-3 manual);
 mock-OIDC covers Tier-2.
 
-**On upstream sockerless (see `BUGS.md`):** the one remaining functional blocker
-is real workspace **execution** + volume _data_-fidelity at the sim level — needs
-real compute, **#333** (EXT-002, reopened). _Resolved: EBS restore #359 +
-`DeleteItem` #360 (PR #361); LB #334 + SG #335 (PR #364); Entra `/authorize` #362
-(PR #368); sim build-context + `SIM_RUNTIME` docs #366/#367 (PR #370). We consume
-the sim **from source** (submodule @ `41480ae`, upstream Dockerfile) — #363 closed.
-The `Ec2StorageProvider` lifecycle is verified against the sim; data fidelity
-through a running task still needs #333._
+**On upstream sockerless:** _nothing — every gap we hit is fixed._ EBS #359/#360
+(PR #361), LB/SG #334/#335 (PR #364), Entra #362 (PR #368), build/docs #366/#367
+(PR #370), and real compute **#333** (PR #372) are all resolved; we consume the
+sim from source (submodule @ `41480ae`). Real compute needs **KVM**, so sim-level
+workspace execution + data fidelity is a KVM-CI / real-AWS concern (see above),
+not our default Tier-2.
