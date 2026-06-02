@@ -1,354 +1,61 @@
 # WHAT_WE_DID.md — ecs-dev-desktop
 
-> Concise dated history. Each entry: what was **done**, and (where it informs
-> future work) the key **lesson** or **filing**. Past tense.
+> Compressed history: durable decisions/lessons + a milestone timeline. Append new
+> entries at the bottom (past tense). For the sockerless issue saga see `BUGS.md`.
 
 ---
 
-## 2026-06-01 — Planning, architecture, repo bootstrap
+## Key decisions & lessons (durable)
 
-- Locked the architecture (see `AGENTS.md` §1): ECS Fargate; GitHub OAuth + Azure
-  Entra → CASL RBAC; Teleport SSH; Next.js API-first; DynamoDB single-table +
-  ElectroDB; EBS-snapshot-as-persistence with scale-to-zero; golden images + Open
-  VSX; Terraform; Turborepo + pnpm; AGPL-3.0-or-later.
-- Authored `PLAN.md` (7 phases, each with a testing gate), `AGENTS.md`, the
-  continuity files, and the `CLAUDE.md → AGENTS.md` symlink.
-- Created public repo **`e6qu/ecs-dev-desktop`**; protected `main` (PR required,
-  no force-push/delete, no admin bypass, 0 approvals for solo work).
-- **Lessons:** DynamoDB over Aurora (cost, fits access patterns; accept
-  GSI-per-pattern, no joins). Teleport over a custom SSH gateway (central
-  auth/audit at scale). Identity-aware proxy + wildcard DNS over per-workspace ALB
-  rules (ALB ~100-rule/listener cap). Git pushes over **HTTPS + `gh`** (the SSH
-  key authed as `adrian-marza-monite`); local identity pinned to `e6qu` noreply.
+- **Architecture (locked, `AGENTS.md` §1):** ECS Fargate; DynamoDB single-table +
+  ElectroDB (over Aurora — cost, fits access patterns); Teleport SSH (over a custom
+  gateway); identity-aware proxy + wildcard DNS (over per-workspace ALB rules — the
+  ~100-rule cap); EBS-snapshot-as-persistence + scale-to-zero; Auth.js + CASL.
+- **Engineering charter (`AGENTS.md` §6, CI-enforced):** strong typing + branded
+  domain types; functional core / imperative shell; no magic values / typed
+  `@edd/config`; fail-loudly (no silent fallbacks/role downgrades); explicit named
+  exports; SAST (Semgrep) + Trivy gates; pre-commit; deps = latest ≥ 1-day-old.
+- **Sim = sockerless, from source, endpoint-only (§6.8 HARD RULE).** No
+  special-casing; file gaps upstream + halt (never work around). Consumed as a
+  pinned submodule. Tier-2 = process-mode (API surface); e2e = container-mode
+  (real task containers).
+- **Workspace runtime = ECS-managed EBS** (the real Fargate pattern): compute
+  creates/releases the task's EBS volume; storage owns snapshot/restore/GC.
+- **GC safety:** `Ec2StorageProvider` tags everything `edd:managed` and scopes
+  enumeration to it — GC can never delete unmanaged EBS in the account.
+- **Lessons:** git push over HTTPS+`gh` (the SSH key authed as the wrong user;
+  local identity pinned to `e6qu` noreply) · TS6/pnpm needs explicit `@types/node`
+  · Auth.js breaks under vitest → lazy `import("../auth")` · `export *` caused an
+  id collision → explicit exports · ElectroDB scans need `{ pages: "all" }` at 200+
+  scale · Node `fetch` opaque-filters manual redirects → use `node:http` to read a
+  302 `Location` · Trivy secret-scans token-shaped literals → build dummy tokens
+  piecewise · `check-deps` goes stale mid-PR (latest ≥1-day-old).
 
-## 2026-06-01 — Test strategy & substrate
+## Milestone timeline
 
-- Adopted TDD + **ports-and-adapters** (fake + real adapter per external dep) and
-  three tiers: unit/contract (commit) · integration (PR) · manual real-AWS (main).
-- Chose **sockerless** as the integration substrate over LocalStack (runs real
-  containers; covers our ECS/EBS/DynamoDB/IAM/Route53/ACM/KMS surface; dogfoods
-  our own tool). LocalStack kept only as an optional cross-check.
+- **2026-06-01** — Planned + scaffolded: public repo (protected `main`); `@edd/*`
+  Turborepo; the `StorageProvider` port + fake + contract test + state machine;
+  Tier-2 DynamoDB-Local harness + ElectroDB; CI + the standards charter.
+- **2026-06-01** — Control plane (lifecycle API + CASL RBAC over `WorkspaceService`);
+  Auth.js (GitHub+Entra, JWT, claim→role); portal UI; reconciler idle pass.
+- **2026-06-02** — Phase 5 maintenance passes: orphan GC + scheduled snapshots
+  (pure selectors over endpoint-only storage enumeration).
+- **2026-06-02** — **Consume sockerless from source** (user decision): pinned
+  submodule + the AWS sim in Tier-2; `@edd/storage-ec2` real EBS adapter
+  (lifecycle, endpoint-only). Audited/filed the sockerless gaps (all later fixed).
+- **2026-06-02** — Wired `Ec2StorageProvider` GC into the reconciler with
+  managed-resource tagging (fixed a real account-wide-deletion risk).
+- **2026-06-02** — Evolved `ComputeProvider` to the managed-EBS model; reworked
+  `WorkspaceService` create/start/stop/remove; fakes model managed EBS.
+- **2026-06-02** — **Mock-free workspace e2e** (`packages/e2e`, `docker-compose.e2e.yml`,
+  container-mode sim, CI `e2e` job): data fidelity proven — a task writes a file →
+  snapshot via `Ec2StorageProvider` → a new task restores it → marker present.
+- **2026-06-02** — `@edd/compute-ecs` (`EcsComputeProvider`, Fargate managed EBS):
+  the **product lifecycle through `WorkspaceService`** (create→stop→start→remove)
+  runs mock-free against the sim.
+- **2026-06-03** — **Mock-free GitHub auth e2e** (`apps/web/lib/github-auth.e2e.ts`):
+  OAuth-code login via bleephub (built from source, `-tags noui`) → our real
+  `normalizeClaims` + `fetchGithubTeamGroups` + `mapClaimsToRole` → role. Also added
+  GitHub org/team→role (`read:org` + `/user/teams`).
 
-## 2026-06-01 — Phase 0 scaffold (Turborepo + CI)
-
-- Stood up the `@edd/*` monorepo; every component builds/tests in isolation.
-- Built the TDD centerpiece in `packages/core`: `StorageProvider` port + fake +
-  reusable round-trip **contract test** + the workspace lifecycle state machine.
-- Scaffolded `config`, `api-contracts`, `authz`, `auth`, `db`, `api-client`,
-  `services/reconciler`, `services/ssh-gateway`, `apps/web`; `infra/terraform`
-  baseline + committed provider lock; `docker-compose.tier2.yml`.
-- Authored CI (`build-test`, `check-deps`, `terraform`) + the manual `e2e-aws`
-  skeleton; brought all deps to latest so the freshness gate is green.
-- **Lesson:** TS 6 under pnpm needs explicit `@types/node` + `types: ["node"]`;
-  Vitest 4 needs vite ≥ 6 (added vite 8 at root).
-
-## 2026-06-01 — Tier-2 harness (DynamoDB Local + ElectroDB)
-
-- Added the **ElectroDB** Workspace entity to `@edd/db` (single table; `byOwner`
-  GSI1, `byState` GSI2) + an env-driven client; first integration test
-  (put/get + both GSIs) green against DynamoDB Local; wired `pnpm test:integ` +
-  the CI `integration` job. Integration files use the `*.integ.ts` suffix so
-  `pnpm test` never needs Docker.
-
-## 2026-06-01 — Dep hygiene & portable shell
-
-- Pruned the only two unused deps (`depcheck`). Added the supply-chain floor
-  **`minimumReleaseAge: 1440`**; `pnpm outdated` honours it so `check-deps` stays
-  read-only and age-aware. Made the shell script portable + `shellcheck`-clean
-  (bash & zsh, ubuntu & macOS CI matrix).
-
-## 2026-06-01 — Phase 2: control-plane API + standards charter
-
-- Built the control-plane API (`apps/web`): lifecycle endpoints
-  (create/list/get/stop/start/snapshot/delete) with CASL RBAC, over a new
-  `@edd/control-plane` `WorkspaceService` (imperative shell) on ElectroDB + the
-  pure core; added the `ComputeProvider` port + fake. Integration-tested.
-- Recorded the **engineering-standards charter** (`AGENTS.md` §6) and applied it
-  repo-wide: branded ids, domain objects across boundaries, FCIS, named
-  constants, typed `@edd/config`, explicit named exports, fail-loudly.
-- Enabled strict type-aware lint; added **`sast`** (Semgrep) + **`vuln-scan`**
-  (Trivy) gates and **`pre-commit`** (with a `commit-msg` AI-attribution stripper).
-- **Lesson:** an `export *` barrel caused a `VolumeId`/`SnapshotId` collision —
-  switched to explicit named exports (the wildcard antipattern in practice).
-
-## 2026-06-01 — Phase 3: Auth.js (GitHub + Entra) + RBAC
-
-- Wired **Auth.js (NextAuth v5)** with GitHub + Entra and JWT sessions; role
-  derived at sign-in via pure `normalizeClaims` (Zod) → `mapClaimsToRole`, with
-  env-driven group→role config. `getPrincipal` now reads the session; the
-  dev-header shim is gated by `EDD_DEV_AUTH` (tests only).
-- **Lesson:** Auth.js (`next/server`) breaks under vitest — lazy `import("../auth")`
-  inside `getPrincipal` keeps the module test-safe.
-
-## 2026-06-01 — Phase 6: user portal + admin UI
-
-- Built the Next.js portal over the existing API + Auth.js: server-rendered
-  workspaces grid, create-from-catalog, per-workspace lifecycle actions; **RBAC-
-  gated** (members own theirs; admins get an "all" view; viewers read-only).
-  Distinctive "infra control room" aesthetic, hand-written CSS.
-- **Lessons:** drove CSS-var theming via **`data-status` attributes** (inline
-  custom-property styles fought the lint rules). Kept `@edd/api-client` ids as
-  `string` at the HTTP edge so the browser bundle stays free of `node:` deps.
-
-## 2026-06-01 — Phase 5: reconciler (scale-to-zero)
-
-- Built the **idle reconcile pass** (FCIS): `WorkspaceService.listActive()` →
-  pure **`selectIdle`** → `stop` each (snapshot + tear down). `@edd/reconciler`
-  exposes a `ReconcilerService` port (unit-tested with a fake; `WorkspaceService`
-  satisfies it structurally) + the `Reconciler` shell. Unit + DynamoDB-Local
-  integration tests green. (Scheduled snapshots, orphan GC, and the cron runner
-  remain — see `DO_NEXT.md`.)
-
-## 2026-06-01 — Sockerless re-evaluation & storage findings
-
-- Re-checked sockerless after upstream changes; verified status **per issue**
-  (state_reason + code), since "closed" can mean rejected: **#347** (EBS
-  lifecycle) and **#336** (VPC/ENI) genuinely landed; EKS #348 / SES #349 were
-  `not_planned`.
-- **Filed [#359](https://github.com/e6qu/sockerless/issues/359):** EBS snapshots
-  never transition `pending → completed`, so `CreateVolume(SnapshotId)` always
-  fails `IncorrectState` — blocks snapshot→restore (SDK repro + code pointer).
-- **Key decision:** rejected a special-cased fs-on-`SIM_EBS_DATA_DIR` storage
-  adapter (violates the §6.8 endpoint-only rule); removed it. The standard EBS
-  API can't read/write a volume's _files_ without attaching it to a task, so a
-  standard `StorageProvider` adapter does lifecycle only — **data fidelity needs
-  the compute layer** (compute e2e / real-AWS tier), not the storage port.
-
-## 2026-06-02 — Streamlined docs; Phase 5 GC + scheduled snapshots
-
-- Streamlined `AGENTS.md` and the continuity files (cut ~half the lines): merged
-  the duplicate component listing, added the missing no-hardcoded-endpoints
-  standard (§6.2), moved live sim status to `BUGS.md`, restructured `DO_NEXT.md`
-  into decisions / available-now / blocked.
-- Extended Phase 5 with two more maintenance passes, decision-free and fully
-  testable with fakes + DynamoDB Local (the cron runner that invokes them stays
-  AWS-gated):
-  - **Orphan GC** — pure `selectOrphanVolumes` / `selectOrphanSnapshots` (reap
-    storage no workspace references, past a grace window) + `Reconciler.collectGarbage`
-    over new endpoint-only `StorageProvider.listVolumes`/`listSnapshots`/`deleteSnapshot`
-    (the `DescribeVolumes`/`DescribeSnapshots`/`DeleteSnapshot` shape) and a new
-    `WorkspaceService.listReferencedStorage` keep-set.
-  - **Scheduled snapshots** — pure `selectDueForSnapshot` + `Reconciler.snapshotDue`
-    over `WorkspaceService.listSnapshotCandidates`; added `latestSnapshotAt` to the
-    `Workspace` domain object / DB entity to time them.
-- Fixed a latent correctness gap (§0 rule 5): `listActive` (and the new scans)
-  now paginate with ElectroDB `{ pages: "all" }` instead of a single page —
-  matters at the 200+ target.
-- **Upstream:** sockerless **#359** (EBS restore) and **#360** (`DeleteItem`
-  returns) were fixed by PR #361; EXT-001 resolved. The endpoint-only EBS adapter
-  is now API-unblocked, gated only by EXT-004 (a runnable sim image) and AWS.
-- **Audited the remaining sockerless blockers and filed the gaps that lacked
-  issues** (existing EXT-002 #332–#335 were already open):
-  - **#362** (EXT-003) — Azure Entra sim advertises `authorization_endpoint` in
-    discovery but implements no GET `/oauth2/v2.0/authorize`; verified in
-    `simulators/azure/auth.go` (only token + JWKS exist), so an OIDC RP can't
-    complete interactive login.
-  - **#363** (EXT-004) — no consumable/pinnable distribution: the
-    `publish-container-images` workflow only fires on `v*` tags and none exist
-    (only a `wasm` pre-release), so no GHCR images are publishable to pin. Noted
-    the broader "consume sockerless as a whole" gap (the daemon, not just the
-    per-cloud simulators).
-- **Stopped at the e2e boundary** (per the user): GC/snapshot logic is green on
-  fakes + DynamoDB Local; running it against the real EBS sim / cron is the next,
-  still-gated step.
-
-## 2026-06-02 — Consume sockerless from source; real EBS adapter
-
-- **Decision (from the user):** no sockerless release is coming soon, so we
-  consume it **straight from source** rather than wait on a published image —
-  closed #363; reframed EXT-004.
-- Wired the **sockerless AWS simulator built from source** into Tier-2: pinned
-  `third_party/sockerless` submodule (@ 4e0fcbb) + `infra/sim/aws.Dockerfile`
-  (repo-root context) + a `sockerless-aws` service in `docker-compose.tier2.yml`
-  running `SIM_RUNTIME=process` (API-only, no Docker socket). CI `integration`
-  job checks out submodules and builds/runs the sim.
-- Added **`@edd/storage-ec2`** — `Ec2StorageProvider`, a real EBS `StorageProvider`
-  over the EC2 API (`@aws-sdk/client-ec2`), endpoint-only (sim or AWS). Implements
-  the lifecycle (create/snapshot/restore/delete + paginated enumerate, `OwnerIds:
-self`); `readFile`/`writeFile` throw — volume _file_ I/O needs a running task
-  (#333). Integration test exercises the full lifecycle incl. the #359 restore
-  path against the sim (verified locally).
-- **Upstream this session:** PR #364 resolved **#334** (LB) + **#335** (SG) —
-  verified AWS SG enforcement in `ec2_realexec.go`. Filed while wiring from source:
-  - **#366** — the per-cloud sim Dockerfiles + `publish-container-images` build
-    with context `simulators/<cloud>`, but each module replaces `../realexec`, so
-    the image build fails for aws/gcp/azure (verified; our Dockerfile works around
-    it with repo-root context).
-  - **#367** — `SIM_RUNTIME=process` (API-only, no runtime) is undocumented; the
-    sim otherwise FATALs "Install Docker or Podman".
-- Net remaining sockerless blockers for us: **#333** (real compute → workspace
-  execution + volume data fidelity at sim level) and **#362** (Entra `/authorize`).
-
-## 2026-06-02 — sockerless #362 resolved (Entra auth-code)
-
-- sockerless PR #368 implemented the Azure Entra **authorization-code flow** (GET
-  `/oauth2/v2.0/authorize`, PKCE, state/response-modes, RS256 id/access/refresh) —
-  **#362 closed**, EXT-003 resolved. Entra interactive login is now
-  integration-testable against the from-source sim (bump the submodule past #368
-  - add an OIDC auth-code test).
-
-## 2026-06-02 — sockerless #366/#367 resolved; dropped our workaround
-
-- sockerless PR #370 fixed the sim build-context (**#366**) and documented
-  `SIM_RUNTIME=process` (**#367**): the per-cloud Dockerfiles now build with the
-  shared `simulators/` context and ship a `simulators/.dockerignore`.
-- Bumped the `third_party/sockerless` submodule to **`41480ae`** (incl. #368 +
-  #370), **removed our workaround** (`infra/sim/aws.Dockerfile` + repo-root
-  `.dockerignore`), and pointed `docker-compose.tier2.yml` at the upstream
-  `simulators/aws/Dockerfile` (context `third_party/sockerless/simulators`).
-  Re-verified: the EBS lifecycle integration test passes against the bumped sim.
-- **#333** (real compute → workspace execution + volume data fidelity at the sim
-  level) is now our **sole remaining functional sockerless blocker**.
-
-## 2026-06-02 — sockerless #333 resolved (real Firecracker compute)
-
-- sockerless PR #372 implemented **real Firecracker microVM compute** for EC2/ECS
-  (TAP networking, deterministic IP/MAC, IMDS metadata, async ECS `StopTask`) —
-  **#333 closed**. With LB/SG/VPC/EBS/Entra already done, **no sockerless gap
-  blocks us anymore** (#332 umbrella effectively complete, pending closure).
-- **Caveat captured:** real compute runs on Firecracker + **KVM** with a
-  non-`process` `SIM_RUNTIME`. Our default Tier-2 (macOS/podman, `process` mode)
-  has no `/dev/kvm`, so sim-level workspace _execution_ and volume _file_-data
-  fidelity need a **KVM-capable CI job** or the real-AWS tier — left as an opt-in
-  future job, not verifiable in this env. The API surface (EBS lifecycle,
-  DynamoDB, EC2 metadata) stays fully covered by our process-mode Tier-2.
-- Milestone: every sockerless issue we filed (#359/#360/#362/#363/#366/#367) plus
-  the capability gaps (#333/#334/#335/#336) are resolved upstream.
-
-## 2026-06-02 — GC via the real adapter (tagged, safe) + mock-free e2e audit
-
-- Wired `Ec2StorageProvider` GC into the reconciler against the sim and added
-  **managed-resource tagging**: created volumes/snapshots carry `edd:managed=true`
-  (+ optional `edd:scope`), and enumeration filters to them (server-side `tag:`
-  Filters for real AWS + client-side for the sim, which ignores Filters). **Fixes
-  a real safety bug**: GC could otherwise have deleted unrelated EBS volumes in
-  the account. The scope tag also isolates the sim-backed GC integration test from
-  other suites sharing the simulator.
-- Tests: storage-ec2 integ +scoping (2), reconciler integ +sim-backed GC (5).
-  Full gate green: lint 12/12, build 12/12, unit 57, integration 15.
-- **Mock-free e2e audit:** traced the full path through the sim source — GitHub
-  OAuth + org/teams (bleephub), Entra auth-code (#362), ECS real container exec,
-  and **ECS-managed-EBS data fidelity** (RunTask bind-mounts the volume host dir,
-  `CreateSnapshot` copies it) are all present. So mock-free e2e is **sockerless-
-  ready**; the gate is our own infra (a Docker/KVM e2e CI job + the real ECS
-  managed-EBS `ComputeProvider` + Teleport/Pomerium in Docker), not a sim gap.
-- **Filed [#378](https://github.com/e6qu/sockerless/issues/378)** (non-blocking):
-  EC2 `AttachVolume` is metadata-only — attached EBS isn't wired into the
-  Firecracker guest, so guest writes don't persist/snapshot (inconsistent with the
-  working ECS-managed-EBS path). We use managed EBS, so it doesn't block us.
-  **Resolved same day by PR #379** (EBS wired into Firecracker guests via sparse
-  block images; attach/detach/resize patch the running guest; snapshot/restore
-  round-trip covered) — both EBS models now have sim data fidelity.
-
-## 2026-06-02 — Compute ports evolved to the Fargate managed-EBS model
-
-- Decision (with the user): for the mock-free e2e, model the workspace runtime as
-  **ECS-managed EBS** (the real Fargate pattern the sim supports) rather than the
-  prior pre-create-volume + attach split.
-- Evolved the `ComputeProvider` port: `runTask({workspaceId, baseImage,
-fromSnapshot?}) → {taskId, volumeId}` — the compute layer **creates** the task's
-  managed EBS volume (hydrating from a snapshot on wake) and **releases** it on
-  `stopTask`; the `StorageProvider` keeps snapshots, restore-lifecycle, and GC on
-  that volume id. `FakeComputeProvider` now models this via an injected
-  `StorageProvider`.
-- Reworked `WorkspaceService` create/start/stop/remove accordingly (no separate
-  `storage.createVolume`; stop snapshots then `stopTask` releases the volume).
-  Updated every fake construction site. Foundation only — fully green on fakes +
-  the from-source sim (lint 12/12, build 12/12, unit 57, integration 15).
-- Verified the **container-mode sim runs locally** (`--privileged` + the
-  Docker/podman socket → health 200). Next: the real `EcsComputeProvider` + a
-  container-mode e2e job.
-
-## 2026-06-02 — Mock-free e2e attempt → filed control/data-plane bug (#381)
-
-- Added the container-mode e2e harness (`docker-compose.e2e.yml`: sim with
-  `--privileged` + the Docker socket so it executes real task containers). It
-  boots; plain (no-volume) ECS tasks **exec to exit 0**.
-- But running the actual workspace loop surfaced a hard **control/data-plane
-  coupling** in the sim, which the user flagged and we **filed as
-  [#381](https://github.com/e6qu/sockerless/issues/381)** (EXT-005):
-  - ECS **managed-EBS task exits 1** — the sim stores volume bytes on its _own_
-    filesystem (`HostPath`) and launches task containers as **siblings** via the
-    host socket, so their bind-mount can't reach the data. Mounting an identical
-    host path fails on macOS/podman (`mkdir /sim-ebs: operation not permitted`).
-  - **`CreateVpc` hard-fails in _both_ runtime modes** without data-plane caps
-    (`missing … command:nft, cap:CAP_NET_ADMIN, cap:CAP_SYS_ADMIN`). So `awsvpc`
-    Fargate tasks can't run, and a §6.8-clean `EcsComputeProvider` (must use
-    `awsvpc`) can't be verified, on this box.
-- **Decision:** the mock-free _workspace_ e2e is blocked on #381 + a Linux host
-  with the networking caps. Did **not** ship unverified adapter code (discipline).
-  The control-plane lifecycle (DynamoDB + EBS create/snapshot/restore/GC) remains
-  fully green in process-mode Tier-2. The mock-free **auth** e2e (bleephub +
-  Entra, HTTP-only) is unblocked and a good alternative meanwhile.
-
-## 2026-06-02 — GitHub org/team → role
-
-- Closed the GitHub RBAC gap: GitHub OAuth profiles carry no team membership, so
-  users always got the default role. Now the GitHub provider requests `read:org`
-  and the jwt callback fetches `/user/teams` at sign-in, turning each team into an
-  `org/team` group id matched against `EDD_ADMIN_GROUPS`/`EDD_MEMBER_GROUPS` —
-  exactly like Entra group object-ids.
-- `apps/web/lib/github-teams.ts`: `fetchGithubTeamGroups` (injected `fetch`),
-  **fails loudly** on a non-OK response (a teams-fetch failure must not silently
-  downgrade a role — §6.5). Base URL is endpoint-overridable (`AUTH_GITHUB_API_URL`,
-  default public GitHub) so it can target the bleephub sim. Unit-tested (7).
-- Not #381-blocked (auth is HTTP-only). lint 12/12, build 12/12, unit 64.
-
-## 2026-06-02 — Mock-free workspace e2e works (sockerless #381 fixed by #382)
-
-- sockerless PR #382 resolved the control/data-plane coupling (#381 / EXT-005):
-  ECS managed EBS now uses Docker **named volumes** (daemon-managed → sibling task
-  containers mount them regardless of where the sim runs), and `CreateVpc`/
-  `CreateSubnet` store metadata unconditionally (real netns best-effort). Bumped
-  the submodule to `8a01c62`.
-- **Re-ran the loop → data fidelity PROVEN**: a task writes a file to its
-  managed-EBS volume, snapshot via `Ec2StorageProvider`, a new task hydrates from
-  the snapshot and finds the marker (container exit 0). No `nft`/KVM needed —
-  plain Docker + `network-mode none` is enough for the storage thesis.
-- Added **`packages/e2e`** (`@edd/e2e`): the data-fidelity loop as a vitest e2e
-  (`pnpm test:e2e`) against the **container-mode** sim (`docker-compose.e2e.yml`),
-  plus a CI **`e2e`** job (checkout submodules → build+run the container-mode sim →
-  `pnpm test:e2e`). Verified locally green.
-- Net: the mock-free _workspace_ thesis (stateful, snapshottable workspaces) is
-  validated end-to-end on the sim. Next: drive it through `WorkspaceService` via a
-  real `EcsComputeProvider` (product flow, not just the SDK loop).
-
-## 2026-06-02 — Real EcsComputeProvider (Fargate managed EBS)
-
-- Added **`packages/compute-ecs`** (`@edd/compute-ecs`): `EcsComputeProvider`
-  implementing the `ComputeProvider` port for real Fargate — registers a task def
-  per base image (cached), `RunTask` with an ECS-managed EBS volume (fresh, or
-  `snapshotId`-hydrated on wake) on `awsvpc`, polls `DescribeTasks` for the
-  attached volume id, and `StopTask` (ECS releases the managed volume via
-  `deleteOnTermination`). Endpoint-only (§6.8) — identical against the sim or AWS.
-  Config (cluster/subnets/EBS role/sizes) is typed via `@edd/config`.
-- **e2e proof through the product:** `packages/e2e` gained a lifecycle test that
-  drives **`WorkspaceService`** with the real `EcsComputeProvider` +
-  `Ec2StorageProvider` + DynamoDB Local against the container-mode sim:
-  create → stop (snapshot) → start (restore from snapshot) → remove, all green.
-  So the _product_ (not just an SDK loop) runs stateful workspaces mock-free.
-- No sockerless gaps surfaced — the lifecycle worked end-to-end. lint 14/14,
-  build 13/13, unit 66, e2e 2.
-- `apps/web` still uses the fakes (the real adapters need a cluster/subnets/role
-  that Terraform provides — gated on the AWS account/region decision).
-
-## 2026-06-03 — Mock-free GitHub auth e2e (bleephub)
-
-- Resumed the auth e2e after sockerless PR #385 fixed **#384** (we filed it):
-  bleephub now serves `GET /api/v3/user/teams`, the endpoint our
-  `fetchGithubTeamGroups` needs. Bumped the submodule to `ea8c79d`.
-- Stood up **bleephub** from source in the e2e harness: `infra/sim/bleephub.Dockerfile`
-  (builds `bleephub/cmd` with `-tags noui`, since bleephub ships only an
-  integration-test Dockerfile) + a `bleephub` service in `docker-compose.e2e.yml`;
-  `@edd/config` gained the `bleephub` endpoints.
-- Added **`apps/web/lib/github-auth.e2e.ts`**: a fully **mock-free** GitHub login —
-  OAuth authorization-code flow against bleephub (`authorize?...auto=1` → `code` →
-  form-encoded `access_token`), then our real `normalizeClaims` +
-  `fetchGithubTeamGroups` + `mapClaimsToRole` derive the role from the user's team
-  (`acme/platform-admins` → admin; empty config → viewer). Retires the mock-OIDC
-  stand-in for the GitHub path.
-- `apps/web` gained a `test:e2e` script + `vitest.e2e.config.ts`; the CI `e2e` job
-  already runs `pnpm test:e2e` against the harness. e2e total: 3. lint 14/14,
-  build 13/13, unit 66.
-- **Next:** the Entra path (azure sim auth-code #368) — probe for group claims,
-  file/halt if missing.
+<!-- Append new milestones below. -->

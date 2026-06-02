@@ -8,68 +8,49 @@
 ## Open decisions (need the user)
 
 1. **AWS account/region & data-residency** — **the top blocker.** Gates real
-   Terraform, Phase 1 (Fargate + EBS), Phase 4 (SSH), Phase 7, the reconciler
-   cron, and the manual `e2e-aws` tier.
+   Terraform, Phase 1 deploy, Phase 4 (SSH), Phase 7, the reconciler cron, `e2e-aws`.
 2. **Domain & DNS owner** — base domain for `*.devbox.<domain>` + cert/DNS owner.
-   Gates the identity-aware proxy and ACM certs.
+   Gates the identity-aware proxy + ACM.
 3. **VS Code distro** — confirm **code-server / OpenVSCode + Open VSX**, or flag
-   any MS-exclusive extensions users need (Pylance, official Remote/C++). Gates
-   the Phase 1 golden image.
+   any MS-exclusive extensions users need. Gates the Phase 1 golden image.
 4. **Identity-aware proxy** — confirm **Pomerium** (vs Authentik / in-house).
 5. **Heartbeat interval & idle threshold** — scale-to-zero tuning.
 
-Resolved: DynamoDB + ElectroDB · sockerless substrate · manual real-AWS on `main`
-· AGPL-3.0-or-later · Turborepo + pnpm · CASL · dep floor `minimumReleaseAge: 1440`.
+Resolved: DynamoDB+ElectroDB · sockerless substrate (from source) · Fargate
+**managed-EBS** model · manual real-AWS on `main` · AGPL-3.0-or-later · Turborepo+pnpm
+· CASL · dep floor `minimumReleaseAge: 1440`.
 
 ## Available now (decision-free)
 
-- **Entra interactive login** is now testable against the from-source sim
-  (sockerless #362 fixed by PR #368) — bump the `third_party/sockerless` submodule
-  past #368 and add an OIDC auth-code integration test (replaces the mock-OIDC
-  stand-in for Tier-2).
-- Point the control plane / `@edd/db` at the **from-source sockerless AWS sim**
-  (now wired in Tier-2) to broaden the AWS API surface beyond DynamoDB Local.
-- [x] Wired `Ec2StorageProvider` GC into the reconciler against the sim (with
-      managed-resource tagging so GC never touches unmanaged EBS) — verified.
-- **Mock-free workspace e2e** — **DONE** (sockerless #381 fixed by PR #382). The
-  data-fidelity loop + the **full product lifecycle through `WorkspaceService`**
-  (create → stop → start → remove) run mock-free against the container-mode sim,
-  locally + a CI `e2e` job (`packages/e2e`, `docker-compose.e2e.yml`). The real
-  `EcsComputeProvider` (`packages/compute-ecs`, managed-EBS Fargate) is done.
-  Follow-ons:
-  - [ ] **Teleport/Pomerium in Docker** for SSH/proxy e2e.
-  - [ ] wire `apps/web` to the real adapters (needs the cluster/subnets/role from
-        Terraform → gated on the AWS account/region decision).
-- **Mock-free auth e2e** — **GitHub done** (`apps/web/lib/github-auth.e2e.ts`
-  against bleephub; sockerless #384 fixed by PR #385). Next: the **Entra** path —
-  drive the azure sim's auth-code flow (#368) and assert `normalizeClaims("entra")`
-  - role mapping from the id token; probe whether the sim issues **group claims**
-    (our role mapping needs them) and file/halt if not.
-- **Playwright e2e** for the portal flows (Tier-2; app + DynamoDB + mock-OIDC or
-  `EDD_DEV_AUTH`).
-- Admin **base-image catalog** management, quotas, cost dashboard.
+- **Entra mock-free auth e2e** — drive the azure sim's auth-code flow (sockerless
+  #368) and assert `normalizeClaims("entra")` + role mapping from the id token.
+  **Probe whether the sim issues `groups` claims** (our role mapping needs them);
+  file + halt if missing (per the standing policy). Mirror the bleephub harness.
+- **Teleport/Pomerium in Docker** — SSH + identity-aware proxy e2e (Phase 4 + the
+  Phase 3 routing piece) against the harness.
+- Admin **base-image catalog** management, quotas, cost dashboard (Phase 6 remainder).
 - **idle-agent heartbeat** shape (editor/terminal/SSH → `lastActivity`).
-- [x] GitHub org/team → role — `read:org` scope + `/user/teams` fetch in the jwt
-      callback yields `org/team` groups; endpoint-overridable for bleephub. Done.
+- **Playwright e2e** for the portal (app + DynamoDB + `EDD_DEV_AUTH`/mock-OIDC).
 - Broader unit/integration coverage.
 
 ## Blocked
 
-**On decision #1 (AWS):** real `infra/terraform` baseline (VPC, ECS, ECR,
-DynamoDB+GSIs, KMS, IAM, remote state); Phase 1 golden image + Fargate task + EBS;
-Phase 4 SSH/Teleport; Phase 7 scale/DR; the reconciler cron runner; `e2e-aws`
-execution (OIDC→AWS role + ephemeral env + auto-teardown).
+- **On AWS (#1):** real `infra/terraform` baseline (VPC, ECS, ECR, DynamoDB+GSIs,
+  KMS, IAM, remote state); Phase 1 golden image + real Fargate deploy; wiring
+  `apps/web` to the real adapters (needs cluster/subnets/EBS-role from Terraform);
+  Phase 4 SSH/Teleport; Phase 7 scale/DR; reconciler cron; `e2e-aws` execution.
+- **On DNS (#2):** identity-aware proxy + `*.devbox.<domain>` routing + ACM.
+- **On real IdP credentials:** real GitHub/Entra federation (Tier-3 manual);
+  bleephub + the azure sim cover the mock-free path.
+- **On upstream sockerless:** _nothing._ Every gap we filed is fixed (see `BUGS.md`).
+  We consume the sim from source (submodule pinned; currently `ea8c79d`).
 
-**On decision #2 (DNS):** identity-aware proxy (Pomerium) + `*.devbox.<domain>`
-routing + ACM.
+## Working notes (durable)
 
-**On real IdP credentials:** end-to-end GitHub/Entra login (Tier-3 manual);
-mock-OIDC covers Tier-2.
-
-**On upstream sockerless:** _nothing — every gap we hit is fixed._ EBS #359/#360
-(PR #361), LB/SG #334/#335 (PR #364), Entra #362 (PR #368), build/docs #366/#367
-(PR #370), real compute **#333** (PR #372), control/data-plane split **#381**
-(PR #382), and bleephub `/user/teams` **#384** (PR #385) are all resolved; we
-consume the sim from source (submodule @ `ea8c79d`). The container-mode e2e runs
-with plain Docker (no KVM/nft — ECS managed EBS uses Docker named volumes,
-VPC/Subnet store metadata).
+- **Sim consumption:** from source, endpoint-only (`AGENTS.md` §6.8). Tier-2 =
+  process-mode sim (API surface). e2e = container-mode sim (`--privileged` + Docker
+  socket; runs real task containers). bleephub built with `-tags noui`.
+- **macOS/podman quirks:** container-mode sim needs `--privileged` + the podman
+  socket; works (#382 removed the KVM/nft requirement via Docker named volumes).
+- **check-deps churn:** the "latest ≥ 1-day-old" gate often goes stale mid-PR; run
+  `pnpm update --latest -r` + commit, or pre-run `scripts/check-latest-deps.sh`.
