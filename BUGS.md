@@ -9,34 +9,23 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-**EXT-005 — control/data-plane not separable, blocks the mock-free workspace e2e
-([#381](https://github.com/e6qu/sockerless/issues/381), we filed).** The sim
-couples its control plane (AWS API) to a co-located, fully-capable data plane, so
-the container-mode e2e can't run except directly on a Linux host with shared
-paths + networking caps:
-
-- **EBS data plane** lives on the _sim process's_ filesystem (`HostPath`); a
-  containerized sim launches task containers as **siblings** via the host socket,
-  so their bind-mount can't reach the volume bytes → managed-EBS mount empty,
-  workload exits 1. (Plain no-volume exec works.)
-- **Networking control plane**: `CreateVpc` hard-fails (both runtime modes)
-  without data-plane caps — `missing … command:nft, cap:CAP_NET_ADMIN,
-cap:CAP_SYS_ADMIN`. So `awsvpc` Fargate tasks can't run, and a §6.8-clean
-  `EcsComputeProvider` (must use `awsvpc`, no sim-special-casing) can't be
-  verified, on this macOS/podman box.
-
-Consequence: the **control-plane** lifecycle (DynamoDB, EBS create/snapshot/
-restore/GC) runs fine in process mode (our shipped Tier-2), but the **data-plane**
-mock-free e2e (real task writes surviving snapshot→restore) needs #381 resolved
-**and** a Linux host with `nft`/`CAP_NET_ADMIN`/`CAP_SYS_ADMIN`.
-
-Note: an earlier source-level audit (2026-06-02) found the _features_ all present
-— GitHub OAuth + org/teams (bleephub), Entra auth-code (#362), ECS container exec,
-ECS-managed-EBS data fidelity, EBS lifecycle, LB/SG/VPC. EXT-005 is about not
-being able to _consume_ them in a containerized topology, surfaced when we tried
-to actually run the loop. Per `AGENTS.md` §6.8 we file gaps upstream.
+**None block us.** Every gap we hit is fixed upstream (see Resolved). The
+mock-free workspace data-fidelity e2e now runs locally + in CI against the
+container-mode sim.
 
 ## Resolved
+
+**EXT-005 — control/data-plane coupling (resolved 2026-06-02, upstream).** We
+filed [#381](https://github.com/e6qu/sockerless/issues/381): a containerized sim
+couldn't share managed-EBS volume bytes with the sibling task containers it
+launched (`HostPath` bind-mount → mount empty → workload exits 1), and `CreateVpc`
+hard-failed without data-plane host caps (`nft`/`CAP_NET_ADMIN`/`CAP_SYS_ADMIN`).
+Fixed by sockerless PR #382: ECS managed EBS now uses Docker **named volumes**
+(daemon-managed, mountable by sibling containers regardless of where the sim
+runs), and VPC/Subnet creation stores metadata unconditionally (real netns only
+best-effort when caps exist). **Verified**: our `packages/e2e` data-fidelity loop
+(write → snapshot via `Ec2StorageProvider` → restore into a new task → marker
+present) passes against the container-mode sim.
 
 **#378 — EC2 `AttachVolume` was metadata-only (resolved 2026-06-02, upstream).**
 We filed it: an attached EBS volume wasn't wired into the Firecracker guest, so

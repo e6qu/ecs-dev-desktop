@@ -1,0 +1,19 @@
+{
+  "name": "@edd/e2e",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "lint": "eslint .",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-ecs": "^3.1057.0",
+    "@edd/config": "workspace:*",
+    "@edd/core": "workspace:*",
+    "@edd/storage-ec2": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1"
+  }
+}

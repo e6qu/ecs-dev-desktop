@@ -10,6 +10,7 @@
     "lint": "turbo run lint",
     "test": "turbo run test",
     "test:integ": "turbo run test:integ",
+    "test:e2e": "turbo run test:e2e",
     "check-deps": "bash scripts/check-latest-deps.sh"
   },
   "devDependencies": {

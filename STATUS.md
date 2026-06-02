@@ -44,13 +44,20 @@ decisions and upstream simulator fixes — see `DO_NEXT.md`.
   **sockerless AWS simulator built from source** (`third_party/sockerless`
   submodule, `SIM_RUNTIME=process`). `@edd/db` ElectroDB entity (single table,
   `byOwner`/`byState` GSIs).
-- **CI**: `build-test`, `integration`, `check-deps`, `terraform`, `shellcheck`
-  (ubuntu+macOS), `sast` (Semgrep), `vuln-scan` (Trivy). Manual `e2e-aws` skeleton.
+- **Mock-free workspace e2e** (`packages/e2e`, `docker-compose.e2e.yml`): the full
+  data-fidelity loop against the **container-mode** sim (executes real task
+  containers) — a task writes a file to a managed-EBS volume → snapshot via
+  `Ec2StorageProvider` → a new task hydrates from the snapshot → the marker is
+  present (asserted via container exit code). Proves the stateful-workspace thesis
+  with no mocks.
+- **CI**: `build-test`, `integration`, **`e2e`**, `check-deps`, `terraform`,
+  `shellcheck` (ubuntu+macOS), `sast` (Semgrep), `vuln-scan` (Trivy). Manual
+  `e2e-aws` skeleton.
 - **Local quality gates**: `pre-commit` (format/type-check/lint/unit/actionlint)
   - commit-msg AI-attribution stripper.
 
-**Verified locally (2026-06-02):** lint 12/12, build 12/12, unit 64 tests, integration
-13 tests (DynamoDB Local + the from-source sockerless AWS sim).
+**Verified locally (2026-06-02):** lint 13/13, build 12/12, unit 64 tests, integration
+13, e2e 1 (DynamoDB Local + the from-source sockerless AWS sim, process & container modes).
 
 ## Deployed
 
@@ -62,15 +69,12 @@ decisions and upstream simulator fixes — see `DO_NEXT.md`.
   1 (Fargate + EBS), Phase 4 (SSH), Phase 7, the reconciler cron, and `e2e-aws`
   all sit behind it.
 - **Domain/DNS** (#2) blocks the auth proxy + workspace routing.
-- Sockerless: we **consume the AWS sim from source** (submodule @ `41480ae`,
-  upstream `simulators/aws/Dockerfile`). Many gaps fixed upstream — EBS lifecycle
-  (#359/#360), LB/SG (#334/#335), Entra `/authorize` (#362), build/docs
-  (#366/#367), real compute #333 (PR #372). **The one open blocker is #381**
-  (EXT-005): control/data-plane coupling stops the mock-free workspace e2e (below).
-- **Mock-free workspace e2e:** foundation merged (managed-EBS `ComputeProvider`);
-  container-mode e2e harness added. **Blocked on sockerless #381** (control/
-  data-plane coupling: containerized sim can't share EBS bytes with sibling task
-  containers; `CreateVpc` needs `nft`/`CAP_NET_ADMIN`/`CAP_SYS_ADMIN`). Needs #381
-  - a Linux host with those caps. See `BUGS.md` EXT-005.
-- **Available now (decision-free):** mock-free **auth** e2e (bleephub + Entra, not
-  #381-blocked), admin base-image catalog, Playwright e2e, idle-agent heartbeat.
+- Sockerless: we **consume the AWS sim from source** (submodule @ `8a01c62`).
+  **No open blockers** — every gap we hit is fixed upstream (EBS #359/#360,
+  LB/SG #334/#335, Entra #362, build/docs #366/#367, compute #333, and now the
+  control/data-plane split **#381 via PR #382**). The mock-free workspace e2e runs.
+- **Next (mock-free workspace e2e is proven):** wire `WorkspaceService` through a
+  real `EcsComputeProvider` so the _product_ (not just the SDK loop) drives the
+  container-mode e2e; then Teleport/Pomerium in Docker for SSH/proxy.
+- **Available now (decision-free):** mock-free **auth** e2e (bleephub + Entra),
+  admin base-image catalog, Playwright e2e, idle-agent heartbeat.

@@ -31,23 +31,17 @@ Resolved: DynamoDB + ElectroDB · sockerless substrate · manual real-AWS on `ma
   (now wired in Tier-2) to broaden the AWS API surface beyond DynamoDB Local.
 - [x] Wired `Ec2StorageProvider` GC into the reconciler against the sim (with
       managed-resource tagging so GC never touches unmanaged EBS) — verified.
-- **Mock-free workspace e2e** — **blocked on sockerless #381** (EXT-005). Foundation
-  done (`ComputeProvider` + flow on the managed-EBS model); the container-mode e2e
-  harness exists (`docker-compose.e2e.yml`, verified to boot). But running the loop
-  surfaced the control/data-plane coupling: the containerized sim can't share EBS
-  volume bytes with the sibling task containers it launches, and `CreateVpc` needs
-  host caps (`nft`/`CAP_NET_ADMIN`/`CAP_SYS_ADMIN`) absent on macOS/podman. Gated
-  next steps, once #381 lands (+ a Linux host with those caps):
+- **Mock-free workspace e2e** — **DONE** (sockerless #381 fixed by PR #382). The
+  data-fidelity loop (task writes a file → snapshot via `Ec2StorageProvider` →
+  restore into a new task → marker present) passes against the container-mode sim,
+  locally + a CI `e2e` job (`packages/e2e`, `docker-compose.e2e.yml`). Follow-ons:
   - [ ] real **`EcsComputeProvider`** (ECS RunTask managed-EBS + snapshot restore;
-        DescribeTasks for the volume id; StopTask) — §6.8-clean (`awsvpc`, no
-        sim-special-casing), so it needs a networking-capable host to verify.
-  - [ ] the container-mode data-fidelity e2e (write → stop/snapshot → start/restore
-        → file present, asserted via task exit code).
+        DescribeTasks for the volume id; StopTask), then drive the e2e _through
+        `WorkspaceService`_ so the product flow (not just the SDK loop) is covered.
   - [ ] Teleport/Pomerium in Docker for SSH/proxy e2e.
-- **Mock-free auth e2e** (NOT blocked — verifiable now): bleephub GitHub +
-  Entra (#362) auth-code flow against the process-mode sim (HTTP only, no runtime
-  caps) — retires the mock-OIDC Tier-2 stand-in. A good alternative while #381 is
-  open.
+- **Mock-free auth e2e** (verifiable now): bleephub GitHub + Entra (#362)
+  auth-code flow against the sim (HTTP only) — retires the mock-OIDC Tier-2
+  stand-in. The teams fetcher is already endpoint-overridable for bleephub.
 - **Playwright e2e** for the portal flows (Tier-2; app + DynamoDB + mock-OIDC or
   `EDD_DEV_AUTH`).
 - Admin **base-image catalog** management, quotas, cost dashboard.
@@ -71,7 +65,7 @@ mock-OIDC covers Tier-2.
 
 **On upstream sockerless:** _nothing — every gap we hit is fixed._ EBS #359/#360
 (PR #361), LB/SG #334/#335 (PR #364), Entra #362 (PR #368), build/docs #366/#367
-(PR #370), and real compute **#333** (PR #372) are all resolved; we consume the
-sim from source (submodule @ `41480ae`). Real compute needs **KVM**, so sim-level
-workspace execution + data fidelity is a KVM-CI / real-AWS concern (see above),
-not our default Tier-2.
+(PR #370), real compute **#333** (PR #372), and the control/data-plane split
+**#381** (PR #382) are all resolved; we consume the sim from source (submodule @
+`8a01c62`). The container-mode e2e runs with plain Docker (no KVM/nft needed —
+ECS managed EBS uses Docker named volumes, VPC/Subnet store metadata).
