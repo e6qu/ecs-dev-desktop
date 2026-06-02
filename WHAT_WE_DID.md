@@ -280,3 +280,16 @@ fromSnapshot?}) → {taskId, volumeId}` — the compute layer **creates** the ta
   The control-plane lifecycle (DynamoDB + EBS create/snapshot/restore/GC) remains
   fully green in process-mode Tier-2. The mock-free **auth** e2e (bleephub +
   Entra, HTTP-only) is unblocked and a good alternative meanwhile.
+
+## 2026-06-02 — GitHub org/team → role
+
+- Closed the GitHub RBAC gap: GitHub OAuth profiles carry no team membership, so
+  users always got the default role. Now the GitHub provider requests `read:org`
+  and the jwt callback fetches `/user/teams` at sign-in, turning each team into an
+  `org/team` group id matched against `EDD_ADMIN_GROUPS`/`EDD_MEMBER_GROUPS` —
+  exactly like Entra group object-ids.
+- `apps/web/lib/github-teams.ts`: `fetchGithubTeamGroups` (injected `fetch`),
+  **fails loudly** on a non-OK response (a teams-fetch failure must not silently
+  downgrade a role — §6.5). Base URL is endpoint-overridable (`AUTH_GITHUB_API_URL`,
+  default public GitHub) so it can target the bleephub sim. Unit-tested (7).
+- Not #381-blocked (auth is HTTP-only). lint 12/12, build 12/12, unit 64.

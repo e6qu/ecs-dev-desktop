@@ -50,6 +50,9 @@ importers:
       '@edd/authz':
         specifier: workspace:*
         version: link:../../packages/authz
+      '@edd/config':
+        specifier: workspace:*
+        version: link:../../packages/config
       '@edd/control-plane':
         specifier: workspace:*
         version: link:../../packages/control-plane
