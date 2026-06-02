@@ -57,6 +57,7 @@ mock-OIDC covers Tier-2.
 is real workspace **execution** + volume _data_-fidelity at the sim level — needs
 real compute, **#333** (EXT-002, reopened). _Resolved: EBS restore #359 +
 `DeleteItem` #360 (PR #361); LB #334 + SG #335 (PR #364); Entra `/authorize` #362
-(PR #368). We consume the sim **from source** (submodule), so no release is needed
-— #363 closed; build/doc fixes #366/#367 filed. The `Ec2StorageProvider` lifecycle
-is verified against the sim; data fidelity through a running task still needs #333._
+(PR #368); sim build-context + `SIM_RUNTIME` docs #366/#367 (PR #370). We consume
+the sim **from source** (submodule @ `41480ae`, upstream Dockerfile) — #363 closed.
+The `Ec2StorageProvider` lifecycle is verified against the sim; data fidelity
+through a running task still needs #333._

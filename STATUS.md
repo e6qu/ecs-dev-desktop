@@ -44,7 +44,7 @@ decisions and upstream simulator fixes — see `DO_NEXT.md`.
   - commit-msg AI-attribution stripper.
 
 **Verified locally (2026-06-02):** lint 12/12, build 12/12, unit 57 tests, integration
-14 tests (DynamoDB Local + the from-source sockerless AWS sim).
+13 tests (DynamoDB Local + the from-source sockerless AWS sim).
 
 ## Deployed
 
@@ -56,11 +56,11 @@ decisions and upstream simulator fixes — see `DO_NEXT.md`.
   1 (Fargate + EBS), Phase 4 (SSH), Phase 7, the reconciler cron, and `e2e-aws`
   all sit behind it.
 - **Domain/DNS** (#2) blocks the auth proxy + workspace routing.
-- Sockerless: we now **consume the AWS sim from source** (no release awaited —
-  #363 closed). EBS lifecycle (#359/#360 via PR #361), LB/SG (#334/#335 via PR
-  #364), and Entra `/authorize` (#362 via PR #368) all work. The **one remaining
-  functional blocker** is **#333** (real compute — gates workspace execution +
-  volume _data_ fidelity at the sim level); build/doc fixes **#366**/**#367** we
-  filed are still open and non-blocking.
+- Sockerless: we **consume the AWS sim from source** (submodule @ `41480ae`,
+  upstream `simulators/aws/Dockerfile`). EBS lifecycle (#359/#360 via PR #361),
+  LB/SG (#334/#335 via PR #364), Entra `/authorize` (#362 via PR #368), and the
+  build-context + `SIM_RUNTIME` docs we filed (#366/#367 via PR #370) are all
+  resolved. The **sole remaining functional blocker** is **#333** (real compute —
+  gates workspace execution + volume _data_ fidelity at the sim level).
 - **Available now (decision-free):** admin base-image catalog, Playwright e2e,
   idle-agent heartbeat shape.

@@ -21,18 +21,19 @@ run a workspace task or prove a mounted volume's _file_ data survives a snapshot
 SG #335 were resolved by PR #364. (Verify "closed" per-issue: EKS #348 / SES #349
 were `not_planned`.)
 
-**EXT-004 — from-source build/run friction (we filed, non-blocking).** We
-consume sockerless **from source** (pinned submodule), so no release is needed —
-[#363](https://github.com/e6qu/sockerless/issues/363) (cut a release) was closed.
-While wiring it we filed: **[#366](https://github.com/e6qu/sockerless/issues/366)**
-(the per-cloud sim Dockerfiles + `publish-container-images` use context
-`simulators/<cloud>` but each module replaces `../realexec`, so the image build
-fails — we work around it with `infra/sim/aws.Dockerfile` at repo-root context)
-and **[#367](https://github.com/e6qu/sockerless/issues/367)** (the API-only
-`SIM_RUNTIME=process` mode is undocumented; the sim otherwise FATALs without a
-container runtime). Neither blocks us now.
-
 ## Resolved
+
+**EXT-004 — from-source build/run friction (resolved 2026-06-02, upstream).** We
+consume sockerless **from source** (pinned submodule) — [#363](https://github.com/e6qu/sockerless/issues/363)
+(cut a release) was closed as not-needed. While wiring it we filed
+**[#366](https://github.com/e6qu/sockerless/issues/366)** (per-cloud sim
+Dockerfiles + `publish-container-images` used context `simulators/<cloud>` but
+each module replaces `../realexec`, so the image build failed) and
+**[#367](https://github.com/e6qu/sockerless/issues/367)** (the API-only
+`SIM_RUNTIME=process` mode was undocumented; the sim otherwise FATAL'd). Both
+fixed by sockerless PR #370 (shared `simulators/` build context + `SIM_RUNTIME`
+docs). We dropped our workaround Dockerfile and now build the upstream
+`simulators/aws/Dockerfile` directly (submodule pinned at `41480ae`).
 
 **EXT-003 — Entra interactive `/authorize` flow (resolved 2026-06-02, upstream).**
 We filed [#362](https://github.com/e6qu/sockerless/issues/362): `simulators/azure/auth.go`

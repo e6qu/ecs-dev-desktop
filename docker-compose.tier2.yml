@@ -18,10 +18,11 @@ services:
 
   sockerless-aws:
     build:
-      context: .
-      dockerfile: infra/sim/aws.Dockerfile
+      # Upstream Dockerfile, shared simulators/ context (fixed by sockerless #370).
+      context: ./third_party/sockerless/simulators
+      dockerfile: aws/Dockerfile
     environment:
-      SIM_RUNTIME: process # API-only mode, no Docker socket — sockerless #367
+      SIM_RUNTIME: process # API-only startup mode, no container runtime — sockerless #367
     ports:
       - "4566:4566"
     healthcheck:

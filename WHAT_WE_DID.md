@@ -185,5 +185,17 @@ self`); `readFile`/`writeFile` throw — volume _file_ I/O needs a running task
   `/oauth2/v2.0/authorize`, PKCE, state/response-modes, RS256 id/access/refresh) —
   **#362 closed**, EXT-003 resolved. Entra interactive login is now
   integration-testable against the from-source sim (bump the submodule past #368
-  - add an OIDC auth-code test). **#333** (compute execution) is now our sole
-    remaining functional sockerless blocker; #366/#367 (build/doc) stay open.
+  - add an OIDC auth-code test).
+
+## 2026-06-02 — sockerless #366/#367 resolved; dropped our workaround
+
+- sockerless PR #370 fixed the sim build-context (**#366**) and documented
+  `SIM_RUNTIME=process` (**#367**): the per-cloud Dockerfiles now build with the
+  shared `simulators/` context and ship a `simulators/.dockerignore`.
+- Bumped the `third_party/sockerless` submodule to **`41480ae`** (incl. #368 +
+  #370), **removed our workaround** (`infra/sim/aws.Dockerfile` + repo-root
+  `.dockerignore`), and pointed `docker-compose.tier2.yml` at the upstream
+  `simulators/aws/Dockerfile` (context `third_party/sockerless/simulators`).
+  Re-verified: the EBS lifecycle integration test passes against the bumped sim.
+- **#333** (real compute → workspace execution + volume data fidelity at the sim
+  level) is now our **sole remaining functional sockerless blocker**.
