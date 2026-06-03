@@ -66,9 +66,13 @@ jobs:
       - run: pnpm build
       - name: Build & start the e2e harness (container-mode sim + DynamoDB Local)
         run: docker compose -f docker-compose.e2e.yml up -d --build --wait
+      - name: Build & start the SSH harness (real Teleport cluster)
+        run: docker compose -f docker-compose.ssh.yml up -d --build --wait
       - run: pnpm test:e2e
       - if: always()
         run: docker compose -f docker-compose.e2e.yml down
+      - if: always()
+        run: docker compose -f docker-compose.ssh.yml down
 
   check-deps:
     name: check-deps

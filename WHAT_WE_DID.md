@@ -76,4 +76,13 @@
   Endpoint-only — no `/sim/...`; unblocked once #390/#391 landed in #393. This is the
   reference pattern for swappable, standard-surface auth fixtures.
 
+- **2026-06-03** — **SSH via Teleport, connect e2e** (`services/ssh-gateway`,
+  `docker-compose.ssh.yml`): a real Teleport auth+proxy cluster + a workspace SSH node
+  (Teleport runs as the single non-root workspace principal — no root/host-user
+  switching). The e2e provisions a Teleport user/role via `tctl`, signs an identity
+  file, `tsh`-connects, and asserts the session lands as `workspacePrincipal("e2e")`;
+  an ungranted login is denied. Teleport pinned at 18.6.2; Teleport is the real product
+  (not a sim), so no endpoint-only policy applies. Phase 4 → 🟡 (federation, recording,
+  wake-on-connect remain).
+
 <!-- Append new milestones below. -->

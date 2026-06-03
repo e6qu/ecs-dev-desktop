@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Teleport auth+proxy for the SSH e2e harness (a real Teleport cluster in Docker,
+# not a simulator). Single-process auth+proxy; the workspace node joins over the
+# auth port with a static join token. Mirrors the production topology declaratively
+# (AGENTS.md §1: Teleport owns auth/audit/recording/Remote-SSH).
+version: v3
+teleport:
+  nodename: teleport-auth
+  data_dir: /var/lib/teleport
+  log:
+    output: stderr
+    severity: INFO
+auth_service:
+  enabled: "yes"
+  cluster_name: edd-e2e
+  listen_addr: 0.0.0.0:3025
+  proxy_listener_mode: multiplex
+  # Static join token for the e2e workspace node. Low-entropy, non-secret test
+  # value — real clusters use short-lived dynamic tokens (`tctl tokens add`).
+  tokens:
+    - "node:edd-e2e-node-join"
+proxy_service:
+  enabled: "yes"
+  web_listen_addr: 0.0.0.0:3080
+  # Self-signed cert is generated on first start; the e2e connects with --insecure.
+ssh_service:
+  enabled: "no"
