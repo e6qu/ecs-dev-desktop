@@ -1,10 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
+  baseImageEntry,
+  createBaseImageRequest,
   createWorkspaceRequest,
+  listBaseImagesResponse,
   listWorkspacesResponse,
+  updateBaseImageRequest,
   workspace,
+  type BaseImageEntryDto,
+  type CreateBaseImageRequest,
   type CreateWorkspaceRequest,
+  type ListBaseImagesResponse,
   type ListWorkspacesResponse,
+  type UpdateBaseImageRequest,
   type WorkspaceDto,
 } from "@edd/api-contracts";
 
@@ -78,5 +86,41 @@ export class ApiClient {
 
   async deleteWorkspace(id: string): Promise<void> {
     await this.send(`/api/workspaces/${id}`, { method: "DELETE" });
+  }
+
+  // --- Base-image catalog ---
+
+  async listBaseImages(): Promise<ListBaseImagesResponse> {
+    const res = await this.send("/api/base-images");
+    return listBaseImagesResponse.parse(await res.json());
+  }
+
+  async getBaseImage(id: string): Promise<BaseImageEntryDto> {
+    const res = await this.send(`/api/base-images/${id}`);
+    return baseImageEntry.parse(await res.json());
+  }
+
+  async createBaseImage(req: CreateBaseImageRequest): Promise<BaseImageEntryDto> {
+    const body = createBaseImageRequest.parse(req);
+    const res = await this.send("/api/base-images", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return baseImageEntry.parse(await res.json());
+  }
+
+  async updateBaseImage(id: string, req: UpdateBaseImageRequest): Promise<BaseImageEntryDto> {
+    const body = updateBaseImageRequest.parse(req);
+    const res = await this.send(`/api/base-images/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return baseImageEntry.parse(await res.json());
+  }
+
+  async deleteBaseImage(id: string): Promise<void> {
+    await this.send(`/api/base-images/${id}`, { method: "DELETE" });
   }
 }

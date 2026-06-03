@@ -11,6 +11,7 @@ export const ID_PREFIX = {
   volume: "vol-",
   snapshot: "snap-",
   task: "task-",
+  baseImage: "img-",
 } as const;
 
 /** Default idle window before scale-to-zero: 30 minutes. */

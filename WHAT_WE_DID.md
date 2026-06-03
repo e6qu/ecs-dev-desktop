@@ -114,4 +114,13 @@
   `POST /user/orgs`. Lesson: a sim that _accepts_ your calls can still be non-conformant —
   audit behaviour against the real API, not just the happy path.
 
+- **2026-06-03** — **Admin base-image catalog (API)**: a golden-image allow-list as a
+  full API-first vertical slice — pure `BaseImageEntry` core (`provisionBaseImage`,
+  `applyBaseImagePatch`, `findEnabledImage`), Zod contracts, a second ElectroDB entity
+  (`byCatalog` static-partition index on GSI1), `CatalogService` CRUD + `assertEnabled`,
+  CASL-gated `/api/base-images` routes (admins manage, everyone reads), api-client
+  methods, and **workspace `create` enforced against the enabled catalog**. Tested at
+  every tier (core unit, control-plane + web-route integ on DynamoDB Local). Remaining:
+  the admin management UI + a create-from-catalog picker in the portal.
+
 <!-- Append new milestones below. -->

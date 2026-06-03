@@ -1,0 +1,135 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+import type { BaseImageEntryDto } from "@edd/api-contracts";
+import {
+  applyBaseImagePatch,
+  baseImage,
+  baseImageId,
+  findEnabledImage,
+  isoTimestamp,
+  newBaseImageId,
+  provisionBaseImage,
+  type BaseImage,
+  type BaseImageEntry,
+  type BaseImageId,
+  type BaseImagePatch,
+  type Clock,
+} from "@edd/core";
+import type { BaseImageEntity } from "@edd/db";
+
+import { toBaseImageDto } from "./base-image-dto";
+
+export interface CatalogServiceDeps {
+  baseImages: BaseImageEntity;
+  clock: Clock;
+}
+
+export class BaseImageNotFoundError extends Error {
+  constructor(readonly id: BaseImageId) {
+    super(`base image not found: ${id}`);
+    this.name = "BaseImageNotFoundError";
+  }
+}
+
+/** The string-shaped persistence record (the DynamoDB boundary). */
+interface BaseImageRecord {
+  id: string;
+  name: string;
+  image: string;
+  description: string;
+  enabled: boolean;
+  createdAt: string;
+}
+
+function toEntry(r: BaseImageRecord): BaseImageEntry {
+  return {
+    id: baseImageId(r.id),
+    name: r.name,
+    image: baseImage(r.image),
+    description: r.description,
+    enabled: r.enabled,
+    createdAt: isoTimestamp(r.createdAt),
+  };
+}
+
+/**
+ * Admin-managed catalog of golden base images. Imperative shell over the pure
+ * `@edd/core` catalog functions: it does the DynamoDB I/O, the core decides.
+ */
+export class CatalogService {
+  constructor(private readonly deps: CatalogServiceDeps) {}
+
+  async list(): Promise<BaseImageEntryDto[]> {
+    const entries = await this.all();
+    return entries.map((e) => toBaseImageDto(e));
+  }
+
+  async get(id: BaseImageId): Promise<BaseImageEntryDto | null> {
+    const entry = await this.find(id);
+    return entry === null ? null : toBaseImageDto(entry);
+  }
+
+  async create(input: {
+    name: string;
+    image: BaseImage;
+    description?: string;
+    enabled?: boolean;
+  }): Promise<BaseImageEntryDto> {
+    const entry = provisionBaseImage({
+      id: newBaseImageId(),
+      name: input.name,
+      image: input.image,
+      description: input.description,
+      enabled: input.enabled,
+      at: isoTimestamp(this.deps.clock.now()),
+    });
+    await this.persist(entry);
+    return toBaseImageDto(entry);
+  }
+
+  async update(id: BaseImageId, patch: BaseImagePatch): Promise<BaseImageEntryDto> {
+    const next = applyBaseImagePatch(await this.require(id), patch);
+    await this.persist(next);
+    return toBaseImageDto(next);
+  }
+
+  async remove(id: BaseImageId): Promise<void> {
+    await this.require(id);
+    await this.deps.baseImages.delete({ id }).go();
+  }
+
+  /** Throw unless `image` is an enabled catalog entry — the workspace-create guard. */
+  async assertEnabled(image: BaseImage): Promise<void> {
+    if (findEnabledImage(await this.all(), image) === undefined) {
+      throw new Error(`base image is not in the catalog: ${image}`);
+    }
+  }
+
+  private async all(): Promise<BaseImageEntry[]> {
+    const { data } = await this.deps.baseImages.query.byCatalog({}).go({ pages: "all" });
+    return data.map((r: BaseImageRecord) => toEntry(r));
+  }
+
+  private async find(id: BaseImageId): Promise<BaseImageEntry | null> {
+    const { data } = await this.deps.baseImages.get({ id }).go();
+    return data === null ? null : toEntry(data);
+  }
+
+  private async require(id: BaseImageId): Promise<BaseImageEntry> {
+    const entry = await this.find(id);
+    if (entry === null) throw new BaseImageNotFoundError(id);
+    return entry;
+  }
+
+  private async persist(entry: BaseImageEntry): Promise<void> {
+    await this.deps.baseImages
+      .put({
+        id: entry.id,
+        name: entry.name,
+        image: entry.image,
+        description: entry.description,
+        enabled: entry.enabled,
+        createdAt: entry.createdAt,
+      })
+      .go();
+  }
+}
