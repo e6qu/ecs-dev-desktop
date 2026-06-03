@@ -35,3 +35,40 @@ export const listWorkspacesResponse = z.object({
   workspaces: z.array(workspace),
 });
 export type ListWorkspacesResponse = z.infer<typeof listWorkspacesResponse>;
+
+// --- Base-image catalog (admin-managed golden images users launch from) ---
+
+export const baseImageEntry = z.object({
+  id: z.string(),
+  name: z.string(),
+  image: z.string(),
+  description: z.string(),
+  enabled: z.boolean(),
+  createdAt: z.iso.datetime(),
+});
+export type BaseImageEntryDto = z.infer<typeof baseImageEntry>;
+
+export const createBaseImageRequest = z.object({
+  name: z.string().min(1),
+  image: z.string().min(1),
+  description: z.string().optional(),
+  enabled: z.boolean().optional(),
+});
+export type CreateBaseImageRequest = z.infer<typeof createBaseImageRequest>;
+
+/** Partial update; the id and image ref are immutable. At least one field. */
+export const updateBaseImageRequest = z
+  .object({
+    name: z.string().min(1).optional(),
+    description: z.string().optional(),
+    enabled: z.boolean().optional(),
+  })
+  .refine((p) => p.name !== undefined || p.description !== undefined || p.enabled !== undefined, {
+    message: "at least one field is required",
+  });
+export type UpdateBaseImageRequest = z.infer<typeof updateBaseImageRequest>;
+
+export const listBaseImagesResponse = z.object({
+  baseImages: z.array(baseImageEntry),
+});
+export type ListBaseImagesResponse = z.infer<typeof listBaseImagesResponse>;

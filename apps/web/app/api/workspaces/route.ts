@@ -5,8 +5,15 @@ import { createWorkspaceRequest } from "@edd/api-contracts";
 import { defineAbilityFor } from "@edd/authz";
 import { baseImage, ownerId } from "@edd/core";
 
-import { authenticate, badRequest, forbidden, isResponse } from "../../../lib/api";
-import { getControlPlane } from "../../../lib/control-plane";
+import {
+  authenticate,
+  badRequest,
+  conflict,
+  errorMessage,
+  forbidden,
+  isResponse,
+} from "../../../lib/api";
+import { getCatalog, getControlPlane } from "../../../lib/control-plane";
 
 // GET /api/workspaces — admins see all; everyone else sees their own.
 export async function GET(req: Request) {
@@ -36,10 +43,15 @@ export async function POST(req: Request) {
   const parsed = createWorkspaceRequest.safeParse(raw);
   if (!parsed.success) return badRequest();
 
+  const image = baseImage(parsed.data.baseImage);
+  // Workspaces may only launch from an enabled catalog entry (the allow-list).
+  try {
+    await getCatalog().assertEnabled(image);
+  } catch (err) {
+    return conflict(errorMessage(err));
+  }
+
   const cp = await getControlPlane();
-  const workspace = await cp.create({
-    ownerId: ownerId(principal.id),
-    baseImage: baseImage(parsed.data.baseImage),
-  });
+  const workspace = await cp.create({ ownerId: ownerId(principal.id), baseImage: image });
   return NextResponse.json(workspace, { status: 201 });
 }

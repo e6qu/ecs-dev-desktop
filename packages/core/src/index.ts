@@ -6,6 +6,7 @@
 // Domain ids (branded types + smart constructors + generators).
 export type {
   BaseImage,
+  BaseImageId,
   IsoTimestamp,
   OwnerId,
   SnapshotId,
@@ -15,7 +16,9 @@ export type {
 } from "./domain/ids";
 export {
   baseImage,
+  baseImageId,
   isoTimestamp,
+  newBaseImageId,
   newSnapshotId,
   newTaskId,
   newVolumeId,
@@ -44,6 +47,18 @@ export {
   provision,
   recordSnapshot,
 } from "./domain/workspace";
+
+// Base-image catalog domain object + pure functions (functional core).
+export type {
+  BaseImageEntry,
+  BaseImagePatch,
+  ProvisionBaseImageParams,
+} from "./domain/base-image-catalog";
+export {
+  applyBaseImagePatch,
+  findEnabledImage,
+  provisionBaseImage,
+} from "./domain/base-image-catalog";
 
 // Lifecycle state machine.
 export type { WorkspaceEvent, WorkspaceState } from "./lifecycle/workspace-state-machine";

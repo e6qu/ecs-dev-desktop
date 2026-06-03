@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
   baseImage,
+  baseImageId,
   FakeComputeProvider,
   FakeStorageProvider,
   fixedClock,
@@ -12,11 +13,12 @@ import {
   dropTable,
   dynamodbLocal,
   ensureTable,
+  makeBaseImageEntity,
   makeWorkspaceEntity,
 } from "@edd/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { WorkspaceService } from "./index";
+import { CatalogService, WorkspaceService } from "./index";
 
 process.env.DYNAMODB_ENDPOINT ??= dynamodbLocal.endpoint;
 
@@ -100,5 +102,55 @@ describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
     const ws = await service.create({ ownerId: ownerId("dave"), baseImage: baseImage("img") });
     await service.remove(workspaceId(ws.id));
     expect(await service.get(workspaceId(ws.id))).toBeNull();
+  });
+});
+
+describe("CatalogService (DynamoDB Local)", () => {
+  let client: ReturnType<typeof createDynamoClient>;
+  let catalog: CatalogService;
+
+  beforeAll(async () => {
+    client = createDynamoClient();
+    await dropTable(client, TEST_TABLE);
+    await ensureTable(client, TEST_TABLE);
+  });
+
+  beforeEach(() => {
+    catalog = new CatalogService({
+      baseImages: makeBaseImageEntity(client, TEST_TABLE),
+      clock: fixedClock(),
+    });
+  });
+
+  afterAll(async () => {
+    await dropTable(client, TEST_TABLE);
+  });
+
+  it("creates → lists → gets → updates → removes a catalog entry", async () => {
+    const created = await catalog.create({
+      name: "Node 20",
+      image: baseImage("golden/node:20"),
+      description: "LTS",
+    });
+    expect(created).toMatchObject({ name: "Node 20", enabled: true });
+
+    expect((await catalog.list()).map((e) => e.id)).toContain(created.id);
+    expect((await catalog.get(baseImageId(created.id)))?.image).toBe("golden/node:20");
+
+    const updated = await catalog.update(baseImageId(created.id), { enabled: false });
+    expect(updated.enabled).toBe(false);
+
+    await catalog.remove(baseImageId(created.id));
+    expect(await catalog.get(baseImageId(created.id))).toBeNull();
+  });
+
+  it("assertEnabled passes only for an enabled catalog image", async () => {
+    const entry = await catalog.create({ name: "Go", image: baseImage("golden/go:1.22") });
+    await expect(catalog.assertEnabled(baseImage("golden/go:1.22"))).resolves.toBeUndefined();
+
+    // Unknown image, and a disabled one, both fail.
+    await expect(catalog.assertEnabled(baseImage("golden/rust:1"))).rejects.toThrow();
+    await catalog.update(baseImageId(entry.id), { enabled: false });
+    await expect(catalog.assertEnabled(baseImage("golden/go:1.22"))).rejects.toThrow();
   });
 });

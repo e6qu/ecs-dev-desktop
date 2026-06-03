@@ -16,4 +16,9 @@ export { dynamodbLocal };
 
 export { createDynamoClient } from "./client";
 export { dropTable, ensureTable, tableDefinition } from "./table";
-export { makeWorkspaceEntity, type WorkspaceEntity } from "./entities";
+export {
+  makeBaseImageEntity,
+  makeWorkspaceEntity,
+  type BaseImageEntity,
+  type WorkspaceEntity,
+} from "./entities";

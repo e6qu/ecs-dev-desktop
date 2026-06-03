@@ -27,6 +27,11 @@ deployment; sockerless has no open blockers.
   **GitHub org/team→role** (`read:org` + `/user/teams`) and **Entra group→role**, both
   validated mock-free and **swappable** (bleephub via the conformant OAuth session/CSRF
   web flow + standard GHES provisioning; the azure sim via standard Graph + ROPC).
+- **Admin base-image catalog** (`@edd/core` + `@edd/control-plane` + `apps/web`):
+  golden-image allow-list — `CatalogService` CRUD over a pure `BaseImageEntry` core +
+  a second ElectroDB entity, CASL-gated routes `/api/base-images` (admins manage,
+  everyone reads) + api-client; workspace `create` is enforced against the **enabled**
+  catalog. (Admin management UI: remaining.)
 - **Portal UI** (`apps/web`): RBAC-gated workspaces grid + lifecycle actions.
 - **Reconciler** (`services/reconciler`): idle scale-to-zero, scheduled snapshots,
   orphan GC — pure selectors + a `ReconcilerService` port. (Cron runner = AWS.)
@@ -54,10 +59,10 @@ deployment; sockerless has no open blockers.
 - **CI**: build-test, integration, e2e, check-deps, terraform, shellcheck, sast
   (Semgrep), vuln-scan (Trivy). Manual `e2e-aws` skeleton. Local pre-commit.
 
-**Verified locally (2026-06-03):** lint 14/14, build 13/13, unit 70. The sim-backed
-lifecycle e2e (now exercising `connect()` wake on real ECS+EBS), control-plane integ,
-SSH, Pomerium, and Entra auth e2es verified against their live harnesses this session;
-the full e2e suite runs in CI.
+**Verified locally (2026-06-03):** lint 14/14, build 13/13, unit 76. The catalog
+integration tests (control-plane + web routes, DynamoDB Local) and the SSH/Pomerium/
+Entra/lifecycle e2es verified against their live harnesses this session; the full e2e
+suite runs in CI.
 
 ## Deployed
 
@@ -81,5 +86,7 @@ the full e2e suite runs in CI.
 - **GitHub-fixture swappability rework: done** — the GitHub auth e2e now uses the
   conformant OAuth session/CSRF web flow + standard GHES provisioning (no seed token /
   `auto=1` / `POST /user/orgs`); bleephub non-conformances #399/#400 fixed upstream in #401.
-- **Other decision-free work:** admin base-image catalog; Playwright portal e2e. See
-  `DO_NEXT`.
+- **Admin base-image catalog: API done** (CRUD + CASL + create-from-catalog
+  enforcement, tested at all tiers). Remaining: the admin management UI + a
+  create-from-catalog picker in the portal.
+- **Other decision-free work:** Playwright portal e2e; the catalog UI. See `DO_NEXT`.

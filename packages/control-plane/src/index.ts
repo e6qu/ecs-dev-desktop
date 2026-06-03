@@ -2,3 +2,6 @@
 export { WorkspaceNotFoundError, WorkspaceService } from "./workspace-service";
 export type { ActiveWorkspace, WorkspaceServiceDeps } from "./workspace-service";
 export { toWorkspaceDto } from "./dto";
+export { BaseImageNotFoundError, CatalogService } from "./catalog-service";
+export type { CatalogServiceDeps } from "./catalog-service";
+export { toBaseImageDto } from "./base-image-dto";

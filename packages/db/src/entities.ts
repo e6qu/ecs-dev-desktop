@@ -52,3 +52,38 @@ export function makeWorkspaceEntity(client: DynamoDBClient, table = TABLE) {
 }
 
 export type WorkspaceEntity = ReturnType<typeof makeWorkspaceEntity>;
+
+/**
+ * ElectroDB Base-image catalog entity over the same single table. `byCatalog`
+ * lists every entry from one static partition (the catalog is small); it reuses
+ * GSI1, scoped from the workspace entity by ElectroDB's per-entity key prefix.
+ */
+export function makeBaseImageEntity(client: DynamoDBClient, table = TABLE) {
+  return new Entity(
+    {
+      model: { entity: "baseImage", version: "1", service: "edd" },
+      attributes: {
+        id: { type: "string", required: true },
+        name: { type: "string", required: true },
+        image: { type: "string", required: true },
+        description: { type: "string", required: true },
+        enabled: { type: "boolean", required: true },
+        createdAt: { type: "string", required: true },
+      },
+      indexes: {
+        primary: {
+          pk: { field: "PK", composite: ["id"] },
+          sk: { field: "SK", composite: [] },
+        },
+        byCatalog: {
+          index: "GSI1",
+          pk: { field: "GSI1PK", composite: [] },
+          sk: { field: "GSI1SK", composite: ["createdAt", "id"] },
+        },
+      },
+    },
+    { client, table },
+  );
+}
+
+export type BaseImageEntity = ReturnType<typeof makeBaseImageEntity>;
