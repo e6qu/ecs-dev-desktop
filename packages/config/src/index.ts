@@ -56,6 +56,23 @@ export const bleephub = {
   apiUrl: `http://${BLEEPHUB_HOST}:${BLEEPHUB_PORT}/api/v3`,
 } as const;
 
+const ENTRA_SIM_HOST = "127.0.0.1";
+const ENTRA_SIM_PORT = 4568;
+/** Tenant the e2e drives. Real Entra reads the tenant from the request path; the
+ * sim does the same, so any stable value works (no behaviour depends on it). */
+export const ENTRA_SIM_TENANT = "edd-e2e-tenant";
+
+/** Sockerless Azure/Entra simulator (e2e auth harness). `authority` is the OIDC
+ * issuer root (`/{tenant}/oauth2/v2.0/*`); `graphUrl` is the Microsoft Graph base
+ * (standard user/group provisioning + `/me/memberOf`). Both are plain base URLs:
+ * against real cloud the same code points them at `login.microsoftonline.com` /
+ * `graph.microsoft.com` — endpoint-only, no sim-specific paths (`AGENTS.md` §6.8). */
+export const entraSim = {
+  endpoint: `http://${ENTRA_SIM_HOST}:${ENTRA_SIM_PORT}`,
+  authority: `http://${ENTRA_SIM_HOST}:${ENTRA_SIM_PORT}/${ENTRA_SIM_TENANT}`,
+  graphUrl: `http://${ENTRA_SIM_HOST}:${ENTRA_SIM_PORT}/v1.0`,
+} as const;
+
 /**
  * Runtime environment schema. Components parse `process.env` through this so
  * misconfiguration fails fast at startup rather than at first use.

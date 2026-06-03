@@ -24,8 +24,8 @@ deployment; sockerless has no open blockers.
   the task's EBS volume (snapshot-hydrated on wake) and releases it on `stopTask`;
   `StorageProvider` owns snapshots + restore-lifecycle + GC.
 - **Auth** (`@edd/auth` + `apps/web`): Auth.js (GitHub + Entra) JWT; claim→role;
-  **GitHub org/team→role** (`read:org` + `/user/teams`), validated mock-free vs
-  bleephub.
+  **GitHub org/team→role** (`read:org` + `/user/teams`) and **Entra group→role**, both
+  validated mock-free (bleephub; the azure sim via standard Graph + ROPC).
 - **Portal UI** (`apps/web`): RBAC-gated workspaces grid + lifecycle actions.
 - **Reconciler** (`services/reconciler`): idle scale-to-zero, scheduled snapshots,
   orphan GC — pure selectors + a `ReconcilerService` port. (Cron runner = AWS.)
@@ -35,7 +35,7 @@ deployment; sockerless has no open blockers.
 - **Test tiers** (`docker-compose.tier2.yml` / `.e2e.yml`, from-source sim):
   unit/contract · integration (DynamoDB Local + process-mode sim) · **e2e**
   (container-mode sim: workspace data-fidelity + full `WorkspaceService` lifecycle;
-  GitHub auth via bleephub).
+  GitHub auth via bleephub; Entra auth via the azure sim).
 - **CI**: build-test, integration, e2e, check-deps, terraform, shellcheck, sast
   (Semgrep), vuln-scan (Trivy). Manual `e2e-aws` skeleton. Local pre-commit.
 
@@ -51,5 +51,10 @@ deployment; sockerless has no open blockers.
 - **AWS account/region** (`DO_NEXT` #1) — top blocker for real Terraform, Phase 1
   deploy, SSH (Phase 4), the reconciler cron, scale/DR (Phase 7), `e2e-aws`.
 - **Domain/DNS** (#2) — blocks the identity-aware proxy + workspace routing.
-- **Next decision-free work:** Entra mock-free auth e2e (azure sim #368);
-  Teleport/Pomerium-in-Docker SSH/proxy e2e; admin base-image catalog. See `DO_NEXT`.
+- **Mock-free Entra auth e2e is done** (`apps/web/lib/entra-auth.e2e.ts`): standard
+  Microsoft Graph user/group provisioning → ROPC login → id_token `groups` → our real
+  `normalizeClaims` + `mapClaimsToRole` → admin role. Fully endpoint-only (sockerless
+  #390/#391 fixed in #393). GitHub-fixture swappability rework is now unblocked but
+  deferred (tracked in `DO_NEXT`).
+- **Next decision-free work:** Teleport/Pomerium-in-Docker SSH/proxy e2e; admin
+  base-image catalog; Playwright portal e2e. See `DO_NEXT`.
