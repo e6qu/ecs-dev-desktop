@@ -49,6 +49,10 @@ export {
 export type { WorkspaceEvent, WorkspaceState } from "./lifecycle/workspace-state-machine";
 export { can, InvalidTransitionError, transition } from "./lifecycle/workspace-state-machine";
 
+// Connect-time wake decision (wake-on-connect).
+export type { ConnectAction } from "./lifecycle/connect";
+export { planConnect } from "./lifecycle/connect";
+
 // Storage port + fake + contract.
 export type {
   Snapshot,

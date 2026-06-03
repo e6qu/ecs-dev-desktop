@@ -19,6 +19,9 @@ Teleport is the **real product**, deployed declaratively as in production.
 Wiring (Phase 4):
 
 - ✅ Teleport cluster + workspace node enrolment + connect-as-principal + authz deny.
+- 🟡 Wake-on-connect: the control-plane half is done — `WorkspaceService.connect()`
+  (idempotent; wakes a scaled-to-zero workspace from its snapshot) at
+  `POST /workspaces/:id/connect`. The gateway calls it before forwarding; the
+  golden image auto-enrols its Teleport agent on task start (deployment/AWS-tier).
 - ⬜ Identity federation from Entra / GitHub (the auth layer is proven separately).
 - ⬜ Session recording.
-- ⬜ Wake-on-connect: SSH to a scaled-to-zero workspace triggers a wake.

@@ -29,6 +29,10 @@ deployment; sockerless has no open blockers.
 - **Portal UI** (`apps/web`): RBAC-gated workspaces grid + lifecycle actions.
 - **Reconciler** (`services/reconciler`): idle scale-to-zero, scheduled snapshots,
   orphan GC — pure selectors + a `ReconcilerService` port. (Cron runner = AWS.)
+- **Wake-on-connect** (control-plane half): `WorkspaceService.connect()` (idempotent —
+  running→no-op, scaled-to-zero→wake from snapshot) over a pure `planConnect` core fn,
+  with a `POST /workspaces/:id/connect` seam + api-client method. Proven on real ECS+EBS
+  (lifecycle e2e). The Teleport→`connect()` trigger wiring is deployment/AWS-tier.
 - **Real adapters** (endpoint-only, sim or AWS): `@edd/storage-ec2`
   (`Ec2StorageProvider`, EBS lifecycle + GC-safe `edd:managed` tagging) and
   `@edd/compute-ecs` (`EcsComputeProvider`, Fargate RunTask/StopTask + managed EBS).
@@ -49,9 +53,10 @@ deployment; sockerless has no open blockers.
 - **CI**: build-test, integration, e2e, check-deps, terraform, shellcheck, sast
   (Semgrep), vuln-scan (Trivy). Manual `e2e-aws` skeleton. Local pre-commit.
 
-**Verified locally (2026-06-03):** lint 14/14, build 13/13, unit 66. SSH e2e (2) and
-Entra auth e2e verified against their live harnesses this session; the full e2e suite
-(sim data-fidelity/lifecycle + GitHub/Entra auth + SSH) runs in CI.
+**Verified locally (2026-06-03):** lint 14/14, build 13/13, unit 70. The sim-backed
+lifecycle e2e (now exercising `connect()` wake on real ECS+EBS), control-plane integ,
+SSH, Pomerium, and Entra auth e2es verified against their live harnesses this session;
+the full e2e suite runs in CI.
 
 ## Deployed
 
@@ -67,9 +72,10 @@ Entra auth e2e verified against their live harnesses this session; the full e2e 
   `normalizeClaims` + `mapClaimsToRole` → admin role. Fully endpoint-only (sockerless
   #390/#391 fixed in #393). GitHub-fixture swappability rework is now unblocked but
   deferred (tracked in `DO_NEXT`).
-- **SSH via Teleport + Pomerium routing: e2es done** (real products in Docker).
-  Remaining on that track: wake-on-connect (touches the AWS sim — file+halt on any
-  gap); Teleport↔Entra/GitHub federation; session recording; the authenticated
-  proxy-pass (browser login).
+- **SSH (Teleport) + Pomerium routing + wake-on-connect (control-plane): e2es done.**
+  Remaining on that track: the Teleport→`connect()` trigger wiring (golden image
+  auto-enrolls its Teleport agent on task start; the gateway calls `connect()` —
+  deployment/AWS-tier); Teleport↔Entra/GitHub federation; session recording; the
+  authenticated proxy-pass (browser login).
 - **Other decision-free work:** admin base-image catalog; Playwright portal e2e;
   GitHub-fixture swappability rework (now unblocked). See `DO_NEXT`.

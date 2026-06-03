@@ -64,6 +64,13 @@ export class ApiClient {
     return workspace.parse(await res.json());
   }
 
+  /** Wake-on-connect: ensure the workspace is reachable (idempotent), waking it
+   * from its snapshot if scaled to zero. Used by the connection path. */
+  async connectWorkspace(id: string): Promise<WorkspaceDto> {
+    const res = await this.send(`/api/workspaces/${id}/connect`, { method: "POST" });
+    return workspace.parse(await res.json());
+  }
+
   async snapshotWorkspace(id: string): Promise<WorkspaceDto> {
     const res = await this.send(`/api/workspaces/${id}/snapshot`, { method: "POST" });
     return workspace.parse(await res.json());
