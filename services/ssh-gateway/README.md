@@ -7,8 +7,18 @@ recording, VS Code Remote-SSH), per `AGENTS.md` §1. Teleport is deployed
 declaratively via `infra/terraform`; this package owns only the small amount of
 derived, pure config (e.g. principal mapping) so it stays unit-testable.
 
+## e2e (`docker-compose.ssh.yml`)
+
+A real Teleport cluster (auth+proxy) plus a workspace SSH node run in Docker
+(`teleport/auth.yaml`, `teleport/node.yaml`, `Dockerfile.node`). The e2e
+(`src/ssh-connect.e2e.ts`) provisions a Teleport user + role via `tctl`, signs a
+short-lived identity file, then connects with `tsh` and asserts the session lands on
+the node as the `workspacePrincipal`. A login the role doesn't grant is denied.
+Teleport is the **real product**, deployed declaratively as in production.
+
 Wiring (Phase 4):
 
-- Teleport cluster + workspace node enrolment.
-- Identity federation from Entra / GitHub.
-- Wake-on-connect: SSH to a scaled-to-zero workspace triggers a wake.
+- ✅ Teleport cluster + workspace node enrolment + connect-as-principal + authz deny.
+- ⬜ Identity federation from Entra / GitHub (the auth layer is proven separately).
+- ⬜ Session recording.
+- ⬜ Wake-on-connect: SSH to a scaled-to-zero workspace triggers a wake.

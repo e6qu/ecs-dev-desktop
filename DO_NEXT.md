@@ -22,8 +22,11 @@ Resolved: DynamoDB+ElectroDB · sockerless substrate (from source) · Fargate
 
 ## Available now (decision-free)
 
-- **Teleport/Pomerium in Docker** — SSH + identity-aware proxy e2e (Phase 4 + the
-  Phase 3 routing piece) against the harness.
+- **SSH via Teleport** — ✅ connect e2e done (`services/ssh-gateway`, real cluster in
+  `docker-compose.ssh.yml`: enrol → `tsh` connect as principal → authz deny). Remaining:
+  **Pomerium** identity-aware proxy routing e2e (Phase 3 routing); **wake-on-connect**
+  (SSH to a stopped workspace → wake; touches the AWS sim — file+halt on any gap);
+  Teleport↔Entra/GitHub federation; session recording.
 - Admin **base-image catalog** management, quotas, cost dashboard (Phase 6 remainder).
 - **idle-agent heartbeat** shape (editor/terminal/SSH → `lastActivity`).
 - **Playwright e2e** for the portal (app + DynamoDB + `EDD_DEV_AUTH`/mock-OIDC).

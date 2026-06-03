@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SSH e2e harness: a real Teleport cluster (auth+proxy) plus a workspace SSH node,
+# in Docker. Not a simulator — Teleport is the real product, deployed declaratively
+# the same way as production (AGENTS.md §1). The e2e provisions a Teleport user/role
+# and connects via tsh, asserting the session lands as the workspace principal.
+services:
+  teleport-auth:
+    image: public.ecr.aws/gravitational/teleport-distroless:18.6.2
+    container_name: edd-teleport-auth
+    # The image ENTRYPOINT is `teleport start -c /etc/teleport/teleport.yaml`, so
+    # we mount our auth config at that default path and pass no extra command.
+    user: "0:0"
+    volumes:
+      - ./services/ssh-gateway/teleport/auth.yaml:/etc/teleport/teleport.yaml:ro
+    ports:
+      - "3080:3080"
+      - "3025:3025"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/tctl", "status"]
+      interval: 3s
+      timeout: 5s
+      retries: 30
+
+  workspace-node:
+    build:
+      context: .
+      dockerfile: services/ssh-gateway/Dockerfile.node
+    container_name: edd-teleport-node
+    volumes:
+      - ./services/ssh-gateway/teleport/node.yaml:/etc/teleport/node.yaml:ro
+    depends_on:
+      teleport-auth:
+        condition: service_healthy

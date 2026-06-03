@@ -32,15 +32,20 @@ deployment; sockerless has no open blockers.
 - **Real adapters** (endpoint-only, sim or AWS): `@edd/storage-ec2`
   (`Ec2StorageProvider`, EBS lifecycle + GC-safe `edd:managed` tagging) and
   `@edd/compute-ecs` (`EcsComputeProvider`, Fargate RunTask/StopTask + managed EBS).
-- **Test tiers** (`docker-compose.tier2.yml` / `.e2e.yml`, from-source sim):
+- **SSH via Teleport** (`services/ssh-gateway`): a real Teleport cluster + workspace
+  node in Docker (`docker-compose.ssh.yml`); the e2e provisions a Teleport user/role,
+  signs an identity, and `tsh`-connects — session lands as the `workspacePrincipal`;
+  an ungranted login is denied. (Federation, recording, wake-on-connect: remaining.)
+- **Test tiers** (`docker-compose.tier2.yml` / `.e2e.yml` / `.ssh.yml`, from-source sim):
   unit/contract · integration (DynamoDB Local + process-mode sim) · **e2e**
   (container-mode sim: workspace data-fidelity + full `WorkspaceService` lifecycle;
-  GitHub auth via bleephub; Entra auth via the azure sim).
+  GitHub auth via bleephub; Entra auth via the azure sim; SSH via a real Teleport cluster).
 - **CI**: build-test, integration, e2e, check-deps, terraform, shellcheck, sast
   (Semgrep), vuln-scan (Trivy). Manual `e2e-aws` skeleton. Local pre-commit.
 
-**Verified locally (2026-06-03):** lint 14/14, build 13/13, unit 66, integration
-13, e2e 3.
+**Verified locally (2026-06-03):** lint 14/14, build 13/13, unit 66. SSH e2e (2) and
+Entra auth e2e verified against their live harnesses this session; the full e2e suite
+(sim data-fidelity/lifecycle + GitHub/Entra auth + SSH) runs in CI.
 
 ## Deployed
 
@@ -56,5 +61,8 @@ deployment; sockerless has no open blockers.
   `normalizeClaims` + `mapClaimsToRole` → admin role. Fully endpoint-only (sockerless
   #390/#391 fixed in #393). GitHub-fixture swappability rework is now unblocked but
   deferred (tracked in `DO_NEXT`).
-- **Next decision-free work:** Teleport/Pomerium-in-Docker SSH/proxy e2e; admin
-  base-image catalog; Playwright portal e2e. See `DO_NEXT`.
+- **SSH via Teleport: connect e2e done** (real cluster in Docker). Remaining on that
+  track: Pomerium identity-aware proxy routing e2e; wake-on-connect (touches the AWS
+  sim — file+halt on any gap).
+- **Other decision-free work:** admin base-image catalog; Playwright portal e2e;
+  GitHub-fixture swappability rework (now unblocked). See `DO_NEXT`.

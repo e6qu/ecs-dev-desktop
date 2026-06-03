@@ -55,12 +55,17 @@ provisioning + ROPC, endpoint-only — sockerless #390/#391 fixed in #393).
 - **Gate:** CASL matrix ✅; GitHub + Entra group→role proven on the sim ✅; proxy
   routing ⬜.
 
-## Phase 4 — SSH via Teleport — ⬜ pending
+## Phase 4 — SSH via Teleport — 🟡
 
-- Teleport cluster; workspaces enrolled as nodes; identity federated from Entra/
-  GitHub; session recording; wake-on-connect (SSH to a scaled-to-zero workspace).
-- **Gate:** `tsh ssh` / Remote-SSH connect; audit + recording; SSH wakes a stopped
-  workspace. (Teleport-in-Docker for the e2e; real federation = `e2e-aws`.)
+✅ Real Teleport cluster + workspace node enrolment + `tsh ssh` connect as the
+workspace principal + authz deny, proven mock-free in Docker (`services/ssh-gateway`,
+`docker-compose.ssh.yml`).
+
+- ⬜ **Remaining:** identity federation from Entra/GitHub into Teleport; session
+  recording; wake-on-connect (SSH to a scaled-to-zero workspace → wake via the control
+  plane + AWS sim).
+- **Gate:** `tsh ssh` connect ✅; audit + recording ⬜; SSH wakes a stopped workspace ⬜.
+  (Teleport-in-Docker for the e2e; real federation = `e2e-aws`.)
 
 ## Phase 5 — Scale-to-zero + snapshot automation — 🟡
 
