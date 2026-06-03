@@ -58,4 +58,22 @@
   `normalizeClaims` + `fetchGithubTeamGroups` + `mapClaimsToRole` → role. Also added
   GitHub org/team→role (`read:org` + `/user/teams`).
 
+- **2026-06-03** — **Endpoint-only swappability, enforced project-wide** (user
+  directive sharpening §6.8): the whole project — product code _and_ test fixtures —
+  must differ from real cloud by endpoint/base-domain only; no `/sim/...` endpoints,
+  seed tokens, non-standard endpoints, branches, or fallbacks. Audit found product
+  code clean but two auth e2es' **fixtures** non-swappable. The Entra `groups` claim
+  (added by #389) shipped via a sim-only seed → filed **#390** (need standard Graph /
+  `azuread` Terraform + ROPC). bleephub's `POST /user/orgs` isn't a real GitHub/GHES
+  endpoint → filed **#391** (need standard `POST /admin/organizations`). Both auth
+  e2es halted pending swappable provisioning; lesson: a feature reachable only through
+  a sim-only endpoint is still a blocker, not a fix.
+
+- **2026-06-03** — **Mock-free Entra auth e2e** (`apps/web/lib/entra-auth.e2e.ts`,
+  azure sim added to `docker-compose.e2e.yml` in process mode): standard Microsoft
+  Graph user/group/membership provisioning → ROPC (`grant_type=password`) login →
+  id_token `groups` → our real `normalizeClaims` + `mapClaimsToRole` → admin role.
+  Endpoint-only — no `/sim/...`; unblocked once #390/#391 landed in #393. This is the
+  reference pattern for swappable, standard-surface auth fixtures.
+
 <!-- Append new milestones below. -->

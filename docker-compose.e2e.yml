@@ -40,3 +40,29 @@ services:
       interval: 3s
       timeout: 3s
       retries: 20
+
+  # azure-sim: the sockerless Azure/Entra simulator (mock-free Entra auth e2e).
+  # Drives the standard surfaces only — Microsoft Graph user/group provisioning,
+  # group membership, and the ROPC token grant — so the test is swappable with
+  # real Entra by base-URL alone (AGENTS.md §6.8).
+  azure-sim:
+    build:
+      context: ./third_party/sockerless/simulators
+      dockerfile: azure/Dockerfile
+    # API-only: the auth flow (Graph + OAuth) executes no workloads, so the sim
+    # needs no container runtime — process mode (same as the Tier-2 harness).
+    environment:
+      SIM_RUNTIME: process
+    ports:
+      - "4568:4568"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "-qO-",
+          "http://localhost:4568/common/v2.0/.well-known/openid-configuration",
+        ]
+      interval: 3s
+      timeout: 3s
+      retries: 30

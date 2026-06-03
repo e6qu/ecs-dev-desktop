@@ -38,11 +38,9 @@ Resolved: DynamoDB+ElectroDB · sockerless substrate (from source) · Fargate
 - **On DNS (#2):** identity-aware proxy + `*.devbox.<domain>` routing + ACM.
 - **On real IdP credentials:** real GitHub/Entra federation (Tier-3 manual);
   bleephub + the azure sim cover the mock-free path.
-- **On upstream sockerless #387:** the **Entra mock-free auth e2e** — the azure sim
-  mints id tokens with no `groups` claim (and no Graph `memberOf` / no group seeding),
-  so the group→role RBAC path can't be exercised mock-free. Filed + halted per policy
-  (analog of bleephub #384/#385). We consume the sim from source (submodule pinned;
-  currently `ea8c79d`).
+- **On upstream sockerless:** _nothing._ Every gap we filed is fixed (see `BUGS.md`).
+  Sim consumed from source (submodule pinned; currently `5c8397f`, with #393's standard
+  Entra Graph/ROPC + bleephub `POST /admin/organizations`).
 
 ## Working notes (durable)
 
@@ -53,3 +51,15 @@ Resolved: DynamoDB+ElectroDB · sockerless substrate (from source) · Fargate
   socket; works (#382 removed the KVM/nft requirement via Docker named volumes).
 - **check-deps churn:** the "latest ≥ 1-day-old" gate often goes stale mid-PR; run
   `pnpm update --latest -r` + commit, or pre-run `scripts/check-latest-deps.sh`.
+- **Endpoint-only / swappability (HARD RULE, `AGENTS.md` §6.8):** the whole project —
+  product code _and_ tests/fixtures — must differ from real cloud by endpoint/base
+  domain only. Allowed: `AWS_ENDPOINT_URL`, `AUTH_GITHUB_API_URL`/`githubApiBaseUrl()`,
+  Entra authority host. **Not allowed:** any `/sim/...` endpoint, hardcoded sim seed
+  tokens, non-standard endpoints (`POST /user/orgs`), endpoint branches/fallbacks.
+  Audit (2026-06-03): product code is clean; the **auth-test fixtures** were the gap.
+- **Owed remediation — `apps/web/lib/github-auth.e2e.ts`** (now UNBLOCKED, #391 landed
+  in #393; deferred by choice — "leave as-is, tracked"): rework to be swappable — take
+  the admin token + org/team from env (fail loudly, drop the hardcoded `ghp_0…` seed)
+  and create the org via standard `POST /admin/organizations` instead of the
+  non-standard `POST /user/orgs`. (The Entra e2e `apps/web/lib/entra-auth.e2e.ts` is the
+  reference for the swappable, standard-surface pattern.)

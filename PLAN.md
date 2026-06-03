@@ -45,14 +45,15 @@ restores it → data present (`packages/e2e`). `EcsComputeProvider` + the full
 
 ## Phase 3 — Auth + RBAC + workspace routing — 🟡
 
-✅ Auth.js (GitHub + Entra), CASL abilities, GitHub org/team→role, GitHub login
-proven mock-free vs bleephub.
+✅ Auth.js (GitHub + Entra), CASL abilities, group→role mapping, **both logins proven
+mock-free**: GitHub vs bleephub, and Entra via the azure sim (standard Graph
+provisioning + ROPC, endpoint-only — sockerless #390/#391 fixed in #393).
 
-- ⬜ **Remaining:** Entra mock-free auth e2e — **blocked on sockerless #387** (azure
-  sim id token has no `groups` claim / no Graph `memberOf` / no group seeding, so
-  group→role can't be exercised mock-free); identity-aware proxy (**Pomerium**) +
-  `*.devbox.<domain>` routing (needs DNS #2).
-- **Gate:** CASL matrix ✅; mock-free GitHub login ✅; Entra login + proxy routing ⬜.
+- ⬜ **Remaining:** identity-aware proxy (**Pomerium**) + `*.devbox.<domain>` routing
+  (needs DNS #2). GitHub e2e fixture is owed a swappability rework (now unblocked,
+  deferred — see `DO_NEXT`).
+- **Gate:** CASL matrix ✅; GitHub + Entra group→role proven on the sim ✅; proxy
+  routing ⬜.
 
 ## Phase 4 — SSH via Teleport — ⬜ pending
 
