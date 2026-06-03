@@ -19,20 +19,22 @@ provider, **file it upstream and halt** — never special-case around it.
 
 ## Resolved (sockerless, all fixed upstream — `we filed` unless noted)
 
-| Gap (we filed) | What                                                                                                                                         | Fixed by |
-| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| #359 / #360    | EBS snapshots never reached `completed`; `DeleteItem ALL_OLD` empty                                                                          | PR #361  |
-| #334 / #335    | LB / SG enforcement (not we-filed; pre-existing)                                                                                             | PR #364  |
-| #362           | Azure Entra had no GET `/oauth2/v2.0/authorize` (auth-code flow)                                                                             | PR #368  |
-| #366 / #367    | per-cloud sim Dockerfile context broke `../realexec`; `SIM_RUNTIME=process` undocumented                                                     | PR #370  |
-| #363           | "cut a release" — closed not-needed (we consume from source)                                                                                 | —        |
-| #333           | EC2/ECS compute metadata-only → real Firecracker microVMs                                                                                    | PR #372  |
-| #378           | EC2 `AttachVolume` metadata-only (didn't wire EBS into guest)                                                                                | PR #379  |
-| #381           | control/data-plane coupling — containerized sim couldn't share managed-EBS bytes with sibling task containers; `CreateVpc` needed `nft`/caps | PR #382  |
-| #384           | bleephub missing `GET /api/v3/user/teams` (blocked GitHub auth e2e)                                                                          | PR #385  |
-| #387           | Entra id token had no `groups` claim / no Graph `memberOf` / no seeding                                                                      | PR #389  |
-| #390           | #389's Entra group seeding was **sim-only** (`/sim/v1/...`) — not swappable; needed standard Graph provisioning + ROPC                       | PR #393  |
-| #391           | bleephub `POST /user/orgs` isn't a real GitHub/GHES endpoint — needed standard `POST /admin/organizations`                                   | PR #393  |
+| Gap (we filed) | What                                                                                                                                                                  | Fixed by |
+| -------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| #359 / #360    | EBS snapshots never reached `completed`; `DeleteItem ALL_OLD` empty                                                                                                   | PR #361  |
+| #334 / #335    | LB / SG enforcement (not we-filed; pre-existing)                                                                                                                      | PR #364  |
+| #362           | Azure Entra had no GET `/oauth2/v2.0/authorize` (auth-code flow)                                                                                                      | PR #368  |
+| #366 / #367    | per-cloud sim Dockerfile context broke `../realexec`; `SIM_RUNTIME=process` undocumented                                                                              | PR #370  |
+| #363           | "cut a release" — closed not-needed (we consume from source)                                                                                                          | —        |
+| #333           | EC2/ECS compute metadata-only → real Firecracker microVMs                                                                                                             | PR #372  |
+| #378           | EC2 `AttachVolume` metadata-only (didn't wire EBS into guest)                                                                                                         | PR #379  |
+| #381           | control/data-plane coupling — containerized sim couldn't share managed-EBS bytes with sibling task containers; `CreateVpc` needed `nft`/caps                          | PR #382  |
+| #384           | bleephub missing `GET /api/v3/user/teams` (blocked GitHub auth e2e)                                                                                                   | PR #385  |
+| #387           | Entra id token had no `groups` claim / no Graph `memberOf` / no seeding                                                                                               | PR #389  |
+| #390           | #389's Entra group seeding was **sim-only** (`/sim/v1/...`) — not swappable; needed standard Graph provisioning + ROPC                                                | PR #393  |
+| #391           | bleephub `POST /user/orgs` isn't a real GitHub/GHES endpoint — needed standard `POST /admin/organizations`                                                            | PR #393  |
+| #399           | bleephub OAuth **non-conformance**: authorize flow had no session/CSRF and always granted the seed admin (a sim that _accepts_ our calls can still be non-conformant) | PR #401  |
+| #400           | bleephub **non-conformance**: `POST /admin/organizations` didn't enforce site-admin auth                                                                              | PR #401  |
 
 Key outcomes: PR #382 made ECS managed EBS use **Docker named volumes** (so the
 container-mode e2e runs with plain Docker — no KVM/`nft`), and VPC/Subnet store

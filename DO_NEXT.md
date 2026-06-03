@@ -51,8 +51,8 @@ Resolved: DynamoDB+ElectroDB · sockerless substrate (from source) · Fargate
 - **On real IdP credentials:** real GitHub/Entra federation (Tier-3 manual);
   bleephub + the azure sim cover the mock-free path.
 - **On upstream sockerless:** _nothing._ Every gap we filed is fixed (see `BUGS.md`).
-  Sim consumed from source (submodule pinned; currently `5c8397f`, with #393's standard
-  Entra Graph/ROPC + bleephub `POST /admin/organizations`).
+  Sim consumed from source (submodule pinned; currently `fed6600`, with #401's conformant
+  bleephub OAuth session/CSRF flow + site-admin org endpoint).
 
 ## Working notes (durable)
 
@@ -74,9 +74,9 @@ Resolved: DynamoDB+ElectroDB · sockerless substrate (from source) · Fargate
   Entra authority host. **Not allowed:** any `/sim/...` endpoint, hardcoded sim seed
   tokens, non-standard endpoints (`POST /user/orgs`), endpoint branches/fallbacks.
   Audit (2026-06-03): product code is clean; the **auth-test fixtures** were the gap.
-- **Owed remediation — `apps/web/lib/github-auth.e2e.ts`** (now UNBLOCKED, #391 landed
-  in #393; deferred by choice — "leave as-is, tracked"): rework to be swappable — take
-  the admin token + org/team from env (fail loudly, drop the hardcoded `ghp_0…` seed)
-  and create the org via standard `POST /admin/organizations` instead of the
-  non-standard `POST /user/orgs`. (The Entra e2e `apps/web/lib/entra-auth.e2e.ts` is the
-  reference for the swappable, standard-surface pattern.)
+- **GitHub auth e2e swappability rework — ✅ done.** `apps/web/lib/github-auth.e2e.ts`
+  now uses the **conformant** OAuth web flow (session cookie + `authenticity_token` CSRF,
+  code bound to the session user — bleephub #399→#401), `POST /admin/organizations`
+  (site-admin enforced, #400→#401), and no hardcoded seed token / no `auto=1` / no
+  `POST /user/orgs`. A conformance audit had found those bleephub non-conformances mid-
+  rework; filed #399/#400, upstream fixed them in #401, then completed the rework.

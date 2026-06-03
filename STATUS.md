@@ -25,7 +25,8 @@ deployment; sockerless has no open blockers.
   `StorageProvider` owns snapshots + restore-lifecycle + GC.
 - **Auth** (`@edd/auth` + `apps/web`): Auth.js (GitHub + Entra) JWT; claim→role;
   **GitHub org/team→role** (`read:org` + `/user/teams`) and **Entra group→role**, both
-  validated mock-free (bleephub; the azure sim via standard Graph + ROPC).
+  validated mock-free and **swappable** (bleephub via the conformant OAuth session/CSRF
+  web flow + standard GHES provisioning; the azure sim via standard Graph + ROPC).
 - **Portal UI** (`apps/web`): RBAC-gated workspaces grid + lifecycle actions.
 - **Reconciler** (`services/reconciler`): idle scale-to-zero, scheduled snapshots,
   orphan GC — pure selectors + a `ReconcilerService` port. (Cron runner = AWS.)
@@ -77,5 +78,8 @@ the full e2e suite runs in CI.
   auto-enrolls its Teleport agent on task start; the gateway calls `connect()` —
   deployment/AWS-tier); Teleport↔Entra/GitHub federation; session recording; the
   authenticated proxy-pass (browser login).
-- **Other decision-free work:** admin base-image catalog; Playwright portal e2e;
-  GitHub-fixture swappability rework (now unblocked). See `DO_NEXT`.
+- **GitHub-fixture swappability rework: done** — the GitHub auth e2e now uses the
+  conformant OAuth session/CSRF web flow + standard GHES provisioning (no seed token /
+  `auto=1` / `POST /user/orgs`); bleephub non-conformances #399/#400 fixed upstream in #401.
+- **Other decision-free work:** admin base-image catalog; Playwright portal e2e. See
+  `DO_NEXT`.
