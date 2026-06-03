@@ -9,13 +9,18 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-**None.** Every gap we hit has been fixed upstream (see Resolved).
+| Filed                                                 | What                                                                                                                                                                                                                       | Blocks                              | Status   |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- | -------- |
+| [#399](https://github.com/e6qu/sockerless/issues/399) | bleephub OAuth **non-conformance**: authorize flow has no user session/CSRF and always grants the seed admin (`Users[1]`); `auto=1` is non-standard — unlike real GitHub, where the code is bound to the logged-in session | GitHub auth e2e swappability rework | **open** |
+| [#400](https://github.com/e6qu/sockerless/issues/400) | bleephub **non-conformance**: `POST /admin/organizations` doesn't enforce site-admin auth (real GHES requires it)                                                                                                          | GitHub auth e2e swappability rework | **open** |
 
 Policy (`AGENTS.md` §6.8 + standing user directive): the **whole project** (product
 code _and_ tests) must differ from the real-cloud path by **endpoint/base-domain
 only** — no sim-specific endpoints, branches, flags, fixtures, tokens, fallbacks, or
-workarounds. If something isn't expressible via a standard SDK/CLI/Terraform
-provider, **file it upstream and halt** — never special-case around it.
+workarounds. If the simulator/bleephub **differs from the real API/behaviour** in
+something that matters, **file a non-conformance upstream and halt** — never adapt the
+test around the divergence. #399/#400 were found while reworking the GitHub auth e2e
+for swappability; that rework is halted pending conformant behaviour.
 
 ## Resolved (sockerless, all fixed upstream — `we filed` unless noted)
 

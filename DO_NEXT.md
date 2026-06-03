@@ -74,9 +74,12 @@ Resolved: DynamoDB+ElectroDB · sockerless substrate (from source) · Fargate
   Entra authority host. **Not allowed:** any `/sim/...` endpoint, hardcoded sim seed
   tokens, non-standard endpoints (`POST /user/orgs`), endpoint branches/fallbacks.
   Audit (2026-06-03): product code is clean; the **auth-test fixtures** were the gap.
-- **Owed remediation — `apps/web/lib/github-auth.e2e.ts`** (now UNBLOCKED, #391 landed
-  in #393; deferred by choice — "leave as-is, tracked"): rework to be swappable — take
-  the admin token + org/team from env (fail loudly, drop the hardcoded `ghp_0…` seed)
-  and create the org via standard `POST /admin/organizations` instead of the
-  non-standard `POST /user/orgs`. (The Entra e2e `apps/web/lib/entra-auth.e2e.ts` is the
-  reference for the swappable, standard-surface pattern.)
+- **GitHub auth e2e swappability rework — BLOCKED on sockerless #399/#400.** A 2026-06-03
+  conformance audit (while reworking `apps/web/lib/github-auth.e2e.ts`) found bleephub's
+  OAuth authorize flow is **non-conformant** with real GitHub (no user session/CSRF,
+  always grants the seed admin, non-standard `auto=1`), and `POST /admin/organizations`
+  doesn't enforce site-admin auth. Per the no-workaround policy we **filed #399/#400 and
+  halted** rather than adapt the test around the divergence. The existing merged test
+  (which still uses `auto=1` + the hardcoded `ghp_0…` seed + non-standard `POST /user/orgs`)
+  stays as-is, tracked, until the rework can be done conformantly. (Reference for the
+  swappable, standard-surface pattern: `apps/web/lib/entra-auth.e2e.ts`.)

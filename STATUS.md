@@ -77,5 +77,9 @@ the full e2e suite runs in CI.
   auto-enrolls its Teleport agent on task start; the gateway calls `connect()` —
   deployment/AWS-tier); Teleport↔Entra/GitHub federation; session recording; the
   authenticated proxy-pass (browser login).
-- **Other decision-free work:** admin base-image catalog; Playwright portal e2e;
-  GitHub-fixture swappability rework (now unblocked). See `DO_NEXT`.
+- **GitHub-fixture swappability rework: halted** on sockerless #399/#400 — a conformance
+  audit found bleephub's OAuth authorize flow non-conformant (no user session/CSRF,
+  always grants the seed admin) and `POST /admin/organizations` unauthenticated. Filed +
+  halted per the no-workaround policy; the merged test stays as-is, tracked.
+- **Other decision-free work:** admin base-image catalog; Playwright portal e2e. See
+  `DO_NEXT`.

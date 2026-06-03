@@ -103,4 +103,15 @@
   wake data-path was already sim-proven, so no sim gap; the Teleport→`connect()` trigger
   (golden image auto-enrol + gateway call) is deployment/AWS-tier, not a sim concern.
 
+- **2026-06-03** — **GitHub auth e2e swappability rework — conformance audit + halt.**
+  Reworking `github-auth.e2e.ts` to drop the two flagged special-cases (hardcoded seed
+  token, non-standard `POST /user/orgs`), a conformance audit found deeper bleephub
+  **non-conformances**: the OAuth authorize flow has no user session/CSRF and always
+  grants the seed admin (`Users[1]`), with a non-standard `auto=1`; and
+  `POST /admin/organizations` doesn't enforce site-admin auth. Per the no-workaround
+  policy (don't adapt tests around a sim/bleephub divergence from the real API), filed
+  **#399** + **#400** and **halted** the rework. Lesson: a sim that _accepts_ our calls
+  can still be non-conformant — audit behaviour against the real API, not just the happy
+  path.
+
 <!-- Append new milestones below. -->
