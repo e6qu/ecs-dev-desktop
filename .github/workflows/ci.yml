@@ -64,10 +64,30 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      # Retry harness bring-up: image pulls can transiently hit registry rate
+      # limits (public.ecr.aws / Docker Hub) on shared runner IPs.
       - name: Build & start the e2e harness (container-mode sim + DynamoDB Local)
-        run: docker compose -f docker-compose.e2e.yml up -d --build --wait
+        run: |
+          for attempt in 1 2 3; do
+            if docker compose -f docker-compose.e2e.yml up -d --build --wait; then
+              exit 0
+            fi
+            echo "::warning::e2e harness bring-up failed (attempt ${attempt}); retrying"
+            docker compose -f docker-compose.e2e.yml down -v || true
+            sleep "$((attempt * 20))"
+          done
+          exit 1
       - name: Build & start the SSH harness (real Teleport cluster)
-        run: docker compose -f docker-compose.ssh.yml up -d --build --wait
+        run: |
+          for attempt in 1 2 3; do
+            if docker compose -f docker-compose.ssh.yml up -d --build --wait; then
+              exit 0
+            fi
+            echo "::warning::SSH harness bring-up failed (attempt ${attempt}); retrying"
+            docker compose -f docker-compose.ssh.yml down -v || true
+            sleep "$((attempt * 20))"
+          done
+          exit 1
       - run: pnpm test:e2e
       - if: always()
         run: docker compose -f docker-compose.e2e.yml down

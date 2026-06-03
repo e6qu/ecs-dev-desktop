@@ -66,3 +66,20 @@ services:
       interval: 3s
       timeout: 3s
       retries: 30
+
+  # workspace-upstream: a stand-in workspace HTTP endpoint behind the proxy.
+  workspace-upstream:
+    image: docker.io/traefik/whoami:v1.10.2
+    command: ["--port", "80"]
+
+  # pomerium: the real identity-aware proxy for wildcard workspace routing. Its OIDC
+  # IdP is the azure sim above; the e2e asserts wildcard routing + the identity gate.
+  pomerium:
+    image: docker.io/pomerium/pomerium:v0.32.2
+    volumes:
+      - ./infra/proxy/pomerium.yaml:/pomerium/config.yaml:ro
+    ports:
+      - "8089:80"
+    depends_on:
+      azure-sim:
+        condition: service_healthy

@@ -36,10 +36,16 @@ deployment; sockerless has no open blockers.
   node in Docker (`docker-compose.ssh.yml`); the e2e provisions a Teleport user/role,
   signs an identity, and `tsh`-connects — session lands as the `workspacePrincipal`;
   an ungranted login is denied. (Federation, recording, wake-on-connect: remaining.)
+- **Identity-aware routing via Pomerium** (`infra/proxy`): a real Pomerium proxy in
+  Docker (in `docker-compose.e2e.yml`, OIDC IdP = the azure sim) proves the wildcard
+  model — `<name>.devbox.<domain>` routes to a workspace upstream and unauthenticated
+  access is gated to sign-in. (Authenticated-pass via browser login + real DNS/TLS:
+  remaining.)
 - **Test tiers** (`docker-compose.tier2.yml` / `.e2e.yml` / `.ssh.yml`, from-source sim):
   unit/contract · integration (DynamoDB Local + process-mode sim) · **e2e**
   (container-mode sim: workspace data-fidelity + full `WorkspaceService` lifecycle;
-  GitHub auth via bleephub; Entra auth via the azure sim; SSH via a real Teleport cluster).
+  GitHub auth via bleephub; Entra auth via the azure sim; identity-aware routing via a
+  real Pomerium proxy; SSH via a real Teleport cluster).
 - **CI**: build-test, integration, e2e, check-deps, terraform, shellcheck, sast
   (Semgrep), vuln-scan (Trivy). Manual `e2e-aws` skeleton. Local pre-commit.
 
@@ -61,8 +67,9 @@ Entra auth e2e verified against their live harnesses this session; the full e2e 
   `normalizeClaims` + `mapClaimsToRole` → admin role. Fully endpoint-only (sockerless
   #390/#391 fixed in #393). GitHub-fixture swappability rework is now unblocked but
   deferred (tracked in `DO_NEXT`).
-- **SSH via Teleport: connect e2e done** (real cluster in Docker). Remaining on that
-  track: Pomerium identity-aware proxy routing e2e; wake-on-connect (touches the AWS
-  sim — file+halt on any gap).
+- **SSH via Teleport + Pomerium routing: e2es done** (real products in Docker).
+  Remaining on that track: wake-on-connect (touches the AWS sim — file+halt on any
+  gap); Teleport↔Entra/GitHub federation; session recording; the authenticated
+  proxy-pass (browser login).
 - **Other decision-free work:** admin base-image catalog; Playwright portal e2e;
   GitHub-fixture swappability rework (now unblocked). See `DO_NEXT`.

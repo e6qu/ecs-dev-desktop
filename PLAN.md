@@ -49,11 +49,15 @@ restores it → data present (`packages/e2e`). `EcsComputeProvider` + the full
 mock-free**: GitHub vs bleephub, and Entra via the azure sim (standard Graph
 provisioning + ROPC, endpoint-only — sockerless #390/#391 fixed in #393).
 
-- ⬜ **Remaining:** identity-aware proxy (**Pomerium**) + `*.devbox.<domain>` routing
-  (needs DNS #2). GitHub e2e fixture is owed a swappability rework (now unblocked,
-  deferred — see `DO_NEXT`).
-- **Gate:** CASL matrix ✅; GitHub + Entra group→role proven on the sim ✅; proxy
-  routing ⬜.
+✅ Identity-aware proxy (**Pomerium**) + `*.devbox.<domain>` wildcard routing proven
+mock-free in Docker (`infra/proxy`, OIDC IdP = the azure sim): subdomains route to a
+workspace upstream; unauthenticated access is gated to sign-in.
+
+- ⬜ **Remaining:** real DNS/TLS/ACM for `*.devbox.<domain>` (needs DNS #2); the
+  authenticated proxy-pass with identity headers (browser login → Playwright). GitHub
+  e2e fixture is owed a swappability rework (now unblocked, deferred — see `DO_NEXT`).
+- **Gate:** CASL matrix ✅; GitHub + Entra group→role proven on the sim ✅; wildcard
+  routing + identity gate proven on the harness ✅; real DNS routing ⬜.
 
 ## Phase 4 — SSH via Teleport — 🟡
 
