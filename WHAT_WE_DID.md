@@ -95,4 +95,12 @@
   DNS/TLS + authenticated-pass remain). Note: `from` URLs must be `https://` even with
   `insecure_server`.
 
+- **2026-06-03** — **Wake-on-connect, control-plane half** (`planConnect` in
+  `@edd/core`; `WorkspaceService.connect()`; `POST /workspaces/:id/connect` +
+  `connectWorkspace` client): an idempotent connect-time wake — running→no-op (unlike
+  `start()`, which throws when running), scaled-to-zero→wake from snapshot. Proven on
+  real ECS+EBS by extending the lifecycle e2e (stop→connect wakes→connect no-op). The
+  wake data-path was already sim-proven, so no sim gap; the Teleport→`connect()` trigger
+  (golden image auto-enrol + gateway call) is deployment/AWS-tier, not a sim concern.
+
 <!-- Append new milestones below. -->

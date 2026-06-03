@@ -65,11 +65,15 @@ workspace upstream; unauthenticated access is gated to sign-in.
 workspace principal + authz deny, proven mock-free in Docker (`services/ssh-gateway`,
 `docker-compose.ssh.yml`).
 
+✅ Wake-on-connect (control-plane half): `WorkspaceService.connect()` ensures a
+workspace is reachable — idempotent, waking a scaled-to-zero one from its snapshot —
+proven on real ECS+EBS (lifecycle e2e).
+
 - ⬜ **Remaining:** identity federation from Entra/GitHub into Teleport; session
-  recording; wake-on-connect (SSH to a scaled-to-zero workspace → wake via the control
-  plane + AWS sim).
-- **Gate:** `tsh ssh` connect ✅; audit + recording ⬜; SSH wakes a stopped workspace ⬜.
-  (Teleport-in-Docker for the e2e; real federation = `e2e-aws`.)
+  recording; the wake-on-connect **trigger** (golden image auto-enrolls its Teleport
+  agent on task start; gateway calls `connect()` — deployment/AWS-tier).
+- **Gate:** `tsh ssh` connect ✅; connect-time wake on the sim ✅; audit + recording ⬜;
+  end-to-end SSH-wakes-a-stopped-workspace via the gateway ⬜ (`e2e-aws`).
 
 ## Phase 5 — Scale-to-zero + snapshot automation — 🟡
 

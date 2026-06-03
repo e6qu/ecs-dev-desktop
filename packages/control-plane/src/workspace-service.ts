@@ -8,6 +8,7 @@ import {
   markStopped,
   newWorkspaceId,
   ownerId,
+  planConnect,
   provision,
   recordSnapshot,
   snapshotId,
@@ -197,6 +198,24 @@ export class WorkspaceService {
     const next = markStarted(ws, task.volumeId, task.id, at);
     await this.persist(next);
     return toWorkspaceDto(next);
+  }
+
+  /** Wake-on-connect: ensure the workspace is reachable for an incoming connection
+   * (e.g. SSH via the gateway). Idempotent — a running/idle workspace is returned
+   * as-is, a scaled-to-zero one is woken from its snapshot, an in-flight wake is
+   * returned for the caller to poll, and a terminal one is rejected. */
+  async connect(id: WorkspaceId): Promise<WorkspaceDto> {
+    const ws = await this.require(id);
+    const action = planConnect(ws.state);
+    switch (action) {
+      case "ready":
+      case "pending":
+        return toWorkspaceDto(ws);
+      case "wake":
+        return this.start(id);
+      case "unavailable":
+        throw new Error(`cannot connect to ${id}: workspace is ${ws.state}`);
+    }
   }
 
   /** Point-in-time snapshot of a running workspace. */

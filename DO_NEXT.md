@@ -26,11 +26,16 @@ Resolved: DynamoDB+ElectroDB · sockerless substrate (from source) · Fargate
   `docker-compose.ssh.yml`: enrol → `tsh` connect as principal → authz deny).
 - **Pomerium routing** — ✅ identity-aware wildcard routing e2e done (`infra/proxy`,
   real Pomerium in `docker-compose.e2e.yml`, OIDC IdP = azure sim: `<name>.devbox.<domain>`
-  routes to the workspace upstream; unauthenticated → sign-in gate). Remaining:
-  **wake-on-connect** (SSH to a stopped workspace → wake; touches the AWS sim —
-  file+halt on any gap); Teleport↔Entra/GitHub federation; session recording; the
-  **authenticated proxy-pass** with identity headers (needs a browser login →
-  Playwright); real DNS/TLS/ACM (blocked on #2).
+  routes to the workspace upstream; unauthenticated → sign-in gate).
+- **Wake-on-connect** — ✅ control-plane half done: `WorkspaceService.connect()` (pure
+  `planConnect` core fn; idempotent running→no-op, stopped→wake-from-snapshot) with a
+  `POST /workspaces/:id/connect` seam + api-client method, proven on real ECS+EBS
+  (lifecycle e2e). The wake **data-path** was already sim-proven; no sim gap. Remaining:
+  the **trigger wiring** — the workspace golden image auto-enrolls its Teleport agent
+  on task start, and the gateway calls `connect()` before forwarding (deployment/AWS-tier,
+  not a sim concern). Plus: Teleport↔Entra/GitHub federation; session recording; the
+  **authenticated proxy-pass** with identity headers (browser login → Playwright);
+  real DNS/TLS/ACM (blocked on #2).
 - Admin **base-image catalog** management, quotas, cost dashboard (Phase 6 remainder).
 - **idle-agent heartbeat** shape (editor/terminal/SSH → `lastActivity`).
 - **Playwright e2e** for the portal (app + DynamoDB + `EDD_DEV_AUTH`/mock-OIDC).

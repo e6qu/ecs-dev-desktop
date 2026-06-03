@@ -73,6 +73,24 @@ describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
     expect(started.state).toBe("running");
   });
 
+  it("connect wakes a scaled-to-zero workspace and is a no-op when already running", async () => {
+    const ws = await service.create({
+      ownerId: ownerId("erin"),
+      baseImage: baseImage("golden/node:20"),
+    });
+
+    // Already running → connect returns it as-is (no restart, unlike start()).
+    const ready = await service.connect(workspaceId(ws.id));
+    expect(ready.state).toBe("running");
+
+    await service.stop(workspaceId(ws.id));
+
+    // Scaled to zero → connect wakes it from the snapshot.
+    const woken = await service.connect(workspaceId(ws.id));
+    expect(woken.state).toBe("running");
+    expect(woken.id).toBe(ws.id);
+  });
+
   it("rejects an invalid transition (start while running)", async () => {
     const ws = await service.create({ ownerId: ownerId("carol"), baseImage: baseImage("img") });
     await expect(service.start(workspaceId(ws.id))).rejects.toThrow();

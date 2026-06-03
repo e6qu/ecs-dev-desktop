@@ -88,10 +88,15 @@ describe("workspace lifecycle through WorkspaceService on the sim (real ECS + EB
     const stopped = await service.stop(workspaceId(ws.id));
     expect(stopped.state).toBe("stopped");
 
-    // wake: a new task hydrates a fresh managed volume from the snapshot
-    const started = await service.start(workspaceId(ws.id));
-    expect(started.state).toBe("running");
-    expect(started.id).toBe(ws.id);
+    // wake-on-connect: an incoming connection wakes the workspace — a new task
+    // hydrates a fresh managed volume from the snapshot (real ECS + EBS).
+    const woken = await service.connect(workspaceId(ws.id));
+    expect(woken.state).toBe("running");
+    expect(woken.id).toBe(ws.id);
+
+    // idempotent: connecting again to the running workspace does not restart it.
+    const again = await service.connect(workspaceId(ws.id));
+    expect(again.state).toBe("running");
 
     await service.remove(workspaceId(ws.id));
     expect(await service.get(workspaceId(ws.id))).toBeNull();
