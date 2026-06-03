@@ -23,10 +23,14 @@ Resolved: DynamoDB+ElectroDB · sockerless substrate (from source) · Fargate
 ## Available now (decision-free)
 
 - **SSH via Teleport** — ✅ connect e2e done (`services/ssh-gateway`, real cluster in
-  `docker-compose.ssh.yml`: enrol → `tsh` connect as principal → authz deny). Remaining:
-  **Pomerium** identity-aware proxy routing e2e (Phase 3 routing); **wake-on-connect**
-  (SSH to a stopped workspace → wake; touches the AWS sim — file+halt on any gap);
-  Teleport↔Entra/GitHub federation; session recording.
+  `docker-compose.ssh.yml`: enrol → `tsh` connect as principal → authz deny).
+- **Pomerium routing** — ✅ identity-aware wildcard routing e2e done (`infra/proxy`,
+  real Pomerium in `docker-compose.e2e.yml`, OIDC IdP = azure sim: `<name>.devbox.<domain>`
+  routes to the workspace upstream; unauthenticated → sign-in gate). Remaining:
+  **wake-on-connect** (SSH to a stopped workspace → wake; touches the AWS sim —
+  file+halt on any gap); Teleport↔Entra/GitHub federation; session recording; the
+  **authenticated proxy-pass** with identity headers (needs a browser login →
+  Playwright); real DNS/TLS/ACM (blocked on #2).
 - Admin **base-image catalog** management, quotas, cost dashboard (Phase 6 remainder).
 - **idle-agent heartbeat** shape (editor/terminal/SSH → `lastActivity`).
 - **Playwright e2e** for the portal (app + DynamoDB + `EDD_DEV_AUTH`/mock-OIDC).
@@ -54,6 +58,11 @@ Resolved: DynamoDB+ElectroDB · sockerless substrate (from source) · Fargate
   socket; works (#382 removed the KVM/nft requirement via Docker named volumes).
 - **check-deps churn:** the "latest ≥ 1-day-old" gate often goes stale mid-PR; run
   `pnpm update --latest -r` + commit, or pre-run `scripts/check-latest-deps.sh`.
+- **Entra provisioning via Terraform is upstream-blocked:** the `azuread` Terraform
+  provider has no `microsoft_graph_endpoint` override, so it can't target the sim
+  (sockerless #394 → `hashicorp/terraform-provider-azuread#1837`). Not a blocker for us —
+  our Entra e2e uses standard Graph REST + ROPC (swappable by base URL). Relevant only
+  if future IaC wants to provision Entra via the azuread provider.
 - **Endpoint-only / swappability (HARD RULE, `AGENTS.md` §6.8):** the whole project —
   product code _and_ tests/fixtures — must differ from real cloud by endpoint/base
   domain only. Allowed: `AWS_ENDPOINT_URL`, `AUTH_GITHUB_API_URL`/`githubApiBaseUrl()`,

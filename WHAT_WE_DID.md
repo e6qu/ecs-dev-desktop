@@ -85,4 +85,14 @@
   (not a sim), so no endpoint-only policy applies. Phase 4 → 🟡 (federation, recording,
   wake-on-connect remain).
 
+- **2026-06-03** — **Identity-aware wildcard routing via Pomerium** (`infra/proxy`,
+  Pomerium + workspace upstream added to `docker-compose.e2e.yml`, OIDC IdP = the azure
+  sim; `packages/e2e/src/proxy-routing.e2e.ts`): a real Pomerium proxy proves the
+  `<name>.devbox.<domain>` model — a public route reaches the upstream (200), and any
+  workspace subdomain is gated to sign-in when unauthenticated (verified for two
+  subdomains → genuinely wildcard). Pomerium pinned 0.32.2; runs `insecure_server` +
+  all-zeros throwaway secrets for the e2e. Phase 3 routing → ✅ on the harness (real
+  DNS/TLS + authenticated-pass remain). Note: `from` URLs must be `https://` even with
+  `insecure_server`.
+
 <!-- Append new milestones below. -->

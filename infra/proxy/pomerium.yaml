@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Pomerium identity-aware proxy for wildcard workspace routing (AGENTS.md §1):
+# every workspace is reached at `<name>.devbox.<domain>` and access is gated on a
+# real OIDC identity. This is the real Pomerium product, configured declaratively;
+# the e2e points it at an OIDC IdP (the sockerless azure sim) and a workspace
+# upstream, then asserts wildcard routing + the identity gate.
+#
+# All-in-one mode (authenticate+authorize+proxy in one process), HTTP for the e2e.
+address: ":80"
+insecure_server: true
+
+# Throwaway, all-zeros test secrets (base64 of 32 zero bytes) — NOT real keys.
+# Real deployments inject 32-byte random secrets via env/Secrets Manager.
+shared_secret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+cookie_secret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+
+# The authenticate service is served by this same process on its own route host.
+authenticate_service_url: "https://authenticate.devbox.localhost"
+
+# OIDC identity provider = the sockerless azure/Entra sim (standard discovery).
+idp_provider: "oidc"
+idp_provider_url: "http://azure-sim:4568/edd-e2e-tenant/v2.0"
+idp_client_id: "pomerium-edd"
+idp_client_secret: "pomerium-edd-secret"
+
+routes:
+  # Public health route — proves Pomerium reaches the workspace upstream at all.
+  - from: "https://health.devbox.localhost"
+    to: "http://workspace-upstream:80"
+    allow_public_unauthenticated_access: true
+
+  # Wildcard workspace routing, identity-gated: any `<name>.devbox.localhost`
+  # routes to the workspace upstream but requires an authenticated identity.
+  - from: "https://*.devbox.localhost"
+    to: "http://workspace-upstream:80"
+    allow_any_authenticated_user: true
