@@ -2,7 +2,8 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-04 (Phase 8B Logs/Audit landed)
+**Last updated:** 2026-06-04 (admin console 8A/8B + a quality wave: typed error channel,
+compile-time guards, code-health gates)
 
 ## Current phase
 
@@ -33,6 +34,13 @@ account/region decision** (`DO_NEXT` #1) alongside the entire real-deploy track.
 - **Test tiers**: unit/contract · integration (DynamoDB Local + process sim) · e2e
   (`.e2e.yml`/`.ssh.yml`: data-fidelity, lifecycle, GitHub+Entra auth, Pomerium, Teleport)
   · **portal e2e** (Playwright) · manual `e2e-aws`. All green in CI.
+- **Engineering quality** (a 2026-06-04 wave; see `WHAT_WE_DID.md`): domain failures flow
+  through a typed `Result<T, DomainError>` channel mapped to HTTP by one exhaustive table
+  (`@edd/api-client` surfaces the server's `{error}` strictly — no fallbacks); compile-time
+  guards (`assertNever`, `Record<Union,_>` literals, `expectTypeOf` contract↔domain
+  alignment); a typed `data-testid` registry so Playwright asserts attributes not text;
+  deterministic DynamoDB readiness (`waitForDynamo`); and **code-health gates** —
+  `knip` (dead code) + `jscpd` (copy-paste) in CI + pre-commit.
 
 ## Deployed
 

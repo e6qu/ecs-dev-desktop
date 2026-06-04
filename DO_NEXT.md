@@ -21,6 +21,11 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
 
 ## Done recently
 
+- **Error channel to the UI + code-health gates.** `@edd/api-client` surfaces the server's
+  typed `{error}` message as `ApiError` (strict parse, **no fallback** — fails loudly).
+  Added **knip** (dead code) + **jscpd** (copy-paste, 1% threshold) to CI (`code-health`
+  job) + pre-commit; removed the dead code knip found and deduped jscpd's clones
+  (`unwrap()`, `loadOwnedWorkspace` reuse, `persist`↔`toWorkspaceDetail`, e2e↔provider).
 - **Type system / de-flaking (3 PRs, all merged/done).** PR1: compile-time exhaustiveness
   (`assertNever`, `Record<Union,_>` literals — fixed `tallyWorkspaceStates` drift and
   `Record<string,_>` quota → `Record<Role,_>`) + `expectTypeOf` contract↔domain alignment.
