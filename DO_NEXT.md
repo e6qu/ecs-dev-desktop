@@ -24,9 +24,11 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
 - **Type system does more heavy lifting / fewer stringy+flaky checks** (3 PRs).
   **PR1 done:** exhaustiveness (`assertNever`, `Record<Union,_>` literals — fixed the
   `tallyWorkspaceStates` drift and the `Record<string,_>` quota → `Record<Role,_>`) +
-  `expectTypeOf` contract↔domain alignment tests. **PR2 (next):** a shared typed
-  `data-testid` registry so Playwright stops matching on rendered text. **PR3:** harness
-  determinism (deterministic DynamoDB-Local readiness wait + retry/backoff).
+  `expectTypeOf` contract↔domain alignment tests. **PR2 done:** shared typed `data-testid`
+  registry (`apps/web/lib/testids.ts`); the Playwright suite now locates by id and asserts
+  via typed `data-*` attributes (state/status/enabled/available/event/action) instead of
+  rendered text. **PR3 (next):** harness determinism — deterministic DynamoDB-Local
+  readiness wait + retry/backoff.
 
 ## Done recently
 

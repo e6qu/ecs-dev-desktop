@@ -2,6 +2,7 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 
 import { DEV_ROLE_COOKIE, DEV_USER_COOKIE } from "../lib/constants";
+import { TESTID, type TestId } from "../lib/testids";
 
 // Must match `playwright.config.ts`. Cookies are set by `url` (not `domain`):
 // a Domain attribute is invalid for an IP literal, so these must be host-only.
@@ -9,6 +10,15 @@ const BASE_URL = "http://127.0.0.1:3210";
 const NODE_IMAGE = "golden/node:20";
 const GO_IMAGE = "golden/go:1.22";
 const adminCookieHeader = `${DEV_USER_COOKIE}=root; ${DEV_ROLE_COOKIE}=admin`;
+
+/** A CSS selector for a test-id, optionally narrowed by `data-*` attributes —
+ * locate by id, assert on the typed attributes, never on rendered text. */
+function sel(id: TestId, attrs: Record<string, string> = {}): string {
+  const filters = Object.entries(attrs)
+    .map(([k, v]) => `[${k}="${v}"]`)
+    .join("");
+  return `[data-testid="${id}"]${filters}`;
+}
 
 /** Sign in by setting the dev-auth cookies the browser carries (EDD_DEV_AUTH=1). */
 async function loginAs(context: BrowserContext, id: string, role: string): Promise<void> {
@@ -32,21 +42,21 @@ test("admin manages the base-image catalog", async ({ page, context }) => {
   await page.goto("/base-images");
 
   await expect(page.getByRole("heading", { name: "Base images" })).toBeVisible();
-  // The seeded entry is listed.
-  await expect(page.getByText(NODE_IMAGE)).toBeVisible();
+  // The seeded entry is listed (located by image, not by matching its text).
+  await expect(page.locator(sel(TESTID.catalogCard, { "data-image": NODE_IMAGE }))).toBeVisible();
 
   // Add a new entry through the form.
   await page.getByPlaceholder(/display name/).fill("Go 1.22");
   await page.getByPlaceholder(/image ref/).fill(GO_IMAGE);
   await page.getByRole("button", { name: "+ add base image" }).click();
 
-  const goCard = page.locator(".card").filter({ hasText: GO_IMAGE });
+  const goCard = page.locator(sel(TESTID.catalogCard, { "data-image": GO_IMAGE }));
   await expect(goCard).toBeVisible();
-  await expect(goCard.getByText("enabled")).toBeVisible();
+  await expect(goCard).toHaveAttribute("data-enabled", "true");
 
   // Disable it.
   await goCard.getByRole("button", { name: "disable" }).click();
-  await expect(goCard.getByText("disabled")).toBeVisible();
+  await expect(goCard).toHaveAttribute("data-enabled", "false");
 });
 
 test("member creates, stops, and deletes a workspace from the catalog", async ({
@@ -65,16 +75,18 @@ test("member creates, stops, and deletes a workspace from the catalog", async ({
   await page.locator("select.select").selectOption(NODE_IMAGE);
   await page.getByRole("button", { name: "+ new workspace" }).click();
 
-  const card = page.locator(".card").filter({ hasText: NODE_IMAGE }).first();
+  const card = page.locator(sel(TESTID.workspaceCard, { "data-image": NODE_IMAGE })).first();
   await expect(card).toBeVisible();
-  await expect(card.getByText("running")).toBeVisible();
+  await expect(card).toHaveAttribute("data-status", "running");
 
   // Stop, then delete it.
   await card.getByRole("button", { name: "stop" }).click();
-  await expect(card.getByText("stopped")).toBeVisible();
+  await expect(card).toHaveAttribute("data-status", "stopped");
 
   await card.getByRole("button", { name: "delete" }).click();
-  await expect(page.locator(".card").filter({ hasText: NODE_IMAGE })).toHaveCount(0);
+  await expect(page.locator(sel(TESTID.workspaceCard, { "data-image": NODE_IMAGE }))).toHaveCount(
+    0,
+  );
 });
 
 test("admin sees the system health board with a live DynamoDB check", async ({ page, context }) => {
@@ -83,19 +95,19 @@ test("admin sees the system health board with a live DynamoDB check", async ({ p
 
   await expect(page.getByRole("heading", { name: "System health" })).toBeVisible();
   // The live DynamoDB ping resolves ok (the table was created in global-setup).
-  const dbRow = page.locator(".health-row").filter({ hasText: "dynamodb" });
+  const dbRow = page.locator(sel(TESTID.healthRow, { "data-component": "dynamodb" }));
   await expect(dbRow).toBeVisible();
-  await expect(dbRow.getByText("ok")).toBeVisible();
+  await expect(dbRow).toHaveAttribute("data-h", "ok");
   // Reconciler is unknown locally (CloudWatch on AWS).
   await expect(
-    page.locator(".health-row").filter({ hasText: "reconciler" }).getByText("unknown"),
-  ).toBeVisible();
+    page.locator(sel(TESTID.healthRow, { "data-component": "reconciler" })),
+  ).toHaveAttribute("data-h", "unknown");
 });
 
 test("non-admins are denied the admin console", async ({ page, context }) => {
   await loginAs(context, "alice", "member");
   await page.goto("/admin/health");
-  await expect(page.getByText("Admins only")).toBeVisible();
+  await expect(page.getByTestId(TESTID.adminDenied)).toBeVisible();
   await expect(page.getByRole("heading", { name: "System health" })).toHaveCount(0);
 });
 
@@ -112,10 +124,10 @@ test("admin inspects a workspace's detail and timeline", async ({ page, context,
   await page.goto("/admin/workspaces");
   await expect(page.getByRole("heading", { name: "All workspaces" })).toBeVisible();
 
-  await page.getByText(ws.id).click();
+  await page.locator(sel(TESTID.workspaceRow, { "data-id": ws.id })).click();
   await expect(page.getByRole("heading", { name: "Inspect" })).toBeVisible();
-  await expect(page.getByText("base image")).toBeVisible(); // a detail row
-  await expect(page.locator(".tl-row").filter({ hasText: "created" })).toBeVisible(); // timeline
+  // The derived lifecycle timeline shows the created event.
+  await expect(page.locator(sel(TESTID.timelineRow, { "data-event": "created" }))).toBeVisible();
 });
 
 test("admin overview shows fleet and catalog stats", async ({ page, context }) => {
@@ -123,11 +135,11 @@ test("admin overview shows fleet and catalog stats", async ({ page, context }) =
   await page.goto("/admin"); // redirects to /admin/overview
 
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
-  await expect(page.locator(".stat").filter({ hasText: "workspaces" })).toBeVisible();
+  await expect(page.locator(sel(TESTID.statTile, { "data-stat": "workspaces" }))).toBeVisible();
   // The seeded catalog means ≥1 base image is reported.
-  const images = page.locator(".stat").filter({ hasText: "base images" });
-  await expect(images).toBeVisible();
-  await expect(images.locator(".num")).not.toHaveText("0");
+  await expect(
+    page.locator(sel(TESTID.statTile, { "data-stat": "base images" })),
+  ).not.toHaveAttribute("data-value", "0");
 });
 
 test("admin quotas page shows per-role limits and usage", async ({ page, context }) => {
@@ -135,7 +147,7 @@ test("admin quotas page shows per-role limits and usage", async ({ page, context
   await page.goto("/admin/quotas");
   await expect(page.getByRole("heading", { name: "Quotas" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Limits" })).toBeVisible();
-  await expect(page.getByText("member")).toBeVisible(); // a role limit row
+  await expect(page.locator(sel(TESTID.quotaRow, { "data-role": "member" }))).toBeVisible();
 });
 
 test("admin logs page shows the derived audit feed and the CloudWatch streams", async ({
@@ -156,12 +168,15 @@ test("admin logs page shows the derived audit feed and the CloudWatch streams", 
 
   // Derived audit feed renders a created event.
   await expect(
-    page.locator(".audit-row").filter({ hasText: "workspace.created" }).first(),
+    page.locator(sel(TESTID.auditRow, { "data-action": "workspace.created" })).first(),
   ).toBeVisible();
 
   // The control-plane stream is live; container logs are marked as AWS-only.
-  const cp = page.locator(".panel").filter({ hasText: "control-plane" });
-  await expect(cp.locator(".pill.on")).toHaveText("live");
-  const container = page.locator(".panel").filter({ hasText: "container" });
-  await expect(container.locator(".pill.off")).toHaveText("on AWS");
+  await expect(
+    page.locator(sel(TESTID.logStream, { "data-stream": "control-plane" })),
+  ).toHaveAttribute("data-available", "true");
+  await expect(page.locator(sel(TESTID.logStream, { "data-stream": "container" }))).toHaveAttribute(
+    "data-available",
+    "false",
+  );
 });

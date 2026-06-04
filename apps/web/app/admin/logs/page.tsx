@@ -2,6 +2,7 @@
 import type { LogStream } from "@edd/core";
 
 import { getAuditSource, getLogSource } from "../../../lib/control-plane";
+import { TESTID } from "../../../lib/testids";
 
 export const dynamic = "force-dynamic";
 
@@ -40,7 +41,12 @@ export default async function AdminLogsPage() {
       ) : (
         <div className="audit-feed" style={{ marginBottom: 28 }}>
           {events.map((e, i) => (
-            <div key={`${e.target}-${e.at}-${i.toString()}`} className="audit-row">
+            <div
+              key={`${e.target}-${e.at}-${i.toString()}`}
+              className="audit-row"
+              data-testid={TESTID.auditRow}
+              data-action={e.action}
+            >
               <span className="when">{new Date(e.at).toLocaleString()}</span>
               <span className="action">{e.action}</span>
               <span className="target mono">{e.target}</span>
@@ -53,7 +59,13 @@ export default async function AdminLogsPage() {
       <h2 style={{ fontSize: 16, marginBottom: 10 }}>Log streams</h2>
       <div className="adm-rows">
         {streams.map((s) => (
-          <div key={s.stream} className="panel" data-stream={s.stream}>
+          <div
+            key={s.stream}
+            className="panel"
+            data-testid={TESTID.logStream}
+            data-stream={s.stream}
+            data-available={s.available}
+          >
             <div className="stream-head">
               <span className="mono stream-name">{s.stream}</span>
               <span className={`pill ${s.available ? "on" : "off"}`}>

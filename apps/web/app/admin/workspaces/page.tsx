@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { StatusBadge } from "../../../components/StatusBadge";
 import { getControlPlane } from "../../../lib/control-plane";
+import { TESTID } from "../../../lib/testids";
 
 export const dynamic = "force-dynamic";
 
@@ -34,6 +35,8 @@ export default async function AdminWorkspacesPage() {
               key={ws.id}
               href={`/admin/workspaces/${ws.id}`}
               className="adm-row"
+              data-testid={TESTID.workspaceRow}
+              data-id={ws.id}
               data-status={ws.state}
             >
               <span className="wid">{ws.id}</span>

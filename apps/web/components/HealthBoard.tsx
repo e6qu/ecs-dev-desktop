@@ -5,6 +5,8 @@ import { ApiClient } from "@edd/api-client";
 import type { HealthReportDto } from "@edd/api-contracts";
 import { useEffect, useState } from "react";
 
+import { TESTID } from "../lib/testids";
+
 const api = new ApiClient({ baseUrl: "" });
 const POLL_MS = 5000;
 
@@ -54,7 +56,13 @@ export function HealthBoard() {
       </div>
       <div className="health-rows">
         {report.components.map((c) => (
-          <div key={c.component} className="health-row" data-h={c.status}>
+          <div
+            key={c.component}
+            className="health-row"
+            data-testid={TESTID.healthRow}
+            data-component={c.component}
+            data-h={c.status}
+          >
             <span className="badge" data-h={c.status}>
               <span className="dot" />
               {c.status}
