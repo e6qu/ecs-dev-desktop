@@ -13,11 +13,13 @@ describe("ApiClient", () => {
     expect(res.workspaces).toEqual([]);
   });
 
-  it("throws on a non-ok response with a non-JSON body (status fallback)", async () => {
-    const fetchImpl: typeof fetch = () => Promise.resolve(new Response("nope", { status: 500 }));
+  it("fails loudly when an error response violates the { error } contract", async () => {
+    // No fallback: a non-conformant error body is a bug, so the strict parse throws.
+    const fetchImpl: typeof fetch = () =>
+      Promise.resolve(new Response(JSON.stringify({ message: "oops" }), { status: 500 }));
 
     const client = new ApiClient({ baseUrl: "http://x", fetch: fetchImpl });
-    await expect(client.listWorkspaces()).rejects.toThrow(/500/);
+    await expect(client.listWorkspaces()).rejects.toThrow();
   });
 
   it("surfaces the server's error message and status on a domain failure", async () => {

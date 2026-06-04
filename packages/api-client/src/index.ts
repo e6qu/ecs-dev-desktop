@@ -65,20 +65,14 @@ export class ApiClient {
 
   private async send(path: string, init?: RequestInit): Promise<Response> {
     const res = await this.fetchImpl(`${this.baseUrl}${path}`, init);
-    if (!res.ok) throw new ApiError(res.status, await this.errorMessage(res, path, init));
-    return res;
-  }
-
-  /** The server's `{ error }` message if present, else a status-based fallback. */
-  private async errorMessage(res: Response, path: string, init?: RequestInit): Promise<string> {
-    const fallback = `${init?.method ?? "GET"} ${path} failed: ${res.status.toString()}`;
-    try {
-      const parsed = errorResponse.safeParse(await res.json());
-      return parsed.success ? parsed.data.error : fallback;
-    } catch {
-      // Body absent or not JSON (e.g. an upstream/proxy error) — use the fallback.
-      return fallback;
+    if (!res.ok) {
+      // Every API error response carries `{ error }` (the helpers + domainErrorResponse).
+      // Parse strictly — a response that violates the contract is a bug, so let the
+      // parse throw rather than smooth it into a synthesized message.
+      const body = errorResponse.parse(await res.json());
+      throw new ApiError(res.status, body.error);
     }
+    return res;
   }
 
   async listWorkspaces(): Promise<ListWorkspacesResponse> {
