@@ -3,12 +3,16 @@ import type { WorkspaceDto, WorkspaceInspectionDto } from "@edd/api-contracts";
 import {
   assertTerminable,
   baseImage,
+  conflictError,
   deriveWorkspaceTimeline,
+  err,
   isoTimestamp,
   markActivity,
   markStarted,
   markStopped,
   newWorkspaceId,
+  notFoundError,
+  ok,
   ownerId,
   planConnect,
   provision,
@@ -21,9 +25,11 @@ import {
   type BaseImage,
   type Clock,
   type ComputeProvider,
+  type DomainError,
   type IsoTimestamp,
   type OwnerId,
   type ReferencedStorage,
+  type Result,
   type SnapshotCandidate,
   type SnapshotId,
   type StorageProvider,
@@ -47,13 +53,6 @@ export interface WorkspaceServiceDeps {
 export interface ActiveWorkspace {
   id: WorkspaceId;
   lastActivity: IsoTimestamp;
-}
-
-export class WorkspaceNotFoundError extends Error {
-  constructor(readonly id: WorkspaceId) {
-    super(`workspace not found: ${id}`);
-    this.name = "WorkspaceNotFoundError";
-  }
 }
 
 /** The string-shaped persistence record (the DynamoDB boundary). */
@@ -183,9 +182,12 @@ export class WorkspaceService {
 
   /** Scale to zero: snapshot the managed volume, then stop the task (which
    * releases the volume). Snapshot first — stopping the task tears the volume down. */
-  async stop(id: WorkspaceId): Promise<WorkspaceDto> {
-    const ws = await this.require(id);
-    transition(ws.state, "stop"); // validate-first (pure); throws on illegal
+  async stop(id: WorkspaceId): Promise<Result<WorkspaceDto, DomainError>> {
+    const found = await this.require(id);
+    if (!found.ok) return found;
+    const ws = found.value;
+    const validated = transition(ws.state, "stop"); // validate-first, before any I/O
+    if (!validated.ok) return validated;
     const at = isoTimestamp(this.deps.clock.now());
     let freshSnapshot: { id: SnapshotId; at: IsoTimestamp } | undefined;
     if (ws.volumeId !== undefined) {
@@ -194,16 +196,23 @@ export class WorkspaceService {
     }
     if (ws.taskId !== undefined) await this.deps.compute.stopTask(ws.taskId);
     const next = markStopped(ws, freshSnapshot, at);
-    await this.persist(next);
-    return toWorkspaceDto(next);
+    if (!next.ok) return next;
+    await this.persist(next.value);
+    return ok(toWorkspaceDto(next.value));
   }
 
   /** Wake from a snapshot: launch a task whose managed volume is hydrated from it. */
-  async start(id: WorkspaceId): Promise<WorkspaceDto> {
-    const ws = await this.require(id);
-    transition(transition(ws.state, "wake"), "provisioned"); // validate-first
+  async start(id: WorkspaceId): Promise<Result<WorkspaceDto, DomainError>> {
+    const found = await this.require(id);
+    if (!found.ok) return found;
+    const ws = found.value;
+    // validate-first (wake → provisioned), before any I/O.
+    const woken = transition(ws.state, "wake");
+    if (!woken.ok) return woken;
+    const provisioned = transition(woken.value, "provisioned");
+    if (!provisioned.ok) return provisioned;
     if (ws.latestSnapshotId === undefined) {
-      throw new Error(`cannot start ${id}: no snapshot to hydrate from`);
+      return err(conflictError(`cannot start ${id}: no snapshot to hydrate from`));
     }
     const at = isoTimestamp(this.deps.clock.now());
     const task = await this.deps.compute.runTask({
@@ -212,57 +221,70 @@ export class WorkspaceService {
       fromSnapshot: ws.latestSnapshotId,
     });
     const next = markStarted(ws, task.volumeId, task.id, at);
-    await this.persist(next);
-    return toWorkspaceDto(next);
+    if (!next.ok) return next;
+    await this.persist(next.value);
+    return ok(toWorkspaceDto(next.value));
   }
 
   /** Wake-on-connect: ensure the workspace is reachable for an incoming connection
    * (e.g. SSH via the gateway). Idempotent — a running/idle workspace is returned
    * as-is, a scaled-to-zero one is woken from its snapshot, an in-flight wake is
    * returned for the caller to poll, and a terminal one is rejected. */
-  async connect(id: WorkspaceId): Promise<WorkspaceDto> {
-    const ws = await this.require(id);
+  async connect(id: WorkspaceId): Promise<Result<WorkspaceDto, DomainError>> {
+    const found = await this.require(id);
+    if (!found.ok) return found;
+    const ws = found.value;
     const action = planConnect(ws.state);
     switch (action) {
       case "ready":
       case "pending":
-        return toWorkspaceDto(ws);
+        return ok(toWorkspaceDto(ws));
       case "wake":
         return this.start(id);
       case "unavailable":
-        throw new Error(`cannot connect to ${id}: workspace is ${ws.state}`);
+        return err(conflictError(`cannot connect to ${id}: workspace is ${ws.state}`));
     }
   }
 
   /** Idle-agent heartbeat: record activity so the reconciler doesn't scale the
    * workspace to zero (and wake it from idle). */
-  async heartbeat(id: WorkspaceId): Promise<WorkspaceDto> {
-    const ws = await this.require(id);
-    const next = markActivity(ws, isoTimestamp(this.deps.clock.now()));
-    await this.persist(next);
-    return toWorkspaceDto(next);
+  async heartbeat(id: WorkspaceId): Promise<Result<WorkspaceDto, DomainError>> {
+    const found = await this.require(id);
+    if (!found.ok) return found;
+    const next = markActivity(found.value, isoTimestamp(this.deps.clock.now()));
+    if (!next.ok) return next;
+    await this.persist(next.value);
+    return ok(toWorkspaceDto(next.value));
   }
 
   /** Point-in-time snapshot of a running workspace. */
-  async snapshot(id: WorkspaceId): Promise<WorkspaceDto> {
-    const ws = await this.require(id);
-    if (ws.volumeId === undefined) throw new Error(`cannot snapshot ${id}: no active volume`);
+  async snapshot(id: WorkspaceId): Promise<Result<WorkspaceDto, DomainError>> {
+    const found = await this.require(id);
+    if (!found.ok) return found;
+    const ws = found.value;
+    if (ws.volumeId === undefined) {
+      return err(conflictError(`cannot snapshot ${id}: no active volume`));
+    }
     const snap = await this.deps.storage.createSnapshot(ws.volumeId);
     const next = recordSnapshot(ws, snap.id, isoTimestamp(this.deps.clock.now()));
     await this.persist(next);
-    return toWorkspaceDto(next);
+    return ok(toWorkspaceDto(next));
   }
 
   /** Permanently delete the workspace and its runtime resources. */
-  async remove(id: WorkspaceId): Promise<void> {
-    const ws = await this.require(id);
-    assertTerminable(ws);
+  async remove(id: WorkspaceId): Promise<Result<void, DomainError>> {
+    const found = await this.require(id);
+    if (!found.ok) return found;
+    const ws = found.value;
+    const terminable = assertTerminable(ws);
+    if (!terminable.ok) return terminable;
     // Running: stopping the task releases its managed volume. Stopped: the volume
     // was already released; reap the retained snapshot.
     if (ws.taskId !== undefined) await this.deps.compute.stopTask(ws.taskId);
     if (ws.latestSnapshotId !== undefined)
       await this.deps.storage.deleteSnapshot(ws.latestSnapshotId);
     await this.deps.workspaces.delete({ id }).go();
+    return ok(undefined);
   }
 
   private async find(id: WorkspaceId): Promise<Workspace | null> {
@@ -270,10 +292,9 @@ export class WorkspaceService {
     return data === null ? null : toWorkspace(data);
   }
 
-  private async require(id: WorkspaceId): Promise<Workspace> {
+  private async require(id: WorkspaceId): Promise<Result<Workspace, DomainError>> {
     const ws = await this.find(id);
-    if (ws === null) throw new WorkspaceNotFoundError(id);
-    return ws;
+    return ws === null ? err(notFoundError("workspace", id)) : ok(ws);
   }
 
   /** Upsert the domain workspace; PutItem replaces the item so cleared optional

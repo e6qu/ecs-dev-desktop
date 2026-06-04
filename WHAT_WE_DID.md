@@ -104,4 +104,19 @@
   preserved (same statuses, incl. the #34 404s). Part 2 converts the workspace lifecycle
   core + `WorkspaceService` + routes + reconciler.
 
+- **2026-06-04** — **Typed error channel, part 2 (the workspace vertical).** Completed the
+  Result refactor across the lifecycle core: the state machine's `transition` and the
+  workspace domain fns (`markStopped`/`markStarted`/`markActivity`/`assertTerminable`) now
+  return `Result<_, DomainError>`; `WorkspaceService` (`stop`/`start`/`connect`/`heartbeat`/
+  `snapshot`/`remove` + `require`) threads them and returns Result; the five workspace
+  routes unwrap via the central `domainErrorResponse` mapper. Deleted the
+  `InvalidTransitionError` and `WorkspaceNotFoundError` classes and every bare
+  `throw new Error` in the domain/shell — domain failures are values now, so the compiler
+  forces handling at each call site. The **reconciler** was the subtle bit: with `stop`/
+  `snapshot` no longer throwing, a lost state race would have been silently swallowed, so
+  it now **skips and counts** (`{scanned, stopped|snapshotted, skipped}`) rather than
+  aborting the sweep (and one racy workspace no longer crashes maintenance). Behaviour-
+  preserving (all HTTP statuses unchanged). core 68, control-plane integ 15, web integ 24,
+  reconciler 7+5, Playwright 8; build + lint green.
+
 <!-- Append new milestones below. -->

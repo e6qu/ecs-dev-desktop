@@ -7,6 +7,8 @@ import {
   fixedClock,
   ownerId,
   workspaceId,
+  type DomainError,
+  type Result,
 } from "@edd/core";
 import {
   createDynamoClient,
@@ -24,9 +26,15 @@ import {
   DerivedAuditSource,
   DerivedLogSource,
   HealthService,
-  WorkspaceNotFoundError,
   WorkspaceService,
 } from "./index";
+
+/** Assert a Result is Ok and return its value (test helper). */
+function val<T>(r: Result<T, DomainError>): T {
+  expect(r.ok).toBe(true);
+  if (!r.ok) throw new Error(`expected ok, got ${r.error.kind}`);
+  return r.value;
+}
 
 process.env.DYNAMODB_ENDPOINT ??= dynamodbLocal.endpoint;
 
@@ -76,10 +84,10 @@ describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
       baseImage: baseImage("golden/go:1.22"),
     });
 
-    const stopped = await service.stop(workspaceId(ws.id));
+    const stopped = val(await service.stop(workspaceId(ws.id)));
     expect(stopped.state).toBe("stopped");
 
-    const started = await service.start(workspaceId(ws.id));
+    const started = val(await service.start(workspaceId(ws.id)));
     expect(started.state).toBe("running");
   });
 
@@ -90,13 +98,13 @@ describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
     });
 
     // Already running → connect returns it as-is (no restart, unlike start()).
-    const ready = await service.connect(workspaceId(ws.id));
+    const ready = val(await service.connect(workspaceId(ws.id)));
     expect(ready.state).toBe("running");
 
-    await service.stop(workspaceId(ws.id));
+    val(await service.stop(workspaceId(ws.id)));
 
     // Scaled to zero → connect wakes it from the snapshot.
-    const woken = await service.connect(workspaceId(ws.id));
+    const woken = val(await service.connect(workspaceId(ws.id)));
     expect(woken.state).toBe("running");
     expect(woken.id).toBe(ws.id);
   });
@@ -106,11 +114,13 @@ describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
       ownerId: ownerId("frank"),
       baseImage: baseImage("golden/node:20"),
     });
-    const beat = await service.heartbeat(workspaceId(ws.id));
+    const beat = val(await service.heartbeat(workspaceId(ws.id)));
     expect(beat.state).toBe("running");
 
-    await service.stop(workspaceId(ws.id));
-    await expect(service.heartbeat(workspaceId(ws.id))).rejects.toThrow();
+    val(await service.stop(workspaceId(ws.id)));
+    const afterStop = await service.heartbeat(workspaceId(ws.id));
+    expect(afterStop.ok).toBe(false);
+    if (!afterStop.ok) expect(afterStop.error.kind).toBe("conflict");
   });
 
   it("inspect returns the full detail plus a derived timeline", async () => {
@@ -126,23 +136,25 @@ describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
     expect(await service.inspect(workspaceId("ws-absent"))).toBeNull();
   });
 
-  it("rejects an invalid transition (start while running)", async () => {
+  it("rejects an invalid transition (start while running) with a conflict", async () => {
     const ws = await service.create({ ownerId: ownerId("carol"), baseImage: baseImage("img") });
-    await expect(service.start(workspaceId(ws.id))).rejects.toThrow();
+    const result = await service.start(workspaceId(ws.id));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe("conflict");
   });
 
   it("removes a workspace", async () => {
     const ws = await service.create({ ownerId: ownerId("dave"), baseImage: baseImage("img") });
-    await service.remove(workspaceId(ws.id));
+    expect((await service.remove(workspaceId(ws.id))).ok).toBe(true);
     expect(await service.get(workspaceId(ws.id))).toBeNull();
   });
 
-  it("remove() of an absent workspace rejects with WorkspaceNotFoundError", async () => {
+  it("remove() of an absent workspace returns a not_found domain error", async () => {
     // The DELETE route relies on this to map the concurrent double-delete race to
-    // 404 instead of a 500.
-    await expect(service.remove(workspaceId("ws-never-existed"))).rejects.toBeInstanceOf(
-      WorkspaceNotFoundError,
-    );
+    // 404 (via the central mapper) instead of a 500.
+    const result = await service.remove(workspaceId("ws-never-existed"));
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe("not_found");
   });
 });
 

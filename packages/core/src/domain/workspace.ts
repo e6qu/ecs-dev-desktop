@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { transition, type WorkspaceState } from "../lifecycle/workspace-state-machine";
+import { err, map, ok, type Result } from "../result";
+import { conflictError, type DomainError } from "./errors";
 import type {
   BaseImage,
   IsoTimestamp,
@@ -63,9 +65,8 @@ export function markStopped(
   ws: Workspace,
   freshSnapshot: { id: SnapshotId; at: IsoTimestamp } | undefined,
   at: IsoTimestamp,
-): Workspace {
-  const state: WorkspaceState = transition(ws.state, "stop");
-  return {
+): Result<Workspace, DomainError> {
+  return map(transition(ws.state, "stop"), (state) => ({
     ...ws,
     state,
     lastActivity: at,
@@ -73,18 +74,25 @@ export function markStopped(
     latestSnapshotAt: freshSnapshot?.at ?? ws.latestSnapshotAt,
     volumeId: undefined,
     taskId: undefined,
-  };
+  }));
 }
 
-/** Compute the running workspace after waking from a snapshot. Throws if invalid. */
+/** Compute the running workspace after waking from a snapshot. Err if invalid. */
 export function markStarted(
   ws: Workspace,
   volumeId: VolumeId,
   taskId: TaskId,
   at: IsoTimestamp,
-): Workspace {
-  const state: WorkspaceState = transition(transition(ws.state, "wake"), "provisioned");
-  return { ...ws, state, lastActivity: at, volumeId, taskId };
+): Result<Workspace, DomainError> {
+  const woken = transition(ws.state, "wake");
+  if (!woken.ok) return woken;
+  return map(transition(woken.value, "provisioned"), (state) => ({
+    ...ws,
+    state,
+    lastActivity: at,
+    volumeId,
+    taskId,
+  }));
 }
 
 /** Record a point-in-time snapshot on a running workspace. */
@@ -97,15 +105,17 @@ export function recordSnapshot(ws: Workspace, snapshot: SnapshotId, at: IsoTimes
  * so the reconciler doesn't scale the workspace to zero, and wake it from idle.
  * Only an active workspace can have activity — throws otherwise.
  */
-export function markActivity(ws: Workspace, at: IsoTimestamp): Workspace {
+export function markActivity(ws: Workspace, at: IsoTimestamp): Result<Workspace, DomainError> {
   if (ws.state !== "running" && ws.state !== "idle") {
-    throw new Error(`cannot record activity while '${ws.state}'`);
+    return err(conflictError(`cannot record activity while '${ws.state}'`));
   }
-  const state = ws.state === "idle" ? transition(ws.state, "activity") : ws.state;
-  return { ...ws, state, lastActivity: at };
+  if (ws.state === "idle") {
+    return map(transition(ws.state, "activity"), (state) => ({ ...ws, state, lastActivity: at }));
+  }
+  return ok({ ...ws, state: ws.state, lastActivity: at });
 }
 
-/** Validate that the workspace may be terminated; throws otherwise. */
-export function assertTerminable(ws: Workspace): void {
-  transition(ws.state, "terminate");
+/** Ok if the workspace may be terminated; a conflict domain error otherwise. */
+export function assertTerminable(ws: Workspace): Result<void, DomainError> {
+  return map(transition(ws.state, "terminate"), () => undefined);
 }

@@ -2,13 +2,11 @@
 import { NextResponse } from "next/server";
 
 import { defineAbilityFor } from "@edd/authz";
-import { WorkspaceNotFoundError } from "@edd/control-plane";
 import { workspaceId } from "@edd/core";
 
 import {
   authenticate,
-  conflict,
-  errorMessage,
+  domainErrorResponse,
   forbidden,
   isResponse,
   notFound,
@@ -45,14 +43,9 @@ export async function DELETE(req: Request, { params }: Ctx) {
   if (!ws) return notFound();
   if (!ownsOrAdmin(principal, ws.ownerId)) return forbidden();
 
-  // Map domain errors like the lifecycle routes (no bare 500s): a concurrent
-  // double-delete re-fetches a now-missing workspace (404); a non-terminable
-  // state (e.g. already terminated) is a conflict (409).
-  try {
-    await cp.remove(wsId);
-  } catch (err) {
-    if (err instanceof WorkspaceNotFoundError) return notFound();
-    return conflict(errorMessage(err));
-  }
-  return new NextResponse(null, { status: 204 });
+  // remove() returns a typed Result; the central mapper turns a domain failure
+  // into its status (a concurrent double-delete → not_found → 404), so a racy
+  // delete can never escape as a 500.
+  const result = await cp.remove(wsId);
+  return result.ok ? new NextResponse(null, { status: 204 }) : domainErrorResponse(result.error);
 }

@@ -90,7 +90,7 @@ describe("Reconciler against DynamoDB Local", () => {
 
     advance(LATER);
     const before = (await storage.listSnapshots()).length;
-    expect(await reconciler.snapshotDue()).toEqual({ scanned: 1, snapshotted: 1 });
+    expect(await reconciler.snapshotDue()).toEqual({ scanned: 1, snapshotted: 1, skipped: 0 });
     expect((await storage.listSnapshots()).length).toBe(before + 1);
 
     // Just snapshotted at "now", it is no longer due on the next pass.

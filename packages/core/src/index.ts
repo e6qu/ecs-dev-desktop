@@ -73,7 +73,7 @@ export {
 
 // Lifecycle state machine.
 export type { WorkspaceEvent, WorkspaceState } from "./lifecycle/workspace-state-machine";
-export { can, InvalidTransitionError, transition } from "./lifecycle/workspace-state-machine";
+export { can, transition } from "./lifecycle/workspace-state-machine";
 
 // Connect-time wake decision (wake-on-connect).
 export type { ConnectAction } from "./lifecycle/connect";
