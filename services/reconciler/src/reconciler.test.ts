@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
+  conflictError,
+  err,
   FakeStorageProvider,
   fixedClock,
   isoTimestamp,
+  ok,
   workspaceId,
   type StorageProvider,
 } from "@edd/core";
@@ -50,7 +53,7 @@ describe("Reconciler.runOnce", () => {
         ]),
       stop: (id) => {
         stopped.push(id);
-        return Promise.resolve();
+        return Promise.resolve(ok(undefined));
       },
     });
 
@@ -61,7 +64,7 @@ describe("Reconciler.runOnce", () => {
       idleThresholdMs: 1000,
     });
 
-    expect(await reconciler.runOnce()).toEqual({ scanned: 1, stopped: 1 });
+    expect(await reconciler.runOnce()).toEqual({ scanned: 1, stopped: 1, skipped: 0 });
     expect(stopped).toEqual(["ws-1"]);
   });
 
@@ -78,7 +81,25 @@ describe("Reconciler.runOnce", () => {
       clock: fixedClock("2026-06-01T02:00:00.000Z"),
       idleThresholdMs: THIRTY_MIN,
     });
-    expect(await reconciler.runOnce()).toEqual({ scanned: 1, stopped: 0 });
+    expect(await reconciler.runOnce()).toEqual({ scanned: 1, stopped: 0, skipped: 0 });
+  });
+
+  it("skips (does not throw) a workspace whose stop loses a state race", async () => {
+    const service = fakeService({
+      listActive: () =>
+        Promise.resolve([
+          { id: workspaceId("ws-1"), lastActivity: isoTimestamp("2026-06-01T00:00:00.000Z") },
+        ]),
+      // The workspace changed state since it was listed → stop rejects with a conflict.
+      stop: () => Promise.resolve(err(conflictError("already stopped"))),
+    });
+    const reconciler = new Reconciler({
+      service,
+      storage: await emptyStorage(),
+      clock: fixedClock("2026-06-01T02:00:00.000Z"),
+      idleThresholdMs: 1000,
+    });
+    expect(await reconciler.runOnce()).toEqual({ scanned: 1, stopped: 0, skipped: 1 });
   });
 });
 
@@ -96,7 +117,7 @@ describe("Reconciler.snapshotDue", () => {
         ]),
       snapshot: (id) => {
         snapped.push(id);
-        return Promise.resolve();
+        return Promise.resolve(ok(undefined));
       },
     });
 
@@ -107,7 +128,7 @@ describe("Reconciler.snapshotDue", () => {
       snapshotIntervalMs: THIRTY_MIN,
     });
 
-    expect(await reconciler.snapshotDue()).toEqual({ scanned: 2, snapshotted: 1 });
+    expect(await reconciler.snapshotDue()).toEqual({ scanned: 2, snapshotted: 1, skipped: 0 });
     expect(snapped).toEqual(["ws-never"]);
   });
 });

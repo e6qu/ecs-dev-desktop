@@ -8,8 +8,10 @@ import {
   selectOrphanSnapshots,
   selectOrphanVolumes,
   type Clock,
+  type DomainError,
   type IsoTimestamp,
   type ReferencedStorage,
+  type Result,
   type SnapshotCandidate,
   type StorageProvider,
   type WorkspaceId,
@@ -28,11 +30,13 @@ export interface ActiveWorkspace {
  */
 export interface ReconcilerService {
   listActive(): Promise<readonly ActiveWorkspace[]>;
-  stop(id: WorkspaceId): Promise<unknown>;
+  /** Scale to zero. Returns a typed Result so a benign race (the workspace
+   * changed state since it was listed) is skipped, not thrown — see `runOnce`. */
+  stop(id: WorkspaceId): Promise<Result<unknown, DomainError>>;
   /** Workspaces with a live volume, eligible for a scheduled snapshot. */
   listSnapshotCandidates(): Promise<readonly SnapshotCandidate[]>;
   /** Take a point-in-time snapshot of a running workspace. */
-  snapshot(id: WorkspaceId): Promise<unknown>;
+  snapshot(id: WorkspaceId): Promise<Result<unknown, DomainError>>;
   /** Storage ids still referenced by a workspace — never garbage-collected. */
   listReferencedStorage(): Promise<ReferencedStorage>;
 }
@@ -65,11 +69,15 @@ export interface ReconcilerDeps {
 export interface ReconcileResult {
   scanned: number;
   stopped: number;
+  /** Eligible workspaces whose stop was rejected by a state race (skipped, not failed). */
+  skipped: number;
 }
 
 export interface SnapshotResult {
   scanned: number;
   snapshotted: number;
+  /** Eligible workspaces whose snapshot was rejected by a state race. */
+  skipped: number;
 }
 
 export interface GcResult {
@@ -102,24 +110,32 @@ export class Reconciler {
     return isoTimestamp(this.deps.clock.now());
   }
 
-  /** Scale idle workspaces to zero (snapshot + tear down). */
+  /** Scale idle workspaces to zero (snapshot + tear down). A stop rejected by a
+   * state race (e.g. the user woke it since it was listed) is skipped and
+   * counted, not thrown — one racy workspace must not abort the sweep. */
   async runOnce(): Promise<ReconcileResult> {
     const active = await this.deps.service.listActive();
     const toStop = selectIdle(active, this.now(), this.idleThresholdMs);
+    let stopped = 0;
+    let skipped = 0;
     for (const id of toStop) {
-      await this.deps.service.stop(id);
+      if ((await this.deps.service.stop(id)).ok) stopped += 1;
+      else skipped += 1;
     }
-    return { scanned: active.length, stopped: toStop.length };
+    return { scanned: active.length, stopped, skipped };
   }
 
   /** Take scheduled point-in-time snapshots of workspaces past the interval. */
   async snapshotDue(): Promise<SnapshotResult> {
     const candidates = await this.deps.service.listSnapshotCandidates();
     const due = selectDueForSnapshot(candidates, this.now(), this.snapshotIntervalMs);
+    let snapshotted = 0;
+    let skipped = 0;
     for (const id of due) {
-      await this.deps.service.snapshot(id);
+      if ((await this.deps.service.snapshot(id)).ok) snapshotted += 1;
+      else skipped += 1;
     }
-    return { scanned: candidates.length, snapshotted: due.length };
+    return { scanned: candidates.length, snapshotted, skipped };
   }
 
   /**

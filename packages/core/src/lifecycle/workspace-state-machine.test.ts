@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { describe, expect, it } from "vitest";
 
+import { ok } from "../result";
 import {
   can,
-  InvalidTransitionError,
   transition,
   type WorkspaceEvent,
   type WorkspaceState,
@@ -48,42 +48,33 @@ const PERMITTED = new Set<string>([
 
 describe("workspace state machine", () => {
   it("runs the full scale-to-zero loop", () => {
-    let s: WorkspaceState = "provisioning";
-    s = transition(s, "provisioned");
-    expect(s).toBe("running");
-    s = transition(s, "idleTimeout");
-    expect(s).toBe("idle");
-    s = transition(s, "stop");
-    expect(s).toBe("stopped");
-    s = transition(s, "wake");
-    expect(s).toBe("provisioning");
-    s = transition(s, "provisioned");
-    expect(s).toBe("running");
+    expect(transition("provisioning", "provisioned")).toEqual(ok("running"));
+    expect(transition("running", "idleTimeout")).toEqual(ok("idle"));
+    expect(transition("idle", "stop")).toEqual(ok("stopped"));
+    expect(transition("stopped", "wake")).toEqual(ok("provisioning"));
   });
 
   it("wakes from idle on activity", () => {
-    expect(transition("idle", "activity")).toBe("running");
+    expect(transition("idle", "activity")).toEqual(ok("running"));
   });
 
   it("is terminal once terminated", () => {
     expect(can("terminated", "wake")).toBe(false);
-    expect(() => transition("terminated", "wake")).toThrow(InvalidTransitionError);
+    expect(transition("terminated", "wake").ok).toBe(false);
   });
 
-  it("rejects nonsensical transitions", () => {
-    expect(() => transition("stopped", "activity")).toThrow(InvalidTransitionError);
+  it("returns a conflict domain error for a nonsensical transition", () => {
+    const result = transition("stopped", "activity");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe("conflict");
   });
 
   it("permits exactly the defined transitions and rejects every other pair", () => {
     for (const state of STATES) {
       for (const event of EVENTS) {
-        if (PERMITTED.has(`${state}:${event}`)) {
-          expect(can(state, event)).toBe(true);
-          expect(() => transition(state, event)).not.toThrow();
-        } else {
-          expect(can(state, event)).toBe(false);
-          expect(() => transition(state, event)).toThrow(InvalidTransitionError);
-        }
+        const permitted = PERMITTED.has(`${state}:${event}`);
+        expect(can(state, event)).toBe(permitted);
+        expect(transition(state, event).ok).toBe(permitted);
       }
     }
   });

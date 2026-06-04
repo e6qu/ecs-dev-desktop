@@ -19,15 +19,16 @@ Resolved: DynamoDB+ElectroDB · sockerless from source · Fargate managed-EBS ·
 real-AWS on `main` · AGPL-3.0-or-later · Turborepo+pnpm · CASL · dep floor 1440 · admin
 observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
 
-## In progress
+## Done recently
 
-- **Typed error channel (`Result` + `DomainError`).** Replacing thrown/`instanceof`-mapped
-  domain errors with `Result<T, DomainError>` + one exhaustive `kind→HTTP-status` mapper.
-  **Part 1 done** (foundation, `CatalogService`, base-image/create routes). **Part 2
-  (next):** the workspace lifecycle core (state machine and domain fns return `Result`),
-  `WorkspaceService`, the workspace routes, and the reconciler, dropping
-  `WorkspaceNotFoundError` and the bare `throw new Error` cases. Behaviour-preserving
-  (statuses unchanged).
+- **Typed error channel (`Result` + `DomainError`) — complete.** Domain failures are now
+  data returned in `Result<T, DomainError>` (never thrown), mapped to HTTP by one
+  exhaustive `kind→status` table; a forgotten mapping is a compile error. Part 1
+  (foundation, `CatalogService`, base-image/create routes); part 2 (state machine +
+  workspace domain fns + `WorkspaceService` + the five workspace routes + the reconciler;
+  removed the `InvalidTransitionError`/`WorkspaceNotFoundError` classes and every bare
+  `throw new Error`). The reconciler now **skips and counts** a stop/snapshot that loses a
+  state race instead of aborting the sweep. Behaviour-preserving (statuses unchanged).
 
 ## Available now (decision-free)
 

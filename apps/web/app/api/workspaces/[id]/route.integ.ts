@@ -80,10 +80,10 @@ describe("DELETE /api/workspaces/:id (DynamoDB Local)", () => {
   it("returns 404 (not 500) on a repeated delete", async () => {
     const id = await createFor("alice");
     expect((await del("alice", id)).status).toBe(204);
-    // A sequential repeat hits the not-found guard (404). The added try/catch
-    // additionally maps the *concurrent* race — where both requests pass the
-    // guard and the second's re-fetch in cp.remove throws WorkspaceNotFoundError
-    // — to 404 as well, so neither path can escape as a 500.
+    // A sequential repeat hits the not-found guard (404). The *concurrent* race —
+    // where both requests pass the guard and the second's re-fetch in cp.remove
+    // yields a not_found Result — is mapped to 404 by the central mapper too, so
+    // neither path can escape as a 500.
     expect((await del("alice", id)).status).toBe(404);
   });
 
