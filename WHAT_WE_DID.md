@@ -163,7 +163,7 @@
   server message + `status`); `send()` now surfaces the real reason (e.g. "workspace quota
   reached (5)") by parsing the `{ error }` body **strictly — no fallback**, so a
   contract-violating response fails loudly (§6.5). No UI change needed — `ApiError extends
-  Error`, so the portal's existing `e.message` shows it. api-client 4 tests; build + lint green.
+Error`, so the portal's existing `e.message` shows it. api-client 4 tests; build + lint green.
 
 - **2026-06-04** — **Dead-code + copy-paste detection (CI + pre-commit), and a dedup pass.**
   Added **knip** (unused files/exports/deps) and **jscpd** (duplication) as a `code-health`
@@ -176,5 +176,22 @@
   `WorkspaceService.persist` reusing `toWorkspaceDetail` (one mapping, not two); and the
   data-fidelity e2e reusing `EcsComputeProvider.client()` instead of reimplementing it. Also
   gitignored `temp/` (local scratch, e.g. manual screenshots). All tiers green.
+
+- **2026-06-04** — **Terraform platform module (deploy IaC) + sim-tested.** Wrote a
+  reusable, parametric `infra/terraform/modules/ecs-dev-desktop` (Terraform/Terragrunt,
+  no `provider` block): VPC/subnets/NAT/SGs, the DynamoDB single-table (matching
+  `@edd/db`), KMS, ECR (control-plane + golden), IAM (execution, control-plane,
+  reconciler, the ECS managed-EBS infrastructure role, scheduler), the ECS cluster +
+  control-plane service + autoscaling, ALB + ACM/Route53 (optional), the EventBridge
+  Scheduler reconciler cron, and CloudWatch logs. Plus `examples/complete`,
+  `examples/terragrunt`, a full module README, and a sim-backed apply fixture
+  (`tests/sim`). CI `terraform` job now `fmt -check -recursive` + validates the module and
+  the complete example. **Tested against the sockerless AWS sim** (provider `endpoints` →
+  sim, endpoint-only per §6.8): STS/IAM/KMS-create/EC2/DynamoDB/ECR/ELBv2/ACM/Route53/Logs/
+  Secrets/ECS all apply; three operations are unimplemented and block a full apply —
+  **filed `e6qu/sockerless#411`** (KMS `EnableKeyRotation`, Application Auto Scaling
+  `RegisterScalableTarget`, EventBridge Scheduler `CreateSchedule`). Per §6.8 we did **not**
+  branch the module around them; the full sim apply-test (a `terraform-sim` CI job) lands
+  once #411 is fixed.
 
 <!-- Append new milestones below. -->

@@ -24,7 +24,10 @@ test-results/
 crash.log
 *.tfvars
 !example.tfvars
-# .terraform.lock.hcl is committed on purpose (provider pinning + check-deps gate)
+# .terraform.lock.hcl is committed on purpose for root configs (provider pinning
+# + check-deps gate); reusable modules + examples must NOT pin, so ignore theirs.
+infra/terraform/modules/**/.terraform.lock.hcl
+infra/terraform/examples/**/.terraform.lock.hcl
 
 # Env / secrets
 .env

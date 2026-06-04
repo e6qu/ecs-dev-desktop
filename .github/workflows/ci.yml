@@ -170,9 +170,17 @@ jobs:
       - uses: hashicorp/setup-terraform@v4.0.1
         with:
           terraform_wrapper: false
-      - run: terraform -chdir=infra/terraform fmt -check
-      - run: terraform -chdir=infra/terraform init -backend=false -input=false
-      - run: terraform -chdir=infra/terraform validate
+      - run: terraform fmt -check -recursive infra/terraform
+      - name: Validate the platform module
+        run: |
+          terraform -chdir=infra/terraform/modules/ecs-dev-desktop init -backend=false -input=false
+          terraform -chdir=infra/terraform/modules/ecs-dev-desktop validate
+      - name: Validate the complete example
+        run: |
+          terraform -chdir=infra/terraform/examples/complete init -backend=false -input=false
+          terraform -chdir=infra/terraform/examples/complete validate
+      # The full sim-backed apply test (tests/sim) runs once e6qu/sockerless#411
+      # lands the missing AWS operations (KMS rotation, app-autoscaling, scheduler).
 
   shellcheck:
     name: shellcheck
