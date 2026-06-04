@@ -42,6 +42,7 @@ export {
 export type { ProvisionParams, Workspace } from "./domain/workspace";
 export {
   assertTerminable,
+  markActivity,
   markStarted,
   markStopped,
   provision,

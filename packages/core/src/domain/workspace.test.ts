@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { InvalidTransitionError } from "../lifecycle/workspace-state-machine";
 import { baseImage, isoTimestamp, ownerId, snapshotId, taskId, volumeId, workspaceId } from "./ids";
-import { markStarted, markStopped, provision, recordSnapshot } from "./workspace";
+import { markActivity, markStarted, markStopped, provision, recordSnapshot } from "./workspace";
 
 const t0 = isoTimestamp("2026-06-01T00:00:00.000Z");
 const t1 = isoTimestamp("2026-06-01T01:00:00.000Z");
@@ -55,5 +55,23 @@ describe("workspace domain (functional core)", () => {
     const snapped = recordSnapshot(base, snapshotId("snap-9"), t1);
     expect(snapped.latestSnapshotId).toBe("snap-9");
     expect(snapped.latestSnapshotAt).toBe(t1);
+  });
+
+  it("activity refreshes lastActivity on a running workspace", () => {
+    const active = markActivity(base, t1);
+    expect(active.state).toBe("running");
+    expect(active.lastActivity).toBe(t1);
+  });
+
+  it("activity wakes an idle workspace back to running", () => {
+    const idle = { ...base, state: "idle" as const };
+    const active = markActivity(idle, t1);
+    expect(active.state).toBe("running");
+    expect(active.lastActivity).toBe(t1);
+  });
+
+  it("rejects activity on a non-active workspace", () => {
+    const stopped = markStopped(base, { id: snapshotId("snap-1"), at: t1 }, t1);
+    expect(() => markActivity(stopped, t1)).toThrow();
   });
 });

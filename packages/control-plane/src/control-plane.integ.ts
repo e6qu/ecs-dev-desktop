@@ -93,6 +93,18 @@ describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
     expect(woken.id).toBe(ws.id);
   });
 
+  it("heartbeat refreshes activity and rejects a stopped workspace", async () => {
+    const ws = await service.create({
+      ownerId: ownerId("frank"),
+      baseImage: baseImage("golden/node:20"),
+    });
+    const beat = await service.heartbeat(workspaceId(ws.id));
+    expect(beat.state).toBe("running");
+
+    await service.stop(workspaceId(ws.id));
+    await expect(service.heartbeat(workspaceId(ws.id))).rejects.toThrow();
+  });
+
   it("rejects an invalid transition (start while running)", async () => {
     const ws = await service.create({ ownerId: ownerId("carol"), baseImage: baseImage("img") });
     await expect(service.start(workspaceId(ws.id))).rejects.toThrow();
