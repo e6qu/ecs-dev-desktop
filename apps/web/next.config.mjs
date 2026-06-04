@@ -6,6 +6,7 @@ const nextConfig = {
   eslint: { ignoreDuringBuilds: true },
   // Workspace packages ship TS source (no prebuilt dist) — Next transpiles them.
   transpilePackages: [
+    "@edd/api-client",
     "@edd/api-contracts",
     "@edd/authz",
     "@edd/control-plane",

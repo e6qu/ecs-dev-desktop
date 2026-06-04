@@ -90,9 +90,11 @@ volume/snapshot GC (pure selectors + `ReconcilerService` port), verified vs the 
 ✅ **Base-image catalog** — API (`CatalogService` CRUD, CASL-gated `/api/base-images`,
 api-client, `create` enforced against the enabled catalog) **and UI** (the
 `/base-images` admin management page + the real create-from-catalog picker).
+✅ **Playwright portal e2e** — browser coverage of the admin catalog + member lifecycle
+flows against the built app (cookie dev-auth shim; CI `playwright` job).
 
-- ⬜ **Remaining:** quotas; cost dashboard; Playwright e2e for both portals.
-- **Gate:** catalog API + UI + RBAC ✅; Playwright e2e + quotas ⬜.
+- ⬜ **Remaining:** quotas; cost dashboard.
+- **Gate:** catalog API + UI + RBAC ✅; Playwright e2e ✅; quotas + cost dashboard ⬜.
 
 ## Phase 7 — Hardening, scale & DR — ⬜ pending (AWS-gated)
 

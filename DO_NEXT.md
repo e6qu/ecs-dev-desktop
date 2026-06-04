@@ -42,7 +42,10 @@ Resolved: DynamoDB+ElectroDB · sockerless substrate (from source) · Fargate
   create-from-catalog picker (replaced the hardcoded `BASE_IMAGES`). Remaining: quotas;
   cost dashboard.
 - **idle-agent heartbeat** shape (editor/terminal/SSH → `lastActivity`).
-- **Playwright e2e** for the portal (app + DynamoDB + `EDD_DEV_AUTH`/mock-OIDC).
+- **Playwright portal e2e** — ✅ done (`apps/web/e2e`, CI `playwright` job): drives the
+  built app + DynamoDB Local through the RBAC flows via a cookie dev-auth shim. Caught
+  three real bugs (browser-only unbound `fetch`, missing `@edd/api-client` in
+  `transpilePackages`, `vitest` leaking through `@edd/core`'s index).
 - Broader unit/integration coverage.
 
 ## Blocked

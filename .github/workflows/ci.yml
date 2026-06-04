@@ -94,6 +94,27 @@ jobs:
       - if: always()
         run: docker compose -f docker-compose.ssh.yml down
 
+  playwright:
+    name: playwright
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: pnpm/action-setup@v6.0.8
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Start DynamoDB Local
+        run: docker compose -f docker-compose.e2e.yml up -d --wait dynamodb-local
+      - name: Install Playwright browser
+        run: pnpm --filter web exec playwright install --with-deps chromium
+      # test:pw builds + starts the app (its webServer) and creates the table in
+      # global-setup, then drives the browser through the RBAC-gated portal flows.
+      - run: pnpm --filter web test:pw
+      - if: always()
+        run: docker compose -f docker-compose.e2e.yml down
+
   check-deps:
     name: check-deps
     runs-on: ubuntu-latest

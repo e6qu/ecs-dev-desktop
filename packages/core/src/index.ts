@@ -77,7 +77,9 @@ export type {
   VolumeRef,
 } from "./storage/storage-provider";
 export { FakeStorageProvider } from "./storage/fake-storage-provider";
-export { storageProviderContract } from "./storage/storage-provider-contract";
+// NB: storageProviderContract is intentionally NOT re-exported — it imports
+// `vitest`, so exposing it here would drag the test runner into every runtime
+// consumer (e.g. the Next app). Tests import it directly by relative path.
 
 // Maintenance functional core (orphan GC + scheduled-snapshot decisions).
 export type { ReferencedStorage, SnapshotCandidate } from "./maintenance/select";
