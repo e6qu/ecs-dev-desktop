@@ -2,12 +2,12 @@
 import {
   CreateClusterCommand,
   DescribeTasksCommand,
-  ECSClient,
   RegisterTaskDefinitionCommand,
   RunTaskCommand,
   StopTaskCommand,
   type Task,
 } from "@aws-sdk/client-ecs";
+import { EcsComputeProvider } from "@edd/compute-ecs";
 import { awsSim, DEFAULT_AWS_REGION } from "@edd/config";
 import { volumeId } from "@edd/core";
 import { Ec2StorageProvider } from "@edd/storage-ec2";
@@ -25,16 +25,6 @@ const MOUNT = "/work";
 const EBS_ROLE_ARN = "arn:aws:iam::123456789012:role/ecsInfrastructureRole";
 const IMAGE = "alpine:3.20";
 
-function ecsClient(): ECSClient {
-  const endpoint = process.env.AWS_ENDPOINT_URL;
-  return new ECSClient({
-    region: process.env.AWS_REGION ?? DEFAULT_AWS_REGION,
-    ...(endpoint
-      ? { endpoint, credentials: { accessKeyId: "local", secretAccessKey: "local" } }
-      : {}),
-  });
-}
-
 function required<T>(value: T | undefined, field: string): T {
   if (value === undefined) throw new Error(`missing ${field}`);
   return value;
@@ -43,7 +33,7 @@ function required<T>(value: T | undefined, field: string): T {
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 describe("workspace data fidelity (write → snapshot → restore → read) on the sim", () => {
-  const ecs = ecsClient();
+  const ecs = EcsComputeProvider.client();
   const storage = Ec2StorageProvider.fromEnv();
 
   beforeAll(async () => {

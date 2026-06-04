@@ -159,10 +159,22 @@
 - **2026-06-04** — **Error channel reaches the UI.** The typed-error work stopped at the
   wire: the server returns `{ error: <message> }` with the right status, but `@edd/api-client`
   threw `Error("POST … failed: 409")` and discarded the body, so the portal showed a bare
-  status. Added `errorResponse` (`@edd/api-contracts`) and an `ApiError` (carries the
-  parsed server message + `status`); `send()` now surfaces the real reason (e.g. "workspace
-  quota reached (5)") with a status-based fallback for non-JSON bodies. No UI change needed
-  — `ApiError extends Error`, so the portal's existing `e.message` now shows it. api-client
-  4 tests; build + lint green.
+  status. Added `errorResponse` (`@edd/api-contracts`) and an `ApiError` (carries the parsed
+  server message + `status`); `send()` now surfaces the real reason (e.g. "workspace quota
+  reached (5)") by parsing the `{ error }` body **strictly — no fallback**, so a
+  contract-violating response fails loudly (§6.5). No UI change needed — `ApiError extends
+  Error`, so the portal's existing `e.message` shows it. api-client 4 tests; build + lint green.
+
+- **2026-06-04** — **Dead-code + copy-paste detection (CI + pre-commit), and a dedup pass.**
+  Added **knip** (unused files/exports/deps) and **jscpd** (duplication) as a `code-health`
+  CI job and pre-commit hooks (`pnpm dead-code` / `pnpm cpd`; configs in `knip.json` /
+  `.jscpd.json`, jscpd gated at a 1% threshold). knip found 7 dead exports — removed/unexported
+  (`unauthorized`, `ownsOrAdmin`, `OwnedWorkspace`, `CatalogOption`, `FetchTeamsDeps`,
+  `StatusMeta`, web `HealthStatus`). jscpd found 10 clones (1.02%); deduped to 5 (0.5%, all
+  test-setup boilerplate) by: a shared `unwrap()` in `@edd/core` replacing a `val` Result-helper
+  copied across 3 test files; the workspace `GET`/`DELETE` routes reusing `loadOwnedWorkspace`;
+  `WorkspaceService.persist` reusing `toWorkspaceDetail` (one mapping, not two); and the
+  data-fidelity e2e reusing `EcsComputeProvider.client()` instead of reimplementing it. Also
+  gitignored `temp/` (local scratch, e.g. manual screenshots). All tiers green.
 
 <!-- Append new milestones below. -->

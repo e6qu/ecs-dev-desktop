@@ -4,14 +4,7 @@ import { CreateClusterCommand, ECSClient } from "@aws-sdk/client-ecs";
 import { EcsComputeProvider } from "@edd/compute-ecs";
 import { awsSim, DEFAULT_AWS_REGION } from "@edd/config";
 import { WorkspaceService } from "@edd/control-plane";
-import {
-  baseImage,
-  ownerId,
-  systemClock,
-  workspaceId,
-  type DomainError,
-  type Result,
-} from "@edd/core";
+import { baseImage, ownerId, systemClock, unwrap, workspaceId } from "@edd/core";
 import {
   createDynamoClient,
   dropTable,
@@ -92,27 +85,20 @@ describe("workspace lifecycle through WorkspaceService on the sim (real ECS + EB
     expect(ws.state).toBe("running");
 
     // scale-to-zero: snapshot the managed volume, stop the task (ECS releases it)
-    const stopped = val(await service.stop(workspaceId(ws.id)));
+    const stopped = unwrap(await service.stop(workspaceId(ws.id)));
     expect(stopped.state).toBe("stopped");
 
     // wake-on-connect: an incoming connection wakes the workspace — a new task
     // hydrates a fresh managed volume from the snapshot (real ECS + EBS).
-    const woken = val(await service.connect(workspaceId(ws.id)));
+    const woken = unwrap(await service.connect(workspaceId(ws.id)));
     expect(woken.state).toBe("running");
     expect(woken.id).toBe(ws.id);
 
     // idempotent: connecting again to the running workspace does not restart it.
-    const again = val(await service.connect(workspaceId(ws.id)));
+    const again = unwrap(await service.connect(workspaceId(ws.id)));
     expect(again.state).toBe("running");
 
     expect((await service.remove(workspaceId(ws.id))).ok).toBe(true);
     expect(await service.get(workspaceId(ws.id))).toBeNull();
   });
 });
-
-/** Assert a Result is Ok and return its value (test helper). */
-function val<T>(r: Result<T, DomainError>): T {
-  expect(r.ok).toBe(true);
-  if (!r.ok) throw new Error(`expected ok, got ${r.error.kind}`);
-  return r.value;
-}

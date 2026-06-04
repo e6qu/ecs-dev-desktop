@@ -8,7 +8,7 @@ import { useState } from "react";
 const api = new ApiClient({ baseUrl: "" });
 
 /** An enabled catalog entry the user can launch a workspace from. */
-export interface CatalogOption {
+interface CatalogOption {
   name: string;
   image: string;
 }

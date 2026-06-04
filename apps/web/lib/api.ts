@@ -9,7 +9,7 @@ import { domainErrorMessage, workspaceId, type DomainError, type WorkspaceId } f
 import { getControlPlane } from "./control-plane";
 import { getPrincipal } from "./principal";
 
-export const unauthorized = () => NextResponse.json({ error: "unauthorized" }, { status: 401 });
+const unauthorized = () => NextResponse.json({ error: "unauthorized" }, { status: 401 });
 export const forbidden = () => NextResponse.json({ error: "forbidden" }, { status: 403 });
 export const notFound = () => NextResponse.json({ error: "not found" }, { status: 404 });
 export const badRequest = (message = "invalid request") =>
@@ -48,11 +48,11 @@ export function isResponse(x: unknown): x is NextResponse {
 }
 
 /** Admins act on any workspace; everyone else only on their own. */
-export function ownsOrAdmin(principal: Principal, ownerId: string): boolean {
+function ownsOrAdmin(principal: Principal, ownerId: string): boolean {
   return principal.role === "admin" || principal.id === ownerId;
 }
 
-export interface OwnedWorkspace {
+interface OwnedWorkspace {
   cp: WorkspaceService;
   id: WorkspaceId;
   ws: WorkspaceDto;

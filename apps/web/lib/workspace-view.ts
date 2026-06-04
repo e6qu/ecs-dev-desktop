@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { WorkspaceStateDto } from "@edd/api-contracts";
 
-export interface StatusMeta {
+interface StatusMeta {
   label: string;
   pulse: boolean;
 }

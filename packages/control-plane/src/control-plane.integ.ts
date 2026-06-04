@@ -6,9 +6,8 @@ import {
   FakeStorageProvider,
   fixedClock,
   ownerId,
+  unwrap,
   workspaceId,
-  type DomainError,
-  type Result,
 } from "@edd/core";
 import {
   createDynamoClient,
@@ -28,13 +27,6 @@ import {
   HealthService,
   WorkspaceService,
 } from "./index";
-
-/** Assert a Result is Ok and return its value (test helper). */
-function val<T>(r: Result<T, DomainError>): T {
-  expect(r.ok).toBe(true);
-  if (!r.ok) throw new Error(`expected ok, got ${r.error.kind}`);
-  return r.value;
-}
 
 process.env.DYNAMODB_ENDPOINT ??= dynamodbLocal.endpoint;
 
@@ -84,10 +76,10 @@ describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
       baseImage: baseImage("golden/go:1.22"),
     });
 
-    const stopped = val(await service.stop(workspaceId(ws.id)));
+    const stopped = unwrap(await service.stop(workspaceId(ws.id)));
     expect(stopped.state).toBe("stopped");
 
-    const started = val(await service.start(workspaceId(ws.id)));
+    const started = unwrap(await service.start(workspaceId(ws.id)));
     expect(started.state).toBe("running");
   });
 
@@ -98,13 +90,13 @@ describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
     });
 
     // Already running → connect returns it as-is (no restart, unlike start()).
-    const ready = val(await service.connect(workspaceId(ws.id)));
+    const ready = unwrap(await service.connect(workspaceId(ws.id)));
     expect(ready.state).toBe("running");
 
-    val(await service.stop(workspaceId(ws.id)));
+    unwrap(await service.stop(workspaceId(ws.id)));
 
     // Scaled to zero → connect wakes it from the snapshot.
-    const woken = val(await service.connect(workspaceId(ws.id)));
+    const woken = unwrap(await service.connect(workspaceId(ws.id)));
     expect(woken.state).toBe("running");
     expect(woken.id).toBe(ws.id);
   });
@@ -114,10 +106,10 @@ describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
       ownerId: ownerId("frank"),
       baseImage: baseImage("golden/node:20"),
     });
-    const beat = val(await service.heartbeat(workspaceId(ws.id)));
+    const beat = unwrap(await service.heartbeat(workspaceId(ws.id)));
     expect(beat.state).toBe("running");
 
-    val(await service.stop(workspaceId(ws.id)));
+    unwrap(await service.stop(workspaceId(ws.id)));
     const afterStop = await service.heartbeat(workspaceId(ws.id));
     expect(afterStop.ok).toBe(false);
     if (!afterStop.ok) expect(afterStop.error.kind).toBe("conflict");

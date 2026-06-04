@@ -34,3 +34,6 @@ crash.log
 # OS / editor
 .DS_Store
 *.log
+
+# Local scratch (screenshots, manual artifacts) — never committed
+temp/

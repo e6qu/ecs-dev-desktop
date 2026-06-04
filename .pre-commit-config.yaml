@@ -72,6 +72,22 @@ repos:
         pass_filenames: false
         types_or: [ts, tsx]
 
+      # Dead-code detection (unused files / exports / dependencies).
+      - id: knip
+        name: knip (dead code)
+        language: system
+        entry: pnpm dead-code
+        pass_filenames: false
+        types_or: [ts, tsx]
+
+      # Copy-paste / duplication detection (fails over the configured threshold).
+      - id: jscpd
+        name: jscpd (copy-paste)
+        language: system
+        entry: pnpm cpd
+        pass_filenames: false
+        types_or: [ts, tsx]
+
       # Strip AI attribution trailers from commit messages (commit-msg stage).
       - id: strip-ai-attribution
         name: strip AI attribution from commit messages
