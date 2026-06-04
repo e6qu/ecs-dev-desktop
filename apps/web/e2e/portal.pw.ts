@@ -129,3 +129,11 @@ test("admin overview shows fleet and catalog stats", async ({ page, context }) =
   await expect(images).toBeVisible();
   await expect(images.locator(".num")).not.toHaveText("0");
 });
+
+test("admin quotas page shows per-role limits and usage", async ({ page, context }) => {
+  await loginAs(context, "root", "admin");
+  await page.goto("/admin/quotas");
+  await expect(page.getByRole("heading", { name: "Quotas" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Limits" })).toBeVisible();
+  await expect(page.getByText("member")).toBeVisible(); // a role limit row
+});

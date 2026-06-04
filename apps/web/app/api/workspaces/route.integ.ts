@@ -80,4 +80,22 @@ describe("workspaces API end-to-end (DynamoDB Local)", () => {
     );
     expect(res.status).toBe(409);
   });
+
+  it("enforces the per-role workspace quota (409 when reached)", async () => {
+    process.env.EDD_QUOTA_MEMBER = "1";
+    const h = {
+      [USER_ID_HEADER]: "quotaperson",
+      [ROLE_HEADER]: "member",
+      "content-type": "application/json",
+    };
+    const body = JSON.stringify({ baseImage: "golden/node:20" });
+    try {
+      const first = await POST(new Request(url, { method: "POST", headers: h, body }));
+      expect(first.status).toBe(201);
+      const second = await POST(new Request(url, { method: "POST", headers: h, body }));
+      expect(second.status).toBe(409);
+    } finally {
+      delete process.env.EDD_QUOTA_MEMBER;
+    }
+  });
 });

@@ -12,7 +12,7 @@ const ITEMS: { label: string; href: string | null }[] = [
   { label: "Logs", href: null },
   { label: "Catalog", href: "/base-images" },
   { label: "Users", href: null },
-  { label: "Quotas", href: null },
+  { label: "Quotas", href: "/admin/quotas" },
 ];
 
 export function AdminNav() {

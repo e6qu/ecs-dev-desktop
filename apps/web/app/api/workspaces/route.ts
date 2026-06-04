@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 import { createWorkspaceRequest } from "@edd/api-contracts";
 import { defineAbilityFor } from "@edd/authz";
-import { baseImage, ownerId } from "@edd/core";
+import { baseImage, ownerId, withinWorkspaceQuota } from "@edd/core";
 
 import {
   authenticate,
@@ -14,6 +14,7 @@ import {
   isResponse,
 } from "../../../lib/api";
 import { getCatalog, getControlPlane } from "../../../lib/control-plane";
+import { workspaceLimit } from "../../../lib/quota";
 
 // GET /api/workspaces — admins see all; everyone else sees their own.
 export async function GET(req: Request) {
@@ -52,6 +53,13 @@ export async function POST(req: Request) {
   }
 
   const cp = await getControlPlane();
+
+  // Enforce the per-role workspace quota.
+  const owned = await cp.list({ ownerId: ownerId(principal.id) });
+  if (!withinWorkspaceQuota(owned.length, workspaceLimit(principal.role))) {
+    return conflict(`workspace quota reached (${owned.length.toString()})`);
+  }
+
   const workspace = await cp.create({ ownerId: ownerId(principal.id), baseImage: image });
   return NextResponse.json(workspace, { status: 201 });
 }

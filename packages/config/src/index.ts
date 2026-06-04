@@ -74,6 +74,18 @@ export const entraSim = {
 } as const;
 
 /**
+ * Default per-role cap on the number of workspaces a user may own (`null` =
+ * unlimited). Overridable per role via `EDD_QUOTA_<ROLE>` (e.g. `EDD_QUOTA_MEMBER=10`).
+ */
+export const DEFAULT_WORKSPACE_QUOTAS: Record<string, number | null> = {
+  viewer: 0,
+  member: 5,
+  admin: null,
+};
+/** Env var prefix for a per-role quota override: `EDD_QUOTA_MEMBER`, etc. */
+export const QUOTA_ENV_PREFIX = "EDD_QUOTA_";
+
+/**
  * Runtime environment schema. Components parse `process.env` through this so
  * misconfiguration fails fast at startup rather than at first use.
  */

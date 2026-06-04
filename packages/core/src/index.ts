@@ -49,6 +49,9 @@ export {
   recordSnapshot,
 } from "./domain/workspace";
 
+// Per-role workspace quota gate (pure).
+export { withinWorkspaceQuota } from "./domain/quota";
+
 // Base-image catalog domain object + pure functions (functional core).
 export type {
   BaseImageEntry,
