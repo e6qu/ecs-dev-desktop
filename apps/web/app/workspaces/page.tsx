@@ -4,11 +4,10 @@ import { defineAbilityFor } from "@edd/authz";
 import { ownerId } from "@edd/core";
 import Link from "next/link";
 
-import { auth } from "../../auth";
 import { CreateWorkspace } from "../../components/CreateWorkspace";
 import { WorkspaceCard } from "../../components/WorkspaceCard";
 import { getCatalog, getControlPlane } from "../../lib/control-plane";
-import { principalFromSession } from "../../lib/principal";
+import { getPagePrincipal } from "../../lib/principal";
 
 export const dynamic = "force-dynamic";
 
@@ -17,7 +16,7 @@ export default async function WorkspacesPage({
 }: {
   searchParams: Promise<{ view?: string }>;
 }) {
-  const principal = principalFromSession(await auth());
+  const principal = await getPagePrincipal();
   if (principal === null) {
     return (
       <div className="empty">

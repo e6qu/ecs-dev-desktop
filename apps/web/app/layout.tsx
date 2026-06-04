@@ -4,7 +4,8 @@ import { Chakra_Petch, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { auth, signOut } from "../auth";
+import { signOut } from "../auth";
+import { getPagePrincipal } from "../lib/principal";
 import "./globals.css";
 
 const display = Chakra_Petch({
@@ -29,7 +30,7 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
-  const session = await auth();
+  const principal = await getPagePrincipal();
 
   return (
     <html lang="en" className={`${display.variable} ${body.variable} ${mono.variable}`}>
@@ -40,17 +41,17 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             ecs-dev-desktop
             <small>control plane</small>
           </Link>
-          {session && (
+          {principal && (
             <nav className="tabs" style={{ marginLeft: 6 }}>
               <Link href="/workspaces">workspaces</Link>
-              {session.user.role === "admin" && <Link href="/base-images">catalog</Link>}
+              {principal.role === "admin" && <Link href="/base-images">catalog</Link>}
             </nav>
           )}
           <span className="spacer" />
-          {session ? (
+          {principal ? (
             <span className="who">
-              <span className="mono">{session.user.id}</span>
-              <span className="badge accent">{session.user.role}</span>
+              <span className="mono">{principal.id}</span>
+              <span className="badge accent">{principal.role}</span>
               <form
                 action={async () => {
                   "use server";

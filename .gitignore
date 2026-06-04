@@ -13,6 +13,9 @@ out/
 
 # Test / coverage
 coverage/
+playwright-report/
+test-results/
+.playwright/
 
 # Terraform
 **/.terraform/*

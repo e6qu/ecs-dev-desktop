@@ -1,16 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import Link from "next/link";
 
-import { auth } from "../../auth";
 import { BaseImageActions } from "../../components/BaseImageActions";
 import { CreateBaseImage } from "../../components/CreateBaseImage";
 import { getCatalog } from "../../lib/control-plane";
-import { principalFromSession } from "../../lib/principal";
+import { getPagePrincipal } from "../../lib/principal";
 
 export const dynamic = "force-dynamic";
 
 export default async function BaseImagesPage() {
-  const principal = principalFromSession(await auth());
+  const principal = await getPagePrincipal();
   if (principal === null) {
     return (
       <div className="empty">

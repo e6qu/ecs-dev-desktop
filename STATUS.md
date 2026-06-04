@@ -53,11 +53,15 @@ deployment; sockerless has no open blockers.
   model — `<name>.devbox.<domain>` routes to a workspace upstream and unauthenticated
   access is gated to sign-in. (Authenticated-pass via browser login + real DNS/TLS:
   remaining.)
+- **Portal browser e2e** (`apps/web/e2e`, Playwright): drives the real built app
+  (DynamoDB Local) through the RBAC-gated flows — admin catalog CRUD and the member
+  create→stop→delete lifecycle — authenticated via a cookie dev-auth shim
+  (`EDD_DEV_AUTH`). Caught three real bugs (see `WHAT_WE_DID`).
 - **Test tiers** (`docker-compose.tier2.yml` / `.e2e.yml` / `.ssh.yml`, from-source sim):
   unit/contract · integration (DynamoDB Local + process-mode sim) · **e2e**
   (container-mode sim: workspace data-fidelity + full `WorkspaceService` lifecycle;
   GitHub auth via bleephub; Entra auth via the azure sim; identity-aware routing via a
-  real Pomerium proxy; SSH via a real Teleport cluster).
+  real Pomerium proxy; SSH via a real Teleport cluster) · **portal e2e** (Playwright).
 - **CI**: build-test, integration, e2e, check-deps, terraform, shellcheck, sast
   (Semgrep), vuln-scan (Trivy). Manual `e2e-aws` skeleton. Local pre-commit.
 
@@ -88,7 +92,8 @@ suite runs in CI.
 - **GitHub-fixture swappability rework: done** — the GitHub auth e2e now uses the
   conformant OAuth session/CSRF web flow + standard GHES provisioning (no seed token /
   `auto=1` / `POST /user/orgs`); bleephub non-conformances #399/#400 fixed upstream in #401.
-- **Admin base-image catalog: API + UI done** (CRUD + CASL + create-from-catalog
-  enforcement + admin page + picker, tested at all tiers). Remaining: quotas; cost
-  dashboard; Playwright e2e for the portals.
-- **Other decision-free work:** Playwright portal e2e. See `DO_NEXT`.
+- **Portal Playwright e2e: done** — browser coverage of the admin catalog + member
+  lifecycle flows; it caught + fixed a browser-only `fetch` bug, a missing
+  `transpilePackages` entry, and a `vitest`-leak in `@edd/core`'s public API.
+- **Other decision-free work:** quotas + cost dashboard (Phase 6 tail); idle-agent
+  heartbeat; broader coverage. See `DO_NEXT`.

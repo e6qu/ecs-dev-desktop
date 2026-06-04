@@ -32,7 +32,9 @@ export class ApiClient {
 
   constructor(opts: ApiClientOptions) {
     this.baseUrl = opts.baseUrl.replace(/\/$/, "");
-    this.fetchImpl = opts.fetch ?? globalThis.fetch;
+    // Bind to globalThis: the browser's `window.fetch` throws "Illegal invocation"
+    // if called detached from `window` (Node's fetch tolerates it, hiding this).
+    this.fetchImpl = opts.fetch ?? globalThis.fetch.bind(globalThis);
   }
 
   private async send(path: string, init?: RequestInit): Promise<Response> {

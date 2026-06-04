@@ -130,4 +130,17 @@
   established "infra control room" aesthetic (no new design system); admin-only "catalog"
   nav link. Smoke-verified rendering via the dev server; lint/build/web-unit green.
 
+- **2026-06-04** — **Playwright portal e2e** (`apps/web/e2e`, CI `playwright` job):
+  browser coverage of the admin catalog CRUD + the member create→stop→delete lifecycle
+  against the **production build** (Turbopack-dev hydration was unreliable headless) on
+  DynamoDB Local. Authenticated via a **cookie dev-auth shim** — extended the
+  `EDD_DEV_AUTH` shim (previously header-only) to read `edd-dev-*` cookies, since a
+  browser can't set custom headers; gated so production is never open. Caught + fixed
+  **three real bugs** the unit/integration tiers couldn't: (1) `@edd/api-client` stored
+  `globalThis.fetch` unbound → "Illegal invocation" in the browser (Node tolerates it);
+  (2) `@edd/api-client` was missing from `next.config` `transpilePackages` so its TS
+  client code didn't bundle; (3) `@edd/core`'s index re-exported the vitest-importing
+  storage contract, dragging the test runner into the app. Lesson: browser e2e finds
+  client/runtime bugs that server-side Node tests structurally cannot.
+
 <!-- Append new milestones below. -->
