@@ -8,7 +8,7 @@ import { usePathname } from "next/navigation";
 const ITEMS: { label: string; href: string | null }[] = [
   { label: "Overview", href: null },
   { label: "Health", href: "/admin/health" },
-  { label: "Workspaces", href: null },
+  { label: "Workspaces", href: "/admin/workspaces" },
   { label: "Logs", href: null },
   { label: "Catalog", href: "/base-images" },
   { label: "Users", href: null },
@@ -26,7 +26,11 @@ export function AdminNav() {
             {it.label}
           </a>
         ) : (
-          <Link key={it.label} href={it.href} className={path === it.href ? "on" : ""}>
+          <Link
+            key={it.label}
+            href={it.href}
+            className={path === it.href || path.startsWith(`${it.href}/`) ? "on" : ""}
+          >
             {it.label}
           </Link>
         ),

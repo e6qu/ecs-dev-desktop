@@ -106,6 +106,19 @@ describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
     await expect(service.heartbeat(workspaceId(ws.id))).rejects.toThrow();
   });
 
+  it("inspect returns the full detail plus a derived timeline", async () => {
+    const ws = await service.create({
+      ownerId: ownerId("gina"),
+      baseImage: baseImage("golden/node:20"),
+    });
+    const inspection = await service.inspect(workspaceId(ws.id));
+    expect(inspection?.workspace.state).toBe("running");
+    expect(inspection?.workspace.taskId).toBeDefined();
+    expect(inspection?.workspace.volumeId).toBeDefined();
+    expect(inspection?.timeline[0]?.event).toBe("created");
+    expect(await service.inspect(workspaceId("ws-absent"))).toBeNull();
+  });
+
   it("rejects an invalid transition (start while running)", async () => {
     const ws = await service.create({ ownerId: ownerId("carol"), baseImage: baseImage("img") });
     await expect(service.start(workspaceId(ws.id))).rejects.toThrow();
