@@ -51,8 +51,11 @@ generate "provider" {
 inputs = {
   name               = "edd-${local.environment}"
   availability_zones = ["${local.region}a", "${local.region}b"]
-  single_nat_gateway = true
   golden_image_repos = ["node-20", "go-1.22"]
+
+  # Egress: a cheap fck-nat NAT instance for dev (use "gateway" + single_nat_gateway for prod).
+  nat_mode              = "instance"
+  nat_instance_use_spot = true
 
   # domain_name     = "dev.example.com"
   # route53_zone_id = "Z0123456789ABCDEFGHIJ"

@@ -28,6 +28,9 @@ module "ecs_dev_desktop" {
 
   name               = "edd-${var.environment}"
   availability_zones = var.availability_zones
+
+  # Cost-optimized fck-nat NAT instance for dev; managed NAT Gateway(s) for prod.
+  nat_mode           = var.environment == "prod" ? "gateway" : "instance"
   single_nat_gateway = var.environment != "prod"
 
   # Curated golden base images users launch workspaces from.

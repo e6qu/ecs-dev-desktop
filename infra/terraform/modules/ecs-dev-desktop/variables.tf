@@ -37,10 +37,45 @@ variable "availability_zones" {
   }
 }
 
+variable "nat_mode" {
+  description = <<-EOT
+    Private-subnet egress mechanism:
+      "gateway"  — AWS-managed NAT Gateway(s) (recommended for prod).
+      "instance" — a fck-nat EC2 NAT instance (much cheaper; great for dev /
+                   cost-sensitive). Uses the reputable RaJiska/fck-nat module.
+    Either way the dev-desktop tasks stay private-only — only egress changes.
+  EOT
+  type        = string
+  default     = "gateway"
+
+  validation {
+    condition     = contains(["gateway", "instance"], var.nat_mode)
+    error_message = "nat_mode must be \"gateway\" or \"instance\"."
+  }
+}
+
 variable "single_nat_gateway" {
-  description = "Use one shared NAT gateway (cheaper, non-HA) instead of one per AZ."
+  description = "With nat_mode=gateway: one shared NAT gateway (cheaper, non-HA) vs one per AZ."
   type        = bool
   default     = true
+}
+
+variable "nat_instance_type" {
+  description = "With nat_mode=instance: EC2 type for the fck-nat NAT instance."
+  type        = string
+  default     = "t4g.nano"
+}
+
+variable "nat_instance_ha" {
+  description = "With nat_mode=instance: run fck-nat in HA mode (ASG + floating ENI)."
+  type        = bool
+  default     = false
+}
+
+variable "nat_instance_use_spot" {
+  description = "With nat_mode=instance: use a spot instance (cheaper; non-HA dev)."
+  type        = bool
+  default     = false
 }
 
 # ---- Data ----

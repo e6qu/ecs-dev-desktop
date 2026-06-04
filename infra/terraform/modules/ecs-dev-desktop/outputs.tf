@@ -83,3 +83,13 @@ output "log_group_names" {
     workspaces    = aws_cloudwatch_log_group.workspaces.name
   }
 }
+
+output "nat_mode" {
+  description = "Private-subnet egress mechanism in effect (gateway | instance)."
+  value       = var.nat_mode
+}
+
+output "nat_instance_eni_id" {
+  description = "ENI id of the fck-nat NAT instance (null unless nat_mode = instance)."
+  value       = var.nat_mode == "instance" ? module.fck_nat[0].eni_id : null
+}

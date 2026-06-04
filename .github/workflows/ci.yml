@@ -231,6 +231,10 @@ jobs:
       - uses: actions/checkout@v6.0.2
       - name: Trivy (deps + IaC + secrets; fail on HIGH/CRITICAL)
         uses: aquasecurity/trivy-action@v0.36.0
+        env:
+          # Scan only our IaC, not the internals of third-party Terraform modules
+          # (e.g. RaJiska/fck-nat) that Trivy would otherwise resolve and scan.
+          TRIVY_TF_EXCLUDE_DOWNLOADED_MODULES: "true"
         with:
           scan-type: fs
           scan-ref: .

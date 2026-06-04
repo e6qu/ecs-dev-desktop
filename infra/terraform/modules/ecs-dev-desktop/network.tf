@@ -8,7 +8,11 @@ locals {
   # /20 public + /20 private carved per AZ from the VPC /16.
   public_subnet_cidrs  = [for i in range(local.az_count) : cidrsubnet(var.vpc_cidr, 4, i)]
   private_subnet_cidrs = [for i in range(local.az_count) : cidrsubnet(var.vpc_cidr, 4, i + 8)]
-  nat_count            = var.single_nat_gateway ? 1 : local.az_count
+
+  # Managed NAT Gateway(s) only in gateway mode; the fck-nat instance owns egress
+  # routing in instance mode (see nat_instance.tf).
+  use_managed_nat = var.nat_mode == "gateway"
+  nat_count       = local.use_managed_nat ? (var.single_nat_gateway ? 1 : local.az_count) : 0
 }
 
 resource "aws_vpc" "this" {
@@ -74,11 +78,17 @@ resource "aws_route_table_association" "public" {
 resource "aws_route_table" "private" {
   count  = local.az_count
   vpc_id = aws_vpc.this.id
-  route {
-    cidr_block     = "0.0.0.0/0"
-    nat_gateway_id = aws_nat_gateway.this[var.single_nat_gateway ? 0 : count.index].id
-  }
+  # The default route is a separate resource so it can be owned either by the
+  # managed NAT gateway (below) or by the fck-nat module (nat_instance.tf).
   tags = merge(local.tags, { Name = "${var.name}-private-rt-${count.index}" })
+}
+
+# Default egress route via the managed NAT gateway (gateway mode only).
+resource "aws_route" "private_nat" {
+  count                  = local.use_managed_nat ? local.az_count : 0
+  route_table_id         = aws_route_table.private[count.index].id
+  destination_cidr_block = "0.0.0.0/0"
+  nat_gateway_id         = aws_nat_gateway.this[var.single_nat_gateway ? 0 : count.index].id
 }
 
 resource "aws_route_table_association" "private" {
