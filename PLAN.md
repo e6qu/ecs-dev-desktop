@@ -85,7 +85,7 @@ full audit; quota enforcement at scale; DR runbook; load test to 200+.
 - **Gate:** 200+ load within latency budget; DR drill (cross-region restore);
   `/security-review` clean; pen-test checklist. (Real AWS only.)
 
-## Phase 8 — Admin console & observability — ⬜ NEXT (design: `docs/admin-ui-design.md`)
+## Phase 8 — Admin console & observability — 🟡 8A+8B done, 8C AWS-gated (design: `docs/admin-ui-design.md`)
 
 A dedicated admin-only **`/admin` sidebar shell** + a troubleshooting surface (component
 health, per-workspace diagnostics, logs/audit). **No custom audit store** — observability
@@ -97,11 +97,15 @@ is ports-and-adapters: events/audit/logs **derived from current state now**, fro
   the admin-only `/admin` sidebar shell, the live **Health board**, the all-workspaces
   table, and per-workspace **Inspect** (detail, bindings, snapshots, pure-derived
   lifecycle timeline). All Playwright-covered.
-- 🟡 **8B — Overview + Quotas + Audit/Logs (now, mock-free):** ✅ admin **Overview**
-  dashboard (`tallyWorkspaceStates` and catalog stats); ✅ **quotas** (per-role config
+- ✅ **8B — Overview + Quotas + Audit/Logs (now, mock-free):** admin **Overview**
+  dashboard (`tallyWorkspaceStates` and catalog stats); **quotas** (per-role config
   via `EDD_QUOTA_<ROLE>`, pure `withinWorkspaceQuota`, create-time enforcement, the
-  `/admin/quotas` limits-and-usage page). ⬜ **Remaining:** the `AuditSource`/`LogSource`
-  ports and the **Logs/Audit** screen (thin pre-AWS; real CloudTrail/CloudWatch is 8C).
+  `/admin/quotas` limits-and-usage page); and the **Logs/Audit** screen — pure
+  `deriveFleetAudit`/`auditToLogLines`, the `AuditSource`/`LogSource` ports with
+  `DerivedAuditSource`/`DerivedLogSource` local adapters, `GET /api/admin/audit` and
+  `GET /api/admin/logs`, the `/admin/logs` page (derived audit feed plus the
+  control-plane log stream; reconciler/container streams marked CloudWatch-on-AWS).
+  All Playwright-covered.
 - ⬜ **8C — Real cloud data (AWS-gated):** CloudTrail audit adapter, CloudWatch Logs
   (container/app/reconciler), CloudWatch Metrics + Cost dashboard, real ECS/EBS/Teleport/
   Pomerium health. Endpoint-only swap; validated at `e2e-aws`.

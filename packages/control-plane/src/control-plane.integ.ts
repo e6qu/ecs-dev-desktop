@@ -19,7 +19,13 @@ import {
 } from "@edd/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { CatalogService, HealthService, WorkspaceService } from "./index";
+import {
+  CatalogService,
+  DerivedAuditSource,
+  DerivedLogSource,
+  HealthService,
+  WorkspaceService,
+} from "./index";
 
 process.env.DYNAMODB_ENDPOINT ??= dynamodbLocal.endpoint;
 
@@ -222,5 +228,60 @@ describe("HealthService (DynamoDB Local)", () => {
     const report = await health.report();
     const db = report.components.find((c) => c.component === "dynamodb");
     expect(db?.status).toBe("degraded"); // ResourceNotFound → degraded
+  });
+});
+
+describe("DerivedAuditSource + DerivedLogSource (DynamoDB Local)", () => {
+  let client: ReturnType<typeof createDynamoClient>;
+  let workspaces: WorkspaceService;
+  let entity: ReturnType<typeof makeWorkspaceEntity>;
+
+  beforeAll(async () => {
+    client = createDynamoClient();
+    await dropTable(client, TEST_TABLE);
+    await ensureTable(client, TEST_TABLE);
+  });
+
+  beforeEach(async () => {
+    const storage = await FakeStorageProvider.create();
+    entity = makeWorkspaceEntity(client, TEST_TABLE);
+    workspaces = new WorkspaceService({
+      workspaces: entity,
+      storage,
+      compute: new FakeComputeProvider(storage),
+      clock: fixedClock(),
+    });
+  });
+
+  afterAll(async () => {
+    await dropTable(client, TEST_TABLE);
+  });
+
+  it("derives a fleet audit feed from the current workspace records", async () => {
+    const ws = await workspaces.create({
+      ownerId: ownerId("hank"),
+      baseImage: baseImage("golden/node:20"),
+    });
+    const audit = new DerivedAuditSource({ workspaces: entity });
+    const events = await audit.recent();
+    const mine = events.filter((e) => e.target === ws.id);
+    expect(mine.map((e) => e.action)).toContain("workspace.created");
+    expect(mine.every((e) => e.actor === "system")).toBe(true);
+  });
+
+  it("serves the control-plane log stream and marks cloud-only streams unavailable", async () => {
+    await workspaces.create({ ownerId: ownerId("ivy"), baseImage: baseImage("golden/node:20") });
+    const logs = new DerivedLogSource({ audit: new DerivedAuditSource({ workspaces: entity }) });
+
+    const cp = await logs.read("control-plane");
+    expect(cp.available).toBe(true);
+    expect(cp.lines.length).toBeGreaterThan(0);
+
+    // Reconciler / container logs exist only once deployed (CloudWatch on AWS):
+    // explicitly unavailable, never a silent empty.
+    const container = await logs.read("container");
+    expect(container.available).toBe(false);
+    expect(container.lines).toHaveLength(0);
+    expect(container.note).toMatch(/CloudWatch/);
   });
 });

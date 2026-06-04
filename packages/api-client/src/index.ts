@@ -1,20 +1,25 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
+  auditFeedResponse,
   baseImageEntry,
   createBaseImageRequest,
   createWorkspaceRequest,
   healthReport,
   listBaseImagesResponse,
   listWorkspacesResponse,
+  logStreamResult,
   updateBaseImageRequest,
   workspace,
   workspaceInspection,
+  type AuditFeedResponse,
   type BaseImageEntryDto,
   type CreateBaseImageRequest,
   type CreateWorkspaceRequest,
   type HealthReportDto,
   type ListBaseImagesResponse,
   type ListWorkspacesResponse,
+  type LogStreamDto,
+  type LogStreamResultDto,
   type UpdateBaseImageRequest,
   type WorkspaceDto,
   type WorkspaceInspectionDto,
@@ -151,5 +156,17 @@ export class ApiClient {
   async adminInspectWorkspace(id: string): Promise<WorkspaceInspectionDto> {
     const res = await this.send(`/api/admin/workspaces/${id}`);
     return workspaceInspection.parse(await res.json());
+  }
+
+  /** Derived fleet audit feed (newest first); CloudTrail-backed on AWS. */
+  async adminAudit(): Promise<AuditFeedResponse> {
+    const res = await this.send("/api/admin/audit");
+    return auditFeedResponse.parse(await res.json());
+  }
+
+  /** Read one admin log stream; CloudWatch-backed on AWS. */
+  async adminLogs(stream: LogStreamDto): Promise<LogStreamResultDto> {
+    const res = await this.send(`/api/admin/logs?stream=${stream}`);
+    return logStreamResult.parse(await res.json());
   }
 }

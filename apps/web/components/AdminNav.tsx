@@ -9,7 +9,7 @@ const ITEMS: { label: string; href: string | null }[] = [
   { label: "Overview", href: "/admin/overview" },
   { label: "Health", href: "/admin/health" },
   { label: "Workspaces", href: "/admin/workspaces" },
-  { label: "Logs", href: null },
+  { label: "Logs", href: "/admin/logs" },
   { label: "Catalog", href: "/base-images" },
   { label: "Users", href: null },
   { label: "Quotas", href: "/admin/quotas" },

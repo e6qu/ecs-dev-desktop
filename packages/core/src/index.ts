@@ -32,6 +32,7 @@ export {
 
 // Domain constants.
 export {
+  DEFAULT_AUDIT_FEED_LIMIT,
   DEFAULT_GC_GRACE_MS,
   DEFAULT_IDLE_THRESHOLD_MS,
   DEFAULT_SNAPSHOT_INTERVAL_MS,
@@ -112,3 +113,17 @@ export { deriveWorkspaceTimeline } from "./observability/timeline";
 // Observability — workspace fleet stats (admin Overview).
 export type { WorkspaceStats } from "./observability/stats";
 export { tallyWorkspaceStates } from "./observability/stats";
+
+// Observability — derived audit feed (admin Logs/Audit; CloudTrail on AWS).
+export type { AuditEvent, AuditSource, FleetAuditInput } from "./observability/audit";
+export { deriveFleetAudit } from "./observability/audit";
+
+// Observability — log streams (admin Logs; CloudWatch on AWS).
+export type {
+  LogLevel,
+  LogLine,
+  LogSource,
+  LogStream,
+  LogStreamResult,
+} from "./observability/logs";
+export { auditToLogLines } from "./observability/logs";

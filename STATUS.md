@@ -2,16 +2,17 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-04
+**Last updated:** 2026-06-04 (Phase 8B Logs/Audit landed)
 
 ## Current phase
 
 The whole **locally-testable platform is proven end-to-end with no mocks** against the
 from-source sockerless sim + real Teleport/Pomerium: stateful snapshottable workspaces,
-control plane + RBAC, both IdP logins, SSH, identity-aware routing, scale-to-zero, and
-the portal (browser e2e). **Gated on the AWS account/region decision** (`DO_NEXT` #1)
-for real deploy. Next build target: **Phase 8 — admin console & observability**
-(design in `docs/admin-ui-design.md`); start with 8A (health + Inspect).
+control plane + RBAC, both IdP logins, SSH, identity-aware routing, scale-to-zero, the
+portal, and the **admin console** (Overview, Health, Workspaces+Inspect, Quotas, and
+Logs/Audit) — all browser-tested. **Phase 8A and 8B are complete**; what's left in
+Phase 8 is **8C real cloud data** (CloudTrail/CloudWatch), which is **gated on the AWS
+account/region decision** (`DO_NEXT` #1) alongside the entire real-deploy track.
 
 ## What works (built, tested, merged)
 
@@ -42,6 +43,7 @@ for real deploy. Next build target: **Phase 8 — admin console & observability*
 - **AWS account/region** (`DO_NEXT` #1) — top blocker; unlocks real Terraform, golden
   image, deploy, reconciler cron, `e2e-aws`, and Phase 8C cloud observability.
 - **Domain/DNS** (#2) — blocks real proxy routing + ACM.
-- **Phase 8A + most of 8B done:** admin `/admin` shell (Overview, Health board,
-  Workspaces table, per-workspace Inspect, **quotas** with create-time enforcement) —
-  all Playwright-covered. **Next (8B):** the Logs/Audit screen (thin until CloudTrail).
+- **Phase 8A + 8B complete:** the admin `/admin` shell (Overview, Health board,
+  Workspaces table, per-workspace Inspect, Quotas with create-time enforcement, and
+  Logs/Audit with the derived audit feed + control-plane log stream) — all
+  Playwright-covered. The remaining admin work (8C) is AWS-gated cloud data.

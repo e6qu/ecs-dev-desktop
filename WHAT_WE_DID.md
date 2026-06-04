@@ -54,5 +54,17 @@
   **Activity heartbeat** (`markActivity` + `WorkspaceService.heartbeat`) completes the
   scale-to-zero input side. Designed **Phase 8 — admin console & observability**
   (`docs/admin-ui-design.md`).
+- **2026-06-04** — **Phase 8 admin console (8A + 8B), mock-free.** 8A: the admin-only
+  `/admin` sidebar shell, the live **Health board** (`HealthService` + real DynamoDB
+  ping; providers/reconciler `unknown` until AWS), the all-workspaces table, and
+  per-workspace **Inspect** (detail + bindings + snapshots + pure-derived lifecycle
+  timeline). 8B: the **Overview** dashboard (`tallyWorkspaceStates`), **quotas** (per-role
+  `EDD_QUOTA_<ROLE>`, pure `withinWorkspaceQuota`, create-time 409 enforcement), and the
+  **Logs/Audit** screen — pure `deriveFleetAudit`/`auditToLogLines`, the
+  `AuditSource`/`LogSource` ports with `DerivedAuditSource`/`DerivedLogSource` local
+  adapters (audit derived from state; control-plane log stream live, reconciler/container
+  streams **explicitly unavailable** until CloudWatch — no silent empties). All
+  Playwright-covered. Observability stayed endpoint-only: no custom audit store; 8C swaps
+  in CloudTrail/CloudWatch adapters behind the same ports.
 
 <!-- Append new milestones below. -->
