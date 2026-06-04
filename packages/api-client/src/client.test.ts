@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { describe, expect, it } from "vitest";
 
-import { ApiClient } from "./index";
+import { ApiClient, ApiError } from "./index";
 
 describe("ApiClient", () => {
   it("parses a successful listWorkspaces response", async () => {
@@ -13,11 +13,30 @@ describe("ApiClient", () => {
     expect(res.workspaces).toEqual([]);
   });
 
-  it("throws on a non-ok response", async () => {
+  it("throws on a non-ok response with a non-JSON body (status fallback)", async () => {
     const fetchImpl: typeof fetch = () => Promise.resolve(new Response("nope", { status: 500 }));
 
     const client = new ApiClient({ baseUrl: "http://x", fetch: fetchImpl });
     await expect(client.listWorkspaces()).rejects.toThrow(/500/);
+  });
+
+  it("surfaces the server's error message and status on a domain failure", async () => {
+    const fetchImpl: typeof fetch = () =>
+      Promise.resolve(
+        new Response(JSON.stringify({ error: "workspace quota reached (5)" }), { status: 409 }),
+      );
+
+    const client = new ApiClient({ baseUrl: "http://x", fetch: fetchImpl });
+    const thrown: unknown = await client
+      .createWorkspace({ baseImage: "img" })
+      .then(() => null)
+      .catch((e: unknown) => e);
+
+    expect(thrown).toBeInstanceOf(ApiError);
+    if (thrown instanceof ApiError) {
+      expect(thrown.message).toBe("workspace quota reached (5)");
+      expect(thrown.status).toBe(409);
+    }
   });
 
   it("POSTs to the stop endpoint for a workspace", async () => {

@@ -156,4 +156,13 @@
   parity with the e2e/ssh jobs). Tests: `waitForDynamo` resolves against the live DB and
   throws deterministically (timeout) against a dead endpoint. db integ 5; build + lint green.
 
+- **2026-06-04** — **Error channel reaches the UI.** The typed-error work stopped at the
+  wire: the server returns `{ error: <message> }` with the right status, but `@edd/api-client`
+  threw `Error("POST … failed: 409")` and discarded the body, so the portal showed a bare
+  status. Added `errorResponse` (`@edd/api-contracts`) and an `ApiError` (carries the
+  parsed server message + `status`); `send()` now surfaces the real reason (e.g. "workspace
+  quota reached (5)") with a status-based fallback for non-JSON bodies. No UI change needed
+  — `ApiError extends Error`, so the portal's existing `e.message` now shows it. api-client
+  4 tests; build + lint green.
+
 <!-- Append new milestones below. -->

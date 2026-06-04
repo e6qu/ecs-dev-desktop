@@ -4,6 +4,7 @@ import {
   baseImageEntry,
   createBaseImageRequest,
   createWorkspaceRequest,
+  errorResponse,
   healthReport,
   listBaseImagesResponse,
   listWorkspacesResponse,
@@ -35,6 +36,22 @@ export interface ApiClientOptions {
   fetch?: typeof globalThis.fetch;
 }
 
+/**
+ * A failed API call. Carries the server's typed error message (from the
+ * `{ error }` body) so the UI can show the real reason — e.g. "workspace quota
+ * reached" — rather than a bare status, plus the `status` for callers that branch
+ * on it.
+ */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 export class ApiClient {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof globalThis.fetch;
@@ -48,9 +65,20 @@ export class ApiClient {
 
   private async send(path: string, init?: RequestInit): Promise<Response> {
     const res = await this.fetchImpl(`${this.baseUrl}${path}`, init);
-    if (!res.ok)
-      throw new Error(`${init?.method ?? "GET"} ${path} failed: ${res.status.toString()}`);
+    if (!res.ok) throw new ApiError(res.status, await this.errorMessage(res, path, init));
     return res;
+  }
+
+  /** The server's `{ error }` message if present, else a status-based fallback. */
+  private async errorMessage(res: Response, path: string, init?: RequestInit): Promise<string> {
+    const fallback = `${init?.method ?? "GET"} ${path} failed: ${res.status.toString()}`;
+    try {
+      const parsed = errorResponse.safeParse(await res.json());
+      return parsed.success ? parsed.data.error : fallback;
+    } catch {
+      // Body absent or not JSON (e.g. an upstream/proxy error) — use the fallback.
+      return fallback;
+    }
   }
 
   async listWorkspaces(): Promise<ListWorkspacesResponse> {

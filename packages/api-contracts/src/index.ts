@@ -7,6 +7,14 @@ import { z } from "zod";
  * consumes the inferred types — UI and external clients use the same surface.
  */
 
+/** The body every error response carries (`{ error: <message> }`) — see the API
+ * helpers + `domainErrorResponse` in `apps/web/lib/api.ts`. The client parses it
+ * to surface the real reason (e.g. "workspace quota reached") instead of a status. */
+export const errorResponse = z.object({
+  error: z.string(),
+});
+export type ErrorResponse = z.infer<typeof errorResponse>;
+
 export const workspaceState = z.enum([
   "provisioning",
   "running",
