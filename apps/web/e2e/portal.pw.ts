@@ -137,3 +137,31 @@ test("admin quotas page shows per-role limits and usage", async ({ page, context
   await expect(page.getByRole("heading", { name: "Limits" })).toBeVisible();
   await expect(page.getByText("member")).toBeVisible(); // a role limit row
 });
+
+test("admin logs page shows the derived audit feed and the CloudWatch streams", async ({
+  page,
+  context,
+  request,
+}) => {
+  // A workspace gives the derived audit feed at least one event to render.
+  const res = await request.post("/api/workspaces", {
+    headers: { cookie: `${DEV_USER_COOKIE}=dan; ${DEV_ROLE_COOKIE}=member` },
+    data: { baseImage: NODE_IMAGE },
+  });
+  expect(res.ok()).toBeTruthy();
+
+  await loginAs(context, "root", "admin");
+  await page.goto("/admin/logs");
+  await expect(page.getByRole("heading", { name: "Logs & audit" })).toBeVisible();
+
+  // Derived audit feed renders a created event.
+  await expect(
+    page.locator(".audit-row").filter({ hasText: "workspace.created" }).first(),
+  ).toBeVisible();
+
+  // The control-plane stream is live; container logs are marked as AWS-only.
+  const cp = page.locator(".panel").filter({ hasText: "control-plane" });
+  await expect(cp.locator(".pill.on")).toHaveText("live");
+  const container = page.locator(".panel").filter({ hasText: "container" });
+  await expect(container.locator(".pill.off")).toHaveText("on AWS");
+});

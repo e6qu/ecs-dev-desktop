@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { FakeComputeProvider, FakeStorageProvider, systemClock } from "@edd/core";
-import { CatalogService, HealthService, WorkspaceService } from "@edd/control-plane";
+import {
+  CatalogService,
+  DerivedAuditSource,
+  DerivedLogSource,
+  HealthService,
+  WorkspaceService,
+} from "@edd/control-plane";
 import {
   createDynamoClient,
   makeBaseImageEntity,
@@ -46,6 +52,18 @@ export async function getHealthService(): Promise<HealthService> {
     pingDatabase: () => pingTable(client, table),
     clock: systemClock,
   });
+}
+
+/** Admin audit feed: derived from current workspace state (CloudTrail on AWS). */
+export function getAuditSource(): DerivedAuditSource {
+  return new DerivedAuditSource({
+    workspaces: makeWorkspaceEntity(createDynamoClient(), tableName()),
+  });
+}
+
+/** Admin log streams: control-plane derived now; reconciler/container on AWS. */
+export function getLogSource(): DerivedLogSource {
+  return new DerivedLogSource({ audit: getAuditSource() });
 }
 
 async function build(): Promise<WorkspaceService> {

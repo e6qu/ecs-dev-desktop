@@ -120,3 +120,40 @@ export const healthReport = z.object({
   checkedAt: z.iso.datetime(),
 });
 export type HealthReportDto = z.infer<typeof healthReport>;
+
+// --- Admin: audit feed (derived now; CloudTrail on AWS) ---
+
+export const auditEvent = z.object({
+  at: z.iso.datetime(),
+  actor: z.string(),
+  action: z.string(),
+  target: z.string(),
+  detail: z.string(),
+});
+export type AuditEventDto = z.infer<typeof auditEvent>;
+
+export const auditFeedResponse = z.object({
+  events: z.array(auditEvent),
+});
+export type AuditFeedResponse = z.infer<typeof auditFeedResponse>;
+
+// --- Admin: log streams (control-plane derived now; CloudWatch on AWS) ---
+
+export const logStream = z.enum(["control-plane", "reconciler", "container"]);
+export type LogStreamDto = z.infer<typeof logStream>;
+
+export const logLine = z.object({
+  at: z.iso.datetime(),
+  level: z.enum(["info", "warn", "error"]),
+  source: z.string(),
+  message: z.string(),
+});
+export type LogLineDto = z.infer<typeof logLine>;
+
+export const logStreamResult = z.object({
+  stream: logStream,
+  available: z.boolean(),
+  note: z.string(),
+  lines: z.array(logLine),
+});
+export type LogStreamResultDto = z.infer<typeof logStreamResult>;

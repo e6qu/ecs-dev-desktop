@@ -26,3 +26,6 @@ export const DEFAULT_SNAPSHOT_INTERVAL_MS = 6 * 60 * 60 * 1000;
  * recorded against a workspace in the control plane (a create/persist race).
  */
 export const DEFAULT_GC_GRACE_MS = 60 * 60 * 1000;
+
+/** Default number of most-recent events the admin audit feed returns. */
+export const DEFAULT_AUDIT_FEED_LIMIT = 100;

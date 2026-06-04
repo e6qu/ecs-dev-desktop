@@ -21,17 +21,22 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
 
 ## Available now (decision-free)
 
-- **Phase 8 — admin console** (`docs/admin-ui-design.md`): ✅ **8A done** — Health board
-  (`HealthService` + live DynamoDB ping), the `/admin` shell, the all-workspaces table,
-  and per-workspace **Inspect** (detail, bindings, snapshots, derived lifecycle timeline).
-  All Playwright-covered. **8B in progress:** ✅ admin **Overview** dashboard and ✅
-  **quotas** (per-role `EDD_QUOTA_<ROLE>` config, create-time enforcement, the
-  `/admin/quotas` limits-and-usage page). **NEXT:** the `AuditSource`/`LogSource` ports and
-  the **Logs/Audit** screen (thin pre-AWS — derived; real CloudTrail/CloudWatch is 8C,
-  AWS-gated).
+- **Phase 8 — admin console** (`docs/admin-ui-design.md`): ✅ **8A + 8B done.** 8A:
+  Health board (`HealthService` + live DynamoDB ping), the `/admin` shell, the
+  all-workspaces table, per-workspace **Inspect**. 8B: admin **Overview**, **quotas**
+  (per-role `EDD_QUOTA_<ROLE>`, create-time enforcement), and **Logs/Audit** (pure
+  `deriveFleetAudit`/`auditToLogLines`, the `AuditSource`/`LogSource` ports +
+  `DerivedAuditSource`/`DerivedLogSource`, `/api/admin/audit` and `/api/admin/logs`, the
+  `/admin/logs` page). All Playwright-covered. **8C is AWS-gated** (CloudTrail audit +
+  CloudWatch logs/metrics + cost + real provider/Teleport/Pomerium health) — the same
+  ports, an endpoint-only adapter swap.
 - **idle-agent** that POSTs `/heartbeat` (its shape; the agent binary ships with the
   golden image, AWS-gated).
 - Broader unit/integration/Playwright coverage.
+
+> With 8A+8B done, the highest-value remaining lever is the **AWS account/region
+> decision** (#1): it unlocks 8C _and_ the whole real-deploy track. Little
+> decision-free product work remains until then.
 
 ## Blocked
 

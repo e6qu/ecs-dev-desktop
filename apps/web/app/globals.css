@@ -685,6 +685,123 @@ main {
   color: var(--text);
 }
 
+/* ---- admin logs & audit ---- */
+.audit-feed {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.audit-row {
+  display: grid;
+  grid-template-columns: 180px 150px 160px 1fr;
+  gap: 14px;
+  align-items: baseline;
+  padding: 9px 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.audit-row:last-child {
+  border-bottom: none;
+}
+
+.audit-row .when {
+  font-family: var(--font-mono), monospace;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.audit-row .action {
+  font-family: var(--font-mono), monospace;
+  font-size: 12px;
+  color: var(--accent);
+}
+
+.audit-row .target {
+  font-size: 12px;
+  color: var(--dim);
+  word-break: break-all;
+}
+
+.audit-row .detail {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.stream-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.stream-name {
+  font-size: 13px;
+  color: var(--text);
+}
+
+.pill {
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+}
+
+.pill.on {
+  color: var(--st-running);
+  border-color: var(--st-running);
+}
+
+.pill.off {
+  color: var(--dimmer);
+}
+
+.log-pane {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  background: var(--panel-3, #0b0e12);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  max-height: 320px;
+  overflow: auto;
+  font-family: var(--font-mono), monospace;
+  font-size: 12px;
+  line-height: 1.7;
+  white-space: pre-wrap;
+}
+
+.log-line {
+  display: grid;
+  grid-template-columns: 88px 44px 1fr;
+  gap: 10px;
+}
+
+.log-line .ts {
+  color: var(--dimmer);
+}
+
+.log-line .lvl {
+  text-transform: uppercase;
+  font-size: 10px;
+}
+
+.lvl-info {
+  color: var(--st-running);
+}
+.lvl-warn {
+  color: var(--st-idle);
+}
+.lvl-error {
+  color: var(--st-error);
+}
+
+.log-line .msg {
+  color: var(--text);
+  word-break: break-word;
+}
+
 /* ---- admin overview stats ---- */
 .stat-grid {
   display: grid;

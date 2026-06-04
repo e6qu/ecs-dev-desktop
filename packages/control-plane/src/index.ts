@@ -7,3 +7,7 @@ export type { CatalogServiceDeps } from "./catalog-service";
 export { toBaseImageDto } from "./base-image-dto";
 export { HealthService } from "./health-service";
 export type { HealthServiceDeps } from "./health-service";
+export { DerivedAuditSource } from "./audit-source";
+export type { DerivedAuditSourceDeps } from "./audit-source";
+export { DerivedLogSource } from "./log-source";
+export type { DerivedLogSourceDeps } from "./log-source";
