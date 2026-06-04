@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import { updateBaseImageRequest } from "@edd/api-contracts";
 import { defineAbilityFor, type Action } from "@edd/authz";
+import { BaseImageNotFoundError } from "@edd/control-plane";
 import { baseImageId } from "@edd/core";
 
 import {
@@ -55,6 +56,7 @@ export async function PATCH(req: Request, { params }: Ctx) {
       await getCatalog().update(baseImageId((await params).id), parsed.data),
     );
   } catch (err) {
+    if (err instanceof BaseImageNotFoundError) return notFound();
     return conflict(errorMessage(err));
   }
 }
@@ -67,6 +69,7 @@ export async function DELETE(req: Request, { params }: Ctx) {
     await getCatalog().remove(baseImageId((await params).id));
     return new NextResponse(null, { status: 204 });
   } catch (err) {
+    if (err instanceof BaseImageNotFoundError) return notFound();
     return conflict(errorMessage(err));
   }
 }

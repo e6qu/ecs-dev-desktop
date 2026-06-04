@@ -79,4 +79,16 @@
   `WorkspaceNotFoundError`, and core edge cases (orphan/snapshot selectors: empty inputs +
   the exact `>=` grace boundary; audit feed: empty input + zero limit).
 
+- **2026-06-04** — **Hardening round 2.** Auditing whether the round-1 `DELETE` 500 was a
+  one-off found the **same bug class** in the catalog: `CatalogService.update`/`remove`
+  throw `BaseImageNotFoundError`, but `PATCH`/`DELETE /api/base-images/:id` mapped every
+  error to 409, so editing/deleting a missing entry returned **409 instead of 404** (and,
+  unlike the workspace `DELETE`, with no pre-guard it was directly reachable). Fixed both
+  to map `BaseImageNotFoundError` → 404. Confirmed by audit that the remaining mutation
+  routes (`connect`/`start`/`snapshot`/`stop`/`heartbeat`, base-images `POST`) already map
+  domain errors uniformly. Added tests: catalog missing-entry `PATCH`/`DELETE` → 404,
+  empty-body `PATCH` → 400, an exhaustive state-machine transition-matrix test (pins all
+  15 permitted pairs, rejects the rest), and timeline same-timestamp / out-of-order
+  sorting. core 60, web integ 24, all green.
+
 <!-- Append new milestones below. -->
