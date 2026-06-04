@@ -35,7 +35,7 @@ export { assertNever } from "./assert-never";
 
 // Result type (errors as data) + domain error union (the typed failure channel).
 export type { Err, Ok, Result } from "./result";
-export { andThen, err, isErr, isOk, map, mapErr, ok } from "./result";
+export { andThen, err, isErr, isOk, map, mapErr, ok, unwrap } from "./result";
 export type { DomainError, DomainErrorKind } from "./domain/errors";
 export { conflictError, domainErrorMessage, invalidError, notFoundError } from "./domain/errors";
 

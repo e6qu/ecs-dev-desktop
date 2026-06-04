@@ -44,3 +44,10 @@ export function mapErr<T, E, F>(r: Result<T, E>, f: (error: E) => F): Result<T, 
 export function andThen<T, U, E>(r: Result<T, E>, f: (value: T) => Result<U, E>): Result<U, E> {
   return r.ok ? f(r.value) : r;
 }
+
+/** Return the success value, or throw on error. The escape hatch for callers that
+ * have already established success (notably tests asserting the happy path). */
+export function unwrap<T, E>(r: Result<T, E>): T {
+  if (!r.ok) throw new Error(`unwrap() on an Err: ${JSON.stringify(r.error)}`);
+  return r.value;
+}

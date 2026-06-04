@@ -35,7 +35,7 @@ export type FetchLike = (
   init: { headers: Record<string, string> },
 ) => Promise<{ ok: boolean; status: number; statusText: string; json: () => Promise<unknown> }>;
 
-export interface FetchTeamsDeps {
+interface FetchTeamsDeps {
   accessToken: string;
   baseUrl?: string;
   fetchImpl?: FetchLike;

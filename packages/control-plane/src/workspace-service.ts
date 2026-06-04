@@ -301,21 +301,9 @@ export class WorkspaceService {
   }
 
   /** Upsert the domain workspace; PutItem replaces the item so cleared optional
-   * bindings (volume/task on stop) are removed. */
+   * bindings (volume/task on stop) are removed. The full-detail DTO is exactly the
+   * persisted shape, so it doubles as the put payload (one mapping, not two). */
   private async persist(ws: Workspace): Promise<void> {
-    await this.deps.workspaces
-      .put({
-        id: ws.id,
-        ownerId: ws.ownerId,
-        baseImage: ws.baseImage,
-        state: ws.state,
-        createdAt: ws.createdAt,
-        lastActivity: ws.lastActivity,
-        ...(ws.volumeId === undefined ? {} : { volumeId: ws.volumeId }),
-        ...(ws.taskId === undefined ? {} : { taskId: ws.taskId }),
-        ...(ws.latestSnapshotId === undefined ? {} : { latestSnapshotId: ws.latestSnapshotId }),
-        ...(ws.latestSnapshotAt === undefined ? {} : { latestSnapshotAt: ws.latestSnapshotAt }),
-      })
-      .go();
+    await this.deps.workspaces.put(toWorkspaceDetail(ws)).go();
   }
 }
