@@ -196,8 +196,59 @@ jobs:
         run: |
           terraform -chdir=infra/terraform/examples/complete init -backend=false -input=false
           terraform -chdir=infra/terraform/examples/complete validate
-      # The full sim-backed apply test (tests/sim) runs once e6qu/sockerless#411
-      # lands the missing AWS operations (KMS rotation, app-autoscaling, scheduler).
+      # The sim-backed test (tests/sim) runs in its own `terraform-sim` job below.
+
+  terraform-sim:
+    name: terraform-sim
+    runs-on: ubuntu-latest
+    # Defensive cap: the gated apply step would hang (not fail fast) on the
+    # open sim gaps e6qu/sockerless#413 (KMS tagging) and #414 (NAT Gateway).
+    timeout-minutes: 25
+    env:
+      # tests/sim defaults sim_endpoint to this; kept explicit for the apply step.
+      SIM_ENDPOINT: http://127.0.0.1:4566
+      TF_DIR: infra/terraform/modules/ecs-dev-desktop/tests/sim
+      # Flip to "1" to enable the full apply+destroy once #413 and #414 land.
+      RUN_SIM_APPLY: "0"
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          submodules: recursive # third_party/sockerless — the sim is built from source
+      - uses: hashicorp/setup-terraform@v4.0.1
+        with:
+          terraform_wrapper: false
+      # Retry bring-up: image pulls can transiently hit registry rate limits
+      # (public.ecr.aws / Docker Hub) on shared runner IPs.
+      - name: Build & start the sockerless AWS simulator (from source, API-only mode)
+        run: |
+          for attempt in 1 2 3; do
+            if docker compose -f docker-compose.tier2.yml up -d --build --wait sockerless-aws; then
+              exit 0
+            fi
+            echo "::warning::sim bring-up failed (attempt ${attempt}); retrying"
+            docker compose -f docker-compose.tier2.yml down -v || true
+            sleep "$((attempt * 20))"
+          done
+          exit 1
+      # init/validate/plan run against the LIVE sim every PR — a real, non-mocked
+      # exercise of provider/endpoint wiring + the module plan graph (plan reaches
+      # the sim, e.g. STS GetCallerIdentity). No resources are created here.
+      - name: terraform init + validate + plan (against the live sim)
+        run: |
+          terraform -chdir="${TF_DIR}" init -input=false
+          terraform -chdir="${TF_DIR}" validate
+          terraform -chdir="${TF_DIR}" plan -input=false -var "sim_endpoint=${SIM_ENDPOINT}"
+      # Full non-mocked apply+destroy. Gated off until e6qu/sockerless#413 (KMS
+      # tagging hangs aws_kms_key 10m) and #414 (CreateNatGateway hangs
+      # aws_nat_gateway until timeout) are fixed upstream. Per AGENTS.md §6.8 the
+      # module is NOT branched around these gaps.
+      - name: terraform apply + destroy (full non-mocked e2e)
+        if: env.RUN_SIM_APPLY == '1'
+        run: |
+          terraform -chdir="${TF_DIR}" apply -auto-approve -input=false -var "sim_endpoint=${SIM_ENDPOINT}"
+          terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false -var "sim_endpoint=${SIM_ENDPOINT}"
+      - if: always()
+        run: docker compose -f docker-compose.tier2.yml down
 
   shellcheck:
     name: shellcheck
