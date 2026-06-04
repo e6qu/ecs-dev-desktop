@@ -123,4 +123,11 @@
   every tier (core unit, control-plane + web-route integ on DynamoDB Local). Remaining:
   the admin management UI + a create-from-catalog picker in the portal.
 
+- **2026-06-03** — **Base-image catalog UI**: the admin `/base-images` management page
+  (add / enable-disable / delete, admin-only) and the real **create-from-catalog
+  picker** — the workspaces page now fetches the enabled catalog and the create dropdown
+  shows display names, replacing the hardcoded `BASE_IMAGES` constant. Reuses the
+  established "infra control room" aesthetic (no new design system); admin-only "catalog"
+  nav link. Smoke-verified rendering via the dev server; lint/build/web-unit green.
+
 <!-- Append new milestones below. -->

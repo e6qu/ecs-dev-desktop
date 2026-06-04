@@ -36,10 +36,11 @@ Resolved: DynamoDB+ElectroDB · sockerless substrate (from source) · Fargate
   not a sim concern). Plus: Teleport↔Entra/GitHub federation; session recording; the
   **authenticated proxy-pass** with identity headers (browser login → Playwright);
   real DNS/TLS/ACM (blocked on #2).
-- **Admin base-image catalog** — ✅ API done: `CatalogService` CRUD + CASL-gated
-  `/api/base-images` routes + api-client; workspace `create` enforced against the
-  enabled catalog (core `findEnabledImage`). Remaining: the **admin management UI** +
-  a **create-from-catalog picker** in the portal; quotas; cost dashboard.
+- **Admin base-image catalog** — ✅ API + UI done: `CatalogService` CRUD + CASL-gated
+  `/api/base-images` + api-client; workspace `create` enforced against the enabled
+  catalog; the `/base-images` admin page (add / enable-disable / delete) + the real
+  create-from-catalog picker (replaced the hardcoded `BASE_IMAGES`). Remaining: quotas;
+  cost dashboard.
 - **idle-agent heartbeat** shape (editor/terminal/SSH → `lastActivity`).
 - **Playwright e2e** for the portal (app + DynamoDB + `EDD_DEV_AUTH`/mock-OIDC).
 - Broader unit/integration coverage.
