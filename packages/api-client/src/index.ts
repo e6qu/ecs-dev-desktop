@@ -3,6 +3,7 @@ import {
   baseImageEntry,
   createBaseImageRequest,
   createWorkspaceRequest,
+  healthReport,
   listBaseImagesResponse,
   listWorkspacesResponse,
   updateBaseImageRequest,
@@ -10,6 +11,7 @@ import {
   type BaseImageEntryDto,
   type CreateBaseImageRequest,
   type CreateWorkspaceRequest,
+  type HealthReportDto,
   type ListBaseImagesResponse,
   type ListWorkspacesResponse,
   type UpdateBaseImageRequest,
@@ -130,5 +132,12 @@ export class ApiClient {
 
   async deleteBaseImage(id: string): Promise<void> {
     await this.send(`/api/base-images/${id}`, { method: "DELETE" });
+  }
+
+  // --- Admin ---
+
+  async adminHealth(): Promise<HealthReportDto> {
+    const res = await this.send("/api/admin/health");
+    return healthReport.parse(await res.json());
   }
 }

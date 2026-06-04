@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { BaseImage, SnapshotId, TaskId, VolumeId, WorkspaceId } from "../domain/ids";
+import type { ComponentHealth } from "../observability/health";
 
 /**
  * ComputeProvider — runs a workspace's container task on Fargate with an
@@ -28,4 +29,8 @@ export interface ComputeProvider {
 
   /** Stop the task; the platform releases its managed EBS volume. */
   stopTask(taskId: TaskId): Promise<void>;
+
+  /** Dependency health (admin Health board). Real adapters do a live check; absent
+   * ⇒ reported as `unknown` (real check available on AWS). */
+  health?(): Promise<ComponentHealth>;
 }

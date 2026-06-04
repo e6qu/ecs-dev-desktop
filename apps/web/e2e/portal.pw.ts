@@ -76,3 +76,25 @@ test("member creates, stops, and deletes a workspace from the catalog", async ({
   await card.getByRole("button", { name: "delete" }).click();
   await expect(page.locator(".card").filter({ hasText: NODE_IMAGE })).toHaveCount(0);
 });
+
+test("admin sees the system health board with a live DynamoDB check", async ({ page, context }) => {
+  await loginAs(context, "root", "admin");
+  await page.goto("/admin/health");
+
+  await expect(page.getByRole("heading", { name: "System health" })).toBeVisible();
+  // The live DynamoDB ping resolves ok (the table was created in global-setup).
+  const dbRow = page.locator(".health-row").filter({ hasText: "dynamodb" });
+  await expect(dbRow).toBeVisible();
+  await expect(dbRow.getByText("ok")).toBeVisible();
+  // Reconciler is unknown locally (CloudWatch on AWS).
+  await expect(
+    page.locator(".health-row").filter({ hasText: "reconciler" }).getByText("unknown"),
+  ).toBeVisible();
+});
+
+test("non-admins are denied the admin console", async ({ page, context }) => {
+  await loginAs(context, "alice", "member");
+  await page.goto("/admin/health");
+  await expect(page.getByText("Admins only")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "System health" })).toHaveCount(0);
+});

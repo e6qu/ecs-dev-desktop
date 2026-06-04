@@ -42,9 +42,5 @@ for real deploy. Next build target: **Phase 8 — admin console & observability*
 - **AWS account/region** (`DO_NEXT` #1) — top blocker; unlocks real Terraform, golden
   image, deploy, reconciler cron, `e2e-aws`, and Phase 8C cloud observability.
 - **Domain/DNS** (#2) — blocks real proxy routing + ACM.
-- **Phase 8A (decision-free, in progress):** observability ports + local adapters →
-  `/api/admin/health` → `/admin` shell + Health board + per-workspace Inspect.
-
-## In flight (open PRs)
-
-- **#26** — activity heartbeat (control-plane keep-alive). _(May already be merged.)_
+- **Phase 8A (in progress):** ✅ admin `/admin` shell + **Health board** (`HealthService`,
+  live DynamoDB ping, Playwright-covered); next is per-workspace **Inspect**, then 8B.

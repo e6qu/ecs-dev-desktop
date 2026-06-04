@@ -92,10 +92,11 @@ health, per-workspace diagnostics, logs/audit). **No custom audit store** — ob
 is ports-and-adapters: events/audit/logs **derived from current state now**, from
 **CloudTrail + CloudWatch** on AWS (endpoint-only swap). Sub-phases:
 
-- 🟡 **8A — Foundation + Health (now, mock-free):** observability ports
-  (`HealthChecker`/`AuditSource`/`LogSource`) + local adapters; `GET /api/admin/health`;
-  the `/admin` shell; the **Health board**; per-workspace **Inspect** (state + derived
-  timeline + bindings + snapshots). Unit + integration + Playwright. **← start here.**
+- 🟡 **8A — Foundation + Health (now, mock-free):** ✅ done — health roll-up
+  (`summarizeHealth`, optional `health()` on the Storage/Compute ports, the `pingTable`
+  DynamoDB check, `HealthService`), `GET /api/admin/health`, the admin-only `/admin`
+  sidebar shell, and the live **Health board** (Playwright-covered). ⬜ **Remaining:**
+  per-workspace **Inspect** (state, derived timeline, bindings, snapshots) via `AuditSource`.
 - ⬜ **8B — Audit/Logs + Overview + Workspaces + Quotas (now, mock-free):** derived
   `AuditSource`/`LogSource`; **Logs/Audit** screen; admin **Overview** dashboard;
   all-workspaces table; **quotas** (config + create-time enforcement).

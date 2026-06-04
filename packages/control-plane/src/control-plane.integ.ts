@@ -15,10 +15,11 @@ import {
   ensureTable,
   makeBaseImageEntity,
   makeWorkspaceEntity,
+  pingTable,
 } from "@edd/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { CatalogService, WorkspaceService } from "./index";
+import { CatalogService, HealthService, WorkspaceService } from "./index";
 
 process.env.DYNAMODB_ENDPOINT ??= dynamodbLocal.endpoint;
 
@@ -164,5 +165,49 @@ describe("CatalogService (DynamoDB Local)", () => {
     await expect(catalog.assertEnabled(baseImage("golden/rust:1"))).rejects.toThrow();
     await catalog.update(baseImageId(entry.id), { enabled: false });
     await expect(catalog.assertEnabled(baseImage("golden/go:1.22"))).rejects.toThrow();
+  });
+});
+
+describe("HealthService (DynamoDB Local)", () => {
+  let client: ReturnType<typeof createDynamoClient>;
+
+  beforeAll(async () => {
+    client = createDynamoClient();
+    await dropTable(client, TEST_TABLE);
+    await ensureTable(client, TEST_TABLE);
+  });
+
+  afterAll(async () => {
+    await dropTable(client, TEST_TABLE);
+  });
+
+  it("reports overall ok with a live DynamoDB ping and fake providers", async () => {
+    const storage = await FakeStorageProvider.create();
+    const health = new HealthService({
+      storage,
+      compute: new FakeComputeProvider(storage),
+      pingDatabase: () => pingTable(client, TEST_TABLE),
+      clock: fixedClock(),
+    });
+
+    const report = await health.report();
+    expect(report.status).toBe("ok");
+    const status = (name: string) => report.components.find((c) => c.component === name)?.status;
+    expect(status("dynamodb")).toBe("ok"); // table is ACTIVE
+    expect(status("control-plane")).toBe("ok");
+    expect(status("reconciler")).toBe("unknown"); // no local run history
+  });
+
+  it("reports the database down when the table is missing", async () => {
+    const storage = await FakeStorageProvider.create();
+    const health = new HealthService({
+      storage,
+      compute: new FakeComputeProvider(storage),
+      pingDatabase: () => pingTable(client, "ecs-dev-desktop-absent-table"),
+      clock: fixedClock(),
+    });
+    const report = await health.report();
+    const db = report.components.find((c) => c.component === "dynamodb");
+    expect(db?.status).toBe("degraded"); // ResourceNotFound → degraded
   });
 });

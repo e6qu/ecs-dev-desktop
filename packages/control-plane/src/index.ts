@@ -5,3 +5,5 @@ export { toWorkspaceDto } from "./dto";
 export { BaseImageNotFoundError, CatalogService } from "./catalog-service";
 export type { CatalogServiceDeps } from "./catalog-service";
 export { toBaseImageDto } from "./base-image-dto";
+export { HealthService } from "./health-service";
+export type { HealthServiceDeps } from "./health-service";

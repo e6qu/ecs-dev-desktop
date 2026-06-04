@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { newTaskId, type TaskId, type VolumeId } from "../domain/ids";
+import type { ComponentHealth } from "../observability/health";
 import type { StorageProvider } from "../storage/storage-provider";
 import type { ComputeProvider, ComputeTask, RunTaskInput } from "./compute-provider";
 
@@ -29,6 +30,14 @@ export class FakeComputeProvider implements ComputeProvider {
       await this.storage.deleteVolume(volumeId);
       this.volumes.delete(taskId);
     }
+  }
+
+  health(): Promise<ComponentHealth> {
+    return Promise.resolve({
+      component: "compute",
+      status: "ok",
+      detail: "in-memory fake (local)",
+    });
   }
 
   /** Test helper: is a task currently running? */
