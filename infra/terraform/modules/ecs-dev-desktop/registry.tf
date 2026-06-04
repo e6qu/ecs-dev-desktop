@@ -18,6 +18,7 @@ locals {
   })
 }
 
+# trivy:ignore:AVD-AWS-0031 The app repo holds a rolling deploy tag (e.g. :latest); golden base images (below) are IMMUTABLE.
 resource "aws_ecr_repository" "control_plane" {
   name                 = "${var.name}/control-plane"
   image_tag_mutability = "MUTABLE"

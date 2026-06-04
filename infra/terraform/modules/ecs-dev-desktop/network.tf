@@ -24,11 +24,13 @@ resource "aws_internet_gateway" "this" {
 }
 
 resource "aws_subnet" "public" {
-  count                   = local.az_count
-  vpc_id                  = aws_vpc.this.id
-  cidr_block              = local.public_subnet_cidrs[count.index]
-  availability_zone       = var.availability_zones[count.index]
-  map_public_ip_on_launch = true
+  count             = local.az_count
+  vpc_id            = aws_vpc.this.id
+  cidr_block        = local.public_subnet_cidrs[count.index]
+  availability_zone = var.availability_zones[count.index]
+  # Only the ALB and NAT gateways live here; both manage their own public IPs, so
+  # subnet auto-assign is unnecessary (and would expose anything else launched here).
+  map_public_ip_on_launch = false
   tags                    = merge(local.tags, { Name = "${var.name}-public-${var.availability_zones[count.index]}", Tier = "public" })
 }
 
@@ -113,6 +115,7 @@ resource "aws_vpc_security_group_ingress_rule" "alb_https" {
   cidr_ipv4         = "0.0.0.0/0"
 }
 
+# trivy:ignore:AVD-AWS-0104 The ALB egresses to backend tasks across private subnets; unrestricted egress is standard for an LB.
 resource "aws_vpc_security_group_egress_rule" "alb_all" {
   security_group_id = aws_security_group.alb.id
   description       = "Allow all egress."
@@ -136,6 +139,7 @@ resource "aws_vpc_security_group_ingress_rule" "tasks_from_alb" {
   referenced_security_group_id = aws_security_group.alb.id
 }
 
+# trivy:ignore:AVD-AWS-0104 Tasks need egress (via NAT) to AWS APIs, Open VSX, and the IdPs; pinning every endpoint CIDR is impractical and brittle.
 resource "aws_vpc_security_group_egress_rule" "tasks_all" {
   security_group_id = aws_security_group.tasks.id
   description       = "Allow all egress (NAT to AWS APIs, Open VSX, IdPs)."

@@ -4,6 +4,7 @@
 # (dev). The identity-aware proxy (Pomerium) for `*.devbox` workspace routing
 # sits behind this — see the module README.
 
+# trivy:ignore:AVD-AWS-0053 This ALB is the platform's public front door — internet-facing is intended.
 resource "aws_lb" "this" {
   name                       = "${var.name}-cp"
   load_balancer_type         = "application"
@@ -34,6 +35,7 @@ resource "aws_lb_target_group" "control_plane" {
 }
 
 # HTTP listener: redirect to HTTPS when TLS is on, otherwise forward (dev).
+# trivy:ignore:AVD-AWS-0054 Port 80 redirects to HTTPS when a domain is set; HTTP-only forwarding is the dev (no-TLS) path.
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.this.arn
   port              = 80
