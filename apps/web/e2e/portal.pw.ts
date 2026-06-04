@@ -98,3 +98,22 @@ test("non-admins are denied the admin console", async ({ page, context }) => {
   await expect(page.getByText("Admins only")).toBeVisible();
   await expect(page.getByRole("heading", { name: "System health" })).toHaveCount(0);
 });
+
+test("admin inspects a workspace's detail and timeline", async ({ page, context, request }) => {
+  // A member-owned workspace to inspect (left in place for the admin to open).
+  const res = await request.post("/api/workspaces", {
+    headers: { cookie: `${DEV_USER_COOKIE}=carol; ${DEV_ROLE_COOKIE}=member` },
+    data: { baseImage: NODE_IMAGE },
+  });
+  expect(res.ok()).toBeTruthy();
+  const ws = (await res.json()) as { id: string };
+
+  await loginAs(context, "root", "admin");
+  await page.goto("/admin/workspaces");
+  await expect(page.getByRole("heading", { name: "All workspaces" })).toBeVisible();
+
+  await page.getByText(ws.id).click();
+  await expect(page.getByRole("heading", { name: "Inspect" })).toBeVisible();
+  await expect(page.getByText("base image")).toBeVisible(); // a detail row
+  await expect(page.locator(".tl-row").filter({ hasText: "created" })).toBeVisible(); // timeline
+});

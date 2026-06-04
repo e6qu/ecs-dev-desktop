@@ -92,14 +92,14 @@ health, per-workspace diagnostics, logs/audit). **No custom audit store** — ob
 is ports-and-adapters: events/audit/logs **derived from current state now**, from
 **CloudTrail + CloudWatch** on AWS (endpoint-only swap). Sub-phases:
 
-- 🟡 **8A — Foundation + Health (now, mock-free):** ✅ done — health roll-up
-  (`summarizeHealth`, optional `health()` on the Storage/Compute ports, the `pingTable`
-  DynamoDB check, `HealthService`), `GET /api/admin/health`, the admin-only `/admin`
-  sidebar shell, and the live **Health board** (Playwright-covered). ⬜ **Remaining:**
-  per-workspace **Inspect** (state, derived timeline, bindings, snapshots) via `AuditSource`.
-- ⬜ **8B — Audit/Logs + Overview + Workspaces + Quotas (now, mock-free):** derived
-  `AuditSource`/`LogSource`; **Logs/Audit** screen; admin **Overview** dashboard;
-  all-workspaces table; **quotas** (config + create-time enforcement).
+- ✅ **8A — Foundation + Health + Inspect (mock-free):** health roll-up
+  (`summarizeHealth`, port `health()`, `pingTable`, `HealthService`), `GET /api/admin/health`,
+  the admin-only `/admin` sidebar shell, the live **Health board**, the all-workspaces
+  table, and per-workspace **Inspect** (detail, bindings, snapshots, pure-derived
+  lifecycle timeline). All Playwright-covered.
+- ⬜ **8B — Audit/Logs + Overview + Quotas (now, mock-free):** the `AuditSource`/`LogSource`
+  ports; the **Logs/Audit** screen; admin **Overview** dashboard; **quotas** (config +
+  create-time enforcement). (The all-workspaces table landed in 8A.)
 - ⬜ **8C — Real cloud data (AWS-gated):** CloudTrail audit adapter, CloudWatch Logs
   (container/app/reconciler), CloudWatch Metrics + Cost dashboard, real ECS/EBS/Teleport/
   Pomerium health. Endpoint-only swap; validated at `e2e-aws`.

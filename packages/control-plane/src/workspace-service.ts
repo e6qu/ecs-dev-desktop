@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { WorkspaceDto } from "@edd/api-contracts";
+import type { WorkspaceDto, WorkspaceInspectionDto } from "@edd/api-contracts";
 import {
   assertTerminable,
   baseImage,
+  deriveWorkspaceTimeline,
   isoTimestamp,
   markActivity,
   markStarted,
@@ -33,7 +34,7 @@ import {
 } from "@edd/core";
 import type { WorkspaceEntity } from "@edd/db";
 
-import { toWorkspaceDto } from "./dto";
+import { toWorkspaceDetail, toWorkspaceDto } from "./dto";
 
 export interface WorkspaceServiceDeps {
   workspaces: WorkspaceEntity;
@@ -122,6 +123,20 @@ export class WorkspaceService {
   async get(id: WorkspaceId): Promise<WorkspaceDto | null> {
     const ws = await this.find(id);
     return ws === null ? null : toWorkspaceDto(ws);
+  }
+
+  /** Full admin diagnostics: the detailed record + a derived lifecycle timeline. */
+  async inspect(id: WorkspaceId): Promise<WorkspaceInspectionDto | null> {
+    const ws = await this.find(id);
+    if (ws === null) return null;
+    return {
+      workspace: toWorkspaceDetail(ws),
+      timeline: deriveWorkspaceTimeline({
+        createdAt: ws.createdAt,
+        lastActivity: ws.lastActivity,
+        ...(ws.latestSnapshotAt === undefined ? {} : { latestSnapshotAt: ws.latestSnapshotAt }),
+      }),
+    };
   }
 
   /** Active (running/idle) workspaces with last-activity — the reconciler's input. */

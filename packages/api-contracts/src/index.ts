@@ -36,6 +36,35 @@ export const listWorkspacesResponse = z.object({
 });
 export type ListWorkspacesResponse = z.infer<typeof listWorkspacesResponse>;
 
+// --- Admin: per-workspace Inspect (full detail + derived timeline) ---
+
+export const workspaceDetail = z.object({
+  id: z.string(),
+  ownerId: z.string(),
+  baseImage: z.string(),
+  state: workspaceState,
+  createdAt: z.iso.datetime(),
+  lastActivity: z.iso.datetime(),
+  volumeId: z.string().optional(),
+  taskId: z.string().optional(),
+  latestSnapshotId: z.string().optional(),
+  latestSnapshotAt: z.iso.datetime().optional(),
+});
+export type WorkspaceDetailDto = z.infer<typeof workspaceDetail>;
+
+export const timelineEvent = z.object({
+  at: z.iso.datetime(),
+  event: z.string(),
+  detail: z.string(),
+});
+export type TimelineEventDto = z.infer<typeof timelineEvent>;
+
+export const workspaceInspection = z.object({
+  workspace: workspaceDetail,
+  timeline: z.array(timelineEvent),
+});
+export type WorkspaceInspectionDto = z.infer<typeof workspaceInspection>;
+
 // --- Base-image catalog (admin-managed golden images users launch from) ---
 
 export const baseImageEntry = z.object({

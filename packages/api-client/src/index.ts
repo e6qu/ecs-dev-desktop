@@ -8,6 +8,7 @@ import {
   listWorkspacesResponse,
   updateBaseImageRequest,
   workspace,
+  workspaceInspection,
   type BaseImageEntryDto,
   type CreateBaseImageRequest,
   type CreateWorkspaceRequest,
@@ -16,6 +17,7 @@ import {
   type ListWorkspacesResponse,
   type UpdateBaseImageRequest,
   type WorkspaceDto,
+  type WorkspaceInspectionDto,
 } from "@edd/api-contracts";
 
 /**
@@ -139,5 +141,15 @@ export class ApiClient {
   async adminHealth(): Promise<HealthReportDto> {
     const res = await this.send("/api/admin/health");
     return healthReport.parse(await res.json());
+  }
+
+  async adminWorkspaces(): Promise<ListWorkspacesResponse> {
+    const res = await this.send("/api/admin/workspaces");
+    return listWorkspacesResponse.parse(await res.json());
+  }
+
+  async adminInspectWorkspace(id: string): Promise<WorkspaceInspectionDto> {
+    const res = await this.send(`/api/admin/workspaces/${id}`);
+    return workspaceInspection.parse(await res.json());
   }
 }

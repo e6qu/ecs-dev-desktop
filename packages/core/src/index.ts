@@ -101,3 +101,7 @@ export { fixedClock, systemClock } from "./clock";
 // Observability — health roll-up (admin Health board).
 export type { ComponentHealth, HealthReport, HealthStatus } from "./observability/health";
 export { summarizeHealth } from "./observability/health";
+
+// Observability — derived workspace lifecycle timeline (admin Inspect).
+export type { TimelineEvent, WorkspaceTimelineInput } from "./observability/timeline";
+export { deriveWorkspaceTimeline } from "./observability/timeline";
