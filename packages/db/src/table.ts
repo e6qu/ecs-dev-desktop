@@ -8,6 +8,7 @@ import {
 } from "@aws-sdk/client-dynamodb";
 
 import { TABLE } from "./index";
+import { waitForDynamo } from "./wait";
 
 /**
  * Single-table schema: one partition (PK/SK) plus two GSIs.
@@ -53,8 +54,10 @@ export function tableDefinition(table = TABLE) {
   };
 }
 
-/** Create the table; no-op if it already exists. */
+/** Create the table; no-op if it already exists. Waits for DynamoDB to be ready
+ * first, so the integration bootstrap can't race a still-starting container. */
 export async function ensureTable(client: DynamoDBClient, table = TABLE): Promise<void> {
+  await waitForDynamo(client);
   try {
     await client.send(new CreateTableCommand(tableDefinition(table)));
   } catch (err) {
@@ -62,8 +65,10 @@ export async function ensureTable(client: DynamoDBClient, table = TABLE): Promis
   }
 }
 
-/** Drop the table; no-op if absent. (Test helper.) */
+/** Drop the table; no-op if absent. (Test helper.) Waits for readiness first so a
+ * bootstrap that drops before it ensures is equally race-free. */
 export async function dropTable(client: DynamoDBClient, table = TABLE): Promise<void> {
+  await waitForDynamo(client);
   try {
     await client.send(new DeleteTableCommand({ TableName: table }));
   } catch (err) {

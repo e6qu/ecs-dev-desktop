@@ -17,6 +17,7 @@ export { dynamodbLocal };
 export { createDynamoClient } from "./client";
 export { pingTable } from "./health";
 export { dropTable, ensureTable, tableDefinition } from "./table";
+export { waitForDynamo } from "./wait";
 export {
   makeBaseImageEntity,
   makeWorkspaceEntity,

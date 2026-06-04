@@ -19,18 +19,16 @@ Resolved: DynamoDB+ElectroDB · sockerless from source · Fargate managed-EBS ·
 real-AWS on `main` · AGPL-3.0-or-later · Turborepo+pnpm · CASL · dep floor 1440 · admin
 observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
 
-## In progress
-
-- **Type system does more heavy lifting / fewer stringy+flaky checks** (3 PRs).
-  **PR1 done:** exhaustiveness (`assertNever`, `Record<Union,_>` literals — fixed the
-  `tallyWorkspaceStates` drift and the `Record<string,_>` quota → `Record<Role,_>`) +
-  `expectTypeOf` contract↔domain alignment tests. **PR2 done:** shared typed `data-testid`
-  registry (`apps/web/lib/testids.ts`); the Playwright suite now locates by id and asserts
-  via typed `data-*` attributes (state/status/enabled/available/event/action) instead of
-  rendered text. **PR3 (next):** harness determinism — deterministic DynamoDB-Local
-  readiness wait + retry/backoff.
-
 ## Done recently
+
+- **Type system / de-flaking (3 PRs, all merged/done).** PR1: compile-time exhaustiveness
+  (`assertNever`, `Record<Union,_>` literals — fixed `tallyWorkspaceStates` drift and
+  `Record<string,_>` quota → `Record<Role,_>`) + `expectTypeOf` contract↔domain alignment.
+  PR2: shared typed `data-testid` registry — Playwright locates by id and asserts on typed
+  `data-*` attributes, not rendered text. PR3: harness determinism — `waitForDynamo` (in
+  `@edd/db`, called by `ensureTable`/`dropTable`) makes the integ bootstrap poll DynamoDB
+  to readiness instead of racing container startup (portable, no container health-check
+  needed), plus retry/backoff on the integration job's sim bring-up.
 
 - **Typed error channel (`Result` + `DomainError`) — complete.** Domain failures are now
   data returned in `Result<T, DomainError>` (never thrown), mapped to HTTP by one

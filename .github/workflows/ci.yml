@@ -29,6 +29,9 @@ jobs:
     name: integration
     runs-on: ubuntu-latest
     services:
+      # Readiness is handled in-harness (`waitForDynamo` in `@edd/db`, called by
+      # ensureTable/dropTable), so the suite never races a still-starting container
+      # — no container health-check tooling needed.
       dynamodb-local:
         image: amazon/dynamodb-local:latest
         ports:
@@ -44,8 +47,19 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      # Retry bring-up: image pulls can transiently hit registry rate limits
+      # (public.ecr.aws / Docker Hub) on shared runner IPs.
       - name: Build & start the sockerless AWS simulator (from source, API-only mode)
-        run: docker compose -f docker-compose.tier2.yml up -d --build --wait sockerless-aws
+        run: |
+          for attempt in 1 2 3; do
+            if docker compose -f docker-compose.tier2.yml up -d --build --wait sockerless-aws; then
+              exit 0
+            fi
+            echo "::warning::sim bring-up failed (attempt ${attempt}); retrying"
+            docker compose -f docker-compose.tier2.yml down -v || true
+            sleep "$((attempt * 20))"
+          done
+          exit 1
       - run: pnpm test:integ
       - if: always()
         run: docker compose -f docker-compose.tier2.yml down
