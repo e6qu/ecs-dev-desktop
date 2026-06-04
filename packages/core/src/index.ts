@@ -97,3 +97,7 @@ export { FakeComputeProvider } from "./compute/fake-compute-provider";
 // Clock.
 export type { Clock } from "./clock";
 export { fixedClock, systemClock } from "./clock";
+
+// Observability — health roll-up (admin Health board).
+export type { ComponentHealth, HealthReport, HealthStatus } from "./observability/health";
+export { summarizeHealth } from "./observability/health";

@@ -72,3 +72,22 @@ export const listBaseImagesResponse = z.object({
   baseImages: z.array(baseImageEntry),
 });
 export type ListBaseImagesResponse = z.infer<typeof listBaseImagesResponse>;
+
+// --- Admin: health board ---
+
+export const healthStatus = z.enum(["ok", "degraded", "down", "unknown"]);
+export type HealthStatusDto = z.infer<typeof healthStatus>;
+
+export const componentHealth = z.object({
+  component: z.string(),
+  status: healthStatus,
+  detail: z.string().optional(),
+});
+export type ComponentHealthDto = z.infer<typeof componentHealth>;
+
+export const healthReport = z.object({
+  status: healthStatus,
+  components: z.array(componentHealth),
+  checkedAt: z.iso.datetime(),
+});
+export type HealthReportDto = z.infer<typeof healthReport>;

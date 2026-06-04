@@ -15,6 +15,7 @@ export const TABLE = DEFAULT_DYNAMODB_TABLE;
 export { dynamodbLocal };
 
 export { createDynamoClient } from "./client";
+export { pingTable } from "./health";
 export { dropTable, ensureTable, tableDefinition } from "./table";
 export {
   makeBaseImageEntity,

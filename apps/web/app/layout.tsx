@@ -45,6 +45,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             <nav className="tabs" style={{ marginLeft: 6 }}>
               <Link href="/workspaces">workspaces</Link>
               {principal.role === "admin" && <Link href="/base-images">catalog</Link>}
+              {principal.role === "admin" && <Link href="/admin">admin</Link>}
             </nav>
           )}
           <span className="spacer" />

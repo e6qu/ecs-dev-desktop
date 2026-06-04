@@ -472,3 +472,114 @@ main {
     animation: none !important;
   }
 }
+
+/* ---- admin shell ---- */
+.admin-shell {
+  display: grid;
+  grid-template-columns: 188px 1fr;
+  gap: 32px;
+  align-items: start;
+}
+
+.admin-side {
+  position: sticky;
+  top: 88px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.admin-side .sec {
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--dimmer);
+  padding: 4px 10px 6px;
+}
+
+.admin-side a {
+  font-family: var(--font-mono), monospace;
+  font-size: 13px;
+  color: var(--dim);
+  padding: 8px 12px;
+  border-radius: 7px;
+  border: 1px solid transparent;
+  transition:
+    color 0.15s ease,
+    background 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.admin-side a:hover {
+  color: var(--text);
+  border-color: var(--border);
+}
+
+.admin-side a.on {
+  color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 9%, transparent);
+  border-color: color-mix(in oklab, var(--accent) 30%, transparent);
+}
+
+.admin-side a.soon {
+  color: var(--dimmer);
+  cursor: not-allowed;
+}
+
+.admin-side a.soon:hover {
+  border-color: transparent;
+  color: var(--dimmer);
+}
+
+/* ---- health board ---- */
+.health-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.health-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.health-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  padding: 14px 16px;
+}
+
+.health-row .name {
+  font-family: var(--font-mono), monospace;
+  font-size: 13px;
+  color: var(--text);
+  min-width: 150px;
+}
+
+.health-row .detail {
+  font-family: var(--font-mono), monospace;
+  font-size: 12px;
+  color: var(--dim);
+  flex: 1;
+}
+
+/* health status → colour (reuse the status palette) */
+[data-h="ok"] {
+  --status: var(--st-running);
+}
+[data-h="degraded"] {
+  --status: var(--st-idle);
+}
+[data-h="down"] {
+  --status: var(--st-error);
+}
+[data-h="unknown"] {
+  --status: var(--st-stopped);
+}

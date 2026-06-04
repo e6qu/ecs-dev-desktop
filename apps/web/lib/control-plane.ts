@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { FakeComputeProvider, FakeStorageProvider, systemClock } from "@edd/core";
-import { CatalogService, WorkspaceService } from "@edd/control-plane";
-import { createDynamoClient, makeBaseImageEntity, makeWorkspaceEntity, TABLE } from "@edd/db";
+import { CatalogService, HealthService, WorkspaceService } from "@edd/control-plane";
+import {
+  createDynamoClient,
+  makeBaseImageEntity,
+  makeWorkspaceEntity,
+  pingTable,
+  TABLE,
+} from "@edd/db";
 
 /**
  * Process-wide control plane. Persistence (DynamoDB) is real; storage and
@@ -27,6 +33,19 @@ export function getCatalog(): CatalogService {
     clock: systemClock,
   });
   return catalog;
+}
+
+/** Admin Health board service: real DynamoDB ping + the (fake, until AWS) providers. */
+export async function getHealthService(): Promise<HealthService> {
+  const client = createDynamoClient();
+  const table = tableName();
+  const storage = await FakeStorageProvider.create();
+  return new HealthService({
+    storage,
+    compute: new FakeComputeProvider(storage),
+    pingDatabase: () => pingTable(client, table),
+    clock: systemClock,
+  });
 }
 
 async function build(): Promise<WorkspaceService> {

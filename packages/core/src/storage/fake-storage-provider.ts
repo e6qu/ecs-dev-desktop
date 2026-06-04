@@ -12,6 +12,7 @@ import {
   type SnapshotId,
   type VolumeId,
 } from "../domain/ids";
+import type { ComponentHealth } from "../observability/health";
 import type { Snapshot, SnapshotRef, StorageProvider, Volume, VolumeRef } from "./storage-provider";
 
 function isFileNotFound(err: unknown): boolean {
@@ -107,6 +108,14 @@ export class FakeStorageProvider implements StorageProvider {
         sourceVolumeId: meta.source,
       })),
     );
+  }
+
+  health(): Promise<ComponentHealth> {
+    return Promise.resolve({
+      component: "storage",
+      status: "ok",
+      detail: "in-memory fake (local)",
+    });
   }
 
   /** Test helper: remove the entire on-disk scratch area. */

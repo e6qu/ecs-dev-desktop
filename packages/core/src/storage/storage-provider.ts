@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { IsoTimestamp, SnapshotId, VolumeId } from "../domain/ids";
+import type { ComponentHealth } from "../observability/health";
 
 /**
  * StorageProvider — the port abstracting a workspace's persistent volume and its
@@ -43,4 +44,7 @@ export interface StorageProvider {
   listVolumes(): Promise<readonly VolumeRef[]>;
   /** Enumerate existing snapshots (for orphan GC). */
   listSnapshots(): Promise<readonly SnapshotRef[]>;
+  /** Dependency health (admin Health board). Real adapters do a live check; absent
+   * ⇒ reported as `unknown` (real check available on AWS). */
+  health?(): Promise<ComponentHealth>;
 }
