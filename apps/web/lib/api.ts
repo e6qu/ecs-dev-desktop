@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import type { WorkspaceDto } from "@edd/api-contracts";
 import { defineAbilityFor, type Action, type Principal } from "@edd/authz";
 import type { WorkspaceService } from "@edd/control-plane";
-import { workspaceId, type WorkspaceId } from "@edd/core";
+import { domainErrorMessage, workspaceId, type DomainError, type WorkspaceId } from "@edd/core";
 
 import { getControlPlane } from "./control-plane";
 import { getPrincipal } from "./principal";
@@ -19,6 +19,23 @@ export const conflict = (message: string) => NextResponse.json({ error: message 
 /** Narrow an unknown thrown value to a message without an assertion. */
 export function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+// The ONE place a domain failure becomes an HTTP status. `Record<…kind, number>`
+// is total, so adding a `DomainError` kind without a status here is a compile
+// error — routes never hand-map errors, and none can be forgotten.
+const DOMAIN_ERROR_STATUS: Record<DomainError["kind"], number> = {
+  not_found: 404,
+  conflict: 409,
+  invalid: 400,
+};
+
+/** Map a `DomainError` (the typed failure channel) to its HTTP response. */
+export function domainErrorResponse(error: DomainError): NextResponse {
+  return NextResponse.json(
+    { error: domainErrorMessage(error) },
+    { status: DOMAIN_ERROR_STATUS[error.kind] },
+  );
 }
 
 /** Resolve the principal or return a 401 response to short-circuit the handler. */

@@ -179,20 +179,32 @@ describe("CatalogService (DynamoDB Local)", () => {
     expect((await catalog.get(baseImageId(created.id)))?.image).toBe("golden/node:20");
 
     const updated = await catalog.update(baseImageId(created.id), { enabled: false });
-    expect(updated.enabled).toBe(false);
+    expect(updated.ok).toBe(true);
+    if (updated.ok) expect(updated.value.enabled).toBe(false);
 
-    await catalog.remove(baseImageId(created.id));
+    expect((await catalog.remove(baseImageId(created.id))).ok).toBe(true);
     expect(await catalog.get(baseImageId(created.id))).toBeNull();
   });
 
-  it("assertEnabled passes only for an enabled catalog image", async () => {
-    const entry = await catalog.create({ name: "Go", image: baseImage("golden/go:1.22") });
-    await expect(catalog.assertEnabled(baseImage("golden/go:1.22"))).resolves.toBeUndefined();
+  it("update/remove of a missing entry return a not_found domain error", async () => {
+    const missing = baseImageId("img-absent");
+    const upd = await catalog.update(missing, { enabled: false });
+    expect(upd.ok).toBe(false);
+    if (!upd.ok) expect(upd.error.kind).toBe("not_found");
 
-    // Unknown image, and a disabled one, both fail.
-    await expect(catalog.assertEnabled(baseImage("golden/rust:1"))).rejects.toThrow();
+    const rem = await catalog.remove(missing);
+    expect(rem.ok).toBe(false);
+    if (!rem.ok) expect(rem.error.kind).toBe("not_found");
+  });
+
+  it("assertEnabled is ok only for an enabled catalog image", async () => {
+    const entry = await catalog.create({ name: "Go", image: baseImage("golden/go:1.22") });
+    expect((await catalog.assertEnabled(baseImage("golden/go:1.22"))).ok).toBe(true);
+
+    // Unknown image, and a disabled one, both fail with a conflict.
+    expect((await catalog.assertEnabled(baseImage("golden/rust:1"))).ok).toBe(false);
     await catalog.update(baseImageId(entry.id), { enabled: false });
-    await expect(catalog.assertEnabled(baseImage("golden/go:1.22"))).rejects.toThrow();
+    expect((await catalog.assertEnabled(baseImage("golden/go:1.22"))).ok).toBe(false);
   });
 });
 

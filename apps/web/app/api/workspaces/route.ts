@@ -9,7 +9,7 @@ import {
   authenticate,
   badRequest,
   conflict,
-  errorMessage,
+  domainErrorResponse,
   forbidden,
   isResponse,
 } from "../../../lib/api";
@@ -46,11 +46,8 @@ export async function POST(req: Request) {
 
   const image = baseImage(parsed.data.baseImage);
   // Workspaces may only launch from an enabled catalog entry (the allow-list).
-  try {
-    await getCatalog().assertEnabled(image);
-  } catch (err) {
-    return conflict(errorMessage(err));
-  }
+  const enabled = await getCatalog().assertEnabled(image);
+  if (!enabled.ok) return domainErrorResponse(enabled.error);
 
   const cp = await getControlPlane();
 

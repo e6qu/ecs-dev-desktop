@@ -3,14 +3,12 @@ import { NextResponse } from "next/server";
 
 import { updateBaseImageRequest } from "@edd/api-contracts";
 import { defineAbilityFor, type Action } from "@edd/authz";
-import { BaseImageNotFoundError } from "@edd/control-plane";
 import { baseImageId } from "@edd/core";
 
 import {
   authenticate,
   badRequest,
-  conflict,
-  errorMessage,
+  domainErrorResponse,
   forbidden,
   isResponse,
   notFound,
@@ -51,25 +49,14 @@ export async function PATCH(req: Request, { params }: Ctx) {
   const parsed = updateBaseImageRequest.safeParse(raw);
   if (!parsed.success) return badRequest();
 
-  try {
-    return NextResponse.json(
-      await getCatalog().update(baseImageId((await params).id), parsed.data),
-    );
-  } catch (err) {
-    if (err instanceof BaseImageNotFoundError) return notFound();
-    return conflict(errorMessage(err));
-  }
+  const result = await getCatalog().update(baseImageId((await params).id), parsed.data);
+  return result.ok ? NextResponse.json(result.value) : domainErrorResponse(result.error);
 }
 
 // DELETE /api/base-images/:id — remove a catalog entry (admins only).
 export async function DELETE(req: Request, { params }: Ctx) {
   const denied = await authorize(req, "delete");
   if (denied) return denied;
-  try {
-    await getCatalog().remove(baseImageId((await params).id));
-    return new NextResponse(null, { status: 204 });
-  } catch (err) {
-    if (err instanceof BaseImageNotFoundError) return notFound();
-    return conflict(errorMessage(err));
-  }
+  const result = await getCatalog().remove(baseImageId((await params).id));
+  return result.ok ? new NextResponse(null, { status: 204 }) : domainErrorResponse(result.error);
 }

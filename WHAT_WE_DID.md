@@ -91,4 +91,17 @@
   15 permitted pairs, rejects the rest), and timeline same-timestamp / out-of-order
   sorting. core 60, web integ 24, all green.
 
+- **2026-06-04** — **Typed error channel (Result + DomainError), part 1.** The two
+  not-found mis-mapping bugs (#33, #34) shared a root cause: domain failures were thrown
+  and hand-mapped to HTTP status per route via `instanceof` ladders, so a forgotten case
+  was a runtime mistake. Fix is to offload it to the type system: `@edd/core` now has a
+  `Result<T, E>` (errors as data, never thrown) and a `DomainError` discriminated union
+  (`not_found`/`conflict`/`invalid`); the web shell has **one** exhaustive
+  `Record<DomainError["kind"], number>` mapper (`domainErrorResponse`), so adding a kind
+  without a status is a compile error and routes never hand-map. **Part 1** converted
+  `CatalogService` (`update`/`remove`/`assertEnabled` → `Result`, dropped the
+  `BaseImageNotFoundError` class) and the base-image + workspace-create routes; behaviour
+  preserved (same statuses, incl. the #34 404s). Part 2 converts the workspace lifecycle
+  core + `WorkspaceService` + routes + reconciler.
+
 <!-- Append new milestones below. -->
