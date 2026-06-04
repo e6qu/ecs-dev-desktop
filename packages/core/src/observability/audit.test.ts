@@ -38,4 +38,13 @@ describe("deriveFleetAudit", () => {
     expect(events).toHaveLength(2);
     expect(events[0]?.target).toBe("ws-3"); // newest kept
   });
+
+  it("returns an empty feed for no workspaces", () => {
+    expect(deriveFleetAudit([])).toEqual([]);
+  });
+
+  it("returns an empty feed when the limit is zero", () => {
+    const items = [{ workspaceId: "ws-a", createdAt: t(0), lastActivity: t(0) }];
+    expect(deriveFleetAudit(items, 0)).toEqual([]);
+  });
 });

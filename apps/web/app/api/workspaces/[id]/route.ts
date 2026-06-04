@@ -2,9 +2,18 @@
 import { NextResponse } from "next/server";
 
 import { defineAbilityFor } from "@edd/authz";
+import { WorkspaceNotFoundError } from "@edd/control-plane";
 import { workspaceId } from "@edd/core";
 
-import { authenticate, forbidden, isResponse, notFound, ownsOrAdmin } from "../../../../lib/api";
+import {
+  authenticate,
+  conflict,
+  errorMessage,
+  forbidden,
+  isResponse,
+  notFound,
+  ownsOrAdmin,
+} from "../../../../lib/api";
 import { getControlPlane } from "../../../../lib/control-plane";
 
 interface Ctx {
@@ -36,6 +45,14 @@ export async function DELETE(req: Request, { params }: Ctx) {
   if (!ws) return notFound();
   if (!ownsOrAdmin(principal, ws.ownerId)) return forbidden();
 
-  await cp.remove(wsId);
+  // Map domain errors like the lifecycle routes (no bare 500s): a concurrent
+  // double-delete re-fetches a now-missing workspace (404); a non-terminable
+  // state (e.g. already terminated) is a conflict (409).
+  try {
+    await cp.remove(wsId);
+  } catch (err) {
+    if (err instanceof WorkspaceNotFoundError) return notFound();
+    return conflict(errorMessage(err));
+  }
   return new NextResponse(null, { status: 204 });
 }

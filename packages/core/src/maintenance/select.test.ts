@@ -13,6 +13,7 @@ import {
 const now = isoTimestamp("2026-06-01T12:00:00.000Z");
 const old = isoTimestamp("2026-06-01T00:00:00.000Z"); // 12h before now
 const recent = isoTimestamp("2026-06-01T11:59:00.000Z"); // 1m before now
+const exactGrace = isoTimestamp("2026-06-01T11:00:00.000Z"); // exactly ONE_HOUR before now
 const ONE_HOUR = 60 * 60 * 1000;
 
 describe("selectOrphanVolumes", () => {
@@ -32,6 +33,20 @@ describe("selectOrphanVolumes", () => {
   it("never reaps a referenced volume even when old", () => {
     const existing: VolumeRef[] = [{ id: volumeId("vol-1"), createdAt: old }];
     expect(selectOrphanVolumes(existing, new Set([volumeId("vol-1")]), now, ONE_HOUR)).toEqual([]);
+  });
+
+  it("returns nothing for an empty volume list", () => {
+    expect(selectOrphanVolumes([], new Set([volumeId("vol-1")]), now, ONE_HOUR)).toEqual([]);
+  });
+
+  it("reaps an old orphan when nothing is referenced", () => {
+    const existing: VolumeRef[] = [{ id: volumeId("vol-1"), createdAt: old }];
+    expect(selectOrphanVolumes(existing, new Set(), now, ONE_HOUR)).toEqual([volumeId("vol-1")]);
+  });
+
+  it("reaps a volume aged exactly the grace window (>= boundary)", () => {
+    const existing: VolumeRef[] = [{ id: volumeId("vol-edge"), createdAt: exactGrace }];
+    expect(selectOrphanVolumes(existing, new Set(), now, ONE_HOUR)).toEqual([volumeId("vol-edge")]);
   });
 });
 
@@ -62,5 +77,16 @@ describe("selectDueForSnapshot", () => {
       workspaceId("ws-never"),
       workspaceId("ws-stale"),
     ]);
+  });
+
+  it("returns nothing for an empty candidate list", () => {
+    expect(selectDueForSnapshot([], now, ONE_HOUR)).toEqual([]);
+  });
+
+  it("treats a workspace snapshotted exactly the interval ago as due (>= boundary)", () => {
+    const candidates: SnapshotCandidate[] = [
+      { id: workspaceId("ws-edge"), latestSnapshotAt: exactGrace },
+    ];
+    expect(selectDueForSnapshot(candidates, now, ONE_HOUR)).toEqual([workspaceId("ws-edge")]);
   });
 });

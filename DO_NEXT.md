@@ -32,7 +32,11 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
   ports, an endpoint-only adapter swap.
 - **idle-agent** that POSTs `/heartbeat` (its shape; the agent binary ships with the
   golden image, AWS-gated).
-- Broader unit/integration/Playwright coverage.
+- Broader unit/integration/Playwright coverage. A 2026-06-04 hardening pass fixed the
+  `DELETE /api/workspaces/:id` 500-on-double-delete bug and added admin-RBAC + selector +
+  audit edge-case tests. **Low-priority coverage still open:** `PATCH /api/base-images/:id`
+  with an empty body → 400; a route-level heartbeat-on-stopped → 409; exhaustive
+  state-machine illegal-transition cases; timeline same-timestamp ordering.
 
 > With 8A+8B done, the highest-value remaining lever is the **AWS account/region
 > decision** (#1): it unlocks 8C _and_ the whole real-deploy track. Little
