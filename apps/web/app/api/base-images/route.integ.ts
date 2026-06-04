@@ -93,7 +93,7 @@ describe("base-images API end-to-end (DynamoDB Local)", () => {
 
   it("returns 404 (not 409) when updating or deleting a missing catalog entry", async () => {
     const one = `${url}/img-does-not-exist`;
-    // BaseImageNotFoundError must map to 404, not the generic 409 conflict.
+    // A missing entry (not_found domain error) must map to 404, not 409.
     const patch = await PATCH(
       new Request(one, {
         method: "PATCH",

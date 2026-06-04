@@ -4,15 +4,21 @@ import {
   applyBaseImagePatch,
   baseImage,
   baseImageId,
+  conflictError,
+  err,
   findEnabledImage,
   isoTimestamp,
   newBaseImageId,
+  notFoundError,
+  ok,
   provisionBaseImage,
   type BaseImage,
   type BaseImageEntry,
   type BaseImageId,
   type BaseImagePatch,
   type Clock,
+  type DomainError,
+  type Result,
 } from "@edd/core";
 import type { BaseImageEntity } from "@edd/db";
 
@@ -21,13 +27,6 @@ import { toBaseImageDto } from "./base-image-dto";
 export interface CatalogServiceDeps {
   baseImages: BaseImageEntity;
   clock: Clock;
-}
-
-export class BaseImageNotFoundError extends Error {
-  constructor(readonly id: BaseImageId) {
-    super(`base image not found: ${id}`);
-    this.name = "BaseImageNotFoundError";
-  }
 }
 
 /** The string-shaped persistence record (the DynamoDB boundary). */
@@ -86,22 +85,30 @@ export class CatalogService {
     return toBaseImageDto(entry);
   }
 
-  async update(id: BaseImageId, patch: BaseImagePatch): Promise<BaseImageEntryDto> {
-    const next = applyBaseImagePatch(await this.require(id), patch);
+  async update(
+    id: BaseImageId,
+    patch: BaseImagePatch,
+  ): Promise<Result<BaseImageEntryDto, DomainError>> {
+    const found = await this.require(id);
+    if (!found.ok) return found;
+    const next = applyBaseImagePatch(found.value, patch);
     await this.persist(next);
-    return toBaseImageDto(next);
+    return ok(toBaseImageDto(next));
   }
 
-  async remove(id: BaseImageId): Promise<void> {
-    await this.require(id);
+  async remove(id: BaseImageId): Promise<Result<void, DomainError>> {
+    const found = await this.require(id);
+    if (!found.ok) return found;
     await this.deps.baseImages.delete({ id }).go();
+    return ok(undefined);
   }
 
-  /** Throw unless `image` is an enabled catalog entry — the workspace-create guard. */
-  async assertEnabled(image: BaseImage): Promise<void> {
+  /** Ok only if `image` is an enabled catalog entry — the workspace-create guard. */
+  async assertEnabled(image: BaseImage): Promise<Result<void, DomainError>> {
     if (findEnabledImage(await this.all(), image) === undefined) {
-      throw new Error(`base image is not in the catalog: ${image}`);
+      return err(conflictError(`base image is not in the catalog: ${image}`));
     }
+    return ok(undefined);
   }
 
   private async all(): Promise<BaseImageEntry[]> {
@@ -114,10 +121,9 @@ export class CatalogService {
     return data === null ? null : toEntry(data);
   }
 
-  private async require(id: BaseImageId): Promise<BaseImageEntry> {
+  private async require(id: BaseImageId): Promise<Result<BaseImageEntry, DomainError>> {
     const entry = await this.find(id);
-    if (entry === null) throw new BaseImageNotFoundError(id);
-    return entry;
+    return entry === null ? err(notFoundError("base image", id)) : ok(entry);
   }
 
   private async persist(entry: BaseImageEntry): Promise<void> {

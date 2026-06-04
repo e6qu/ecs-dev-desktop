@@ -19,6 +19,16 @@ Resolved: DynamoDB+ElectroDB · sockerless from source · Fargate managed-EBS ·
 real-AWS on `main` · AGPL-3.0-or-later · Turborepo+pnpm · CASL · dep floor 1440 · admin
 observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
 
+## In progress
+
+- **Typed error channel (`Result` + `DomainError`).** Replacing thrown/`instanceof`-mapped
+  domain errors with `Result<T, DomainError>` + one exhaustive `kind→HTTP-status` mapper.
+  **Part 1 done** (foundation, `CatalogService`, base-image/create routes). **Part 2
+  (next):** the workspace lifecycle core (state machine and domain fns return `Result`),
+  `WorkspaceService`, the workspace routes, and the reconciler, dropping
+  `WorkspaceNotFoundError` and the bare `throw new Error` cases. Behaviour-preserving
+  (statuses unchanged).
+
 ## Available now (decision-free)
 
 - **Phase 8 — admin console** (`docs/admin-ui-design.md`): ✅ **8A + 8B done.** 8A:
