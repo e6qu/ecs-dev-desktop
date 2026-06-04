@@ -31,8 +31,10 @@ deployment; sockerless has no open blockers.
   golden-image allow-list — `CatalogService` CRUD over a pure `BaseImageEntry` core +
   a second ElectroDB entity, CASL-gated routes `/api/base-images` (admins manage,
   everyone reads) + api-client; workspace `create` is enforced against the **enabled**
-  catalog. (Admin management UI: remaining.)
-- **Portal UI** (`apps/web`): RBAC-gated workspaces grid + lifecycle actions.
+  catalog. **Admin management page** `/base-images` (add / enable-disable / delete) +
+  the real **create-from-catalog picker** (replaced the hardcoded image list).
+- **Portal UI** (`apps/web`): RBAC-gated workspaces grid + lifecycle actions, catalog
+  picker, and the admin catalog page — "infra control room" aesthetic.
 - **Reconciler** (`services/reconciler`): idle scale-to-zero, scheduled snapshots,
   orphan GC — pure selectors + a `ReconcilerService` port. (Cron runner = AWS.)
 - **Wake-on-connect** (control-plane half): `WorkspaceService.connect()` (idempotent —
@@ -86,7 +88,7 @@ suite runs in CI.
 - **GitHub-fixture swappability rework: done** — the GitHub auth e2e now uses the
   conformant OAuth session/CSRF web flow + standard GHES provisioning (no seed token /
   `auto=1` / `POST /user/orgs`); bleephub non-conformances #399/#400 fixed upstream in #401.
-- **Admin base-image catalog: API done** (CRUD + CASL + create-from-catalog
-  enforcement, tested at all tiers). Remaining: the admin management UI + a
-  create-from-catalog picker in the portal.
-- **Other decision-free work:** Playwright portal e2e; the catalog UI. See `DO_NEXT`.
+- **Admin base-image catalog: API + UI done** (CRUD + CASL + create-from-catalog
+  enforcement + admin page + picker, tested at all tiers). Remaining: quotas; cost
+  dashboard; Playwright e2e for the portals.
+- **Other decision-free work:** Playwright portal e2e. See `DO_NEXT`.

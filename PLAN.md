@@ -87,12 +87,12 @@ volume/snapshot GC (pure selectors + `ReconcilerService` port), verified vs the 
 ## Phase 6 — Admin UI + user portal — 🟡
 
 ✅ User portal (sign in, start/stop/snapshot/delete, RBAC-gated) + admin "all" view.
-✅ **Base-image catalog API** — `CatalogService` CRUD, CASL-gated `/api/base-images`,
-api-client, and workspace `create` enforced against the enabled catalog.
+✅ **Base-image catalog** — API (`CatalogService` CRUD, CASL-gated `/api/base-images`,
+api-client, `create` enforced against the enabled catalog) **and UI** (the
+`/base-images` admin management page + the real create-from-catalog picker).
 
-- ⬜ **Remaining:** admin catalog-management UI + a create-from-catalog picker in the
-  portal; quotas; cost dashboard; Playwright e2e for both portals.
-- **Gate:** catalog API + RBAC ✅; management UI + Playwright e2e ⬜.
+- ⬜ **Remaining:** quotas; cost dashboard; Playwright e2e for both portals.
+- **Gate:** catalog API + UI + RBAC ✅; Playwright e2e + quotas ⬜.
 
 ## Phase 7 — Hardening, scale & DR — ⬜ pending (AWS-gated)
 

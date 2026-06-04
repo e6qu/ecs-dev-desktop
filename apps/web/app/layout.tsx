@@ -40,6 +40,12 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             ecs-dev-desktop
             <small>control plane</small>
           </Link>
+          {session && (
+            <nav className="tabs" style={{ marginLeft: 6 }}>
+              <Link href="/workspaces">workspaces</Link>
+              {session.user.role === "admin" && <Link href="/base-images">catalog</Link>}
+            </nav>
+          )}
           <span className="spacer" />
           {session ? (
             <span className="who">

@@ -7,8 +7,7 @@ import Link from "next/link";
 import { auth } from "../../auth";
 import { CreateWorkspace } from "../../components/CreateWorkspace";
 import { WorkspaceCard } from "../../components/WorkspaceCard";
-import { BASE_IMAGES } from "../../lib/constants";
-import { getControlPlane } from "../../lib/control-plane";
+import { getCatalog, getControlPlane } from "../../lib/control-plane";
 import { principalFromSession } from "../../lib/principal";
 
 export const dynamic = "force-dynamic";
@@ -44,6 +43,10 @@ export default async function WorkspacesPage({
   workspaces.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   const canCreate = defineAbilityFor(principal).can("create", "Workspace");
+  // Launch only from enabled catalog entries (the admin-curated allow-list).
+  const options = (await getCatalog().list())
+    .filter((entry) => entry.enabled)
+    .map((entry) => ({ name: entry.name, image: entry.image }));
 
   return (
     <>
@@ -57,7 +60,7 @@ export default async function WorkspacesPage({
 
       <div className="toolbar">
         {canCreate ? (
-          <CreateWorkspace images={BASE_IMAGES} />
+          <CreateWorkspace images={options} />
         ) : (
           <span className="mono" style={{ color: "var(--dim)" }}>
             read-only access
