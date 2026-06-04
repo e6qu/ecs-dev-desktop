@@ -2,12 +2,24 @@
 
 # infra/terraform
 
-All AWS infrastructure (VPC, ECS cluster, ECR, DynamoDB single-table + GSIs,
-KMS, NLB/ALB, IAM, Teleport). Currently a baseline `versions.tf` only —
-resources are added once the target AWS account/region is decided
-(`DO_NEXT.md` #5).
+All AWS infrastructure for ecs-dev-desktop, packaged as a reusable, parametric
+Terraform module (Terraform or Terragrunt; one instantiation per environment).
 
-CI (`.github/workflows/ci.yml`):
+```
+modules/ecs-dev-desktop/   the platform module (VPC, DynamoDB, ECR, KMS, IAM,
+                           ECS + control-plane service, ALB, ACM/Route53,
+                           reconciler schedule, CloudWatch logs) + full README
+  tests/sim/               sim-backed `terraform apply` test (sockerless)
+examples/complete/         runnable Terraform usage example
+examples/terragrunt/       Terragrunt usage example (remote state + provider gen)
+versions.tf                provider baseline
+```
 
-- `terraform fmt -check`, `terraform init -backend=false`, `terraform validate`.
-- `check-deps` keeps the provider lock on the latest release.
+Start with [`modules/ecs-dev-desktop/README.md`](modules/ecs-dev-desktop/README.md)
+for inputs, outputs, architecture, prerequisites, and the deploy flow.
+
+CI (`.github/workflows/ci.yml` `terraform` job): `terraform fmt -check -recursive`,
+plus `init -backend=false` + `validate` of the module and the complete example;
+`check-deps` keeps the provider lock on the latest release. The full sim-backed
+apply test runs once `e6qu/sockerless#411` lands the three missing AWS operations
+(KMS rotation, application-autoscaling, EventBridge Scheduler).

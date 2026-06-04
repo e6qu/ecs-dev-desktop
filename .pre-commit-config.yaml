@@ -88,6 +88,15 @@ repos:
         pass_filenames: false
         types_or: [ts, tsx]
 
+      # Branch must sit on top of its destination (fast-forwardable into it).
+      # Local check uses the last-fetched base (no network); CI re-checks with a fetch.
+      - id: branch-current
+        name: branch is current with its base
+        language: system
+        entry: sh scripts/check-branch-current.sh
+        pass_filenames: false
+        always_run: true
+
       # Strip AI attribution trailers from commit messages (commit-msg stage).
       - id: strip-ai-attribution
         name: strip AI attribution from commit messages

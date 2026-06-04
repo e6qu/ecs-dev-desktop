@@ -8,7 +8,13 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-**None.** Every gap we hit building against the sim has been fixed upstream.
+- **[#411](https://github.com/e6qu/sockerless/issues/411) — Terraform/AWS provider: three
+  operations unimplemented (open).** Blocks the **full** sim apply-test of the
+  `infra/terraform` platform module: KMS `EnableKeyRotation`, Application Auto Scaling
+  `RegisterScalableTarget`, and EventBridge Scheduler `CreateSchedule` return
+  `UnknownOperationException`/404. Everything else applies against the sim. Per §6.8 the
+  module is **not** branched around these; the `terraform-sim` CI job lands once #411 is
+  fixed.
 
 Policy (`AGENTS.md` §6.8 + standing directive): the **whole project** (product code _and_
 tests) differs from the real-cloud path by **endpoint/base-domain only** — no sim-specific

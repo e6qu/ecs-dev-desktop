@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copy to terraform.tfvars and edit. The auth secret ARNs must already exist in
+# Secrets Manager (see the module README "Prerequisites").
+
+region             = "us-east-1"
+environment        = "dev"
+availability_zones = ["us-east-1a", "us-east-1b"]
+
+# For a real deployment with TLS + workspace routing:
+# domain_name     = "dev.example.com"
+# route53_zone_id = "Z0123456789ABCDEFGHIJ"
+
+# auth_secret_arns = {
+#   AUTH_SECRET        = "arn:aws:secretsmanager:us-east-1:111122223333:secret:edd/auth-secret-AbCdEf"
+#   AUTH_GITHUB_ID     = "arn:aws:secretsmanager:us-east-1:111122223333:secret:edd/github-id-AbCdEf"
+#   AUTH_GITHUB_SECRET = "arn:aws:secretsmanager:us-east-1:111122223333:secret:edd/github-secret-AbCdEf"
+# }
