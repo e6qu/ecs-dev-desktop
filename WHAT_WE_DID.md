@@ -67,4 +67,16 @@
   Playwright-covered. Observability stayed endpoint-only: no custom audit store; 8C swaps
   in CloudTrail/CloudWatch adapters behind the same ports.
 
+- **2026-06-04** — **Robustness hardening pass** (no new features; AWS still gated). A
+  coverage/robustness audit found one real bug: `DELETE /api/workspaces/:id` called
+  `cp.remove` bare, so a concurrent double-delete (re-fetch in `remove` →
+  `WorkspaceNotFoundError`) or a non-terminable state escaped as a **500**, unlike the
+  sibling lifecycle routes. Fixed: the handler now maps domain errors like its siblings
+  (`WorkspaceNotFoundError` → 404, others → 409). Added the missing **admin RBAC
+  negative-path tests** (member/viewer → 403, unauth → 401 for all five `/api/admin/*`
+  GETs), a `DELETE` route integ (owned → 204, repeat → 404, other-owner → 403), a
+  control-plane assertion that `remove()` of an absent workspace rejects with
+  `WorkspaceNotFoundError`, and core edge cases (orphan/snapshot selectors: empty inputs +
+  the exact `>=` grace boundary; audit feed: empty input + zero limit).
+
 <!-- Append new milestones below. -->

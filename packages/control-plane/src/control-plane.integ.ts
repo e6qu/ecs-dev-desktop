@@ -24,6 +24,7 @@ import {
   DerivedAuditSource,
   DerivedLogSource,
   HealthService,
+  WorkspaceNotFoundError,
   WorkspaceService,
 } from "./index";
 
@@ -134,6 +135,14 @@ describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
     const ws = await service.create({ ownerId: ownerId("dave"), baseImage: baseImage("img") });
     await service.remove(workspaceId(ws.id));
     expect(await service.get(workspaceId(ws.id))).toBeNull();
+  });
+
+  it("remove() of an absent workspace rejects with WorkspaceNotFoundError", async () => {
+    // The DELETE route relies on this to map the concurrent double-delete race to
+    // 404 instead of a 500.
+    await expect(service.remove(workspaceId("ws-never-existed"))).rejects.toBeInstanceOf(
+      WorkspaceNotFoundError,
+    );
   });
 });
 
