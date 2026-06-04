@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { getControlPlane } from "../../../lib/control-plane";
 import { QUOTA_ROLES, workspaceLimit } from "../../../lib/quota";
+import { TESTID } from "../../../lib/testids";
 
 export const dynamic = "force-dynamic";
 
@@ -33,7 +34,9 @@ export default async function AdminQuotasPage() {
       <dl className="kv" style={{ marginBottom: 28 }}>
         {QUOTA_ROLES.map((role) => (
           <div key={role} style={{ display: "contents" }}>
-            <dt>{role}</dt>
+            <dt data-testid={TESTID.quotaRow} data-role={role}>
+              {role}
+            </dt>
             <dd>{fmtLimit(workspaceLimit(role))}</dd>
           </div>
         ))}

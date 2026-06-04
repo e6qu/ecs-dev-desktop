@@ -3,12 +3,13 @@ import type { ReactNode } from "react";
 
 import { AdminNav } from "../../components/AdminNav";
 import { getPagePrincipal } from "../../lib/principal";
+import { TESTID } from "../../lib/testids";
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   const principal = await getPagePrincipal();
   if (principal?.role !== "admin") {
     return (
-      <div className="empty">
+      <div className="empty" data-testid={TESTID.adminDenied}>
         <div className="big">Admins only</div>
         <p>The admin console requires an administrator.</p>
       </div>

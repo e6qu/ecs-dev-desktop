@@ -134,4 +134,15 @@
   `availableActions` pulled `@edd/core` into the Turbopack client bundle; the non-`undefined`
   return type already makes that switch exhaustive.)
 
+- **2026-06-04** — **Type system does more heavy lifting (round 2): typed test-id
+  registry.** Killed the Playwright suite's flaky, copy-dependent selectors
+  (`getByText("running")`, `.filter({ hasText: "control-plane" })`). Added one shared typed
+  const `apps/web/lib/testids.ts` (`TESTID` + `TestId`); components render `data-testid`
+  plus typed `data-*` attributes (state/status/enabled/available/event/action/stat/role),
+  and the tests **locate by id, assert on the attribute** — never on rendered text. Because
+  both component and test import the one const, renaming/removing an id is a compile error
+  on both sides. Annotated WorkspaceCard, the catalog cards, HealthBoard, the admin
+  workspaces table, Overview tiles, Inspect timeline, Logs audit/stream panels, Quotas, and
+  the admin-denied gate. All 8 browser tests pass on the new selectors; build + lint green.
+
 <!-- Append new milestones below. -->

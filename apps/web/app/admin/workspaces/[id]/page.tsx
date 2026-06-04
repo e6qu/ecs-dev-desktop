@@ -6,6 +6,7 @@ import { notFound } from "next/navigation";
 import { StatusBadge } from "../../../../components/StatusBadge";
 import { WorkspaceActions } from "../../../../components/WorkspaceActions";
 import { getControlPlane } from "../../../../lib/control-plane";
+import { TESTID } from "../../../../lib/testids";
 
 export const dynamic = "force-dynamic";
 
@@ -67,7 +68,12 @@ export default async function InspectWorkspacePage({
       </p>
       <div className="timeline">
         {[...timeline].reverse().map((e, i) => (
-          <div key={`${e.at}-${i.toString()}`} className="tl-row">
+          <div
+            key={`${e.at}-${i.toString()}`}
+            className="tl-row"
+            data-testid={TESTID.timelineRow}
+            data-event={e.event}
+          >
             <span className="when">{new Date(e.at).toLocaleString()}</span>
             <span className="what">{e.event}</span>
             <span className="why">{e.detail}</span>

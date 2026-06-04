@@ -3,6 +3,7 @@ import { tallyWorkspaceStates } from "@edd/core";
 import Link from "next/link";
 
 import { getCatalog, getControlPlane } from "../../../lib/control-plane";
+import { TESTID } from "../../../lib/testids";
 
 export const dynamic = "force-dynamic";
 
@@ -37,7 +38,13 @@ export default async function AdminOverviewPage() {
 
       <div className="stat-grid">
         {tiles.map((t) => (
-          <div key={t.label} className="stat">
+          <div
+            key={t.label}
+            className="stat"
+            data-testid={TESTID.statTile}
+            data-stat={t.label}
+            data-value={t.value}
+          >
             <div className="num">{t.value}</div>
             <div className="lbl">{t.label}</div>
             <div className="sub">{t.sub}</div>

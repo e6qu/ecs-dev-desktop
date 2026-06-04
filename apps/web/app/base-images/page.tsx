@@ -5,6 +5,7 @@ import { BaseImageActions } from "../../components/BaseImageActions";
 import { CreateBaseImage } from "../../components/CreateBaseImage";
 import { getCatalog } from "../../lib/control-plane";
 import { getPagePrincipal } from "../../lib/principal";
+import { TESTID } from "../../lib/testids";
 
 export const dynamic = "force-dynamic";
 
@@ -63,6 +64,9 @@ export default async function BaseImagesPage() {
             <div
               key={entry.id}
               className="card"
+              data-testid={TESTID.catalogCard}
+              data-image={entry.image}
+              data-enabled={entry.enabled}
               data-status={entry.enabled ? "running" : "stopped"}
               style={{ animationDelay: `${(i * 40).toString()}ms` }}
             >
