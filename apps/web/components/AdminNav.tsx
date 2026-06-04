@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 
 // Live sections link out; the rest are placeholders for later Phase 8 sub-phases.
 const ITEMS: { label: string; href: string | null }[] = [
-  { label: "Overview", href: null },
+  { label: "Overview", href: "/admin/overview" },
   { label: "Health", href: "/admin/health" },
   { label: "Workspaces", href: "/admin/workspaces" },
   { label: "Logs", href: null },

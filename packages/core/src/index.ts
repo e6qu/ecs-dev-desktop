@@ -105,3 +105,7 @@ export { summarizeHealth } from "./observability/health";
 // Observability — derived workspace lifecycle timeline (admin Inspect).
 export type { TimelineEvent, WorkspaceTimelineInput } from "./observability/timeline";
 export { deriveWorkspaceTimeline } from "./observability/timeline";
+
+// Observability — workspace fleet stats (admin Overview).
+export type { WorkspaceStats } from "./observability/stats";
+export { tallyWorkspaceStates } from "./observability/stats";

@@ -117,3 +117,15 @@ test("admin inspects a workspace's detail and timeline", async ({ page, context,
   await expect(page.getByText("base image")).toBeVisible(); // a detail row
   await expect(page.locator(".tl-row").filter({ hasText: "created" })).toBeVisible(); // timeline
 });
+
+test("admin overview shows fleet and catalog stats", async ({ page, context }) => {
+  await loginAs(context, "root", "admin");
+  await page.goto("/admin"); // redirects to /admin/overview
+
+  await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
+  await expect(page.locator(".stat").filter({ hasText: "workspaces" })).toBeVisible();
+  // The seeded catalog means ≥1 base image is reported.
+  const images = page.locator(".stat").filter({ hasText: "base images" });
+  await expect(images).toBeVisible();
+  await expect(images.locator(".num")).not.toHaveText("0");
+});

@@ -24,9 +24,11 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
 - **Phase 8 — admin console** (`docs/admin-ui-design.md`): ✅ **8A done** — Health board
   (`HealthService` + live DynamoDB ping), the `/admin` shell, the all-workspaces table,
   and per-workspace **Inspect** (detail, bindings, snapshots, derived lifecycle timeline).
-  All Playwright-covered. **NEXT (8B):** the `AuditSource`/`LogSource` ports + the
-  **Logs/Audit** screen; admin **Overview** dashboard; **quotas** (config + create-time
-  enforcement). Real CloudTrail/CloudWatch/Cost adapters are 8C (AWS-gated).
+  All Playwright-covered. **8B in progress:** ✅ admin **Overview** dashboard (the `/admin`
+  landing — `tallyWorkspaceStates` and catalog stats). **NEXT:** **quotas** (per-role
+  limits with create-time enforcement), then the `AuditSource`/`LogSource` ports and the
+  **Logs/Audit** screen (thin pre-AWS — derived; real CloudTrail/CloudWatch is 8C,
+  AWS-gated).
 - **idle-agent** that POSTs `/heartbeat` (its shape; the agent binary ships with the
   golden image, AWS-gated).
 - Broader unit/integration/Playwright coverage.
