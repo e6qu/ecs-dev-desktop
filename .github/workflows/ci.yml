@@ -10,6 +10,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  branch-current:
+    name: branch-current
+    runs-on: ubuntu-latest
+    steps:
+      # Check out the PR HEAD (not the auto-merge ref) with full history so the
+      # fast-forward check against the base is meaningful.
+      - uses: actions/checkout@v6.0.2
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+      - name: Branch fast-forwards into its base
+        env:
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+          CHECK_BRANCH_FETCH: "1"
+        run: sh scripts/check-branch-current.sh
+
   build-test:
     name: build-test
     runs-on: ubuntu-latest
