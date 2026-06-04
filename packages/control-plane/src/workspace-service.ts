@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { WorkspaceDto, WorkspaceInspectionDto } from "@edd/api-contracts";
 import {
+  assertNever,
   assertTerminable,
   baseImage,
   conflictError,
@@ -243,6 +244,8 @@ export class WorkspaceService {
         return this.start(id);
       case "unavailable":
         return err(conflictError(`cannot connect to ${id}: workspace is ${ws.state}`));
+      default:
+        return assertNever(action);
     }
   }
 

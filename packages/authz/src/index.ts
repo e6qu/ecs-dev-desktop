@@ -8,7 +8,11 @@ import { AbilityBuilder, createMongoAbility, type MongoAbility } from "@casl/abi
  * from IdP groups/claims in `@edd/auth`; this module turns a role into a CASL
  * ability the rest of the system checks with `ability.can(action, subject)`.
  */
-export type Role = "viewer" | "member" | "admin";
+/** The role vocabulary, least → most privilege. The single source of truth: the
+ * `Role` union is derived from it, and consumers (e.g. quotas) key on it so a new
+ * role is a compile error wherever roles are enumerated. */
+export const ROLES = ["viewer", "member", "admin"] as const;
+export type Role = (typeof ROLES)[number];
 
 export type Action = "create" | "read" | "update" | "delete" | "manage";
 export type Subject = "Workspace" | "User" | "BaseImage" | "all";

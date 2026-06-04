@@ -19,6 +19,15 @@ Resolved: DynamoDB+ElectroDB · sockerless from source · Fargate managed-EBS ·
 real-AWS on `main` · AGPL-3.0-or-later · Turborepo+pnpm · CASL · dep floor 1440 · admin
 observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
 
+## In progress
+
+- **Type system does more heavy lifting / fewer stringy+flaky checks** (3 PRs).
+  **PR1 done:** exhaustiveness (`assertNever`, `Record<Union,_>` literals — fixed the
+  `tallyWorkspaceStates` drift and the `Record<string,_>` quota → `Record<Role,_>`) +
+  `expectTypeOf` contract↔domain alignment tests. **PR2 (next):** a shared typed
+  `data-testid` registry so Playwright stops matching on rendered text. **PR3:** harness
+  determinism (deterministic DynamoDB-Local readiness wait + retry/backoff).
+
 ## Done recently
 
 - **Typed error channel (`Result` + `DomainError`) — complete.** Domain failures are now

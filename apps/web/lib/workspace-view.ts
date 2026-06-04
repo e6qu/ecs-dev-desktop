@@ -21,6 +21,9 @@ export function statusMeta(state: WorkspaceStateDto): StatusMeta {
 
 export type WorkspaceAction = "start" | "stop" | "snapshot" | "delete";
 
+// The non-`undefined` return type already makes this switch exhaustive: add a
+// WorkspaceState and the missing case is a compile error here. (No `assertNever`
+// import, which would pull @edd/core into the client bundle.)
 /** Lifecycle actions valid from a state — mirrors the control-plane state machine. */
 export function availableActions(state: WorkspaceStateDto): readonly WorkspaceAction[] {
   switch (state) {

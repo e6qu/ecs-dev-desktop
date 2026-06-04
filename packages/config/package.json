@@ -12,6 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@edd/authz": "workspace:*",
     "zod": "^4.4.3"
   },
   "devDependencies": {
