@@ -201,14 +201,13 @@ jobs:
   terraform-sim:
     name: terraform-sim
     runs-on: ubuntu-latest
-    # Defensive cap: the gated apply step would hang (not fail fast) on the
-    # open sim gaps e6qu/sockerless#413 (KMS tagging) and #414 (NAT Gateway).
+    # Defensive cap for the gated apply step (sim build + full apply+destroy).
     timeout-minutes: 25
     env:
       # tests/sim defaults sim_endpoint to this; kept explicit for the apply step.
       SIM_ENDPOINT: http://127.0.0.1:4566
       TF_DIR: infra/terraform/modules/ecs-dev-desktop/tests/sim
-      # Flip to "1" to enable the full apply+destroy once #413 and #414 land.
+      # Flip to "1" to enable the full apply+destroy once #416 and #417 land.
       RUN_SIM_APPLY: "0"
     steps:
       - uses: actions/checkout@v6.0.2
@@ -238,10 +237,12 @@ jobs:
           terraform -chdir="${TF_DIR}" init -input=false
           terraform -chdir="${TF_DIR}" validate
           terraform -chdir="${TF_DIR}" plan -input=false -var "sim_endpoint=${SIM_ENDPOINT}"
-      # Full non-mocked apply+destroy. Gated off until e6qu/sockerless#413 (KMS
-      # tagging hangs aws_kms_key 10m) and #414 (CreateNatGateway hangs
-      # aws_nat_gateway until timeout) are fixed upstream. Per AGENTS.md §6.8 the
-      # module is NOT branched around these gaps.
+      # Full non-mocked apply+destroy. Gated off until e6qu/sockerless#416
+      # (DynamoDB DescribeTable drops GSIs -> aws_dynamodb_table fails the GSI
+      # ACTIVE wait) and #417 (ECS Service family + PutClusterCapacityProviders
+      # unimplemented) are fixed upstream. The prior blockers #413 (KMS tagging)
+      # and #414 (NAT Gateway) were fixed by #415. Per AGENTS.md §6.8 the module
+      # is NOT branched around these gaps.
       - name: terraform apply + destroy (full non-mocked e2e)
         if: env.RUN_SIM_APPLY == '1'
         run: |

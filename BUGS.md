@@ -13,18 +13,20 @@ the module is **not** branched around them; the full-apply step of the `terrafor
 job is gated off and lands once both are fixed (the job's `init`/`validate`/`plan` against
 the live sim runs every PR today).
 
-- **[#413](https://github.com/e6qu/sockerless/issues/413) — KMS tagging broken (open).**
-  `TagResource`/`UntagResource` are unimplemented and `ListResourceTags` returns empty
-  tags (the Secrets Manager `SMTag` shape, JSON `Key`/`Value`, is reused for KMS, which
-  needs `TagKey`/`TagValue`). The AWS provider writes the key's tags then polls
-  `ListResourceTags` until they propagate — they never do, so `aws_kms_key` **hangs 10m**
-  then times out. Every realistic IaC stack tags its KMS keys, so this blocks essentially
-  any apply.
-- **[#414](https://github.com/e6qu/sockerless/issues/414) — `CreateNatGateway` has no
-  API-only modeled path (open).** In `SIM_RUNTIME=process` it hard-requires host
-  `CAP_NET_ADMIN`/`nft` and returns `UnsupportedOperation` with no modeled fallback; the
-  provider retries it as eventual-consistency, so `aws_nat_gateway` sits at `Still
-creating…` until its create timeout. Blocks any private-subnet VPC stack.
+These are the **second** layer of gaps: the full apply now reaches DynamoDB GSI creation
+and the ECS service (the prior KMS-tag/NAT hangs were fixed by #415, below).
+
+- **[#416](https://github.com/e6qu/sockerless/issues/416) — DynamoDB drops GSIs (open).**
+  `DescribeTable`/`CreateTable` return `GlobalSecondaryIndexes: null` (the `DDBTable` struct
+  has no GSI field; the `CreateTable` request never parses them). The AWS provider waits for
+  each GSI's `IndexStatus` to reach `ACTIVE`, never finds it, and fails after ~21 retries.
+  Blocks any `aws_dynamodb_table` with a GSI — i.e. every single-table design (`@edd/db`
+  uses GSI1 + GSI2). DynamoDB Local accepts the same schema, so this is sim-specific.
+- **[#417](https://github.com/e6qu/sockerless/issues/417) — ECS Service family
+  unimplemented (open).** `CreateService`/`DescribeServices`/`ListServices`/`UpdateService`/
+  `DeleteService` and `PutClusterCapacityProviders` return `UnknownOperationException`
+  (clusters + task definitions + `RunTask` work). Blocks `aws_ecs_service` and
+  `aws_ecs_cluster_capacity_providers` — i.e. any Fargate **service** (our control plane).
 
 Policy (`AGENTS.md` §6.8 + standing directive): the **whole project** (product code _and_
 tests) differs from the real-cloud path by **endpoint/base-domain only** — no sim-specific
@@ -43,8 +45,10 @@ must be standard Graph + ROPC (not a sim-only seed) → #393 · **#391** bleephu
 `POST /admin/organizations` → #393 · **#399** bleephub OAuth non-conformance (session/CSRF;
 always-admin) → #401 · **#400** `/admin/organizations` site-admin auth → #401 · **#411**
 Terraform/AWS provider: KMS `EnableKeyRotation` + Application Auto Scaling
-`RegisterScalableTarget` + EventBridge Scheduler `CreateSchedule` unimplemented → #410.
-(Plus #334/#335 LB/SG enforcement, not we-filed → #364.)
+`RegisterScalableTarget` + EventBridge Scheduler `CreateSchedule` unimplemented → #410 ·
+**#413** KMS tagging (`TagResource`/`UntagResource` + `ListResourceTags` empty) → #415 ·
+**#414** `CreateNatGateway` had no API-only modeled path → #415. (Plus #334/#335 LB/SG
+enforcement, not we-filed → #364.)
 
 Key outcome: container-mode ECS uses **Docker named volumes**, so the e2e runs with plain
 Docker (no KVM/nft). Lesson: a sim that _accepts_ a call can still be non-conformant —

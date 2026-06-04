@@ -31,18 +31,20 @@ pending two sim gaps below. Flip `RUN_SIM_APPLY=1` once both land.
 
 ## Status: full apply blocked on two sim gaps
 
-A prior round of gaps ([#411](https://github.com/e6qu/sockerless/issues/411) — KMS
-`EnableKeyRotation`, Application Auto Scaling `RegisterScalableTarget`, EventBridge
-Scheduler `CreateSchedule`) was **fixed upstream by
-[#410](https://github.com/e6qu/sockerless/pull/410)**; those operations now succeed
-against the sim.
+Earlier rounds are now fixed upstream and the full apply gets **further every
+time**: [#411](https://github.com/e6qu/sockerless/issues/411) (KMS
+`EnableKeyRotation`, Application Auto Scaling, EventBridge Scheduler) →
+[#410](https://github.com/e6qu/sockerless/pull/410); then
+[#413](https://github.com/e6qu/sockerless/issues/413) (KMS tagging hang) and
+[#414](https://github.com/e6qu/sockerless/issues/414) (NAT Gateway hang) →
+[#415](https://github.com/e6qu/sockerless/pull/415). The apply now reaches
+DynamoDB GSI creation and the ECS service, surfacing two further gaps, filed
+upstream:
 
-The full apply now surfaces two further gaps, filed upstream:
-
-| Issue                                                       | Symptom                                                                                                                       |
-| ----------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-| [#413](https://github.com/e6qu/sockerless/issues/413) (KMS) | `TagResource`/`UntagResource` unimplemented; `ListResourceTags` returns empty tags → `aws_kms_key` hangs 10m then times out.  |
-| [#414](https://github.com/e6qu/sockerless/issues/414) (EC2) | `CreateNatGateway` hard-requires host `CAP_NET_ADMIN`/`nft` with no modeled fallback → `aws_nat_gateway` hangs until timeout. |
+| Issue                                                            | Symptom                                                                                                                                           |
+| ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [#416](https://github.com/e6qu/sockerless/issues/416) (DynamoDB) | `DescribeTable`/`CreateTable` return `GlobalSecondaryIndexes: null` → `aws_dynamodb_table` fails the GSI `ACTIVE` wait (~21 retries).             |
+| [#417](https://github.com/e6qu/sockerless/issues/417) (ECS)      | Service family (`CreateService`/…) + `PutClusterCapacityProviders` unimplemented → `aws_ecs_service` / `aws_ecs_cluster_capacity_providers` fail. |
 
 Per AGENTS.md §6.8 the module is **not** branched around either gap; the full
 apply lands in CI once both are fixed.
