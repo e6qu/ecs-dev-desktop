@@ -97,10 +97,11 @@ is ports-and-adapters: events/audit/logs **derived from current state now**, fro
   the admin-only `/admin` sidebar shell, the live **Health board**, the all-workspaces
   table, and per-workspace **Inspect** (detail, bindings, snapshots, pure-derived
   lifecycle timeline). All Playwright-covered.
-- 🟡 **8B — Overview + Audit/Logs + Quotas (now, mock-free):** ✅ admin **Overview**
-  dashboard (fleet `tallyWorkspaceStates` + catalog stats, the `/admin` landing). ⬜
-  **Remaining:** the `AuditSource`/`LogSource` ports + the **Logs/Audit** screen; **quotas**
-  (config + create-time enforcement). (The all-workspaces table landed in 8A.)
+- 🟡 **8B — Overview + Quotas + Audit/Logs (now, mock-free):** ✅ admin **Overview**
+  dashboard (`tallyWorkspaceStates` and catalog stats); ✅ **quotas** (per-role config
+  via `EDD_QUOTA_<ROLE>`, pure `withinWorkspaceQuota`, create-time enforcement, the
+  `/admin/quotas` limits-and-usage page). ⬜ **Remaining:** the `AuditSource`/`LogSource`
+  ports and the **Logs/Audit** screen (thin pre-AWS; real CloudTrail/CloudWatch is 8C).
 - ⬜ **8C — Real cloud data (AWS-gated):** CloudTrail audit adapter, CloudWatch Logs
   (container/app/reconciler), CloudWatch Metrics + Cost dashboard, real ECS/EBS/Teleport/
   Pomerium health. Endpoint-only swap; validated at `e2e-aws`.
