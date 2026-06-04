@@ -4,6 +4,7 @@ import {
   baseImageEntry,
   createBaseImageRequest,
   createWorkspaceRequest,
+  errorResponse,
   healthReport,
   listBaseImagesResponse,
   listWorkspacesResponse,
@@ -35,6 +36,22 @@ export interface ApiClientOptions {
   fetch?: typeof globalThis.fetch;
 }
 
+/**
+ * A failed API call. Carries the server's typed error message (from the
+ * `{ error }` body) so the UI can show the real reason — e.g. "workspace quota
+ * reached" — rather than a bare status, plus the `status` for callers that branch
+ * on it.
+ */
+export class ApiError extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 export class ApiClient {
   private readonly baseUrl: string;
   private readonly fetchImpl: typeof globalThis.fetch;
@@ -48,8 +65,13 @@ export class ApiClient {
 
   private async send(path: string, init?: RequestInit): Promise<Response> {
     const res = await this.fetchImpl(`${this.baseUrl}${path}`, init);
-    if (!res.ok)
-      throw new Error(`${init?.method ?? "GET"} ${path} failed: ${res.status.toString()}`);
+    if (!res.ok) {
+      // Every API error response carries `{ error }` (the helpers + domainErrorResponse).
+      // Parse strictly — a response that violates the contract is a bug, so let the
+      // parse throw rather than smooth it into a synthesized message.
+      const body = errorResponse.parse(await res.json());
+      throw new ApiError(res.status, body.error);
+    }
     return res;
   }
 
