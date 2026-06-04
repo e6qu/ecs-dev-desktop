@@ -145,4 +145,15 @@
   workspaces table, Overview tiles, Inspect timeline, Logs audit/stream panels, Quotas, and
   the admin-denied gate. All 8 browser tests pass on the new selectors; build + lint green.
 
+- **2026-06-04** — **Harness determinism (round 3): the integ suite stops racing.** The
+  CI `integration` job's `dynamodb-local` service container had no health check, so
+  `pnpm test:integ` could start before DynamoDB Local accepted connections — the first-run
+  race that occasionally skipped/failed the suite. Added `waitForDynamo` (`@edd/db`): polls
+  `ListTables` to readiness with a timeout, called at the top of `ensureTable`/`dropTable`,
+  so every integ bootstrap (every package) is deterministic and a fast no-op once DynamoDB
+  is up. Portable — no container health-check tooling required, same locally and in CI.
+  Also added retry/backoff to the integration job's sim bring-up (registry rate-limit
+  parity with the e2e/ssh jobs). Tests: `waitForDynamo` resolves against the live DB and
+  throws deterministically (timeout) against a dead endpoint. db integ 5; build + lint green.
+
 <!-- Append new milestones below. -->
