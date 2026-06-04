@@ -92,6 +92,19 @@ export function recordSnapshot(ws: Workspace, snapshot: SnapshotId, at: IsoTimes
   return { ...ws, latestSnapshotId: snapshot, latestSnapshotAt: at, lastActivity: at };
 }
 
+/**
+ * Record user/editor/SSH activity (an idle-agent heartbeat): refresh `lastActivity`
+ * so the reconciler doesn't scale the workspace to zero, and wake it from idle.
+ * Only an active workspace can have activity — throws otherwise.
+ */
+export function markActivity(ws: Workspace, at: IsoTimestamp): Workspace {
+  if (ws.state !== "running" && ws.state !== "idle") {
+    throw new Error(`cannot record activity while '${ws.state}'`);
+  }
+  const state = ws.state === "idle" ? transition(ws.state, "activity") : ws.state;
+  return { ...ws, state, lastActivity: at };
+}
+
 /** Validate that the workspace may be terminated; throws otherwise. */
 export function assertTerminable(ws: Workspace): void {
   transition(ws.state, "terminate");

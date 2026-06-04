@@ -4,6 +4,7 @@ import {
   assertTerminable,
   baseImage,
   isoTimestamp,
+  markActivity,
   markStarted,
   markStopped,
   newWorkspaceId,
@@ -216,6 +217,15 @@ export class WorkspaceService {
       case "unavailable":
         throw new Error(`cannot connect to ${id}: workspace is ${ws.state}`);
     }
+  }
+
+  /** Idle-agent heartbeat: record activity so the reconciler doesn't scale the
+   * workspace to zero (and wake it from idle). */
+  async heartbeat(id: WorkspaceId): Promise<WorkspaceDto> {
+    const ws = await this.require(id);
+    const next = markActivity(ws, isoTimestamp(this.deps.clock.now()));
+    await this.persist(next);
+    return toWorkspaceDto(next);
   }
 
   /** Point-in-time snapshot of a running workspace. */

@@ -86,6 +86,12 @@ export class ApiClient {
     return workspace.parse(await res.json());
   }
 
+  /** Idle-agent heartbeat — report activity to keep the workspace from scaling to zero. */
+  async heartbeatWorkspace(id: string): Promise<WorkspaceDto> {
+    const res = await this.send(`/api/workspaces/${id}/heartbeat`, { method: "POST" });
+    return workspace.parse(await res.json());
+  }
+
   async deleteWorkspace(id: string): Promise<void> {
     await this.send(`/api/workspaces/${id}`, { method: "DELETE" });
   }
