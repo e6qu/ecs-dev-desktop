@@ -26,4 +26,22 @@ describe("deriveWorkspaceTimeline", () => {
     const events = deriveWorkspaceTimeline({ createdAt: t(0), lastActivity: t(0) });
     expect(events.some((e) => e.event === "activity")).toBe(false);
   });
+
+  it("keeps both snapshot and activity when they share a timestamp", () => {
+    const events = deriveWorkspaceTimeline({
+      createdAt: t(0),
+      lastActivity: t(2),
+      latestSnapshotAt: t(2),
+    });
+    expect(events.map((e) => e.event)).toEqual(["created", "snapshot", "activity"]);
+  });
+
+  it("sorts by timestamp even when the snapshot is newer than the last activity", () => {
+    const events = deriveWorkspaceTimeline({
+      createdAt: t(0),
+      lastActivity: t(1),
+      latestSnapshotAt: t(3),
+    });
+    expect(events.map((e) => e.event)).toEqual(["created", "activity", "snapshot"]);
+  });
 });

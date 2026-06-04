@@ -90,4 +90,40 @@ describe("base-images API end-to-end (DynamoDB Local)", () => {
     const gone = await GET_ONE(new Request(one, { headers: admin }), ctx(entry.id));
     expect(gone.status).toBe(404);
   });
+
+  it("returns 404 (not 409) when updating or deleting a missing catalog entry", async () => {
+    const one = `${url}/img-does-not-exist`;
+    // BaseImageNotFoundError must map to 404, not the generic 409 conflict.
+    const patch = await PATCH(
+      new Request(one, {
+        method: "PATCH",
+        headers: admin,
+        body: JSON.stringify({ enabled: false }),
+      }),
+      ctx("img-does-not-exist"),
+    );
+    expect(patch.status).toBe(404);
+
+    const del = await DELETE(
+      new Request(one, { method: "DELETE", headers: admin }),
+      ctx("img-does-not-exist"),
+    );
+    expect(del.status).toBe(404);
+  });
+
+  it("rejects an empty PATCH body with 400 (the contract requires a field)", async () => {
+    const created = await POST(
+      new Request(url, {
+        method: "POST",
+        headers: admin,
+        body: JSON.stringify({ name: "Go", image: "golden/go:1.22" }),
+      }),
+    );
+    const entry = baseImageEntry.parse(await created.json());
+    const res = await PATCH(
+      new Request(`${url}/${entry.id}`, { method: "PATCH", headers: admin, body: "{}" }),
+      ctx(entry.id),
+    );
+    expect(res.status).toBe(400);
+  });
 });
