@@ -133,6 +133,9 @@ importers:
 
   packages/config:
     dependencies:
+      '@edd/authz':
+        specifier: workspace:*
+        version: link:../authz
       zod:
         specifier: ^4.4.3
         version: 4.4.3

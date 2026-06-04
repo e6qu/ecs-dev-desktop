@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import type { Role } from "@edd/authz";
 import { z } from "zod";
 
 /**
@@ -76,8 +77,10 @@ export const entraSim = {
 /**
  * Default per-role cap on the number of workspaces a user may own (`null` =
  * unlimited). Overridable per role via `EDD_QUOTA_<ROLE>` (e.g. `EDD_QUOTA_MEMBER=10`).
+ * Keyed by `Role` (not `string`): every role must have a quota, and a typo'd or
+ * removed role is a compile error.
  */
-export const DEFAULT_WORKSPACE_QUOTAS: Record<string, number | null> = {
+export const DEFAULT_WORKSPACE_QUOTAS: Record<Role, number | null> = {
   viewer: 0,
   member: 5,
   admin: null,

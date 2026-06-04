@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { assertNever } from "../assert-never";
 import type { WorkspaceState } from "./workspace-state-machine";
 
 /**
@@ -27,5 +28,7 @@ export function planConnect(state: WorkspaceState): ConnectAction {
     case "terminated":
     case "error":
       return "unavailable";
+    default:
+      return assertNever(state);
   }
 }

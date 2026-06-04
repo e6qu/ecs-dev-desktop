@@ -30,6 +30,9 @@ export {
   workspaceId,
 } from "./domain/ids";
 
+// Compile-time exhaustiveness guard.
+export { assertNever } from "./assert-never";
+
 // Result type (errors as data) + domain error union (the typed failure channel).
 export type { Err, Ok, Result } from "./result";
 export { andThen, err, isErr, isOk, map, mapErr, ok } from "./result";

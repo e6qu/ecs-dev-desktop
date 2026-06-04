@@ -9,21 +9,15 @@ export interface WorkspaceStats {
   readonly active: number;
 }
 
-const ALL_STATES: readonly WorkspaceState[] = [
-  "provisioning",
-  "running",
-  "idle",
-  "stopped",
-  "terminated",
-  "error",
-];
+/** A fresh all-zero tally. The `Record<WorkspaceState, number>` literal must list
+ * every state, so adding a state is a compile error here (no silent drift, no cast). */
+function zeroByState(): Record<WorkspaceState, number> {
+  return { provisioning: 0, running: 0, idle: 0, stopped: 0, terminated: 0, error: 0 };
+}
 
 /** Pure: tally a list of workspace states for the admin Overview. */
 export function tallyWorkspaceStates(states: readonly WorkspaceState[]): WorkspaceStats {
-  const byState = Object.fromEntries(ALL_STATES.map((s) => [s, 0])) as Record<
-    WorkspaceState,
-    number
-  >;
+  const byState = zeroByState();
   for (const s of states) byState[s] += 1;
   return { total: states.length, byState, active: byState.running + byState.idle };
 }

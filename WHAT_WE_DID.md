@@ -119,4 +119,19 @@
   preserving (all HTTP statuses unchanged). core 68, control-plane integ 15, web integ 24,
   reconciler 7+5, Playwright 8; build + lint green.
 
+- **2026-06-04** — **Type system does more heavy lifting (round 1): exhaustiveness +
+  alignment.** Made the compiler enforce what tests were checking by string. Added
+  `assertNever` (core) for `switch` exhaustiveness (`planConnect`, service `connect`).
+  Replaced `tallyWorkspaceStates`'s hand-maintained `ALL_STATES` array + `as` cast with a
+  `Record<WorkspaceState, number>` literal, so adding a state is a compile error (no silent
+  miscount). Made `Role` a single source in `@edd/authz` (a `ROLES` tuple → derived union)
+  and typed `DEFAULT_WORKSPACE_QUOTAS` as `Record<Role, number | null>` (was
+  `Record<string, …>`) and `QUOTA_ROLES = ROLES` — a new/typo'd role is now a compile
+  error wherever roles are enumerated. Added `expectTypeOf` contract↔domain alignment
+  tests (control-plane) pinning the independently-defined Zod enums to the core unions
+  (`WorkspaceState`/`HealthStatus`/`LogStream`/`LogLevel`) — type-checked by `tsc`, so they
+  can't flake. (Note: kept `assertNever` out of the web client path — importing it into
+  `availableActions` pulled `@edd/core` into the Turbopack client bundle; the non-`undefined`
+  return type already makes that switch exhaustive.)
+
 <!-- Append new milestones below. -->
