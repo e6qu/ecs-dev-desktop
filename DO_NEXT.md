@@ -21,6 +21,15 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
 
 ## Done recently
 
+- **Terraform platform module + full non-mocked sim apply in CI.** Reusable
+  Terraform/Terragrunt module for the whole stack (VPC + NAT [managed or **fck-nat**], KMS,
+  DynamoDB single-table w/ GSIs, ECR, ECS cluster + Fargate service + autoscaling, ALB +
+  optional ACM/Route53, scheduler, IAM, logs) with examples + README. The `terraform-sim`
+  CI job **applies + destroys the entire stack against the sockerless sim every PR**
+  (`55 added → 55 destroyed`, endpoint-only). The four-round upstream saga that unblocked it
+  (#411→#410, #413/#414→#415, #416/#417→#418) is fully fixed; submodule → `aa33123`. Plus a
+  portable `check-branch-current.sh` (fast-forward guard, pre-commit + CI) and the
+  heartbeat-route 409 test.
 - **Error channel to the UI + code-health gates.** `@edd/api-client` surfaces the server's
   typed `{error}` message as `ApiError` (strict parse, **no fallback** — fails loudly).
   Added **knip** (dead code) + **jscpd** (copy-paste, 1% threshold) to CI (`code-health`
@@ -62,8 +71,9 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
   `/api/base-images/:id` **404-vs-409** not-found mis-mapping, and added admin-RBAC,
   selector, audit, empty-PATCH→400, exhaustive state-machine, and timeline-ordering tests.
   An audit confirmed the other lifecycle/catalog mutation routes already map domain errors
-  uniformly. **Low-priority coverage still open:** a route-level heartbeat-on-stopped → 409
-  (the service-level reject is already tested; the route try/catch mirrors `stop`).
+  uniformly. The last open item — a route-level heartbeat-on-stopped → **409** — was added
+  (`heartbeat/route.integ.ts`: 200 running / 409 stopped / 403 cross-owner). **No
+  decision-free coverage gaps remain.**
 
 > With 8A+8B done, the highest-value remaining lever is the **AWS account/region
 > decision** (#1): it unlocks 8C _and_ the whole real-deploy track. Little
@@ -71,13 +81,14 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
 
 ## Blocked
 
-- **On AWS (#1):** real `infra/terraform` (VPC/ECS/ECR/DynamoDB+GSIs/KMS/IAM/remote
-  state); golden image + real Fargate deploy; wiring `apps/web` to real adapters;
-  Teleport/Pomerium real federation + DNS; reconciler cron; Phase 8C (CloudTrail/
-  CloudWatch/Cost); Phase 7; `e2e-aws`.
+- **On AWS (#1):** the `infra/terraform` module is **built and sim-apply-proven in CI**
+  (full stack: VPC/ECS/ECR/DynamoDB+GSIs/KMS/IAM/ALB/scheduler) — what's AWS-gated is the
+  **real apply** (account + remote state backend), golden image + real Fargate deploy,
+  wiring `apps/web` to real adapters, Teleport/Pomerium real federation + DNS, reconciler
+  cron, Phase 8C (CloudTrail/CloudWatch/Cost), Phase 7, `e2e-aws`.
 - **On DNS (#2):** real `*.devbox.<domain>` routing + ACM.
 - **On upstream sockerless:** _nothing._ Every gap filed is fixed (see `BUGS.md`).
-  Sim from source (submodule pinned `fed6600`).
+  Sim from source (submodule pinned `aa33123`, post-#418).
 
 ## Working notes (durable)
 
