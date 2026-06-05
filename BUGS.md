@@ -62,6 +62,12 @@ Tags set at resource-creation time are not returned by the per-service tag-list 
 
 `ModifySecurityGroupRules` returns `InvalidAction`. Called by the Terraform AWS provider v6 when updating an existing `aws_vpc_security_group_ingress_rule` or `aws_vpc_security_group_egress_rule` in-place (i.e., re-applying a config that modifies a rule rather than delete+recreate it). Fresh apply/destroy cycles use `AuthorizeSecurityGroupIngress`/`Egress` (which work); this gap only triggers on in-place updates. Does not block current CI (each configuration is a fresh apply).
 
+### #464 — ELBv2 DescribeListeners: Certificates not returned for HTTPS listeners
+
+**Status:** Open (filed 2026-06-06) · **Upstream:** e6qu/sockerless#464
+
+`DescribeListeners` does not include the `Certificates` array for HTTPS (port 443) listeners that have an ACM certificate attached. Real AWS returns `Certificates: [{CertificateArn: "arn:aws:acm:..."}]`. The cert itself IS issued (terraform apply completes via `aws_acm_certificate_validation`), but the listener-to-cert linkage is not reflected in the describe response. CI cert assertions now obtain the cert ARN via `acm list-certificates` instead; the listener-cert association assertion is gated.
+
 ## Resolved (sockerless — all fixed upstream)
 
 We filed and got fixed, in order: **#359/#360** (EBS snapshots / DeleteItem) → PR #361 ·

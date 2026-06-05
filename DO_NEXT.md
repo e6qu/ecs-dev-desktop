@@ -111,8 +111,10 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
   **#459** NAT Gateway `connectivity_type` not persisted (forces replacement) · **#460** ECS
   task-def `healthCheck`/`secrets` dropped (forces replacement) · **#461** ALB
   `minimum_load_balancer_capacity` spurious capacity_units=0 · **#462** Tags not returned by
-  `ListTagsForResource` family (CW/DynamoDB/ECR/ECS — 9 resources). CI assertions gated:
-  #453 (DynamoDB SSE), #454 (ECS deploymentConfig); idempotency checks gated: #457–#462.
+  `ListTagsForResource` family (CW/DynamoDB/ECR/ECS — 9 resources). From DNS/TLS step
+  (2026-06-06): **#464** ELBv2 `DescribeListeners` omits `Certificates` for HTTPS listeners.
+  CI assertions gated: #453, #454; idempotency checks gated: #457–#462; cert-to-listener
+  assertion gated: #464.
 
 ## Working notes (durable)
 

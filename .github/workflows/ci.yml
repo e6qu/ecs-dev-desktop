@@ -878,10 +878,15 @@ jobs:
               --load-balancer-arn "${LB_ARN}" \
               --query "Listeners[?Port==\`443\`].Port|[0]" --output text)"
           # ACM cert must reach ISSUED before aws_acm_certificate_validation completes.
-          CERT_ARN=$(aws --endpoint-url "${ENDPT}" elbv2 describe-listeners \
-            --load-balancer-arn "${LB_ARN}" \
-            --query "Listeners[?Port==\`443\`].Certificates[0].CertificateArn|[0]" \
-            --output text)
+          # terraform apply completes only once the cert is ISSUED (aws_acm_certificate_validation
+          # is a blocking resource), so we verify existence + status via list-certificates
+          # (independently of the listener). The listener-to-cert linkage would normally be
+          # verified via describe-listeners Certificates field, but that is gated below (#464).
+          assert_eq "ACM cert exists (list-certificates count 1)" "1" \
+            "$(aws --endpoint-url "${ENDPT}" acm list-certificates \
+              --query 'length(CertificateSummaryList)' --output text)"
+          CERT_ARN=$(aws --endpoint-url "${ENDPT}" acm list-certificates \
+            --query 'CertificateSummaryList[0].CertificateArn' --output text)
           assert_eq "ACM cert ISSUED" "ISSUED" \
             "$(aws --endpoint-url "${ENDPT}" acm describe-certificate \
               --certificate-arn "${CERT_ARN}" \
@@ -904,6 +909,9 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" acm describe-certificate \
               --certificate-arn "${CERT_ARN}" \
               --query 'Certificate.DomainValidationOptions[0].ValidationMethod' --output text)"
+          # GATED e6qu/sockerless#464: DescribeListeners Certificates field absent for HTTPS
+          # listeners — cert-to-listener linkage cannot be verified until fixed upstream.
+          printf 'GATED ACM cert attached to HTTPS listener (e6qu/sockerless#464)\n'
           # Route53: control-plane A record and workspace wildcard A record created.
           ZONE_ID=$(aws --endpoint-url "${ENDPT}" route53 list-hosted-zones \
             --query "HostedZones[?contains(Name,'edd-sim')].Id|[0]" \
