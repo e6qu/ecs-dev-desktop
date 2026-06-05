@@ -86,6 +86,33 @@ Exclusively certifies what no simulator can:
 `terraform validate`, **`tflint`**, **`checkov`**, native **`terraform test`** in
 CI on `infra/terraform`. Real `apply` runs only in the manual `e2e-aws` job.
 
+## HTTPS e2e (TLS) — mock-free auth + SSH (`e2e-https` CI job)
+
+The simulators normally serve plain HTTP (loopback). The `e2e-https` job runs the
+auth + SSH paths the way real cloud always works — **over TLS with real
+certificate trust** (no `--insecure`, no skipped verification):
+
+- `scripts/gen-sim-tls-cert.sh` mints a self-signed CA + server cert (SANs cover
+  `127.0.0.1`/`localhost` + the compose service names) into `temp/sim-tls`
+  (gitignored — no key is committed).
+- `docker-compose.https.yml` serves **all three sockerless sims over TLS** —
+  azure-sim + aws-sim via `SIM_TLS_CERT`/`SIM_TLS_KEY`, bleephub via
+  `BPH_TLS_CERT`/`BPH_TLS_KEY`. The OIDC discovery doc auto-advertises `https://`.
+- `EDD_SIM_SCHEME=https` flips the `@edd/config` sim base URLs to `https`; the
+  client trusts the CA via `NODE_EXTRA_CA_CERTS`.
+- The **Entra** auth smoke (Graph provisioning + ROPC → id_token → group→role)
+  runs over HTTPS; the **SSH** connect + authz-deny runs against the real Teleport
+  cluster (already TLS).
+
+```
+sh scripts/gen-sim-tls-cert.sh
+docker compose -f docker-compose.https.yml up -d --build --wait
+docker compose -f docker-compose.ssh.yml up -d --build --wait
+EDD_SIM_SCHEME=https NODE_EXTRA_CA_CERTS="$PWD/temp/sim-tls/ca.pem" \
+  pnpm --filter @edd/web exec vitest run --config vitest.e2e.config.ts lib/entra-auth.e2e.ts
+pnpm --filter @edd/ssh-gateway exec vitest run --config vitest.e2e.config.ts src/ssh-connect.e2e.ts
+```
+
 ## Local quickstart (wired in Phase 0)
 
 ```

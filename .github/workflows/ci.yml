@@ -141,6 +141,68 @@ jobs:
       - if: always()
         run: docker compose -f docker-compose.ssh.yml down
 
+  # The same auth + SSH paths, but with the simulators served over TLS (the way
+  # real cloud always is). Proves the stack is correct end-to-end over HTTPS with
+  # real certificate trust (NODE_EXTRA_CA_CERTS — no --insecure, no skipped verify).
+  e2e-https:
+    name: e2e-https
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          submodules: recursive # third_party/sockerless — the sims are built from source
+      - uses: pnpm/action-setup@v6.0.8
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      # Fresh self-signed CA + server cert into ./temp/sim-tls (gitignored); the
+      # sims mount it and the test trusts the CA. No key is committed.
+      - name: Generate the sim TLS cert
+        run: sh scripts/gen-sim-tls-cert.sh
+      # Retry bring-up: image pulls can transiently hit registry rate limits
+      # (public.ecr.aws / Docker Hub) on shared runner IPs.
+      - name: Build & start the sockerless sims over TLS (HTTPS harness)
+        run: |
+          for attempt in 1 2 3; do
+            if docker compose -f docker-compose.https.yml up -d --build --wait; then
+              exit 0
+            fi
+            echo "::warning::HTTPS sim bring-up failed (attempt ${attempt}); retrying"
+            docker compose -f docker-compose.https.yml down -v || true
+            sleep "$((attempt * 20))"
+          done
+          exit 1
+      - name: Build & start the SSH harness (real Teleport cluster)
+        run: |
+          for attempt in 1 2 3; do
+            if docker compose -f docker-compose.ssh.yml up -d --build --wait; then
+              exit 0
+            fi
+            echo "::warning::SSH harness bring-up failed (attempt ${attempt}); retrying"
+            docker compose -f docker-compose.ssh.yml down -v || true
+            sleep "$((attempt * 20))"
+          done
+          exit 1
+      # Entra login → group → role over HTTPS: Graph provisioning + ROPC against
+      # the TLS azure-sim, with the CA trusted (EDD_SIM_SCHEME=https flips the
+      # @edd/config sim base URLs to https).
+      - name: Entra auth smoke over HTTPS (mock-free; real CA trust)
+        env:
+          EDD_SIM_SCHEME: https
+          NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/temp/sim-tls/ca.pem
+        run: pnpm --filter @edd/web exec vitest run --config vitest.e2e.config.ts lib/entra-auth.e2e.ts
+      # SSH connect-as-principal + authz-deny against the real Teleport cluster
+      # (already TLS on its proxy/auth ports).
+      - name: SSH connect + authz-deny over TLS (mock-free Teleport)
+        run: pnpm --filter @edd/ssh-gateway exec vitest run --config vitest.e2e.config.ts src/ssh-connect.e2e.ts
+      - if: always()
+        run: docker compose -f docker-compose.https.yml down
+      - if: always()
+        run: docker compose -f docker-compose.ssh.yml down
+
   playwright:
     name: playwright
     runs-on: ubuntu-latest

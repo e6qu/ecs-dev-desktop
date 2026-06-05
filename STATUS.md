@@ -3,7 +3,8 @@
 > Where the project is right now. Update after every task; past tense at PR close.
 
 **Last updated:** 2026-06-05 (Terraform platform module + full non-mocked sim apply in CI,
-incl. the DNS/TLS ACM path; heartbeat-route 409 coverage)
+incl. the DNS/TLS ACM path; heartbeat-route 409 coverage; sims-over-HTTPS e2e — mock-free
+Entra auth + SSH)
 
 ## Current phase
 
@@ -42,7 +43,8 @@ destroyed`), endpoint-only (§6.8). Real apply is AWS-gated.
   in Docker, mock-free.
 - **Test tiers**: unit/contract · integration (DynamoDB Local + process sim) · e2e
   (`.e2e.yml`/`.ssh.yml`: data-fidelity, lifecycle, GitHub+Entra auth, Pomerium, Teleport)
-  · **portal e2e** (Playwright) · manual `e2e-aws`. All green in CI.
+  · **portal e2e** (Playwright) · **`e2e-https`** (the sims served over TLS — mock-free Entra
+  auth + SSH with real CA trust, no `--insecure`) · manual `e2e-aws`. All green in CI.
 - **Engineering quality** (a 2026-06-04 wave; see `WHAT_WE_DID.md`): domain failures flow
   through a typed `Result<T, DomainError>` channel mapped to HTTP by one exhaustive table
   (`@edd/api-client` surfaces the server's `{error}` strictly — no fallbacks); compile-time

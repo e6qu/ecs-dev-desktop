@@ -1,0 +1,86 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# HTTPS e2e harness: the sockerless simulators served over TLS (not plain HTTP),
+# so the auth path is exercised exactly as it is against real cloud (which is
+# always HTTPS). Endpoint-only (AGENTS.md §6.8): the only difference from real
+# cloud is the base URL — the scheme is now https here too.
+#
+# TLS material is generated fresh by `scripts/gen-sim-tls-cert.sh` into
+# ./temp/sim-tls (gitignored; run it before `docker compose up`). Each sim reads
+# its cert/key from /tls via the simulator's standard TLS env vars; clients trust
+# the CA via NODE_EXTRA_CA_CERTS (no `--insecure`, no skipped verification).
+#
+# The Teleport SSH cluster (docker-compose.ssh.yml) is already TLS and is brought
+# up alongside this file by the `e2e-https` CI job.
+
+services:
+  # Azure/Entra sim over TLS — the OIDC discovery doc auto-advertises https URLs
+  # when served over TLS (it derives the scheme from the request). Drives the
+  # mock-free Entra auth smoke (Graph provisioning + ROPC).
+  azure-sim:
+    build:
+      context: ./third_party/sockerless/simulators
+      dockerfile: azure/Dockerfile
+    environment:
+      SIM_RUNTIME: process
+      SIM_TLS_CERT: /tls/server.pem
+      SIM_TLS_KEY: /tls/server-key.pem
+    volumes:
+      - ./temp/sim-tls:/tls:ro
+    ports:
+      - "4568:4568"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-check-certificate",
+          "-qO-",
+          "https://localhost:4568/common/v2.0/.well-known/openid-configuration",
+        ]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  # AWS sim over TLS (process mode — no workloads needed to prove the TLS surface).
+  aws-sim:
+    build:
+      context: ./third_party/sockerless/simulators
+      dockerfile: aws/Dockerfile
+    environment:
+      SIM_RUNTIME: process
+      SIM_TLS_CERT: /tls/server.pem
+      SIM_TLS_KEY: /tls/server-key.pem
+    volumes:
+      - ./temp/sim-tls:/tls:ro
+    ports:
+      - "4566:4566"
+    healthcheck:
+      test: ["CMD", "wget", "--no-check-certificate", "-qO-", "https://localhost:4566/"]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  # bleephub (GitHub sim) over TLS via its BPH_TLS_* env vars.
+  bleephub:
+    build:
+      context: .
+      dockerfile: infra/sim/bleephub.Dockerfile
+    environment:
+      BPH_TLS_CERT: /tls/server.pem
+      BPH_TLS_KEY: /tls/server-key.pem
+    volumes:
+      - ./temp/sim-tls:/tls:ro
+    ports:
+      - "5555:5555"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-check-certificate",
+          "-qO-",
+          "https://localhost:5555/api/v3/rate_limit",
+        ]
+      interval: 3s
+      timeout: 3s
+      retries: 20
