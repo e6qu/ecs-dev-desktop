@@ -2,8 +2,8 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-06 (second comprehensive sim probe: 100+ new CI assertions verified
-live; 3 new gaps filed (#453–#455); default-stack suite now ~100 assertions)
+**Last updated:** 2026-06-06 (idempotency analysis: 6 new sim gaps filed (#457–#462); all
+three idempotency checks gated; check-deps fixed; 9 open upstream blockers total)
 
 ## Current phase
 

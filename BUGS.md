@@ -8,6 +8,42 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
+### #457 — EC2 SG egress rule from_port/to_port stored as 0 instead of null for ip_protocol=-1
+
+**Status:** Open (filed 2026-06-06) · **Upstream:** e6qu/sockerless#457
+
+`AuthorizeSecurityGroupEgress` with `IpProtocol="-1"` (all-traffic) stores `FromPort=0, ToPort=0`. Real AWS omits these fields for all-traffic rules. `DescribeSecurityGroupRules` returns them, so Terraform sees `from_port = 0 -> null` on every idempotency plan for `aws_vpc_security_group_egress_rule` resources. Affects both ALB and tasks egress rules. Idempotency check gated (#457–#462 combined).
+
+### #458 — EC2 VPC SG ingress rule referenced_security_group_id returned with account-ID prefix
+
+**Status:** Open (filed 2026-06-06) · **Upstream:** e6qu/sockerless#458
+
+`DescribeSecurityGroupRules` returns `ReferencedGroupInfo.GroupId` as `"<accountId>/<sg-id>"` instead of bare `"<sg-id>"`. Causes `referenced_security_group_id = "123456789012/sg-…" -> "sg-…"` drift on every idempotency plan for the tasks-from-ALB ingress rule.
+
+### #459 — EC2 NatGateway connectivity_type not persisted, forcing Terraform to replace every plan
+
+**Status:** Open (filed 2026-06-06) · **Upstream:** e6qu/sockerless#459
+
+`DescribeNatGateways` omits `ConnectivityType`. The TF provider treats `connectivity_type` as `ForceNew`; the absent value causes a destroy+create plan on every idempotency check, cascading to both `aws_route.private_nat` resources.
+
+### #460 — ECS DescribeTaskDefinition drops healthCheck and secrets from containerDefinitions
+
+**Status:** Open (filed 2026-06-06) · **Upstream:** e6qu/sockerless#460
+
+`RegisterTaskDefinition` accepts `healthCheck` and `secrets` in container definitions, but `DescribeTaskDefinition` returns the container definitions without those fields. The TF provider stores these in state on create; seeing them absent forces a new task-def revision (replacement) on every idempotency plan, cascading to ECS service (`task_definition`) and IAM inline policies (which reference the task-def ARN).
+
+### #461 — ELBv2 DescribeLoadBalancerAttributes returns minimum_load_balancer_capacity.capacity_units=0 spuriously
+
+**Status:** Open (filed 2026-06-06) · **Upstream:** e6qu/sockerless#461
+
+`DescribeLoadBalancerAttributes` returns `minimum_load_balancer_capacity.capacity_units = "0"` for ALBs created without minimum capacity configuration. Real AWS omits this attribute entirely. Causes `minimum_load_balancer_capacity { capacity_units = 0 -> null }` drift on every idempotency plan.
+
+### #462 — Tags not returned by ListTagsForResource/ListTagsOfResource/ListTagsLogGroup for CloudWatch Logs, DynamoDB, ECR, ECS
+
+**Status:** Open (filed 2026-06-06) · **Upstream:** e6qu/sockerless#462
+
+Tags set at resource-creation time are not returned by the per-service tag-list APIs. Affects: `logs:ListTagsForResource` (CW log groups), `dynamodb:ListTagsOfResource` (DynamoDB table), `ecr:ListTagsForResource` (ECR repos), `ecs:ListTagsForResource` (ECS task definitions). All 9 affected resources show tag additions on every idempotency plan. EC2 resources are unaffected (tags embedded in `Describe*` responses).
+
 ### #453 — DynamoDB SSEDescription null (server_side_encryption not reflected in DescribeTable)
 
 **Status:** Open (filed 2026-06-06) · **Upstream:** e6qu/sockerless#453
