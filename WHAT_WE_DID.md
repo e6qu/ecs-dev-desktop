@@ -300,4 +300,18 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   are gated with issue references. Module gains `alb_security_group_id` and
   `tasks_security_group_id` outputs; provider constraint updated to `~> 6.0`.
 
+- **2026-06-06** — **All 7 sim gaps resolved upstream (PRs #448+#449); fck-nat step
+  live again; 10 new assertions added; 4 active CI configurations.** Upstream merged
+  **#448** (ECR `scanOnPush`/`encryptionConfiguration` — #444) and **#449** (IAM
+  `ListPolicyVersions` — #441; EC2 `DescribeVpcs` multi-id + tag filters +
+  `CidrBlockAssociationSet` — #442; EC2 `DescribeSecurityGroups` vpc-id/group-name/group-id
+  filters — #443; CloudWatch Logs `kmsKeyId` persisted — #445; ECS `DescribeClusters
+--include SETTINGS/CONFIGURATIONS` — #446; IAM `ListRoles` — #447). Submodule bumped
+  `33b8e3d`→`b174425`. CI changes: (1) un-gated the **fck-nat** step (was gated on #441
+  since prior session); (2) added 10 new `assert_eq` checks replacing the 7 gated comments
+  — ECR scan-on-push + KMS encryption type, ECS containerInsights + executeCommand KMS key,
+  CW Logs kmsKeyId, IAM `list-roles` count — bringing the default-stack verification to
+  **57 assertions**; (3) `terraform-sim` now runs **four active** configurations every PR
+  (default 57-check, fck-nat, DNS/TLS). No open upstream blockers remain.
+
 <!-- Append new milestones below. -->

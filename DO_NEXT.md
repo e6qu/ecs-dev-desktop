@@ -103,12 +103,9 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
   Cost), Phase 7, `e2e-aws`.
 - **On DNS (#2):** real `*.devbox.<domain>` routing + ACM (the module path is sim-proven;
   the _real_ hosted zone + cert issuance is AWS/registrar-gated).
-- **On upstream sockerless:** seven new gaps filed from a deep cross-service probe
-  (2026-06-05): **#441** IAM ListPolicyVersions (fck-nat destroy) · **#442** EC2
-  DescribeVpcs filters broken · **#443** EC2 DescribeSecurityGroups filters return all SGs ·
-  **#444** ECR scanOnPush+encryptionConfig not persisted · **#445** CW Logs kmsKeyId not
-  persisted · **#446** ECS DescribeCluster settings/configurations null · **#447** IAM
-  ListRoles InvalidAction. Fck-nat CI step re-gated on #441.
+- **On upstream sockerless:** _No open blockers._ The seven gaps filed 2026-06-05
+  (#441–#447) were all fixed upstream by PRs #448+#449 (merged 2026-06-05/06).
+  Submodule → `b174425`; all CI assertions un-gated; fck-nat step live again.
 
 ## Working notes (durable)
 

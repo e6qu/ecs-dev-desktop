@@ -305,6 +305,7 @@ jobs:
       # difference from a real-cloud apply is the provider endpoints + dummy creds.
       # Post-apply: resource verification across all services + IAM simulation (4
       # policy-evaluation checks) + idempotency (plan -detailed-exitcode = 0).
+      # Four active configurations: default, fck-nat, DNS/TLS (all sims fixed upstream).
       - name: terraform apply + resource verification + IAM simulation + idempotency + destroy (default stack)
         run: |
           terraform -chdir="${TF_DIR}" apply -auto-approve -input=false -var "sim_endpoint=${SIM_ENDPOINT}"
@@ -388,7 +389,14 @@ jobs:
             --repository-name "eddsim/golden/node-20" \
             --query 'lifecyclePolicyText' --output text > /dev/null
           printf 'PASS  ECR golden/node-20 lifecycle policy\n'
-          # GATED e6qu/sockerless#444: ECR scanOnPush + encryptionConfiguration not persisted.
+          assert_eq "ECR control-plane scan-on-push enabled" "True" \
+            "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
+              --repository-names "eddsim/control-plane" \
+              --query 'repositories[0].imageScanningConfiguration.scanOnPush' --output text)"
+          assert_eq "ECR control-plane encryption type KMS" "KMS" \
+            "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
+              --repository-names "eddsim/control-plane" \
+              --query 'repositories[0].encryptionConfiguration.encryptionType' --output text)"
 
           # -- ECS ----------------------------------------------------------------
           assert_eq "ECS cluster ACTIVE" "ACTIVE" \
@@ -415,7 +423,14 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" ecs describe-services \
               --cluster "${CLUSTER}" --services "eddsim-control-plane" \
               --query 'services[0].launchType' --output text)"
-          # GATED e6qu/sockerless#446: DescribeClusters --include SETTINGS/CONFIGURATIONS returns null.
+          assert_eq "ECS cluster containerInsights enabled" "enabled" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-clusters \
+              --clusters "${CLUSTER}" --include SETTINGS \
+              --query "clusters[0].settings[?name=='containerInsights'].value|[0]" --output text)"
+          assert_eq "ECS cluster executeCommand KMS key set" "${KMS_ARN}" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-clusters \
+              --clusters "${CLUSTER}" --include CONFIGURATIONS \
+              --query 'clusters[0].configuration.executeCommandConfiguration.kmsKeyId' --output text)"
 
           # -- AppAutoScaling -----------------------------------------------------
           assert_eq "AppAutoScaling target registered" "1" \
@@ -450,7 +465,10 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" logs describe-log-groups \
               --log-group-name-prefix "/eddsim/control-plane" \
               --query 'logGroups[0].retentionInDays' --output text)"
-          # GATED e6qu/sockerless#445: CW Logs kmsKeyId not persisted (CreateLogGroup drops it).
+          assert_eq "CW control-plane log group kmsKeyId set" "${KMS_ARN}" \
+            "$(aws --endpoint-url "${ENDPT}" logs describe-log-groups \
+              --log-group-name-prefix "/eddsim/control-plane" \
+              --query 'logGroups[0].kmsKeyId' --output text)"
 
           # -- ALB + listeners + target group -------------------------------------
           LB_ARN=$(aws --endpoint-url "${ENDPT}" elbv2 describe-load-balancers \
@@ -495,10 +513,12 @@ jobs:
           assert_eq "IAM reconciler inline policy count 1" "1" \
             "$(aws --endpoint-url "${ENDPT}" iam list-role-policies \
               --role-name eddsim-reconciler --query 'length(PolicyNames)' --output text)"
-          # GATED e6qu/sockerless#447: IAM ListRoles unimplemented (can't enumerate all roles).
+          assert_eq "IAM platform roles count 5" "5" \
+            "$(aws --endpoint-url "${ENDPT}" iam list-roles \
+              --query "length(Roles[?starts_with(RoleName,'eddsim')])" --output text)"
 
           # -- Networking: subnets, NAT, security groups --------------------------
-          # vpc-id filter works for DescribeSubnets (unlike DescribeVpcs — see #442).
+          # vpc-id filter from Terraform output — works for subnets, NAT, route tables.
           assert_eq "Subnet count 4 (2 public + 2 private)" "4" \
             "$(aws --endpoint-url "${ENDPT}" ec2 describe-subnets \
               --filters "Name=vpc-id,Values=${VPC_ID}" \
@@ -516,8 +536,7 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" ec2 describe-route-tables \
               --filters "Name=vpc-id,Values=${VPC_ID}" \
               --query 'length(RouteTables)' --output text)"
-          # SGs: use IDs from Terraform outputs — group-name/vpc-id filters are
-          # unreliable in the sim (all SGs returned regardless of filter, e6qu/sockerless#443).
+          # SGs: use IDs from Terraform outputs (most precise; identical on real AWS).
           assert_eq "ALB SG exists" "${ALB_SG}" \
             "$(aws --endpoint-url "${ENDPT}" ec2 describe-security-groups \
               --group-ids "${ALB_SG}" \
@@ -562,50 +581,45 @@ jobs:
 
           terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false -var "sim_endpoint=${SIM_ENDPOINT}"
 
-      # fck-nat NAT-instance path: EC2 Launch Template ops by e6qu/sockerless#439
-      # (closes #433); standalone ENI ops by #430.
-      # GATED: e6qu/sockerless#441 — IAM ListPolicyVersions unimplemented; the
-      # Terraform AWS provider calls it during destroy of aws_iam_policy (created
-      # by fck-nat for the NAT instance IAM role) and gets UnknownError, leaving
-      # the policy stuck in state. Un-gate once #441 is fixed upstream.
-      # - name: terraform apply + resource verification + idempotency + destroy (fck-nat NAT instance)
-      #   run: |
-      #     terraform -chdir="${TF_DIR}" apply -auto-approve -input=false \
-      #       -var "sim_endpoint=${SIM_ENDPOINT}" -var nat_mode=instance
-      #
-      #     ENDPT="${SIM_ENDPOINT}"
-      #     CLUSTER=$(terraform -chdir="${TF_DIR}" output -raw ecs_cluster_name)
-      #     VPC_ID=$(terraform  -chdir="${TF_DIR}" output -raw vpc_id)
-      #     ENI_ID=$(terraform  -chdir="${TF_DIR}" output -raw nat_instance_eni_id)
-      #
-      #     assert_eq() {
-      #       local label="$1" want="$2" got="$3"
-      #       if [ "${got}" = "${want}" ]; then printf 'PASS  %s\n' "${label}"
-      #       else printf 'FAIL  %s: expected [%s] got [%s]\n' "${label}" "${want}" "${got}"; exit 1; fi
-      #     }
-      #
-      #     assert_eq "fck-nat launch template exists" "eddsim-nat" \
-      #       "$(aws --endpoint-url "${ENDPT}" ec2 describe-launch-templates \
-      #         --filters "Name=launch-template-name,Values=eddsim-nat" \
-      #         --query 'LaunchTemplates[0].LaunchTemplateName' --output text)"
-      #     assert_eq "fck-nat ENI exists" "${ENI_ID}" \
-      #       "$(aws --endpoint-url "${ENDPT}" ec2 describe-network-interfaces \
-      #         --network-interface-ids "${ENI_ID}" \
-      #         --query 'NetworkInterfaces[0].NetworkInterfaceId' --output text)"
-      #     assert_eq "fck-nat IAM role exists" "eddsim-nat" \
-      #       "$(aws --endpoint-url "${ENDPT}" iam get-role --role-name eddsim-nat \
-      #         --query 'Role.RoleName' --output text)"
-      #     assert_eq "No managed NAT gateways in instance mode" "0" \
-      #       "$(aws --endpoint-url "${ENDPT}" ec2 describe-nat-gateways \
-      #         --filter "Name=vpc-id,Values=${VPC_ID}" \
-      #         --query 'length(NatGateways[?State==`available`])' --output text)"
-      #
-      #     terraform -chdir="${TF_DIR}" plan -input=false \
-      #       -var "sim_endpoint=${SIM_ENDPOINT}" -var nat_mode=instance -detailed-exitcode
-      #     printf 'PASS  idempotency fck-nat (plan exit 0)\n'
-      #
-      #     terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false \
-      #       -var "sim_endpoint=${SIM_ENDPOINT}" -var nat_mode=instance
+      # fck-nat NAT-instance path: Launch Template (#439/#433), ENI (#430),
+      # IAM ListPolicyVersions (#449/#441) — all fixed upstream.
+      - name: terraform apply + resource verification + idempotency + destroy (fck-nat NAT instance)
+        run: |
+          terraform -chdir="${TF_DIR}" apply -auto-approve -input=false \
+            -var "sim_endpoint=${SIM_ENDPOINT}" -var nat_mode=instance
+
+          ENDPT="${SIM_ENDPOINT}"
+          VPC_ID=$(terraform  -chdir="${TF_DIR}" output -raw vpc_id)
+          ENI_ID=$(terraform  -chdir="${TF_DIR}" output -raw nat_instance_eni_id)
+
+          assert_eq() {
+            local label="$1" want="$2" got="$3"
+            if [ "${got}" = "${want}" ]; then printf 'PASS  %s\n' "${label}"
+            else printf 'FAIL  %s: expected [%s] got [%s]\n' "${label}" "${want}" "${got}"; exit 1; fi
+          }
+
+          assert_eq "fck-nat launch template exists" "eddsim-nat" \
+            "$(aws --endpoint-url "${ENDPT}" ec2 describe-launch-templates \
+              --filters "Name=launch-template-name,Values=eddsim-nat" \
+              --query 'LaunchTemplates[0].LaunchTemplateName' --output text)"
+          assert_eq "fck-nat ENI exists" "${ENI_ID}" \
+            "$(aws --endpoint-url "${ENDPT}" ec2 describe-network-interfaces \
+              --network-interface-ids "${ENI_ID}" \
+              --query 'NetworkInterfaces[0].NetworkInterfaceId' --output text)"
+          assert_eq "fck-nat IAM role exists" "eddsim-nat" \
+            "$(aws --endpoint-url "${ENDPT}" iam get-role --role-name eddsim-nat \
+              --query 'Role.RoleName' --output text)"
+          assert_eq "No managed NAT gateways in instance mode" "0" \
+            "$(aws --endpoint-url "${ENDPT}" ec2 describe-nat-gateways \
+              --filter "Name=vpc-id,Values=${VPC_ID}" \
+              --query "length(NatGateways[?State==\`available\`])" --output text)"
+
+          terraform -chdir="${TF_DIR}" plan -input=false \
+            -var "sim_endpoint=${SIM_ENDPOINT}" -var nat_mode=instance -detailed-exitcode
+          printf 'PASS  idempotency fck-nat (plan exit 0)\n'
+
+          terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false \
+            -var "sim_endpoint=${SIM_ENDPOINT}" -var nat_mode=instance
 
       # DNS/TLS path: re-apply with enable_dns=true so the module's ACM cert +
       # Route53 validation + HTTPS listener (dns.tf) provision against the sim
