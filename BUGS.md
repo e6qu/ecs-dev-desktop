@@ -8,25 +8,10 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-Both block the **full** sim apply-test of the `infra/terraform` platform module. Per §6.8
-the module is **not** branched around them; the full-apply step of the `terraform-sim` CI
-job is gated off and lands once both are fixed (the job's `init`/`validate`/`plan` against
-the live sim runs every PR today).
-
-These are the **second** layer of gaps: the full apply now reaches DynamoDB GSI creation
-and the ECS service (the prior KMS-tag/NAT hangs were fixed by #415, below).
-
-- **[#416](https://github.com/e6qu/sockerless/issues/416) — DynamoDB drops GSIs (open).**
-  `DescribeTable`/`CreateTable` return `GlobalSecondaryIndexes: null` (the `DDBTable` struct
-  has no GSI field; the `CreateTable` request never parses them). The AWS provider waits for
-  each GSI's `IndexStatus` to reach `ACTIVE`, never finds it, and fails after ~21 retries.
-  Blocks any `aws_dynamodb_table` with a GSI — i.e. every single-table design (`@edd/db`
-  uses GSI1 + GSI2). DynamoDB Local accepts the same schema, so this is sim-specific.
-- **[#417](https://github.com/e6qu/sockerless/issues/417) — ECS Service family
-  unimplemented (open).** `CreateService`/`DescribeServices`/`ListServices`/`UpdateService`/
-  `DeleteService` and `PutClusterCapacityProviders` return `UnknownOperationException`
-  (clusters + task definitions + `RunTask` work). Blocks `aws_ecs_service` and
-  `aws_ecs_cluster_capacity_providers` — i.e. any Fargate **service** (our control plane).
+_None._ The `infra/terraform` platform module's **full non-mocked apply+destroy** against the
+sim is green and runs every PR (`terraform-sim` CI job): `Apply complete! 55 added` →
+`Destroy complete! 55 destroyed`. The three rounds of gaps that blocked it are all fixed
+upstream (#411→#410, #413/#414→#415, #416/#417→#418; see Resolved below).
 
 Policy (`AGENTS.md` §6.8 + standing directive): the **whole project** (product code _and_
 tests) differs from the real-cloud path by **endpoint/base-domain only** — no sim-specific
@@ -47,7 +32,9 @@ always-admin) → #401 · **#400** `/admin/organizations` site-admin auth → #4
 Terraform/AWS provider: KMS `EnableKeyRotation` + Application Auto Scaling
 `RegisterScalableTarget` + EventBridge Scheduler `CreateSchedule` unimplemented → #410 ·
 **#413** KMS tagging (`TagResource`/`UntagResource` + `ListResourceTags` empty) → #415 ·
-**#414** `CreateNatGateway` had no API-only modeled path → #415. (Plus #334/#335 LB/SG
+**#414** `CreateNatGateway` had no API-only modeled path → #415 · **#416** DynamoDB
+`DescribeTable`/`CreateTable` dropped GlobalSecondaryIndexes → #418 · **#417** ECS Service
+family + `PutClusterCapacityProviders` unimplemented → #418. (Plus #334/#335 LB/SG
 enforcement, not we-filed → #364.)
 
 Key outcome: container-mode ECS uses **Docker named volumes**, so the e2e runs with plain
