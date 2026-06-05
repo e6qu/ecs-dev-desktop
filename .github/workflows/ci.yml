@@ -269,6 +269,11 @@ jobs:
       # tests/sim defaults sim_endpoint to this; kept explicit for the apply step.
       SIM_ENDPOINT: http://127.0.0.1:4566
       TF_DIR: infra/terraform/modules/ecs-dev-desktop/tests/sim
+      # Dummy creds + region for the AWS CLI (simulate-principal-policy assertions).
+      # The sim ignores credential values; region must be set explicitly.
+      AWS_DEFAULT_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
     steps:
       - uses: actions/checkout@v6.0.2
         with:
