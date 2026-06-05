@@ -21,6 +21,12 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
 
 ## Done recently
 
+- **Simulators over HTTPS (TLS) — mock-free Entra auth + SSH (`e2e-https` job).** All three
+  sockerless sims serve over TLS (`gen-sim-tls-cert.sh` → self-signed CA in gitignored
+  `temp/sim-tls`; `docker-compose.https.yml`; `EDD_SIM_SCHEME=https` flips `@edd/config`).
+  The Entra login→group→role smoke (Graph + ROPC) runs over HTTPS with real CA trust
+  (`NODE_EXTRA_CA_CERTS`, **no `--insecure`** — fails without the CA), and SSH connect +
+  authz-deny runs against the real Teleport cluster. Config-only (§6.8); no upstream gaps.
 - **Terraform platform module + full non-mocked sim apply in CI.** Reusable
   Terraform/Terragrunt module for the whole stack (VPC + NAT [managed or **fck-nat**], KMS,
   DynamoDB single-table w/ GSIs, ECR, ECS cluster + Fargate service + autoscaling, ALB +

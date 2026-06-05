@@ -33,6 +33,19 @@ export const dynamodbLocal = {
   endpoint: `http://${DYNAMODB_LOCAL_HOST}:${DYNAMODB_LOCAL_PORT}`,
 } as const;
 
+/**
+ * Scheme for the local sockerless simulators (AWS / bleephub / Entra). Defaults
+ * to plain HTTP; set `EDD_SIM_SCHEME=https` to drive the sims over TLS — the HTTPS
+ * e2e harness mounts a self-signed cert (`SIM_TLS_CERT`/`SIM_TLS_KEY`) and the
+ * client trusts its CA via `NODE_EXTRA_CA_CERTS`. Endpoint-only switch (§6.8):
+ * the *real-cloud* URLs are HTTPS regardless; this only flips the sim base URLs.
+ * Unset → `http` (documented default); an invalid explicit value throws (loud).
+ */
+const SIM_SCHEME: "http" | "https" =
+  process.env.EDD_SIM_SCHEME === undefined
+    ? "http"
+    : z.enum(["http", "https"]).parse(process.env.EDD_SIM_SCHEME);
+
 const AWS_SIM_HOST = "127.0.0.1";
 const AWS_SIM_PORT = 4566;
 
@@ -44,7 +57,7 @@ const AWS_SIM_PORT = 4566;
 export const awsSim = {
   host: AWS_SIM_HOST,
   port: AWS_SIM_PORT,
-  endpoint: `http://${AWS_SIM_HOST}:${AWS_SIM_PORT}`,
+  endpoint: `${SIM_SCHEME}://${AWS_SIM_HOST}:${AWS_SIM_PORT}`,
 } as const;
 
 const BLEEPHUB_HOST = "127.0.0.1";
@@ -53,8 +66,8 @@ const BLEEPHUB_PORT = 5555;
 /** bleephub — the sockerless GitHub server (e2e auth harness). `url` is the OAuth
  * root (`/login/oauth/*`); `apiUrl` is the REST base (`/api/v3`). */
 export const bleephub = {
-  url: `http://${BLEEPHUB_HOST}:${BLEEPHUB_PORT}`,
-  apiUrl: `http://${BLEEPHUB_HOST}:${BLEEPHUB_PORT}/api/v3`,
+  url: `${SIM_SCHEME}://${BLEEPHUB_HOST}:${BLEEPHUB_PORT}`,
+  apiUrl: `${SIM_SCHEME}://${BLEEPHUB_HOST}:${BLEEPHUB_PORT}/api/v3`,
 } as const;
 
 const ENTRA_SIM_HOST = "127.0.0.1";
@@ -69,9 +82,9 @@ export const ENTRA_SIM_TENANT = "edd-e2e-tenant";
  * against real cloud the same code points them at `login.microsoftonline.com` /
  * `graph.microsoft.com` — endpoint-only, no sim-specific paths (`AGENTS.md` §6.8). */
 export const entraSim = {
-  endpoint: `http://${ENTRA_SIM_HOST}:${ENTRA_SIM_PORT}`,
-  authority: `http://${ENTRA_SIM_HOST}:${ENTRA_SIM_PORT}/${ENTRA_SIM_TENANT}`,
-  graphUrl: `http://${ENTRA_SIM_HOST}:${ENTRA_SIM_PORT}/v1.0`,
+  endpoint: `${SIM_SCHEME}://${ENTRA_SIM_HOST}:${ENTRA_SIM_PORT}`,
+  authority: `${SIM_SCHEME}://${ENTRA_SIM_HOST}:${ENTRA_SIM_PORT}/${ENTRA_SIM_TENANT}`,
+  graphUrl: `${SIM_SCHEME}://${ENTRA_SIM_HOST}:${ENTRA_SIM_PORT}/v1.0`,
 } as const;
 
 /**

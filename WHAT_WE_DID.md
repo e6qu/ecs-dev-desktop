@@ -230,4 +230,19 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   PR. Lesson: a wildcard SAN is the case that exposes ACM validation-record fidelity; a
   non-wildcard cert would only have hit the issuance gap.
 
+- **2026-06-05** — **Simulators over HTTPS (TLS) — mock-free Entra auth + SSH smoke.** Added
+  an `e2e-https` CI job that runs the auth + SSH paths the way real cloud does: over TLS with
+  **real certificate trust** (no `--insecure`). `scripts/gen-sim-tls-cert.sh` (portable,
+  shellcheck-clean) mints a self-signed CA + server cert into `temp/sim-tls` (gitignored, no
+  committed key); `docker-compose.https.yml` serves all three sockerless sims over TLS —
+  azure-sim + aws-sim via `SIM_TLS_CERT`/`SIM_TLS_KEY`, bleephub via `BPH_TLS_CERT`/
+  `BPH_TLS_KEY` (all config-only — no upstream gaps; the Azure OIDC discovery auto-advertises
+  `https://`). `@edd/config` gained an `EDD_SIM_SCHEME` switch (default `http`; `https` flips
+  every sim base URL — endpoint-only, §6.8/§6.2); the client trusts the CA via
+  `NODE_EXTRA_CA_CERTS`. The Entra login→group→role smoke (Graph + ROPC) passes over HTTPS and
+  **fails without the CA** (`unable to verify the first certificate`) — proving real TLS
+  verification, not a skip. SSH connect + authz-deny runs against the real Teleport cluster
+  (already TLS). Lesson: bleephub's TLS lives in its `Server.ListenAndServe` (env
+  `BPH_TLS_*`), distinct from the `simulators/*` `SIM_TLS_*` path — both reachable via env.
+
 <!-- Append new milestones below. -->
