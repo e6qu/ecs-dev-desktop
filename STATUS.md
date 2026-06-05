@@ -2,8 +2,8 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-05 (IAM policy simulation + fck-nat ENI path now sim-proven in CI;
-submodule → `9e2640a` post-#431; four `terraform-sim` configurations every PR)
+**Last updated:** 2026-06-05 (submodule → `33b8e3d` post-#440; KMS grants, ECR policy+layers,
+ECS reads, EC2 offerings, ELBv2 rules all fixed upstream; #433 LaunchTemplates still open)
 
 ## Current phase
 

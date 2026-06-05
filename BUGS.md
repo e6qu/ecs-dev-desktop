@@ -8,48 +8,6 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-### #434 — KMS grants + secondary crypto ops unimplemented
-
-**Status:** Open (filed 2026-06-05) · **Upstream:** e6qu/sockerless#434
-
-`CreateGrant`, `ListGrants`, `RevokeGrant` all return `UnknownOperationException`. AWS services
-(ECS, ECR) create grants internally on CMKs used for encryption at rest; explicit grants are
-managed via Terraform `aws_kms_grant`. Also missing: `GenerateDataKeyWithoutPlaintext` and
-`ReEncrypt`. Source: `simulators/aws/kms.go:74` — grant store absent.
-
-### #435 — ECR missing ops: repository policy + image layer push/pull
-
-**Status:** Open (filed 2026-06-05) · **Upstream:** e6qu/sockerless#435
-
-`SetRepositoryPolicy`/`GetRepositoryPolicy` return `UnknownOperationException` (blocks
-Terraform `aws_ecr_repository_policy`). `InitiateLayerUpload`/`GetDownloadUrlForLayer` also
-missing (blocks actual image push/pull). Source: `simulators/aws/ecr.go:92`.
-
-### #436 — ECS read-completeness: DescribeCapacityProviders + ListTaskDefinitionFamilies
-
-**Status:** Open (filed 2026-06-05) · **Upstream:** e6qu/sockerless#436
-
-`DescribeCapacityProviders` returns `UnknownOperationException` — blocks `terraform plan`
-idempotency for `aws_ecs_cluster_capacity_providers` and any data source reading ECS cluster
-capacity provider state. `ListTaskDefinitionFamilies` also missing. Source: `ecs_service.go:69`.
-
-### #437 — EC2 DescribeInstanceTypeOfferings unimplemented — needed by fck-nat after #433
-
-**Status:** Open (filed 2026-06-05) · **Upstream:** e6qu/sockerless#437
-
-`DescribeInstanceTypeOfferings` returns `InvalidAction`. fck-nat calls this to validate that
-the NAT instance type is available in the configured AZs. Needed after #433 (LaunchTemplates)
-is fixed for the full `nat_mode=instance` path to work. Source: `ec2.go:333`.
-
-### #438 — ELBv2 listener rules + ModifyListener unimplemented
-
-**Status:** Open (filed 2026-06-05) · **Upstream:** e6qu/sockerless#438
-
-`CreateRule`, `DescribeRules`, `ModifyRule`, `DeleteRule`, `ModifyListener` all return
-`InvalidAction`. Needed for Terraform `aws_alb_listener_rule` (identity-aware proxy routing,
-host-based dispatch) and any listener update (SSL cert rotation, default-action changes).
-Source: `simulators/aws/elbv2.go:86` — rule store absent.
-
 ### #433 — EC2 Launch Template ops unimplemented — blocks fck-nat `nat_mode=instance`
 
 **Status:** Open (filed 2026-06-05) · **Upstream:** e6qu/sockerless#433
@@ -84,7 +42,15 @@ Terraform/AWS provider: KMS `EnableKeyRotation` + Application Auto Scaling
 **#413** KMS tagging (`TagResource`/`UntagResource` + `ListResourceTags` empty) → #415 ·
 **#414** `CreateNatGateway` had no API-only modeled path → #415 · **#416** DynamoDB
 `DescribeTable`/`CreateTable` dropped GlobalSecondaryIndexes → #418 · **#417** ECS Service
-family + `PutClusterCapacityProviders` unimplemented → #418 · **#420** ACM DNS-validated
+family + `PutClusterCapacityProviders` unimplemented → #418 · **#434** KMS grants (`CreateGrant`/`ListGrants`/`RevokeGrant`) + secondary crypto
+(`GenerateDataKeyWithoutPlaintext`/`ReEncrypt`) · **#435** ECR repository policy
+(`SetRepositoryPolicy`/`GetRepositoryPolicy`) + image layer data plane
+(`InitiateLayerUpload`/`CompleteLayerUpload`/`GetDownloadUrlForLayer`) · **#436** ECS
+`DescribeCapacityProviders` + `ListTaskDefinitionFamilies` · **#437** EC2
+`DescribeInstanceTypeOfferings` · **#438** ELBv2 `CreateRule`/`DescribeRules`/`ModifyRule`/
+`DeleteRule`/`ModifyListener` — all five → PR #440. (All found by live probing 2026-06-05.)
+
+**#420** ACM DNS-validated
 cert never reached `ISSUED` + **#421** ACM wildcard-SAN validation record name carried a
 literal `*` → #424 · **#427** IAM policy simulation unimplemented (`SimulateCustomPolicy`/
 `SimulatePrincipalPolicy` returned `InvalidAction`; no evaluation engine) → #431 (added full

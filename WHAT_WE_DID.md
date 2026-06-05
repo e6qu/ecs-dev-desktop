@@ -262,4 +262,19 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   is the key least-privilege assertion for GC safety — the sim evaluator's `MissingContextValues`
   semantics (missing context → condition fails → implicit deny) match real AWS.
 
+- **2026-06-05** — **Comprehensive sim gap audit → #434–#438 all fixed upstream in one PR
+  (#440); submodule → `33b8e3d`.** Live-probed every AWS service the platform uses against the
+  rebuilt sim (CloudTrail, CloudWatch Logs, SecretsManager, IAM, KMS, ECR, ECS, AppAutoScaling,
+  ELBv2, EC2, SSM, STS, EventBridge Scheduler). Found five real gaps (no speculation — all
+  verified with CLI repros): **#434** KMS grants + secondary crypto; **#435** ECR repository
+  policy + image layer data plane (`InitiateLayerUpload`/`CompleteLayerUpload`/
+  `GetDownloadUrlForLayer`, real content-addressed layer pipeline); **#436** ECS
+  `DescribeCapacityProviders` + `ListTaskDefinitionFamilies`; **#437** EC2
+  `DescribeInstanceTypeOfferings`; **#438** ELBv2 `CreateRule`/`DescribeRules`/`ModifyRule`/
+  `DeleteRule`/`ModifyListener`. All five fixed in PR #440 (same day). The only remaining
+  blocker is **#433** (EC2 LaunchTemplates — fck-nat CI step stays gated). Lesson: a fresh
+  cross-service audit finds gaps the apply-path tests miss (the apply succeeds even without
+  `DescribeCapacityProviders` because Terraform's create path doesn't read back capacity
+  providers; the read gap only surfaces on `plan` after `apply`).
+
 <!-- Append new milestones below. -->
