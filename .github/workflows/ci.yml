@@ -305,7 +305,8 @@ jobs:
       # difference from a real-cloud apply is the provider endpoints + dummy creds.
       # Post-apply: resource verification across all services + IAM simulation (4
       # policy-evaluation checks) + idempotency (plan -detailed-exitcode = 0).
-      # Four active configurations: default, fck-nat, DNS/TLS (all sims fixed upstream).
+      # Four active configurations: default (100+ assertions), fck-nat, DNS/TLS.
+      # Gated: #453 DynamoDB SSE, #454 ECS deploymentConfiguration, #455 ModifySecurityGroupRules.
       - name: terraform apply + resource verification + IAM simulation + idempotency + destroy (default stack)
         run: |
           terraform -chdir="${TF_DIR}" apply -auto-approve -input=false -var "sim_endpoint=${SIM_ENDPOINT}"
@@ -371,6 +372,9 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" kms get-key-rotation-status \
               --key-id "${KMS_KEY_ID}" \
               --query 'KeyRotationEnabled' --output text)"
+          assert_eq "KMS alias exists" "1" \
+            "$(aws --endpoint-url "${ENDPT}" kms list-aliases \
+              --query "length(Aliases[?AliasName=='alias/eddsim-ecs-dev-desktop'])" --output text)"
 
           # -- ECR ----------------------------------------------------------------
           assert_eq "ECR control-plane repo exists" "eddsim/control-plane" \
@@ -397,6 +401,30 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
               --repository-names "eddsim/control-plane" \
               --query 'repositories[0].encryptionConfiguration.encryptionType' --output text)"
+          assert_eq "ECR control-plane imageTagMutability MUTABLE" "MUTABLE" \
+            "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
+              --repository-names "eddsim/control-plane" \
+              --query 'repositories[0].imageTagMutability' --output text)"
+          assert_eq "ECR control-plane kmsKey matches" "${KMS_ARN}" \
+            "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
+              --repository-names "eddsim/control-plane" \
+              --query 'repositories[0].encryptionConfiguration.kmsKey' --output text)"
+          assert_eq "ECR golden/node-20 scan-on-push enabled" "True" \
+            "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
+              --repository-names "eddsim/golden/node-20" \
+              --query 'repositories[0].imageScanningConfiguration.scanOnPush' --output text)"
+          assert_eq "ECR golden/node-20 encryption type KMS" "KMS" \
+            "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
+              --repository-names "eddsim/golden/node-20" \
+              --query 'repositories[0].encryptionConfiguration.encryptionType' --output text)"
+          assert_eq "ECR golden/node-20 imageTagMutability IMMUTABLE" "IMMUTABLE" \
+            "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
+              --repository-names "eddsim/golden/node-20" \
+              --query 'repositories[0].imageTagMutability' --output text)"
+          assert_eq "ECR golden/node-20 kmsKey matches" "${KMS_ARN}" \
+            "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
+              --repository-names "eddsim/golden/node-20" \
+              --query 'repositories[0].encryptionConfiguration.kmsKey' --output text)"
 
           # -- ECS ----------------------------------------------------------------
           assert_eq "ECS cluster ACTIVE" "ACTIVE" \
@@ -431,6 +459,28 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" ecs describe-clusters \
               --clusters "${CLUSTER}" --include CONFIGURATIONS \
               --query 'clusters[0].configuration.executeCommandConfiguration.kmsKeyId' --output text)"
+          assert_eq "ECS control-plane task-def CPU 512" "512" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-task-definition \
+              --task-definition "eddsim-control-plane" \
+              --query 'taskDefinition.cpu' --output text)"
+          assert_eq "ECS control-plane task-def memory 1024" "1024" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-task-definition \
+              --task-definition "eddsim-control-plane" \
+              --query 'taskDefinition.memory' --output text)"
+          assert_eq "ECS control-plane task-def network awsvpc" "awsvpc" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-task-definition \
+              --task-definition "eddsim-control-plane" \
+              --query 'taskDefinition.networkMode' --output text)"
+          assert_eq "ECS service desired count 2" "2" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-services \
+              --cluster "${CLUSTER}" --services "eddsim-control-plane" \
+              --query 'services[0].desiredCount' --output text)"
+          assert_eq "ECS service assign public IP DISABLED" "DISABLED" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-services \
+              --cluster "${CLUSTER}" --services "eddsim-control-plane" \
+              --query 'services[0].networkConfiguration.awsvpcConfiguration.assignPublicIp' --output text)"
+          # GATED e6qu/sockerless#454: ECS DescribeServices deploymentConfiguration is null
+          # (deploymentCircuitBreaker not persisted at CreateService).
 
           # -- AppAutoScaling -----------------------------------------------------
           assert_eq "AppAutoScaling target registered" "1" \
@@ -441,6 +491,19 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" application-autoscaling describe-scaling-policies \
               --service-namespace ecs \
               --query 'ScalingPolicies[0].PolicyType' --output text)"
+          assert_eq "AppAutoScaling min capacity 2" "2" \
+            "$(aws --endpoint-url "${ENDPT}" application-autoscaling describe-scalable-targets \
+              --service-namespace ecs \
+              --query 'ScalableTargets[0].MinCapacity' --output text)"
+          assert_eq "AppAutoScaling max capacity 10" "10" \
+            "$(aws --endpoint-url "${ENDPT}" application-autoscaling describe-scalable-targets \
+              --service-namespace ecs \
+              --query 'ScalableTargets[0].MaxCapacity' --output text)"
+          assert_eq "AppAutoScaling CPU target value 60" "60" \
+            "$(aws --endpoint-url "${ENDPT}" application-autoscaling describe-scaling-policies \
+              --service-namespace ecs \
+              --query 'ScalingPolicies[0].TargetTrackingScalingPolicyConfiguration.TargetValue' \
+              --output text)"
 
           # -- EventBridge Scheduler ----------------------------------------------
           assert_eq "Scheduler reconciler ENABLED" "ENABLED" \
@@ -455,6 +518,14 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" scheduler get-schedule \
               --name "eddsim-reconciler" \
               --query 'Target.EcsParameters.LaunchType' --output text)"
+          assert_eq "Scheduler schedule expression rate(5 minutes)" "rate(5 minutes)" \
+            "$(aws --endpoint-url "${ENDPT}" scheduler get-schedule \
+              --name "eddsim-reconciler" \
+              --query 'ScheduleExpression' --output text)"
+          assert_eq "Scheduler max retry attempts 1" "1" \
+            "$(aws --endpoint-url "${ENDPT}" scheduler get-schedule \
+              --name "eddsim-reconciler" \
+              --query 'Target.RetryPolicy.MaximumRetryAttempts' --output text)"
 
           # -- CloudWatch Logs ----------------------------------------------------
           assert_eq "CW log group count 3" "3" \
@@ -468,6 +539,22 @@ jobs:
           assert_eq "CW control-plane log group kmsKeyId set" "${KMS_ARN}" \
             "$(aws --endpoint-url "${ENDPT}" logs describe-log-groups \
               --log-group-name-prefix "/eddsim/control-plane" \
+              --query 'logGroups[0].kmsKeyId' --output text)"
+          assert_eq "CW reconciler log group retention 30d" "30" \
+            "$(aws --endpoint-url "${ENDPT}" logs describe-log-groups \
+              --log-group-name-prefix "/eddsim/reconciler" \
+              --query 'logGroups[0].retentionInDays' --output text)"
+          assert_eq "CW reconciler log group kmsKeyId set" "${KMS_ARN}" \
+            "$(aws --endpoint-url "${ENDPT}" logs describe-log-groups \
+              --log-group-name-prefix "/eddsim/reconciler" \
+              --query 'logGroups[0].kmsKeyId' --output text)"
+          assert_eq "CW workspaces log group retention 30d" "30" \
+            "$(aws --endpoint-url "${ENDPT}" logs describe-log-groups \
+              --log-group-name-prefix "/eddsim/workspaces" \
+              --query 'logGroups[0].retentionInDays' --output text)"
+          assert_eq "CW workspaces log group kmsKeyId set" "${KMS_ARN}" \
+            "$(aws --endpoint-url "${ENDPT}" logs describe-log-groups \
+              --log-group-name-prefix "/eddsim/workspaces" \
               --query 'logGroups[0].kmsKeyId' --output text)"
 
           # -- ALB + listeners + target group -------------------------------------
@@ -494,6 +581,23 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" elbv2 describe-target-groups \
               --query "TargetGroups[?starts_with(TargetGroupName,'eddsim')].Port|[0]" \
               --output text)"
+          assert_eq "ALB target group health check path" "/api/healthz" \
+            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-target-groups \
+              --query "TargetGroups[?starts_with(TargetGroupName,'eddsim')].HealthCheckPath|[0]" \
+              --output text)"
+          assert_eq "ALB target group health check matcher 200" "200" \
+            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-target-groups \
+              --query "TargetGroups[?starts_with(TargetGroupName,'eddsim')].Matcher.HttpCode|[0]" \
+              --output text)"
+          assert_eq "ALB HTTP listener action forward (no-TLS mode)" "forward" \
+            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-listeners \
+              --load-balancer-arn "${LB_ARN}" \
+              --query "Listeners[?Port==\`80\`].DefaultActions[0].Type|[0]" --output text)"
+          assert_eq "ALB drop-invalid-headers enabled" "true" \
+            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-load-balancer-attributes \
+              --load-balancer-arn "${LB_ARN}" \
+              --query "Attributes[?Key=='routing.http.drop_invalid_header_fields.enabled'].Value|[0]" \
+              --output text)"
 
           # -- IAM roles + policies -----------------------------------------------
           for ROLE in eddsim-task-execution eddsim-control-plane eddsim-reconciler \
@@ -516,8 +620,46 @@ jobs:
           assert_eq "IAM platform roles count 5" "5" \
             "$(aws --endpoint-url "${ENDPT}" iam list-roles \
               --query "length(Roles[?starts_with(RoleName,'eddsim')])" --output text)"
+          assert_eq "IAM ecs-infrastructure managed policy attached" "1" \
+            "$(aws --endpoint-url "${ENDPT}" iam list-attached-role-policies \
+              --role-name eddsim-ecs-infrastructure \
+              --query "length(AttachedPolicies[?PolicyName==\`AmazonECSInfrastructureRolePolicyForVolumes\`])" \
+              --output text)"
+          assert_eq "IAM scheduler inline policy count 1" "1" \
+            "$(aws --endpoint-url "${ENDPT}" iam list-role-policies \
+              --role-name eddsim-scheduler --query 'length(PolicyNames)' --output text)"
+          assert_eq "IAM execution extra inline policy count 1" "1" \
+            "$(aws --endpoint-url "${ENDPT}" iam list-role-policies \
+              --role-name eddsim-task-execution --query 'length(PolicyNames)' --output text)"
 
           # -- Networking: subnets, NAT, security groups --------------------------
+          # VPC attributes and routing.
+          assert_eq "VPC CIDR 10.42.0.0/16" "10.42.0.0/16" \
+            "$(aws --endpoint-url "${ENDPT}" ec2 describe-vpcs \
+              --vpc-ids "${VPC_ID}" \
+              --query 'Vpcs[0].CidrBlock' --output text)"
+          assert_eq "VPC DNS support enabled" "True" \
+            "$(aws --endpoint-url "${ENDPT}" ec2 describe-vpc-attribute \
+              --vpc-id "${VPC_ID}" --attribute enableDnsSupport \
+              --query 'EnableDnsSupport.Value' --output text)"
+          assert_eq "VPC DNS hostnames enabled" "True" \
+            "$(aws --endpoint-url "${ENDPT}" ec2 describe-vpc-attribute \
+              --vpc-id "${VPC_ID}" --attribute enableDnsHostnames \
+              --query 'EnableDnsHostnames.Value' --output text)"
+          assert_eq "EIP for NAT exists" "1" \
+            "$(aws --endpoint-url "${ENDPT}" ec2 describe-addresses \
+              --filters "Name=domain,Values=vpc" \
+              --query 'length(Addresses)' --output text)"
+          assert_eq "Public route table has IGW default route" "1" \
+            "$(aws --endpoint-url "${ENDPT}" ec2 describe-route-tables \
+              --filters "Name=vpc-id,Values=${VPC_ID}" \
+              --query "length(RouteTables[?Routes[?GatewayId!=null && starts_with(GatewayId,'igw-')]])" \
+              --output text)"
+          assert_eq "Private route tables have NAT default route" "2" \
+            "$(aws --endpoint-url "${ENDPT}" ec2 describe-route-tables \
+              --filters "Name=vpc-id,Values=${VPC_ID}" \
+              --query "length(RouteTables[?Routes[?NatGatewayId!=null]])" \
+              --output text)"
           # vpc-id filter from Terraform output — works for subnets, NAT, route tables.
           assert_eq "Subnet count 4 (2 public + 2 private)" "4" \
             "$(aws --endpoint-url "${ENDPT}" ec2 describe-subnets \
@@ -555,6 +697,35 @@ jobs:
               --filters "Name=group-id,Values=${TASKS_SG}" \
               --query "length(SecurityGroupRules[?IsEgress==\`false\` && ReferencedGroupInfo.GroupId!=\`null\`])" \
               --output text)"
+          assert_eq "Tasks SG ingress rule port 3000" "3000" \
+            "$(aws --endpoint-url "${ENDPT}" ec2 describe-security-group-rules \
+              --filters "Name=group-id,Values=${TASKS_SG}" \
+              --query "SecurityGroupRules[?IsEgress==\`false\`].FromPort|[0]" --output text)"
+          assert_eq "ALB SG VPC matches" "${VPC_ID}" \
+            "$(aws --endpoint-url "${ENDPT}" ec2 describe-security-groups \
+              --group-ids "${ALB_SG}" \
+              --query 'SecurityGroups[0].VpcId' --output text)"
+
+          # -- DynamoDB schema + backup -------------------------------------------
+          assert_eq "DynamoDB hash key PK" "PK" \
+            "$(aws --endpoint-url "${ENDPT}" dynamodb describe-table \
+              --table-name "${TABLE_NAME}" \
+              --query "Table.KeySchema[?KeyType=='HASH'].AttributeName|[0]" --output text)"
+          assert_eq "DynamoDB GSI1 exists" "1" \
+            "$(aws --endpoint-url "${ENDPT}" dynamodb describe-table \
+              --table-name "${TABLE_NAME}" \
+              --query "length(Table.GlobalSecondaryIndexes[?IndexName=='GSI1'])" --output text)"
+          assert_eq "DynamoDB GSI2 exists" "1" \
+            "$(aws --endpoint-url "${ENDPT}" dynamodb describe-table \
+              --table-name "${TABLE_NAME}" \
+              --query "length(Table.GlobalSecondaryIndexes[?IndexName=='GSI2'])" --output text)"
+          assert_eq "DynamoDB PITR DISABLED (sim fixture)" "DISABLED" \
+            "$(aws --endpoint-url "${ENDPT}" dynamodb describe-continuous-backups \
+              --table-name "${TABLE_NAME}" \
+              --query 'ContinuousBackupsDescription.PointInTimeRecoveryDescription.PointInTimeRecoveryStatus' \
+              --output text)"
+          # GATED e6qu/sockerless#453: DynamoDB SSEDescription is null (server_side_encryption
+          # block values not reflected in DescribeTable).
 
           # -- IAM policy simulation (existing 4 checks) -------------------------
           # Stated allow — DynamoDB PutItem on the owned table.
@@ -573,6 +744,38 @@ jobs:
             --action-names "ec2:DeleteVolume" \
             --resource-arns "arn:aws:ec2:us-east-1::volume/vol-managed" \
             --context-entries "ContextKeyName=aws:ResourceTag/edd:managed,ContextKeyValues=true,ContextKeyType=string"
+          # ecs:RunTask scoped to the platform cluster (ecs:cluster condition satisfied).
+          assert_iam "ecs:RunTask on platform cluster allowed" "allowed" \
+            --action-names "ecs:RunTask" --resource-arns "${CLUSTER_ARN}" \
+            --context-entries "ContextKeyName=ecs:cluster,ContextKeyValues=${CLUSTER_ARN},ContextKeyType=arn"
+          # ecs:RunTask on a different cluster must be denied (condition not satisfied).
+          assert_iam "ecs:RunTask on foreign cluster denied" "implicitDeny" \
+            --action-names "ecs:RunTask" --resource-arns "arn:aws:ecs:us-east-1:123456789012:cluster/other"
+          # ecs:RegisterTaskDefinition is in the same statement with ecs:cluster condition;
+          # with the cluster context provided (as ECS injects when the caller runs in-cluster)
+          # it must be allowed.
+          EXEC_ROLE_ARN=$(aws --endpoint-url "${ENDPT}" iam get-role \
+            --role-name eddsim-task-execution --query 'Role.Arn' --output text)
+          assert_iam "ecs:RegisterTaskDefinition with cluster context allowed" "allowed" \
+            --action-names "ecs:RegisterTaskDefinition" --resource-arns "*" \
+            --context-entries "ContextKeyName=ecs:cluster,ContextKeyValues=${CLUSTER_ARN},ContextKeyType=arn"
+          # logs:PutLogEvents allowed on owned log groups.
+          CP_LOG_ARN=$(aws --endpoint-url "${ENDPT}" logs describe-log-groups \
+            --log-group-name-prefix "/eddsim/control-plane" \
+            --query 'logGroups[0].arn' --output text)
+          assert_iam "logs:PutLogEvents on owned log group allowed" "allowed" \
+            --action-names "logs:PutLogEvents" --resource-arns "${CP_LOG_ARN}:*"
+          # logs:PutLogEvents denied on an unrelated log group.
+          assert_iam "logs:PutLogEvents on foreign log group denied" "implicitDeny" \
+            --action-names "logs:PutLogEvents" \
+            --resource-arns "arn:aws:logs:us-east-1:123456789012:log-group:/other:*"
+          # cloudtrail:LookupEvents — stars resource, should always be allowed.
+          assert_iam "cloudtrail:LookupEvents allowed" "allowed" \
+            --action-names "cloudtrail:LookupEvents" --resource-arns "*"
+          # iam:PassRole to ECS tasks service allowed for execution + infra roles.
+          assert_iam "iam:PassRole execution role to ecs-tasks allowed" "allowed" \
+            --action-names "iam:PassRole" --resource-arns "${EXEC_ROLE_ARN}" \
+            --context-entries "ContextKeyName=iam:PassedToService,ContextKeyValues=ecs-tasks.amazonaws.com,ContextKeyType=string"
 
           # -- Idempotency: plan after apply must show 0 changes ------------------
           terraform -chdir="${TF_DIR}" plan -input=false \
@@ -665,6 +868,33 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" elbv2 describe-listeners \
               --load-balancer-arn "${LB_ARN}" \
               --query "Listeners[?Port==\`80\`].DefaultActions[0].Type|[0]" --output text)"
+          # ACM cert must be AMAZON_ISSUED and have both SANs (control-plane + wildcard).
+          assert_eq "ACM cert type AMAZON_ISSUED" "AMAZON_ISSUED" \
+            "$(aws --endpoint-url "${ENDPT}" acm describe-certificate \
+              --certificate-arn "${CERT_ARN}" \
+              --query 'Certificate.Type' --output text)"
+          assert_eq "ACM cert SAN count 2" "2" \
+            "$(aws --endpoint-url "${ENDPT}" acm describe-certificate \
+              --certificate-arn "${CERT_ARN}" \
+              --query 'length(Certificate.SubjectAlternativeNames)' --output text)"
+          assert_eq "ACM cert validation method DNS" "DNS" \
+            "$(aws --endpoint-url "${ENDPT}" acm describe-certificate \
+              --certificate-arn "${CERT_ARN}" \
+              --query 'Certificate.DomainValidationOptions[0].ValidationMethod' --output text)"
+          # Route53: control-plane A record and workspace wildcard A record created.
+          ZONE_ID=$(aws --endpoint-url "${ENDPT}" route53 list-hosted-zones \
+            --query "HostedZones[?contains(Name,'edd-sim')].Id|[0]" \
+            --output text | sed 's|/hostedzone/||')
+          assert_eq "Route53 control-plane A record exists" "1" \
+            "$(aws --endpoint-url "${ENDPT}" route53 list-resource-record-sets \
+              --hosted-zone-id "${ZONE_ID}" \
+              --query "length(ResourceRecordSets[?Name=='app.edd-sim.example.com.' && Type=='A'])" \
+              --output text)"
+          assert_eq "Route53 workspace wildcard A record exists" "1" \
+            "$(aws --endpoint-url "${ENDPT}" route53 list-resource-record-sets \
+              --hosted-zone-id "${ZONE_ID}" \
+              --query "length(ResourceRecordSets[?contains(Name,'devbox') && Type=='A'])" \
+              --output text)"
 
           # -- Idempotency --------------------------------------------------------
           terraform -chdir="${TF_DIR}" plan -input=false \
