@@ -21,6 +21,14 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
 
 ## Done recently
 
+- **IAM policy simulation + fck-nat ENI ops — sim gaps #427/#428/#BUG-1470 resolved upstream
+  (PRs #431/#430/#429); submodule → `9e2640a`.** The `terraform-sim` CI job now runs four
+  configurations every PR: default stack (with **IAM least-privilege assertions** between
+  apply and destroy — `simulate-principal-policy` verifies `dynamodb:PutItem` allowed,
+  `s3:GetObject` implicitly denied, `ec2:DeleteVolume` tag-condition enforced); **fck-nat
+  NAT-instance** (`nat_mode=instance`); and the DNS/TLS path. Module got `reconciler_task_role_arn`
+  output. Also BUG-1470 (EC2 position-dependent filters — `DescribeNatGateways`/`DescribeSubnets`/
+  `DescribeRouteTables` ignored non-first filters) fixed upstream as part of #429.
 - **Simulators over HTTPS (TLS) — mock-free Entra auth + SSH (`e2e-https` job).** All three
   sockerless sims serve over TLS (`gen-sim-tls-cert.sh` → self-signed CA in gitignored
   `temp/sim-tls`; `docker-compose.https.yml`; `EDD_SIM_SCHEME=https` flips `@edd/config`).
@@ -96,7 +104,7 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
 - **On DNS (#2):** real `*.devbox.<domain>` routing + ACM (the module path is sim-proven;
   the _real_ hosted zone + cert issuance is AWS/registrar-gated).
 - **On upstream sockerless:** _nothing._ Every gap filed is fixed (see `BUGS.md`).
-  Sim from source (submodule pinned `e3567c7`, post-#424).
+  Sim from source (submodule pinned `9e2640a`, post-#431).
 
 ## Working notes (durable)
 

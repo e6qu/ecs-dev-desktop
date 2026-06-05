@@ -245,4 +245,21 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   (already TLS). Lesson: bleephub's TLS lives in its `Server.ListenAndServe` (env
   `BPH_TLS_*`), distinct from the `simulators/*` `SIM_TLS_*` path — both reachable via env.
 
+- **2026-06-05** — **IAM policy simulation + fck-nat ENI ops now sim-proven; submodule →
+  `9e2640a`.** Three more upstream fixes landed: **#431** (closes #427) added a full IAM
+  policy-evaluation engine to the sim (`SimulateCustomPolicy`/`SimulatePrincipalPolicy` —
+  explicit-deny-wins, wildcard actions/resources, `StringEquals`/`ArnLike`/`Bool`/`IfExists`
+  conditions, `NotAction`/`NotResource`, `MissingContextValues`); **#430** (closes #428)
+  implemented standalone EC2 ENI ops (`CreateNetworkInterface`, Attach/Detach/Modify/Delete)
+  which the fck-nat module needs; and **#429** fixed BUG-1470 (EC2 position-dependent filters
+  — `DescribeNatGateways`/`DescribeSubnets`/`DescribeRouteTables` silently dropped any filter
+  at position > 1). The `terraform-sim` CI job grew from two to **four** configurations every
+  PR: (1) default stack with inline **IAM least-privilege assertions** (`simulate-principal-policy`
+  between apply+destroy: `dynamodb:PutItem` allowed, `s3:GetObject` implicitly denied,
+  `ec2:DeleteVolume` without `edd:managed=true` tag implicitly denied, with the tag allowed);
+  (2) **fck-nat NAT instance** (`nat_mode=instance`); (3) DNS/TLS path. The module gained a
+  `reconciler_task_role_arn` output. Lesson: the `aws:ResourceTag/edd:managed` condition test
+  is the key least-privilege assertion for GC safety — the sim evaluator's `MissingContextValues`
+  semantics (missing context → condition fails → implicit deny) match real AWS.
+
 <!-- Append new milestones below. -->

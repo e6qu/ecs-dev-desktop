@@ -84,6 +84,11 @@ output "log_group_names" {
   }
 }
 
+output "reconciler_task_role_arn" {
+  description = "Task role ARN the reconciler assumes at runtime."
+  value       = aws_iam_role.reconciler.arn
+}
+
 output "nat_mode" {
   description = "Private-subnet egress mechanism in effect (gateway | instance)."
   value       = var.nat_mode

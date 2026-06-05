@@ -298,10 +298,61 @@ jobs:
       # ECR, ECS cluster + Fargate service + capacity providers + autoscaling,
       # ALB, IAM, scheduler, logs) and tears it down. Per AGENTS.md §6.8 the only
       # difference from a real-cloud apply is the provider endpoints + dummy creds.
-      - name: terraform apply + destroy (full non-mocked e2e)
+      # IAM least-privilege assertions run between apply and destroy (requires the
+      # policy-evaluation engine added upstream by e6qu/sockerless#431).
+      - name: terraform apply + IAM policy simulation + destroy (full non-mocked e2e)
         run: |
           terraform -chdir="${TF_DIR}" apply -auto-approve -input=false -var "sim_endpoint=${SIM_ENDPOINT}"
+
+          CTRL_ROLE=$(terraform -chdir="${TF_DIR}" output -raw control_plane_task_role_arn)
+          TABLE_ARN=$(terraform -chdir="${TF_DIR}" output -raw dynamodb_table_arn)
+          ENDPT="${SIM_ENDPOINT}"
+
+          assert_iam() {
+            local label="$1" want="$2"
+            shift 2
+            got=$(aws --endpoint-url "${ENDPT}" iam simulate-principal-policy \
+              --policy-source-arn "${CTRL_ROLE}" "$@" \
+              --query 'EvaluationResults[0].EvalDecision' --output text)
+            if [ "${got}" = "${want}" ]; then
+              printf 'PASS  %s\n' "${label}"
+            else
+              printf 'FAIL  %s: expected %s, got %s\n' "${label}" "${want}" "${got}"
+              exit 1
+            fi
+          }
+
+          # Stated allow — DynamoDB PutItem on the owned table.
+          assert_iam "dynamodb:PutItem allowed" "allowed" \
+            --action-names "dynamodb:PutItem" --resource-arns "${TABLE_ARN}"
+
+          # Implicit deny — action not in any policy statement.
+          assert_iam "s3:GetObject implicitDeny" "implicitDeny" \
+            --action-names "s3:GetObject" --resource-arns "arn:aws:s3:::bucket/key"
+
+          # Tag condition not satisfied → implicit deny (ReapManagedEbsOnly statement
+          # only grants ec2:DeleteVolume when aws:ResourceTag/edd:managed = "true").
+          assert_iam "ec2:DeleteVolume untagged implicitDeny" "implicitDeny" \
+            --action-names "ec2:DeleteVolume" \
+            --resource-arns "arn:aws:ec2:us-east-1::volume/vol-untagged"
+
+          # Tag condition satisfied → allowed.
+          assert_iam "ec2:DeleteVolume tagged allowed" "allowed" \
+            --action-names "ec2:DeleteVolume" \
+            --resource-arns "arn:aws:ec2:us-east-1::volume/vol-managed" \
+            --context-entries "ContextKeyName=aws:ResourceTag/edd:managed,ContextKeyValues=true,ContextKeyType=string"
+
           terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false -var "sim_endpoint=${SIM_ENDPOINT}"
+
+      # fck-nat NAT-instance path: standalone ENI ops (CreateNetworkInterface,
+      # Attach/Detach/Modify…) were unimplemented; fixed upstream by #430.
+      - name: terraform apply + destroy (fck-nat NAT instance)
+        run: |
+          terraform -chdir="${TF_DIR}" apply -auto-approve -input=false \
+            -var "sim_endpoint=${SIM_ENDPOINT}" -var nat_mode=instance
+          terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false \
+            -var "sim_endpoint=${SIM_ENDPOINT}" -var nat_mode=instance
+
       # DNS/TLS path: re-apply with enable_dns=true so the module's ACM cert +
       # Route53 validation + HTTPS listener (dns.tf) provision against the sim
       # (64 resources). The two ACM gaps this surfaced — #421 (wildcard-SAN

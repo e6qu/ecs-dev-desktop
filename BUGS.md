@@ -8,11 +8,11 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-_None._ The `infra/terraform` platform module's **full non-mocked apply+destroy** runs every
-PR (`terraform-sim` CI job) in **both** configurations: the default stack (`55 added → 55
-destroyed`) and the **DNS/TLS** path with `enable_dns=true` (`64 added → 64 destroyed` — ACM
-cert + Route53 validation + HTTPS listener). Four rounds of gaps that blocked it are all
-fixed upstream (#411→#410, #413/#414→#415, #416/#417→#418, #420/#421→#424; see Resolved).
+_None._ All six rounds of sockerless gaps are fixed upstream (see Resolved). The
+`terraform-sim` CI job now runs **four** configurations every PR: the default stack
+(`55 added → 55 destroyed`), with IAM policy simulation assertions (requires #431 evaluator),
+with fck-nat NAT instance (`nat_mode=instance` — requires #430 ENI ops), and the DNS/TLS
+path with `enable_dns=true` (`64 added → 64 destroyed`).
 
 Policy (`AGENTS.md` §6.8 + standing directive): the **whole project** (product code _and_
 tests) differs from the real-cloud path by **endpoint/base-domain only** — no sim-specific
@@ -37,7 +37,15 @@ Terraform/AWS provider: KMS `EnableKeyRotation` + Application Auto Scaling
 `DescribeTable`/`CreateTable` dropped GlobalSecondaryIndexes → #418 · **#417** ECS Service
 family + `PutClusterCapacityProviders` unimplemented → #418 · **#420** ACM DNS-validated
 cert never reached `ISSUED` + **#421** ACM wildcard-SAN validation record name carried a
-literal `*` → #424. (Plus #334/#335 LB/SG enforcement, not we-filed → #364.)
+literal `*` → #424 · **#427** IAM policy simulation unimplemented (`SimulateCustomPolicy`/
+`SimulatePrincipalPolicy` returned `InvalidAction`; no evaluation engine) → #431 (added full
+evaluator: explicit-deny-wins, wildcard actions/resources, `StringEquals`/`ArnLike`/`Bool`/
+`IfExists` conditions, `NotAction`/`NotResource`, `MissingContextValues`) · **#428** EC2
+standalone ENI ops unimplemented (`CreateNetworkInterface`, Attach/Detach/Modify/Delete) →
+#430 (blocks `nat_mode=instance` fck-nat path in Terraform) · **BUG-1470** EC2
+position-dependent filters ignored (`DescribeNatGateways`/`DescribeSubnets`/
+`DescribeRouteTables` silently dropped any filter not at position 1) → #429. (Plus
+#334/#335 LB/SG enforcement, not we-filed → #364.)
 
 Key outcome: container-mode ECS uses **Docker named volumes**, so the e2e runs with plain
 Docker (no KVM/nft). Lesson: a sim that _accepts_ a call can still be non-conformant —
