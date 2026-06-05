@@ -103,8 +103,8 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
   Cost), Phase 7, `e2e-aws`.
 - **On DNS (#2):** real `*.devbox.<domain>` routing + ACM (the module path is sim-proven;
   the _real_ hosted zone + cert issuance is AWS/registrar-gated).
-- **On upstream sockerless:** _nothing._ Every gap filed is fixed (see `BUGS.md`).
-  Sim from source (submodule pinned `9e2640a`, post-#431).
+- **On upstream sockerless:** **#433** (EC2 Launch Template ops — blocks `nat_mode=instance`
+  fck-nat CI step). Submodule pinned `9e2640a`, post-#431.
 
 ## Working notes (durable)
 

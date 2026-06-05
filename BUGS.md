@@ -8,11 +8,18 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-_None._ All six rounds of sockerless gaps are fixed upstream (see Resolved). The
-`terraform-sim` CI job now runs **four** configurations every PR: the default stack
-(`55 added → 55 destroyed`), with IAM policy simulation assertions (requires #431 evaluator),
-with fck-nat NAT instance (`nat_mode=instance` — requires #430 ENI ops), and the DNS/TLS
-path with `enable_dns=true` (`64 added → 64 destroyed`).
+### #433 — EC2 Launch Template ops unimplemented — blocks fck-nat `nat_mode=instance`
+
+**Status:** Open (filed 2026-06-05) · **Upstream:** e6qu/sockerless#433
+
+`CreateLaunchTemplate`, `DescribeLaunchTemplates`, `DescribeLaunchTemplateVersions`,
+`DeleteLaunchTemplate` all return `InvalidAction`. The `RaJiska/fck-nat` module uses
+`aws_launch_template` for the NAT instance ASG launch config — `terraform apply -var
+nat_mode=instance` fails at the launch-template resource. The `terraform-sim` fck-nat
+step is gated on this fix. Source: `simulators/aws/ec2.go:registerEC2` — no launch
+template handlers registered.
+
+Standalone ENI ops (#428) were already fixed upstream by #430. This is the next layer.
 
 Policy (`AGENTS.md` §6.8 + standing directive): the **whole project** (product code _and_
 tests) differs from the real-cloud path by **endpoint/base-domain only** — no sim-specific
