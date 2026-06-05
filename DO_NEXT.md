@@ -103,9 +103,11 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
   Cost), Phase 7, `e2e-aws`.
 - **On DNS (#2):** real `*.devbox.<domain>` routing + ACM (the module path is sim-proven;
   the _real_ hosted zone + cert issuance is AWS/registrar-gated).
-- **On upstream sockerless:** _No open blockers._ The seven gaps filed 2026-06-05
-  (#441–#447) were all fixed upstream by PRs #448+#449 (merged 2026-06-05/06).
-  Submodule → `b174425`; all CI assertions un-gated; fck-nat step live again.
+- **On upstream sockerless:** Three gaps filed 2026-06-06 from a second comprehensive
+  probe (100+ new CI assertions verified live): **#453** DynamoDB `SSEDescription` null ·
+  **#454** ECS `deploymentConfiguration` null · **#455** EC2 `ModifySecurityGroupRules`
+  unimplemented. Two CI assertions are gated (#453, #454); #455 does not block CI
+  (in-place SG update path; fresh apply works).
 
 ## Working notes (durable)
 

@@ -314,4 +314,22 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   **57 assertions**; (3) `terraform-sim` now runs **four active** configurations every PR
   (default 57-check, fck-nat, DNS/TLS). No open upstream blockers remain.
 
+- **2026-06-06** — **Second comprehensive sim probe → ~100-assertion CI verification suite;
+  3 new gaps filed (#453–#455).** Live-probed every AWS service and every resource attribute
+  the module creates (KMS alias; ECR imageTagMutability+kmsKey for all repos; ECS task-def
+  cpu/memory/networkMode + service desiredCount+assignPublicIp; AppAutoScaling min/max+CPU
+  target; Scheduler expression+retry; CW Logs retention+kmsKeyId for all 3 groups; ALB
+  health-check path+matcher+drop-invalid-headers; IAM all managed+inline policies; VPC
+  CIDR/DNS attrs; EIP; route table IGW+NAT routes; SG rules/ports/VPC; DynamoDB schema+GSIs+
+  PITR; Route53 A records; ACM cert type+SANs+validation method) and all 11 IAM sim checks
+  (ecs:RunTask cluster-scoped allow/deny, ecs:RegisterTaskDefinition with cluster context,
+  logs:PutLogEvents owned/foreign, cloudtrail:LookupEvents, iam:PassRole to ecs-tasks).
+  Found 3 new sim gaps: **#453** DynamoDB `SSEDescription` null (server_side_encryption not
+  reflected in DescribeTable); **#454** ECS `deploymentConfiguration` null (deploymentCircuit-
+  Breaker not stored in CreateService); **#455** EC2 `ModifySecurityGroupRules` unimplemented
+  (in-place SG rule update path, called by TF provider v6). Two CI assertions gated on #453
+  and #454; #455 does not block CI (fresh apply always uses Authorize/Revoke, not Modify).
+  Default-stack suite: 57 → ~100 assertions. DNS/TLS step gains ACM type+SANs+method and
+  Route53 A record existence checks.
+
 <!-- Append new milestones below. -->

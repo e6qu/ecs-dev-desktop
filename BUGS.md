@@ -8,7 +8,23 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-_None — all seven gaps filed 2026-06-05 were resolved upstream in PRs #448 + #449 (merged 2026-06-05/06). Submodule → `b174425`._
+### #453 — DynamoDB SSEDescription null (server_side_encryption not reflected in DescribeTable)
+
+**Status:** Open (filed 2026-06-06) · **Upstream:** e6qu/sockerless#453
+
+`CreateTable` with `--sse-specification Enabled=true,SSEType=KMS,KMSMasterKeyId=<arn>` succeeds, but `DescribeTable` returns `null` for `SSEDescription`. Real AWS returns `{Status: ENABLED, SSEType: KMS, KMSMasterKeyArn: <arn>}`. The Terraform provider currently does not read back `SSEDescription` for drift detection (idempotency passes), but CI assertions verifying encryption-at-rest are gated.
+
+### #454 — ECS DescribeServices deploymentConfiguration null (deploymentCircuitBreaker not stored)
+
+**Status:** Open (filed 2026-06-06) · **Upstream:** e6qu/sockerless#454
+
+`CreateService` accepts `--deployment-configuration` (including `deploymentCircuitBreaker={enable=true,rollback=true}`) without error, but `DescribeServices` returns `null` for the entire `deploymentConfiguration` field. Real AWS returns the full object. Idempotency passes (provider doesn't diff `deploymentCircuitBreaker` currently), but CI assertions on the deployment safety control are gated.
+
+### #455 — EC2 ModifySecurityGroupRules unimplemented (InvalidAction)
+
+**Status:** Open (filed 2026-06-06) · **Upstream:** e6qu/sockerless#455
+
+`ModifySecurityGroupRules` returns `InvalidAction`. Called by the Terraform AWS provider v6 when updating an existing `aws_vpc_security_group_ingress_rule` or `aws_vpc_security_group_egress_rule` in-place (i.e., re-applying a config that modifies a rule rather than delete+recreate it). Fresh apply/destroy cycles use `AuthorizeSecurityGroupIngress`/`Egress` (which work); this gap only triggers on in-place updates. Does not block current CI (each configuration is a fresh apply).
 
 ## Resolved (sockerless — all fixed upstream)
 

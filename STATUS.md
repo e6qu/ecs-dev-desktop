@@ -2,8 +2,8 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-06 (sockerless PRs #448+#449 merged upstream; all 7 sim gaps resolved;
-submodule → `b174425`; all CI assertions un-gated; fck-nat step live again — 4 active configurations)
+**Last updated:** 2026-06-06 (second comprehensive sim probe: 100+ new CI assertions verified
+live; 3 new gaps filed (#453–#455); default-stack suite now ~100 assertions)
 
 ## Current phase
 
@@ -36,13 +36,16 @@ account/region decision** (`DO_NEXT` #1) alongside the entire real-deploy track.
   IAM, logs) with `examples/complete`, `examples/terragrunt`, and a full README. The
   **`terraform-sim` CI job applies + destroys the entire stack against the sockerless sim
   every PR** in **four active** configurations: (1) default (`55 added → 55 destroyed`) with
-  **57-check post-apply verification** (DynamoDB/KMS/ECR scan+encrypt/ECS containerInsights+
-  executeCommand KMS/AppAutoScaling/EventBridge Scheduler/CloudWatch Logs+KMS/ALB/IAM
-  roles+policies+list/networking) + **IAM policy simulation** (allow/deny/tag-condition) +
-  **idempotency** (`terraform plan -detailed-exitcode` = 0); (2) **fck-nat NAT instance**
-  (`nat_mode=instance`: launch template + ENI + IAM role + no managed NAT + idempotency);
-  (3) **DNS/TLS** (`enable_dns=true`: ACM cert ISSUED + HTTPS listener + idempotency,
-  `64 added → 64 destroyed`). Endpoint-only (§6.8). Real apply is AWS-gated.
+  **~100-assertion post-apply verification** (KMS alias, ECR imageTagMutability+kmsKey for
+  all repos, ECS task-def cpu/memory/networkMode + service config, AppAutoScaling min/max +
+  CPU target, Scheduler expression + retry, CW Logs retention+KMS for all 3 groups, ALB
+  health-check path+matcher + drop-invalid-headers, IAM all 5 roles + managed/inline policies,
+  VPC CIDR/DNS attrs, EIP, route table IGW+NAT routes, SG rules/ports/VPC, DynamoDB schema +
+  GSIs + PITR, 11 IAM sim checks incl. cluster-scoped deny) + **idempotency** + 2 gated
+  assertions (#453 DynamoDB SSE, #454 ECS deploymentConfig); (2) **fck-nat NAT instance**
+  (`nat_mode=instance`); (3) **DNS/TLS** (`enable_dns=true`: ACM cert ISSUED + type + SANs
+  - validation method + Route53 A records + HTTPS listener + redirect + idempotency). Endpoint-
+    only (§6.8). Real apply is AWS-gated.
 - **SSH** (`services/ssh-gateway`) + **Pomerium routing** (`infra/proxy`): real products
   in Docker, mock-free.
 - **Test tiers**: unit/contract · integration (DynamoDB Local + process sim) · e2e
