@@ -240,6 +240,15 @@ jobs:
         run: |
           terraform -chdir="${TF_DIR}" apply -auto-approve -input=false -var "sim_endpoint=${SIM_ENDPOINT}"
           terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false -var "sim_endpoint=${SIM_ENDPOINT}"
+      # DNS/TLS path: re-apply with enable_dns=true so the module's ACM cert +
+      # Route53 validation + HTTPS listener (dns.tf) provision against the sim
+      # (64 resources). The two ACM gaps this surfaced — #421 (wildcard-SAN
+      # validation record name) and #420 (cert never reaching ISSUED) — were
+      # fixed upstream by e6qu/sockerless#424.
+      - name: terraform apply + destroy with DNS/TLS (ACM + Route53 + HTTPS)
+        run: |
+          terraform -chdir="${TF_DIR}" apply -auto-approve -input=false -var "sim_endpoint=${SIM_ENDPOINT}" -var enable_dns=true
+          terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false -var "sim_endpoint=${SIM_ENDPOINT}" -var enable_dns=true
       - if: always()
         run: docker compose -f docker-compose.tier2.yml down
 

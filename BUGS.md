@@ -8,10 +8,11 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-_None._ The `infra/terraform` platform module's **full non-mocked apply+destroy** against the
-sim is green and runs every PR (`terraform-sim` CI job): `Apply complete! 55 added` →
-`Destroy complete! 55 destroyed`. The three rounds of gaps that blocked it are all fixed
-upstream (#411→#410, #413/#414→#415, #416/#417→#418; see Resolved below).
+_None._ The `infra/terraform` platform module's **full non-mocked apply+destroy** runs every
+PR (`terraform-sim` CI job) in **both** configurations: the default stack (`55 added → 55
+destroyed`) and the **DNS/TLS** path with `enable_dns=true` (`64 added → 64 destroyed` — ACM
+cert + Route53 validation + HTTPS listener). Four rounds of gaps that blocked it are all
+fixed upstream (#411→#410, #413/#414→#415, #416/#417→#418, #420/#421→#424; see Resolved).
 
 Policy (`AGENTS.md` §6.8 + standing directive): the **whole project** (product code _and_
 tests) differs from the real-cloud path by **endpoint/base-domain only** — no sim-specific
@@ -34,8 +35,9 @@ Terraform/AWS provider: KMS `EnableKeyRotation` + Application Auto Scaling
 **#413** KMS tagging (`TagResource`/`UntagResource` + `ListResourceTags` empty) → #415 ·
 **#414** `CreateNatGateway` had no API-only modeled path → #415 · **#416** DynamoDB
 `DescribeTable`/`CreateTable` dropped GlobalSecondaryIndexes → #418 · **#417** ECS Service
-family + `PutClusterCapacityProviders` unimplemented → #418. (Plus #334/#335 LB/SG
-enforcement, not we-filed → #364.)
+family + `PutClusterCapacityProviders` unimplemented → #418 · **#420** ACM DNS-validated
+cert never reached `ISSUED` + **#421** ACM wildcard-SAN validation record name carried a
+literal `*` → #424. (Plus #334/#335 LB/SG enforcement, not we-filed → #364.)
 
 Key outcome: container-mode ECS uses **Docker named volumes**, so the e2e runs with plain
 Docker (no KVM/nft). Lesson: a sim that _accepts_ a call can still be non-conformant —
