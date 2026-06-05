@@ -207,9 +207,6 @@ jobs:
       # tests/sim defaults sim_endpoint to this; kept explicit for the apply step.
       SIM_ENDPOINT: http://127.0.0.1:4566
       TF_DIR: infra/terraform/modules/ecs-dev-desktop/tests/sim
-      # Flip to "1" to also exercise the module's ACM/Route53/HTTPS (DNS) path once
-      # e6qu/sockerless#420 + #421 land (see the gated DNS step below).
-      RUN_SIM_DNS: "0"
     steps:
       - uses: actions/checkout@v6.0.2
         with:
@@ -244,13 +241,11 @@ jobs:
           terraform -chdir="${TF_DIR}" apply -auto-approve -input=false -var "sim_endpoint=${SIM_ENDPOINT}"
           terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false -var "sim_endpoint=${SIM_ENDPOINT}"
       # DNS/TLS path: re-apply with enable_dns=true so the module's ACM cert +
-      # Route53 validation + HTTPS listener (dns.tf) provision against the sim.
-      # Gated off until e6qu/sockerless#421 (wildcard-SAN validation record name
-      # carries a literal '*' -> aws_acm_certificate_validation rejects it) and
-      # #420 (cert never transitions to ISSUED -> the validation wait hangs) are
-      # fixed upstream. Per AGENTS.md §6.8 the module is NOT branched around these.
+      # Route53 validation + HTTPS listener (dns.tf) provision against the sim
+      # (64 resources). The two ACM gaps this surfaced — #421 (wildcard-SAN
+      # validation record name) and #420 (cert never reaching ISSUED) — were
+      # fixed upstream by e6qu/sockerless#424.
       - name: terraform apply + destroy with DNS/TLS (ACM + Route53 + HTTPS)
-        if: env.RUN_SIM_DNS == '1'
         run: |
           terraform -chdir="${TF_DIR}" apply -auto-approve -input=false -var "sim_endpoint=${SIM_ENDPOINT}" -var enable_dns=true
           terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false -var "sim_endpoint=${SIM_ENDPOINT}" -var enable_dns=true
