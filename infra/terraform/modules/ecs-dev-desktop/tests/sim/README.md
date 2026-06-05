@@ -19,18 +19,21 @@ terraform apply -auto-approve     # provisions the full stack against the sim
 terraform destroy -auto-approve
 ```
 
-## Status: blocked on three sim operations
+## CI
 
-A full apply currently fails on three operations the sim does not implement,
-filed as [`e6qu/sockerless#411`](https://github.com/e6qu/sockerless/issues/411):
+The `terraform-sim` job (`.github/workflows/ci.yml`) brings the sim up and runs
+the **full non-mocked apply + destroy** of this fixture against the **live** sim
+every PR — `init` + `validate`, then `apply` of the entire platform stack and
+`destroy`. A green run is `Apply complete! 55 added` → `Destroy complete! 55
+destroyed`.
 
-| Service                  | Operation                | Sim response                                                                      |
-| ------------------------ | ------------------------ | --------------------------------------------------------------------------------- |
-| KMS                      | `EnableKeyRotation`      | `UnknownOperationException: TrentService.EnableKeyRotation` (400)                 |
-| Application Auto Scaling | `RegisterScalableTarget` | `UnknownOperationException: AnyScaleFrontendService.RegisterScalableTarget` (400) |
-| EventBridge Scheduler    | `CreateSchedule`         | `404` (service unrouted)                                                          |
+## History
 
-Everything else applies cleanly against the sim (STS, IAM, KMS `CreateKey`, EC2,
-DynamoDB, ECR, ELBv2, ACM, Route53, CloudWatch Logs, Secrets Manager, ECS). Once
-#411 lands, this test runs in CI as a `terraform-sim` job alongside the other
-sim-backed tiers — we do not work around the gaps here.
+Getting here took three upstream rounds — each fix let the apply reach the next
+real gap, all filed per §6.8 and fixed upstream:
+
+| Round | Gap                                                                             | Fixed by                                            |
+| ----- | ------------------------------------------------------------------------------- | --------------------------------------------------- |
+| 1     | KMS `EnableKeyRotation`, Application Auto Scaling, EventBridge Scheduler (#411) | [#410](https://github.com/e6qu/sockerless/pull/410) |
+| 2     | KMS tagging hang (#413), NAT Gateway hang (#414)                                | [#415](https://github.com/e6qu/sockerless/pull/415) |
+| 3     | DynamoDB dropped GSIs (#416), ECS Service family unimplemented (#417)           | [#418](https://github.com/e6qu/sockerless/pull/418) |

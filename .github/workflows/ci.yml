@@ -196,8 +196,52 @@ jobs:
         run: |
           terraform -chdir=infra/terraform/examples/complete init -backend=false -input=false
           terraform -chdir=infra/terraform/examples/complete validate
-      # The full sim-backed apply test (tests/sim) runs once e6qu/sockerless#411
-      # lands the missing AWS operations (KMS rotation, app-autoscaling, scheduler).
+      # The sim-backed test (tests/sim) runs in its own `terraform-sim` job below.
+
+  terraform-sim:
+    name: terraform-sim
+    runs-on: ubuntu-latest
+    # Defensive cap (sim build + full apply+destroy against the sim).
+    timeout-minutes: 25
+    env:
+      # tests/sim defaults sim_endpoint to this; kept explicit for the apply step.
+      SIM_ENDPOINT: http://127.0.0.1:4566
+      TF_DIR: infra/terraform/modules/ecs-dev-desktop/tests/sim
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          submodules: recursive # third_party/sockerless — the sim is built from source
+      - uses: hashicorp/setup-terraform@v4.0.1
+        with:
+          terraform_wrapper: false
+      # Retry bring-up: image pulls can transiently hit registry rate limits
+      # (public.ecr.aws / Docker Hub) on shared runner IPs.
+      - name: Build & start the sockerless AWS simulator (from source, API-only mode)
+        run: |
+          for attempt in 1 2 3; do
+            if docker compose -f docker-compose.tier2.yml up -d --build --wait sockerless-aws; then
+              exit 0
+            fi
+            echo "::warning::sim bring-up failed (attempt ${attempt}); retrying"
+            docker compose -f docker-compose.tier2.yml down -v || true
+            sleep "$((attempt * 20))"
+          done
+          exit 1
+      - name: terraform init + validate
+        run: |
+          terraform -chdir="${TF_DIR}" init -input=false
+          terraform -chdir="${TF_DIR}" validate
+      # Full non-mocked apply+destroy against the LIVE sim every PR — provisions
+      # the entire platform stack (VPC + NAT, KMS, DynamoDB single-table w/ GSIs,
+      # ECR, ECS cluster + Fargate service + capacity providers + autoscaling,
+      # ALB, IAM, scheduler, logs) and tears it down. Per AGENTS.md §6.8 the only
+      # difference from a real-cloud apply is the provider endpoints + dummy creds.
+      - name: terraform apply + destroy (full non-mocked e2e)
+        run: |
+          terraform -chdir="${TF_DIR}" apply -auto-approve -input=false -var "sim_endpoint=${SIM_ENDPOINT}"
+          terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false -var "sim_endpoint=${SIM_ENDPOINT}"
+      - if: always()
+        run: docker compose -f docker-compose.tier2.yml down
 
   shellcheck:
     name: shellcheck
