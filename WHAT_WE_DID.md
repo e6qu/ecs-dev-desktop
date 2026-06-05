@@ -332,4 +332,6 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   Default-stack suite: 57 → ~100 assertions. DNS/TLS step gains ACM type+SANs+method and
   Route53 A record existence checks.
 
+- **2026-06-06** — **Sockerless submodule bumped to `8e866c3` (PR #456 — OCI `/v2/` data plane).** Upstream merged a shared OCI Distribution `/v2/` Docker Registry library wired into all three cloud sims (ECR #450, GCP Artifact Registry #451, Azure ACR #452). Fixes: `GET /v2/` base, chunked blob upload (POST → PATCH → PUT with sha256 verification), blob/manifest GET/HEAD/PUT/DELETE/tags, and `OnManifestPut` hook so a pushed image appears in the ECR control plane. Also bundled: delete-by-digest alias cleanup; a `requireNetworkHost` gate for Compute/Network tests off-Linux; EventGrid CLI test fixed (no longer skipped). No CI changes — these gaps were not in our tracked blockers and the sim-apply path doesn't push/pull images. Our three open blockers (#453 DynamoDB SSE, #454 ECS deploymentConfig, #455 ModifySecurityGroupRules) remain unchanged.
+
 <!-- Append new milestones below. -->
