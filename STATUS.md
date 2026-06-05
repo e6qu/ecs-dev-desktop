@@ -2,8 +2,8 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-05 (Terraform platform module + full non-mocked sim apply in CI;
-heartbeat-route 409 coverage)
+**Last updated:** 2026-06-05 (Terraform platform module + full non-mocked sim apply in CI,
+incl. the DNS/TLS ACM path; heartbeat-route 409 coverage)
 
 ## Current phase
 
@@ -35,7 +35,9 @@ account/region decision** (`DO_NEXT` #1) alongside the entire real-deploy track.
   capacity providers + autoscaling, ALB + optional ACM/Route53, scheduler reconciler cron,
   IAM, logs) with `examples/complete`, `examples/terragrunt`, and a full README. The
   **`terraform-sim` CI job applies + destroys the entire stack against the sockerless sim
-  every PR** (`55 added → 55 destroyed`), endpoint-only (§6.8). Real apply is AWS-gated.
+  every PR** in both configurations: default (`55 added → 55 destroyed`) and the **DNS/TLS**
+  path (`enable_dns=true`: ACM cert + Route53 validation + HTTPS listener, `64 added → 64
+destroyed`), endpoint-only (§6.8). Real apply is AWS-gated.
 - **SSH** (`services/ssh-gateway`) + **Pomerium routing** (`infra/proxy`): real products
   in Docker, mock-free.
 - **Test tiers**: unit/contract · integration (DynamoDB Local + process sim) · e2e

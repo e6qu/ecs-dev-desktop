@@ -82,13 +82,15 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
 ## Blocked
 
 - **On AWS (#1):** the `infra/terraform` module is **built and sim-apply-proven in CI**
-  (full stack: VPC/ECS/ECR/DynamoDB+GSIs/KMS/IAM/ALB/scheduler) — what's AWS-gated is the
-  **real apply** (account + remote state backend), golden image + real Fargate deploy,
-  wiring `apps/web` to real adapters, Teleport/Pomerium real federation + DNS, reconciler
-  cron, Phase 8C (CloudTrail/CloudWatch/Cost), Phase 7, `e2e-aws`.
-- **On DNS (#2):** real `*.devbox.<domain>` routing + ACM.
+  (full stack incl. the DNS/TLS path: VPC/ECS/ECR/DynamoDB+GSIs/KMS/IAM/ALB +
+  ACM/Route53/HTTPS) — what's AWS-gated is the **real apply** (account + remote state
+  backend), golden image + real Fargate deploy, wiring `apps/web` to real adapters,
+  Teleport/Pomerium real federation + DNS, reconciler cron, Phase 8C (CloudTrail/CloudWatch/
+  Cost), Phase 7, `e2e-aws`.
+- **On DNS (#2):** real `*.devbox.<domain>` routing + ACM (the module path is sim-proven;
+  the _real_ hosted zone + cert issuance is AWS/registrar-gated).
 - **On upstream sockerless:** _nothing._ Every gap filed is fixed (see `BUGS.md`).
-  Sim from source (submodule pinned `aa33123`, post-#418).
+  Sim from source (submodule pinned `e3567c7`, post-#424).
 
 ## Working notes (durable)
 

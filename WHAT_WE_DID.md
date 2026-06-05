@@ -217,4 +217,17 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   on a `running` workspace is 200, on a `stopped` one is **409** (the `markActivity` conflict
   mapped by the central `kind→status` table — never a 500), and a cross-owner heartbeat is 403. Closes the last open decision-free coverage item in `DO_NEXT`.
 
+- **2026-06-05** — **ACM/TLS path sim-tested (round 4 of the Terraform saga).** Drove the
+  module's `dns.tf` (ACM cert for `app.<domain>` + the `*.devbox.<domain>` wildcard,
+  DNS-validated, fronting an HTTPS ALB listener) through the sim via a new `enable_dns`
+  toggle in `tests/sim` (creates a Route53 zone + sets `domain_name`; default off so the
+  always-run apply stays 55 resources). It surfaced two ACM gaps — **#421** (wildcard-SAN
+  validation record name carried a literal `*` → `aws_acm_certificate_validation` rejected
+  it) and **#420** (DNS-validated cert never transitioned `PENDING_VALIDATION → ISSUED` →
+  the validation wait hung) — filed per §6.8 and fixed upstream by **#424**. Submodule
+  `aa33123`→`e3567c7`; un-gated the DNS step so `terraform-sim` now runs **both** the default
+  (`55 added → 55 destroyed`) and the DNS/TLS (`64 added → 64 destroyed`) apply+destroy every
+  PR. Lesson: a wildcard SAN is the case that exposes ACM validation-record fidelity; a
+  non-wildcard cert would only have hit the issuance gap.
+
 <!-- Append new milestones below. -->
