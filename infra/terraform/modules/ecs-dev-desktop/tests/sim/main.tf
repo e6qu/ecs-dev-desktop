@@ -45,6 +45,23 @@ provider "aws" {
   }
 }
 
+# DNS/TLS toggle. Off by default so the always-run CI apply stays fast and green;
+# `-var enable_dns=true` exercises the module's full ACM + Route53 + HTTPS path
+# (dns.tf) against the sim. The validation wait is blocked upstream — see the
+# gated `terraform-sim` DNS step and e6qu/sockerless#420.
+variable "enable_dns" {
+  description = "Exercise the module's ACM/Route53/HTTPS path against the sim."
+  type        = bool
+  default     = false
+}
+
+# A hosted zone for the module to write ACM-validation + alias records into. The
+# module takes an *existing* zone id (route53_zone_id); the sim test creates one.
+resource "aws_route53_zone" "test" {
+  count = var.enable_dns ? 1 : 0
+  name  = "edd-sim.example.com"
+}
+
 module "edd" {
   source = "../.."
 
@@ -53,6 +70,10 @@ module "edd" {
   deletion_protection             = false
   dynamodb_point_in_time_recovery = false
   golden_image_repos              = ["node-20"]
+
+  # TLS + workspace-wildcard routing (ACM cert, DNS validation, HTTPS listener).
+  domain_name     = var.enable_dns ? "edd-sim.example.com" : ""
+  route53_zone_id = var.enable_dns ? aws_route53_zone.test[0].zone_id : ""
 }
 
 output "dynamodb_table_name" {

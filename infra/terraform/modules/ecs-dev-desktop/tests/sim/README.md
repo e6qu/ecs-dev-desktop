@@ -17,6 +17,10 @@ cd infra/terraform/modules/ecs-dev-desktop/tests/sim
 terraform init
 terraform apply -auto-approve     # provisions the full stack against the sim
 terraform destroy -auto-approve
+
+# DNS/TLS path (ACM cert + Route53 validation + HTTPS listener). Creates a hosted
+# zone and sets the module's domain_name. Currently blocked upstream — see below.
+terraform apply -auto-approve -var enable_dns=true
 ```
 
 ## CI
@@ -26,6 +30,22 @@ the **full non-mocked apply + destroy** of this fixture against the **live** sim
 every PR — `init` + `validate`, then `apply` of the entire platform stack and
 `destroy`. A green run is `Apply complete! 55 added` → `Destroy complete! 55
 destroyed`.
+
+A second, **gated** step (`RUN_SIM_DNS=1`) re-applies with `enable_dns=true` to
+exercise the module's ACM/Route53/HTTPS path. It is off until the two ACM gaps
+below land; flip `RUN_SIM_DNS` once they do.
+
+## DNS/TLS path: blocked on two ACM sim gaps
+
+The module's `dns.tf` (cert for `app.<domain>` + the `*.devbox.<domain>` wildcard,
+DNS-validated, fronting an HTTPS ALB listener) applies against the sim up to the
+ACM validation, where it hits two gaps (filed per §6.8). The wildcard cert hits
+**#421 first**, then **#420**:
+
+| Issue                                                       | Symptom                                                                                                                    |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| [#421](https://github.com/e6qu/sockerless/issues/421) (ACM) | Wildcard-SAN validation record name carries a literal `*` → `aws_acm_certificate_validation` fails `missing … DNS record`. |
+| [#420](https://github.com/e6qu/sockerless/issues/420) (ACM) | Cert never transitions `PENDING_VALIDATION → ISSUED` → the validation wait hangs (45-min timeout).                         |
 
 ## History
 
