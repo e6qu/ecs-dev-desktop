@@ -8,24 +8,7 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-### #433 — EC2 Launch Template ops unimplemented — blocks fck-nat `nat_mode=instance`
-
-**Status:** Open (filed 2026-06-05) · **Upstream:** e6qu/sockerless#433
-
-`CreateLaunchTemplate`, `DescribeLaunchTemplates`, `DescribeLaunchTemplateVersions`,
-`DeleteLaunchTemplate` all return `InvalidAction`. The `RaJiska/fck-nat` module uses
-`aws_launch_template` for the NAT instance ASG launch config — `terraform apply -var
-nat_mode=instance` fails at the launch-template resource. The `terraform-sim` fck-nat
-step is gated on this fix. Source: `simulators/aws/ec2.go:registerEC2` — no launch
-template handlers registered.
-
-Standalone ENI ops (#428) were already fixed upstream by #430. This is the next layer.
-
-Policy (`AGENTS.md` §6.8 + standing directive): the **whole project** (product code _and_
-tests) differs from the real-cloud path by **endpoint/base-domain only** — no sim-specific
-endpoints, branches, fixtures, tokens, fallbacks. If the sim/bleephub **diverges from the
-real API/behaviour** in something that matters, **file a non-conformance upstream and
-halt** — never adapt around it. Precise filings (repro + code pointer) get fixed in hours.
+_None._
 
 ## Resolved (sockerless — all fixed upstream)
 
@@ -42,7 +25,11 @@ Terraform/AWS provider: KMS `EnableKeyRotation` + Application Auto Scaling
 **#413** KMS tagging (`TagResource`/`UntagResource` + `ListResourceTags` empty) → #415 ·
 **#414** `CreateNatGateway` had no API-only modeled path → #415 · **#416** DynamoDB
 `DescribeTable`/`CreateTable` dropped GlobalSecondaryIndexes → #418 · **#417** ECS Service
-family + `PutClusterCapacityProviders` unimplemented → #418 · **#434** KMS grants (`CreateGrant`/`ListGrants`/`RevokeGrant`) + secondary crypto
+family + `PutClusterCapacityProviders` unimplemented → #418 · **#433** EC2 Launch Template ops (`CreateLaunchTemplate`/`DescribeLaunchTemplates`/
+`DescribeLaunchTemplateVersions`/`DeleteLaunchTemplate`) — blocks fck-nat `nat_mode=instance`
+(`RaJiska/fck-nat` uses `aws_launch_template` for the ASG launch config) → PR #439
+(`ec2_launch_template.go`; `registerEC2LaunchTemplates` wired into `registerEC2`).
+**#434** KMS grants (`CreateGrant`/`ListGrants`/`RevokeGrant`) + secondary crypto
 (`GenerateDataKeyWithoutPlaintext`/`ReEncrypt`) · **#435** ECR repository policy
 (`SetRepositoryPolicy`/`GetRepositoryPolicy`) + image layer data plane
 (`InitiateLayerUpload`/`CompleteLayerUpload`/`GetDownloadUrlForLayer`) · **#436** ECS

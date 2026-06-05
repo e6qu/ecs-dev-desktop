@@ -349,16 +349,14 @@ jobs:
 
           terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false -var "sim_endpoint=${SIM_ENDPOINT}"
 
-      # fck-nat NAT-instance path: GATED on e6qu/sockerless#433 — EC2 Launch Template
-      # ops (CreateLaunchTemplate, Describe, Delete) are unimplemented; fck-nat uses
-      # aws_launch_template for the ASG launch config. Un-gate once #433 is fixed.
-      # (Standalone ENI ops were already fixed upstream by #430.)
-      # - name: terraform apply + destroy (fck-nat NAT instance)
-      #   run: |
-      #     terraform -chdir="${TF_DIR}" apply -auto-approve -input=false \
-      #       -var "sim_endpoint=${SIM_ENDPOINT}" -var nat_mode=instance
-      #     terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false \
-      #       -var "sim_endpoint=${SIM_ENDPOINT}" -var nat_mode=instance
+      # fck-nat NAT-instance path: EC2 Launch Template ops were implemented upstream
+      # by e6qu/sockerless#439 (closes #433); standalone ENI ops by #430.
+      - name: terraform apply + destroy (fck-nat NAT instance)
+        run: |
+          terraform -chdir="${TF_DIR}" apply -auto-approve -input=false \
+            -var "sim_endpoint=${SIM_ENDPOINT}" -var nat_mode=instance
+          terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false \
+            -var "sim_endpoint=${SIM_ENDPOINT}" -var nat_mode=instance
 
       # DNS/TLS path: re-apply with enable_dns=true so the module's ACM cert +
       # Route53 validation + HTTPS listener (dns.tf) provision against the sim

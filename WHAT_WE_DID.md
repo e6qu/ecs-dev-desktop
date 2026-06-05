@@ -272,9 +272,15 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   `DescribeCapacityProviders` + `ListTaskDefinitionFamilies`; **#437** EC2
   `DescribeInstanceTypeOfferings`; **#438** ELBv2 `CreateRule`/`DescribeRules`/`ModifyRule`/
   `DeleteRule`/`ModifyListener`. All five fixed in PR #440 (same day). The only remaining
-  blocker is **#433** (EC2 LaunchTemplates — fck-nat CI step stays gated). Lesson: a fresh
-  cross-service audit finds gaps the apply-path tests miss (the apply succeeds even without
-  `DescribeCapacityProviders` because Terraform's create path doesn't read back capacity
-  providers; the read gap only surfaces on `plan` after `apply`).
+  blocker was **#433** (EC2 LaunchTemplates — fck-nat CI step gated at the time). Lesson: a
+  fresh cross-service audit finds gaps the apply-path tests miss (the apply succeeds even
+  without `DescribeCapacityProviders` because Terraform's create path doesn't read back
+  capacity providers; the read gap only surfaces on `plan` after `apply`).
+- **2026-06-05** — **#433 (EC2 LaunchTemplates) fixed upstream by PR #439; fck-nat CI step
+  un-gated.** `CreateLaunchTemplate`/`DescribeLaunchTemplates`/`DescribeLaunchTemplateVersions`/
+  `DeleteLaunchTemplate` all implemented in `ec2_launch_template.go` (`registerEC2LaunchTemplates`
+  wired into `registerEC2`). Live-probed all four ops — returned correct `lt-…` IDs and version
+  numbers. All four `terraform-sim` configurations now run un-gated every PR: default + IAM
+  assertions, fck-nat NAT instance, DNS/TLS. **No remaining sim blockers.**
 
 <!-- Append new milestones below. -->

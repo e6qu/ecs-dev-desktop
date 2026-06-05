@@ -2,8 +2,8 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-05 (submodule → `33b8e3d` post-#440; KMS grants, ECR policy+layers,
-ECS reads, EC2 offerings, ELBv2 rules all fixed upstream; #433 LaunchTemplates still open)
+**Last updated:** 2026-06-05 (submodule → `33b8e3d` post-#440; all sim gaps resolved — #433
+LaunchTemplates fixed upstream by PR #439, fck-nat CI step un-gated; no remaining sim blockers)
 
 ## Current phase
 
@@ -37,7 +37,7 @@ account/region decision** (`DO_NEXT` #1) alongside the entire real-deploy track.
   **`terraform-sim` CI job applies + destroys the entire stack against the sockerless sim
   every PR** in **four** configurations: default (`55 added → 55 destroyed`) with **IAM
   least-privilege assertions** (`simulate-principal-policy`: allow/deny/tag-condition),
-  **fck-nat NAT instance** (`nat_mode=instance` — ENI ops fixed upstream by #430), and the
+  **fck-nat NAT instance** (`nat_mode=instance` — ENI ops #430 + LaunchTemplates #439), and the
   **DNS/TLS** path (`enable_dns=true`: ACM cert + Route53 validation + HTTPS listener,
   `64 added → 64 destroyed`), endpoint-only (§6.8). Real apply is AWS-gated.
 - **SSH** (`services/ssh-gateway`) + **Pomerium routing** (`infra/proxy`): real products
