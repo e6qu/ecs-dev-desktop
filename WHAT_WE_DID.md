@@ -245,4 +245,97 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   (already TLS). Lesson: bleephub's TLS lives in its `Server.ListenAndServe` (env
   `BPH_TLS_*`), distinct from the `simulators/*` `SIM_TLS_*` path — both reachable via env.
 
+- **2026-06-05** — **IAM policy simulation + fck-nat ENI ops now sim-proven; submodule →
+  `9e2640a`.** Three more upstream fixes landed: **#431** (closes #427) added a full IAM
+  policy-evaluation engine to the sim (`SimulateCustomPolicy`/`SimulatePrincipalPolicy` —
+  explicit-deny-wins, wildcard actions/resources, `StringEquals`/`ArnLike`/`Bool`/`IfExists`
+  conditions, `NotAction`/`NotResource`, `MissingContextValues`); **#430** (closes #428)
+  implemented standalone EC2 ENI ops (`CreateNetworkInterface`, Attach/Detach/Modify/Delete)
+  which the fck-nat module needs; and **#429** fixed BUG-1470 (EC2 position-dependent filters
+  — `DescribeNatGateways`/`DescribeSubnets`/`DescribeRouteTables` silently dropped any filter
+  at position > 1). The `terraform-sim` CI job grew from two to **four** configurations every
+  PR: (1) default stack with inline **IAM least-privilege assertions** (`simulate-principal-policy`
+  between apply+destroy: `dynamodb:PutItem` allowed, `s3:GetObject` implicitly denied,
+  `ec2:DeleteVolume` without `edd:managed=true` tag implicitly denied, with the tag allowed);
+  (2) **fck-nat NAT instance** (`nat_mode=instance`); (3) DNS/TLS path. The module gained a
+  `reconciler_task_role_arn` output. Lesson: the `aws:ResourceTag/edd:managed` condition test
+  is the key least-privilege assertion for GC safety — the sim evaluator's `MissingContextValues`
+  semantics (missing context → condition fails → implicit deny) match real AWS.
+
+- **2026-06-05** — **Comprehensive sim gap audit → #434–#438 all fixed upstream in one PR
+  (#440); submodule → `33b8e3d`.** Live-probed every AWS service the platform uses against the
+  rebuilt sim (CloudTrail, CloudWatch Logs, SecretsManager, IAM, KMS, ECR, ECS, AppAutoScaling,
+  ELBv2, EC2, SSM, STS, EventBridge Scheduler). Found five real gaps (no speculation — all
+  verified with CLI repros): **#434** KMS grants + secondary crypto; **#435** ECR repository
+  policy + image layer data plane (`InitiateLayerUpload`/`CompleteLayerUpload`/
+  `GetDownloadUrlForLayer`, real content-addressed layer pipeline); **#436** ECS
+  `DescribeCapacityProviders` + `ListTaskDefinitionFamilies`; **#437** EC2
+  `DescribeInstanceTypeOfferings`; **#438** ELBv2 `CreateRule`/`DescribeRules`/`ModifyRule`/
+  `DeleteRule`/`ModifyListener`. All five fixed in PR #440 (same day). The only remaining
+  blocker was **#433** (EC2 LaunchTemplates — fck-nat CI step gated at the time). Lesson: a
+  fresh cross-service audit finds gaps the apply-path tests miss (the apply succeeds even
+  without `DescribeCapacityProviders` because Terraform's create path doesn't read back
+  capacity providers; the read gap only surfaces on `plan` after `apply`).
+- **2026-06-05** — **#433 (EC2 LaunchTemplates) fixed upstream by PR #439; fck-nat CI step
+  un-gated.** `CreateLaunchTemplate`/`DescribeLaunchTemplates`/`DescribeLaunchTemplateVersions`/
+  `DeleteLaunchTemplate` all implemented in `ec2_launch_template.go` (`registerEC2LaunchTemplates`
+  wired into `registerEC2`). Live-probed all four ops — returned correct `lt-…` IDs and version
+  numbers.
+- **2026-06-05** — **Comprehensive sim probe → 7 new gaps filed (#441–#447); CI enhanced
+  with 47-assertion post-apply verification suite.** Systematically probed all 12+ AWS
+  services the platform uses against the live sim after a full `terraform apply`, checking
+  every resource the module creates. Found and filed: **#441** IAM `ListPolicyVersions`
+  unimplemented (blocks fck-nat `aws_iam_policy` destroy — re-gated CI step); **#442** EC2
+  `DescribeVpcs` filtering completely broken (vpc-id, tag, and `--vpc-ids` all return wrong
+  results; `CidrBlockAssociationSet` always null); **#443** EC2 `DescribeSecurityGroups`
+  filters return ALL SGs regardless of value (group-name, vpc-id ignored); **#444** ECR
+  `imageScanningConfiguration.scanOnPush` and `encryptionConfiguration` silently dropped on
+  create; **#445** CloudWatch Logs `CreateLogGroup --kms-key-id` accepted but not persisted;
+  **#446** ECS `DescribeClusters --include SETTINGS CONFIGURATIONS` returns null for both
+  `containerInsights` and `executeCommandConfiguration`; **#447** IAM `ListRoles` returns
+  `InvalidAction`. CI now runs a 47-check `assert_eq` suite (DynamoDB/KMS/ECR/ECS/
+  AppAutoScaling/EventBridge/CloudWatch/ALB/IAM/networking) + 4 IAM simulation checks +
+  idempotency (`terraform plan -detailed-exitcode` = 0) on the default stack, and HTTPS
+  listener + ACM cert + idempotency on the DNS/TLS stack. Assertions for the 7 open gaps
+  are gated with issue references. Module gains `alb_security_group_id` and
+  `tasks_security_group_id` outputs; provider constraint updated to `~> 6.0`.
+
+- **2026-06-06** — **All 7 sim gaps resolved upstream (PRs #448+#449); fck-nat step
+  live again; 10 new assertions added; 4 active CI configurations.** Upstream merged
+  **#448** (ECR `scanOnPush`/`encryptionConfiguration` — #444) and **#449** (IAM
+  `ListPolicyVersions` — #441; EC2 `DescribeVpcs` multi-id + tag filters +
+  `CidrBlockAssociationSet` — #442; EC2 `DescribeSecurityGroups` vpc-id/group-name/group-id
+  filters — #443; CloudWatch Logs `kmsKeyId` persisted — #445; ECS `DescribeClusters
+--include SETTINGS/CONFIGURATIONS` — #446; IAM `ListRoles` — #447). Submodule bumped
+  `33b8e3d`→`b174425`. CI changes: (1) un-gated the **fck-nat** step (was gated on #441
+  since prior session); (2) added 10 new `assert_eq` checks replacing the 7 gated comments
+  — ECR scan-on-push + KMS encryption type, ECS containerInsights + executeCommand KMS key,
+  CW Logs kmsKeyId, IAM `list-roles` count — bringing the default-stack verification to
+  **57 assertions**; (3) `terraform-sim` now runs **four active** configurations every PR
+  (default 57-check, fck-nat, DNS/TLS). No open upstream blockers remain.
+
+- **2026-06-06** — **Second comprehensive sim probe → ~100-assertion CI verification suite;
+  3 new gaps filed (#453–#455).** Live-probed every AWS service and every resource attribute
+  the module creates (KMS alias; ECR imageTagMutability+kmsKey for all repos; ECS task-def
+  cpu/memory/networkMode + service desiredCount+assignPublicIp; AppAutoScaling min/max+CPU
+  target; Scheduler expression+retry; CW Logs retention+kmsKeyId for all 3 groups; ALB
+  health-check path+matcher+drop-invalid-headers; IAM all managed+inline policies; VPC
+  CIDR/DNS attrs; EIP; route table IGW+NAT routes; SG rules/ports/VPC; DynamoDB schema+GSIs+
+  PITR; Route53 A records; ACM cert type+SANs+validation method) and all 11 IAM sim checks
+  (ecs:RunTask cluster-scoped allow/deny, ecs:RegisterTaskDefinition with cluster context,
+  logs:PutLogEvents owned/foreign, cloudtrail:LookupEvents, iam:PassRole to ecs-tasks).
+  Found 3 new sim gaps: **#453** DynamoDB `SSEDescription` null (server_side_encryption not
+  reflected in DescribeTable); **#454** ECS `deploymentConfiguration` null (deploymentCircuit-
+  Breaker not stored in CreateService); **#455** EC2 `ModifySecurityGroupRules` unimplemented
+  (in-place SG rule update path, called by TF provider v6). Two CI assertions gated on #453
+  and #454; #455 does not block CI (fresh apply always uses Authorize/Revoke, not Modify).
+  Default-stack suite: 57 → ~100 assertions. DNS/TLS step gains ACM type+SANs+method and
+  Route53 A record existence checks.
+
+- **2026-06-06** — **Sockerless submodule bumped to `8e866c3` (PR #456 — OCI `/v2/` data plane).** Upstream merged a shared OCI Distribution `/v2/` Docker Registry library wired into all three cloud sims (ECR #450, GCP Artifact Registry #451, Azure ACR #452). Fixes: `GET /v2/` base, chunked blob upload (POST → PATCH → PUT with sha256 verification), blob/manifest GET/HEAD/PUT/DELETE/tags, and `OnManifestPut` hook so a pushed image appears in the ECR control plane. Also bundled: delete-by-digest alias cleanup; a `requireNetworkHost` gate for Compute/Network tests off-Linux; EventGrid CLI test fixed (no longer skipped). No CI changes — these gaps were not in our tracked blockers and the sim-apply path doesn't push/pull images. Our three open blockers (#453 DynamoDB SSE, #454 ECS deploymentConfig, #455 ModifySecurityGroupRules) remain unchanged.
+
+- **2026-06-06** — **Idempotency failures analysed → 6 new sim bugs filed (#457–#462); idempotency checks gated; Node deps updated.** The `terraform-sim` CI `terraform plan -detailed-exitcode` (idempotency check) returned exit 2 (Plan: 2 to add, 17 to change, 2 to destroy) on every PR due to six distinct sim root bugs: **#457** EC2 SG egress rules store `FromPort=0/ToPort=0` for `ip_protocol=-1` instead of null; **#458** SG ingress `ReferencedGroupInfo.GroupId` returned as `"accountId/sg-id"` instead of bare SG ID; **#459** `DescribeNatGateways` omits `ConnectivityType` → TF forces NAT gateway replacement every plan (cascading to private routes); **#460** `DescribeTaskDefinition` drops `healthCheck` and `secrets` from container definitions → forces new task-def revision every plan (cascading to ECS service and IAM inline policies); **#461** `DescribeLoadBalancerAttributes` returns `minimum_load_balancer_capacity.capacity_units=0` for ALBs without minimum capacity; **#462** `ListTagsForResource`/`ListTagsOfResource`/`ListTagsLogGroup` return empty for CloudWatch Logs, DynamoDB, ECR, and ECS task definitions (9 resources show spurious tag additions). All six filed upstream per §6.8. All three idempotency checks (default, fck-nat, DNS/TLS) now gate exit 2 (drift) while still failing on exit 1 (real errors). Also ran `pnpm update --latest -r` to fix the `check-deps` CI failure (stale Node/TS deps).
+
+- **2026-06-06** — **DNS/TLS step exposes #464; cert ARN query rerouted via `list-certificates`.** With idempotency gated (prior commit), the DNS/TLS step ran for the first time and failed: `DescribeListeners` doesn't include `Certificates` for HTTPS listeners, so `CERT_ARN` resolved to `"None"` → ParamValidation. Filed **#464** upstream. The cert IS issued (apply completes via `aws_acm_certificate_validation`), so assertions about cert properties now obtain the ARN via `acm list-certificates` (standard API, not sim-specific). The listener-to-cert association check is gated (#464). Total open upstream blockers: 10 (#453–#455, #457–#462, #464).
+
 <!-- Append new milestones below. -->

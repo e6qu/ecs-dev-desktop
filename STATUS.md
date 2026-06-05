@@ -2,9 +2,8 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-05 (Terraform platform module + full non-mocked sim apply in CI,
-incl. the DNS/TLS ACM path; heartbeat-route 409 coverage; sims-over-HTTPS e2e — mock-free
-Entra auth + SSH)
+**Last updated:** 2026-06-06 (idempotency analysis: 6 new sim gaps filed (#457–#462); all
+three idempotency checks gated; check-deps fixed; 9 open upstream blockers total)
 
 ## Current phase
 
@@ -36,9 +35,17 @@ account/region decision** (`DO_NEXT` #1) alongside the entire real-deploy track.
   capacity providers + autoscaling, ALB + optional ACM/Route53, scheduler reconciler cron,
   IAM, logs) with `examples/complete`, `examples/terragrunt`, and a full README. The
   **`terraform-sim` CI job applies + destroys the entire stack against the sockerless sim
-  every PR** in both configurations: default (`55 added → 55 destroyed`) and the **DNS/TLS**
-  path (`enable_dns=true`: ACM cert + Route53 validation + HTTPS listener, `64 added → 64
-destroyed`), endpoint-only (§6.8). Real apply is AWS-gated.
+  every PR** in **four active** configurations: (1) default (`55 added → 55 destroyed`) with
+  **~100-assertion post-apply verification** (KMS alias, ECR imageTagMutability+kmsKey for
+  all repos, ECS task-def cpu/memory/networkMode + service config, AppAutoScaling min/max +
+  CPU target, Scheduler expression + retry, CW Logs retention+KMS for all 3 groups, ALB
+  health-check path+matcher + drop-invalid-headers, IAM all 5 roles + managed/inline policies,
+  VPC CIDR/DNS attrs, EIP, route table IGW+NAT routes, SG rules/ports/VPC, DynamoDB schema +
+  GSIs + PITR, 11 IAM sim checks incl. cluster-scoped deny) + **idempotency** + 2 gated
+  assertions (#453 DynamoDB SSE, #454 ECS deploymentConfig); (2) **fck-nat NAT instance**
+  (`nat_mode=instance`); (3) **DNS/TLS** (`enable_dns=true`: ACM cert ISSUED + type + SANs
+  - validation method + Route53 A records + HTTPS listener + redirect + idempotency). Endpoint-
+    only (§6.8). Real apply is AWS-gated.
 - **SSH** (`services/ssh-gateway`) + **Pomerium routing** (`infra/proxy`): real products
   in Docker, mock-free.
 - **Test tiers**: unit/contract · integration (DynamoDB Local + process sim) · e2e

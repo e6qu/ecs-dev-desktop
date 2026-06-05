@@ -7,7 +7,7 @@ terraform {
   required_providers {
     aws = {
       source  = "hashicorp/aws"
-      version = ">= 5.0"
+      version = "~> 6.0"
     }
   }
 }
@@ -45,10 +45,17 @@ provider "aws" {
   }
 }
 
+# NAT mode toggle. Default "gateway"; pass `-var nat_mode=instance` to exercise the
+# fck-nat EC2 NAT-instance path (uses standalone ENI ops fixed upstream by #430).
+variable "nat_mode" {
+  description = "Exercise nat_mode=instance (fck-nat) against the sim."
+  type        = string
+  default     = "gateway"
+}
+
 # DNS/TLS toggle. Off by default so the always-run CI apply stays fast and green;
 # `-var enable_dns=true` exercises the module's full ACM + Route53 + HTTPS path
-# (dns.tf) against the sim. The validation wait is blocked upstream — see the
-# gated `terraform-sim` DNS step and e6qu/sockerless#420.
+# (dns.tf) against the sim. ACM gaps (#420/#421) were fixed upstream by #424.
 variable "enable_dns" {
   description = "Exercise the module's ACM/Route53/HTTPS path against the sim."
   type        = bool
@@ -71,19 +78,61 @@ module "edd" {
   dynamodb_point_in_time_recovery = false
   golden_image_repos              = ["node-20"]
 
+  nat_mode = var.nat_mode
+
   # TLS + workspace-wildcard routing (ACM cert, DNS validation, HTTPS listener).
   domain_name     = var.enable_dns ? "edd-sim.example.com" : ""
   route53_zone_id = var.enable_dns ? aws_route53_zone.test[0].zone_id : ""
+}
+
+output "vpc_id" {
+  value = module.edd.vpc_id
 }
 
 output "dynamodb_table_name" {
   value = module.edd.dynamodb_table_name
 }
 
+output "dynamodb_table_arn" {
+  value = module.edd.dynamodb_table_arn
+}
+
+output "kms_key_arn" {
+  value = module.edd.kms_key_arn
+}
+
 output "ecs_cluster_name" {
   value = module.edd.ecs_cluster_name
 }
 
+output "ecs_cluster_arn" {
+  value = module.edd.ecs_cluster_arn
+}
+
+output "alb_dns_name" {
+  value = module.edd.alb_dns_name
+}
+
 output "control_plane_url" {
   value = module.edd.control_plane_url
+}
+
+output "control_plane_task_role_arn" {
+  value = module.edd.control_plane_task_role_arn
+}
+
+output "reconciler_task_role_arn" {
+  value = module.edd.reconciler_task_role_arn
+}
+
+output "alb_security_group_id" {
+  value = module.edd.alb_security_group_id
+}
+
+output "tasks_security_group_id" {
+  value = module.edd.tasks_security_group_id
+}
+
+output "nat_instance_eni_id" {
+  value = module.edd.nat_instance_eni_id
 }
