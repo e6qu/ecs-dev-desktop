@@ -280,7 +280,24 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   un-gated.** `CreateLaunchTemplate`/`DescribeLaunchTemplates`/`DescribeLaunchTemplateVersions`/
   `DeleteLaunchTemplate` all implemented in `ec2_launch_template.go` (`registerEC2LaunchTemplates`
   wired into `registerEC2`). Live-probed all four ops — returned correct `lt-…` IDs and version
-  numbers. All four `terraform-sim` configurations now run un-gated every PR: default + IAM
-  assertions, fck-nat NAT instance, DNS/TLS. **No remaining sim blockers.**
+  numbers.
+- **2026-06-05** — **Comprehensive sim probe → 7 new gaps filed (#441–#447); CI enhanced
+  with 47-assertion post-apply verification suite.** Systematically probed all 12+ AWS
+  services the platform uses against the live sim after a full `terraform apply`, checking
+  every resource the module creates. Found and filed: **#441** IAM `ListPolicyVersions`
+  unimplemented (blocks fck-nat `aws_iam_policy` destroy — re-gated CI step); **#442** EC2
+  `DescribeVpcs` filtering completely broken (vpc-id, tag, and `--vpc-ids` all return wrong
+  results; `CidrBlockAssociationSet` always null); **#443** EC2 `DescribeSecurityGroups`
+  filters return ALL SGs regardless of value (group-name, vpc-id ignored); **#444** ECR
+  `imageScanningConfiguration.scanOnPush` and `encryptionConfiguration` silently dropped on
+  create; **#445** CloudWatch Logs `CreateLogGroup --kms-key-id` accepted but not persisted;
+  **#446** ECS `DescribeClusters --include SETTINGS CONFIGURATIONS` returns null for both
+  `containerInsights` and `executeCommandConfiguration`; **#447** IAM `ListRoles` returns
+  `InvalidAction`. CI now runs a 47-check `assert_eq` suite (DynamoDB/KMS/ECR/ECS/
+  AppAutoScaling/EventBridge/CloudWatch/ALB/IAM/networking) + 4 IAM simulation checks +
+  idempotency (`terraform plan -detailed-exitcode` = 0) on the default stack, and HTTPS
+  listener + ACM cert + idempotency on the DNS/TLS stack. Assertions for the 7 open gaps
+  are gated with issue references. Module gains `alb_security_group_id` and
+  `tasks_security_group_id` outputs; provider constraint updated to `~> 6.0`.
 
 <!-- Append new milestones below. -->

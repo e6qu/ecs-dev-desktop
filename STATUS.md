@@ -2,8 +2,8 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-05 (submodule → `33b8e3d` post-#440; all sim gaps resolved — #433
-LaunchTemplates fixed upstream by PR #439, fck-nat CI step un-gated; no remaining sim blockers)
+**Last updated:** 2026-06-05 (comprehensive sim probe: 7 new gaps filed (#441–#447); CI enhanced
+with 47-check post-apply verification suite across all services; fck-nat re-gated on #441)
 
 ## Current phase
 
@@ -35,11 +35,13 @@ account/region decision** (`DO_NEXT` #1) alongside the entire real-deploy track.
   capacity providers + autoscaling, ALB + optional ACM/Route53, scheduler reconciler cron,
   IAM, logs) with `examples/complete`, `examples/terragrunt`, and a full README. The
   **`terraform-sim` CI job applies + destroys the entire stack against the sockerless sim
-  every PR** in **four** configurations: default (`55 added → 55 destroyed`) with **IAM
-  least-privilege assertions** (`simulate-principal-policy`: allow/deny/tag-condition),
-  **fck-nat NAT instance** (`nat_mode=instance` — ENI ops #430 + LaunchTemplates #439), and the
-  **DNS/TLS** path (`enable_dns=true`: ACM cert + Route53 validation + HTTPS listener,
-  `64 added → 64 destroyed`), endpoint-only (§6.8). Real apply is AWS-gated.
+  every PR** in **three active** configurations: (1) default (`55 added → 55 destroyed`) with
+  **47-check post-apply verification** (DynamoDB/KMS/ECR/ECS/AppAutoScaling/EventBridge
+  Scheduler/CloudWatch Logs/ALB/IAM roles+policies/networking) + **IAM policy simulation**
+  (allow/deny/tag-condition) + **idempotency** (`terraform plan -detailed-exitcode` = 0);
+  (2) **DNS/TLS** (`enable_dns=true`: ACM cert ISSUED + HTTPS listener + idempotency,
+  `64 added → 64 destroyed`); (3) **fck-nat GATED on #441** (IAM ListPolicyVersions blocks
+  destroy — filed upstream). Endpoint-only (§6.8). Real apply is AWS-gated.
 - **SSH** (`services/ssh-gateway`) + **Pomerium routing** (`infra/proxy`): real products
   in Docker, mock-free.
 - **Test tiers**: unit/contract · integration (DynamoDB Local + process sim) · e2e

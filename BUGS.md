@@ -8,7 +8,47 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-_None._
+### #441 — IAM ListPolicyVersions unimplemented — blocks fck-nat aws_iam_policy destroy
+
+**Status:** Open (filed 2026-06-05) · **Upstream:** e6qu/sockerless#441
+
+`ListPolicyVersions` returns `InvalidAction`. The Terraform AWS provider calls it during plan/refresh/destroy to read back `aws_iam_policy` resources. The `RaJiska/fck-nat` module creates an `aws_iam_policy` for the NAT instance — `terraform destroy -var nat_mode=instance` fails with `UnknownError` and leaves the policy in state. CI workaround (fck-nat step only): `terraform state rm` the stuck resource + `aws iam delete-policy` before re-running destroy. All other IAM ops (`CreatePolicy`/`GetPolicy`/`GetPolicyVersion`/`DeletePolicy`) work correctly.
+
+### #442 — EC2 DescribeVpcs filtering completely broken (vpc-id, tag filters; CidrBlockAssociationSet always null)
+
+**Status:** Open (filed 2026-06-05) · **Upstream:** e6qu/sockerless#442
+
+Three distinct non-conformances: (1) `--vpc-ids` returns `vpc-sim` regardless of requested IDs; (2) `--filters "Name=vpc-id,Values=X"` returns wrong VPCs (not the requested one); (3) `CidrBlockAssociationSet` is always null. Affects `data "aws_vpc"` (used by fck-nat to get VPC CIDR for SG rules) and any VPC-by-ID or VPC-by-tag lookup. CI assertions use `vpc_id` from Terraform output directly; subnet/NAT/route-table `vpc-id` filters work correctly for those resource types.
+
+### #443 — EC2 DescribeSecurityGroups all filters return all SGs (vpc-id, group-name, group-id ignored)
+
+**Status:** Open (filed 2026-06-05) · **Upstream:** e6qu/sockerless#443
+
+`DescribeSecurityGroups` with any filter (`vpc-id`, `group-name`) returns ALL security groups in the sim, ignoring the filter entirely. CI assertions use `--group-ids <id>` (direct lookup by ID from Terraform outputs) as a workaround; `describe-security-group-rules` with `group-id` filter continues to work correctly.
+
+### #444 — ECR imageScanningConfiguration and encryptionConfiguration not persisted
+
+**Status:** Open (filed 2026-06-05) · **Upstream:** e6qu/sockerless#444
+
+`CreateRepository` accepts `--image-scanning-configuration` and `--encryption-configuration` without error, but `DescribeRepositories` returns null for both fields. The Terraform module sets `scan_on_push = true` and `encryption_type = KMS` on all ECR repos — these cannot be verified post-apply until fixed. CI assertions are gated.
+
+### #445 — CloudWatch Logs CreateLogGroup kmsKeyId not persisted
+
+**Status:** Open (filed 2026-06-05) · **Upstream:** e6qu/sockerless#445
+
+`CreateLogGroup --kms-key-id` succeeds but drops the key ID. `DescribeLogGroups` always returns null for `kmsKeyId`. The platform module sets KMS encryption on all 3 log groups — cannot be verified post-apply until fixed. CI assertions are gated.
+
+### #446 — ECS DescribeClusters --include SETTINGS/CONFIGURATIONS returns null for both
+
+**Status:** Open (filed 2026-06-05) · **Upstream:** e6qu/sockerless#446
+
+`DescribeClusters --include SETTINGS CONFIGURATIONS` returns null for `settings` (containerInsights) and `configuration` (executeCommandConfiguration KMS key). The cluster is created with `containerInsights=enabled` and KMS exec — neither is verifiable post-apply until fixed. CI assertions are gated.
+
+### #447 — IAM ListRoles unimplemented (InvalidAction)
+
+**Status:** Open (filed 2026-06-05) · **Upstream:** e6qu/sockerless#447
+
+`ListRoles` returns `InvalidAction`. Doesn't block Terraform (which uses `GetRole` by name), but blocks bulk enumeration assertions (e.g. verifying all 5 expected platform roles exist via a list). CI assertions use `GetRole` by name individually as a workaround.
 
 ## Resolved (sockerless — all fixed upstream)
 

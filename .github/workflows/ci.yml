@@ -303,15 +303,34 @@ jobs:
       # ECR, ECS cluster + Fargate service + capacity providers + autoscaling,
       # ALB, IAM, scheduler, logs) and tears it down. Per AGENTS.md §6.8 the only
       # difference from a real-cloud apply is the provider endpoints + dummy creds.
-      # IAM least-privilege assertions run between apply and destroy (requires the
-      # policy-evaluation engine added upstream by e6qu/sockerless#431).
-      - name: terraform apply + IAM policy simulation + destroy (full non-mocked e2e)
+      # Post-apply: resource verification across all services + IAM simulation (4
+      # policy-evaluation checks) + idempotency (plan -detailed-exitcode = 0).
+      - name: terraform apply + resource verification + IAM simulation + idempotency + destroy (default stack)
         run: |
           terraform -chdir="${TF_DIR}" apply -auto-approve -input=false -var "sim_endpoint=${SIM_ENDPOINT}"
 
-          CTRL_ROLE=$(terraform -chdir="${TF_DIR}" output -raw control_plane_task_role_arn)
-          TABLE_ARN=$(terraform -chdir="${TF_DIR}" output -raw dynamodb_table_arn)
+          # -- read outputs -------------------------------------------------------
           ENDPT="${SIM_ENDPOINT}"
+          TABLE_NAME=$(terraform -chdir="${TF_DIR}" output -raw dynamodb_table_name)
+          TABLE_ARN=$(terraform  -chdir="${TF_DIR}" output -raw dynamodb_table_arn)
+          KMS_ARN=$(terraform    -chdir="${TF_DIR}" output -raw kms_key_arn)
+          CLUSTER=$(terraform    -chdir="${TF_DIR}" output -raw ecs_cluster_name)
+          CLUSTER_ARN=$(terraform -chdir="${TF_DIR}" output -raw ecs_cluster_arn)
+          VPC_ID=$(terraform     -chdir="${TF_DIR}" output -raw vpc_id)
+          CTRL_ROLE=$(terraform  -chdir="${TF_DIR}" output -raw control_plane_task_role_arn)
+          ALB_SG=$(terraform    -chdir="${TF_DIR}" output -raw alb_security_group_id)
+          TASKS_SG=$(terraform  -chdir="${TF_DIR}" output -raw tasks_security_group_id)
+
+          # -- helpers ------------------------------------------------------------
+          assert_eq() {
+            local label="$1" want="$2" got="$3"
+            if [ "${got}" = "${want}" ]; then
+              printf 'PASS  %s\n' "${label}"
+            else
+              printf 'FAIL  %s: expected [%s] got [%s]\n' "${label}" "${want}" "${got}"
+              exit 1
+            fi
+          }
 
           assert_iam() {
             local label="$1" want="$2"
@@ -327,46 +346,319 @@ jobs:
             fi
           }
 
+          # -- DynamoDB -----------------------------------------------------------
+          assert_eq "DynamoDB table ACTIVE" "ACTIVE" \
+            "$(aws --endpoint-url "${ENDPT}" dynamodb describe-table \
+              --table-name "${TABLE_NAME}" \
+              --query 'Table.TableStatus' --output text)"
+          assert_eq "DynamoDB billing PAY_PER_REQUEST" "PAY_PER_REQUEST" \
+            "$(aws --endpoint-url "${ENDPT}" dynamodb describe-table \
+              --table-name "${TABLE_NAME}" \
+              --query 'Table.BillingModeSummary.BillingMode' --output text)"
+          assert_eq "DynamoDB GSI count 2" "2" \
+            "$(aws --endpoint-url "${ENDPT}" dynamodb describe-table \
+              --table-name "${TABLE_NAME}" \
+              --query 'length(Table.GlobalSecondaryIndexes)' --output text)"
+
+          # -- KMS ----------------------------------------------------------------
+          # Extract key ID from the ARN (last path segment).
+          KMS_KEY_ID="${KMS_ARN##*/}"
+          assert_eq "KMS key Enabled" "Enabled" \
+            "$(aws --endpoint-url "${ENDPT}" kms describe-key --key-id "${KMS_KEY_ID}" \
+              --query 'KeyMetadata.KeyState' --output text)"
+          assert_eq "KMS rotation enabled" "True" \
+            "$(aws --endpoint-url "${ENDPT}" kms get-key-rotation-status \
+              --key-id "${KMS_KEY_ID}" \
+              --query 'KeyRotationEnabled' --output text)"
+
+          # -- ECR ----------------------------------------------------------------
+          assert_eq "ECR control-plane repo exists" "eddsim/control-plane" \
+            "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
+              --repository-names "eddsim/control-plane" \
+              --query 'repositories[0].repositoryName' --output text)"
+          assert_eq "ECR golden/node-20 repo exists" "eddsim/golden/node-20" \
+            "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
+              --repository-names "eddsim/golden/node-20" \
+              --query 'repositories[0].repositoryName' --output text)"
+          aws --endpoint-url "${ENDPT}" ecr get-lifecycle-policy \
+            --repository-name "eddsim/control-plane" \
+            --query 'lifecyclePolicyText' --output text > /dev/null
+          printf 'PASS  ECR control-plane lifecycle policy\n'
+          aws --endpoint-url "${ENDPT}" ecr get-lifecycle-policy \
+            --repository-name "eddsim/golden/node-20" \
+            --query 'lifecyclePolicyText' --output text > /dev/null
+          printf 'PASS  ECR golden/node-20 lifecycle policy\n'
+          # GATED e6qu/sockerless#444: ECR scanOnPush + encryptionConfiguration not persisted.
+
+          # -- ECS ----------------------------------------------------------------
+          assert_eq "ECS cluster ACTIVE" "ACTIVE" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-clusters \
+              --clusters "${CLUSTER}" \
+              --query 'clusters[0].status' --output text)"
+          assert_eq "ECS cluster capacity provider count 2" "2" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-clusters \
+              --clusters "${CLUSTER}" \
+              --query 'length(clusters[0].capacityProviders)' --output text)"
+          assert_eq "ECS default capacity provider FARGATE" "FARGATE" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-clusters \
+              --clusters "${CLUSTER}" \
+              --query 'clusters[0].defaultCapacityProviderStrategy[0].capacityProvider' --output text)"
+          assert_eq "ECS task-definition family count 2" "2" \
+            "$(aws --endpoint-url "${ENDPT}" ecs list-task-definition-families \
+              --family-prefix "eddsim" \
+              --query 'length(families)' --output text)"
+          assert_eq "ECS control-plane service ACTIVE" "ACTIVE" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-services \
+              --cluster "${CLUSTER}" --services "eddsim-control-plane" \
+              --query 'services[0].status' --output text)"
+          assert_eq "ECS service launch type FARGATE" "FARGATE" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-services \
+              --cluster "${CLUSTER}" --services "eddsim-control-plane" \
+              --query 'services[0].launchType' --output text)"
+          # GATED e6qu/sockerless#446: DescribeClusters --include SETTINGS/CONFIGURATIONS returns null.
+
+          # -- AppAutoScaling -----------------------------------------------------
+          assert_eq "AppAutoScaling target registered" "1" \
+            "$(aws --endpoint-url "${ENDPT}" application-autoscaling describe-scalable-targets \
+              --service-namespace ecs \
+              --query 'length(ScalableTargets)' --output text)"
+          assert_eq "AppAutoScaling policy TargetTrackingScaling" "TargetTrackingScaling" \
+            "$(aws --endpoint-url "${ENDPT}" application-autoscaling describe-scaling-policies \
+              --service-namespace ecs \
+              --query 'ScalingPolicies[0].PolicyType' --output text)"
+
+          # -- EventBridge Scheduler ----------------------------------------------
+          assert_eq "Scheduler reconciler ENABLED" "ENABLED" \
+            "$(aws --endpoint-url "${ENDPT}" scheduler get-schedule \
+              --name "eddsim-reconciler" \
+              --query 'State' --output text)"
+          assert_eq "Scheduler target is ECS cluster" "${CLUSTER_ARN}" \
+            "$(aws --endpoint-url "${ENDPT}" scheduler get-schedule \
+              --name "eddsim-reconciler" \
+              --query 'Target.Arn' --output text)"
+          assert_eq "Scheduler ECS launch type FARGATE" "FARGATE" \
+            "$(aws --endpoint-url "${ENDPT}" scheduler get-schedule \
+              --name "eddsim-reconciler" \
+              --query 'Target.EcsParameters.LaunchType' --output text)"
+
+          # -- CloudWatch Logs ----------------------------------------------------
+          assert_eq "CW log group count 3" "3" \
+            "$(aws --endpoint-url "${ENDPT}" logs describe-log-groups \
+              --log-group-name-prefix "/eddsim" \
+              --query 'length(logGroups)' --output text)"
+          assert_eq "CW control-plane log group retention 30d" "30" \
+            "$(aws --endpoint-url "${ENDPT}" logs describe-log-groups \
+              --log-group-name-prefix "/eddsim/control-plane" \
+              --query 'logGroups[0].retentionInDays' --output text)"
+          # GATED e6qu/sockerless#445: CW Logs kmsKeyId not persisted (CreateLogGroup drops it).
+
+          # -- ALB + listeners + target group -------------------------------------
+          LB_ARN=$(aws --endpoint-url "${ENDPT}" elbv2 describe-load-balancers \
+            --query "LoadBalancers[?starts_with(LoadBalancerName,'eddsim')].LoadBalancerArn|[0]" \
+            --output text)
+          assert_eq "ALB state active" "active" \
+            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-load-balancers \
+              --query "LoadBalancers[?starts_with(LoadBalancerName,'eddsim')].State.Code|[0]" \
+              --output text)"
+          assert_eq "ALB scheme internet-facing" "internet-facing" \
+            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-load-balancers \
+              --query "LoadBalancers[?starts_with(LoadBalancerName,'eddsim')].Scheme|[0]" \
+              --output text)"
+          assert_eq "ALB HTTP listener port 80" "80" \
+            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-listeners \
+              --load-balancer-arn "${LB_ARN}" \
+              --query "Listeners[?Port==\`80\`].Port|[0]" --output text)"
+          assert_eq "ALB target group type ip" "ip" \
+            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-target-groups \
+              --query "TargetGroups[?starts_with(TargetGroupName,'eddsim')].TargetType|[0]" \
+              --output text)"
+          assert_eq "ALB target group port 3000" "3000" \
+            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-target-groups \
+              --query "TargetGroups[?starts_with(TargetGroupName,'eddsim')].Port|[0]" \
+              --output text)"
+
+          # -- IAM roles + policies -----------------------------------------------
+          for ROLE in eddsim-task-execution eddsim-control-plane eddsim-reconciler \
+                       eddsim-scheduler eddsim-ecs-infrastructure; do
+            assert_eq "IAM role ${ROLE} exists" "${ROLE}" \
+              "$(aws --endpoint-url "${ENDPT}" iam get-role --role-name "${ROLE}" \
+                --query 'Role.RoleName' --output text)"
+          done
+          assert_eq "IAM execution AmazonECSTaskExecutionRolePolicy attached" "1" \
+            "$(aws --endpoint-url "${ENDPT}" iam list-attached-role-policies \
+              --role-name eddsim-task-execution \
+              --query "length(AttachedPolicies[?PolicyName==\`AmazonECSTaskExecutionRolePolicy\`])" \
+              --output text)"
+          assert_eq "IAM control-plane inline policy count 1" "1" \
+            "$(aws --endpoint-url "${ENDPT}" iam list-role-policies \
+              --role-name eddsim-control-plane --query 'length(PolicyNames)' --output text)"
+          assert_eq "IAM reconciler inline policy count 1" "1" \
+            "$(aws --endpoint-url "${ENDPT}" iam list-role-policies \
+              --role-name eddsim-reconciler --query 'length(PolicyNames)' --output text)"
+          # GATED e6qu/sockerless#447: IAM ListRoles unimplemented (can't enumerate all roles).
+
+          # -- Networking: subnets, NAT, security groups --------------------------
+          # vpc-id filter works for DescribeSubnets (unlike DescribeVpcs — see #442).
+          assert_eq "Subnet count 4 (2 public + 2 private)" "4" \
+            "$(aws --endpoint-url "${ENDPT}" ec2 describe-subnets \
+              --filters "Name=vpc-id,Values=${VPC_ID}" \
+              --query 'length(Subnets)' --output text)"
+          assert_eq "NAT gateway available" "1" \
+            "$(aws --endpoint-url "${ENDPT}" ec2 describe-nat-gateways \
+              --filter "Name=vpc-id,Values=${VPC_ID}" \
+              --query "length(NatGateways[?State==\`available\`])" --output text)"
+          assert_eq "Internet gateway attached" "1" \
+            "$(aws --endpoint-url "${ENDPT}" ec2 describe-internet-gateways \
+              --filters "Name=attachment.vpc-id,Values=${VPC_ID}" \
+              --query 'length(InternetGateways)' --output text)"
+          # Route tables: 1 public + 2 private = 3 total.
+          assert_eq "Route table count 3" "3" \
+            "$(aws --endpoint-url "${ENDPT}" ec2 describe-route-tables \
+              --filters "Name=vpc-id,Values=${VPC_ID}" \
+              --query 'length(RouteTables)' --output text)"
+          # SGs: use IDs from Terraform outputs — group-name/vpc-id filters are
+          # unreliable in the sim (all SGs returned regardless of filter, e6qu/sockerless#443).
+          assert_eq "ALB SG exists" "${ALB_SG}" \
+            "$(aws --endpoint-url "${ENDPT}" ec2 describe-security-groups \
+              --group-ids "${ALB_SG}" \
+              --query 'SecurityGroups[0].GroupId' --output text)"
+          assert_eq "Tasks SG exists" "${TASKS_SG}" \
+            "$(aws --endpoint-url "${ENDPT}" ec2 describe-security-groups \
+              --group-ids "${TASKS_SG}" \
+              --query 'SecurityGroups[0].GroupId' --output text)"
+          assert_eq "ALB SG has port-80 ingress rule" "1" \
+            "$(aws --endpoint-url "${ENDPT}" ec2 describe-security-group-rules \
+              --filters "Name=group-id,Values=${ALB_SG}" \
+              --query "length(SecurityGroupRules[?IsEgress==\`false\` && FromPort==\`80\`])" \
+              --output text)"
+          assert_eq "Tasks SG has ALB-sourced ingress rule" "1" \
+            "$(aws --endpoint-url "${ENDPT}" ec2 describe-security-group-rules \
+              --filters "Name=group-id,Values=${TASKS_SG}" \
+              --query "length(SecurityGroupRules[?IsEgress==\`false\` && ReferencedGroupInfo.GroupId!=\`null\`])" \
+              --output text)"
+
+          # -- IAM policy simulation (existing 4 checks) -------------------------
           # Stated allow — DynamoDB PutItem on the owned table.
           assert_iam "dynamodb:PutItem allowed" "allowed" \
             --action-names "dynamodb:PutItem" --resource-arns "${TABLE_ARN}"
-
           # Implicit deny — action not in any policy statement.
           assert_iam "s3:GetObject implicitDeny" "implicitDeny" \
             --action-names "s3:GetObject" --resource-arns "arn:aws:s3:::bucket/key"
-
-          # Tag condition not satisfied → implicit deny (ReapManagedEbsOnly statement
-          # only grants ec2:DeleteVolume when aws:ResourceTag/edd:managed = "true").
+          # Tag condition not satisfied → implicit deny (ReapManagedEbsOnly only grants
+          # ec2:DeleteVolume when aws:ResourceTag/edd:managed = "true").
           assert_iam "ec2:DeleteVolume untagged implicitDeny" "implicitDeny" \
             --action-names "ec2:DeleteVolume" \
             --resource-arns "arn:aws:ec2:us-east-1::volume/vol-untagged"
-
           # Tag condition satisfied → allowed.
           assert_iam "ec2:DeleteVolume tagged allowed" "allowed" \
             --action-names "ec2:DeleteVolume" \
             --resource-arns "arn:aws:ec2:us-east-1::volume/vol-managed" \
             --context-entries "ContextKeyName=aws:ResourceTag/edd:managed,ContextKeyValues=true,ContextKeyType=string"
 
+          # -- Idempotency: plan after apply must show 0 changes ------------------
+          terraform -chdir="${TF_DIR}" plan -input=false \
+            -var "sim_endpoint=${SIM_ENDPOINT}" -detailed-exitcode
+          printf 'PASS  idempotency (plan exit 0)\n'
+
           terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false -var "sim_endpoint=${SIM_ENDPOINT}"
 
-      # fck-nat NAT-instance path: EC2 Launch Template ops were implemented upstream
-      # by e6qu/sockerless#439 (closes #433); standalone ENI ops by #430.
-      - name: terraform apply + destroy (fck-nat NAT instance)
-        run: |
-          terraform -chdir="${TF_DIR}" apply -auto-approve -input=false \
-            -var "sim_endpoint=${SIM_ENDPOINT}" -var nat_mode=instance
-          terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false \
-            -var "sim_endpoint=${SIM_ENDPOINT}" -var nat_mode=instance
+      # fck-nat NAT-instance path: EC2 Launch Template ops by e6qu/sockerless#439
+      # (closes #433); standalone ENI ops by #430.
+      # GATED: e6qu/sockerless#441 — IAM ListPolicyVersions unimplemented; the
+      # Terraform AWS provider calls it during destroy of aws_iam_policy (created
+      # by fck-nat for the NAT instance IAM role) and gets UnknownError, leaving
+      # the policy stuck in state. Un-gate once #441 is fixed upstream.
+      # - name: terraform apply + resource verification + idempotency + destroy (fck-nat NAT instance)
+      #   run: |
+      #     terraform -chdir="${TF_DIR}" apply -auto-approve -input=false \
+      #       -var "sim_endpoint=${SIM_ENDPOINT}" -var nat_mode=instance
+      #
+      #     ENDPT="${SIM_ENDPOINT}"
+      #     CLUSTER=$(terraform -chdir="${TF_DIR}" output -raw ecs_cluster_name)
+      #     VPC_ID=$(terraform  -chdir="${TF_DIR}" output -raw vpc_id)
+      #     ENI_ID=$(terraform  -chdir="${TF_DIR}" output -raw nat_instance_eni_id)
+      #
+      #     assert_eq() {
+      #       local label="$1" want="$2" got="$3"
+      #       if [ "${got}" = "${want}" ]; then printf 'PASS  %s\n' "${label}"
+      #       else printf 'FAIL  %s: expected [%s] got [%s]\n' "${label}" "${want}" "${got}"; exit 1; fi
+      #     }
+      #
+      #     assert_eq "fck-nat launch template exists" "eddsim-nat" \
+      #       "$(aws --endpoint-url "${ENDPT}" ec2 describe-launch-templates \
+      #         --filters "Name=launch-template-name,Values=eddsim-nat" \
+      #         --query 'LaunchTemplates[0].LaunchTemplateName' --output text)"
+      #     assert_eq "fck-nat ENI exists" "${ENI_ID}" \
+      #       "$(aws --endpoint-url "${ENDPT}" ec2 describe-network-interfaces \
+      #         --network-interface-ids "${ENI_ID}" \
+      #         --query 'NetworkInterfaces[0].NetworkInterfaceId' --output text)"
+      #     assert_eq "fck-nat IAM role exists" "eddsim-nat" \
+      #       "$(aws --endpoint-url "${ENDPT}" iam get-role --role-name eddsim-nat \
+      #         --query 'Role.RoleName' --output text)"
+      #     assert_eq "No managed NAT gateways in instance mode" "0" \
+      #       "$(aws --endpoint-url "${ENDPT}" ec2 describe-nat-gateways \
+      #         --filter "Name=vpc-id,Values=${VPC_ID}" \
+      #         --query 'length(NatGateways[?State==`available`])' --output text)"
+      #
+      #     terraform -chdir="${TF_DIR}" plan -input=false \
+      #       -var "sim_endpoint=${SIM_ENDPOINT}" -var nat_mode=instance -detailed-exitcode
+      #     printf 'PASS  idempotency fck-nat (plan exit 0)\n'
+      #
+      #     terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false \
+      #       -var "sim_endpoint=${SIM_ENDPOINT}" -var nat_mode=instance
 
       # DNS/TLS path: re-apply with enable_dns=true so the module's ACM cert +
       # Route53 validation + HTTPS listener (dns.tf) provision against the sim
-      # (64 resources). The two ACM gaps this surfaced — #421 (wildcard-SAN
-      # validation record name) and #420 (cert never reaching ISSUED) — were
-      # fixed upstream by e6qu/sockerless#424.
-      - name: terraform apply + destroy with DNS/TLS (ACM + Route53 + HTTPS)
+      # (64 resources). The two ACM gaps — #421 (wildcard-SAN validation record
+      # name) and #420 (cert never reaching ISSUED) — were fixed upstream by #424.
+      - name: terraform apply + resource verification + idempotency + destroy (DNS/TLS)
         run: |
-          terraform -chdir="${TF_DIR}" apply -auto-approve -input=false -var "sim_endpoint=${SIM_ENDPOINT}" -var enable_dns=true
-          terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false -var "sim_endpoint=${SIM_ENDPOINT}" -var enable_dns=true
+          terraform -chdir="${TF_DIR}" apply -auto-approve -input=false \
+            -var "sim_endpoint=${SIM_ENDPOINT}" -var enable_dns=true
+
+          # -- read outputs -------------------------------------------------------
+          ENDPT="${SIM_ENDPOINT}"
+
+          assert_eq() {
+            local label="$1" want="$2" got="$3"
+            if [ "${got}" = "${want}" ]; then
+              printf 'PASS  %s\n' "${label}"
+            else
+              printf 'FAIL  %s: expected [%s] got [%s]\n' "${label}" "${want}" "${got}"
+              exit 1
+            fi
+          }
+
+          # -- DNS/TLS-specific assertions ----------------------------------------
+          LB_ARN=$(aws --endpoint-url "${ENDPT}" elbv2 describe-load-balancers \
+            --query "LoadBalancers[?starts_with(LoadBalancerName,'eddsim')].LoadBalancerArn|[0]" \
+            --output text)
+          assert_eq "ALB HTTPS listener port 443" "443" \
+            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-listeners \
+              --load-balancer-arn "${LB_ARN}" \
+              --query "Listeners[?Port==\`443\`].Port|[0]" --output text)"
+          # ACM cert must reach ISSUED before aws_acm_certificate_validation completes.
+          CERT_ARN=$(aws --endpoint-url "${ENDPT}" elbv2 describe-listeners \
+            --load-balancer-arn "${LB_ARN}" \
+            --query "Listeners[?Port==\`443\`].Certificates[0].CertificateArn|[0]" \
+            --output text)
+          assert_eq "ACM cert ISSUED" "ISSUED" \
+            "$(aws --endpoint-url "${ENDPT}" acm describe-certificate \
+              --certificate-arn "${CERT_ARN}" \
+              --query 'Certificate.Status' --output text)"
+          # HTTP listener must redirect to HTTPS in DNS mode.
+          assert_eq "ALB HTTP listener redirects to HTTPS" "redirect" \
+            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-listeners \
+              --load-balancer-arn "${LB_ARN}" \
+              --query "Listeners[?Port==\`80\`].DefaultActions[0].Type|[0]" --output text)"
+
+          # -- Idempotency --------------------------------------------------------
+          terraform -chdir="${TF_DIR}" plan -input=false \
+            -var "sim_endpoint=${SIM_ENDPOINT}" -var enable_dns=true -detailed-exitcode
+          printf 'PASS  idempotency DNS/TLS (plan exit 0)\n'
+
+          terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false \
+            -var "sim_endpoint=${SIM_ENDPOINT}" -var enable_dns=true
       - if: always()
         run: docker compose -f docker-compose.tier2.yml down
 
