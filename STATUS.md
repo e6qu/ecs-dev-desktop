@@ -2,8 +2,8 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-04 (admin console 8A/8B + a quality wave: typed error channel,
-compile-time guards, code-health gates)
+**Last updated:** 2026-06-05 (Terraform platform module + full non-mocked sim apply in CI;
+heartbeat-route 409 coverage)
 
 ## Current phase
 
@@ -29,6 +29,13 @@ account/region decision** (`DO_NEXT` #1) alongside the entire real-deploy track.
   page + create-from-catalog picker. "Infra control room" aesthetic.
 - **Reconciler**: idle scale-to-zero, scheduled snapshots, orphan GC (pure selectors).
 - **Real adapters** (endpoint-only): `@edd/storage-ec2`, `@edd/compute-ecs`.
+- **Deploy IaC** (`infra/terraform/modules/ecs-dev-desktop`): a reusable, parametric
+  Terraform/Terragrunt module for the whole platform (VPC + NAT [managed or **fck-nat**
+  instance], KMS, DynamoDB single-table w/ GSIs, ECR, ECS cluster + Fargate service +
+  capacity providers + autoscaling, ALB + optional ACM/Route53, scheduler reconciler cron,
+  IAM, logs) with `examples/complete`, `examples/terragrunt`, and a full README. The
+  **`terraform-sim` CI job applies + destroys the entire stack against the sockerless sim
+  every PR** (`55 added → 55 destroyed`), endpoint-only (§6.8). Real apply is AWS-gated.
 - **SSH** (`services/ssh-gateway`) + **Pomerium routing** (`infra/proxy`): real products
   in Docker, mock-free.
 - **Test tiers**: unit/contract · integration (DynamoDB Local + process sim) · e2e
