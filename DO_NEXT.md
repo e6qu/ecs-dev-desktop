@@ -103,18 +103,9 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
   Cost), Phase 7, `e2e-aws`.
 - **On DNS (#2):** real `*.devbox.<domain>` routing + ACM (the module path is sim-proven;
   the _real_ hosted zone + cert issuance is AWS/registrar-gated).
-- **On upstream sockerless:** Nine gaps open across two probe sessions. From comprehensive
-  attribute probe (2026-06-06): **#453** DynamoDB `SSEDescription` null · **#454** ECS
-  `deploymentConfiguration` null · **#455** EC2 `ModifySecurityGroupRules` unimplemented.
-  From idempotency analysis (2026-06-06): **#457** SG egress `from_port`/`to_port` = 0 for
-  ip_protocol=-1 · **#458** SG ingress `referenced_security_group_id` account-prefix ·
-  **#459** NAT Gateway `connectivity_type` not persisted (forces replacement) · **#460** ECS
-  task-def `healthCheck`/`secrets` dropped (forces replacement) · **#461** ALB
-  `minimum_load_balancer_capacity` spurious capacity_units=0 · **#462** Tags not returned by
-  `ListTagsForResource` family (CW/DynamoDB/ECR/ECS — 9 resources). From DNS/TLS step
-  (2026-06-06): **#464** ELBv2 `DescribeListeners` omits `Certificates` for HTTPS listeners.
-  CI assertions gated: #453, #454; idempotency checks gated: #457–#462; cert-to-listener
-  assertion gated: #464.
+- **On upstream sockerless:** No open blockers. #470–#473 + #469 resolved by PR #475
+  (merged 2026-06-06); submodule → `3d457dd`. All idempotency checks un-gated and
+  fail-fast across all three configurations (default, fck-nat, DNS/TLS).
 
 ## Working notes (durable)
 
