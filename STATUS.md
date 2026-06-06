@@ -2,7 +2,7 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-06 (PR #51: ~175 active assertions; #477 closed — casing error in test query, not a sim bug; all assertions un-gated)
+**Last updated:** 2026-06-06 (PR #52: golden workspace image — OpenVSCode Server v1.109.5 + idle-agent + machine-auth heartbeat + real adapter wiring)
 
 ## Current phase
 
@@ -34,18 +34,16 @@ account/region decision** (`DO_NEXT` #1) alongside the entire real-deploy track.
   capacity providers + autoscaling, ALB + optional ACM/Route53, scheduler reconciler cron,
   IAM, logs) with `examples/complete`, `examples/terragrunt`, and a full README. The
   **`terraform-sim` CI job applies + destroys the entire stack against the sockerless sim
-  every PR** in **four active** configurations: (1) default (`55 added → 55 destroyed`) with
-  **~100-assertion post-apply verification** (KMS alias, ECR imageTagMutability+kmsKey for
-  all repos, ECS task-def cpu/memory/networkMode + service config, AppAutoScaling min/max +
-  CPU target, Scheduler expression + retry, CW Logs retention+KMS for all 3 groups, ALB
-  health-check path+matcher + drop-invalid-headers, IAM all 5 roles + managed/inline policies,
-  VPC CIDR/DNS attrs, EIP, route table IGW+NAT routes, SG rules/ports/VPC, DynamoDB schema +
-  GSIs + PITR + **SSE KMS status/type/key**, **ECS deploymentCircuitBreaker enable+rollback**,
-  11 IAM sim checks incl. cluster-scoped deny) + **idempotency** (direct fail-fast,
-  zero open blockers, submodule `3d457dd`); (2) **fck-nat NAT instance** (`nat_mode=instance`)
-  - idempotency; (3) **DNS/TLS** (`enable_dns=true`: ACM cert ISSUED + type + SANs + validation
-    method + **cert-to-listener linkage** + Route53 A records + HTTPS listener + redirect +
-    idempotency). Endpoint-only (§6.8). Real apply is AWS-gated.
+  every PR** in **four active** configurations (default with ~175 assertions, fck-nat, DNS/TLS,
+  all idempotency checks green). Module now also injects `COMPUTE_PROVIDER`, `CONTROL_PLANE_URL`,
+  `ECS_SUBNETS`, `ECS_SECURITY_GROUPS`, `ECS_EBS_ROLE_ARN` into the control-plane task env.
+  Endpoint-only (§6.8). Real apply is AWS-gated.
+- **Golden workspace image** (`infra/images/workspace/`): Node 20 + **OpenVSCode Server
+  v1.109.5** (MIT, Gitpod), tini PID-1, port 3000, idle-agent (POST `/heartbeat` every
+  120s). Machine-auth: `EcsComputeProvider.runTask` injects `EDD_AGENT_TOKEN` =
+  HMAC-SHA256(secret, wsId); heartbeat route verifies it; 4 integ tests.
+- **Real adapter wiring** (`apps/web/lib/control-plane.ts`): `COMPUTE_PROVIDER=ecs` selects
+  `EcsComputeProvider.fromEnv()` + `Ec2StorageProvider.fromEnv()`; fakes remain default.
 - **SSH** (`services/ssh-gateway`) + **Pomerium routing** (`infra/proxy`): real products
   in Docker, mock-free.
 - **Test tiers**: unit/contract · integration (DynamoDB Local + process sim) · e2e

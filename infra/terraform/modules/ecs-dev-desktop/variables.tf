@@ -151,8 +151,9 @@ variable "extra_environment" {
 variable "secret_environment" {
   description = <<-EOT
     Secret environment variables for the control-plane task, mapped to the
-    Secrets Manager / SSM ARNs that hold them (e.g. AUTH_SECRET, AUTH_GITHUB_SECRET).
-    The module grants the task role read access to every referenced ARN.
+    Secrets Manager / SSM ARNs that hold them (e.g. AUTH_SECRET, AUTH_GITHUB_SECRET,
+    EDD_AGENT_SECRET). The module grants the execution role read access to every
+    referenced ARN. EDD_AGENT_SECRET must be provided here — never as a plain env var.
   EOT
   type        = map(string)
   default     = {}

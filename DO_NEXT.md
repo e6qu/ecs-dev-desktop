@@ -21,6 +21,8 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
 
 ## Done recently
 
+- **Golden workspace image + idle-agent + real adapter wiring (PR #52).** `infra/images/workspace/`: Node 20 + OpenVSCode Server v1.109.5, idle-agent shell script (heartbeats every 120s), tini PID-1. `EcsComputeProvider.runTask` injects `EDD_WORKSPACE_ID`/`EDD_CONTROL_PLANE_URL`/`EDD_AGENT_TOKEN` (HMAC-SHA256) per task. Heartbeat route accepts agent machine-auth (`Authorization: Bearer <token>`) in addition to session auth; 4 new integ tests. `COMPUTE_PROVIDER=ecs` env var switches `apps/web` from fakes to real `EcsComputeProvider` + `Ec2StorageProvider`; fails loudly if required ECS vars are missing. Terraform module injects `COMPUTE_PROVIDER`, `CONTROL_PLANE_URL`, `ECS_SUBNETS`, `ECS_SECURITY_GROUPS`, `ECS_EBS_ROLE_ARN`; `EDD_AGENT_SECRET` via `secret_environment`. `DEFAULT_WORKSPACE_MOUNT_PATH` → `/home/workspace`.
+
 - **IAM policy simulation + fck-nat ENI ops — sim gaps #427/#428/#BUG-1470 resolved upstream
   (PRs #431/#430/#429); submodule → `9e2640a`.** The `terraform-sim` CI job now runs four
   configurations every PR: default stack (with **IAM least-privilege assertions** between
@@ -103,9 +105,8 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
   Cost), Phase 7, `e2e-aws`.
 - **On DNS (#2):** real `*.devbox.<domain>` routing + ACM (the module path is sim-proven;
   the _real_ hosted zone + cert issuance is AWS/registrar-gated).
-- **On upstream sockerless:** No open blockers. #477 closed (not a sim bug — casing
-  error in test query; fixed). #470–#473 + #469 resolved by PR #475 (merged 2026-06-06);
-  submodule → `3d457dd`. All ~175 CI assertions active; zero gated.
+- **On upstream sockerless:** No open blockers. All ~175 CI assertions active; zero gated.
+- **VS Code distro:** resolved → **OpenVSCode Server** (MIT, Gitpod). Golden image built.
 
 ## Working notes (durable)
 
