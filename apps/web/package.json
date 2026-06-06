@@ -36,6 +36,6 @@
     "@aws-sdk/client-dynamodb": "^3.1063.0",
     "@playwright/test": "^1.60.0",
     "@types/node": "^25.9.1",
-    "@types/react": "^19.2.16"
+    "@types/react": "^19.2.17"
   }
 }

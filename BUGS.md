@@ -4,7 +4,7 @@
 
 ## Open
 
-_None._
+**#483** CloudWatch Logs `FilterLogEvents` returns empty results (`{ events: [] }`) instead of `ResourceNotFoundException` when the log group does not exist — every other CW handler checks group existence but `handleCWFilterLogEvents` skips it. Real AWS returns HTTP 400 `ResourceNotFoundException`. Integration test gated. Fix: add group-existence check at the top of `handleCWFilterLogEvents` matching the pattern in `handleCWPutLogEvents`.
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
