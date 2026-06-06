@@ -23,3 +23,13 @@ export const MEMBER_GROUPS_ENV = "EDD_MEMBER_GROUPS";
 
 /** Override the GitHub REST API base URL (GitHub Enterprise, or the bleephub sim). */
 export const GITHUB_API_URL_ENV = "AUTH_GITHUB_API_URL";
+
+/**
+ * Machine-auth for the in-workspace idle-agent heartbeat path.
+ * The control plane holds the secret; the agent holds a per-workspace HMAC token
+ * derived from it. Both are injected as ECS task env vars at launch time.
+ */
+/** Env var on the control plane: 32-byte hex secret used to generate agent tokens. */
+export const AGENT_SECRET_ENV = "EDD_AGENT_SECRET";
+/** Bearer token header sent by the idle-agent on every heartbeat request. */
+export const AGENT_AUTH_HEADER = "authorization";

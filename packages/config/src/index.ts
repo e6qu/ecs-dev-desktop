@@ -18,10 +18,16 @@ export const DEFAULT_GITHUB_API_URL = "https://api.github.com";
  * deployment-specific and supplied by config, not defaulted). */
 export const DEFAULT_ECS_CLUSTER = "edd-workspaces";
 export const DEFAULT_WORKSPACE_CONTAINER = "workspace";
-export const DEFAULT_WORKSPACE_MOUNT_PATH = "/home/coder";
+/** EBS volume mount path inside the workspace container (= workspace user home). */
+export const DEFAULT_WORKSPACE_MOUNT_PATH = "/home/workspace";
 export const DEFAULT_WORKSPACE_VOLUME_GIB = 8;
 export const DEFAULT_WORKSPACE_CPU = "512";
 export const DEFAULT_WORKSPACE_MEMORY = "1024";
+/** Port OpenVSCode Server listens on inside the workspace container. */
+export const DEFAULT_WORKSPACE_PORT = 3000;
+/** How often the idle-agent POSTs /heartbeat (seconds). 2 minutes: fires within
+ * every 5-minute reconciler window; 15× within the 30-minute idle threshold. */
+export const DEFAULT_HEARTBEAT_INTERVAL_S = 120;
 
 const DYNAMODB_LOCAL_HOST = "127.0.0.1";
 const DYNAMODB_LOCAL_PORT = 8000;

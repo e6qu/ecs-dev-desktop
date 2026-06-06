@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { EcsComputeProvider } from "@edd/compute-ecs";
 import { FakeComputeProvider, FakeStorageProvider, systemClock } from "@edd/core";
 import {
   CatalogService,
@@ -14,11 +15,13 @@ import {
   pingTable,
   TABLE,
 } from "@edd/db";
+import { Ec2StorageProvider } from "@edd/storage-ec2";
 
 /**
- * Process-wide control plane. Persistence (DynamoDB) is real; storage and
- * compute use the in-process fakes until the real EBS/ECS adapters land
- * (Phase 1). Built lazily so route modules import without side effects.
+ * Process-wide control plane. Persistence is always real DynamoDB.
+ * Storage + compute use the real EBS/ECS adapters when COMPUTE_PROVIDER=ecs and
+ * the required ECS env vars are set; otherwise the in-process fakes are used
+ * (dev / integration tests). Built lazily so route modules import side-effect-free.
  */
 let instance: Promise<WorkspaceService> | undefined;
 let catalog: CatalogService | undefined;
@@ -41,10 +44,19 @@ export function getCatalog(): CatalogService {
   return catalog;
 }
 
-/** Admin Health board service: real DynamoDB ping + the (fake, until AWS) providers. */
+/** Admin Health board service: real DynamoDB ping + the active providers. */
 export async function getHealthService(): Promise<HealthService> {
   const client = createDynamoClient();
   const table = tableName();
+  if (process.env.COMPUTE_PROVIDER === "ecs") {
+    const { storage, compute } = buildRealProviders();
+    return new HealthService({
+      storage,
+      compute,
+      pingDatabase: () => pingTable(client, table),
+      clock: systemClock,
+    });
+  }
   const storage = await FakeStorageProvider.create();
   return new HealthService({
     storage,
@@ -66,8 +78,23 @@ export function getLogSource(): DerivedLogSource {
   return new DerivedLogSource({ audit: getAuditSource() });
 }
 
+function buildRealProviders(): { storage: Ec2StorageProvider; compute: EcsComputeProvider } {
+  const storage = Ec2StorageProvider.fromEnv();
+  const compute = EcsComputeProvider.fromEnv(process.env.EDD_AGENT_SECRET);
+  return { storage, compute };
+}
+
 async function build(): Promise<WorkspaceService> {
   const client = createDynamoClient();
+  if (process.env.COMPUTE_PROVIDER === "ecs") {
+    const { storage, compute } = buildRealProviders();
+    return new WorkspaceService({
+      workspaces: makeWorkspaceEntity(client, tableName()),
+      storage,
+      compute,
+      clock: systemClock,
+    });
+  }
   const storage = await FakeStorageProvider.create();
   return new WorkspaceService({
     workspaces: makeWorkspaceEntity(client, tableName()),

@@ -56,6 +56,9 @@ importers:
       '@edd/authz':
         specifier: workspace:*
         version: link:../../packages/authz
+      '@edd/compute-ecs':
+        specifier: workspace:*
+        version: link:../../packages/compute-ecs
       '@edd/config':
         specifier: workspace:*
         version: link:../../packages/config
@@ -68,6 +71,9 @@ importers:
       '@edd/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@edd/storage-ec2':
+        specifier: workspace:*
+        version: link:../../packages/storage-ec2
       next:
         specifier: ^16.2.7
         version: 16.2.7(@playwright/test@1.60.0)(react-dom@19.2.7(react@19.2.7))(react@19.2.7)

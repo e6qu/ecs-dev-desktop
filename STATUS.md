@@ -2,7 +2,7 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-06 (PR #51: ~175 active assertions; #477 closed — casing error in test query, not a sim bug; all assertions un-gated)
+**Last updated:** 2026-06-06 (PR #52: golden workspace image — OpenVSCode Server v1.109.5 + idle-agent + machine-auth heartbeat + real adapter wiring)
 
 ## Current phase
 

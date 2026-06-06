@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { createHmac, timingSafeEqual } from "node:crypto";
 import {
   DescribeTasksCommand,
   ECSClient,
@@ -47,6 +48,15 @@ export interface EcsComputeConfig {
   volumeSizeGiB?: number;
   cpu?: string;
   memory?: string;
+  /** Base URL of the control plane injected into the workspace container. */
+  controlPlaneUrl?: string;
+  /**
+   * 32-byte hex secret used to derive per-workspace HMAC tokens for the
+   * idle-agent machine-auth heartbeat path. When present, each launched task
+   * receives `EDD_AGENT_TOKEN` = HMAC-SHA256(agentSecret, workspaceId) as an
+   * env var; the heartbeat route verifies the same HMAC server-side.
+   */
+  agentSecret?: string;
 }
 
 export interface EcsComputeProviderDeps {
@@ -65,6 +75,18 @@ const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms
  * (ECS families allow letters, numbers, hyphens, underscores). */
 export function taskDefinitionFamily(image: BaseImage): string {
   return `edd-ws-${image.replace(/[^a-zA-Z0-9-]/g, "-").slice(0, 200)}`;
+}
+
+/** Derive the per-workspace idle-agent token: HMAC-SHA256(secret, workspaceId). */
+export function agentToken(secret: string, wsId: string): string {
+  return createHmac("sha256", Buffer.from(secret, "hex")).update(wsId).digest("hex");
+}
+
+/** Constant-time equality for HMAC verification (prevents timing attacks). */
+export function verifyAgentToken(secret: string, wsId: string, candidate: string): boolean {
+  const expected = agentToken(secret, wsId);
+  if (expected.length !== candidate.length) return false;
+  return timingSafeEqual(Buffer.from(expected), Buffer.from(candidate));
 }
 
 /** The managed EBS volume id ECS attached to the task, if present yet. */
@@ -130,6 +152,19 @@ export class EcsComputeProvider implements ComputeProvider {
 
   async runTask(input: RunTaskInput): Promise<ComputeTask> {
     const taskDef = await this.ensureTaskDef(input.baseImage);
+
+    // Build workspace-identity env vars injected into every task at launch.
+    const workspaceEnv: { name: string; value: string }[] = [
+      { name: "EDD_WORKSPACE_ID", value: input.workspaceId },
+    ];
+    if (this.config.controlPlaneUrl !== undefined)
+      workspaceEnv.push({ name: "EDD_CONTROL_PLANE_URL", value: this.config.controlPlaneUrl });
+    if (this.config.agentSecret !== undefined)
+      workspaceEnv.push({
+        name: "EDD_AGENT_TOKEN",
+        value: agentToken(this.config.agentSecret, input.workspaceId),
+      });
+
     const out = await this.client.send(
       new RunTaskCommand({
         cluster: this.cluster(),
@@ -141,6 +176,14 @@ export class EcsComputeProvider implements ComputeProvider {
             ...(this.config.securityGroups ? { securityGroups: this.config.securityGroups } : {}),
             assignPublicIp: (this.config.assignPublicIp ?? true) ? "ENABLED" : "DISABLED",
           },
+        },
+        overrides: {
+          containerOverrides: [
+            {
+              name: this.config.containerName ?? DEFAULT_WORKSPACE_CONTAINER,
+              environment: workspaceEnv,
+            },
+          ],
         },
         volumeConfigurations: [
           {
@@ -191,6 +234,31 @@ export class EcsComputeProvider implements ComputeProvider {
       ...(endpoint
         ? { endpoint, credentials: { accessKeyId: "local", secretAccessKey: "local" } }
         : {}),
+    });
+  }
+
+  /**
+   * Build a provider from the ambient AWS env and control-plane env vars.
+   * Reads: AWS_REGION, AWS_ENDPOINT_URL, ECS_CLUSTER, ECS_SUBNETS (comma-separated),
+   * ECS_SECURITY_GROUPS (comma-separated), ECS_EBS_ROLE_ARN, CONTROL_PLANE_URL,
+   * EDD_AGENT_SECRET. Throws loudly if required vars are absent.
+   */
+  static fromEnv(agentSecret?: string): EcsComputeProvider {
+    const subnets = process.env.ECS_SUBNETS?.split(",").filter(Boolean) ?? [];
+    const securityGroups = process.env.ECS_SECURITY_GROUPS?.split(",").filter(Boolean);
+    const ebsRoleArn = process.env.ECS_EBS_ROLE_ARN;
+    if (subnets.length === 0) throw new Error("COMPUTE_PROVIDER=ecs requires ECS_SUBNETS");
+    if (!ebsRoleArn) throw new Error("COMPUTE_PROVIDER=ecs requires ECS_EBS_ROLE_ARN");
+    return new EcsComputeProvider({
+      client: EcsComputeProvider.client(),
+      config: {
+        cluster: process.env.ECS_CLUSTER,
+        subnets,
+        securityGroups,
+        ebsRoleArn,
+        controlPlaneUrl: process.env.CONTROL_PLANE_URL,
+        agentSecret,
+      },
     });
   }
 }
