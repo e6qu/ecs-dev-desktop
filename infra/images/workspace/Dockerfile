@@ -32,11 +32,13 @@ RUN curl -fsSL \
 
 # Workspace user — non-root, home is the persistent EBS mount point.
 RUN useradd -m -s /bin/bash -d /home/workspace workspace
-WORKDIR /home/workspace
 
-# Copy idle-agent and entrypoint.
+# Copy idle-agent and entrypoint before switching user (they live in /usr/local/bin).
 COPY --chmod=0755 idle-agent.sh /usr/local/bin/edd-idle-agent
 COPY --chmod=0755 entrypoint.sh /usr/local/bin/edd-entrypoint
+
+USER workspace
+WORKDIR /home/workspace
 
 EXPOSE 3000
 

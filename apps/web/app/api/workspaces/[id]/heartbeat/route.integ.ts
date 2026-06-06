@@ -75,19 +75,21 @@ describe("POST /api/workspaces/:id/heartbeat (DynamoDB Local)", () => {
       vi.unstubAllEnvs();
     });
 
+    // Each test uses a distinct owner to avoid hitting the 5-workspace member quota
+    // shared across the whole suite (outer tests already consume 3 of alice's slots).
     it("accepts a valid agent token (200)", async () => {
-      const id = await createWorkspaceFor("alice");
+      const id = await createWorkspaceFor("agent-user-1");
       expect((await agentBeat(id)).status).toBe(200);
     });
 
     it("rejects a wrong agent token (401)", async () => {
-      const id = await createWorkspaceFor("alice");
+      const id = await createWorkspaceFor("agent-user-2");
       expect((await agentBeat(id, "deadbeef")).status).toBe(401);
     });
 
     it("rejects when EDD_AGENT_SECRET is unset (401)", async () => {
       vi.stubEnv(AGENT_SECRET_ENV, "");
-      const id = await createWorkspaceFor("alice");
+      const id = await createWorkspaceFor("agent-user-3");
       expect((await agentBeat(id)).status).toBe(401);
     });
 
