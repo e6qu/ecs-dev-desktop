@@ -48,6 +48,10 @@ locals {
     ECS_SUBNETS         = join(",", aws_subnet.private[*].id)
     ECS_SECURITY_GROUPS = aws_security_group.tasks.id
     ECS_EBS_ROLE_ARN    = aws_iam_role.ecs_infrastructure.arn
+    # Phase 8C: CloudTrail audit + CloudWatch Logs adapters (endpoint-only swap).
+    AUDIT_PROVIDER = "cloudtrail"
+    LOG_PROVIDER   = "cloudwatch"
+    EDD_APP_NAME   = var.name
   }
   control_plane_environment = merge(local.base_environment, var.extra_environment)
 }

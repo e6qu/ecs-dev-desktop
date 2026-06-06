@@ -2,7 +2,7 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-06 (PR #52: golden workspace image — OpenVSCode Server v1.109.5 + idle-agent + machine-auth heartbeat + real adapter wiring)
+**Last updated:** 2026-06-06 (PR #53: Phase 8C — CloudTrail audit + CloudWatch Logs adapters)
 
 ## Current phase
 
@@ -43,7 +43,9 @@ account/region decision** (`DO_NEXT` #1) alongside the entire real-deploy track.
   120s). Machine-auth: `EcsComputeProvider.runTask` injects `EDD_AGENT_TOKEN` =
   HMAC-SHA256(secret, wsId); heartbeat route verifies it; 4 integ tests.
 - **Real adapter wiring** (`apps/web/lib/control-plane.ts`): `COMPUTE_PROVIDER=ecs` selects
-  `EcsComputeProvider.fromEnv()` + `Ec2StorageProvider.fromEnv()`; fakes remain default.
+  `EcsComputeProvider.fromEnv()` + `Ec2StorageProvider.fromEnv()`; `AUDIT_PROVIDER=cloudtrail`
+  selects `CloudTrailAuditSource`; `LOG_PROVIDER=cloudwatch` + `EDD_APP_NAME` selects
+  `CloudWatchLogSource`; fakes remain default.
 - **SSH** (`services/ssh-gateway`) + **Pomerium routing** (`infra/proxy`): real products
   in Docker, mock-free.
 - **Test tiers**: unit/contract · integration (DynamoDB Local + process sim) · e2e
@@ -64,10 +66,9 @@ account/region decision** (`DO_NEXT` #1) alongside the entire real-deploy track.
 
 ## Immediate focus
 
-- **AWS account/region** (`DO_NEXT` #1) — top blocker; unlocks real Terraform, golden
-  image, deploy, reconciler cron, `e2e-aws`, and Phase 8C cloud observability.
+- **AWS account/region** (`DO_NEXT` #1) — top blocker for real deploy, `e2e-aws`,
+  reconciler cron, and Phase 7.
 - **Domain/DNS** (#2) — blocks real proxy routing + ACM.
-- **Phase 8A + 8B complete:** the admin `/admin` shell (Overview, Health board,
-  Workspaces table, per-workspace Inspect, Quotas with create-time enforcement, and
-  Logs/Audit with the derived audit feed + control-plane log stream) — all
-  Playwright-covered. The remaining admin work (8C) is AWS-gated cloud data.
+- **Phase 8 complete:** 8A (Health + Inspect) + 8B (Overview + Quotas + Logs/Audit) +
+  **8C** (CloudTrail audit + CloudWatch Logs adapters) all done and sim-proven.
+  Remaining work is the real-deploy track (AWS account/region-gated).

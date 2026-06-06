@@ -18,6 +18,8 @@
     "@edd/api-contracts": "workspace:*",
     "@edd/auth": "workspace:*",
     "@edd/authz": "workspace:*",
+    "@edd/cloudtrail-audit": "workspace:*",
+    "@edd/cloudwatch-logs": "workspace:*",
     "@edd/compute-ecs": "workspace:*",
     "@edd/config": "workspace:*",
     "@edd/control-plane": "workspace:*",
