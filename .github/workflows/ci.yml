@@ -306,7 +306,7 @@ jobs:
       # Post-apply: resource verification across all services + IAM simulation (4
       # policy-evaluation checks) + idempotency (plan -detailed-exitcode = 0).
       # Four active configurations: default (100+ assertions), fck-nat, DNS/TLS.
-      # Gated: #477 Scheduler GetSchedule AwsvpcConfiguration fields not returned.
+      # All assertions active (no open upstream blockers).
       - name: terraform apply + resource verification + IAM simulation + idempotency + destroy (default stack)
         run: |
           terraform -chdir="${TF_DIR}" apply -auto-approve -input=false -var "sim_endpoint=${SIM_ENDPOINT}"
@@ -633,22 +633,21 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" scheduler get-schedule \
               --name "eddsim-reconciler" \
               --query 'Target.EcsParameters.TaskCount' --output text)"
-          # gated on sockerless#477 — GetSchedule doesn't return AwsvpcConfiguration fields
-          # assert_eq "Scheduler network assign public IP DISABLED" "DISABLED" \
-          #   "$(aws --endpoint-url "${ENDPT}" scheduler get-schedule \
-          #     --name "eddsim-reconciler" \
-          #     --query 'Target.EcsParameters.NetworkConfiguration.AwsvpcConfiguration.AssignPublicIp' \
-          #     --output text)"
-          # assert_eq "Scheduler network subnets count 2" "2" \
-          #   "$(aws --endpoint-url "${ENDPT}" scheduler get-schedule \
-          #     --name "eddsim-reconciler" \
-          #     --query 'length(Target.EcsParameters.NetworkConfiguration.AwsvpcConfiguration.Subnets)' \
-          #     --output text)"
-          # assert_eq "Scheduler network security groups count 1" "1" \
-          #   "$(aws --endpoint-url "${ENDPT}" scheduler get-schedule \
-          #     --name "eddsim-reconciler" \
-          #     --query 'length(Target.EcsParameters.NetworkConfiguration.AwsvpcConfiguration.SecurityGroups)' \
-          #     --output text)"
+          assert_eq "Scheduler network assign public IP DISABLED" "DISABLED" \
+            "$(aws --endpoint-url "${ENDPT}" scheduler get-schedule \
+              --name "eddsim-reconciler" \
+              --query 'Target.EcsParameters.NetworkConfiguration.awsvpcConfiguration.AssignPublicIp' \
+              --output text)"
+          assert_eq "Scheduler network subnets count 2" "2" \
+            "$(aws --endpoint-url "${ENDPT}" scheduler get-schedule \
+              --name "eddsim-reconciler" \
+              --query 'length(Target.EcsParameters.NetworkConfiguration.awsvpcConfiguration.Subnets)' \
+              --output text)"
+          assert_eq "Scheduler network security groups count 1" "1" \
+            "$(aws --endpoint-url "${ENDPT}" scheduler get-schedule \
+              --name "eddsim-reconciler" \
+              --query 'length(Target.EcsParameters.NetworkConfiguration.awsvpcConfiguration.SecurityGroups)' \
+              --output text)"
 
           # -- CloudWatch Logs ----------------------------------------------------
           assert_eq "CW log group count 3" "3" \

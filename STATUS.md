@@ -2,7 +2,7 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-06 (PR #51: ~175-assertion sim probe; #477 filed upstream — Scheduler GetSchedule AwsvpcConfiguration not returned; 3 assertions gated)
+**Last updated:** 2026-06-06 (PR #51: ~175 active assertions; #477 closed — casing error in test query, not a sim bug; all assertions un-gated)
 
 ## Current phase
 

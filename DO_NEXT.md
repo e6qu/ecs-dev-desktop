@@ -103,9 +103,9 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
   Cost), Phase 7, `e2e-aws`.
 - **On DNS (#2):** real `*.devbox.<domain>` routing + ACM (the module path is sim-proven;
   the _real_ hosted zone + cert issuance is AWS/registrar-gated).
-- **On upstream sockerless:** **#477** open — `scheduler:GetSchedule` doesn't return
-  `AwsvpcConfiguration` fields; 3 CI assertions gated (filed 2026-06-06). Previous:
-  #470–#473 + #469 resolved by PR #475 (merged 2026-06-06); submodule → `3d457dd`.
+- **On upstream sockerless:** No open blockers. #477 closed (not a sim bug — casing
+  error in test query; fixed). #470–#473 + #469 resolved by PR #475 (merged 2026-06-06);
+  submodule → `3d457dd`. All ~175 CI assertions active; zero gated.
 
 ## Working notes (durable)
 

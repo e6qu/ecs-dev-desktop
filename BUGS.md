@@ -8,7 +8,7 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-**#477** `scheduler:GetSchedule` doesn't return `Target.EcsParameters.NetworkConfiguration.AwsvpcConfiguration` fields (`AssignPublicIp`, `Subnets`, `SecurityGroups`) — CI assertions for Scheduler network config gated until fixed.
+_None._
 
 ## Resolved (sockerless — all fixed upstream)
 
@@ -81,7 +81,7 @@ reads these to reconstruct `launch_template` block; absence → ForceNew replace
 `DescribeListeners` missing `SslPolicy` for HTTPS listeners · **#469** Azure ACR `/oauth2/`
 token service unimplemented → PR #475 (merged 2026-06-06). Submodule → `3d457dd`. All
 idempotency checks un-gated; zero open upstream blockers.
-**#477** `scheduler:GetSchedule` `Target.EcsParameters.NetworkConfiguration.AwsvpcConfiguration` fields not persisted/returned (filed 2026-06-06; 3 CI assertions gated).
+**#477** CI query used `AwsvpcConfiguration` (capital A) but the wire key is `awsvpcConfiguration` (lowercase) — JMESPath is case-sensitive; same result on real AWS. Not a sim bug; closed. Fix: lowercased the three JMESPath queries; all three assertions active.
 
 ---
 
