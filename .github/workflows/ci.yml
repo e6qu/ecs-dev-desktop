@@ -375,6 +375,12 @@ jobs:
           assert_eq "KMS alias exists" "1" \
             "$(aws --endpoint-url "${ENDPT}" kms list-aliases \
               --query "length(Aliases[?AliasName=='alias/eddsim-ecs-dev-desktop'])" --output text)"
+          assert_eq "KMS key usage ENCRYPT_DECRYPT" "ENCRYPT_DECRYPT" \
+            "$(aws --endpoint-url "${ENDPT}" kms describe-key --key-id "${KMS_KEY_ID}" \
+              --query 'KeyMetadata.KeyUsage' --output text)"
+          assert_eq "KMS key origin AWS_KMS" "AWS_KMS" \
+            "$(aws --endpoint-url "${ENDPT}" kms describe-key --key-id "${KMS_KEY_ID}" \
+              --query 'KeyMetadata.Origin' --output text)"
 
           # -- ECR ----------------------------------------------------------------
           assert_eq "ECR control-plane repo exists" "eddsim/control-plane" \
@@ -488,6 +494,89 @@ jobs:
               --cluster "${CLUSTER}" --services "eddsim-control-plane" \
               --query 'services[0].deploymentConfiguration.deploymentCircuitBreaker.rollback' --output text)"
 
+          # -- ECS task-definition container details --------------------------------
+          assert_eq "ECS control-plane container essential" "True" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-task-definition \
+              --task-definition "eddsim-control-plane" \
+              --query 'taskDefinition.containerDefinitions[0].essential' --output text)"
+          assert_eq "ECS control-plane container port 3000" "3000" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-task-definition \
+              --task-definition "eddsim-control-plane" \
+              --query 'taskDefinition.containerDefinitions[0].portMappings[0].containerPort' --output text)"
+          assert_eq "ECS control-plane container log driver awslogs" "awslogs" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-task-definition \
+              --task-definition "eddsim-control-plane" \
+              --query 'taskDefinition.containerDefinitions[0].logConfiguration.logDriver' --output text)"
+          assert_eq "ECS control-plane healthCheck interval 30" "30" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-task-definition \
+              --task-definition "eddsim-control-plane" \
+              --query 'taskDefinition.containerDefinitions[0].healthCheck.interval' --output text)"
+          assert_eq "ECS control-plane healthCheck timeout 5" "5" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-task-definition \
+              --task-definition "eddsim-control-plane" \
+              --query 'taskDefinition.containerDefinitions[0].healthCheck.timeout' --output text)"
+          assert_eq "ECS control-plane env NODE_ENV production" "production" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-task-definition \
+              --task-definition "eddsim-control-plane" \
+              --query "taskDefinition.containerDefinitions[0].environment[?name==\`NODE_ENV\`].value|[0]" \
+              --output text)"
+          assert_eq "ECS control-plane env DYNAMODB_TABLE set" "${TABLE_NAME}" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-task-definition \
+              --task-definition "eddsim-control-plane" \
+              --query "taskDefinition.containerDefinitions[0].environment[?name==\`DYNAMODB_TABLE\`].value|[0]" \
+              --output text)"
+          assert_eq "ECS control-plane env ECS_CLUSTER set" "${CLUSTER}" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-task-definition \
+              --task-definition "eddsim-control-plane" \
+              --query "taskDefinition.containerDefinitions[0].environment[?name==\`ECS_CLUSTER\`].value|[0]" \
+              --output text)"
+          assert_eq "ECS reconciler task-def CPU 256" "256" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-task-definition \
+              --task-definition "eddsim-reconciler" \
+              --query 'taskDefinition.cpu' --output text)"
+          assert_eq "ECS reconciler task-def memory 512" "512" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-task-definition \
+              --task-definition "eddsim-reconciler" \
+              --query 'taskDefinition.memory' --output text)"
+          assert_eq "ECS reconciler container log driver awslogs" "awslogs" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-task-definition \
+              --task-definition "eddsim-reconciler" \
+              --query 'taskDefinition.containerDefinitions[0].logConfiguration.logDriver' --output text)"
+          assert_eq "ECS cluster capacity provider strategy weight 1" "1" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-clusters \
+              --clusters "${CLUSTER}" \
+              --query 'clusters[0].defaultCapacityProviderStrategy[0].weight' --output text)"
+          assert_eq "ECS cluster capacity provider strategy base 1" "1" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-clusters \
+              --clusters "${CLUSTER}" \
+              --query 'clusters[0].defaultCapacityProviderStrategy[0].base' --output text)"
+          assert_eq "ECS cluster has FARGATE_SPOT provider" "FARGATE_SPOT" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-clusters \
+              --clusters "${CLUSTER}" \
+              --query "clusters[0].capacityProviders[?@==\`FARGATE_SPOT\`]|[0]" --output text)"
+
+          # -- ECS service load balancer + network ----------------------------------
+          assert_eq "ECS service load balancer count 1" "1" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-services \
+              --cluster "${CLUSTER}" --services "eddsim-control-plane" \
+              --query 'length(services[0].loadBalancers)' --output text)"
+          assert_eq "ECS service LB container name control-plane" "control-plane" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-services \
+              --cluster "${CLUSTER}" --services "eddsim-control-plane" \
+              --query 'services[0].loadBalancers[0].containerName' --output text)"
+          assert_eq "ECS service LB container port 3000" "3000" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-services \
+              --cluster "${CLUSTER}" --services "eddsim-control-plane" \
+              --query 'services[0].loadBalancers[0].containerPort' --output text)"
+          assert_eq "ECS service subnets count 2" "2" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-services \
+              --cluster "${CLUSTER}" --services "eddsim-control-plane" \
+              --query 'length(services[0].networkConfiguration.awsvpcConfiguration.subnets)' --output text)"
+          assert_eq "ECS service security groups count 1" "1" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-services \
+              --cluster "${CLUSTER}" --services "eddsim-control-plane" \
+              --query 'length(services[0].networkConfiguration.awsvpcConfiguration.securityGroups)' --output text)"
+
           # -- AppAutoScaling -----------------------------------------------------
           assert_eq "AppAutoScaling target registered" "1" \
             "$(aws --endpoint-url "${ENDPT}" application-autoscaling describe-scalable-targets \
@@ -532,6 +621,33 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" scheduler get-schedule \
               --name "eddsim-reconciler" \
               --query 'Target.RetryPolicy.MaximumRetryAttempts' --output text)"
+          assert_eq "Scheduler timezone UTC" "UTC" \
+            "$(aws --endpoint-url "${ENDPT}" scheduler get-schedule \
+              --name "eddsim-reconciler" \
+              --query 'ScheduleExpressionTimezone' --output text)"
+          assert_eq "Scheduler flexible time window OFF" "OFF" \
+            "$(aws --endpoint-url "${ENDPT}" scheduler get-schedule \
+              --name "eddsim-reconciler" \
+              --query 'FlexibleTimeWindow.Mode' --output text)"
+          assert_eq "Scheduler task count 1" "1" \
+            "$(aws --endpoint-url "${ENDPT}" scheduler get-schedule \
+              --name "eddsim-reconciler" \
+              --query 'Target.EcsParameters.TaskCount' --output text)"
+          assert_eq "Scheduler network assign public IP DISABLED" "DISABLED" \
+            "$(aws --endpoint-url "${ENDPT}" scheduler get-schedule \
+              --name "eddsim-reconciler" \
+              --query 'Target.EcsParameters.NetworkConfiguration.AwsvpcConfiguration.AssignPublicIp' \
+              --output text)"
+          assert_eq "Scheduler network subnets count 2" "2" \
+            "$(aws --endpoint-url "${ENDPT}" scheduler get-schedule \
+              --name "eddsim-reconciler" \
+              --query 'length(Target.EcsParameters.NetworkConfiguration.AwsvpcConfiguration.Subnets)' \
+              --output text)"
+          assert_eq "Scheduler network security groups count 1" "1" \
+            "$(aws --endpoint-url "${ENDPT}" scheduler get-schedule \
+              --name "eddsim-reconciler" \
+              --query 'length(Target.EcsParameters.NetworkConfiguration.AwsvpcConfiguration.SecurityGroups)' \
+              --output text)"
 
           # -- CloudWatch Logs ----------------------------------------------------
           assert_eq "CW log group count 3" "3" \
@@ -562,6 +678,18 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" logs describe-log-groups \
               --log-group-name-prefix "/eddsim/workspaces" \
               --query 'logGroups[0].kmsKeyId' --output text)"
+          assert_eq "CW control-plane log group name" "/eddsim/control-plane" \
+            "$(aws --endpoint-url "${ENDPT}" logs describe-log-groups \
+              --log-group-name-prefix "/eddsim/control-plane" \
+              --query 'logGroups[0].logGroupName' --output text)"
+          assert_eq "CW reconciler log group name" "/eddsim/reconciler" \
+            "$(aws --endpoint-url "${ENDPT}" logs describe-log-groups \
+              --log-group-name-prefix "/eddsim/reconciler" \
+              --query 'logGroups[0].logGroupName' --output text)"
+          assert_eq "CW workspaces log group name" "/eddsim/workspaces" \
+            "$(aws --endpoint-url "${ENDPT}" logs describe-log-groups \
+              --log-group-name-prefix "/eddsim/workspaces" \
+              --query 'logGroups[0].logGroupName' --output text)"
 
           # -- ALB + listeners + target group -------------------------------------
           LB_ARN=$(aws --endpoint-url "${ENDPT}" elbv2 describe-load-balancers \
@@ -604,6 +732,25 @@ jobs:
               --load-balancer-arn "${LB_ARN}" \
               --query "Attributes[?Key=='routing.http.drop_invalid_header_fields.enabled'].Value|[0]" \
               --output text)"
+          TG_ARN=$(aws --endpoint-url "${ENDPT}" elbv2 describe-target-groups \
+            --query "TargetGroups[?starts_with(TargetGroupName,'eddsim')].TargetGroupArn|[0]" \
+            --output text)
+          assert_eq "ALB target group health check interval 30" "30" \
+            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-target-groups \
+              --target-group-arns "${TG_ARN}" \
+              --query 'TargetGroups[0].HealthCheckIntervalSeconds' --output text)"
+          assert_eq "ALB target group health check timeout 5" "5" \
+            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-target-groups \
+              --target-group-arns "${TG_ARN}" \
+              --query 'TargetGroups[0].HealthCheckTimeoutSeconds' --output text)"
+          assert_eq "ALB target group healthy threshold 2" "2" \
+            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-target-groups \
+              --target-group-arns "${TG_ARN}" \
+              --query 'TargetGroups[0].HealthyThresholdCount' --output text)"
+          assert_eq "ALB target group unhealthy threshold 3" "3" \
+            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-target-groups \
+              --target-group-arns "${TG_ARN}" \
+              --query 'TargetGroups[0].UnhealthyThresholdCount' --output text)"
 
           # -- IAM roles + policies -----------------------------------------------
           for ROLE in eddsim-task-execution eddsim-control-plane eddsim-reconciler \
@@ -637,6 +784,23 @@ jobs:
           assert_eq "IAM execution extra inline policy count 1" "1" \
             "$(aws --endpoint-url "${ENDPT}" iam list-role-policies \
               --role-name eddsim-task-execution --query 'length(PolicyNames)' --output text)"
+
+          # -- IAM trust relationships (AssumeRolePolicyDocument) ------------------
+          assert_eq "IAM execution role trusts ecs-tasks" "ecs-tasks.amazonaws.com" \
+            "$(aws --endpoint-url "${ENDPT}" iam get-role --role-name eddsim-task-execution \
+              --query 'Role.AssumeRolePolicyDocument.Statement[0].Principal.Service' --output text)"
+          assert_eq "IAM control-plane role trusts ecs-tasks" "ecs-tasks.amazonaws.com" \
+            "$(aws --endpoint-url "${ENDPT}" iam get-role --role-name eddsim-control-plane \
+              --query 'Role.AssumeRolePolicyDocument.Statement[0].Principal.Service' --output text)"
+          assert_eq "IAM reconciler role trusts ecs-tasks" "ecs-tasks.amazonaws.com" \
+            "$(aws --endpoint-url "${ENDPT}" iam get-role --role-name eddsim-reconciler \
+              --query 'Role.AssumeRolePolicyDocument.Statement[0].Principal.Service' --output text)"
+          assert_eq "IAM ecs-infrastructure role trusts ecs" "ecs.amazonaws.com" \
+            "$(aws --endpoint-url "${ENDPT}" iam get-role --role-name eddsim-ecs-infrastructure \
+              --query 'Role.AssumeRolePolicyDocument.Statement[0].Principal.Service' --output text)"
+          assert_eq "IAM scheduler role trusts scheduler" "scheduler.amazonaws.com" \
+            "$(aws --endpoint-url "${ENDPT}" iam get-role --role-name eddsim-scheduler \
+              --query 'Role.AssumeRolePolicyDocument.Statement[0].Principal.Service' --output text)"
 
           # -- Networking: subnets, NAT, security groups --------------------------
           # VPC attributes and routing.
@@ -711,6 +875,23 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" ec2 describe-security-groups \
               --group-ids "${ALB_SG}" \
               --query 'SecurityGroups[0].VpcId' --output text)"
+          assert_eq "Tasks SG VPC matches" "${VPC_ID}" \
+            "$(aws --endpoint-url "${ENDPT}" ec2 describe-security-groups \
+              --group-ids "${TASKS_SG}" \
+              --query 'SecurityGroups[0].VpcId' --output text)"
+          assert_eq "Tasks SG ingress source matches ALB SG" "${ALB_SG}" \
+            "$(aws --endpoint-url "${ENDPT}" ec2 describe-security-group-rules \
+              --filters "Name=group-id,Values=${TASKS_SG}" \
+              --query "SecurityGroupRules[?IsEgress==\`false\`].ReferencedGroupInfo.GroupId|[0]" \
+              --output text)"
+          assert_eq "ALB SG has egress rule" "1" \
+            "$(aws --endpoint-url "${ENDPT}" ec2 describe-security-group-rules \
+              --filters "Name=group-id,Values=${ALB_SG}" \
+              --query "length(SecurityGroupRules[?IsEgress==\`true\`])" --output text)"
+          assert_eq "Tasks SG has egress rule" "1" \
+            "$(aws --endpoint-url "${ENDPT}" ec2 describe-security-group-rules \
+              --filters "Name=group-id,Values=${TASKS_SG}" \
+              --query "length(SecurityGroupRules[?IsEgress==\`true\`])" --output text)"
 
           # -- DynamoDB schema + backup -------------------------------------------
           assert_eq "DynamoDB hash key PK" "PK" \
@@ -742,6 +923,42 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" dynamodb describe-table \
               --table-name "${TABLE_NAME}" \
               --query 'Table.SSEDescription.KMSMasterKeyArn' --output text)"
+
+          # -- DynamoDB: range key + GSI key schemas + projections ----------------
+          assert_eq "DynamoDB range key SK" "SK" \
+            "$(aws --endpoint-url "${ENDPT}" dynamodb describe-table \
+              --table-name "${TABLE_NAME}" \
+              --query "Table.KeySchema[?KeyType=='RANGE'].AttributeName|[0]" --output text)"
+          assert_eq "DynamoDB GSI1 hash key GSI1PK" "GSI1PK" \
+            "$(aws --endpoint-url "${ENDPT}" dynamodb describe-table \
+              --table-name "${TABLE_NAME}" \
+              --query "Table.GlobalSecondaryIndexes[?IndexName=='GSI1'].KeySchema[?KeyType=='HASH'].AttributeName|[0]" \
+              --output text)"
+          assert_eq "DynamoDB GSI1 range key GSI1SK" "GSI1SK" \
+            "$(aws --endpoint-url "${ENDPT}" dynamodb describe-table \
+              --table-name "${TABLE_NAME}" \
+              --query "Table.GlobalSecondaryIndexes[?IndexName=='GSI1'].KeySchema[?KeyType=='RANGE'].AttributeName|[0]" \
+              --output text)"
+          assert_eq "DynamoDB GSI2 hash key GSI2PK" "GSI2PK" \
+            "$(aws --endpoint-url "${ENDPT}" dynamodb describe-table \
+              --table-name "${TABLE_NAME}" \
+              --query "Table.GlobalSecondaryIndexes[?IndexName=='GSI2'].KeySchema[?KeyType=='HASH'].AttributeName|[0]" \
+              --output text)"
+          assert_eq "DynamoDB GSI2 range key GSI2SK" "GSI2SK" \
+            "$(aws --endpoint-url "${ENDPT}" dynamodb describe-table \
+              --table-name "${TABLE_NAME}" \
+              --query "Table.GlobalSecondaryIndexes[?IndexName=='GSI2'].KeySchema[?KeyType=='RANGE'].AttributeName|[0]" \
+              --output text)"
+          assert_eq "DynamoDB GSI1 projection ALL" "ALL" \
+            "$(aws --endpoint-url "${ENDPT}" dynamodb describe-table \
+              --table-name "${TABLE_NAME}" \
+              --query "Table.GlobalSecondaryIndexes[?IndexName=='GSI1'].Projection.ProjectionType|[0]" \
+              --output text)"
+          assert_eq "DynamoDB GSI2 projection ALL" "ALL" \
+            "$(aws --endpoint-url "${ENDPT}" dynamodb describe-table \
+              --table-name "${TABLE_NAME}" \
+              --query "Table.GlobalSecondaryIndexes[?IndexName=='GSI2'].Projection.ProjectionType|[0]" \
+              --output text)"
 
           # -- IAM policy simulation (existing 4 checks) -------------------------
           # Stated allow — DynamoDB PutItem on the owned table.
@@ -792,6 +1009,36 @@ jobs:
           assert_iam "iam:PassRole execution role to ecs-tasks allowed" "allowed" \
             --action-names "iam:PassRole" --resource-arns "${EXEC_ROLE_ARN}" \
             --context-entries "ContextKeyName=iam:PassedToService,ContextKeyValues=ecs-tasks.amazonaws.com,ContextKeyType=string"
+
+          # -- IAM policy simulation: reconciler role --------------------------------
+          RECON_ROLE=$(terraform -chdir="${TF_DIR}" output -raw reconciler_task_role_arn)
+          assert_eq "reconciler ecs:StopTask on cluster allowed" "allowed" \
+            "$(aws --endpoint-url "${ENDPT}" iam simulate-principal-policy \
+              --policy-source-arn "${RECON_ROLE}" \
+              --action-names "ecs:StopTask" --resource-arns "${CLUSTER_ARN}" \
+              --query 'EvaluationResults[0].EvalDecision' --output text)"
+          assert_eq "reconciler ec2:CreateSnapshot allowed" "allowed" \
+            "$(aws --endpoint-url "${ENDPT}" iam simulate-principal-policy \
+              --policy-source-arn "${RECON_ROLE}" \
+              --action-names "ec2:CreateSnapshot" --resource-arns "*" \
+              --query 'EvaluationResults[0].EvalDecision' --output text)"
+          assert_eq "reconciler ec2:DeleteVolume tagged allowed" "allowed" \
+            "$(aws --endpoint-url "${ENDPT}" iam simulate-principal-policy \
+              --policy-source-arn "${RECON_ROLE}" \
+              --action-names "ec2:DeleteVolume" \
+              --resource-arns "arn:aws:ec2:us-east-1::volume/vol-managed" \
+              --context-entries "ContextKeyName=aws:ResourceTag/edd:managed,ContextKeyValues=true,ContextKeyType=string" \
+              --query 'EvaluationResults[0].EvalDecision' --output text)"
+          assert_eq "reconciler dynamodb:Query allowed" "allowed" \
+            "$(aws --endpoint-url "${ENDPT}" iam simulate-principal-policy \
+              --policy-source-arn "${RECON_ROLE}" \
+              --action-names "dynamodb:Query" --resource-arns "${TABLE_ARN}" \
+              --query 'EvaluationResults[0].EvalDecision' --output text)"
+          assert_eq "reconciler s3:GetObject implicitDeny" "implicitDeny" \
+            "$(aws --endpoint-url "${ENDPT}" iam simulate-principal-policy \
+              --policy-source-arn "${RECON_ROLE}" \
+              --action-names "s3:GetObject" --resource-arns "arn:aws:s3:::bucket/key" \
+              --query 'EvaluationResults[0].EvalDecision' --output text)"
 
           # -- Idempotency: plan after apply must show 0 changes ------------------
           terraform -chdir="${TF_DIR}" plan -input=false \
@@ -911,6 +1158,34 @@ jobs:
               --hosted-zone-id "${ZONE_ID}" \
               --query "length(ResourceRecordSets[?contains(Name,'devbox') && Type=='A'])" \
               --output text)"
+          # HTTPS listener SSL policy + forward action (both fixed by sockerless#473 / PR #475).
+          assert_eq "ALB HTTPS listener ssl policy TLS13" "ELBSecurityPolicy-TLS13-1-2-2021-06" \
+            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-listeners \
+              --load-balancer-arn "${LB_ARN}" \
+              --query "Listeners[?Port==\`443\`].SslPolicy|[0]" --output text)"
+          assert_eq "ALB HTTPS listener forward action" "forward" \
+            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-listeners \
+              --load-balancer-arn "${LB_ARN}" \
+              --query "Listeners[?Port==\`443\`].DefaultActions[0].Type|[0]" --output text)"
+          # ALB SG must have a port-443 ingress rule in DNS mode.
+          ALB_SG_DNS=$(aws --endpoint-url "${ENDPT}" elbv2 describe-load-balancers \
+            --query "LoadBalancers[?starts_with(LoadBalancerName,'eddsim')].SecurityGroups[0]|[0]" \
+            --output text)
+          assert_eq "ALB SG has port-443 ingress rule (DNS mode)" "1" \
+            "$(aws --endpoint-url "${ENDPT}" ec2 describe-security-group-rules \
+              --filters "Name=group-id,Values=${ALB_SG_DNS}" \
+              --query "length(SecurityGroupRules[?IsEgress==\`false\` && FromPort==\`443\`])" \
+              --output text)"
+          # ACM cert primary domain name.
+          assert_eq "ACM cert primary domain" "app.edd-sim.example.com" \
+            "$(aws --endpoint-url "${ENDPT}" acm describe-certificate \
+              --certificate-arn "${CERT_ARN}" \
+              --query 'Certificate.DomainName' --output text)"
+          # Route53 cert validation CNAME records must exist (one per SAN + primary domain).
+          assert_eq "Route53 cert validation CNAME count ≥ 1" "1" \
+            "$(aws --endpoint-url "${ENDPT}" route53 list-resource-record-sets \
+              --hosted-zone-id "${ZONE_ID}" \
+              --query "length(ResourceRecordSets[?Type=='CNAME']) >= \`1\`" --output text)"
 
           # -- Idempotency --------------------------------------------------------
           terraform -chdir="${TF_DIR}" plan -input=false \
