@@ -2,8 +2,8 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-06 (all 10 open sim blockers resolved upstream PRs #463+#466;
-submodule → `1859adf`; all CI assertions + idempotency checks un-gated; zero open blockers)
+**Last updated:** 2026-06-06 (submodule → `1859adf`; 9/10 blockers resolved; #467 ECS task-def
+tags re-filed; idempotency checks re-gated on #467; all other assertions un-gated)
 
 ## Current phase
 

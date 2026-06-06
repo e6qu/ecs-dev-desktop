@@ -103,9 +103,10 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
   Cost), Phase 7, `e2e-aws`.
 - **On DNS (#2):** real `*.devbox.<domain>` routing + ACM (the module path is sim-proven;
   the _real_ hosted zone + cert issuance is AWS/registrar-gated).
-- **On upstream sockerless:** No open blockers. All 10 gaps from this session (#453–#455,
-  #457–#462, #464) were fixed upstream in PRs #463 + #466 (merged 2026-06-06); submodule →
-  `1859adf`. All CI assertions and idempotency checks un-gated.
+- **On upstream sockerless:** One open blocker. **#467** ECS task-def tags still empty after
+  PR #466 (`DescribeTaskDefinition --include TAGS` path not implemented for task defs).
+  All other #453–#455, #457–#462, #464 resolved by PRs #463+#466 (merged 2026-06-06);
+  submodule → `1859adf`. Idempotency checks gated on #467; all other assertions un-gated.
 
 ## Working notes (durable)
 

@@ -8,7 +8,11 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-_None._
+### #467 — ECS task-def tags not returned after PR #466 (DescribeTaskDefinition --include TAGS and/or ListTagsForResource still empty for task definitions)
+
+**Status:** Open (filed 2026-06-06) · **Upstream:** e6qu/sockerless#467
+
+PR #466 fixed #462 for CloudWatch Logs, DynamoDB, ECR, and ECS generally, but ECS task-definition tags are still not returned on refresh. The TF provider reads task-def tags via `DescribeTaskDefinition --include TAGS`; if that path is not implemented the provider sees no tags even if `ListTagsForResource` was fixed. Both `aws_ecs_task_definition` resources show tag additions on every idempotency plan, cascading to a spurious update on `aws_iam_role_policy.scheduler` (its data source re-reads because the task-def is changing). Idempotency checks re-gated on #467.
 
 ## Resolved (sockerless — all fixed upstream)
 
