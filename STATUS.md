@@ -2,8 +2,8 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-06 (submodule → `1859adf`; 9/10 blockers resolved; #467 ECS task-def
-tags re-filed; idempotency checks re-gated on #467; all other assertions un-gated)
+**Last updated:** 2026-06-06 (submodule → `3db617e`; PR #468 resolved #467 ECS task-def tags +
+#465 OCI header fidelity; all idempotency checks un-gated; zero open upstream blockers)
 
 ## Current phase
 
@@ -42,11 +42,11 @@ account/region decision** (`DO_NEXT` #1) alongside the entire real-deploy track.
   health-check path+matcher + drop-invalid-headers, IAM all 5 roles + managed/inline policies,
   VPC CIDR/DNS attrs, EIP, route table IGW+NAT routes, SG rules/ports/VPC, DynamoDB schema +
   GSIs + PITR + **SSE KMS status/type/key**, **ECS deploymentCircuitBreaker enable+rollback**,
-  11 IAM sim checks incl. cluster-scoped deny) + **idempotency** (zero open blockers); (2)
-  **fck-nat NAT instance** (`nat_mode=instance`) + idempotency; (3) **DNS/TLS**
-  (`enable_dns=true`: ACM cert ISSUED + type + SANs + validation method + **cert-to-listener
-  linkage** + Route53 A records + HTTPS listener + redirect + idempotency). Endpoint-only
-  (§6.8). Real apply is AWS-gated.
+  11 IAM sim checks incl. cluster-scoped deny) + **idempotency** (direct fail-fast,
+  zero open blockers, submodule `3db617e`); (2) **fck-nat NAT instance** (`nat_mode=instance`)
+  - idempotency; (3) **DNS/TLS** (`enable_dns=true`: ACM cert ISSUED + type + SANs + validation
+    method + **cert-to-listener linkage** + Route53 A records + HTTPS listener + redirect +
+    idempotency). Endpoint-only (§6.8). Real apply is AWS-gated.
 - **SSH** (`services/ssh-gateway`) + **Pomerium routing** (`infra/proxy`): real products
   in Docker, mock-free.
 - **Test tiers**: unit/contract · integration (DynamoDB Local + process sim) · e2e

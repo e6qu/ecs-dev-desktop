@@ -794,20 +794,9 @@ jobs:
             --context-entries "ContextKeyName=iam:PassedToService,ContextKeyValues=ecs-tasks.amazonaws.com,ContextKeyType=string"
 
           # -- Idempotency: plan after apply must show 0 changes ------------------
-          # GATED e6qu/sockerless#467: ECS task-def tags not returned (DescribeTaskDefinition
-          # --include TAGS / ListTagsForResource still empty for task defs after PR #466);
-          # causes both task-defs + scheduler IAM policy to drift on every plan.
-          _idem_exit=0
           terraform -chdir="${TF_DIR}" plan -input=false \
-            -var "sim_endpoint=${SIM_ENDPOINT}" -detailed-exitcode || _idem_exit=$?
-          if [ "${_idem_exit}" -eq 1 ]; then
-            printf 'FAIL  idempotency (terraform plan error — not a sim drift issue)\n'
-            exit 1
-          elif [ "${_idem_exit}" -eq 2 ]; then
-            printf 'GATED idempotency (plan shows drift — e6qu/sockerless#467 unresolved; exit 2 suppressed)\n'
-          else
-            printf 'PASS  idempotency (plan exit 0)\n'
-          fi
+            -var "sim_endpoint=${SIM_ENDPOINT}" -detailed-exitcode
+          printf 'PASS  idempotency (plan exit 0)\n'
 
           terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false -var "sim_endpoint=${SIM_ENDPOINT}"
 
@@ -844,18 +833,9 @@ jobs:
               --filter "Name=vpc-id,Values=${VPC_ID}" \
               --query "length(NatGateways[?State==\`available\`])" --output text)"
 
-          # GATED e6qu/sockerless#467 (same ECS task-def tag drift as default stack)
-          _idem_exit=0
           terraform -chdir="${TF_DIR}" plan -input=false \
-            -var "sim_endpoint=${SIM_ENDPOINT}" -var nat_mode=instance -detailed-exitcode || _idem_exit=$?
-          if [ "${_idem_exit}" -eq 1 ]; then
-            printf 'FAIL  idempotency fck-nat (terraform plan error)\n'
-            exit 1
-          elif [ "${_idem_exit}" -eq 2 ]; then
-            printf 'GATED idempotency fck-nat (plan shows drift — e6qu/sockerless#467; exit 2 suppressed)\n'
-          else
-            printf 'PASS  idempotency fck-nat (plan exit 0)\n'
-          fi
+            -var "sim_endpoint=${SIM_ENDPOINT}" -var nat_mode=instance -detailed-exitcode
+          printf 'PASS  idempotency fck-nat (plan exit 0)\n'
 
           terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false \
             -var "sim_endpoint=${SIM_ENDPOINT}" -var nat_mode=instance
@@ -933,18 +913,9 @@ jobs:
               --output text)"
 
           # -- Idempotency --------------------------------------------------------
-          # GATED e6qu/sockerless#467 (same ECS task-def tag drift as default stack)
-          _idem_exit=0
           terraform -chdir="${TF_DIR}" plan -input=false \
-            -var "sim_endpoint=${SIM_ENDPOINT}" -var enable_dns=true -detailed-exitcode || _idem_exit=$?
-          if [ "${_idem_exit}" -eq 1 ]; then
-            printf 'FAIL  idempotency DNS/TLS (terraform plan error)\n'
-            exit 1
-          elif [ "${_idem_exit}" -eq 2 ]; then
-            printf 'GATED idempotency DNS/TLS (plan shows drift — e6qu/sockerless#467; exit 2 suppressed)\n'
-          else
-            printf 'PASS  idempotency DNS/TLS (plan exit 0)\n'
-          fi
+            -var "sim_endpoint=${SIM_ENDPOINT}" -var enable_dns=true -detailed-exitcode
+          printf 'PASS  idempotency DNS/TLS (plan exit 0)\n'
 
           terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false \
             -var "sim_endpoint=${SIM_ENDPOINT}" -var enable_dns=true

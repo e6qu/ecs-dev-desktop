@@ -8,11 +8,7 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-### #467 — ECS task-def tags not returned after PR #466 (DescribeTaskDefinition --include TAGS and/or ListTagsForResource still empty for task definitions)
-
-**Status:** Open (filed 2026-06-06) · **Upstream:** e6qu/sockerless#467
-
-PR #466 fixed #462 for CloudWatch Logs, DynamoDB, ECR, and ECS generally, but ECS task-definition tags are still not returned on refresh. The TF provider reads task-def tags via `DescribeTaskDefinition --include TAGS`; if that path is not implemented the provider sees no tags even if `ListTagsForResource` was fixed. Both `aws_ecs_task_definition` resources show tag additions on every idempotency plan, cascading to a spurious update on `aws_iam_role_policy.scheduler` (its data source re-reads because the task-def is changing). Idempotency checks re-gated on #467.
+_None._
 
 ## Resolved (sockerless — all fixed upstream)
 
@@ -74,6 +70,11 @@ not persisted · **#460** ECS task-def drops `healthCheck`/`secrets` · **#461**
 `ListTagsForResource` family (CW/DynamoDB/ECR/ECS) · **#464** ELBv2 `DescribeListeners`
 `Certificates` absent for HTTPS listeners → PR #466 (merged 2026-06-06). Submodule →
 `1859adf`. All CI assertions and idempotency checks un-gated; zero open upstream blockers.
+**#467** ECS task-def tags not returned (`DescribeTaskDefinition --include TAGS` path — tags
+leaked inside `taskDefinition` object, silently dropped by SDK model) · **#465** OCI `/v2/`
+responses missing `Docker-Distribution-Api-Version` header on non-ping routes → PR #468
+(merged 2026-06-06). Submodule → `3db617e`. All idempotency checks un-gated; zero open
+upstream blockers.
 
 ---
 
