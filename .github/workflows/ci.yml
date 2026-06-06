@@ -932,32 +932,32 @@ jobs:
           assert_eq "DynamoDB GSI1 hash key GSI1PK" "GSI1PK" \
             "$(aws --endpoint-url "${ENDPT}" dynamodb describe-table \
               --table-name "${TABLE_NAME}" \
-              --query "Table.GlobalSecondaryIndexes[?IndexName=='GSI1'].KeySchema[?KeyType=='HASH'].AttributeName|[0]" \
+              --query "Table.GlobalSecondaryIndexes[?IndexName=='GSI1']|[0].KeySchema[?KeyType=='HASH'].AttributeName|[0]" \
               --output text)"
           assert_eq "DynamoDB GSI1 range key GSI1SK" "GSI1SK" \
             "$(aws --endpoint-url "${ENDPT}" dynamodb describe-table \
               --table-name "${TABLE_NAME}" \
-              --query "Table.GlobalSecondaryIndexes[?IndexName=='GSI1'].KeySchema[?KeyType=='RANGE'].AttributeName|[0]" \
+              --query "Table.GlobalSecondaryIndexes[?IndexName=='GSI1']|[0].KeySchema[?KeyType=='RANGE'].AttributeName|[0]" \
               --output text)"
           assert_eq "DynamoDB GSI2 hash key GSI2PK" "GSI2PK" \
             "$(aws --endpoint-url "${ENDPT}" dynamodb describe-table \
               --table-name "${TABLE_NAME}" \
-              --query "Table.GlobalSecondaryIndexes[?IndexName=='GSI2'].KeySchema[?KeyType=='HASH'].AttributeName|[0]" \
+              --query "Table.GlobalSecondaryIndexes[?IndexName=='GSI2']|[0].KeySchema[?KeyType=='HASH'].AttributeName|[0]" \
               --output text)"
           assert_eq "DynamoDB GSI2 range key GSI2SK" "GSI2SK" \
             "$(aws --endpoint-url "${ENDPT}" dynamodb describe-table \
               --table-name "${TABLE_NAME}" \
-              --query "Table.GlobalSecondaryIndexes[?IndexName=='GSI2'].KeySchema[?KeyType=='RANGE'].AttributeName|[0]" \
+              --query "Table.GlobalSecondaryIndexes[?IndexName=='GSI2']|[0].KeySchema[?KeyType=='RANGE'].AttributeName|[0]" \
               --output text)"
           assert_eq "DynamoDB GSI1 projection ALL" "ALL" \
             "$(aws --endpoint-url "${ENDPT}" dynamodb describe-table \
               --table-name "${TABLE_NAME}" \
-              --query "Table.GlobalSecondaryIndexes[?IndexName=='GSI1'].Projection.ProjectionType|[0]" \
+              --query "Table.GlobalSecondaryIndexes[?IndexName=='GSI1']|[0].Projection.ProjectionType" \
               --output text)"
           assert_eq "DynamoDB GSI2 projection ALL" "ALL" \
             "$(aws --endpoint-url "${ENDPT}" dynamodb describe-table \
               --table-name "${TABLE_NAME}" \
-              --query "Table.GlobalSecondaryIndexes[?IndexName=='GSI2'].Projection.ProjectionType|[0]" \
+              --query "Table.GlobalSecondaryIndexes[?IndexName=='GSI2']|[0].Projection.ProjectionType" \
               --output text)"
 
           # -- IAM policy simulation (existing 4 checks) -------------------------
