@@ -81,6 +81,7 @@ reads these to reconstruct `launch_template` block; absence → ForceNew replace
 `DescribeListeners` missing `SslPolicy` for HTTPS listeners · **#469** Azure ACR `/oauth2/`
 token service unimplemented → PR #475 (merged 2026-06-06). Submodule → `3d457dd`. All
 idempotency checks un-gated; zero open upstream blockers.
+**#477** CI query used `AwsvpcConfiguration` (capital A) but the wire key is `awsvpcConfiguration` (lowercase) — JMESPath is case-sensitive; same result on real AWS. Not a sim bug; closed. Fix: lowercased the three JMESPath queries; all three assertions active.
 
 ---
 
