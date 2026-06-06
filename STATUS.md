@@ -2,8 +2,9 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-06 (submodule → `3db617e`; PR #468 resolved #467 ECS task-def tags +
-#465 OCI header fidelity; all idempotency checks un-gated; zero open upstream blockers)
+**Last updated:** 2026-06-06 (submodule → `3db617e`; PR #468 resolved #467+#465; 3 new fck-nat
+sim gaps filed #470–#472; fck-nat idempotency re-gated; default + DNS/TLS idempotency
+fail-fast)
 
 ## Current phase
 

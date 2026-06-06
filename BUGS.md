@@ -8,7 +8,25 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-_None._
+### #470 — EC2: DescribeInstances doesn't return LaunchTemplateSpecification
+
+**Status:** Open (filed 2026-06-06) · **Upstream:** e6qu/sockerless#470
+
+When `RunInstances` is called with a `LaunchTemplate` specification, subsequent `DescribeInstances` calls return the instance without `LaunchTemplate` in the response. The Terraform `aws_instance` provider stores `launch_template { id, version }` in state; on refresh it sees the attribute missing and triggers a ForceNew replacement every idempotency plan. Affects fck-nat NAT instance path only.
+
+### #471 — EC2: DescribeRouteTables route entries missing NetworkInterfaceId
+
+**Status:** Open (filed 2026-06-06) · **Upstream:** e6qu/sockerless#471
+
+When `CreateRoute` is called with `NetworkInterfaceId`, subsequent `DescribeRouteTables` calls return the route entry without `NetworkInterfaceId`. TF's `aws_route` provider sees the attribute missing and plans an in-place update on every idempotency plan. Affects fck-nat routes that target the NAT instance's static ENI.
+
+### #472 — EC2: DescribeSecurityGroups egress rules missing Ipv6Ranges
+
+**Status:** Open (filed 2026-06-06) · **Upstream:** e6qu/sockerless#472
+
+When `AuthorizeSecurityGroupEgress` is called with both `IpRanges` and `Ipv6Ranges`, subsequent `DescribeSecurityGroups` returns the rule with `IpRanges` populated but `Ipv6Ranges` empty. TF's `aws_security_group` provider sees `ipv6_cidr_blocks` missing from the egress rule and plans an in-place update every idempotency plan. Affects fck-nat SG that allows all-egress to both IPv4 and IPv6.
+
+Fck-nat idempotency check re-gated on #470/#471/#472. Default and DNS/TLS idempotency are unaffected (neither path exercises EC2 instances, route NetworkInterfaceId, or IPv6 SG egress).
 
 ## Resolved (sockerless — all fixed upstream)
 
@@ -73,8 +91,7 @@ not persisted · **#460** ECS task-def drops `healthCheck`/`secrets` · **#461**
 **#467** ECS task-def tags not returned (`DescribeTaskDefinition --include TAGS` path — tags
 leaked inside `taskDefinition` object, silently dropped by SDK model) · **#465** OCI `/v2/`
 responses missing `Docker-Distribution-Api-Version` header on non-ping routes → PR #468
-(merged 2026-06-06). Submodule → `3db617e`. All idempotency checks un-gated; zero open
-upstream blockers.
+(merged 2026-06-06). Submodule → `3db617e`.
 
 ---
 

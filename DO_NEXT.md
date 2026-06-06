@@ -103,10 +103,12 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
   Cost), Phase 7, `e2e-aws`.
 - **On DNS (#2):** real `*.devbox.<domain>` routing + ACM (the module path is sim-proven;
   the _real_ hosted zone + cert issuance is AWS/registrar-gated).
-- **On upstream sockerless:** No open blockers. All #453–#455, #457–#462, #464 resolved by
-  PRs #463+#466 (merged 2026-06-06); #467+#465 resolved by PR #468 (merged 2026-06-06);
-  submodule → `3db617e`. All idempotency checks un-gated and fail-fast. Zero open upstream
-  blockers.
+- **On upstream sockerless:** Three new open blockers, all fck-nat-specific. **#470** EC2
+  `DescribeInstances` missing `LaunchTemplateSpecification` (ForceNew replacement every plan).
+  **#471** `DescribeRouteTables` route entries missing `NetworkInterfaceId` (in-place update
+  every plan). **#472** `DescribeSecurityGroups` egress rules missing `Ipv6Ranges` (in-place
+  update every plan). All three affect the fck-nat NAT instance path only; default and DNS/TLS
+  idempotency checks remain un-gated and fail-fast. Fck-nat idempotency re-gated on #470–#472.
 
 ## Working notes (durable)
 
