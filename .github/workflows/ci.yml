@@ -479,8 +479,14 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" ecs describe-services \
               --cluster "${CLUSTER}" --services "eddsim-control-plane" \
               --query 'services[0].networkConfiguration.awsvpcConfiguration.assignPublicIp' --output text)"
-          # GATED e6qu/sockerless#454: ECS DescribeServices deploymentConfiguration is null
-          # (deploymentCircuitBreaker not persisted at CreateService).
+          assert_eq "ECS service deploymentCircuitBreaker enabled" "true" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-services \
+              --cluster "${CLUSTER}" --services "eddsim-control-plane" \
+              --query 'services[0].deploymentConfiguration.deploymentCircuitBreaker.enable' --output text)"
+          assert_eq "ECS service deploymentCircuitBreaker rollback enabled" "true" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-services \
+              --cluster "${CLUSTER}" --services "eddsim-control-plane" \
+              --query 'services[0].deploymentConfiguration.deploymentCircuitBreaker.rollback' --output text)"
 
           # -- AppAutoScaling -----------------------------------------------------
           assert_eq "AppAutoScaling target registered" "1" \
@@ -724,8 +730,18 @@ jobs:
               --table-name "${TABLE_NAME}" \
               --query 'ContinuousBackupsDescription.PointInTimeRecoveryDescription.PointInTimeRecoveryStatus' \
               --output text)"
-          # GATED e6qu/sockerless#453: DynamoDB SSEDescription is null (server_side_encryption
-          # block values not reflected in DescribeTable).
+          assert_eq "DynamoDB SSE ENABLED" "ENABLED" \
+            "$(aws --endpoint-url "${ENDPT}" dynamodb describe-table \
+              --table-name "${TABLE_NAME}" \
+              --query 'Table.SSEDescription.Status' --output text)"
+          assert_eq "DynamoDB SSE type KMS" "KMS" \
+            "$(aws --endpoint-url "${ENDPT}" dynamodb describe-table \
+              --table-name "${TABLE_NAME}" \
+              --query 'Table.SSEDescription.SSEType' --output text)"
+          assert_eq "DynamoDB SSE KMS key matches" "${KMS_ARN}" \
+            "$(aws --endpoint-url "${ENDPT}" dynamodb describe-table \
+              --table-name "${TABLE_NAME}" \
+              --query 'Table.SSEDescription.KMSMasterKeyArn' --output text)"
 
           # -- IAM policy simulation (existing 4 checks) -------------------------
           # Stated allow — DynamoDB PutItem on the owned table.
@@ -778,23 +794,9 @@ jobs:
             --context-entries "ContextKeyName=iam:PassedToService,ContextKeyValues=ecs-tasks.amazonaws.com,ContextKeyType=string"
 
           # -- Idempotency: plan after apply must show 0 changes ------------------
-          # GATED e6qu/sockerless#457 (SG egress from_port/to_port=0 for proto -1)
-          #        #458 (referenced_security_group_id account-prefix)
-          #        #459 (NAT gateway connectivity_type not persisted → replace)
-          #        #460 (ECS task-def drops healthCheck/secrets → replace → cascade)
-          #        #461 (ALB minimum_load_balancer_capacity spurious capacity_units=0)
-          #        #462 (tags not returned by ListTagsForResource family)
-          _idem_exit=0
           terraform -chdir="${TF_DIR}" plan -input=false \
-            -var "sim_endpoint=${SIM_ENDPOINT}" -detailed-exitcode || _idem_exit=$?
-          if [ "${_idem_exit}" -eq 1 ]; then
-            printf 'FAIL  idempotency (terraform plan error — not a sim drift issue)\n'
-            exit 1
-          elif [ "${_idem_exit}" -eq 2 ]; then
-            printf 'GATED idempotency (plan shows drift — e6qu/sockerless#457-#462 unresolved; exit 2 suppressed)\n'
-          else
-            printf 'PASS  idempotency (plan exit 0)\n'
-          fi
+            -var "sim_endpoint=${SIM_ENDPOINT}" -detailed-exitcode
+          printf 'PASS  idempotency (plan exit 0)\n'
 
           terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false -var "sim_endpoint=${SIM_ENDPOINT}"
 
@@ -831,18 +833,9 @@ jobs:
               --filter "Name=vpc-id,Values=${VPC_ID}" \
               --query "length(NatGateways[?State==\`available\`])" --output text)"
 
-          # GATED e6qu/sockerless#457 #458 #460 #461 #462 (same tag/SG/ECS/ALB drift as default stack)
-          _idem_exit=0
           terraform -chdir="${TF_DIR}" plan -input=false \
-            -var "sim_endpoint=${SIM_ENDPOINT}" -var nat_mode=instance -detailed-exitcode || _idem_exit=$?
-          if [ "${_idem_exit}" -eq 1 ]; then
-            printf 'FAIL  idempotency fck-nat (terraform plan error)\n'
-            exit 1
-          elif [ "${_idem_exit}" -eq 2 ]; then
-            printf 'GATED idempotency fck-nat (plan shows drift — e6qu/sockerless#457-#462; exit 2 suppressed)\n'
-          else
-            printf 'PASS  idempotency fck-nat (plan exit 0)\n'
-          fi
+            -var "sim_endpoint=${SIM_ENDPOINT}" -var nat_mode=instance -detailed-exitcode
+          printf 'PASS  idempotency fck-nat (plan exit 0)\n'
 
           terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false \
             -var "sim_endpoint=${SIM_ENDPOINT}" -var nat_mode=instance
@@ -878,15 +871,10 @@ jobs:
               --load-balancer-arn "${LB_ARN}" \
               --query "Listeners[?Port==\`443\`].Port|[0]" --output text)"
           # ACM cert must reach ISSUED before aws_acm_certificate_validation completes.
-          # terraform apply completes only once the cert is ISSUED (aws_acm_certificate_validation
-          # is a blocking resource), so we verify existence + status via list-certificates
-          # (independently of the listener). The listener-to-cert linkage would normally be
-          # verified via describe-listeners Certificates field, but that is gated below (#464).
-          assert_eq "ACM cert exists (list-certificates count 1)" "1" \
-            "$(aws --endpoint-url "${ENDPT}" acm list-certificates \
-              --query 'length(CertificateSummaryList)' --output text)"
-          CERT_ARN=$(aws --endpoint-url "${ENDPT}" acm list-certificates \
-            --query 'CertificateSummaryList[0].CertificateArn' --output text)
+          CERT_ARN=$(aws --endpoint-url "${ENDPT}" elbv2 describe-listeners \
+            --load-balancer-arn "${LB_ARN}" \
+            --query "Listeners[?Port==\`443\`].Certificates[0].CertificateArn|[0]" \
+            --output text)
           assert_eq "ACM cert ISSUED" "ISSUED" \
             "$(aws --endpoint-url "${ENDPT}" acm describe-certificate \
               --certificate-arn "${CERT_ARN}" \
@@ -909,9 +897,6 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" acm describe-certificate \
               --certificate-arn "${CERT_ARN}" \
               --query 'Certificate.DomainValidationOptions[0].ValidationMethod' --output text)"
-          # GATED e6qu/sockerless#464: DescribeListeners Certificates field absent for HTTPS
-          # listeners — cert-to-listener linkage cannot be verified until fixed upstream.
-          printf 'GATED ACM cert attached to HTTPS listener (e6qu/sockerless#464)\n'
           # Route53: control-plane A record and workspace wildcard A record created.
           ZONE_ID=$(aws --endpoint-url "${ENDPT}" route53 list-hosted-zones \
             --query "HostedZones[?contains(Name,'edd-sim')].Id|[0]" \
@@ -928,18 +913,9 @@ jobs:
               --output text)"
 
           # -- Idempotency --------------------------------------------------------
-          # GATED e6qu/sockerless#457 #458 #459 #460 #461 #462 (same drift as default stack)
-          _idem_exit=0
           terraform -chdir="${TF_DIR}" plan -input=false \
-            -var "sim_endpoint=${SIM_ENDPOINT}" -var enable_dns=true -detailed-exitcode || _idem_exit=$?
-          if [ "${_idem_exit}" -eq 1 ]; then
-            printf 'FAIL  idempotency DNS/TLS (terraform plan error)\n'
-            exit 1
-          elif [ "${_idem_exit}" -eq 2 ]; then
-            printf 'GATED idempotency DNS/TLS (plan shows drift — e6qu/sockerless#457-#462; exit 2 suppressed)\n'
-          else
-            printf 'PASS  idempotency DNS/TLS (plan exit 0)\n'
-          fi
+            -var "sim_endpoint=${SIM_ENDPOINT}" -var enable_dns=true -detailed-exitcode
+          printf 'PASS  idempotency DNS/TLS (plan exit 0)\n'
 
           terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false \
             -var "sim_endpoint=${SIM_ENDPOINT}" -var enable_dns=true
