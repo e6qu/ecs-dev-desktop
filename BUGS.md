@@ -8,7 +8,9 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-_None._
+**#486** EventBridge Scheduler stores schedule configuration but never invokes its target (no `RunTask`/`Invoke`/`SendMessage` fired when cron expression is due). Phase 5 reconciler cron e2e is worked around by invoking the reconciler task via direct `RunTask`; the scheduler→ECS path is proven by terraform-sim config assertions only. Fix: add a background invocation loop or a `POST /schedules/{name}/invoke` test-helper endpoint.
+
+**#488** ECS `RunTask` does not resolve the container definition's `secrets` array — SecretsManager ARNs are stored as opaque passthrough but never fetched + injected as env vars. The reconciler task def has no secrets, so Phase 5 testing is unaffected; the control-plane task's `EDD_AGENT_SECRET` would be empty if running the full stack in container mode. Fix: iterate `secrets` in `RunTask`, call the sim's own `GetSecretValue`, merge results into the container's effective env.
 
 ## Resolved (sockerless — all fixed upstream)
 
