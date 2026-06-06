@@ -1182,15 +1182,12 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" acm describe-certificate \
               --certificate-arn "${CERT_ARN}" \
               --query 'Certificate.DomainName' --output text)"
-          # Route53 cert validation CNAME records must exist (one per SAN + primary domain).
-          _cname_count=$(aws --endpoint-url "${ENDPT}" route53 list-resource-record-sets \
-            --hosted-zone-id "${ZONE_ID}" \
-            --query "length(ResourceRecordSets[?Type=='CNAME'])" --output text)
-          if [ "${_cname_count}" -ge 1 ]; then
-            printf 'PASS  Route53 cert validation CNAME count ≥ 1\n'
-          else
-            printf 'FAIL  Route53 cert validation CNAME count ≥ 1: expected ≥1 got [%s]\n' "${_cname_count}"; exit 1
-          fi
+          # Route53 cert validation CNAME records: one per unique domain (app.* and *.devbox.*
+          # are unrelated — no CNAME sharing), so exactly 2.
+          assert_eq "Route53 cert validation CNAME count 2" "2" \
+            "$(aws --endpoint-url "${ENDPT}" route53 list-resource-record-sets \
+              --hosted-zone-id "${ZONE_ID}" \
+              --query "length(ResourceRecordSets[?Type=='CNAME'])" --output text)"
 
           # -- Idempotency --------------------------------------------------------
           terraform -chdir="${TF_DIR}" plan -input=false \
