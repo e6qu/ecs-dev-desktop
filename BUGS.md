@@ -8,31 +8,7 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-### #470 — EC2: DescribeInstances doesn't return LaunchTemplateSpecification
-
-**Status:** Open (filed 2026-06-06) · **Upstream:** e6qu/sockerless#470
-
-When `RunInstances` is called with a `LaunchTemplate` specification, subsequent `DescribeInstances` calls return the instance without `LaunchTemplate` in the response. The Terraform `aws_instance` provider stores `launch_template { id, version }` in state; on refresh it sees the attribute missing and triggers a ForceNew replacement every idempotency plan. Affects fck-nat NAT instance path only.
-
-### #471 — EC2: DescribeRouteTables route entries missing NetworkInterfaceId
-
-**Status:** Open (filed 2026-06-06) · **Upstream:** e6qu/sockerless#471
-
-When `CreateRoute` is called with `NetworkInterfaceId`, subsequent `DescribeRouteTables` calls return the route entry without `NetworkInterfaceId`. TF's `aws_route` provider sees the attribute missing and plans an in-place update on every idempotency plan. Affects fck-nat routes that target the NAT instance's static ENI.
-
-### #472 — EC2: DescribeSecurityGroups egress rules missing Ipv6Ranges
-
-**Status:** Open (filed 2026-06-06) · **Upstream:** e6qu/sockerless#472
-
-When `AuthorizeSecurityGroupEgress` is called with both `IpRanges` and `Ipv6Ranges`, subsequent `DescribeSecurityGroups` returns the rule with `IpRanges` populated but `Ipv6Ranges` empty. TF's `aws_security_group` provider sees `ipv6_cidr_blocks` missing from the egress rule and plans an in-place update every idempotency plan. Affects fck-nat SG that allows all-egress to both IPv4 and IPv6.
-
-Fck-nat idempotency check re-gated on #470/#471/#472. Default idempotency remains un-gated and fail-fast.
-
-### #473 — ELBv2: DescribeListeners doesn't return SslPolicy for HTTPS listeners
-
-**Status:** Open (filed 2026-06-06) · **Upstream:** e6qu/sockerless#473
-
-When `CreateListener` is called with `SslPolicy = "ELBSecurityPolicy-TLS13-1-2-2021-06"` for an HTTPS listener, subsequent `DescribeListeners` calls return the listener without the `SslPolicy` field. TF's `aws_lb_listener` provider sees the attribute missing and plans an in-place update on every idempotency plan (`0 to add, 1 to change, 0 to destroy` on `aws_lb_listener.https`). DNS/TLS idempotency re-gated on #473. Default idempotency unaffected.
+_None._
 
 ## Resolved (sockerless — all fixed upstream)
 
@@ -98,6 +74,13 @@ not persisted · **#460** ECS task-def drops `healthCheck`/`secrets` · **#461**
 leaked inside `taskDefinition` object, silently dropped by SDK model) · **#465** OCI `/v2/`
 responses missing `Docker-Distribution-Api-Version` header on non-ping routes → PR #468
 (merged 2026-06-06). Submodule → `3db617e`.
+**#470** EC2 `RunInstances` doesn't stamp `aws:ec2launchtemplate:*` system tags (TF provider
+reads these to reconstruct `launch_template` block; absence → ForceNew replacement every plan)
+· **#471** `DescribeRouteTables` routes missing `NetworkInterfaceId` · **#472**
+`DescribeSecurityGroups` egress rules missing `Ipv6Ranges` · **#473** ELBv2
+`DescribeListeners` missing `SslPolicy` for HTTPS listeners · **#469** Azure ACR `/oauth2/`
+token service unimplemented → PR #475 (merged 2026-06-06). Submodule → `3d457dd`. All
+idempotency checks un-gated; zero open upstream blockers.
 
 ---
 

@@ -2,8 +2,8 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-06 (submodule → `3db617e`; 4 open sim gaps: #470–#472 fck-nat,
-#473 DNS/TLS SslPolicy; fck-nat + DNS/TLS idempotency gated; default idempotency fail-fast)
+**Last updated:** 2026-06-06 (submodule → `3d457dd`; PR #475 resolved #469–#473; all
+idempotency checks un-gated and fail-fast across all three configs; zero open upstream blockers)
 
 ## Current phase
 
@@ -43,7 +43,7 @@ account/region decision** (`DO_NEXT` #1) alongside the entire real-deploy track.
   VPC CIDR/DNS attrs, EIP, route table IGW+NAT routes, SG rules/ports/VPC, DynamoDB schema +
   GSIs + PITR + **SSE KMS status/type/key**, **ECS deploymentCircuitBreaker enable+rollback**,
   11 IAM sim checks incl. cluster-scoped deny) + **idempotency** (direct fail-fast,
-  zero open blockers, submodule `3db617e`); (2) **fck-nat NAT instance** (`nat_mode=instance`)
+  zero open blockers, submodule `3d457dd`); (2) **fck-nat NAT instance** (`nat_mode=instance`)
   - idempotency; (3) **DNS/TLS** (`enable_dns=true`: ACM cert ISSUED + type + SANs + validation
     method + **cert-to-listener linkage** + Route53 A records + HTTPS listener + redirect +
     idempotency). Endpoint-only (§6.8). Real apply is AWS-gated.
