@@ -1,0 +1,23 @@
+{
+  "name": "@edd/cloudtrail-audit",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:integ": "vitest run --config vitest.integ.config.ts"
+  },
+  "dependencies": {
+    "@aws-sdk/client-cloudtrail": "^3.1063.0",
+    "@edd/config": "workspace:*",
+    "@edd/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.1"
+  }
+}

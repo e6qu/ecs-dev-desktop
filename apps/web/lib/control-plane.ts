@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { CloudTrailAuditSource } from "@edd/cloudtrail-audit";
+import { CloudWatchLogSource } from "@edd/cloudwatch-logs";
 import { EcsComputeProvider } from "@edd/compute-ecs";
 import { FakeComputeProvider, FakeStorageProvider, systemClock } from "@edd/core";
 import {
@@ -66,15 +68,24 @@ export async function getHealthService(): Promise<HealthService> {
   });
 }
 
-/** Admin audit feed: derived from current workspace state (CloudTrail on AWS). */
-export function getAuditSource(): DerivedAuditSource {
+/** Admin audit feed: CloudTrail on AWS; derived from state locally. */
+export function getAuditSource(): CloudTrailAuditSource | DerivedAuditSource {
+  if (process.env.AUDIT_PROVIDER === "cloudtrail") {
+    return CloudTrailAuditSource.fromEnv();
+  }
   return new DerivedAuditSource({
     workspaces: makeWorkspaceEntity(createDynamoClient(), tableName()),
   });
 }
 
-/** Admin log streams: control-plane derived now; reconciler/container on AWS. */
-export function getLogSource(): DerivedLogSource {
+/** Admin log streams: CloudWatch on AWS; derived from state locally. */
+export function getLogSource(): CloudWatchLogSource | DerivedLogSource {
+  if (process.env.LOG_PROVIDER === "cloudwatch") {
+    const appName = process.env.EDD_APP_NAME;
+    if (appName === undefined || appName.length === 0)
+      throw new Error("EDD_APP_NAME is required when LOG_PROVIDER=cloudwatch");
+    return CloudWatchLogSource.fromEnv(appName);
+  }
   return new DerivedLogSource({ audit: getAuditSource() });
 }
 

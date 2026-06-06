@@ -85,7 +85,7 @@ full audit; quota enforcement at scale; DR runbook; load test to 200+.
 - **Gate:** 200+ load within latency budget; DR drill (cross-region restore);
   `/security-review` clean; pen-test checklist. (Real AWS only.)
 
-## Phase 8 — Admin console & observability — 🟡 8A+8B done, 8C AWS-gated (design: `docs/admin-ui-design.md`)
+## Phase 8 — Admin console & observability — ✅ 8A+8B+8C done on the sim (design: `docs/admin-ui-design.md`)
 
 A dedicated admin-only **`/admin` sidebar shell** + a troubleshooting surface (component
 health, per-workspace diagnostics, logs/audit). **No custom audit store** — observability
@@ -106,8 +106,9 @@ is ports-and-adapters: events/audit/logs **derived from current state now**, fro
   `GET /api/admin/logs`, the `/admin/logs` page (derived audit feed plus the
   control-plane log stream; reconciler/container streams marked CloudWatch-on-AWS).
   All Playwright-covered.
-- ⬜ **8C — Real cloud data (AWS-gated):** CloudTrail audit adapter, CloudWatch Logs
-  (container/app/reconciler), CloudWatch Metrics + Cost dashboard, real ECS/EBS/Teleport/
-  Pomerium health. Endpoint-only swap; validated at `e2e-aws`.
-- **Gate:** health board + Inspect on the sim ✅(8A); audit/logs/overview/quotas ✅(8B);
-  CloudTrail/CloudWatch/cost on real AWS ⬜(8C).
+- ✅ **8C — CloudTrail + CloudWatch Logs adapters (sim-proven):** `@edd/cloudtrail-audit`
+  (`CloudTrailAuditSource`) + `@edd/cloudwatch-logs` (`CloudWatchLogSource`) — endpoint-only,
+  integration-tested against the sim (sim has `cloudtrail.go` + `cloudwatch.go`). CloudWatch
+  Metrics + Cost dashboard remain account-gated.
+- **Gate:** health board + Inspect ✅(8A); audit/logs/overview/quotas ✅(8B);
+  CloudTrail/CloudWatch adapters ✅(8C); Metrics/Cost on real AWS ⬜.

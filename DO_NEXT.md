@@ -21,6 +21,8 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
 
 ## Done recently
 
+- **Phase 8C: CloudTrail + CloudWatch Logs adapters (PR #53).** `@edd/cloudtrail-audit` (`CloudTrailAuditSource`) + `@edd/cloudwatch-logs` (`CloudWatchLogSource`) — endpoint-only, sim-proven, integration tests in `test/`. `apps/web` selects real adapters via `AUDIT_PROVIDER=cloudtrail` / `LOG_PROVIDER=cloudwatch` / `EDD_APP_NAME`. Terraform injects all three. Phase 8 fully closed. Corrected the DO_NEXT misclassification: these were not AWS-gated; the sockerless sim has `cloudtrail.go` + `cloudwatch.go`.
+
 - **Golden workspace image + idle-agent + real adapter wiring (PR #52).** `infra/images/workspace/`: Node 20 + OpenVSCode Server v1.109.5, idle-agent shell script (heartbeats every 120s), tini PID-1. `EcsComputeProvider.runTask` injects `EDD_WORKSPACE_ID`/`EDD_CONTROL_PLANE_URL`/`EDD_AGENT_TOKEN` (HMAC-SHA256) per task. Heartbeat route accepts agent machine-auth (`Authorization: Bearer <token>`) in addition to session auth; 4 new integ tests. `COMPUTE_PROVIDER=ecs` env var switches `apps/web` from fakes to real `EcsComputeProvider` + `Ec2StorageProvider`; fails loudly if required ECS vars are missing. Terraform module injects `COMPUTE_PROVIDER`, `CONTROL_PLANE_URL`, `ECS_SUBNETS`, `ECS_SECURITY_GROUPS`, `ECS_EBS_ROLE_ARN`; `EDD_AGENT_SECRET` via `secret_environment`. `DEFAULT_WORKSPACE_MOUNT_PATH` → `/home/workspace`.
 
 - **IAM policy simulation + fck-nat ENI ops — sim gaps #427/#428/#BUG-1470 resolved upstream
@@ -71,17 +73,11 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
 
 ## Available now (decision-free)
 
-- **Phase 8 — admin console** (`docs/admin-ui-design.md`): ✅ **8A + 8B done.** 8A:
-  Health board (`HealthService` + live DynamoDB ping), the `/admin` shell, the
-  all-workspaces table, per-workspace **Inspect**. 8B: admin **Overview**, **quotas**
-  (per-role `EDD_QUOTA_<ROLE>`, create-time enforcement), and **Logs/Audit** (pure
-  `deriveFleetAudit`/`auditToLogLines`, the `AuditSource`/`LogSource` ports +
-  `DerivedAuditSource`/`DerivedLogSource`, `/api/admin/audit` and `/api/admin/logs`, the
-  `/admin/logs` page). All Playwright-covered. **8C is AWS-gated** (CloudTrail audit +
-  CloudWatch logs/metrics + cost + real provider/Teleport/Pomerium health) — the same
-  ports, an endpoint-only adapter swap.
-- **idle-agent** that POSTs `/heartbeat` (its shape; the agent binary ships with the
-  golden image, AWS-gated).
+- **Phase 8 — admin console** (`docs/admin-ui-design.md`): ✅ **Complete (8A + 8B + 8C).**
+  8A: Health board, `/admin` shell, workspaces table, per-workspace Inspect. 8B: Overview,
+  Quotas, Logs/Audit (derived adapters). 8C: `CloudTrailAuditSource` + `CloudWatchLogSource`
+  (endpoint-only; sim-proven). CloudWatch Metrics + cost dashboard remain AWS-account-gated.
+- **idle-agent** — ✅ done (ships in the golden image, PR #52).
 - Broader unit/integration/Playwright coverage. Two 2026-06-04 hardening passes fixed the
   `DELETE /api/workspaces/:id` 500-on-double-delete bug and the `PATCH`/`DELETE`
   `/api/base-images/:id` **404-vs-409** not-found mis-mapping, and added admin-RBAC,
@@ -91,9 +87,9 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
   (`heartbeat/route.integ.ts`: 200 running / 409 stopped / 403 cross-owner). **No
   decision-free coverage gaps remain.**
 
-> With 8A+8B done, the highest-value remaining lever is the **AWS account/region
-> decision** (#1): it unlocks 8C _and_ the whole real-deploy track. Little
-> decision-free product work remains until then.
+> With Phase 8 fully closed (8A+8B+8C), the highest-value remaining lever is the
+> **AWS account/region decision** (#1): it unlocks the whole real-deploy track.
+> The reconciler cron (EventBridge Scheduler, sim has it) is still sim-buildable — see Blocked.
 
 ## Blocked
 
