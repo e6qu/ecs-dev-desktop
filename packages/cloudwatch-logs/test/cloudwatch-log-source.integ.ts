@@ -55,9 +55,7 @@ describe("CloudWatchLogSource against the sockerless AWS sim", () => {
     expect(levels).toContain("error");
   });
 
-  // Gated: e6qu/sockerless#483 — FilterLogEvents returns empty results instead of
-  // ResourceNotFoundException for a non-existent log group. Un-gate once fixed upstream.
-  it.skip("returns available:false for a stream whose log group does not exist", async () => {
+  it("returns available:false for a stream whose log group does not exist", async () => {
     const result = await CloudWatchLogSource.fromEnv("no-such-app").read("reconciler");
     expect(result.available).toBe(false);
     expect(result.lines).toHaveLength(0);

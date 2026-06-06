@@ -101,7 +101,7 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
   Cost), Phase 7, `e2e-aws`.
 - **On DNS (#2):** real `*.devbox.<domain>` routing + ACM (the module path is sim-proven;
   the _real_ hosted zone + cert issuance is AWS/registrar-gated).
-- **On upstream sockerless:** No open blockers. All ~175 CI assertions active; zero gated.
+- **On upstream sockerless:** No open blockers. All CI assertions active; zero gated. (#483 fixed in PR #484; submodule → `4916e15`)
 - **VS Code distro:** resolved → **OpenVSCode Server** (MIT, Gitpod). Golden image built.
 
 ## Working notes (durable)
