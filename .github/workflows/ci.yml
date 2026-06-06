@@ -1015,7 +1015,8 @@ jobs:
           assert_eq "reconciler ecs:StopTask on cluster allowed" "allowed" \
             "$(aws --endpoint-url "${ENDPT}" iam simulate-principal-policy \
               --policy-source-arn "${RECON_ROLE}" \
-              --action-names "ecs:StopTask" --resource-arns "${CLUSTER_ARN}" \
+              --action-names "ecs:StopTask" --resource-arns "*" \
+              --context-entries "ContextKeyName=ecs:cluster,ContextKeyValues=${CLUSTER_ARN},ContextKeyType=arn" \
               --query 'EvaluationResults[0].EvalDecision' --output text)"
           assert_eq "reconciler ec2:CreateSnapshot allowed" "allowed" \
             "$(aws --endpoint-url "${ENDPT}" iam simulate-principal-policy \
