@@ -479,11 +479,11 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" ecs describe-services \
               --cluster "${CLUSTER}" --services "eddsim-control-plane" \
               --query 'services[0].networkConfiguration.awsvpcConfiguration.assignPublicIp' --output text)"
-          assert_eq "ECS service deploymentCircuitBreaker enabled" "true" \
+          assert_eq "ECS service deploymentCircuitBreaker enabled" "True" \
             "$(aws --endpoint-url "${ENDPT}" ecs describe-services \
               --cluster "${CLUSTER}" --services "eddsim-control-plane" \
               --query 'services[0].deploymentConfiguration.deploymentCircuitBreaker.enable' --output text)"
-          assert_eq "ECS service deploymentCircuitBreaker rollback enabled" "true" \
+          assert_eq "ECS service deploymentCircuitBreaker rollback enabled" "True" \
             "$(aws --endpoint-url "${ENDPT}" ecs describe-services \
               --cluster "${CLUSTER}" --services "eddsim-control-plane" \
               --query 'services[0].deploymentConfiguration.deploymentCircuitBreaker.rollback' --output text)"
