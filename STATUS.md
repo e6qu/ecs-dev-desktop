@@ -2,9 +2,8 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-06 (submodule → `3db617e`; PR #468 resolved #467+#465; 3 new fck-nat
-sim gaps filed #470–#472; fck-nat idempotency re-gated; default + DNS/TLS idempotency
-fail-fast)
+**Last updated:** 2026-06-06 (submodule → `3db617e`; 4 open sim gaps: #470–#472 fck-nat,
+#473 DNS/TLS SslPolicy; fck-nat + DNS/TLS idempotency gated; default idempotency fail-fast)
 
 ## Current phase
 

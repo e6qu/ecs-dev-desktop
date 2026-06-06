@@ -26,7 +26,13 @@ When `CreateRoute` is called with `NetworkInterfaceId`, subsequent `DescribeRout
 
 When `AuthorizeSecurityGroupEgress` is called with both `IpRanges` and `Ipv6Ranges`, subsequent `DescribeSecurityGroups` returns the rule with `IpRanges` populated but `Ipv6Ranges` empty. TF's `aws_security_group` provider sees `ipv6_cidr_blocks` missing from the egress rule and plans an in-place update every idempotency plan. Affects fck-nat SG that allows all-egress to both IPv4 and IPv6.
 
-Fck-nat idempotency check re-gated on #470/#471/#472. Default and DNS/TLS idempotency are unaffected (neither path exercises EC2 instances, route NetworkInterfaceId, or IPv6 SG egress).
+Fck-nat idempotency check re-gated on #470/#471/#472. Default idempotency remains un-gated and fail-fast.
+
+### #473 — ELBv2: DescribeListeners doesn't return SslPolicy for HTTPS listeners
+
+**Status:** Open (filed 2026-06-06) · **Upstream:** e6qu/sockerless#473
+
+When `CreateListener` is called with `SslPolicy = "ELBSecurityPolicy-TLS13-1-2-2021-06"` for an HTTPS listener, subsequent `DescribeListeners` calls return the listener without the `SslPolicy` field. TF's `aws_lb_listener` provider sees the attribute missing and plans an in-place update on every idempotency plan (`0 to add, 1 to change, 0 to destroy` on `aws_lb_listener.https`). DNS/TLS idempotency re-gated on #473. Default idempotency unaffected.
 
 ## Resolved (sockerless — all fixed upstream)
 
