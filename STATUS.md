@@ -2,8 +2,7 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-06 (submodule → `3d457dd`; PR #475 resolved #469–#473; all
-idempotency checks un-gated and fail-fast across all three configs; zero open upstream blockers)
+**Last updated:** 2026-06-06 (PR #51: ~175-assertion sim probe; #477 filed upstream — Scheduler GetSchedule AwsvpcConfiguration not returned; 3 assertions gated)
 
 ## Current phase
 
