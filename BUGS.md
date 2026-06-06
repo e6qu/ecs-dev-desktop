@@ -8,9 +8,7 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-**#486** EventBridge Scheduler stores schedule configuration but never invokes its target (no `RunTask`/`Invoke`/`SendMessage` fired when cron expression is due). Phase 5 reconciler cron e2e is worked around by invoking the reconciler task via direct `RunTask`; the scheduler→ECS path is proven by terraform-sim config assertions only. Fix: add a background invocation loop or a `POST /schedules/{name}/invoke` test-helper endpoint.
-
-**#488** ECS `RunTask` does not resolve the container definition's `secrets` array — SecretsManager ARNs are stored as opaque passthrough but never fetched + injected as env vars. The reconciler task def has no secrets, so Phase 5 testing is unaffected; the control-plane task's `EDD_AGENT_SECRET` would be empty if running the full stack in container mode. Fix: iterate `secrets` in `RunTask`, call the sim's own `GetSecretValue`, merge results into the container's effective env.
+_None._
 
 ## Resolved (sockerless — all fixed upstream)
 
@@ -85,6 +83,8 @@ token service unimplemented → PR #475 (merged 2026-06-06). Submodule → `3d45
 idempotency checks un-gated; zero open upstream blockers.
 **#477** CI query used `AwsvpcConfiguration` (capital A) but the wire key is `awsvpcConfiguration` (lowercase) — JMESPath is case-sensitive; same result on real AWS. Not a sim bug; closed. Fix: lowercased the three JMESPath queries; all three assertions active.
 **#483** CloudWatch Logs `FilterLogEvents` returned empty results (`{ events: [] }`) instead of `ResourceNotFoundException` when the log group did not exist — every other CW handler checked group existence but `handleCWFilterLogEvents` skipped it. Real AWS returns HTTP 400 `ResourceNotFoundException`. Integration test was gated. Fixed in PR #484 (merged 2026-06-07); submodule → `4916e15`.
+**#486** EventBridge Scheduler stored schedule configuration but never invoked its target. New `scheduler_firing.go`: 1s loop parses `at(...)` / `rate(N minute|hour|day)` and fires ECS RunTask, Lambda Invoke, SQS SendMessage, or SNS Publish in-process. (`cron(...)` not yet evaluated — tracked separately.) Fixed in PR #485 (merged 2026-06-07); submodule → `980dc9e`.
+**#488** ECS `RunTask` did not resolve the container definition's `secrets` array — SecretsManager ARNs were stored as opaque passthrough, never fetched and injected as env vars into the container. New `resolveECSContainerSecrets` resolves SecretsManager whole-string or `:jsonKey` refs and SSM by name/ARN at RunTask launch. Fixed in PR #485 (merged 2026-06-07); submodule → `980dc9e`.
 
 ---
 
