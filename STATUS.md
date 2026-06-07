@@ -2,7 +2,7 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-07 (CI fixes round 2: Pomerium pass_identity_headers + Teleport S3 creds; Teleport Enterprise endpoint_url blocker filed in BUGS.md; PR #54 e2e still failing)
+**Last updated:** 2026-06-07 (CI fixes round 3: `-t` flag on tsh ssh for PTY recording; test ordering fix connector→OAuth; azure-sim OIDC issuer bug filed as e6qu/sockerless#504)
 
 ## Current phase
 
@@ -51,9 +51,12 @@ Teleport from source vs carry a patch file. Until resolved, CI is not fully gree
   in Docker, mock-free. SSH connect-as-principal + authz-deny proven. Pomerium identity-aware
   wildcard routing + authenticated proxy-pass (`X-Pomerium-Jwt-Assertion`) — the fix
   (`pass_identity_headers: true`) was applied in the current PR; pending CI confirmation.
-  Phase 4 S3 session recording: `audit_sessions_uri` + AWS credentials in `teleport-auth`
-  added; pending CI confirmation. **Phase 4 GitHub connector + OAuth**: blocked by Teleport
-  Enterprise restriction on `endpoint_url` (see `BUGS.md`).
+  Phase 4 S3 session recording: `tsh ssh -t` (PTY flag) fixes the non-interactive session
+  root cause — Teleport only writes recording files for PTY sessions; pending CI confirmation.
+  Test ordering fixed: connector creation now runs before OAuth login. **Phase 4 GitHub
+  connector + OAuth**: blocked by Teleport Enterprise restriction on `endpoint_url` (see
+  `BUGS.md`). **Pomerium JWT assertion**: blocked by azure-sim OIDC issuer bug
+  `e6qu/sockerless#504` (see `BUGS.md`).
 - **CloudTrail-based tests + post-Terraform functional probes** (submodule → `fc03b15`):
   integration tests verify specific event content (CreateCluster event appears in `recent()`,
   `LookupAttributes` filter path); e2e workspace-lifecycle test asserts RunTask/StopTask/
@@ -65,7 +68,9 @@ Teleport from source vs carry a patch file. Until resolved, CI is not fully gree
   (`.e2e.yml`/`.ssh.yml`: data-fidelity, lifecycle, GitHub+Entra auth, Pomerium, Teleport)
   · **portal e2e** (Playwright) · **`e2e-https`** (the sims served over TLS — mock-free Entra
   auth + SSH with real CA trust, no `--insecure`) · manual `e2e-aws`. **12/14 CI jobs green;
-  e2e + e2e-https failing** (Teleport Enterprise blocker — see `BUGS.md`).
+  e2e + e2e-https failing** — three root causes: (1) S3 recording: fixed (`-t` PTY flag,
+  pending CI); (2) GitHub connector + OAuth: blocked on Teleport Enterprise restriction;
+  (3) Pomerium JWT assertion: blocked on e6qu/sockerless#504 (see `BUGS.md`).
 - **Engineering quality** (a 2026-06-04 wave; see `WHAT_WE_DID.md`): domain failures flow
   through a typed `Result<T, DomainError>` channel mapped to HTTP by one exhaustive table
   (`@edd/api-client` surfaces the server's `{error}` strictly — no fallbacks); compile-time

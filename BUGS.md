@@ -21,6 +21,16 @@ relaxed it for `https://github.com` but custom endpoints are still blocked. **Bl
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
+**#504** azure-sim v2.0 OIDC discovery endpoint returns `issuer: "https://sts.windows.net/<tenantId>/"`
+instead of the discovery URL (`<baseURL>/<tenantId>/v2.0`). Per RFC 8414 §3, strict OIDC clients
+(Pomerium, `coreos/go-oidc`) validate that the issuer in the discovery document matches the URL
+from which it was fetched — the mismatch causes Pomerium to fail at OIDC provider initialisation
+with `oidc: issuer URL provided to client ... did not match the issuer URL returned by provider`.
+Two-part fix needed: (1) discovery document `issuer` for `/v2.0/` paths → `<baseURL>/<tenantId>/v2.0`;
+(2) JWT `iss` claim in `mintAzureSimJWTForUser`/`mintAzureSimIDTokenForUser` also needs to match.
+**Blocks:** `pomerium-authed.e2e.ts` test "completes the OIDC auth flow and proxies with
+X-Pomerium-Jwt-Assertion header".
+
 **#501** bleephub admin token is hardcoded (`ghp_0000000000000000000000000000000000000000` in
 `store.go:580`) and not configurable — no env var or config-file override. The value matches
 Trivy's `github-pat` regex, causing a CRITICAL false positive in `vuln-scan`. `.trivyignore.yaml`

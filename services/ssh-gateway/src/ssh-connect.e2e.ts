@@ -337,7 +337,10 @@ describe("SSH to a workspace via Teleport (mock-free, real cluster)", () => {
   });
 
   it("connects to the workspace node as the derived principal", () => {
-    const res = tsh("ssh", "--no-use-local-ssh-agent", `${PRINCIPAL}@${NODE_NAME}`, "whoami");
+    // -t requests a PTY from the server so this session is interactive. Teleport
+    // only writes recording files for PTY sessions; the S3 recording test below
+    // polls for the file that this session produces.
+    const res = tsh("ssh", "--no-use-local-ssh-agent", "-t", `${PRINCIPAL}@${NODE_NAME}`, "whoami");
     expect(res.status, `${res.stdout}${res.stderr}`).toBe(0);
     expect(res.stdout.trim()).toBe(PRINCIPAL);
   });
@@ -368,6 +371,46 @@ describe("SSH to a workspace via Teleport (mock-free, real cluster)", () => {
       await sleep(2_000);
     }
     expect(found, "no session recording found in S3 within 30s").toBe(true);
+  });
+
+  it("accepts a Teleport GitHub connector pointing at bleephub-ssh (federation config)", () => {
+    // Create a GitHub connector referencing bleephub-ssh. `endpoint_url` is
+    // Teleport's GHES feature that redirects all GitHub API calls to a custom host
+    // (the same mechanism production uses against github.enterprise.example.com).
+    // This proves the connector config is accepted — the full browser-based OAuth
+    // login flow is deferred to e2e-aws / Playwright browser testing.
+    // NOTE: must run before the GitHub OAuth login test (below) — the connector
+    // must exist in Teleport for driveGitHubOAuthFlow() to find it.
+    const connectorYaml = [
+      "kind: github",
+      "version: v3",
+      "metadata:",
+      "  name: github-e2e",
+      "spec:",
+      "  client_id: edd",
+      "  client_secret: secret",
+      // redirect_url must use the proxy's web address
+      `  redirect_url: https://${PROXY_WEB_ADDR}/v1/webapi/github/callback`,
+      // endpoint_url points at bleephub-ssh inside the Docker network (port 5555
+      // is the container-internal port; BLEEPHUB_SSH_PORT=5556 is the host port).
+      // This is the GHES endpoint override (Teleport 17+, §6.8 endpoint-only).
+      "  endpoint_url: http://bleephub-ssh:5555",
+      "  teams_to_roles:",
+      "    - organization: acme",
+      "      team: platform-admins",
+      "      roles:",
+      `        - ${TELEPORT_ROLE}`,
+      "",
+    ].join("\n");
+
+    const created = tctl(["create", "-f", "-"], connectorYaml);
+    if (created.status !== 0 && !/already exists/i.test(created.stderr + created.stdout)) {
+      throw new Error(`GitHub connector create failed:\n${created.stdout}${created.stderr}`);
+    }
+
+    const listed = tctl(["get", "github"]);
+    expect(listed.status, `tctl get github: ${listed.stderr}`).toBe(0);
+    expect(listed.stdout).toMatch(/github-e2e/);
   });
 
   it("logs in to Teleport via GitHub OAuth (bleephub-ssh, full OIDC redirect chain)", async () => {
@@ -417,43 +460,5 @@ describe("SSH to a workspace via Teleport (mock-free, real cluster)", () => {
     expect(userGet.stdout, "expected edd-ssh-e2e role mapped from acme/platform-admins").toMatch(
       TELEPORT_ROLE,
     );
-  });
-
-  it("accepts a Teleport GitHub connector pointing at bleephub-ssh (federation config)", () => {
-    // Create a GitHub connector referencing bleephub-ssh. `endpoint_url` is
-    // Teleport's GHES feature that redirects all GitHub API calls to a custom host
-    // (the same mechanism production uses against github.enterprise.example.com).
-    // This proves the connector config is accepted — the full browser-based OAuth
-    // login flow is deferred to e2e-aws / Playwright browser testing.
-    const connectorYaml = [
-      "kind: github",
-      "version: v3",
-      "metadata:",
-      "  name: github-e2e",
-      "spec:",
-      "  client_id: edd",
-      "  client_secret: secret",
-      // redirect_url must use the proxy's web address
-      `  redirect_url: https://${PROXY_WEB_ADDR}/v1/webapi/github/callback`,
-      // endpoint_url points at bleephub-ssh inside the Docker network (port 5555
-      // is the container-internal port; BLEEPHUB_SSH_PORT=5556 is the host port).
-      // This is the GHES endpoint override (Teleport 17+, §6.8 endpoint-only).
-      "  endpoint_url: http://bleephub-ssh:5555",
-      "  teams_to_roles:",
-      "    - organization: acme",
-      "      team: platform-admins",
-      "      roles:",
-      `        - ${TELEPORT_ROLE}`,
-      "",
-    ].join("\n");
-
-    const created = tctl(["create", "-f", "-"], connectorYaml);
-    if (created.status !== 0 && !/already exists/i.test(created.stderr + created.stdout)) {
-      throw new Error(`GitHub connector create failed:\n${created.stdout}${created.stderr}`);
-    }
-
-    const listed = tctl(["get", "github"]);
-    expect(listed.status, `tctl get github: ${listed.stderr}`).toBe(0);
-    expect(listed.stdout).toMatch(/github-e2e/);
   });
 });
