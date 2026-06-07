@@ -84,7 +84,10 @@ describe("SSH to a workspace (mock-free, standard sshd + certificate auth)", () 
   });
 
   it("connects to the workspace node as the derived principal", () => {
-    const res = ssh(`${PRINCIPAL}@${NODE_HOST}`, "whoami");
+    // -tt forces PTY allocation even when stdin is not a terminal (CI / spawnSync).
+    // Tests that the workspace node accepts interactive sessions, which VS Code
+    // Server terminal requires.
+    const res = ssh("-tt", `${PRINCIPAL}@${NODE_HOST}`, "whoami");
     expect(res.status, `${res.stdout}${res.stderr}`).toBe(0);
     expect(res.stdout.trim()).toBe(PRINCIPAL);
   });

@@ -2,7 +2,7 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-07 (submodule → `7c812094`: PR #510 fixes sockerless#508 (azure-sim v2.0 userinfo_endpoint); zero open upstream blockers; CI should be 14/14 green)
+**Last updated:** 2026-06-07 (submodule → `9f89ae36` PR #511 BUG-1564; ssh-connect -tt fix; all CI blockers resolved)
 
 ## Current phase
 

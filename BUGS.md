@@ -19,6 +19,13 @@ the gap. Fix: advertise `<baseURL>/{tenant}/v2.0/userinfo` in discovery; impleme
 sim's signing key; 401 with `WWW-Authenticate` on missing/invalid token — no fallback identity).
 Fixed in PR #510 / submodule `7c812094`.
 
+**BUG-1564** `DescribeTargetGroups` hardcoded `Matcher.HttpCode = "200"` regardless of config —
+any non-default matcher (e.g. `200-299`) drifted every `terraform plan`. `ProtocolVersion` and
+`IpAddressType` also not parsed/round-tripped. `ModifyTargetGroup` didn't persist
+`HealthCheckEnabled` or the matcher. `SetIpAddressType` op unregistered. `EnforceSecurityGroupInboundRulesOnPrivateLinkTraffic` and `CustomerOwnedIpv4Pool` dropped on LBs.
+Fixed: full round-trip for all fields; per-protocol defaults (HTTP→`HTTP1`/`200`, NLB→`200-399`);
+`SetIpAddressType` registered. Fixed in PR #511 / submodule `9f89ae36`.
+
 **BUG-1561** `CreateVolume`/`DescribeVolumes` never parsed/rendered `Iops`, `Throughput`,
 `KmsKeyId`, `MultiAttachEnabled` — gp3 volumes read back null iops/throughput → `aws_ebs_volume`
 drifted every plan; `Snapshot` omitted `Encrypted`/`KmsKeyId`. Fixed: `ec2ResolveVolumePerformance`
