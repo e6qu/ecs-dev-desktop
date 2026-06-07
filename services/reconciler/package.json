@@ -21,7 +21,7 @@
     "@edd/storage-ec2": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^25.9.1",
-    "esbuild": "^0.25.5"
+    "@types/node": "^25.9.2",
+    "esbuild": "^0.28.0"
   }
 }
