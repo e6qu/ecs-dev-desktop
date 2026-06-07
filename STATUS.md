@@ -2,13 +2,14 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-07 (ssh-connect `-tt` fix + sockerless → `9f89ae36` PR #511 BUG-1564; waiting for CI to confirm 14/14 green)
+**Last updated:** 2026-06-08 (PR #56 `feat/phase-9-ssh-cert-proxy-cwlogs-journey` open; 14/14 green; ready to merge)
 
 ## Current phase
 
-**PR #54** (`feat/phase-8c-cloudtrail-cloudwatch-adapters-v2`) is open against `main`.
-CI expected 14/14 green after the `ssh -tt` fix — awaiting confirmation. Once merged,
-the next lever is the **AWS account/region decision** (`DO_NEXT` #1).
+**PR #56** (`feat/phase-9-ssh-cert-proxy-cwlogs-journey`) is open against `main`, 14/14 green.
+Covers: SSH cert issuance API, wake-on-connect proxy infrastructure + `sshHost` domain field,
+workspace container CloudWatch log shipping, and full user-journey e2e.
+Proxy-to-ECS-container e2e blocked on sockerless#516 (ENI IP routing in container-mode sim).
 
 ## What works (built, tested, merged to `main`)
 
@@ -37,6 +38,14 @@ the next lever is the **AWS account/region decision** (`DO_NEXT` #1).
 - **SSH gateway** (`services/ssh-gateway`): standard `sshd` + ephemeral CA
   (`scripts/gen-ssh-ca.sh`); `TrustedUserCAKeys` + `AuthorizedPrincipalsFile` RBAC;
   connect-as-principal + authz-deny proven mock-free. PTY allocation tested (`-tt`).
+- **SSH cert API** (`POST /api/workspaces/:id/ssh-cert`): control plane signs user's
+  public key with `ssh-keygen -s`; returns short-lived cert for `dev-<workspaceId>` principal.
+- **Wake-on-connect proxy**: `sshHost` (ENI private IP) stored on `Workspace`/DB;
+  `GET /api/workspaces/:id/connect-info` returns `{host, port}` for proxy forwarding;
+  `services/ssh-gateway/Dockerfile.proxy` + `wake-and-forward.sh` ForceCommand script.
+  End-to-end forwarding blocked on sockerless#516.
+- **Workspace CloudWatch log shipping**: `EcsComputeProvider` adds `awslogs` `logConfiguration`
+  to every task definition; `ECS_LOG_GROUP_WORKSPACES` injected by Terraform.
 - **Pomerium routing** (`infra/proxy`): identity-aware wildcard routing + authenticated
   proxy-pass (`X-Pomerium-Jwt-Assertion`) — both proven mock-free against azure-sim.
 - **Phase 8 (8A+8B+8C)**: admin console (health board, all-workspaces, Inspect, Overview,
@@ -55,6 +64,6 @@ Nothing on AWS — no cloud infrastructure provisioned.
 
 ## Immediate focus
 
-1. **Confirm CI green for PR #54** — awaiting run triggered by `ssh -tt` + sockerless `9f89ae36`.
-2. **Merge PR #54** once CI confirms.
-3. **AWS account/region decision** (`DO_NEXT` #1) — unlocks everything real.
+1. **Merge PR #56** — 14/14 green.
+2. **AWS account/region decision** (`DO_NEXT` #1) — unlocks everything real.
+3. **Wait for sockerless#516** — blocks proxy-to-ECS-container e2e (ENI IP routing).

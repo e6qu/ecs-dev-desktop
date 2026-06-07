@@ -23,9 +23,8 @@ OpenSSH + our SSH CA.
 
 ## Available now (decision-free — immediate)
 
-- **Merge PR #54** once CI run `27106449952` is green. Fixes committed: SSH cert auth
-  (`01d9352`), reconciler esbuild ESM banner + e2e real VPC/subnet/SG + sockerless bump
-  to PR #515 (`52376c2`). Both BUG-reconciler-build and sockerless#514 resolved.
+- **Merge PR #56** — 14/14 green. Delivers: SSH cert API, wake-on-connect proxy
+  infrastructure, workspace CloudWatch log shipping, full user-journey e2e.
 
 ---
 
