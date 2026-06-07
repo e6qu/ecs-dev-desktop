@@ -2,16 +2,15 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-07 (submodule → `9f89ae36` PR #511 BUG-1564; ssh-connect -tt fix; all CI blockers resolved)
+**Last updated:** 2026-06-07 (ssh-connect `-tt` fix + sockerless → `9f89ae36` PR #511 BUG-1564; waiting for CI to confirm 14/14 green)
 
 ## Current phase
 
-Most of the **locally-testable platform is proven end-to-end with no mocks**. PR #54
-(`feat/phase-8c-cloudtrail-cloudwatch-adapters-v2`) is open against `main`. **All CI jobs
-should now be green** — sockerless#508 (azure-sim v2.0 `userinfo_endpoint`) fixed by PR #510
-(`7c812094`); submodule updated; zero open upstream blockers. Ready to merge once CI confirms.
+**PR #54** (`feat/phase-8c-cloudtrail-cloudwatch-adapters-v2`) is open against `main`.
+CI expected 14/14 green after the `ssh -tt` fix — awaiting confirmation. Once merged,
+the next lever is the **AWS account/region decision** (`DO_NEXT` #1).
 
-## What works (built, tested, merged)
+## What works (built, tested, merged to `main`)
 
 - **Monorepo** (`@edd/*`, Turborepo+pnpm); `main` protected.
 - **Core** (`@edd/core`): branded domain types, lifecycle state machine, pure functions
@@ -22,60 +21,40 @@ should now be green** — sockerless#508 (azure-sim v2.0 `userinfo_endpoint`) fi
   ElectroDB, CASL-gated API + `@edd/api-client`. Fargate managed-EBS model.
 - **Auth** (`@edd/auth`): GitHub + Entra → group→role, both proven mock-free & swappable.
 - **Portal** (`apps/web`): RBAC workspaces grid + lifecycle, base-image catalog admin
-  page + create-from-catalog picker. "Infra control room" aesthetic.
+  page + create-from-catalog picker.
 - **Reconciler**: idle scale-to-zero, scheduled snapshots, orphan GC (pure selectors).
+  Container (`services/reconciler`): esbuild bundle; scheduler→ECS→container e2e proven.
 - **Real adapters** (endpoint-only): `@edd/storage-ec2`, `@edd/compute-ecs`.
-- **Deploy IaC** (`infra/terraform/modules/ecs-dev-desktop`): a reusable, parametric
-  Terraform/Terragrunt module for the whole platform (VPC + NAT [managed or **fck-nat**
-  instance], KMS, DynamoDB single-table w/ GSIs, ECR, ECS cluster + Fargate service +
-  capacity providers + autoscaling, ALB + optional ACM/Route53, scheduler reconciler cron,
-  IAM, logs) with `examples/complete`, `examples/terragrunt`, and a full README. The
-  **`terraform-sim` CI job applies + destroys the entire stack against the sockerless sim
-  every PR** in **four active** configurations (default with ~175 assertions, fck-nat, DNS/TLS,
-  all idempotency checks green). Module now also injects `COMPUTE_PROVIDER`, `CONTROL_PLANE_URL`,
-  `ECS_SUBNETS`, `ECS_SECURITY_GROUPS`, `ECS_EBS_ROLE_ARN` into the control-plane task env.
-  Endpoint-only (§6.8). Real apply is AWS-gated.
-- **Golden workspace image** (`infra/images/workspace/`): Node 20 + **OpenVSCode Server
-  v1.109.5** (MIT, Gitpod), tini PID-1, port 3000, idle-agent (POST `/heartbeat` every
-  120s). Machine-auth: `EcsComputeProvider.runTask` injects `EDD_AGENT_TOKEN` =
-  HMAC-SHA256(secret, wsId); heartbeat route verifies it; 4 integ tests.
-- **Real adapter wiring** (`apps/web/lib/control-plane.ts`): `COMPUTE_PROVIDER=ecs` selects
-  `EcsComputeProvider.fromEnv()` + `Ec2StorageProvider.fromEnv()`; `AUDIT_PROVIDER=cloudtrail`
-  selects `CloudTrailAuditSource`; `LOG_PROVIDER=cloudwatch` + `EDD_APP_NAME` selects
-  `CloudWatchLogSource`; fakes remain default.
-- **SSH** (`services/ssh-gateway`) + **Pomerium routing** (`infra/proxy`): real products
-  in Docker, mock-free. SSH connect-as-principal + authz-deny proven with standard OpenSSH
-  (`sshd`) + ephemeral CA certificate auth (standard OpenSSH sshd; no external dependency).
-  Pomerium identity-aware wildcard routing + authenticated proxy-pass (`X-Pomerium-Jwt-Assertion`)
-  — all config applied; azure-sim OIDC v2.0 issuer fixed in sockerless#504/PR#506; blocked on
-  sockerless#508 (azure-sim v2.0 `userinfo_endpoint` missing → Pomerium callback 500).
-- **CloudTrail-based tests + post-Terraform functional probes** (submodule → `fc03b15`):
-  integration tests verify specific event content (CreateCluster event appears in `recent()`,
-  `LookupAttributes` filter path); e2e workspace-lifecycle test asserts RunTask/StopTask/
-  CreateSnapshot in CloudTrail and via `CloudTrailAuditSource`; reconciler e2e test 3 asserts
-  scheduler-fired RunTask appears in CloudTrail (unblocked by #500); `terraform-sim` CI step
-  audits 8 post-apply provisioning events incl. `CreateSchedule` (unblocked by #500) and probes
-  DynamoDB write/read, CloudWatch Logs write/read, ECS task-def registration. No open blockers.
+- **Deploy IaC** (`infra/terraform/modules/ecs-dev-desktop`): reusable parametric module
+  (VPC + NAT [managed or fck-nat], KMS, DynamoDB+GSIs, ECR, ECS + Fargate + autoscaling,
+  ALB + optional ACM/Route53, scheduler, IAM, logs). **`terraform-sim` CI job applies +
+  destroys the full stack every PR** in four configs (~175 assertions + idempotency,
+  fck-nat, DNS/TLS). Endpoint-only (§6.8). Real apply is AWS-gated.
+- **Golden workspace image** (`infra/images/workspace/`): Node 20 + OpenVSCode Server
+  v1.109.5, tini PID-1, idle-agent (heartbeats every 120s, HMAC machine-auth).
+- **Real adapter wiring** (`apps/web/lib/control-plane.ts`): `COMPUTE_PROVIDER=ecs`,
+  `AUDIT_PROVIDER=cloudtrail`, `LOG_PROVIDER=cloudwatch`; fakes remain default.
+- **SSH gateway** (`services/ssh-gateway`): standard `sshd` + ephemeral CA
+  (`scripts/gen-ssh-ca.sh`); `TrustedUserCAKeys` + `AuthorizedPrincipalsFile` RBAC;
+  connect-as-principal + authz-deny proven mock-free. PTY allocation tested (`-tt`).
+- **Pomerium routing** (`infra/proxy`): identity-aware wildcard routing + authenticated
+  proxy-pass (`X-Pomerium-Jwt-Assertion`) — both proven mock-free against azure-sim.
+- **Phase 8 (8A+8B+8C)**: admin console (health board, all-workspaces, Inspect, Overview,
+  quotas, Logs/Audit); `@edd/cloudtrail-audit` + `@edd/cloudwatch-logs` endpoint-only
+  adapters, integration-tested against the sim.
 - **Test tiers**: unit/contract · integration (DynamoDB Local + process sim) · e2e
-  (`.e2e.yml`/`.ssh.yml`: data-fidelity, lifecycle, GitHub+Entra auth, Pomerium, OpenSSH)
-  · **portal e2e** (Playwright) · **`e2e-https`** (the sims served over TLS — mock-free Entra
-  auth + SSH with real CA trust, no `--insecure`) · manual `e2e-aws`. **14/14 CI jobs expected
-  green** — sockerless#508 fixed by PR #510 (`7c812094`); zero open upstream blockers.
-- **Engineering quality** (a 2026-06-04 wave; see `WHAT_WE_DID.md`): domain failures flow
-  through a typed `Result<T, DomainError>` channel mapped to HTTP by one exhaustive table
-  (`@edd/api-client` surfaces the server's `{error}` strictly — no fallbacks); compile-time
-  guards (`assertNever`, `Record<Union,_>` literals, `expectTypeOf` contract↔domain
-  alignment); a typed `data-testid` registry so Playwright asserts attributes not text;
-  deterministic DynamoDB readiness (`waitForDynamo`); and **code-health gates** —
-  `knip` (dead code) + `jscpd` (copy-paste) in CI + pre-commit.
+  (data-fidelity, lifecycle, auth, Pomerium, OpenSSH) · portal e2e (Playwright) ·
+  `e2e-https` (sims over TLS, real CA trust, no `--insecure`) · manual `e2e-aws`.
+- **Engineering quality**: typed `Result<T, DomainError>` channel; compile-time
+  exhaustiveness guards; typed `data-testid` registry; `waitForDynamo` harness
+  determinism; `knip` + `jscpd` code-health gates; SAST + Trivy.
 
 ## Deployed
 
-- Nothing on AWS — no cloud infrastructure provisioned.
+Nothing on AWS — no cloud infrastructure provisioned.
 
 ## Immediate focus
 
-- **Merge PR #54** — all blockers resolved; CI expected 14/14 green. Merge once CI confirms.
-- **AWS account/region** (`DO_NEXT` #1) — top blocker for real deploy, `e2e-aws`,
-  real Fargate/EBS, and Phase 7.
-- **Domain/DNS** (#2) — blocks real proxy routing + ACM.
+1. **Confirm CI green for PR #54** — awaiting run triggered by `ssh -tt` + sockerless `9f89ae36`.
+2. **Merge PR #54** once CI confirms.
+3. **AWS account/region decision** (`DO_NEXT` #1) — unlocks everything real.

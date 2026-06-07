@@ -77,7 +77,7 @@ JSON result.
 
 - ⬜ **AWS-gated:** real `COMPUTE_PROVIDER=ecs` run (idle detection over real ECS tasks);
   real in-workspace heartbeat (idle-agent already ships in the golden image); cron
-  (`rate(5 minutes)` default — blocked only on #489 if changed to `cron()` syntax); SOCI.
+  (`rate(5 minutes)` default; `cron()` syntax also works — BUG-1531/#489 fixed upstream); SOCI.
 - **Gate:** idle→stop→snapshot→wake ✅; GC reaps orphans only ✅; heartbeat keep-alive ✅;
   reconciler container + scheduler e2e ✅; real cron + cost metric ⬜.
 
