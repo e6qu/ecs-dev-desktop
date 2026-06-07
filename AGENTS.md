@@ -45,7 +45,7 @@ The engineering standards in §6 are also hard rules.
 | Persistence    | **EBS snapshot = unit of persistence** (state + snapshot + scale-to-zero)  |
 | Idle policy    | **Scale-to-zero**: stop idle task → snapshot → hydrate on wake             |
 | Auth / RBAC    | **Auth.js** (GitHub OAuth + Azure Entra), groups→roles; **CASL** abilities |
-| SSH            | **Teleport** (auth, audit, recording, Remote-SSH)                          |
+| SSH            | **OpenSSH** (`sshd`) + our SSH CA; control plane issues short-lived certs  |
 | Web / API      | **Next.js** — login + admin UI + control-plane API, **API-first**          |
 | State store    | **DynamoDB** single-table + **ElectroDB**                                  |
 | Images         | Curated **golden base images** in ECR; extensions via **Open VSX**         |
@@ -63,7 +63,7 @@ VS Code distro: **code-server / OpenVSCode Server** (MIT), not MS's server.
 apps/web/            Next.js: login + admin UI + control-plane API (API-first)
 services/
   reconciler/        idle detection → scale-to-zero, snapshots, GC (worker)
-  ssh-gateway/       Teleport config (declarative)
+  ssh-gateway/       OpenSSH sshd + SSH CA config; workspacePrincipal mapping
 packages/
   core/              functional core: branded domain types, lifecycle state
                      machine, ports (Storage/Compute) + fakes, Clock

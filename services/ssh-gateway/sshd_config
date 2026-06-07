@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# sshd configuration for the workspace SSH node (e2e harness + production).
+# Certificate-only auth: sshd trusts the CA whose public key is mounted at
+# /etc/ssh/workspace-ca.pub. AuthorizedPrincipalsFile maps OS users to the
+# certificate principals the CA is allowed to assert for them.
+
+Port 22
+AddressFamily any
+ListenAddress 0.0.0.0
+
+HostKey /etc/ssh/ssh_host_ed25519_key
+
+# Certificate-only auth — passwords and plain keys are both disabled.
+PasswordAuthentication no
+ChallengeResponseAuthentication no
+PubkeyAuthentication yes
+
+# Trust the CA whose public key is injected at runtime (e2e: gen-ssh-ca.sh;
+# production: control-plane CA public key from Secrets Manager).
+TrustedUserCAKeys /etc/ssh/workspace-ca.pub
+
+# Map certificate principals to OS logins. The file for user "dev-e2e" must
+# contain the principal name granted by the CA certificate, one per line.
+AuthorizedPrincipalsFile /etc/ssh/principals/%u
+
+# Disable features not needed in the workspace model.
+X11Forwarding no
+AllowAgentForwarding no
+PrintMotd no
+PrintLastLog no

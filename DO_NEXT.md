@@ -21,15 +21,7 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
 
 ## Available now (decision-free — immediate)
 
-- **Teleport `endpoint_url` Enterprise fix** — blocks 2 of 4 remaining CI failures.
-  Fix is ~10 lines removed from `lib/services/github.go` in `MarshalOSSGithubConnector`.
-  Decision needed: **vendor Teleport** (git submodule, build from source in a Dockerfile,
-  same pattern as sockerless) vs **patch file only** (store `.patch`, apply in Dockerfile
-  during build, no submodule). Key factor: Teleport is a large Go codebase — build time
-  in CI matters. Recommend investigating Teleport's build structure before deciding.
-- **Wait for e6qu/sockerless#504** (azure-sim OIDC v2.0 issuer fix) — blocks Pomerium JWT
-  assertion test (1 of 4 remaining CI failures). No action on our side until upstream
-  implements the fix.
+- **Merge PR #54** — all known CI blockers resolved. Awaiting green CI run.
 
 ## Done recently
 
@@ -118,10 +110,9 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
   Cost), Phase 7, `e2e-aws`.
 - **On DNS (#2):** real `*.devbox.<domain>` routing + ACM (the module path is sim-proven;
   the _real_ hosted zone + cert issuance is AWS/registrar-gated).
-- **On upstream sockerless:** One open blocker: **#504** azure-sim OIDC v2.0 issuer mismatch
-  (blocks `pomerium-authed.e2e.ts` JWT assertion test). (#496/#497/#498 fixed in PR #500
-  submodule `fc03b15`; #493/#494 in PR #495 `def45a1`; #489/#490 in PR #492 `0b9af6e`;
-  #491 in `dd4e717`)
+- **On upstream sockerless:** Zero open blockers. (#504+#501 in PR #506 `0a383db`;
+  #496/#497/#498 in PR #500 `fc03b15`; #493/#494 in PR #495 `def45a1`;
+  #489/#490 in PR #492 `0b9af6e`; #491 in `dd4e717`)
 - **On Teleport `endpoint_url` (gravitational/teleport#67533):** `MarshalOSSGithubConnector`
   rejects non-github.com `endpoint_url` in all OSS builds since v14. Blocks two Phase 4 tests
   (GitHub connector creation + GitHub OAuth login in `ssh-connect.e2e.ts`). Fix: vendor/patch

@@ -50,24 +50,19 @@ in proxied response; `_pomerium` session cookie set. (`packages/e2e/src/pomerium
 - **Gate:** CASL ✅; both group→role on the sim ✅; wildcard routing + gate ✅;
   authenticated proxy-pass with identity headers ✅; real DNS ⬜.
 
-## Phase 4 — SSH via Teleport — 🟡
+## Phase 4 — SSH gateway — 🟡
 
-✅ Real Teleport cluster + node enrolment + `tsh ssh` connect-as-principal + authz deny,
-mock-free in Docker (`services/ssh-gateway`). ✅ Wake-on-connect (control-plane half):
+✅ Standard OpenSSH (`sshd`) workspace node + ephemeral SSH CA + certificate auth +
+`AuthorizedPrincipalsFile` RBAC — connect-as-principal + authz-deny mock-free in Docker
+(`services/ssh-gateway`). Control plane owns the CA; Auth.js handles user auth, portal
+issues short-lived SSH certificates. ✅ Wake-on-connect (control-plane half):
 `WorkspaceService.connect()` — idempotent, wakes scaled-to-zero from snapshot, proven
-on real ECS+EBS. ✅ **S3 session recording** — Teleport `audit_sessions_uri` points at
-sockerless-aws-ssh sim; recording object appears in S3 after SSH session (integ-proven).
-✅ **Teleport GitHub connector** (`kind: github`, `endpoint_url: http://bleephub-ssh:5555`)
-— `tctl create` accepted, `tctl get github` confirms storage; proves GHES-endpoint-override
-mechanism. Teleport depends on `sockerless-aws-ssh` + `bleephub-ssh` in compose.
-✅ **Full GitHub OAuth login via bleephub** — `driveGitHubOAuthFlow` drives
-`Teleport → bleephub ?auto=1 → Teleport callback` headlessly; bleephub seeded with
-`acme/platform-admins`; `tctl get user/admin` asserts `edd-ssh-e2e` role assigned.
-(Unblocked by sockerless #492: bleephub OIDC discovery now complete.)
+on real ECS+EBS.
 
-- ⬜ **Remaining:** the wake-on-connect **trigger** (golden image auto-enrols Teleport agent — AWS-tier).
-- **Gate:** `tsh ssh` ✅; connect-time wake ✅; S3 recording ✅; GitHub connector ✅;
-  full GitHub OAuth login ✅; e2e-aws SSH-wakes-stopped ⬜.
+- ⬜ **Remaining:** session recording (deploy-tier, CloudTrail for audit); the
+  wake-on-connect **trigger** (golden image SSH agent enrolment — AWS-tier).
+- **Gate:** `ssh` connect-as-principal ✅; authz-deny ✅; connect-time wake ✅;
+  session recording ⬜; e2e-aws SSH-wakes-stopped ⬜.
 
 ## Phase 5 — Scale-to-zero + snapshot automation — 🟡
 

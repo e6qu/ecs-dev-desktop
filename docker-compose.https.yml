@@ -68,6 +68,8 @@ services:
     environment:
       BPH_TLS_CERT: /tls/server.pem
       BPH_TLS_KEY: /tls/server-key.pem
+      # Required since sockerless#501 / PR#506: bleephub log.Fatal on startup if unset.
+      BLEEPHUB_ADMIN_TOKEN: edd-e2e-admin-token
     volumes:
       - ./temp/sim-tls:/tls:ro
     ports:

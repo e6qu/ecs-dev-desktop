@@ -2,7 +2,7 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-07 (CI fixes round 3: `-t` flag on tsh ssh for PTY recording; test ordering fix connector→OAuth; azure-sim OIDC issuer bug filed as e6qu/sockerless#504)
+**Last updated:** 2026-06-07 (Teleport → OpenSSH replacement; submodule → 0a383db; sockerless#504+#501 fixed; all SSH-related CI blockers resolved)
 
 ## Current phase
 
@@ -48,15 +48,11 @@ Teleport from source vs carry a patch file. Until resolved, CI is not fully gree
   selects `CloudTrailAuditSource`; `LOG_PROVIDER=cloudwatch` + `EDD_APP_NAME` selects
   `CloudWatchLogSource`; fakes remain default.
 - **SSH** (`services/ssh-gateway`) + **Pomerium routing** (`infra/proxy`): real products
-  in Docker, mock-free. SSH connect-as-principal + authz-deny proven. Pomerium identity-aware
-  wildcard routing + authenticated proxy-pass (`X-Pomerium-Jwt-Assertion`) — the fix
-  (`pass_identity_headers: true`) was applied in the current PR; pending CI confirmation.
-  Phase 4 S3 session recording: `tsh ssh -t` (PTY flag) fixes the non-interactive session
-  root cause — Teleport only writes recording files for PTY sessions; pending CI confirmation.
-  Test ordering fixed: connector creation now runs before OAuth login. **Phase 4 GitHub
-  connector + OAuth**: blocked by Teleport Enterprise restriction on `endpoint_url` (see
-  `BUGS.md`). **Pomerium JWT assertion**: blocked by azure-sim OIDC issuer bug
-  `e6qu/sockerless#504` (see `BUGS.md`).
+  in Docker, mock-free. SSH connect-as-principal + authz-deny proven with standard OpenSSH
+  (`sshd`) + ephemeral CA certificate auth (Teleport replaced; no external dependency).
+  Pomerium identity-aware wildcard routing + authenticated proxy-pass (`X-Pomerium-Jwt-Assertion`)
+  — all config applied; azure-sim OIDC v2.0 issuer fixed in sockerless#504/PR#506; pending
+  CI confirmation.
 - **CloudTrail-based tests + post-Terraform functional probes** (submodule → `fc03b15`):
   integration tests verify specific event content (CreateCluster event appears in `recent()`,
   `LookupAttributes` filter path); e2e workspace-lifecycle test asserts RunTask/StopTask/
@@ -68,9 +64,8 @@ Teleport from source vs carry a patch file. Until resolved, CI is not fully gree
   (`.e2e.yml`/`.ssh.yml`: data-fidelity, lifecycle, GitHub+Entra auth, Pomerium, Teleport)
   · **portal e2e** (Playwright) · **`e2e-https`** (the sims served over TLS — mock-free Entra
   auth + SSH with real CA trust, no `--insecure`) · manual `e2e-aws`. **12/14 CI jobs green;
-  e2e + e2e-https failing** — three root causes: (1) S3 recording: fixed (`-t` PTY flag,
-  pending CI); (2) GitHub connector + OAuth: blocked on Teleport Enterprise restriction;
-  (3) Pomerium JWT assertion: blocked on e6qu/sockerless#504 (see `BUGS.md`).
+  e2e + e2e-https pending** — all known blockers resolved: Teleport replaced with OpenSSH,
+  azure-sim OIDC fixed (sockerless#504), bleephub token fixed (sockerless#501); CI pending.
 - **Engineering quality** (a 2026-06-04 wave; see `WHAT_WE_DID.md`): domain failures flow
   through a typed `Result<T, DomainError>` channel mapped to HTTP by one exhaustive table
   (`@edd/api-client` surfaces the server's `{error}` strictly — no fallbacks); compile-time

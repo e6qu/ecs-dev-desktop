@@ -2,13 +2,3 @@
 # Targeted Trivy false-positive suppressions.
 # Each entry suppresses a specific finding type in a specific file only.
 # Add entries only for confirmed non-credentials with a filed upstream reference.
-
-secrets:
-  - id: github-pat
-    paths:
-      - services/ssh-gateway/src/ssh-connect.e2e.ts
-    statement: >
-      BLEEPHUB_ADMIN_TOKEN is bleephub's hardcoded default admin token (store.go:580),
-      not a real GitHub credential. bleephub does not support configurable admin
-      credentials — the value is a fixed compile-time constant that happens to match
-      the GitHub PAT regex. Upstream issue: e6qu/sockerless#501.

@@ -127,34 +127,25 @@ jobs:
             sleep "$((attempt * 20))"
           done
           exit 1
-      - name: Build & start the SSH harness (real Teleport cluster + sim + bleephub)
+      - name: Generate SSH CA for the e2e harness
+        run: sh scripts/gen-ssh-ca.sh
+      - name: Build & start the SSH harness (OpenSSH workspace node)
         run: |
           for attempt in 1 2 3; do
             if docker compose -f docker-compose.ssh.yml up -d --build --wait; then
               exit 0
             fi
             echo "::warning::SSH harness bring-up failed (attempt ${attempt}); retrying"
-            docker logs edd-teleport-auth 2>&1 || true
             docker compose -f docker-compose.ssh.yml down -v || true
             sleep "$((attempt * 20))"
           done
-          docker logs edd-teleport-auth 2>&1 || true
           exit 1
       - run: pnpm test:e2e
         env:
           RECONCILER_IMAGE: edd-reconciler:e2e
-      # Diagnostic: always dump Teleport auth logs + S3 bucket + Pomerium logs
-      # so recording-upload and JWT-assertion failures are diagnosable.
       - if: always()
-        name: Dump Teleport auth logs, S3 bucket contents, and Pomerium logs
-        run: |
-          echo "=== teleport-auth logs ==="
-          docker logs edd-teleport-auth 2>&1 || true
-          echo "=== S3 bucket edd-e2e-sessions ==="
-          curl -s -H "Host: edd-e2e-sessions.s3.amazonaws.com" \
-            "http://localhost:4567/edd-e2e-sessions?list-type=2" || true
-          echo "=== pomerium logs ==="
-          docker logs ecs-dev-desktop-pomerium-1 2>&1 || true
+        name: Dump Pomerium logs on failure
+        run: docker logs ecs-dev-desktop-pomerium-1 2>&1 || true
       - if: always()
         run: docker compose -f docker-compose.e2e.yml down
       - if: always()
@@ -194,18 +185,18 @@ jobs:
             sleep "$((attempt * 20))"
           done
           exit 1
-      - name: Build & start the SSH harness (real Teleport cluster)
+      - name: Generate SSH CA for the e2e harness
+        run: sh scripts/gen-ssh-ca.sh
+      - name: Build & start the SSH harness (OpenSSH workspace node)
         run: |
           for attempt in 1 2 3; do
             if docker compose -f docker-compose.ssh.yml up -d --build --wait; then
               exit 0
             fi
             echo "::warning::SSH harness bring-up failed (attempt ${attempt}); retrying"
-            docker logs edd-teleport-auth 2>&1 || true
             docker compose -f docker-compose.ssh.yml down -v || true
             sleep "$((attempt * 20))"
           done
-          docker logs edd-teleport-auth 2>&1 || true
           exit 1
       # Entra login → group → role over HTTPS: Graph provisioning + ROPC against
       # the TLS azure-sim, with the CA trusted (EDD_SIM_SCHEME=https flips the
@@ -215,18 +206,9 @@ jobs:
           EDD_SIM_SCHEME: https
           NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/temp/sim-tls/ca.pem
         run: pnpm --filter @edd/web exec vitest run --config vitest.e2e.config.ts lib/entra-auth.e2e.ts
-      # SSH connect-as-principal + authz-deny against the real Teleport cluster
-      # (already TLS on its proxy/auth ports).
-      - name: SSH connect + authz-deny over TLS (mock-free Teleport)
+      # SSH connect-as-principal + authz-deny: standard sshd + ephemeral CA certs.
+      - name: SSH connect + authz-deny (mock-free standard sshd)
         run: pnpm --filter @edd/ssh-gateway exec vitest run --config vitest.e2e.config.ts src/ssh-connect.e2e.ts
-      - if: always()
-        name: Dump Teleport auth logs and S3 bucket contents (https)
-        run: |
-          echo "=== teleport-auth logs ==="
-          docker logs edd-teleport-auth 2>&1 || true
-          echo "=== S3 bucket edd-e2e-sessions ==="
-          curl -s -H "Host: edd-e2e-sessions.s3.amazonaws.com" \
-            "http://localhost:4567/edd-e2e-sessions?list-type=2" || true
       - if: always()
         run: docker compose -f docker-compose.https.yml down
       - if: always()

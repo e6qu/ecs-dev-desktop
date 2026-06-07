@@ -6,39 +6,17 @@
 
 _None._
 
-## External blockers (upstream — `gravitational/teleport`)
-
-**gravitational/teleport#67533** `MarshalOSSGithubConnector` rejects any `endpoint_url` that
-is not empty or `https://github.com` with "GitHub endpoint URL is set: this feature requires
-Teleport Enterprise". This blocks OSS Teleport from federating against a self-hosted GitHub
-Enterprise Server (GHES) instance — including the bleephub-ssh sim we use as a stand-in in e2e
-tests. The restriction has been present since v14 (PR #32653, Oct 2023); PR #55405 (2025-06-09)
-relaxed it for `https://github.com` but custom endpoints are still blocked. **Blocks:** two `ssh-connect.e2e.ts` Phase 4 tests:
-
-- `accepts a Teleport GitHub connector pointing at bleephub-ssh`
-- `logs in to Teleport via GitHub OAuth` (cascades: connector not created → OAuth redirect
-  uses non-existent connector → user never provisioned)
-
 ## External blockers (upstream — `e6qu/sockerless`)
 
-**#504** azure-sim v2.0 OIDC discovery endpoint returns `issuer: "https://sts.windows.net/<tenantId>/"`
-instead of the discovery URL (`<baseURL>/<tenantId>/v2.0`). Per RFC 8414 §3, strict OIDC clients
-(Pomerium, `coreos/go-oidc`) validate that the issuer in the discovery document matches the URL
-from which it was fetched — the mismatch causes Pomerium to fail at OIDC provider initialisation
-with `oidc: issuer URL provided to client ... did not match the issuer URL returned by provider`.
-Two-part fix needed: (1) discovery document `issuer` for `/v2.0/` paths → `<baseURL>/<tenantId>/v2.0`;
-(2) JWT `iss` claim in `mintAzureSimJWTForUser`/`mintAzureSimIDTokenForUser` also needs to match.
-**Blocks:** `pomerium-authed.e2e.ts` test "completes the OIDC auth flow and proxies with
-X-Pomerium-Jwt-Assertion header".
-
-**#501** bleephub admin token is hardcoded (`ghp_0000000000000000000000000000000000000000` in
-`store.go:580`) and not configurable — no env var or config-file override. The value matches
-Trivy's `github-pat` regex, causing a CRITICAL false positive in `vuln-scan`. `.trivyignore.yaml`
-suppresses only the `github-pat` finding in `ssh-connect.e2e.ts` (targeted; other rules still
-active). Waiting for the fix to: add a configurable admin token; use a default value that does
-not match GitHub PAT patterns. **Blocks:** complete removal of `.trivyignore.yaml` suppression.
+_None._ (#504 and #501 resolved in PR #506 / submodule `0a383db`; see Resolved below.)
 
 ## Resolved (sockerless — all fixed upstream)
+
+**#504** azure-sim v2.0 OIDC issuer mismatch — `/.well-known/openid-configuration` returned
+`sts.windows.net` for all paths including `/v2.0/`; now version-aware: v2.0 → `<baseURL>/<tenant>/v2.0`,
+v1 keeps `sts.windows.net`. JWT `iss` aligned for v2.0 id_tokens. Fixed in PR #506 / submodule `0a383db`.
+**#501** bleephub admin token now required via `BLEEPHUB_ADMIN_TOKEN` env var — no default, `log.Fatal`
+on startup if unset; non-PAT value eliminates Trivy false positive. Fixed in PR #506 / submodule `0a383db`.
 
 We filed and got fixed, in order: **#359/#360** (EBS snapshots / DeleteItem) → PR #361 ·
 **#362** Entra authorize → #368 · **#366/#367** sim Dockerfile + `SIM_RUNTIME=process` →
