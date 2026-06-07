@@ -2,7 +2,7 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-07 (CI fixes round 4: SSH CA path, route-table assertion, Trivy DS-0002, knip update; filed sockerless#508 for azure-sim v2.0 userinfo_endpoint regression)
+**Last updated:** 2026-06-07 (submodule → `a00c7e07`: PRs #509+#507 — EBS/key-pair/DescribeImages fidelity; BUG-1560/1561/1562 resolved; sockerless#508 still open)
 
 ## Current phase
 

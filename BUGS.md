@@ -18,6 +18,23 @@ and `e2e-https` jobs remain partially failing until fixed.
 
 ## Resolved (sockerless — all fixed upstream)
 
+**BUG-1561** `CreateVolume`/`DescribeVolumes` never parsed/rendered `Iops`, `Throughput`,
+`KmsKeyId`, `MultiAttachEnabled` — gp3 volumes read back null iops/throughput → `aws_ebs_volume`
+drifted every plan; `Snapshot` omitted `Encrypted`/`KmsKeyId`. Fixed: `ec2ResolveVolumePerformance`
+applies AWS per-type defaults (gp3: 3000 IOPS/125 MBps; gp2: derived from size; io1/io2: from
+request); snapshots inherit encryption/kms from source. Fixed in PR #507 / submodule `a00c7e07`.
+**BUG-1562** `DescribeVolumes`/`DescribeSnapshots` honoured only explicit id lists; all Filter keys
+(`volume-type`/`status`/`tag:`/`volume-id`/`encrypted`/`owner-id`) were ignored → over-match.
+`DescribeVolumesModifications` unregistered → `UnknownOperation` on EBS resize/type-change. Fixed:
+full filter matchers + OwnerIds; `ModifyVolume` records an `EC2VolumeModification`; new
+`DescribeVolumesModifications` handler returns it. Fixed in PR #507 / submodule `a00c7e07`.
+**BUG-1560** Key pairs not persisted (`DescribeKeyPairs` always empty); `ModifyInstanceMetadataOptions`
+unimplemented; Launch template `CreditSpecification` + `InstanceMarketOptions` (spot) not round-tripped;
+`DescribeImages` ignored all filters. Fixed: real `ec2KeyPairs` store with fingerprint + filter support;
+`ModifyInstanceMetadataOptions` updates in place; LT credit/spot persisted; `DescribeImages` returns a
+deterministic synthesized image matching filter attributes. Fixed in PR #509 / submodule `a00c7e07`
+(PR #509 is an ancestor of the HEAD commit `a00c7e07`).
+
 **#504** azure-sim v2.0 OIDC issuer mismatch — `/.well-known/openid-configuration` returned
 `sts.windows.net` for all paths including `/v2.0/`; now version-aware: v2.0 → `<baseURL>/<tenant>/v2.0`,
 v1 keeps `sts.windows.net`. JWT `iss` aligned for v2.0 id_tokens. Fixed in PR #506 / submodule `0a383db`.
