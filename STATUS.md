@@ -2,19 +2,18 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-07 (submodule → fc03b15: sockerless #500 — CloudTrail LookupAttributes + scheduler recording; zero open upstream blockers)
+**Last updated:** 2026-06-07 (CI fixes round 2: Pomerium pass_identity_headers + Teleport S3 creds; Teleport Enterprise endpoint_url blocker filed in BUGS.md; PR #54 e2e still failing)
 
 ## Current phase
 
-The whole **locally-testable platform is proven end-to-end with no mocks** against the
-from-source sockerless sim + real Teleport/Pomerium: stateful snapshottable workspaces,
-control plane + RBAC, both IdP logins, SSH (with S3 session recording + GitHub connector
-federation), identity-aware routing (including **authenticated** proxy-pass with
-`X-Pomerium-Jwt-Assertion`), scale-to-zero + **reconciler container** (scheduler fires →
-real container runs → CloudWatch Logs), the portal, and the **admin console** — all e2e
-tested. **Phases 3, 4, and 5** sim-testable work is complete. What remains is the
-real-deploy track (AWS account/region-gated) for real EBS/Fargate durability, real DNS/TLS,
-and a full Teleport GitHub OAuth browser login.
+Most of the **locally-testable platform is proven end-to-end with no mocks**. PR #54
+(`feat/phase-8c-cloudtrail-cloudwatch-adapters-v2`) is open against `main` with 12 of 14
+CI jobs green. Two CI jobs are still failing (`e2e`, `e2e-https`) due to a hard external
+blocker: `endpoint_url` in Teleport GitHub connectors is restricted to Enterprise in all
+OSS Teleport builds since v14 (see `BUGS.md` → `gravitational/teleport#67533`). This blocks
+two Phase 4 SSH tests (GitHub connector + OAuth login). Fix being evaluated: vendor/patch
+Teleport from source vs carry a patch file. Until resolved, CI is not fully green and PR
+#54 is not mergeable.
 
 ## What works (built, tested, merged)
 
@@ -49,11 +48,12 @@ and a full Teleport GitHub OAuth browser login.
   selects `CloudTrailAuditSource`; `LOG_PROVIDER=cloudwatch` + `EDD_APP_NAME` selects
   `CloudWatchLogSource`; fakes remain default.
 - **SSH** (`services/ssh-gateway`) + **Pomerium routing** (`infra/proxy`): real products
-  in Docker, mock-free. Phase 4: S3 session recording (sim-backed), full GitHub OAuth
-  login via bleephub-ssh (`driveGitHubOAuthFlow`: Teleport→bleephub→callback; role mapped
-  from acme/platform-admins; user created in Teleport verified via `tctl`), GitHub connector
-  config proven, authenticated proxy-pass with `X-Pomerium-Jwt-Assertion` (full OIDC flow
-  via azure-sim). No open sockerless blockers.
+  in Docker, mock-free. SSH connect-as-principal + authz-deny proven. Pomerium identity-aware
+  wildcard routing + authenticated proxy-pass (`X-Pomerium-Jwt-Assertion`) — the fix
+  (`pass_identity_headers: true`) was applied in the current PR; pending CI confirmation.
+  Phase 4 S3 session recording: `audit_sessions_uri` + AWS credentials in `teleport-auth`
+  added; pending CI confirmation. **Phase 4 GitHub connector + OAuth**: blocked by Teleport
+  Enterprise restriction on `endpoint_url` (see `BUGS.md`).
 - **CloudTrail-based tests + post-Terraform functional probes** (submodule → `fc03b15`):
   integration tests verify specific event content (CreateCluster event appears in `recent()`,
   `LookupAttributes` filter path); e2e workspace-lifecycle test asserts RunTask/StopTask/
@@ -64,7 +64,8 @@ and a full Teleport GitHub OAuth browser login.
 - **Test tiers**: unit/contract · integration (DynamoDB Local + process sim) · e2e
   (`.e2e.yml`/`.ssh.yml`: data-fidelity, lifecycle, GitHub+Entra auth, Pomerium, Teleport)
   · **portal e2e** (Playwright) · **`e2e-https`** (the sims served over TLS — mock-free Entra
-  auth + SSH with real CA trust, no `--insecure`) · manual `e2e-aws`. All green in CI.
+  auth + SSH with real CA trust, no `--insecure`) · manual `e2e-aws`. **12/14 CI jobs green;
+  e2e + e2e-https failing** (Teleport Enterprise blocker — see `BUGS.md`).
 - **Engineering quality** (a 2026-06-04 wave; see `WHAT_WE_DID.md`): domain failures flow
   through a typed `Result<T, DomainError>` channel mapped to HTTP by one exhaustive table
   (`@edd/api-client` surfaces the server's `{error}` strictly — no fallbacks); compile-time
@@ -79,11 +80,10 @@ and a full Teleport GitHub OAuth browser login.
 
 ## Immediate focus
 
+- **Fix Teleport `endpoint_url` Enterprise restriction** — gate on PR #54 CI going green.
+  Evaluating: vendor Teleport from source + patch vs carry a patch file only. Fix is ~10
+  lines removed from `lib/services/github.go`. Build cost is the key factor.
 - **AWS account/region** (`DO_NEXT` #1) — top blocker for real deploy, `e2e-aws`,
   real Fargate/EBS, and Phase 7.
 - **Domain/DNS** (#2) — blocks real proxy routing + ACM.
-- **Phases 3/4/5 sim-testable work complete** (PR #55 + submodule #491/#492). Remaining per phase:
-  - Phase 3: real DNS/TLS/ACM (needs DNS #2).
-  - Phase 4: Teleport wake-on-connect trigger (golden image auto-enrols — AWS-gated).
-  - Phase 5: ECS cron + real heartbeat agent (AWS-gated for in-container execution).
-- **No open sockerless blockers.** (#493 cron L/W/# + #494 bleephub token content-type fixed in #495; #489/#490 in #492; #491 added cron() evaluation.)
+- **No open sockerless blockers.**

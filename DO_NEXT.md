@@ -19,9 +19,29 @@ Resolved: DynamoDB+ElectroDB · sockerless from source · Fargate managed-EBS ·
 real-AWS on `main` · AGPL-3.0-or-later · Turborepo+pnpm · CASL · dep floor 1440 · admin
 observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
 
+## Available now (decision-free — immediate)
+
+- **Teleport `endpoint_url` Enterprise fix** — the only thing blocking PR #54 CI green.
+  Fix is ~10 lines removed from `lib/services/github.go` in `MarshalOSSGithubConnector`.
+  Decision needed: **vendor Teleport** (git submodule, build from source in a Dockerfile,
+  same pattern as sockerless) vs **patch file only** (store `.patch`, apply in Dockerfile
+  during build, no submodule). Key factor: Teleport is a large Go codebase — build time
+  in CI matters. Recommend investigating Teleport's build structure before deciding.
+
 ## Done recently
 
-- **CI fixes for PR #54 (vuln-scan + terraform-sim + e2e SSH harness):** trivy `skip-files` for bleephub admin token false positive; `assert_cloudtrail` switched to server-side `--lookup-attributes` (avoids 50-event cap); `bucket-init` init container pre-creates `edd-e2e-sessions` S3 bucket before Teleport auth starts. Awaiting CI green to merge PR #54.
+- **CI fixes for PR #54 (round 2):** `pass_identity_headers: true` added to Pomerium
+  wildcard route (`infra/proxy/pomerium.yaml`) — required for `X-Pomerium-Jwt-Assertion`
+  injection (Pomerium default is false). AWS credentials (`AWS_ACCESS_KEY_ID/SECRET`) added
+  to `teleport-auth` in `docker-compose.ssh.yml` — S3 client can't sign requests without
+  them; removed dead `TELEPORT_S3_ENDPOINT` (not a Teleport env var, 0 occurrences in
+  codebase). Teleport Enterprise blocker documented in `BUGS.md`. AGENTS.md rule 9 added:
+  upstream issues only in `github.com/e6qu/sockerless`.
+- **CI fixes for PR #54 (round 1 — vuln-scan + terraform-sim + e2e SSH harness):** trivy
+  `.trivyignore.yaml` + `trivyignores:` for bleephub admin token false positive; `assert_cloudtrail`
+  switched to server-side `--lookup-attributes` (avoids 50-event cap); `bucket-init` init
+  container pre-creates `edd-e2e-sessions` S3 bucket; `audit_sessions_uri` moved to
+  `teleport.storage` (Teleport 17+ config change). 12/14 CI jobs green.
 - **CloudTrail-based resource + functional tests:** integration tests verify specific CloudTrail event content (CreateCluster in `recent()`, newest-first ordering, `LookupAttributes` filter); workspace-lifecycle e2e asserts RunTask/StopTask/CreateSnapshot in CloudTrail and via `CloudTrailAuditSource`; reconciler e2e test 3 checks scheduler-fired RunTask in CloudTrail; `terraform-sim` CI step now audits 8 provisioning events post-apply + probes DynamoDB write/read, CloudWatch Logs write/read, ECS task-def registration against the live provisioned infra. If any new assertion exposes a sim gap, it will be filed upstream per §6.8.
 - **Full Teleport GitHub OAuth headless sim test (submodule → 0b9af6e):** sockerless PRs #491 + #492 fixed `cron()` evaluation, `N/step` parsing, and bleephub OIDC discovery. New `ssh-connect.e2e.ts` test 5: seeds bleephub (`acme` org + `platform-admins` team + `admin` member), drives `Teleport → bleephub ?auto=1 → Teleport callback` redirect chain headlessly, asserts `tctl get user/admin` shows `edd-ssh-e2e` role. No open sockerless blockers remaining.
 - **Phases 3/4/5 sim-testable (PR #55):** Reconciler container (`src/run.ts` + `Dockerfile` esbuild bundle); EventBridge scheduler→ECS→container e2e (`reconciler-container.e2e.ts`); authenticated Pomerium proxy-pass (`pomerium-authed.e2e.ts` — full OIDC flow via azure-sim → `X-Pomerium-Jwt-Assertion`); Teleport S3 session recording + GitHub connector (`ssh-connect.e2e.ts` additions); `docker-compose.ssh.yml` gains `sockerless-aws-ssh` + `bleephub-ssh`.
@@ -76,19 +96,14 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
   `throw new Error`). The reconciler now **skips and counts** a stop/snapshot that loses a
   state race instead of aborting the sweep. Behaviour-preserving (statuses unchanged).
 
-## Available now (decision-free)
+## Available now (decision-free — after Teleport fix)
 
+- **Merge PR #54** once CI is fully green.
 - **Phase 8 — admin console** (`docs/admin-ui-design.md`): ✅ **Complete (8A + 8B + 8C).**
-  8A: Health board, `/admin` shell, workspaces table, per-workspace Inspect. 8B: Overview,
-  Quotas, Logs/Audit (derived adapters). 8C: `CloudTrailAuditSource` + `CloudWatchLogSource`
-  (endpoint-only; sim-proven). CloudWatch Metrics + cost dashboard remain AWS-account-gated.
-- **Phases 3/4/5 sim-testable** — ✅ done (PR #55). See above.
+- **Phases 3/4/5 sim-testable** — ✅ done (PR #55). GitHub connector + OAuth blocked by Teleport Enterprise restriction until fixed.
 - **idle-agent** — ✅ done (ships in the golden image, PR #52).
-- **No decision-free coverage gaps remain.** Full GitHub OAuth headless sim test now complete.
 
-> All locally-testable sim work for Phases 3/4/5 is complete. The highest-value remaining
-> lever is the **AWS account/region decision** (#1): it unlocks the real-deploy track,
-> `e2e-aws`, Teleport GitHub full OAuth, real EBS durability, and real cron execution.
+> Once PR #54 merges, the highest-value lever is the **AWS account/region decision** (#1).
 
 ## Blocked
 
@@ -101,6 +116,11 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
 - **On DNS (#2):** real `*.devbox.<domain>` routing + ACM (the module path is sim-proven;
   the _real_ hosted zone + cert issuance is AWS/registrar-gated).
 - **On upstream sockerless:** Zero open blockers. (#496/#497/#498 fixed in PR #500 submodule `fc03b15`; #493/#494 in PR #495 `def45a1`; #489/#490 in PR #492 `0b9af6e`; #491 in `dd4e717`)
+- **On Teleport `endpoint_url` (gravitational/teleport#67533):** `MarshalOSSGithubConnector`
+  rejects non-github.com `endpoint_url` in all OSS builds since v14. Blocks two Phase 4 tests
+  (GitHub connector creation + GitHub OAuth login in `ssh-connect.e2e.ts`). Fix: vendor/patch
+  Teleport. See `BUGS.md`. (Note: per AGENTS.md §0 rule 9, issues are filed only in
+  `e6qu/sockerless` — this is documented here as a blocker, not a filed upstream issue.)
 - **VS Code distro:** resolved → **OpenVSCode Server** (MIT, Gitpod). Golden image built.
 
 ## Working notes (durable)

@@ -28,6 +28,10 @@ live. Hence:
    Don't hand-roll.
 7. **Components build independently** (`pnpm --filter <name> build`).
 8. **TDD**: failing test → make it pass → refactor. No feature without a test.
+9. **File upstream issues only in `github.com/e6qu/sockerless`** — never open
+   issues in any other external project (e.g. Teleport, Pomerium, AWS, etc.).
+   If a third-party tool has a limitation, record it in `BUGS.md` and work
+   around it or wait; do not file in their tracker.
 
 The engineering standards in §6 are also hard rules.
 
