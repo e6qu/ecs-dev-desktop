@@ -14,6 +14,7 @@ RUN apt-get update \
   && apt-get install -y --no-install-recommends openssh-server \
   && rm -rf /var/lib/apt/lists/* \
   && useradd --create-home --shell /bin/bash "${WORKSPACE_PRINCIPAL}" \
+  && usermod -p '*' "${WORKSPACE_PRINCIPAL}" \
   && ssh-keygen -A \
   && mkdir -p /etc/ssh/principals /run/sshd \
   && printf '%s\n' "${WORKSPACE_PRINCIPAL}" > "/etc/ssh/principals/${WORKSPACE_PRINCIPAL}"
