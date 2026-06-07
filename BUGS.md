@@ -8,7 +8,9 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-_None._
+**#489** EventBridge Scheduler `cron()` expressions silently never fire — `schedulerFirstFire` returns `false` for any `cron(...)` expression; `at()` and `rate()` work. Default reconciler schedule `rate(5 minutes)` is unaffected; blocked only if `var.reconciler_schedule` is switched to `cron()` syntax.
+
+**#490** bleephub `/.well-known/openid-configuration` is GitHub Actions OIDC only — missing `authorization_endpoint`, `token_endpoint`, `userinfo_endpoint`. Does not block Phase 3/4 (Pomerium GitHub connector and Teleport GitHub connector both hardcode endpoints, bypassing discovery); blocks any OIDC-discovery-driven client (e.g. OIDC-mode Pomerium or Teleport OIDC connector) pointed at bleephub.
 
 ## Resolved (sockerless — all fixed upstream)
 
