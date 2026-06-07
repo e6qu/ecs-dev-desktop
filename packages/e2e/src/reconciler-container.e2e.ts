@@ -18,6 +18,12 @@ import {
   DescribeLogStreamsCommand,
   GetLogEventsCommand,
 } from "@aws-sdk/client-cloudwatch-logs";
+import {
+  CreateSecurityGroupCommand,
+  CreateSubnetCommand,
+  CreateVpcCommand,
+  EC2Client,
+} from "@aws-sdk/client-ec2";
 import { awsSim, dynamodbLocal, DEFAULT_AWS_REGION } from "@edd/config";
 import { createDynamoClient, dropTable, ensureTable } from "@edd/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -42,9 +48,6 @@ const RECONCILER_IMAGE = process.env.RECONCILER_IMAGE ?? "edd-reconciler:e2e";
 const CLUSTER = "edd-reconciler-e2e";
 const TABLE = "ecs-dev-desktop-reconciler-container-e2e";
 const LOG_GROUP = "/edd/reconciler-e2e";
-// Placeholder values — reconciler sweeps 0 workspaces so stopTask is never called.
-const FAKE_SUBNET = "subnet-placeholder";
-const FAKE_SG = "sg-placeholder";
 const FAKE_EBS_ROLE = "arn:aws:iam::000000000000:role/ecsInfrastructureRole";
 
 const SIM = {
@@ -66,6 +69,7 @@ describe(
     timeout: 120_000,
   },
   () => {
+    const ec2 = new EC2Client(SIM);
     const ecs = new ECSClient(SIM);
     const scheduler = new SchedulerClient(SIM);
     const cwLogs = new CloudWatchLogsClient(SIM);
@@ -73,11 +77,29 @@ describe(
 
     let taskDefArn: string;
     let clusterArn: string;
+    let subnetId: string;
+    let sgId: string;
 
     beforeAll(async () => {
       // Fresh DynamoDB table (no workspaces → reconciler sweeps 0 items).
       await dropTable(dynamo, TABLE);
       await ensureTable(dynamo, TABLE);
+
+      // VPC + subnet + security group — sim enforces SG existence on RunTask.
+      const vpcOut = await ec2.send(new CreateVpcCommand({ CidrBlock: "10.99.0.0/16" }));
+      const vpcId = req(vpcOut.Vpc?.VpcId, "VpcId");
+      const subnetOut = await ec2.send(
+        new CreateSubnetCommand({ VpcId: vpcId, CidrBlock: "10.99.0.0/24" }),
+      );
+      subnetId = req(subnetOut.Subnet?.SubnetId, "SubnetId");
+      const sgOut = await ec2.send(
+        new CreateSecurityGroupCommand({
+          GroupName: "reconciler-e2e-sg",
+          Description: "reconciler e2e security group",
+          VpcId: vpcId,
+        }),
+      );
+      sgId = req(sgOut.GroupId, "GroupId");
 
       // ECS cluster.
       const clusterOut = await ecs.send(new CreateClusterCommand({ clusterName: CLUSTER }));
@@ -106,7 +128,7 @@ describe(
                 { name: "AWS_SECRET_ACCESS_KEY", value: "test" },
                 { name: "DYNAMODB_TABLE", value: TABLE },
                 { name: "ECS_CLUSTER", value: CLUSTER },
-                { name: "ECS_SUBNETS", value: FAKE_SUBNET },
+                { name: "ECS_SUBNETS", value: subnetId },
                 { name: "ECS_EBS_ROLE_ARN", value: FAKE_EBS_ROLE },
               ],
               logConfiguration: {
@@ -142,8 +164,8 @@ describe(
               LaunchType: "FARGATE",
               NetworkConfiguration: {
                 awsvpcConfiguration: {
-                  Subnets: [FAKE_SUBNET],
-                  SecurityGroups: [FAKE_SG],
+                  Subnets: [subnetId],
+                  SecurityGroups: [sgId],
                   AssignPublicIp: "DISABLED",
                 },
               },

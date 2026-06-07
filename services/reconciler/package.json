@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json && esbuild src/run.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/run.js",
+    "build": "tsc -p tsconfig.json && esbuild src/run.ts --bundle --platform=node --target=node22 --format=esm '--banner:js=import { createRequire } from \"module\"; const require = createRequire(import.meta.url);' --outfile=dist/run.js",
     "lint": "eslint .",
     "test": "vitest run",
     "test:integ": "vitest run --config vitest.integ.config.ts"
