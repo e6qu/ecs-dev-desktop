@@ -8,7 +8,26 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-_None._
+**#496** CloudTrail `LookupEvents` ignores `LookupAttributes` keys other than `EventName`,
+`EventSource`, `Username` — `cloudTrailEventMatches` (`cloudtrail.go:629`) has no cases for
+`EventId`, `ResourceType`, `ResourceName`, `AccessKeyId`, `ReadOnly`; those filters silently
+return all events. Blocks: the `LookupAttributes=[EventName=CreateCluster]` assertion in
+`cloudtrail-audit-source.integ.ts` (the "every returned event must be CreateCluster" check will
+fail because unmatched keys fall through and the response is unfiltered).
+
+**#497** CloudTrail does not record scheduler-fired `RunTask` (and SQS/SNS/Lambda targets) —
+`callJSONHandler` (`scheduler_firing.go:200`) calls the target handler directly via
+`httptest.NewRequest`, bypassing the `POST /` middleware in `main.go:102` that calls
+`cloudTrailRecordAPICall`. On real AWS the call is recorded with
+`invokedBy: scheduler.amazonaws.com`. Blocks: reconciler-container e2e test 3
+(`"CloudTrail captures the RunTask event fired by the EventBridge Scheduler"`).
+
+**#498** CloudTrail does not record EventBridge Scheduler API calls (`CreateSchedule`,
+`UpdateSchedule`, `DeleteSchedule`, etc.) — `registerScheduler(srv)` at `main.go:131` registers
+path-based routes directly on `srv`, outside the `POST /` CloudTrail middleware. On real AWS all
+Scheduler API operations are logged to CloudTrail. Blocks: `assert_cloudtrail "Scheduler
+CreateSchedule captured in CloudTrail"` in the `terraform-sim` CI step (the check will find zero
+events).
 
 ## Resolved (sockerless — all fixed upstream)
 
