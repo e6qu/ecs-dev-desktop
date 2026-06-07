@@ -143,6 +143,16 @@ jobs:
       - run: pnpm test:e2e
         env:
           RECONCILER_IMAGE: edd-reconciler:e2e
+      # Diagnostic: always dump Teleport auth logs + S3 bucket contents so we can
+      # diagnose session-recording upload failures without a separate CI run.
+      - if: always()
+        name: Dump Teleport auth logs and S3 bucket contents
+        run: |
+          echo "=== teleport-auth logs ==="
+          docker logs edd-teleport-auth 2>&1 || true
+          echo "=== S3 bucket edd-e2e-sessions ==="
+          curl -s -H "Host: edd-e2e-sessions.s3.amazonaws.com" \
+            "http://localhost:4567/edd-e2e-sessions?list-type=2" || true
       - if: always()
         run: docker compose -f docker-compose.e2e.yml down
       - if: always()
@@ -207,6 +217,14 @@ jobs:
       # (already TLS on its proxy/auth ports).
       - name: SSH connect + authz-deny over TLS (mock-free Teleport)
         run: pnpm --filter @edd/ssh-gateway exec vitest run --config vitest.e2e.config.ts src/ssh-connect.e2e.ts
+      - if: always()
+        name: Dump Teleport auth logs and S3 bucket contents (https)
+        run: |
+          echo "=== teleport-auth logs ==="
+          docker logs edd-teleport-auth 2>&1 || true
+          echo "=== S3 bucket edd-e2e-sessions ==="
+          curl -s -H "Host: edd-e2e-sessions.s3.amazonaws.com" \
+            "http://localhost:4567/edd-e2e-sessions?list-type=2" || true
       - if: always()
         run: docker compose -f docker-compose.https.yml down
       - if: always()

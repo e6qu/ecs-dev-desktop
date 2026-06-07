@@ -14,6 +14,12 @@ insecure_server: true
 shared_secret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 cookie_secret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 
+# Throwaway EC P-256 signing key for JWT assertion (X-Pomerium-Jwt-Assertion).
+# Without a signing_key, getSignedJWT() returns "" and Envoy drops the empty
+# header — pass_identity_headers:true on the route then has no effect.
+# Real deployments inject a secret via env/Secrets Manager.
+signing_key: "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JR0hBZ0VBTUJNR0J5cUdTTTQ5QWdFR0NDcUdTTTQ5QXdFSEJHMHdhd0lCQVFRZ0dGcU14MGhDNWtmWDlrRU4KUXJKQVNTZHBPMEZBdGFRc0F0YXd0L2xaOVlhaFJBTkNBQVRjNFZrQWV2UGJFSk5qY1NEL1RlbWRYL0lYejNuagoxRmZRbnhnTEN6REdRNHNTZ1dQb25OSldLdHlqelA5QWJGaFdPRTZ2WGlMc3RGa01ITU1OWHFsQwotLS0tLUVORCBQUklWQVRFIEtFWS0tLS0tCg=="
+
 # The authenticate service is served by this same process on its own route host.
 authenticate_service_url: "https://authenticate.devbox.localhost"
 
