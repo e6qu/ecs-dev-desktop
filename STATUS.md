@@ -2,13 +2,13 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-07 (ssh-connect `-tt` fix + sockerless → `9f89ae36` PR #511 BUG-1564; waiting for CI to confirm 14/14 green)
+**Last updated:** 2026-06-08 (PR #54 merged 14/14 green; sockerless → `4b8bcd9` PR #515 fixes #514; reconciler-container e2e fully green)
 
 ## Current phase
 
-**PR #54** (`feat/phase-8c-cloudtrail-cloudwatch-adapters-v2`) is open against `main`.
-CI expected 14/14 green after the `ssh -tt` fix — awaiting confirmation. Once merged,
-the next lever is the **AWS account/region decision** (`DO_NEXT` #1).
+**Sim coverage is essentially complete.** All phases that can be proven without a real
+AWS account are proven. The hard gate is now the **AWS account/region decision**
+(`DO_NEXT` #1). Remaining sim-provable work is enumerated in `DO_NEXT`.
 
 ## What works (built, tested, merged to `main`)
 
@@ -55,6 +55,6 @@ Nothing on AWS — no cloud infrastructure provisioned.
 
 ## Immediate focus
 
-1. **Confirm CI green for PR #54** — awaiting run triggered by `ssh -tt` + sockerless `9f89ae36`.
-2. **Merge PR #54** once CI confirms.
-3. **AWS account/region decision** (`DO_NEXT` #1) — unlocks everything real.
+1. **AWS account/region decision** (`DO_NEXT` #1) — the top blocker; unlocks everything real.
+2. **Remaining sim-provable work** — SSH cert issuance API; wake-on-connect SSH proxy;
+   workspace container CloudWatch log shipping; full user-journey e2e. See `DO_NEXT`.

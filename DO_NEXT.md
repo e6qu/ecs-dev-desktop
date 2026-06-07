@@ -23,9 +23,27 @@ OpenSSH + our SSH CA.
 
 ## Available now (decision-free — immediate)
 
-- **Merge PR #54** once CI run `27106449952` is green. Fixes committed: SSH cert auth
-  (`01d9352`), reconciler esbuild ESM banner + e2e real VPC/subnet/SG + sockerless bump
-  to PR #515 (`52376c2`). Both BUG-reconciler-build and sockerless#514 resolved.
+Sim-provable work that does not need a real AWS account:
+
+1. **SSH cert issuance API** (`POST /api/workspaces/:id/ssh-cert`) — portal signs the
+   user's public key with the SSH CA and returns a short-lived cert. Completes the SSH UX:
+   users currently must sign manually. Needs: key upload, `ssh-keygen -s` in the control
+   plane, cert returned to client. Proven on sim. (Phase 4)
+
+2. **Wake-on-connect SSH proxy** — a lightweight SSH jump host (`services/ssh-gateway`)
+   that intercepts a connection, calls `POST /api/workspaces/:id/connect` (already
+   implemented), awaits `running`, then proxy-forwards to the workspace. The control-plane
+   half is done; the SSH-proxy trigger is missing. Proven on sim. (Phase 4)
+
+3. **Workspace container CloudWatch log shipping** — `EcsComputeProvider.runTask()` does
+   not set a `logConfiguration` on container definitions. Adding `awslogs` pointing at
+   `/${appName}/workspaces` would make the `/admin/logs` workspace stream live on real
+   AWS, and let the CloudWatch log adapter serve real workspace logs. Proven on sim. (Phase 8C)
+
+4. **Full user-journey e2e** — a single end-to-end test: login → create workspace → SSH
+   cert issue → SSH connect → heartbeat → idle expire → auto-stop → wake-on-connect.
+   Currently each path has isolated tests; a joined journey test would catch interaction
+   bugs across the whole stack.
 
 ---
 
