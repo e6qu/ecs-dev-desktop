@@ -3,8 +3,8 @@
 # Each entry suppresses a specific finding type in a specific file only.
 # Add entries only for confirmed false positives or intentional architecture decisions.
 
-misconfigs:
-  - id: DS002
+misconfigurations:
+  - id: DS-0002
     paths:
       - services/ssh-gateway/Dockerfile.node
     statement: "sshd must run as root for PAM authentication and per-session privilege separation; the USER instruction is incompatible with standard sshd operation"
