@@ -23,13 +23,9 @@ OpenSSH + our SSH CA.
 
 ## Available now (decision-free — immediate)
 
-- **Fix `services/reconciler` esbuild bundle** — add `createRequire` ESM banner to
-  `package.json` build script so the AWS SDK CJS `require("node:https")` calls work at
-  runtime. One-line change; see `BUGS.md` → Open. Then rebuild Docker image + re-run
-  `reconciler-container.e2e.ts` locally to confirm.
-- **Confirm CI + merge PR #54** once 14/14 green. SSH fix (`01d9352`) is in; `e2e`
-  still failing on `reconciler-container` (blocked on sockerless#514 + reconciler build
-  bug above).
+- **Merge PR #54** once CI run `27106449952` is green. Fixes committed: SSH cert auth
+  (`01d9352`), reconciler esbuild ESM banner + e2e real VPC/subnet/SG + sockerless bump
+  to PR #515 (`52376c2`). Both BUG-reconciler-build and sockerless#514 resolved.
 
 ---
 
