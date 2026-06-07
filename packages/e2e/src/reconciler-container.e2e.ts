@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { CloudTrailClient, LookupEventsCommand } from "@aws-sdk/client-cloudtrail";
 import {
   CreateScheduleCommand,
   type FlexibleTimeWindowMode,
@@ -178,6 +179,29 @@ describe(
       );
       const container = described.tasks?.[0]?.containers?.[0];
       expect(container?.exitCode, "reconciler container exit code").toBe(0);
+    });
+
+    it("CloudTrail captures the RunTask event fired by the EventBridge Scheduler", async () => {
+      // The scheduler fired RunTask in beforeAll; the task already completed (test 1 waited).
+      // CloudTrail should now have a RunTask event whose Resources include our cluster.
+      const ctClient = new CloudTrailClient(SIM);
+      const deadline = Date.now() + 30_000;
+      let found = false;
+
+      while (Date.now() < deadline) {
+        const out = await ctClient.send(new LookupEventsCommand({ MaxResults: 50 }));
+        found = (out.Events ?? []).some(
+          (e) =>
+            e.EventName === "RunTask" &&
+            (e.Resources ?? []).some((r) => r.ResourceName?.includes(CLUSTER)),
+        );
+        if (found) break;
+        await sleep(1_500);
+      }
+
+      expect(found, "CloudTrail must capture a RunTask event for the reconciler cluster").toBe(
+        true,
+      );
     });
 
     it("reconciler task emits a JSON maintenance-result line to CloudWatch Logs", async () => {
