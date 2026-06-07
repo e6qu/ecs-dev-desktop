@@ -20,6 +20,13 @@
 
 set -eu
 
+# sshd strips the container's env; the entrypoint (proxy-entrypoint.sh) saved
+# EDD_* vars to /run/edd-env — source it if present.
+if [ -f /run/edd-env ]; then
+  # shellcheck disable=SC1091
+  . /run/edd-env
+fi
+
 : "${EDD_CONTROL_PLANE_URL:?EDD_CONTROL_PLANE_URL is required}"
 : "${EDD_GATEWAY_TOKEN:?EDD_GATEWAY_TOKEN is required}"
 : "${SSH_USER:?SSH_USER is set by sshd}"

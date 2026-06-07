@@ -26,6 +26,7 @@ RUN apt-get update \
   && mkdir -p /run/sshd
 COPY services/ssh-gateway/sshd_config.proxy /etc/ssh/sshd_config
 COPY services/ssh-gateway/wake-and-forward.sh /usr/local/bin/wake-and-forward.sh
-RUN chmod +x /usr/local/bin/wake-and-forward.sh
+COPY services/ssh-gateway/proxy-entrypoint.sh /usr/local/bin/proxy-entrypoint.sh
+RUN chmod +x /usr/local/bin/wake-and-forward.sh /usr/local/bin/proxy-entrypoint.sh
 EXPOSE 22
-CMD ["/usr/sbin/sshd", "-D", "-e"]
+ENTRYPOINT ["/usr/local/bin/proxy-entrypoint.sh"]
