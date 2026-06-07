@@ -111,6 +111,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      # Build the reconciler Docker image so the container-mode reconciler e2e test can pull it.
+      - name: Build reconciler Docker image
+        run: docker build -f services/reconciler/Dockerfile -t edd-reconciler:e2e .
       # Retry harness bring-up: image pulls can transiently hit registry rate
       # limits (public.ecr.aws / Docker Hub) on shared runner IPs.
       - name: Build & start the e2e harness (container-mode sim + DynamoDB Local)
@@ -124,7 +127,9 @@ jobs:
             sleep "$((attempt * 20))"
           done
           exit 1
-      - name: Build & start the SSH harness (real Teleport cluster)
+      - name: Generate SSH CA for the e2e harness
+        run: sh scripts/gen-ssh-ca.sh
+      - name: Build & start the SSH harness (OpenSSH workspace node)
         run: |
           for attempt in 1 2 3; do
             if docker compose -f docker-compose.ssh.yml up -d --build --wait; then
@@ -136,6 +141,11 @@ jobs:
           done
           exit 1
       - run: pnpm test:e2e
+        env:
+          RECONCILER_IMAGE: edd-reconciler:e2e
+      - if: always()
+        name: Dump Pomerium logs on failure
+        run: docker logs ecs-dev-desktop-pomerium-1 2>&1 || true
       - if: always()
         run: docker compose -f docker-compose.e2e.yml down
       - if: always()
@@ -175,7 +185,9 @@ jobs:
             sleep "$((attempt * 20))"
           done
           exit 1
-      - name: Build & start the SSH harness (real Teleport cluster)
+      - name: Generate SSH CA for the e2e harness
+        run: sh scripts/gen-ssh-ca.sh
+      - name: Build & start the SSH harness (OpenSSH workspace node)
         run: |
           for attempt in 1 2 3; do
             if docker compose -f docker-compose.ssh.yml up -d --build --wait; then
@@ -194,9 +206,8 @@ jobs:
           EDD_SIM_SCHEME: https
           NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/temp/sim-tls/ca.pem
         run: pnpm --filter @edd/web exec vitest run --config vitest.e2e.config.ts lib/entra-auth.e2e.ts
-      # SSH connect-as-principal + authz-deny against the real Teleport cluster
-      # (already TLS on its proxy/auth ports).
-      - name: SSH connect + authz-deny over TLS (mock-free Teleport)
+      # SSH connect-as-principal + authz-deny: standard sshd + ephemeral CA certs.
+      - name: SSH connect + authz-deny (mock-free standard sshd)
         run: pnpm --filter @edd/ssh-gateway exec vitest run --config vitest.e2e.config.ts src/ssh-connect.e2e.ts
       - if: always()
         run: docker compose -f docker-compose.https.yml down
@@ -303,8 +314,11 @@ jobs:
       # ECR, ECS cluster + Fargate service + capacity providers + autoscaling,
       # ALB, IAM, scheduler, logs) and tears it down. Per AGENTS.md §6.8 the only
       # difference from a real-cloud apply is the provider endpoints + dummy creds.
-      # Post-apply: resource verification across all services + IAM simulation (4
-      # policy-evaluation checks) + idempotency (plan -detailed-exitcode = 0).
+      # Post-apply: resource verification across all services + IAM simulation +
+      # CloudTrail provisioning-event audit (CreateTable/CreateCluster/CreateKey/
+      # CreateLogGroup/CreateRepository/CreateRole/CreateSchedule) + functional
+      # probes (DynamoDB write/read, CloudWatch Logs write/read, ECS task-def
+      # registration) + idempotency (plan -detailed-exitcode = 0).
       # Four active configurations: default (100+ assertions), fck-nat, DNS/TLS.
       # All assertions active (no open upstream blockers).
       - name: terraform apply + resource verification + IAM simulation + idempotency + destroy (default stack)
@@ -843,8 +857,8 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" ec2 describe-internet-gateways \
               --filters "Name=attachment.vpc-id,Values=${VPC_ID}" \
               --query 'length(InternetGateways)' --output text)"
-          # Route tables: 1 public + 2 private = 3 total.
-          assert_eq "Route table count 3" "3" \
+          # Route tables: 1 main (AWS default, unmanaged by TF) + 1 public + 2 private = 4 total.
+          assert_eq "Route table count 4" "4" \
             "$(aws --endpoint-url "${ENDPT}" ec2 describe-route-tables \
               --filters "Name=vpc-id,Values=${VPC_ID}" \
               --query 'length(RouteTables)' --output text)"
@@ -1040,6 +1054,88 @@ jobs:
               --policy-source-arn "${RECON_ROLE}" \
               --action-names "s3:GetObject" --resource-arns "arn:aws:s3:::bucket/key" \
               --query 'EvaluationResults[0].EvalDecision' --output text)"
+
+          # -- CloudTrail post-apply: provisioning events captured ------------------
+          # Verify that CloudTrail captured the key provisioning operations performed
+          # by terraform apply. Uses server-side LookupAttributes EventName filtering
+          # (supported since sockerless fc03b15 / PR #500) with --max-results 1 so
+          # the result is independent of total event volume.
+          assert_cloudtrail() {
+            local label="$1" event_name="$2"
+            local count
+            count=$(aws --endpoint-url "${ENDPT}" cloudtrail lookup-events \
+              --lookup-attributes AttributeKey=EventName,AttributeValue="${event_name}" \
+              --max-results 1 \
+              --query "length(Events)" \
+              --output text 2>&1) || {
+              printf 'FAIL  %s: cloudtrail lookup-events error: %s\n' "${label}" "${count}"
+              exit 1
+            }
+            if [ "${count:-0}" -gt 0 ] 2>/dev/null; then
+              printf 'PASS  %s\n' "${label}"
+            else
+              printf 'FAIL  %s: expected %s event in CloudTrail, got count=%s\n' \
+                "${label}" "${event_name}" "${count}"
+              exit 1
+            fi
+          }
+
+          assert_cloudtrail "DynamoDB CreateTable captured in CloudTrail" "CreateTable"
+          assert_cloudtrail "ECS CreateCluster captured in CloudTrail" "CreateCluster"
+          assert_cloudtrail "ECS RegisterTaskDefinition captured in CloudTrail" \
+            "RegisterTaskDefinition"
+          assert_cloudtrail "KMS CreateKey captured in CloudTrail" "CreateKey"
+          assert_cloudtrail "CloudWatch CreateLogGroup captured in CloudTrail" "CreateLogGroup"
+          assert_cloudtrail "ECR CreateRepository captured in CloudTrail" "CreateRepository"
+          assert_cloudtrail "IAM CreateRole captured in CloudTrail" "CreateRole"
+          assert_cloudtrail "Scheduler CreateSchedule captured in CloudTrail" "CreateSchedule"
+
+          # -- Functional probes: provisioned resources are actually usable ----------
+          # DynamoDB: write → read → delete a probe item against the provisioned table.
+          aws --endpoint-url "${ENDPT}" dynamodb put-item \
+            --table-name "${TABLE_NAME}" \
+            --item '{"PK":{"S":"probe#functional"},"SK":{"S":"post-apply"},"_k":{"S":"probe"}}'
+          GOT_KIND=$(aws --endpoint-url "${ENDPT}" dynamodb get-item \
+            --table-name "${TABLE_NAME}" \
+            --key '{"PK":{"S":"probe#functional"},"SK":{"S":"post-apply"}}' \
+            --query 'Item._k.S' --output text)
+          assert_eq "DynamoDB provisioned table write/read functional" "probe" "${GOT_KIND}"
+          aws --endpoint-url "${ENDPT}" dynamodb delete-item \
+            --table-name "${TABLE_NAME}" \
+            --key '{"PK":{"S":"probe#functional"},"SK":{"S":"post-apply"}}'
+          printf 'PASS  DynamoDB probe item cleaned up\n'
+
+          # CloudWatch Logs: create stream → write event → read back from provisioned log group.
+          CP_LOG_GROUP=$(aws --endpoint-url "${ENDPT}" logs describe-log-groups \
+            --log-group-name-prefix "/eddsim/control-plane" \
+            --query 'logGroups[0].logGroupName' --output text)
+          aws --endpoint-url "${ENDPT}" logs create-log-stream \
+            --log-group-name "${CP_LOG_GROUP}" \
+            --log-stream-name "probe/functional/post-apply"
+          EPOCH_MS="$(date +%s)000"
+          aws --endpoint-url "${ENDPT}" logs put-log-events \
+            --log-group-name "${CP_LOG_GROUP}" \
+            --log-stream-name "probe/functional/post-apply" \
+            --log-events "[{\"timestamp\":${EPOCH_MS},\"message\":\"probe-post-apply-ok\"}]"
+          PROBE_MSG=$(aws --endpoint-url "${ENDPT}" logs get-log-events \
+            --log-group-name "${CP_LOG_GROUP}" \
+            --log-stream-name "probe/functional/post-apply" \
+            --query 'events[0].message' --output text)
+          assert_eq "CloudWatch Logs provisioned log group write/read functional" \
+            "probe-post-apply-ok" "${PROBE_MSG}"
+
+          # ECS: register a probe task definition against the provisioned cluster.
+          # Proves the cluster accepts task registrations (does not run a container).
+          PROBE_TD_STATUS=$(aws --endpoint-url "${ENDPT}" ecs register-task-definition \
+            --family "probe-task-def" \
+            --requires-compatibilities FARGATE \
+            --network-mode awsvpc \
+            --cpu 256 --memory 512 \
+            --container-definitions \
+              '[{"name":"probe","image":"alpine:latest","essential":true}]' \
+            --query 'taskDefinition.status' --output text)
+          assert_eq "ECS cluster accepts task definition registration" "ACTIVE" \
+            "${PROBE_TD_STATUS}"
 
           # -- Idempotency: plan after apply must show 0 changes ------------------
           terraform -chdir="${TF_DIR}" plan -input=false \
@@ -1259,3 +1355,4 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: "1"
           skip-dirs: node_modules
+          trivyignores: .trivyignore.yaml

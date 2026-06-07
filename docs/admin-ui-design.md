@@ -29,7 +29,7 @@ A separate admin section with a left **sidebar**, distinct from the user portal:
 /admin
   Overview      counts by state, totals, active users, catalog size, reconciler freshness, (cost→AWS)
   Workspaces    all workspaces across users; filter by state/owner/image; row actions + Inspect →
-  Health        component status board (control-plane, DynamoDB, compute, storage, reconciler, auth; proxy/Teleport→AWS)
+  Health        component status board (control-plane, DynamoDB, compute, storage, reconciler, auth; proxy/SSH→AWS)
   Inspect/:id   one workspace: state + derived lifecycle timeline + runtime bindings + snapshots + logs pane
   Logs          control-plane events + reconciler runs + audit (CloudWatch/CloudTrail slot in on AWS)
   Catalog       existing /base-images, folded in
@@ -41,7 +41,7 @@ A separate admin section with a left **sidebar**, distinct from the user portal:
 
 | Port            | `query`/shape                              | Local adapter (now)                                                            | AWS adapter (later)                                    |
 | --------------- | ------------------------------------------ | ------------------------------------------------------------------------------ | ------------------------------------------------------ |
-| `HealthChecker` | `check() → ComponentHealth[]`              | DynamoDB ping; compute/storage `health()`; reconciler freshness (derived)      | + ECS/EBS/Teleport/Pomerium real checks                |
+| `HealthChecker` | `check() → ComponentHealth[]`              | DynamoDB ping; compute/storage `health()`; reconciler freshness (derived)      | + ECS/EBS/SSH/Pomerium real checks                     |
 | `AuditSource`   | `query(filter) → AuditEvent[]`             | **derive** per-workspace timeline from records + in-process recent-action ring | **CloudTrail** `LookupEvents` (our roles/resources)    |
 | `LogSource`     | `read(target, filter) → LogLine[]`         | reconciler run summaries + control-plane structured events (derived)           | **CloudWatch Logs** (app/reconciler/container streams) |
 | `MetricsSource` | `read(metric, range) → Point[]` (deferred) | n/a (cost/utilization need the cloud)                                          | **CloudWatch Metrics** + Cost Explorer/CUR             |
@@ -90,7 +90,7 @@ All gated by CASL `manage` (admin). Contracts in `@edd/api-contracts`; client in
   create-time enforcement).
 - **Phase C — Real cloud data (AWS-gated):** CloudTrail audit adapter, CloudWatch
   Logs adapter (container/app/reconciler), CloudWatch Metrics + Cost (dashboard),
-  real ECS/EBS/Teleport/Pomerium health. Endpoint-only swap; validated at `e2e-aws`.
+  real ECS/EBS/SSH/Pomerium health. Endpoint-only swap; validated at `e2e-aws`.
 
 ## Notes / open points
 

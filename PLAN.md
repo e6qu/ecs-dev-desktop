@@ -26,7 +26,7 @@ Stateful-workspace mechanism proven mock-free: real Fargate task on the containe
 sim writes to ECS-managed EBS → snapshot → new task restores → data present
 (`packages/e2e`). `EcsComputeProvider` + full `WorkspaceService` lifecycle run on it.
 
-- ⬜ **AWS-gated:** `infra/images` golden base (code-server + Teleport/sshd + idle-agent,
+- ⬜ **AWS-gated:** `infra/images` golden base (code-server + sshd + idle-agent,
   Open VSX); real Fargate deploy; cold-start baseline; image vuln scan.
 - **Gate:** sim ✅; real EBS durability/latency + cold-start → `e2e-aws`.
 
@@ -41,34 +41,45 @@ route handlers + CASL RBAC, `@edd/api-client`, endpoint-only `Ec2StorageProvider
 ✅ Auth.js (GitHub + Entra), CASL, group→role; **both logins proven mock-free &
 swappable** (bleephub conformant OAuth; azure sim Graph + ROPC). ✅ **Pomerium**
 identity-aware `*.devbox.<domain>` wildcard routing proven mock-free (`infra/proxy`).
+✅ **Authenticated proxy-pass with identity headers** — full OIDC flow via azure-sim
+(code issued immediately, no browser required); `X-Pomerium-Jwt-Assertion` present
+in proxied response; `_pomerium` session cookie set. (`packages/e2e/src/pomerium-authed.e2e.ts`)
 
-- ⬜ **Remaining:** real DNS/TLS/ACM (needs DNS #2); authenticated proxy-pass with
-  identity headers (browser login → Playwright).
-- **Gate:** CASL ✅; both group→role on the sim ✅; wildcard routing + gate ✅; real DNS ⬜.
+- ⬜ **Remaining:** real DNS/TLS/ACM (needs DNS #2); full GitHub OAuth browser login
+  (requires Playwright + DNS).
+- **Gate:** CASL ✅; both group→role on the sim ✅; wildcard routing + gate ✅;
+  authenticated proxy-pass with identity headers ✅; real DNS ⬜.
 
-## Phase 4 — SSH via Teleport — 🟡
+## Phase 4 — SSH gateway — 🟡
 
-✅ Real Teleport cluster + node enrolment + `tsh ssh` connect-as-principal + authz deny,
-mock-free in Docker (`services/ssh-gateway`). ✅ Wake-on-connect (control-plane half):
+✅ Standard OpenSSH (`sshd`) workspace node + ephemeral SSH CA + certificate auth +
+`AuthorizedPrincipalsFile` RBAC — connect-as-principal + authz-deny mock-free in Docker
+(`services/ssh-gateway`). Control plane owns the CA; Auth.js handles user auth, portal
+issues short-lived SSH certificates. ✅ Wake-on-connect (control-plane half):
 `WorkspaceService.connect()` — idempotent, wakes scaled-to-zero from snapshot, proven
 on real ECS+EBS.
 
-- ⬜ **Remaining:** Entra/GitHub→Teleport federation; session recording; the wake-on-
-  connect **trigger** (golden image auto-enrols its Teleport agent; gateway calls
-  `connect()` — deployment/AWS-tier).
-- **Gate:** `tsh ssh` ✅; connect-time wake ✅; recording + e2e-aws SSH-wakes-stopped ⬜.
+- ⬜ **Remaining:** session recording (deploy-tier, CloudTrail for audit); the
+  wake-on-connect **trigger** (golden image SSH agent enrolment — AWS-tier).
+- **Gate:** `ssh` connect-as-principal ✅; authz-deny ✅; connect-time wake ✅;
+  session recording ⬜; e2e-aws SSH-wakes-stopped ⬜.
 
 ## Phase 5 — Scale-to-zero + snapshot automation — 🟡
 
 ✅ Reconciler: idle stop+snapshot, scheduled snapshots, orphan GC (pure selectors +
 port, verified vs sim). ✅ **Activity heartbeat** (control-plane half): `markActivity` +
-`WorkspaceService.heartbeat` + `POST /workspaces/:id/heartbeat` refresh `lastActivity`
-(wake idle→running) so the reconciler keeps active workspaces alive.
+`WorkspaceService.heartbeat` + `POST /workspaces/:id/heartbeat` refresh `lastActivity`.
+✅ **Reconciler container** (`services/reconciler/src/run.ts` + `Dockerfile`): esbuild
+bundles the monorepo entry point into `dist/run.js`. ✅ **End-to-end scheduler→container
+test** (`packages/e2e/src/reconciler-container.e2e.ts`): EventBridge `at(...)` schedule
+fires → ECS RunTask → reconciler container sweeps → exits 0 → CloudWatch Logs contain
+JSON result.
 
-- ⬜ **AWS-gated:** the in-workspace idle-agent that POSTs heartbeats; the cron runner
-  (EventBridge / ECS scheduled task); optional warm pool + SOCI.
+- ⬜ **AWS-gated:** real `COMPUTE_PROVIDER=ecs` run (idle detection over real ECS tasks);
+  real in-workspace heartbeat (idle-agent already ships in the golden image); cron
+  (`rate(5 minutes)` default; `cron()` syntax also works — BUG-1531/#489 fixed upstream); SOCI.
 - **Gate:** idle→stop→snapshot→wake ✅; GC reaps orphans only ✅; heartbeat keep-alive ✅;
-  cron + cost metric ⬜.
+  reconciler container + scheduler e2e ✅; real cron + cost metric ⬜.
 
 ## Phase 6 — User portal + base-image catalog — ✅ (UI complete)
 
@@ -85,7 +96,7 @@ full audit; quota enforcement at scale; DR runbook; load test to 200+.
 - **Gate:** 200+ load within latency budget; DR drill (cross-region restore);
   `/security-review` clean; pen-test checklist. (Real AWS only.)
 
-## Phase 8 — Admin console & observability — 🟡 8A+8B done, 8C AWS-gated (design: `docs/admin-ui-design.md`)
+## Phase 8 — Admin console & observability — ✅ 8A+8B+8C done on the sim (design: `docs/admin-ui-design.md`)
 
 A dedicated admin-only **`/admin` sidebar shell** + a troubleshooting surface (component
 health, per-workspace diagnostics, logs/audit). **No custom audit store** — observability
@@ -106,8 +117,9 @@ is ports-and-adapters: events/audit/logs **derived from current state now**, fro
   `GET /api/admin/logs`, the `/admin/logs` page (derived audit feed plus the
   control-plane log stream; reconciler/container streams marked CloudWatch-on-AWS).
   All Playwright-covered.
-- ⬜ **8C — Real cloud data (AWS-gated):** CloudTrail audit adapter, CloudWatch Logs
-  (container/app/reconciler), CloudWatch Metrics + Cost dashboard, real ECS/EBS/Teleport/
-  Pomerium health. Endpoint-only swap; validated at `e2e-aws`.
-- **Gate:** health board + Inspect on the sim ✅(8A); audit/logs/overview/quotas ✅(8B);
-  CloudTrail/CloudWatch/cost on real AWS ⬜(8C).
+- ✅ **8C — CloudTrail + CloudWatch Logs adapters (sim-proven):** `@edd/cloudtrail-audit`
+  (`CloudTrailAuditSource`) + `@edd/cloudwatch-logs` (`CloudWatchLogSource`) — endpoint-only,
+  integration-tested against the sim (sim has `cloudtrail.go` + `cloudwatch.go`). CloudWatch
+  Metrics + Cost dashboard remain account-gated.
+- **Gate:** health board + Inspect ✅(8A); audit/logs/overview/quotas ✅(8B);
+  CloudTrail/CloudWatch adapters ✅(8C); Metrics/Cost on real AWS ⬜.

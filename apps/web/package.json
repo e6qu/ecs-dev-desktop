@@ -18,6 +18,8 @@
     "@edd/api-contracts": "workspace:*",
     "@edd/auth": "workspace:*",
     "@edd/authz": "workspace:*",
+    "@edd/cloudtrail-audit": "workspace:*",
+    "@edd/cloudwatch-logs": "workspace:*",
     "@edd/compute-ecs": "workspace:*",
     "@edd/config": "workspace:*",
     "@edd/control-plane": "workspace:*",
@@ -33,7 +35,7 @@
   "devDependencies": {
     "@aws-sdk/client-dynamodb": "^3.1063.0",
     "@playwright/test": "^1.60.0",
-    "@types/node": "^25.9.1",
-    "@types/react": "^19.2.16"
+    "@types/node": "^25.9.2",
+    "@types/react": "^19.2.17"
   }
 }

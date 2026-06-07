@@ -7,19 +7,21 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.json && esbuild src/run.ts --bundle --platform=node --target=node22 --format=esm '--banner:js=import { createRequire } from \"module\"; const require = createRequire(import.meta.url);' --outfile=dist/run.js",
     "lint": "eslint .",
     "test": "vitest run",
     "test:integ": "vitest run --config vitest.integ.config.ts"
   },
   "dependencies": {
-    "@edd/core": "workspace:*"
-  },
-  "devDependencies": {
+    "@edd/compute-ecs": "workspace:*",
     "@edd/config": "workspace:*",
     "@edd/control-plane": "workspace:*",
+    "@edd/core": "workspace:*",
     "@edd/db": "workspace:*",
-    "@edd/storage-ec2": "workspace:*",
-    "@types/node": "^25.9.1"
+    "@edd/storage-ec2": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.2",
+    "esbuild": "^0.28.0"
   }
 }

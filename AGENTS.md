@@ -28,6 +28,10 @@ live. Hence:
    Don't hand-roll.
 7. **Components build independently** (`pnpm --filter <name> build`).
 8. **TDD**: failing test → make it pass → refactor. No feature without a test.
+9. **File upstream issues only in `github.com/e6qu/sockerless`** — never open
+   issues in any other external project (e.g. Pomerium, AWS, etc.).
+   If a third-party tool has a limitation, record it in `BUGS.md` and work
+   around it or wait; do not file in their tracker.
 
 The engineering standards in §6 are also hard rules.
 
@@ -41,7 +45,7 @@ The engineering standards in §6 are also hard rules.
 | Persistence    | **EBS snapshot = unit of persistence** (state + snapshot + scale-to-zero)  |
 | Idle policy    | **Scale-to-zero**: stop idle task → snapshot → hydrate on wake             |
 | Auth / RBAC    | **Auth.js** (GitHub OAuth + Azure Entra), groups→roles; **CASL** abilities |
-| SSH            | **Teleport** (auth, audit, recording, Remote-SSH)                          |
+| SSH            | **OpenSSH** (`sshd`) + our SSH CA; control plane issues short-lived certs  |
 | Web / API      | **Next.js** — login + admin UI + control-plane API, **API-first**          |
 | State store    | **DynamoDB** single-table + **ElectroDB**                                  |
 | Images         | Curated **golden base images** in ECR; extensions via **Open VSX**         |
@@ -59,7 +63,7 @@ VS Code distro: **code-server / OpenVSCode Server** (MIT), not MS's server.
 apps/web/            Next.js: login + admin UI + control-plane API (API-first)
 services/
   reconciler/        idle detection → scale-to-zero, snapshots, GC (worker)
-  ssh-gateway/       Teleport config (declarative)
+  ssh-gateway/       OpenSSH sshd + SSH CA config; workspacePrincipal mapping
 packages/
   core/              functional core: branded domain types, lifecycle state
                      machine, ports (Storage/Compute) + fakes, Clock

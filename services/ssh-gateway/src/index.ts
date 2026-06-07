@@ -1,10 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 /**
- * SSH gateway = Teleport (auth, audit, session recording, Remote-SSH). Teleport
- * itself is deployed declaratively (see README); this package owns the small
- * amount of derived config — e.g. the SSH principal a user maps to on a
- * workspace node — kept pure so it is testable.
+ * SSH gateway: standard OpenSSH sshd + our own SSH CA (auth, audit, RBAC).
+ * This package owns the pure, testable config — e.g. the SSH principal a user
+ * maps to on a workspace node.
  */
 export function workspacePrincipal(username: string): string {
   // Workspaces run as a single non-root user; the gateway authorises the human

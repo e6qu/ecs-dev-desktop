@@ -1,22 +1,23 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# A workspace SSH node for the e2e: Teleport's ssh_service running as the single
-# non-root workspace principal. Teleport runs AS that user and opens sessions as
-# the same uid, so no root / host-user-switching is needed (matches the
-# "workspaces run as a single non-root user" model, AGENTS.md §1 + ssh-gateway).
-ARG TELEPORT_VERSION=18.6.2
+# Workspace SSH node: standard OpenSSH sshd, certificate-only auth.
+# sshd trusts the CA whose public key is mounted at /etc/ssh/workspace-ca.pub
+# (e2e: scripts/gen-ssh-ca.sh; production: control-plane CA public key).
+# RBAC is via AuthorizedPrincipalsFile: each OS user's file lists the certificate
+# principals the CA may assert for it.
+#
 # Principal must equal workspacePrincipal("e2e") = "dev-e2e" (services/ssh-gateway).
 ARG WORKSPACE_PRINCIPAL=dev-e2e
-
-FROM public.ecr.aws/gravitational/teleport-distroless:${TELEPORT_VERSION} AS teleport
 
 FROM debian:trixie-slim
 ARG WORKSPACE_PRINCIPAL
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends ca-certificates \
+  && apt-get install -y --no-install-recommends openssh-server \
   && rm -rf /var/lib/apt/lists/* \
   && useradd --create-home --shell /bin/bash "${WORKSPACE_PRINCIPAL}" \
-  && mkdir -p /var/lib/teleport \
-  && chown -R "${WORKSPACE_PRINCIPAL}:${WORKSPACE_PRINCIPAL}" /var/lib/teleport
-COPY --from=teleport /usr/local/bin/teleport /usr/local/bin/teleport
-USER ${WORKSPACE_PRINCIPAL}
-ENTRYPOINT ["teleport", "start", "-c", "/etc/teleport/node.yaml"]
+  && usermod -p '*' "${WORKSPACE_PRINCIPAL}" \
+  && ssh-keygen -A \
+  && mkdir -p /etc/ssh/principals /run/sshd \
+  && printf '%s\n' "${WORKSPACE_PRINCIPAL}" > "/etc/ssh/principals/${WORKSPACE_PRINCIPAL}"
+COPY services/ssh-gateway/sshd_config /etc/ssh/sshd_config
+EXPOSE 22
+CMD ["/usr/sbin/sshd", "-D", "-e"]

@@ -23,4 +23,4 @@ deployments terminate TLS, inject 32-byte secrets, and use a real domain + ACM
 (blocked on the DNS decision, `DO_NEXT` #2).
 
 Remaining: an authenticated request passing through with identity headers (needs a
-browser-driven login — Playwright); Teleport/Pomerium sharing the same IdP session.
+browser-driven login — Playwright); SSH/Pomerium sharing the same IdP session.

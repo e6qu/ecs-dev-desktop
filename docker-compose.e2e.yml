@@ -33,6 +33,10 @@ services:
     build:
       context: .
       dockerfile: infra/sim/bleephub.Dockerfile
+    environment:
+      # Required since sockerless#501 / PR#506: bleephub log.Fatal on startup if unset.
+      # Any non-PAT value; this is a test credential, not a real GitHub token.
+      BLEEPHUB_ADMIN_TOKEN: edd-e2e-admin-token
     ports:
       - "5555:5555"
     healthcheck:

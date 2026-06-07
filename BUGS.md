@@ -4,85 +4,45 @@
 
 ## Open
 
-_None._
+_(none)_
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-_None._
+_(none — sockerless#514 resolved by PR #515, merged 2026-06-08)_
 
-## Resolved (sockerless — all fixed upstream)
+## Resolved (sockerless — fixed upstream; full detail in `WHAT_WE_DID.md`)
 
-We filed and got fixed, in order: **#359/#360** (EBS snapshots / DeleteItem) → PR #361 ·
-**#362** Entra authorize → #368 · **#366/#367** sim Dockerfile + `SIM_RUNTIME=process` →
-#370 · **#333** real Firecracker microVMs → #372 · **#378** EC2 AttachVolume → #379 ·
-**#381** control/data-plane coupling (Docker named volumes) → #382 · **#384** bleephub
-`/user/teams` → #385 · **#387** Entra `groups` claim → #389 · **#390** Entra provisioning
-must be standard Graph + ROPC (not a sim-only seed) → #393 · **#391** bleephub standard
-`POST /admin/organizations` → #393 · **#399** bleephub OAuth non-conformance (session/CSRF;
-always-admin) → #401 · **#400** `/admin/organizations` site-admin auth → #401 · **#411**
-Terraform/AWS provider: KMS `EnableKeyRotation` + Application Auto Scaling
-`RegisterScalableTarget` + EventBridge Scheduler `CreateSchedule` unimplemented → #410 ·
-**#413** KMS tagging (`TagResource`/`UntagResource` + `ListResourceTags` empty) → #415 ·
-**#414** `CreateNatGateway` had no API-only modeled path → #415 · **#416** DynamoDB
-`DescribeTable`/`CreateTable` dropped GlobalSecondaryIndexes → #418 · **#417** ECS Service
-family + `PutClusterCapacityProviders` unimplemented → #418 · **#433** EC2 Launch Template ops (`CreateLaunchTemplate`/`DescribeLaunchTemplates`/
-`DescribeLaunchTemplateVersions`/`DeleteLaunchTemplate`) — blocks fck-nat `nat_mode=instance`
-(`RaJiska/fck-nat` uses `aws_launch_template` for the ASG launch config) → PR #439
-(`ec2_launch_template.go`; `registerEC2LaunchTemplates` wired into `registerEC2`).
-**#434** KMS grants (`CreateGrant`/`ListGrants`/`RevokeGrant`) + secondary crypto
-(`GenerateDataKeyWithoutPlaintext`/`ReEncrypt`) · **#435** ECR repository policy
-(`SetRepositoryPolicy`/`GetRepositoryPolicy`) + image layer data plane
-(`InitiateLayerUpload`/`CompleteLayerUpload`/`GetDownloadUrlForLayer`) · **#436** ECS
-`DescribeCapacityProviders` + `ListTaskDefinitionFamilies` · **#437** EC2
-`DescribeInstanceTypeOfferings` · **#438** ELBv2 `CreateRule`/`DescribeRules`/`ModifyRule`/
-`DeleteRule`/`ModifyListener` — all five → PR #440. (All found by live probing 2026-06-05.)
-**#441** IAM `ListPolicyVersions` (`InvalidAction`) → blocked `terraform destroy` of `aws_iam_policy`
-(fck-nat NAT role policy) · **#442** EC2 `DescribeVpcs` vpc-id/tag filters broken +
-`CidrBlockAssociationSet` null (broke `data "aws_vpc"` / fck-nat SG CIDR ingress) · **#443** EC2
-`DescribeSecurityGroups` ignored all filters · **#445** CW Logs `CreateLogGroup --kms-key-id`
-silently dropped · **#446** ECS `DescribeClusters --include SETTINGS/CONFIGURATIONS` returned null ·
-**#447** IAM `ListRoles` (`InvalidAction`) — all six → PR #449 (merged 2026-06-05).
-**#444** ECR `imageScanningConfiguration` + `encryptionConfiguration` not persisted → PR #448
-(merged 2026-06-05). Submodule → `b174425`.
+**Most-recent batch** (submodule `4b8bcd9`, PR #515):
 
-**#420** ACM DNS-validated
-cert never reached `ISSUED` + **#421** ACM wildcard-SAN validation record name carried a
-literal `*` → #424 · **#427** IAM policy simulation unimplemented (`SimulateCustomPolicy`/
-`SimulatePrincipalPolicy` returned `InvalidAction`; no evaluation engine) → #431 (added full
-evaluator: explicit-deny-wins, wildcard actions/resources, `StringEquals`/`ArnLike`/`Bool`/
-`IfExists` conditions, `NotAction`/`NotResource`, `MissingContextValues`) · **#428** EC2
-standalone ENI ops unimplemented (`CreateNetworkInterface`, Attach/Detach/Modify/Delete) →
-#430 (blocks `nat_mode=instance` fck-nat path in Terraform) · **BUG-1470** EC2
-position-dependent filters ignored (`DescribeNatGateways`/`DescribeSubnets`/
-`DescribeRouteTables` silently dropped any filter not at position 1) → #429. (Plus
-#334/#335 LB/SG enforcement, not we-filed → #364.)
+- **sockerless#514** — Container-mode sim: scheduler-fired `RunTask` (EcsParameters target)
+  silently swallowed downstream errors. `callJSONHandler` discarded the response and
+  `fireECSTarget` recorded CloudTrail success unconditionally; the task was never launched
+  or stopped. Also: SG validation was skipped for scheduler-fired path but enforced for
+  direct `RunTask`. Fix: `callJSONHandler` now returns `(status, body)`; a shared
+  `recordSchedulerFireResult` records failures honestly with `errorCode`/`errorMessage`;
+  valid-config happy path unchanged. **Our e2e test updated to use real VPC/subnet/SG
+  (commit `52376c2`)**.
 
-Key outcome: container-mode ECS uses **Docker named volumes**, so the e2e runs with plain
-Docker (no KVM/nft). Lesson: a sim that _accepts_ a call can still be non-conformant —
-audit behaviour against the real API, not just the happy path (#399).
-**#453** DynamoDB `SSEDescription` null · **#454** ECS `deploymentConfiguration` null ·
-**#455** EC2 `ModifySecurityGroupRules` unimplemented → PR #463 (merged 2026-06-06).
-**#450–#452** OCI `/v2/` data plane (ECR/AR/ACR) → PR #456 (merged 2026-06-06).
-**#457** SG egress `from_port`/`to_port`=0 for ip_protocol=-1 · **#458** SG ingress
-`referenced_security_group_id` account-prefix · **#459** NAT Gateway `connectivity_type`
-not persisted · **#460** ECS task-def drops `healthCheck`/`secrets` · **#461** ALB
-`minimum_load_balancer_capacity` spurious capacity_units=0 · **#462** Tags not returned by
-`ListTagsForResource` family (CW/DynamoDB/ECR/ECS) · **#464** ELBv2 `DescribeListeners`
-`Certificates` absent for HTTPS listeners → PR #466 (merged 2026-06-06). Submodule →
-`1859adf`. All CI assertions and idempotency checks un-gated; zero open upstream blockers.
-**#467** ECS task-def tags not returned (`DescribeTaskDefinition --include TAGS` path — tags
-leaked inside `taskDefinition` object, silently dropped by SDK model) · **#465** OCI `/v2/`
-responses missing `Docker-Distribution-Api-Version` header on non-ping routes → PR #468
-(merged 2026-06-06). Submodule → `3db617e`.
-**#470** EC2 `RunInstances` doesn't stamp `aws:ec2launchtemplate:*` system tags (TF provider
-reads these to reconstruct `launch_template` block; absence → ForceNew replacement every plan)
-· **#471** `DescribeRouteTables` routes missing `NetworkInterfaceId` · **#472**
-`DescribeSecurityGroups` egress rules missing `Ipv6Ranges` · **#473** ELBv2
-`DescribeListeners` missing `SslPolicy` for HTTPS listeners · **#469** Azure ACR `/oauth2/`
-token service unimplemented → PR #475 (merged 2026-06-06). Submodule → `3d457dd`. All
-idempotency checks un-gated; zero open upstream blockers.
-**#477** CI query used `AwsvpcConfiguration` (capital A) but the wire key is `awsvpcConfiguration` (lowercase) — JMESPath is case-sensitive; same result on real AWS. Not a sim bug; closed. Fix: lowercased the three JMESPath queries; all three assertions active.
+**Most-recent batch** (submodule `9f89ae36`, PRs #507–#511):
 
----
+- **BUG-1564** ELBv2 TG `Matcher` hardcoded `"200"`, `ProtocolVersion`/`IpAddressType` not round-tripped, `SetIpAddressType` unregistered. → PR #511 / `9f89ae36`.
+- **#508** azure-sim v2.0 OIDC discovery missing `userinfo_endpoint`; `GET /{tenant}/v2.0/userinfo` not implemented (OIDC Core §5.3). → PR #510 / `7c812094`.
+- **BUG-1561/1562** EBS volume performance fields (`Iops`/`Throughput`/`KmsKeyId`) not round-tripped; `DescribeVolumes`/`DescribeSnapshots` filters ignored; `DescribeVolumesModifications` unregistered. → PR #507 / `a00c7e07`.
+- **BUG-1560** `DescribeKeyPairs` always empty; `ModifyInstanceMetadataOptions` unimplemented; LT credit/spot not round-tripped; `DescribeImages` filters ignored. → PR #509 / `a00c7e07` (ancestor).
 
-Template — `### BUG-NNN — <title>` · Severity · Status · Component · Repro/fix.
+**Earlier batches** (full detail in `WHAT_WE_DID.md`):
+
+- **#504/#501** azure-sim OIDC v2.0 issuer mismatch; bleephub admin token non-configurable. → PR #506 / `0a383db`.
+- **#496–#498** CloudTrail `LookupEvents` filter keys, scheduler API recording, scheduler-fired calls not recorded. → PR #500 / `fc03b15`.
+- **#493/#494** Scheduler cron `L/W/#` qualifiers; bleephub token response content-type. → PR #495 / `def45a1`.
+- **BUG-1531/#489/#490** Scheduler `cron()` never evaluated; `N/step` mis-parsed; bleephub OIDC discovery endpoints missing. → PRs #491+#492 / `0b9af6e`.
+- **#486–#488** Scheduler never fired targets; ECS `RunTask` didn't resolve `secrets`. → PR #485 / `980dc9e`.
+- **#483** CloudWatch Logs `FilterLogEvents` returned empty instead of `ResourceNotFoundException`. → PR #484 / `4916e15`.
+- **#467/#465** ECS task-def tags not returned by `DescribeTaskDefinition --include TAGS`; OCI `/v2/` missing `Docker-Distribution-Api-Version`. → PR #468 / `3db617e`.
+- **#470–#473** `RunInstances` missing `aws:ec2launchtemplate:*` system tags; `DescribeRouteTables` routes missing `NetworkInterfaceId`; SG egress `Ipv6Ranges` absent; `DescribeListeners` missing `SslPolicy`. → PR #475 / `3d457dd`.
+- **#453–#462/#464** DynamoDB SSEDescription null; ECS deploymentConfig null; EC2 `ModifySecurityGroupRules` unimplemented; 6 idempotency read-back fidelity gaps; ELBv2 listener Certificates absent. → PRs #463+#466 / `1859adf`.
+- **#450–#452** OCI `/v2/` data plane (ECR/AR/ACR). → PR #456 / `8e866c3`.
+- **#433–#438/#441–#447** LaunchTemplates; KMS grants/crypto; ECR policy + layer data plane; ECS capacity providers; EC2 instance type offerings; ELBv2 rules; IAM ListPolicyVersions; EC2 VPC/SG filters; CW Logs kmsKeyId; ECS DescribeClusters; IAM ListRoles. → PRs #439+#440+#448+#449.
+- **#420/#421/#427/#428/BUG-1470** ACM DNS validation; IAM policy simulation; EC2 ENI ops; position-dependent filters. → PRs #424+#431+#430+#429 / `9e2640a`.
+- **#411–#418** KMS rotation/tagging; NAT Gateway; DynamoDB GSIs; ECS Service capacity providers; Application Auto Scaling; EventBridge Scheduler. → PRs #410+#415+#418 / `aa33123`.
+- **#359–#410** EBS snapshots; Entra authorize; sim Dockerfile; EC2 AttachVolume; control/data-plane coupling; bleephub /user/teams; Entra groups claim; bleephub OAuth non-conformance. → PRs #361–#401.

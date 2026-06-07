@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { CloudTrailClient, LookupEventsCommand } from "@aws-sdk/client-cloudtrail";
 import { CreateSubnetCommand, CreateVpcCommand, EC2Client } from "@aws-sdk/client-ec2";
 import { CreateClusterCommand, ECSClient } from "@aws-sdk/client-ecs";
+import { CloudTrailAuditSource } from "@edd/cloudtrail-audit";
 import { EcsComputeProvider } from "@edd/compute-ecs";
 import { awsSim, DEFAULT_AWS_REGION } from "@edd/config";
 import { WorkspaceService } from "@edd/control-plane";
@@ -32,6 +34,8 @@ const SIM = {
   endpoint: awsSim.endpoint,
   credentials: { accessKeyId: "local", secretAccessKey: "local" },
 };
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 function req<T>(value: T | undefined, field: string): T {
   if (value === undefined) throw new Error(`missing ${field}`);
@@ -100,5 +104,58 @@ describe("workspace lifecycle through WorkspaceService on the sim (real ECS + EB
 
     expect((await service.remove(workspaceId(ws.id))).ok).toBe(true);
     expect(await service.get(workspaceId(ws.id))).toBeNull();
+  });
+
+  it("CloudTrail captures RunTask, StopTask, and CreateSnapshot from the workspace lifecycle", async () => {
+    const ctClient = new CloudTrailClient(SIM);
+    const ctSrc = CloudTrailAuditSource.fromEnv();
+
+    // Create a workspace: WorkspaceService → EcsComputeProvider.runTask → ECS RunTask API.
+    const ws = await service.create({ ownerId: ownerId("e2e-ct"), baseImage: baseImage(IMAGE) });
+    expect(ws.state).toBe("running");
+
+    async function pollForEvent(eventName: string, timeoutMs = 30_000): Promise<boolean> {
+      const deadline = Date.now() + timeoutMs;
+      while (Date.now() < deadline) {
+        const out = await ctClient.send(new LookupEventsCommand({ MaxResults: 100 }));
+        if ((out.Events ?? []).some((e) => e.EventName === eventName)) return true;
+        await sleep(1_000);
+      }
+      return false;
+    }
+
+    expect(
+      await pollForEvent("RunTask"),
+      "CloudTrail must capture RunTask after workspace.create()",
+    ).toBe(true);
+
+    // Stop: snapshots the EBS volume (CreateSnapshot) then stops the task (StopTask).
+    unwrap(await service.stop(workspaceId(ws.id)));
+
+    expect(
+      await pollForEvent("StopTask"),
+      "CloudTrail must capture StopTask after workspace.stop()",
+    ).toBe(true);
+    expect(
+      await pollForEvent("CreateSnapshot"),
+      "CloudTrail must capture CreateSnapshot after workspace.stop()",
+    ).toBe(true);
+
+    // CloudTrailAuditSource.recent() must also surface these same operations.
+    const auditEvents = await ctSrc.recent(100);
+    expect(
+      auditEvents.some((e) => e.action === "RunTask"),
+      "CloudTrailAuditSource.recent() must include RunTask",
+    ).toBe(true);
+    expect(
+      auditEvents.some((e) => e.action === "StopTask"),
+      "CloudTrailAuditSource.recent() must include StopTask",
+    ).toBe(true);
+    expect(
+      auditEvents.some((e) => e.action === "CreateSnapshot"),
+      "CloudTrailAuditSource.recent() must include CreateSnapshot",
+    ).toBe(true);
+
+    await service.remove(workspaceId(ws.id));
   });
 });

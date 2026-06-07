@@ -49,16 +49,16 @@ Tooling: **Vitest**.
 
 ### 2. Integration — every PR, local + CI (sockerless substrate)
 
-| Concern                                      | Backed by                                             |
-| -------------------------------------------- | ----------------------------------------------------- |
-| ECS task lifecycle + **real container exec** | sockerless ECS backend + `simulators/aws`             |
-| DynamoDB single-table + GSIs                 | **DynamoDB Local** (or sockerless `dynamodb.go`)      |
-| ECR / IAM / Route53 / ACM / KMS (call-shape) | `simulators/aws`                                      |
-| GitHub OAuth / Apps                          | **bleephub**                                          |
-| Other OIDC (incl. Entra stand-in)            | **mock-oauth2-server** until a real Entra sim exists  |
-| Teleport SSH                                 | **Teleport-in-Docker** + node container; assert audit |
-| Identity-aware proxy                         | **Pomerium-in-Docker** with the mock IdP              |
-| UI                                           | **Playwright** vs app with mocked API                 |
+| Concern                                      | Backed by                                               |
+| -------------------------------------------- | ------------------------------------------------------- |
+| ECS task lifecycle + **real container exec** | sockerless ECS backend + `simulators/aws`               |
+| DynamoDB single-table + GSIs                 | **DynamoDB Local** (or sockerless `dynamodb.go`)        |
+| ECR / IAM / Route53 / ACM / KMS (call-shape) | `simulators/aws`                                        |
+| GitHub OAuth / Apps                          | **bleephub**                                            |
+| Other OIDC (incl. Entra stand-in)            | **mock-oauth2-server** until a real Entra sim exists    |
+| SSH (OpenSSH)                                | **sshd-in-Docker** + ephemeral SSH CA; cert auth + RBAC |
+| Identity-aware proxy                         | **Pomerium-in-Docker** with the mock IdP                |
+| UI                                           | **Playwright** vs app with mocked API                   |
 
 Proves wiring/call-shapes and (where sockerless executes containers) real task
 behavior. Does **not** prove real EBS durability/latency, real network routing,
@@ -101,8 +101,8 @@ certificate trust** (no `--insecure`, no skipped verification):
 - `EDD_SIM_SCHEME=https` flips the `@edd/config` sim base URLs to `https`; the
   client trusts the CA via `NODE_EXTRA_CA_CERTS`.
 - The **Entra** auth smoke (Graph provisioning + ROPC → id_token → group→role)
-  runs over HTTPS; the **SSH** connect + authz-deny runs against the real Teleport
-  cluster (already TLS).
+  runs over HTTPS; the **SSH** connect + authz-deny runs against the standard sshd
+  workspace node (certificate auth via ephemeral CA).
 
 ```
 sh scripts/gen-sim-tls-cert.sh
