@@ -21,7 +21,7 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
 
 ## Available now (decision-free — immediate)
 
-- **Merge PR #54** — once sockerless#508 is fixed and CI is green.
+- **Merge PR #54** — sockerless#508 fixed (PR #510); CI should now be 14/14 green. Merge when CI confirms.
 
 ## Done recently
 
@@ -109,10 +109,6 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
   Cost), Phase 7, `e2e-aws`.
 - **On DNS (#2):** real `*.devbox.<domain>` routing + ACM (the module path is sim-proven;
   the _real_ hosted zone + cert issuance is AWS/registrar-gated).
-- **On upstream sockerless / sockerless#508:** azure-sim v2.0 OIDC discovery missing
-  `userinfo_endpoint` (regression in PR #506/#504 fix). Blocks `pomerium-authed.e2e.ts` test 1
-  → `e2e` and `e2e-https` jobs fail. Waiting for sockerless maintainers to implement.
-  (#504+#501 in PR #506 `0a383db`; other blockers resolved in earlier PRs.)
 - **VS Code distro:** resolved → **OpenVSCode Server** (MIT, Gitpod). Golden image built.
 
 ## Working notes (durable)

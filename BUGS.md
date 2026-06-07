@@ -8,15 +8,16 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-**#508** azure-sim v2.0 OIDC discovery missing `userinfo_endpoint` — regression in PR #506 (#504
-fix). `/{tenant}/v2.0/.well-known/openid-configuration` no longer includes `userinfo_endpoint`;
-Pomerium's go-oidc calls `provider.UserInfo()` after token exchange and gets
-`"oidc: user info endpoint is not supported by this provider"` → HTTP 500 on the OAuth callback.
-Real Azure AD v2.0 has this endpoint. **Blocks**: `pomerium-authed.e2e.ts` test 1
-("completes the OIDC auth flow and proxies with X-Pomerium-Jwt-Assertion header") → CI `e2e`
-and `e2e-https` jobs remain partially failing until fixed.
+_None._
 
 ## Resolved (sockerless — all fixed upstream)
+
+**#508** azure-sim v2.0 OIDC discovery missing `userinfo_endpoint` — `userinfo_endpoint` was
+never in the discovery doc; #504's issuer fix let Pomerium get past provider init, surfacing
+the gap. Fix: advertise `<baseURL>/{tenant}/v2.0/userinfo` in discovery; implement
+`GET /{tenant}/v2.0/userinfo` per OIDC Core §5.3 (RS256 bearer-token verification against
+sim's signing key; 401 with `WWW-Authenticate` on missing/invalid token — no fallback identity).
+Fixed in PR #510 / submodule `7c812094`.
 
 **BUG-1561** `CreateVolume`/`DescribeVolumes` never parsed/rendered `Iops`, `Throughput`,
 `KmsKeyId`, `MultiAttachEnabled` — gp3 volumes read back null iops/throughput → `aws_ebs_volume`

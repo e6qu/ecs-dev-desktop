@@ -2,16 +2,14 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-07 (submodule → `a00c7e07`: PRs #509+#507 — EBS/key-pair/DescribeImages fidelity; BUG-1560/1561/1562 resolved; sockerless#508 still open)
+**Last updated:** 2026-06-07 (submodule → `7c812094`: PR #510 fixes sockerless#508 (azure-sim v2.0 userinfo_endpoint); zero open upstream blockers; CI should be 14/14 green)
 
 ## Current phase
 
 Most of the **locally-testable platform is proven end-to-end with no mocks**. PR #54
-(`feat/phase-8c-cloudtrail-cloudwatch-adapters-v2`) is open against `main`. CI: 12/14 jobs
-green after this round of fixes. One external blocker remains: **sockerless#508** — azure-sim
-v2.0 OIDC discovery missing `userinfo_endpoint` (regression in PR #506/#504 fix), causing
-Pomerium's OAuth callback to return HTTP 500. Blocks `pomerium-authed.e2e.ts` test 1 →
-`e2e` and `e2e-https` jobs. Waiting for sockerless maintainers.
+(`feat/phase-8c-cloudtrail-cloudwatch-adapters-v2`) is open against `main`. **All CI jobs
+should now be green** — sockerless#508 (azure-sim v2.0 `userinfo_endpoint`) fixed by PR #510
+(`7c812094`); submodule updated; zero open upstream blockers. Ready to merge once CI confirms.
 
 ## What works (built, tested, merged)
 
@@ -61,9 +59,8 @@ Pomerium's OAuth callback to return HTTP 500. Blocks `pomerium-authed.e2e.ts` te
 - **Test tiers**: unit/contract · integration (DynamoDB Local + process sim) · e2e
   (`.e2e.yml`/`.ssh.yml`: data-fidelity, lifecycle, GitHub+Entra auth, Pomerium, OpenSSH)
   · **portal e2e** (Playwright) · **`e2e-https`** (the sims served over TLS — mock-free Entra
-  auth + SSH with real CA trust, no `--insecure`) · manual `e2e-aws`. **12/14 CI jobs green;
-  e2e + e2e-https partially failing** — blocked on sockerless#508 (`pomerium-authed.e2e.ts`
-  test 1 only); all other tests in those jobs pass.
+  auth + SSH with real CA trust, no `--insecure`) · manual `e2e-aws`. **14/14 CI jobs expected
+  green** — sockerless#508 fixed by PR #510 (`7c812094`); zero open upstream blockers.
 - **Engineering quality** (a 2026-06-04 wave; see `WHAT_WE_DID.md`): domain failures flow
   through a typed `Result<T, DomainError>` channel mapped to HTTP by one exhaustive table
   (`@edd/api-client` surfaces the server's `{error}` strictly — no fallbacks); compile-time
@@ -78,8 +75,7 @@ Pomerium's OAuth callback to return HTTP 500. Blocks `pomerium-authed.e2e.ts` te
 
 ## Immediate focus
 
-- **sockerless#508** — azure-sim v2.0 `userinfo_endpoint` regression. Waiting for upstream
-  fix before PR #54 can merge.
+- **Merge PR #54** — all blockers resolved; CI expected 14/14 green. Merge once CI confirms.
 - **AWS account/region** (`DO_NEXT` #1) — top blocker for real deploy, `e2e-aws`,
   real Fargate/EBS, and Phase 7.
 - **Domain/DNS** (#2) — blocks real proxy routing + ACM.
