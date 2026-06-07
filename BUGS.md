@@ -8,18 +8,21 @@ _(none)_
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-- **sockerless#516** — Container-mode ECS: `DescribeTasks` returns a virtual VPC-allocated IP
-  (`AllocateSubnetIP`) as `privateIPv4Address`, not the Docker container's actual IP. The VPC
-  IP is non-routable on the Docker network; other containers cannot connect to it. On real
-  Fargate, the ENI IP is the real private VPC IP and is routable within the VPC.
-  Fix: after `StartContainerSync`, inspect the container to get its Docker IP and use it as
-  `privateIPv4Address` in the ENI attachment and `networkInterfaces`.
-  **Blocks:** wake-on-connect SSH proxy e2e (proxy cannot forward TCP to the workspace
-  container via its ENI IP). All other proxy infrastructure and domain changes are complete.
+_(none — sockerless#516 resolved by PR #518, merged 2026-06-08)_
 
 ## Resolved (sockerless — fixed upstream; full detail in `WHAT_WE_DID.md`)
 
-**Most-recent batch** (submodule `4b8bcd9`, PR #515):
+**Most-recent batch** (submodule `7518722`, PR #518):
+
+- **sockerless#516** — Container-mode ECS: `privateIPv4Address` was a virtual VPC-allocated IP
+  that didn't route to the Docker container. Fix: each VPC is now a real Docker user-defined
+  bridge (`sockerless-sim-vpc-<vpcid>`, IPAM subnet = VPC CIDR). Task containers are pinned to
+  their VPC bridge at the ENI IP via `ContainerConfig.IPAddress`. The reported IP is now the
+  container's real Docker IP — routable within the VPC bridge (intra-VPC), isolated from other
+  VPC bridges (cross-VPC). Our `sshHost` field on `Workspace` is now populated with an
+  actionable IP; the proxy e2e tests the full forwarding chain.
+
+**Previous batch** (submodule `4b8bcd9`, PR #515):
 
 - **sockerless#514** — Container-mode sim: scheduler-fired `RunTask` (EcsParameters target)
   silently swallowed downstream errors. `callJSONHandler` discarded the response and

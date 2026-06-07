@@ -111,9 +111,11 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
-      # Build the reconciler Docker image so the container-mode reconciler e2e test can pull it.
+      # Build test Docker images needed by the e2e tests.
       - name: Build reconciler Docker image
         run: docker build -f services/reconciler/Dockerfile -t edd-reconciler:e2e .
+      - name: Build SSH proxy Docker image
+        run: docker build -f services/ssh-gateway/Dockerfile.proxy -t edd-ssh-proxy:e2e .
       # Retry harness bring-up: image pulls can transiently hit registry rate
       # limits (public.ecr.aws / Docker Hub) on shared runner IPs.
       - name: Build & start the e2e harness (container-mode sim + DynamoDB Local)
@@ -143,6 +145,7 @@ jobs:
       - run: pnpm test:e2e
         env:
           RECONCILER_IMAGE: edd-reconciler:e2e
+          PROXY_IMAGE: edd-ssh-proxy:e2e
       - if: always()
         name: Dump Pomerium logs on failure
         run: docker logs ecs-dev-desktop-pomerium-1 2>&1 || true
