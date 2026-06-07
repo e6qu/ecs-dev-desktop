@@ -21,6 +21,7 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
 
 ## Done recently
 
+- **Full Teleport GitHub OAuth headless sim test (submodule → 0b9af6e):** sockerless PRs #491 + #492 fixed `cron()` evaluation, `N/step` parsing, and bleephub OIDC discovery. New `ssh-connect.e2e.ts` test 5: seeds bleephub (`acme` org + `platform-admins` team + `admin` member), drives `Teleport → bleephub ?auto=1 → Teleport callback` redirect chain headlessly, asserts `tctl get user/admin` shows `edd-ssh-e2e` role. No open sockerless blockers remaining.
 - **Phases 3/4/5 sim-testable (PR #55):** Reconciler container (`src/run.ts` + `Dockerfile` esbuild bundle); EventBridge scheduler→ECS→container e2e (`reconciler-container.e2e.ts`); authenticated Pomerium proxy-pass (`pomerium-authed.e2e.ts` — full OIDC flow via azure-sim → `X-Pomerium-Jwt-Assertion`); Teleport S3 session recording + GitHub connector (`ssh-connect.e2e.ts` additions); `docker-compose.ssh.yml` gains `sockerless-aws-ssh` + `bleephub-ssh`.
 
 - **Phase 8C: CloudTrail + CloudWatch Logs adapters (PR #53).** `@edd/cloudtrail-audit` (`CloudTrailAuditSource`) + `@edd/cloudwatch-logs` (`CloudWatchLogSource`) — endpoint-only, sim-proven, integration tests in `test/`. `apps/web` selects real adapters via `AUDIT_PROVIDER=cloudtrail` / `LOG_PROVIDER=cloudwatch` / `EDD_APP_NAME`. Terraform injects all three. Phase 8 fully closed. Corrected the DO_NEXT misclassification: these were not AWS-gated; the sockerless sim has `cloudtrail.go` + `cloudwatch.go`.
@@ -81,7 +82,7 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
   (endpoint-only; sim-proven). CloudWatch Metrics + cost dashboard remain AWS-account-gated.
 - **Phases 3/4/5 sim-testable** — ✅ done (PR #55). See above.
 - **idle-agent** — ✅ done (ships in the golden image, PR #52).
-- **No decision-free coverage gaps remain.**
+- **No decision-free coverage gaps remain.** Full GitHub OAuth headless sim test now complete.
 
 > All locally-testable sim work for Phases 3/4/5 is complete. The highest-value remaining
 > lever is the **AWS account/region decision** (#1): it unlocks the real-deploy track,
@@ -97,7 +98,7 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
   Cost), Phase 7, `e2e-aws`.
 - **On DNS (#2):** real `*.devbox.<domain>` routing + ACM (the module path is sim-proven;
   the _real_ hosted zone + cert issuance is AWS/registrar-gated).
-- **On upstream sockerless:** Two open blockers (#489 cron, #490 bleephub OIDC discovery) — neither blocks any currently-built feature. (#486/#488 fixed in PR #485 submodule `980dc9e`; #483 fixed in PR #484 submodule `4916e15`)
+- **On upstream sockerless:** Zero open blockers. (#489/#490 fixed in PR #492 + #491 submodule `0b9af6e`; #486/#488 in PR #485 `980dc9e`; #483 in PR #484 `4916e15`)
 - **VS Code distro:** resolved → **OpenVSCode Server** (MIT, Gitpod). Golden image built.
 
 ## Working notes (durable)

@@ -60,11 +60,14 @@ sockerless-aws-ssh sim; recording object appears in S3 after SSH session (integ-
 ✅ **Teleport GitHub connector** (`kind: github`, `endpoint_url: http://bleephub-ssh:5555`)
 — `tctl create` accepted, `tctl get github` confirms storage; proves GHES-endpoint-override
 mechanism. Teleport depends on `sockerless-aws-ssh` + `bleephub-ssh` in compose.
+✅ **Full GitHub OAuth login via bleephub** — `driveGitHubOAuthFlow` drives
+`Teleport → bleephub ?auto=1 → Teleport callback` headlessly; bleephub seeded with
+`acme/platform-admins`; `tctl get user/admin` asserts `edd-ssh-e2e` role assigned.
+(Unblocked by sockerless #492: bleephub OIDC discovery now complete.)
 
-- ⬜ **Remaining:** full Teleport GitHub OAuth browser login (requires Playwright + browser);
-  the wake-on-connect **trigger** (golden image auto-enrols Teleport agent — AWS-tier).
+- ⬜ **Remaining:** the wake-on-connect **trigger** (golden image auto-enrols Teleport agent — AWS-tier).
 - **Gate:** `tsh ssh` ✅; connect-time wake ✅; S3 recording ✅; GitHub connector ✅;
-  full GitHub OAuth login ⬜; e2e-aws SSH-wakes-stopped ⬜.
+  full GitHub OAuth login ✅; e2e-aws SSH-wakes-stopped ⬜.
 
 ## Phase 5 — Scale-to-zero + snapshot automation — 🟡
 

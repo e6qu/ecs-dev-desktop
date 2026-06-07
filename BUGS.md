@@ -8,9 +8,7 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-**#489** EventBridge Scheduler `cron()` expressions silently never fire — `schedulerFirstFire` returns `false` for any `cron(...)` expression; `at()` and `rate()` work. Default reconciler schedule `rate(5 minutes)` is unaffected; blocked only if `var.reconciler_schedule` is switched to `cron()` syntax.
-
-**#490** bleephub `/.well-known/openid-configuration` is GitHub Actions OIDC only — missing `authorization_endpoint`, `token_endpoint`, `userinfo_endpoint`. Does not block Phase 3/4 (Pomerium GitHub connector and Teleport GitHub connector both hardcode endpoints, bypassing discovery); blocks any OIDC-discovery-driven client (e.g. OIDC-mode Pomerium or Teleport OIDC connector) pointed at bleephub.
+_None._
 
 ## Resolved (sockerless — all fixed upstream)
 
@@ -87,6 +85,9 @@ idempotency checks un-gated; zero open upstream blockers.
 **#483** CloudWatch Logs `FilterLogEvents` returned empty results (`{ events: [] }`) instead of `ResourceNotFoundException` when the log group did not exist — every other CW handler checked group existence but `handleCWFilterLogEvents` skipped it. Real AWS returns HTTP 400 `ResourceNotFoundException`. Integration test was gated. Fixed in PR #484 (merged 2026-06-07); submodule → `4916e15`.
 **#486** EventBridge Scheduler stored schedule configuration but never invoked its target. New `scheduler_firing.go`: 1s loop parses `at(...)` / `rate(N minute|hour|day)` and fires ECS RunTask, Lambda Invoke, SQS SendMessage, or SNS Publish in-process. (`cron(...)` not yet evaluated — tracked separately.) Fixed in PR #485 (merged 2026-06-07); submodule → `980dc9e`.
 **#488** ECS `RunTask` did not resolve the container definition's `secrets` array — SecretsManager ARNs were stored as opaque passthrough, never fetched and injected as env vars into the container. New `resolveECSContainerSecrets` resolves SecretsManager whole-string or `:jsonKey` refs and SSM by name/ARN at RunTask launch. Fixed in PR #485 (merged 2026-06-07); submodule → `980dc9e`.
+**BUG-1531** AWS EventBridge Scheduler `cron(...)` expressions never evaluated — `schedulerFirstFire` returned `false` for all cron expressions; `at()` and `rate()` worked. Added `scheduler_cron.go` with full 6-field AWS cron evaluation (min/hr/dom/mon/dow/year; `*`, `?`, lists, ranges, steps, named months/days). Fixed in PR #491 (merged 2026-06-07); submodule → `dd4e717`.
+**#489** EventBridge Scheduler `cron(N/step ...)` mis-parsed — `N/step` collapsed to `lo=hi=N`, so `cron(0/5 * * * ? *)` fired only at minute 0 instead of every 5 minutes. Fixed `cronField` to interpret `N/step` as "N to field-max every step". Fixed in PR #492 (merged 2026-06-07); submodule → `0b9af6e`.
+**#490** bleephub `/.well-known/openid-configuration` missing OAuth2 fields — `authorization_endpoint`, `token_endpoint`, `userinfo_endpoint` absent; blocked OIDC-discovery-driven clients and the full Teleport GitHub OAuth headless sim test. Added all three endpoints plus `response_modes_supported`, `grant_types_supported`, and `code` in `response_types_supported`. Fixed in PR #492 (merged 2026-06-07); submodule → `0b9af6e`. Enabled: full Teleport GitHub OAuth login test in `ssh-connect.e2e.ts`.
 
 ---
 

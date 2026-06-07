@@ -2,7 +2,7 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-07 (PR #55: Phases 3/4/5 sim-testable — reconciler container, Pomerium authed proxy-pass, Teleport S3 recording + GitHub connector)
+**Last updated:** 2026-06-07 (submodule → 0b9af6e: sockerless #491/#492 — scheduler cron() evaluation + bleephub OIDC discovery; full Teleport GitHub OAuth headless sim test added)
 
 ## Current phase
 
@@ -49,9 +49,11 @@ and a full Teleport GitHub OAuth browser login.
   selects `CloudTrailAuditSource`; `LOG_PROVIDER=cloudwatch` + `EDD_APP_NAME` selects
   `CloudWatchLogSource`; fakes remain default.
 - **SSH** (`services/ssh-gateway`) + **Pomerium routing** (`infra/proxy`): real products
-  in Docker, mock-free. Phase 4: S3 session recording (sim-backed), GitHub connector
-  via bleephub (accepted by real Teleport, federation config proven), authenticated proxy-pass
-  with `X-Pomerium-Jwt-Assertion` (full OIDC flow via azure-sim).
+  in Docker, mock-free. Phase 4: S3 session recording (sim-backed), full GitHub OAuth
+  login via bleephub-ssh (`driveGitHubOAuthFlow`: Teleport→bleephub→callback; role mapped
+  from acme/platform-admins; user created in Teleport verified via `tctl`), GitHub connector
+  config proven, authenticated proxy-pass with `X-Pomerium-Jwt-Assertion` (full OIDC flow
+  via azure-sim). No open sockerless blockers.
 - **Test tiers**: unit/contract · integration (DynamoDB Local + process sim) · e2e
   (`.e2e.yml`/`.ssh.yml`: data-fidelity, lifecycle, GitHub+Entra auth, Pomerium, Teleport)
   · **portal e2e** (Playwright) · **`e2e-https`** (the sims served over TLS — mock-free Entra
@@ -73,7 +75,8 @@ and a full Teleport GitHub OAuth browser login.
 - **AWS account/region** (`DO_NEXT` #1) — top blocker for real deploy, `e2e-aws`,
   real Fargate/EBS, and Phase 7.
 - **Domain/DNS** (#2) — blocks real proxy routing + ACM.
-- **Phases 3/4/5 sim-testable work complete** (PR #55). Remaining per phase:
-  - Phase 3: real DNS/TLS/ACM (needs DNS #2); Teleport GitHub full browser OAuth flow.
+- **Phases 3/4/5 sim-testable work complete** (PR #55 + submodule #491/#492). Remaining per phase:
+  - Phase 3: real DNS/TLS/ACM (needs DNS #2).
   - Phase 4: Teleport wake-on-connect trigger (golden image auto-enrols — AWS-gated).
   - Phase 5: ECS cron + real heartbeat agent (AWS-gated for in-container execution).
+- **No open sockerless blockers.** (#489 cron N/step + #490 bleephub OIDC discovery fixed in #492; #491 added cron() evaluation.)
