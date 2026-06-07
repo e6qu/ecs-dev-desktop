@@ -84,8 +84,7 @@ describe("SSH to a workspace (mock-free, standard sshd + certificate auth)", () 
   });
 
   it("connects to the workspace node as the derived principal", () => {
-    // -t allocates a PTY so the session is interactive (sshd records PTY sessions).
-    const res = ssh("-t", `${PRINCIPAL}@${NODE_HOST}`, "whoami");
+    const res = ssh(`${PRINCIPAL}@${NODE_HOST}`, "whoami");
     expect(res.status, `${res.stdout}${res.stderr}`).toBe(0);
     expect(res.stdout.trim()).toBe(PRINCIPAL);
   });
