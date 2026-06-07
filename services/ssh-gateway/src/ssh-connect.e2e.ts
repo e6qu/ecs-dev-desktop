@@ -43,7 +43,7 @@ const RECORDING_BUCKET = "edd-e2e-sessions";
 // bleephub-ssh is exposed on port 5556 on the host (container-internal: 5555).
 // Used for Phase 4 GitHub OAuth login via Teleport's GHES endpoint-override.
 const BLEEPHUB_OAUTH_PORT = 5556;
-const BLEEPHUB_ADMIN_TOKEN = "ghp_0000000000000000000000000000000000000000"; // trivy:ignore:github-pat
+const BLEEPHUB_ADMIN_TOKEN = "ghp_0000000000000000000000000000000000000000";
 const TELEPORT_WEB_PORT = 3080;
 const GITHUB_CONNECTOR = "github-e2e";
 

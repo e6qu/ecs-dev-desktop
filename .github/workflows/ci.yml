@@ -1353,3 +1353,8 @@ jobs:
           severity: HIGH,CRITICAL
           exit-code: "1"
           skip-dirs: node_modules
+          # ssh-connect.e2e.ts contains BLEEPHUB_ADMIN_TOKEN which is bleephub's
+          # hardcoded simulator admin token (store.go:580) — not a real credential.
+          # trivy:ignore inline annotations only suppress misconfig findings, not
+          # secrets; skip-files is the correct suppression mechanism for secrets.
+          skip-files: services/ssh-gateway/src/ssh-connect.e2e.ts
