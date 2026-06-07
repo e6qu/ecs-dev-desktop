@@ -98,7 +98,7 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
   Cost), Phase 7, `e2e-aws`.
 - **On DNS (#2):** real `*.devbox.<domain>` routing + ACM (the module path is sim-proven;
   the _real_ hosted zone + cert issuance is AWS/registrar-gated).
-- **On upstream sockerless:** Two non-blocking gaps filed after audit of PR #491/#492: **#493** cron `L`/`W`/`#` qualifiers silently never fire (no error, no log — doesn't block our `rate()` default); **#494** bleephub token endpoint always returns JSON instead of form-encoded-by-default (doesn't block Teleport's Go OAuth2 client which sets `Accept: application/json`). (#489/#490 fixed in PR #492 + #491 submodule `0b9af6e`)
+- **On upstream sockerless:** Zero open blockers. (#493/#494 fixed in PR #495 submodule `def45a1`; #489/#490 in PR #492 `0b9af6e`; #491 in `dd4e717`)
 - **VS Code distro:** resolved → **OpenVSCode Server** (MIT, Gitpod). Golden image built.
 
 ## Working notes (durable)

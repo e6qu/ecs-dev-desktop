@@ -2,7 +2,7 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-07 (submodule → 0b9af6e: sockerless #491/#492 — scheduler cron() evaluation + bleephub OIDC discovery; full Teleport GitHub OAuth headless sim test added)
+**Last updated:** 2026-06-07 (submodule → def45a1: sockerless #495 — cron L/W/# qualifiers + bleephub token content-type; zero open upstream blockers)
 
 ## Current phase
 
@@ -79,4 +79,4 @@ and a full Teleport GitHub OAuth browser login.
   - Phase 3: real DNS/TLS/ACM (needs DNS #2).
   - Phase 4: Teleport wake-on-connect trigger (golden image auto-enrols — AWS-gated).
   - Phase 5: ECS cron + real heartbeat agent (AWS-gated for in-container execution).
-- **No open sockerless blockers.** (#489 cron N/step + #490 bleephub OIDC discovery fixed in #492; #491 added cron() evaluation.)
+- **No open sockerless blockers.** (#493 cron L/W/# + #494 bleephub token content-type fixed in #495; #489/#490 in #492; #491 added cron() evaluation.)
