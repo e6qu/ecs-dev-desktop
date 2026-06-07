@@ -2,18 +2,16 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-07 (Teleport → OpenSSH replacement; submodule → 0a383db; sockerless#504+#501 fixed; all SSH-related CI blockers resolved)
+**Last updated:** 2026-06-07 (CI fixes round 4: SSH CA path, route-table assertion, Trivy DS-0002, knip update; filed sockerless#508 for azure-sim v2.0 userinfo_endpoint regression)
 
 ## Current phase
 
 Most of the **locally-testable platform is proven end-to-end with no mocks**. PR #54
-(`feat/phase-8c-cloudtrail-cloudwatch-adapters-v2`) is open against `main` with 12 of 14
-CI jobs green. Two CI jobs are still failing (`e2e`, `e2e-https`) due to a hard external
-blocker: `endpoint_url` in Teleport GitHub connectors is restricted to Enterprise in all
-OSS Teleport builds since v14 (see `BUGS.md` → `gravitational/teleport#67533`). This blocks
-two Phase 4 SSH tests (GitHub connector + OAuth login). Fix being evaluated: vendor/patch
-Teleport from source vs carry a patch file. Until resolved, CI is not fully green and PR
-#54 is not mergeable.
+(`feat/phase-8c-cloudtrail-cloudwatch-adapters-v2`) is open against `main`. CI: 12/14 jobs
+green after this round of fixes. One external blocker remains: **sockerless#508** — azure-sim
+v2.0 OIDC discovery missing `userinfo_endpoint` (regression in PR #506/#504 fix), causing
+Pomerium's OAuth callback to return HTTP 500. Blocks `pomerium-authed.e2e.ts` test 1 →
+`e2e` and `e2e-https` jobs. Waiting for sockerless maintainers.
 
 ## What works (built, tested, merged)
 
@@ -51,8 +49,8 @@ Teleport from source vs carry a patch file. Until resolved, CI is not fully gree
   in Docker, mock-free. SSH connect-as-principal + authz-deny proven with standard OpenSSH
   (`sshd`) + ephemeral CA certificate auth (Teleport replaced; no external dependency).
   Pomerium identity-aware wildcard routing + authenticated proxy-pass (`X-Pomerium-Jwt-Assertion`)
-  — all config applied; azure-sim OIDC v2.0 issuer fixed in sockerless#504/PR#506; pending
-  CI confirmation.
+  — all config applied; azure-sim OIDC v2.0 issuer fixed in sockerless#504/PR#506; blocked on
+  sockerless#508 (azure-sim v2.0 `userinfo_endpoint` missing → Pomerium callback 500).
 - **CloudTrail-based tests + post-Terraform functional probes** (submodule → `fc03b15`):
   integration tests verify specific event content (CreateCluster event appears in `recent()`,
   `LookupAttributes` filter path); e2e workspace-lifecycle test asserts RunTask/StopTask/
@@ -61,11 +59,11 @@ Teleport from source vs carry a patch file. Until resolved, CI is not fully gree
   audits 8 post-apply provisioning events incl. `CreateSchedule` (unblocked by #500) and probes
   DynamoDB write/read, CloudWatch Logs write/read, ECS task-def registration. No open blockers.
 - **Test tiers**: unit/contract · integration (DynamoDB Local + process sim) · e2e
-  (`.e2e.yml`/`.ssh.yml`: data-fidelity, lifecycle, GitHub+Entra auth, Pomerium, Teleport)
+  (`.e2e.yml`/`.ssh.yml`: data-fidelity, lifecycle, GitHub+Entra auth, Pomerium, OpenSSH)
   · **portal e2e** (Playwright) · **`e2e-https`** (the sims served over TLS — mock-free Entra
   auth + SSH with real CA trust, no `--insecure`) · manual `e2e-aws`. **12/14 CI jobs green;
-  e2e + e2e-https pending** — all known blockers resolved: Teleport replaced with OpenSSH,
-  azure-sim OIDC fixed (sockerless#504), bleephub token fixed (sockerless#501); CI pending.
+  e2e + e2e-https partially failing** — blocked on sockerless#508 (`pomerium-authed.e2e.ts`
+  test 1 only); all other tests in those jobs pass.
 - **Engineering quality** (a 2026-06-04 wave; see `WHAT_WE_DID.md`): domain failures flow
   through a typed `Result<T, DomainError>` channel mapped to HTTP by one exhaustive table
   (`@edd/api-client` surfaces the server's `{error}` strictly — no fallbacks); compile-time
@@ -80,10 +78,8 @@ Teleport from source vs carry a patch file. Until resolved, CI is not fully gree
 
 ## Immediate focus
 
-- **Fix Teleport `endpoint_url` Enterprise restriction** — gate on PR #54 CI going green.
-  Evaluating: vendor Teleport from source + patch vs carry a patch file only. Fix is ~10
-  lines removed from `lib/services/github.go`. Build cost is the key factor.
+- **sockerless#508** — azure-sim v2.0 `userinfo_endpoint` regression. Waiting for upstream
+  fix before PR #54 can merge.
 - **AWS account/region** (`DO_NEXT` #1) — top blocker for real deploy, `e2e-aws`,
   real Fargate/EBS, and Phase 7.
 - **Domain/DNS** (#2) — blocks real proxy routing + ACM.
-- **No open sockerless blockers.**

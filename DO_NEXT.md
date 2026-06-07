@@ -21,7 +21,7 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
 
 ## Available now (decision-free — immediate)
 
-- **Merge PR #54** — all known CI blockers resolved. Awaiting green CI run.
+- **Merge PR #54** — once sockerless#508 is fixed and CI is green.
 
 ## Done recently
 
@@ -91,11 +91,10 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
   `throw new Error`). The reconciler now **skips and counts** a stop/snapshot that loses a
   state race instead of aborting the sweep. Behaviour-preserving (statuses unchanged).
 
-## Available now (decision-free — after Teleport fix)
+## Completed / reference
 
-- **Merge PR #54** once CI is fully green.
 - **Phase 8 — admin console** (`docs/admin-ui-design.md`): ✅ **Complete (8A + 8B + 8C).**
-- **Phases 3/4/5 sim-testable** — ✅ done (PR #55). GitHub connector + OAuth blocked by Teleport Enterprise restriction until fixed.
+- **Phases 3/4/5 sim-testable** — ✅ done (PR #55). SSH via OpenSSH + ephemeral CA.
 - **idle-agent** — ✅ done (ships in the golden image, PR #52).
 
 > Once PR #54 merges, the highest-value lever is the **AWS account/region decision** (#1).
@@ -106,18 +105,14 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
   (full stack incl. the DNS/TLS path: VPC/ECS/ECR/DynamoDB+GSIs/KMS/IAM/ALB +
   ACM/Route53/HTTPS) — what's AWS-gated is the **real apply** (account + remote state
   backend), golden image + real Fargate deploy, wiring `apps/web` to real adapters,
-  Teleport/Pomerium real federation + DNS, reconciler cron, Phase 8C (CloudTrail/CloudWatch/
+  Pomerium real federation + DNS, reconciler cron, Phase 8C (CloudTrail/CloudWatch/
   Cost), Phase 7, `e2e-aws`.
 - **On DNS (#2):** real `*.devbox.<domain>` routing + ACM (the module path is sim-proven;
   the _real_ hosted zone + cert issuance is AWS/registrar-gated).
-- **On upstream sockerless:** Zero open blockers. (#504+#501 in PR #506 `0a383db`;
-  #496/#497/#498 in PR #500 `fc03b15`; #493/#494 in PR #495 `def45a1`;
-  #489/#490 in PR #492 `0b9af6e`; #491 in `dd4e717`)
-- **On Teleport `endpoint_url` (gravitational/teleport#67533):** `MarshalOSSGithubConnector`
-  rejects non-github.com `endpoint_url` in all OSS builds since v14. Blocks two Phase 4 tests
-  (GitHub connector creation + GitHub OAuth login in `ssh-connect.e2e.ts`). Fix: vendor/patch
-  Teleport. See `BUGS.md`. (Note: per AGENTS.md §0 rule 9, issues are filed only in
-  `e6qu/sockerless` — this is documented here as a blocker, not a filed upstream issue.)
+- **On upstream sockerless / sockerless#508:** azure-sim v2.0 OIDC discovery missing
+  `userinfo_endpoint` (regression in PR #506/#504 fix). Blocks `pomerium-authed.e2e.ts` test 1
+  → `e2e` and `e2e-https` jobs fail. Waiting for sockerless maintainers to implement.
+  (#504+#501 in PR #506 `0a383db`; other blockers resolved in earlier PRs.)
 - **VS Code distro:** resolved → **OpenVSCode Server** (MIT, Gitpod). Golden image built.
 
 ## Working notes (durable)
@@ -140,4 +135,4 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
 -platform=darwin_arm64` for the TF lock.
 - **CI registry rate limits:** harness bring-up steps retry/backoff (public.ecr.aws/Docker
   Hub on shared runner IPs).
-- **Pinned versions:** Teleport `18.6.2`, Pomerium `0.32.2`, `@playwright/test` ^1.60.
+- **Pinned versions:** Pomerium `0.32.2`, `@playwright/test` ^1.60.

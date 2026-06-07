@@ -15,7 +15,7 @@ services:
     container_name: edd-workspace-node
     volumes:
       # CA public key: sshd trusts any certificate signed by this key.
-      - ./temp/ssh-ca/ca.pub:/etc/ssh/workspace-ca.pub:ro
+      - ./services/ssh-gateway/temp/ssh-ca/ca.pub:/etc/ssh/workspace-ca.pub:ro
     ports:
       - "2222:22"
     healthcheck:

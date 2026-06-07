@@ -1,4 +1,10 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Targeted Trivy false-positive suppressions.
 # Each entry suppresses a specific finding type in a specific file only.
-# Add entries only for confirmed non-credentials with a filed upstream reference.
+# Add entries only for confirmed false positives or intentional architecture decisions.
+
+misconfigs:
+  - id: DS002
+    paths:
+      - services/ssh-gateway/Dockerfile.node
+    statement: "sshd must run as root for PAM authentication and per-session privilege separation; the USER instruction is incompatible with standard sshd operation"

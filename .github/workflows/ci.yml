@@ -857,8 +857,8 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" ec2 describe-internet-gateways \
               --filters "Name=attachment.vpc-id,Values=${VPC_ID}" \
               --query 'length(InternetGateways)' --output text)"
-          # Route tables: 1 public + 2 private = 3 total.
-          assert_eq "Route table count 3" "3" \
+          # Route tables: 1 main (AWS default, unmanaged by TF) + 1 public + 2 private = 4 total.
+          assert_eq "Route table count 4" "4" \
             "$(aws --endpoint-url "${ENDPT}" ec2 describe-route-tables \
               --filters "Name=vpc-id,Values=${VPC_ID}" \
               --query 'length(RouteTables)' --output text)"

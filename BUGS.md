@@ -8,7 +8,13 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-_None._ (#504 and #501 resolved in PR #506 / submodule `0a383db`; see Resolved below.)
+**#508** azure-sim v2.0 OIDC discovery missing `userinfo_endpoint` — regression in PR #506 (#504
+fix). `/{tenant}/v2.0/.well-known/openid-configuration` no longer includes `userinfo_endpoint`;
+Pomerium's go-oidc calls `provider.UserInfo()` after token exchange and gets
+`"oidc: user info endpoint is not supported by this provider"` → HTTP 500 on the OAuth callback.
+Real Azure AD v2.0 has this endpoint. **Blocks**: `pomerium-authed.e2e.ts` test 1
+("completes the OIDC auth flow and proxies with X-Pomerium-Jwt-Assertion header") → CI `e2e`
+and `e2e-https` jobs remain partially failing until fixed.
 
 ## Resolved (sockerless — all fixed upstream)
 
