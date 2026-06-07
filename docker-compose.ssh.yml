@@ -3,7 +3,43 @@
 # in Docker. Not a simulator — Teleport is the real product, deployed declaratively
 # the same way as production (AGENTS.md §1). The e2e provisions a Teleport user/role
 # and connects via tsh, asserting the session lands as the workspace principal.
+#
+# Phase 4 additions:
+#   sockerless-aws:  process-mode sim (port 4567) for S3 session recording storage.
+#   bleephub:        GitHub sim (port 5556) for Teleport GitHub connector federation.
 services:
+  # Sockerless AWS sim for S3 session recording (process mode — no container
+  # runtime needed; only the S3 API surface is exercised here). Uses port 4567
+  # to avoid colliding with the container-mode sim on 4566 in docker-compose.e2e.yml
+  # when both harnesses are active simultaneously in the `e2e` CI job.
+  sockerless-aws-ssh:
+    build:
+      context: ./third_party/sockerless/simulators
+      dockerfile: aws/Dockerfile
+    environment:
+      SIM_RUNTIME: process
+    ports:
+      - "4567:4566"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4566/"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # bleephub: GitHub sim for Teleport GitHub-connector federation test.
+  # Uses port 5556 to avoid colliding with the bleephub on 5555 in docker-compose.e2e.yml.
+  bleephub-ssh:
+    build:
+      context: .
+      dockerfile: infra/sim/bleephub.Dockerfile
+    ports:
+      - "5556:5555"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:5555/api/v3/rate_limit"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
   teleport-auth:
     image: public.ecr.aws/gravitational/teleport-distroless:18.6.2
     container_name: edd-teleport-auth
@@ -12,9 +48,17 @@ services:
     user: "0:0"
     volumes:
       - ./services/ssh-gateway/teleport/auth.yaml:/etc/teleport/teleport.yaml:ro
+    environment:
+      # Point Teleport's S3 session recording at the sim (endpoint-only, §6.8).
+      TELEPORT_S3_ENDPOINT: http://sockerless-aws-ssh:4566
     ports:
       - "3080:3080"
       - "3025:3025"
+    depends_on:
+      sockerless-aws-ssh:
+        condition: service_healthy
+      bleephub-ssh:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "/usr/local/bin/tctl", "status"]
       interval: 3s

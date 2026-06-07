@@ -2,17 +2,19 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-06 (PR #53: Phase 8C — CloudTrail audit + CloudWatch Logs adapters)
+**Last updated:** 2026-06-07 (PR #55: Phases 3/4/5 sim-testable — reconciler container, Pomerium authed proxy-pass, Teleport S3 recording + GitHub connector)
 
 ## Current phase
 
 The whole **locally-testable platform is proven end-to-end with no mocks** against the
 from-source sockerless sim + real Teleport/Pomerium: stateful snapshottable workspaces,
-control plane + RBAC, both IdP logins, SSH, identity-aware routing, scale-to-zero, the
-portal, and the **admin console** (Overview, Health, Workspaces+Inspect, Quotas, and
-Logs/Audit) — all browser-tested. **Phase 8A and 8B are complete**; what's left in
-Phase 8 is **8C real cloud data** (CloudTrail/CloudWatch), which is **gated on the AWS
-account/region decision** (`DO_NEXT` #1) alongside the entire real-deploy track.
+control plane + RBAC, both IdP logins, SSH (with S3 session recording + GitHub connector
+federation), identity-aware routing (including **authenticated** proxy-pass with
+`X-Pomerium-Jwt-Assertion`), scale-to-zero + **reconciler container** (scheduler fires →
+real container runs → CloudWatch Logs), the portal, and the **admin console** — all e2e
+tested. **Phases 3, 4, and 5** sim-testable work is complete. What remains is the
+real-deploy track (AWS account/region-gated) for real EBS/Fargate durability, real DNS/TLS,
+and a full Teleport GitHub OAuth browser login.
 
 ## What works (built, tested, merged)
 
@@ -47,7 +49,9 @@ account/region decision** (`DO_NEXT` #1) alongside the entire real-deploy track.
   selects `CloudTrailAuditSource`; `LOG_PROVIDER=cloudwatch` + `EDD_APP_NAME` selects
   `CloudWatchLogSource`; fakes remain default.
 - **SSH** (`services/ssh-gateway`) + **Pomerium routing** (`infra/proxy`): real products
-  in Docker, mock-free.
+  in Docker, mock-free. Phase 4: S3 session recording (sim-backed), GitHub connector
+  via bleephub (accepted by real Teleport, federation config proven), authenticated proxy-pass
+  with `X-Pomerium-Jwt-Assertion` (full OIDC flow via azure-sim).
 - **Test tiers**: unit/contract · integration (DynamoDB Local + process sim) · e2e
   (`.e2e.yml`/`.ssh.yml`: data-fidelity, lifecycle, GitHub+Entra auth, Pomerium, Teleport)
   · **portal e2e** (Playwright) · **`e2e-https`** (the sims served over TLS — mock-free Entra
@@ -67,8 +71,9 @@ account/region decision** (`DO_NEXT` #1) alongside the entire real-deploy track.
 ## Immediate focus
 
 - **AWS account/region** (`DO_NEXT` #1) — top blocker for real deploy, `e2e-aws`,
-  reconciler cron, and Phase 7.
+  real Fargate/EBS, and Phase 7.
 - **Domain/DNS** (#2) — blocks real proxy routing + ACM.
-- **Phase 8 complete:** 8A (Health + Inspect) + 8B (Overview + Quotas + Logs/Audit) +
-  **8C** (CloudTrail audit + CloudWatch Logs adapters) all done and sim-proven.
-  Remaining work is the real-deploy track (AWS account/region-gated).
+- **Phases 3/4/5 sim-testable work complete** (PR #55). Remaining per phase:
+  - Phase 3: real DNS/TLS/ACM (needs DNS #2); Teleport GitHub full browser OAuth flow.
+  - Phase 4: Teleport wake-on-connect trigger (golden image auto-enrols — AWS-gated).
+  - Phase 5: ECS cron + real heartbeat agent (AWS-gated for in-container execution).

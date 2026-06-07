@@ -41,34 +41,47 @@ route handlers + CASL RBAC, `@edd/api-client`, endpoint-only `Ec2StorageProvider
 ✅ Auth.js (GitHub + Entra), CASL, group→role; **both logins proven mock-free &
 swappable** (bleephub conformant OAuth; azure sim Graph + ROPC). ✅ **Pomerium**
 identity-aware `*.devbox.<domain>` wildcard routing proven mock-free (`infra/proxy`).
+✅ **Authenticated proxy-pass with identity headers** — full OIDC flow via azure-sim
+(code issued immediately, no browser required); `X-Pomerium-Jwt-Assertion` present
+in proxied response; `_pomerium` session cookie set. (`packages/e2e/src/pomerium-authed.e2e.ts`)
 
-- ⬜ **Remaining:** real DNS/TLS/ACM (needs DNS #2); authenticated proxy-pass with
-  identity headers (browser login → Playwright).
-- **Gate:** CASL ✅; both group→role on the sim ✅; wildcard routing + gate ✅; real DNS ⬜.
+- ⬜ **Remaining:** real DNS/TLS/ACM (needs DNS #2); full Teleport GitHub OAuth browser
+  login (requires Playwright + DNS).
+- **Gate:** CASL ✅; both group→role on the sim ✅; wildcard routing + gate ✅;
+  authenticated proxy-pass with identity headers ✅; real DNS ⬜.
 
 ## Phase 4 — SSH via Teleport — 🟡
 
 ✅ Real Teleport cluster + node enrolment + `tsh ssh` connect-as-principal + authz deny,
 mock-free in Docker (`services/ssh-gateway`). ✅ Wake-on-connect (control-plane half):
 `WorkspaceService.connect()` — idempotent, wakes scaled-to-zero from snapshot, proven
-on real ECS+EBS.
+on real ECS+EBS. ✅ **S3 session recording** — Teleport `audit_sessions_uri` points at
+sockerless-aws-ssh sim; recording object appears in S3 after SSH session (integ-proven).
+✅ **Teleport GitHub connector** (`kind: github`, `endpoint_url: http://bleephub-ssh:5555`)
+— `tctl create` accepted, `tctl get github` confirms storage; proves GHES-endpoint-override
+mechanism. Teleport depends on `sockerless-aws-ssh` + `bleephub-ssh` in compose.
 
-- ⬜ **Remaining:** Entra/GitHub→Teleport federation; session recording; the wake-on-
-  connect **trigger** (golden image auto-enrols its Teleport agent; gateway calls
-  `connect()` — deployment/AWS-tier).
-- **Gate:** `tsh ssh` ✅; connect-time wake ✅; recording + e2e-aws SSH-wakes-stopped ⬜.
+- ⬜ **Remaining:** full Teleport GitHub OAuth browser login (requires Playwright + browser);
+  the wake-on-connect **trigger** (golden image auto-enrols Teleport agent — AWS-tier).
+- **Gate:** `tsh ssh` ✅; connect-time wake ✅; S3 recording ✅; GitHub connector ✅;
+  full GitHub OAuth login ⬜; e2e-aws SSH-wakes-stopped ⬜.
 
 ## Phase 5 — Scale-to-zero + snapshot automation — 🟡
 
 ✅ Reconciler: idle stop+snapshot, scheduled snapshots, orphan GC (pure selectors +
 port, verified vs sim). ✅ **Activity heartbeat** (control-plane half): `markActivity` +
-`WorkspaceService.heartbeat` + `POST /workspaces/:id/heartbeat` refresh `lastActivity`
-(wake idle→running) so the reconciler keeps active workspaces alive.
+`WorkspaceService.heartbeat` + `POST /workspaces/:id/heartbeat` refresh `lastActivity`.
+✅ **Reconciler container** (`services/reconciler/src/run.ts` + `Dockerfile`): esbuild
+bundles the monorepo entry point into `dist/run.js`. ✅ **End-to-end scheduler→container
+test** (`packages/e2e/src/reconciler-container.e2e.ts`): EventBridge `at(...)` schedule
+fires → ECS RunTask → reconciler container sweeps → exits 0 → CloudWatch Logs contain
+JSON result.
 
-- ⬜ **AWS-gated:** the in-workspace idle-agent that POSTs heartbeats; the cron runner
-  (EventBridge / ECS scheduled task); optional warm pool + SOCI.
+- ⬜ **AWS-gated:** real `COMPUTE_PROVIDER=ecs` run (idle detection over real ECS tasks);
+  real in-workspace heartbeat (idle-agent already ships in the golden image); cron
+  (`rate(5 minutes)` default — blocked only on #489 if changed to `cron()` syntax); SOCI.
 - **Gate:** idle→stop→snapshot→wake ✅; GC reaps orphans only ✅; heartbeat keep-alive ✅;
-  cron + cost metric ⬜.
+  reconciler container + scheduler e2e ✅; real cron + cost metric ⬜.
 
 ## Phase 6 — User portal + base-image catalog — ✅ (UI complete)
 

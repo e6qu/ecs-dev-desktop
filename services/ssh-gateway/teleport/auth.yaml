@@ -3,6 +3,9 @@
 # not a simulator). Single-process auth+proxy; the workspace node joins over the
 # auth port with a static join token. Mirrors the production topology declaratively
 # (AGENTS.md §1: Teleport owns auth/audit/recording/Remote-SSH).
+#
+# Phase 4: S3 session recording via the sockerless-aws-ssh sim (endpoint-only,
+# §6.8 — real deployments differ only in the s3_endpoint / bucket name).
 version: v3
 teleport:
   nodename: teleport-auth
@@ -19,6 +22,10 @@ auth_service:
   # value — real clusters use short-lived dynamic tokens (`tctl tokens add`).
   tokens:
     - "node:edd-e2e-node-join"
+  # Session recordings stored in S3 (the sockerless-aws-ssh sim, endpoint-only).
+  # `endpoint` points at the sim's Docker service name — reachable inside the
+  # compose network. Production: remove `endpoint` and set region + bucket only.
+  audit_sessions_uri: "s3://edd-e2e-sessions?region=us-east-1&endpoint=http://sockerless-aws-ssh:4566&disablesse=true"
 proxy_service:
   enabled: "yes"
   web_listen_addr: 0.0.0.0:3080

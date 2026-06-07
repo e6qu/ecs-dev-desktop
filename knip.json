@@ -13,6 +13,9 @@
     },
     "services/*": {
       "entry": ["**/*.test.ts", "**/*.integ.ts", "**/*.e2e.ts"]
+    },
+    "services/reconciler": {
+      "entry": ["src/run.ts", "**/*.test.ts", "**/*.integ.ts"]
     }
   }
 }

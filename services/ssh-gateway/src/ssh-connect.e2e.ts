@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { spawnSync } from "node:child_process";
+import { request as httpRequest } from "node:http";
 
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -11,6 +12,12 @@ import { workspacePrincipal } from "./index";
  * role through `tctl`, sign a short-lived identity file, then connect with `tsh` and
  * assert the session lands on the enrolled workspace node as the principal our pure
  * `workspacePrincipal` derives. A login the role doesn't grant is denied.
+ *
+ * Phase 4 additions (all on the same real Teleport cluster):
+ *  - S3 session recording: after the SSH session a recording object appears in
+ *    the S3 bucket on the sockerless-aws-ssh sim (port 4567 on the host).
+ *  - GitHub connector: `tctl create` accepts a GitHub connector pointing at
+ *    bleephub-ssh; `tctl get github` confirms it is stored.
  *
  * Teleport admin/client commands run inside the auth container via `docker exec`
  * (the same `tctl`/`tsh` an operator uses against a real cluster).
@@ -25,6 +32,11 @@ const IDENTITY_PATH = "/tmp/e2e-identity";
 
 // The OS principal the e2e workspace node was built with (Dockerfile.node ARG).
 const PRINCIPAL = workspacePrincipal("e2e");
+
+// S3 sim (sockerless-aws-ssh) exposed at port 4567 on the host.
+// Teleport writes session recordings to the `edd-e2e-sessions` bucket.
+const S3_SIM_PORT = 4567;
+const RECORDING_BUCKET = "edd-e2e-sessions";
 
 interface ExecResult {
   status: number;
@@ -57,6 +69,34 @@ function tsh(...args: string[]): ExecResult {
 function tctl(args: string[], input?: string): ExecResult {
   return authExec(["/usr/local/bin/tctl", ...args], input);
 }
+
+/** List objects in an S3 bucket via the sockerless-aws-ssh sim's REST API. */
+function listS3Objects(bucket: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const req = httpRequest(
+      {
+        host: "127.0.0.1",
+        port: S3_SIM_PORT,
+        path: `/${bucket}?list-type=2`,
+        method: "GET",
+        headers: { Host: `${bucket}.s3.amazonaws.com` },
+      },
+      (res) => {
+        let body = "";
+        res.on("data", (c: Buffer) => {
+          body += c.toString();
+        });
+        res.on("end", () => {
+          resolve(body);
+        });
+      },
+    );
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 describe("SSH to a workspace via Teleport (mock-free, real cluster)", () => {
   beforeAll(async () => {
@@ -122,5 +162,65 @@ describe("SSH to a workspace via Teleport (mock-free, real cluster)", () => {
     const res = tsh("ssh", "--no-use-local-ssh-agent", `root@${NODE_NAME}`, "whoami");
     expect(res.status).not.toBe(0);
     expect(res.stderr).toMatch(/access denied/i);
+  });
+
+  it("stores the SSH session recording in S3 (endpoint-only, sockerless-aws-ssh sim)", async () => {
+    // A recording object appears in the bucket shortly after the session above.
+    // Poll with generous timeout: Teleport buffers recordings and uploads them
+    // asynchronously (may take a few seconds after session end).
+    const deadline = Date.now() + 30_000;
+    let found = false;
+    while (Date.now() < deadline) {
+      try {
+        const body = await listS3Objects(RECORDING_BUCKET);
+        // An object key is present when Teleport has uploaded at least one recording.
+        if (body.includes("<Key>")) {
+          found = true;
+          break;
+        }
+      } catch {
+        // S3 bucket may not exist yet if no recording uploaded; retry.
+      }
+      await sleep(2_000);
+    }
+    expect(found, "no session recording found in S3 within 30s").toBe(true);
+  });
+
+  it("accepts a Teleport GitHub connector pointing at bleephub-ssh (federation config)", () => {
+    // Create a GitHub connector referencing bleephub-ssh. `endpoint_url` is
+    // Teleport's GHES feature that redirects all GitHub API calls to a custom host
+    // (the same mechanism production uses against github.enterprise.example.com).
+    // This proves the connector config is accepted — the full browser-based OAuth
+    // login flow is deferred to e2e-aws / Playwright browser testing.
+    const connectorYaml = [
+      "kind: github",
+      "version: v3",
+      "metadata:",
+      "  name: github-e2e",
+      "spec:",
+      "  client_id: edd",
+      "  client_secret: secret",
+      // redirect_url must use the proxy's web address
+      `  redirect_url: https://${PROXY_WEB_ADDR}/v1/webapi/github/callback`,
+      // endpoint_url points at bleephub-ssh inside the Docker network (port 5555
+      // is the container-internal port; BLEEPHUB_SSH_PORT=5556 is the host port).
+      // This is the GHES endpoint override (Teleport 17+, §6.8 endpoint-only).
+      "  endpoint_url: http://bleephub-ssh:5555",
+      "  teams_to_roles:",
+      "    - organization: acme",
+      "      team: platform-admins",
+      "      roles:",
+      `        - ${TELEPORT_ROLE}`,
+      "",
+    ].join("\n");
+
+    const created = tctl(["create", "-f", "-"], connectorYaml);
+    if (created.status !== 0 && !/already exists/i.test(created.stderr + created.stdout)) {
+      throw new Error(`GitHub connector create failed:\n${created.stdout}${created.stderr}`);
+    }
+
+    const listed = tctl(["get", "github"]);
+    expect(listed.status, `tctl get github: ${listed.stderr}`).toBe(0);
+    expect(listed.stdout).toMatch(/github-e2e/);
   });
 });

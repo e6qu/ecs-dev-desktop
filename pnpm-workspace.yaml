@@ -7,3 +7,9 @@ packages:
 # published for at least 1 day (1440 minutes). A frozen lockfile install is
 # unaffected; this gates new resolutions (add / update / --latest).
 minimumReleaseAge: 1440
+
+# Packages allowed to run install scripts. esbuild downloads its platform binary
+# in a postinstall step. Only packages with a well-understood, benign install
+# script are listed here (supply-chain safeguard).
+onlyBuiltDependencies:
+  - esbuild
