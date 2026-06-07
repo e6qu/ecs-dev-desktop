@@ -111,6 +111,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
+      # Build the reconciler Docker image so the container-mode reconciler e2e test can pull it.
+      - name: Build reconciler Docker image
+        run: docker build -f services/reconciler/Dockerfile -t edd-reconciler:e2e .
       # Retry harness bring-up: image pulls can transiently hit registry rate
       # limits (public.ecr.aws / Docker Hub) on shared runner IPs.
       - name: Build & start the e2e harness (container-mode sim + DynamoDB Local)
@@ -124,7 +127,7 @@ jobs:
             sleep "$((attempt * 20))"
           done
           exit 1
-      - name: Build & start the SSH harness (real Teleport cluster)
+      - name: Build & start the SSH harness (real Teleport cluster + sim + bleephub)
         run: |
           for attempt in 1 2 3; do
             if docker compose -f docker-compose.ssh.yml up -d --build --wait; then
@@ -136,6 +139,8 @@ jobs:
           done
           exit 1
       - run: pnpm test:e2e
+        env:
+          RECONCILER_IMAGE: edd-reconciler:e2e
       - if: always()
         run: docker compose -f docker-compose.e2e.yml down
       - if: always()

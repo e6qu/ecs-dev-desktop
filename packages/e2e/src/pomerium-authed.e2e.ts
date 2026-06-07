@@ -1,0 +1,217 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+import { IncomingMessage } from "node:http";
+import { request as httpsRequest } from "node:https";
+import { request as httpRequest } from "node:http";
+import { URL } from "node:url";
+
+import { describe, expect, it } from "vitest";
+
+/**
+ * Authenticated Pomerium proxy-pass e2e (mock-free, real proxy + OIDC sim).
+ *
+ * The azure-sim's `/oauth2/v2.0/authorize` endpoint immediately redirects back
+ * with an authorization code (no interactive login page), so the entire OIDC
+ * auth flow can be driven by a plain HTTP client that follows redirects while
+ * maintaining a cookie jar and rewriting the Pomerium auth-service HTTPS URLs
+ * to the test proxy's HTTP endpoint.
+ *
+ * Flow:
+ *  1. GET ws-alice.devbox.localhost → Pomerium: no session → 302 to
+ *     https://authenticate.devbox.localhost/.pomerium/sign_in?...
+ *  2. Follow sign_in → Pomerium: redirects to azure-sim authorize URL.
+ *  3. azure-sim: immediately redirects to
+ *     https://authenticate.devbox.localhost/.pomerium/callback?code=X&state=Y
+ *  4. Follow callback → Pomerium: exchanges code, sets session cookie, redirects
+ *     to the original workspace URL.
+ *  5. GET ws-alice.devbox.localhost with session cookie → Pomerium proxies to
+ *     workspace-upstream (traefik/whoami) → 200 with X-Pomerium-Jwt-Assertion.
+ *
+ * Per §6.8: only the sim base URLs differ from a real-cloud deployment; this
+ * flow is identical with real Entra (the same OIDC discovery → code → token
+ * sequence, just against microsoftonline.com).
+ */
+
+// Pomerium listens on HTTP port 8089 (insecure_server: true), routing on the
+// Host header. All *.devbox.localhost hosts (including authenticate.*) map to
+// the same listener — the auth-service URL is just a virtual host.
+const PROXY_HOST = "127.0.0.1";
+const PROXY_PORT = 8089;
+const ROUTE_DOMAIN = "devbox.localhost";
+const WORKSPACE_HOST = `ws-alice.${ROUTE_DOMAIN}`;
+// azure-sim port exposed on the host (docker-compose.e2e.yml: "4568:4568").
+const AZURE_SIM_PORT = 4568;
+
+// Maximum redirects before we give up (Pomerium auth flow uses ~5 hops).
+const MAX_HOPS = 12;
+
+interface Hop {
+  status: number;
+  headers: Record<string, string | string[] | undefined>;
+  body: string;
+  cookies: Map<string, string>; // name → value
+}
+
+/**
+ * Single HTTP/HTTPS request to the Pomerium proxy. Any scheme is rewritten to
+ * plain HTTP at 127.0.0.1:8089; the Host header is taken from the URL.
+ * Cookies from the cookie jar are sent; Set-Cookie headers are merged back in.
+ */
+function proxyRequest(url: URL, cookieJar: Map<string, string>, method = "GET"): Promise<Hop> {
+  return new Promise((resolve, reject) => {
+    const cookies = [...cookieJar.entries()].map(([k, v]) => `${k}=${v}`).join("; ");
+    const options = {
+      host: PROXY_HOST,
+      port: PROXY_PORT,
+      path: url.pathname + url.search,
+      method,
+      headers: {
+        Host: url.hostname + (url.port ? `:${url.port}` : ""),
+        ...(cookies ? { Cookie: cookies } : {}),
+      },
+    };
+    const req = httpRequest(options, (res) => {
+      let body = "";
+      res.on("data", (c: Buffer) => {
+        body += c.toString();
+      });
+      res.on("end", () => {
+        const headers: Record<string, string | string[] | undefined> = {};
+        for (const [k, v] of Object.entries(res.headers)) headers[k.toLowerCase()] = v;
+        const fresh = new Map<string, string>();
+        const setCookies = res.headers["set-cookie"];
+        if (setCookies) {
+          for (const sc of Array.isArray(setCookies) ? setCookies : [setCookies]) {
+            const part = sc.split(";")[0] ?? "";
+            const eq = part.indexOf("=");
+            if (eq > 0) fresh.set(part.slice(0, eq).trim(), part.slice(eq + 1).trim());
+          }
+        }
+        resolve({ status: res.statusCode ?? 0, headers, body, cookies: fresh });
+      });
+    });
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+/**
+ * Follow the OIDC redirect chain, maintaining a shared cookie jar. Rewrites
+ * every Location URL that uses a *.devbox.localhost host to the proxy's HTTP
+ * endpoint (host stays as the virtual-host identifier in the Host header).
+ * External redirects (to the azure-sim at localhost:4568) are followed directly.
+ */
+async function authedGet(startHost: string): Promise<Hop> {
+  const cookieJar = new Map<string, string>();
+  let currentUrl = new URL(`https://${startHost}/`);
+  let hop: Hop | undefined;
+
+  for (let i = 0; i < MAX_HOPS; i++) {
+    hop = await proxyRequest(currentUrl, cookieJar);
+
+    // Merge Set-Cookie into the jar.
+    for (const [k, v] of hop.cookies) cookieJar.set(k, v);
+
+    if (hop.status < 300 || hop.status >= 400) break;
+
+    const location = hop.headers.location;
+    if (!location) throw new Error(`redirect without Location at hop ${i.toString()}`);
+    const rawLoc = Array.isArray(location) ? location[0] : location;
+    const next = new URL(rawLoc ?? "", `http://${PROXY_HOST}:${PROXY_PORT}`);
+
+    // If the redirect target is the azure-sim (port 4568 or hostname azure-sim),
+    // follow it directly — the discovery document uses `azure-sim:4568` internally
+    // but that host is exposed on the host at 127.0.0.1:4568. The azure-sim
+    // immediately redirects back to the Pomerium callback.
+    if (parseInt(next.port) === AZURE_SIM_PORT || next.hostname === "azure-sim") {
+      const azureHop = await followAzureSim(next, cookieJar);
+      for (const [k, v] of azureHop.cookies) cookieJar.set(k, v);
+      if (azureHop.status >= 300 && azureHop.status < 400) {
+        const loc2 = azureHop.headers.location;
+        const raw2 = Array.isArray(loc2) ? loc2[0] : loc2;
+        if (raw2) {
+          currentUrl = new URL(raw2, `http://${PROXY_HOST}:${PROXY_PORT}`);
+          continue;
+        }
+      }
+      hop = azureHop;
+      break;
+    }
+
+    currentUrl = next;
+  }
+
+  if (!hop) throw new Error("authedGet: no response after redirect chain");
+  return hop;
+}
+
+/** Direct request to the azure-sim (at 127.0.0.1:AZURE_SIM_PORT); not via the proxy.
+ * The azure-sim hostname `azure-sim` is resolved to 127.0.0.1 since it is
+ * only routable inside the Docker network, but its port is exposed on the host. */
+function followAzureSim(url: URL, cookieJar: Map<string, string>): Promise<Hop> {
+  return new Promise((resolve, reject) => {
+    const cookies = [...cookieJar.entries()].map(([k, v]) => `${k}=${v}`).join("; ");
+    const hostHeader = url.hostname;
+    const resolvedHost = url.hostname === "azure-sim" ? "127.0.0.1" : url.hostname;
+    const port = url.port ? parseInt(url.port) : url.protocol === "https:" ? 443 : AZURE_SIM_PORT;
+    const reqFn = url.protocol === "https:" ? httpsRequest : httpRequest;
+    const options = {
+      host: resolvedHost,
+      port,
+      path: url.pathname + url.search,
+      method: "GET",
+      headers: {
+        Host: hostHeader,
+        ...(cookies ? { Cookie: cookies } : {}),
+      },
+    };
+    const req = reqFn(options, (res: IncomingMessage) => {
+      let body = "";
+      res.on("data", (c: Buffer) => {
+        body += c.toString();
+      });
+      res.on("end", () => {
+        const headers: Record<string, string | string[] | undefined> = {};
+        for (const [k, v] of Object.entries(res.headers)) headers[k.toLowerCase()] = v;
+        resolve({ status: res.statusCode ?? 0, headers, body, cookies: new Map() });
+      });
+    });
+    req.on("error", reject);
+    req.end();
+  });
+}
+
+describe("Pomerium authenticated proxy-pass (real OIDC flow with azure-sim)", () => {
+  it("completes the OIDC auth flow and proxies with X-Pomerium-Jwt-Assertion header", async () => {
+    const response = await authedGet(WORKSPACE_HOST);
+
+    // The workspace-upstream (traefik/whoami) echoes all received headers in the
+    // response body — Pomerium injects X-Pomerium-Jwt-Assertion for authenticated
+    // requests.
+    expect(response.status, "expected 200 from authenticated workspace request").toBe(200);
+    expect(response.body, "expected X-Pomerium-Jwt-Assertion header in upstream echo").toMatch(
+      /X-Pomerium-Jwt-Assertion/i,
+    );
+  });
+
+  it("sets a Pomerium session cookie after authentication", async () => {
+    // Drive the full auth flow and inspect the cookies the redirect chain set.
+    const cookieJar = new Map<string, string>();
+    let currentUrl = new URL(`https://${WORKSPACE_HOST}/`);
+
+    for (let i = 0; i < MAX_HOPS; i++) {
+      const hop = await proxyRequest(currentUrl, cookieJar);
+      for (const [k, v] of hop.cookies) cookieJar.set(k, v);
+      if (hop.status < 300 || hop.status >= 400) break;
+      const location = hop.headers.location;
+      const raw = Array.isArray(location) ? location[0] : location;
+      if (!raw) break;
+      currentUrl = new URL(raw, `http://${PROXY_HOST}:${PROXY_PORT}`);
+    }
+
+    // Pomerium sets a signed session cookie (named `_pomerium` by default).
+    const hasPomeriumCookie = [...cookieJar.keys()].some((k) =>
+      k.toLowerCase().includes("pomerium"),
+    );
+    expect(hasPomeriumCookie, "expected a _pomerium session cookie after auth").toBe(true);
+  });
+});

@@ -21,6 +21,8 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
 
 ## Done recently
 
+- **Phases 3/4/5 sim-testable (PR #55):** Reconciler container (`src/run.ts` + `Dockerfile` esbuild bundle); EventBridge scheduler→ECS→container e2e (`reconciler-container.e2e.ts`); authenticated Pomerium proxy-pass (`pomerium-authed.e2e.ts` — full OIDC flow via azure-sim → `X-Pomerium-Jwt-Assertion`); Teleport S3 session recording + GitHub connector (`ssh-connect.e2e.ts` additions); `docker-compose.ssh.yml` gains `sockerless-aws-ssh` + `bleephub-ssh`.
+
 - **Phase 8C: CloudTrail + CloudWatch Logs adapters (PR #53).** `@edd/cloudtrail-audit` (`CloudTrailAuditSource`) + `@edd/cloudwatch-logs` (`CloudWatchLogSource`) — endpoint-only, sim-proven, integration tests in `test/`. `apps/web` selects real adapters via `AUDIT_PROVIDER=cloudtrail` / `LOG_PROVIDER=cloudwatch` / `EDD_APP_NAME`. Terraform injects all three. Phase 8 fully closed. Corrected the DO_NEXT misclassification: these were not AWS-gated; the sockerless sim has `cloudtrail.go` + `cloudwatch.go`.
 
 - **Golden workspace image + idle-agent + real adapter wiring (PR #52).** `infra/images/workspace/`: Node 20 + OpenVSCode Server v1.109.5, idle-agent shell script (heartbeats every 120s), tini PID-1. `EcsComputeProvider.runTask` injects `EDD_WORKSPACE_ID`/`EDD_CONTROL_PLANE_URL`/`EDD_AGENT_TOKEN` (HMAC-SHA256) per task. Heartbeat route accepts agent machine-auth (`Authorization: Bearer <token>`) in addition to session auth; 4 new integ tests. `COMPUTE_PROVIDER=ecs` env var switches `apps/web` from fakes to real `EcsComputeProvider` + `Ec2StorageProvider`; fails loudly if required ECS vars are missing. Terraform module injects `COMPUTE_PROVIDER`, `CONTROL_PLANE_URL`, `ECS_SUBNETS`, `ECS_SECURITY_GROUPS`, `ECS_EBS_ROLE_ARN`; `EDD_AGENT_SECRET` via `secret_environment`. `DEFAULT_WORKSPACE_MOUNT_PATH` → `/home/workspace`.
@@ -77,19 +79,13 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
   8A: Health board, `/admin` shell, workspaces table, per-workspace Inspect. 8B: Overview,
   Quotas, Logs/Audit (derived adapters). 8C: `CloudTrailAuditSource` + `CloudWatchLogSource`
   (endpoint-only; sim-proven). CloudWatch Metrics + cost dashboard remain AWS-account-gated.
+- **Phases 3/4/5 sim-testable** — ✅ done (PR #55). See above.
 - **idle-agent** — ✅ done (ships in the golden image, PR #52).
-- Broader unit/integration/Playwright coverage. Two 2026-06-04 hardening passes fixed the
-  `DELETE /api/workspaces/:id` 500-on-double-delete bug and the `PATCH`/`DELETE`
-  `/api/base-images/:id` **404-vs-409** not-found mis-mapping, and added admin-RBAC,
-  selector, audit, empty-PATCH→400, exhaustive state-machine, and timeline-ordering tests.
-  An audit confirmed the other lifecycle/catalog mutation routes already map domain errors
-  uniformly. The last open item — a route-level heartbeat-on-stopped → **409** — was added
-  (`heartbeat/route.integ.ts`: 200 running / 409 stopped / 403 cross-owner). **No
-  decision-free coverage gaps remain.**
+- **No decision-free coverage gaps remain.**
 
-> With Phase 8 fully closed (8A+8B+8C), the highest-value remaining lever is the
-> **AWS account/region decision** (#1): it unlocks the whole real-deploy track.
-> The reconciler cron (EventBridge Scheduler, sim has it) is still sim-buildable — see Blocked.
+> All locally-testable sim work for Phases 3/4/5 is complete. The highest-value remaining
+> lever is the **AWS account/region decision** (#1): it unlocks the real-deploy track,
+> `e2e-aws`, Teleport GitHub full OAuth, real EBS durability, and real cron execution.
 
 ## Blocked
 
@@ -101,7 +97,7 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
   Cost), Phase 7, `e2e-aws`.
 - **On DNS (#2):** real `*.devbox.<domain>` routing + ACM (the module path is sim-proven;
   the _real_ hosted zone + cert issuance is AWS/registrar-gated).
-- **On upstream sockerless:** No open blockers. All CI assertions active; zero gated. (#483 fixed in PR #484; submodule → `4916e15`)
+- **On upstream sockerless:** Two open blockers (#489 cron, #490 bleephub OIDC discovery) — neither blocks any currently-built feature. (#486/#488 fixed in PR #485 submodule `980dc9e`; #483 fixed in PR #484 submodule `4916e15`)
 - **VS Code distro:** resolved → **OpenVSCode Server** (MIT, Gitpod). Golden image built.
 
 ## Working notes (durable)
