@@ -8,9 +8,7 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-**#493** EventBridge Scheduler `cron(L/W/# ...)` qualifiers silently never fire — `L` (last), `W` (nearest weekday), `#` (nth weekday) are valid AWS EventBridge expressions. PR #491 excluded them; a schedule using them is created successfully but never executes with no error or log. Does not block any current use (our default is `rate(5 minutes)`), but makes debugging impossible if someone configures `var.reconciler_schedule = "cron(L * * * ? *)"`.
-
-**#494** bleephub `POST /login/oauth/access_token` always returns JSON — real GitHub returns `application/x-www-form-urlencoded` by default and JSON only when `Accept: application/json` is set. Does not block the current `ssh-connect.e2e.ts` test (Teleport's Go OAuth2 client sets `Accept: application/json`), but non-conformant for any client that doesn't.
+_None._
 
 ## Resolved (sockerless — all fixed upstream)
 
@@ -90,6 +88,8 @@ idempotency checks un-gated; zero open upstream blockers.
 **BUG-1531** AWS EventBridge Scheduler `cron(...)` expressions never evaluated — `schedulerFirstFire` returned `false` for all cron expressions; `at()` and `rate()` worked. Added `scheduler_cron.go` with full 6-field AWS cron evaluation (min/hr/dom/mon/dow/year; `*`, `?`, lists, ranges, steps, named months/days). Fixed in PR #491 (merged 2026-06-07); submodule → `dd4e717`.
 **#489** EventBridge Scheduler `cron(N/step ...)` mis-parsed — `N/step` collapsed to `lo=hi=N`, so `cron(0/5 * * * ? *)` fired only at minute 0 instead of every 5 minutes. Fixed `cronField` to interpret `N/step` as "N to field-max every step". Fixed in PR #492 (merged 2026-06-07); submodule → `0b9af6e`.
 **#490** bleephub `/.well-known/openid-configuration` missing OAuth2 fields — `authorization_endpoint`, `token_endpoint`, `userinfo_endpoint` absent; blocked OIDC-discovery-driven clients and the full Teleport GitHub OAuth headless sim test. Added all three endpoints plus `response_modes_supported`, `grant_types_supported`, and `code` in `response_types_supported`. Fixed in PR #492 (merged 2026-06-07); submodule → `0b9af6e`. Enabled: full Teleport GitHub OAuth login test in `ssh-connect.e2e.ts`.
+**#493** EventBridge Scheduler `cron(L/W/# ...)` qualifiers silently never fired — `L` (last day/Saturday), `nL` (last weekday n), `W`/`LW` (nearest weekday), `d#n` (nth weekday) are valid AWS expressions. PR #491 excluded them; a schedule was created successfully but never executed with no error. Also added `ValidationException` for malformed expressions. Fixed in PR #495 (merged 2026-06-07); submodule → `def45a1`.
+**#494** bleephub `POST /login/oauth/access_token` always returned JSON — real GitHub returns `application/x-www-form-urlencoded` by default, JSON only with `Accept: application/json`. Now correctly content-negotiated. Existing bleephub tests updated to set `Accept` headers; form-encoded default pinned by new test. Fixed in PR #495 (merged 2026-06-07); submodule → `def45a1`.
 
 ---
 
