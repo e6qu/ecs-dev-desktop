@@ -8,7 +8,9 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-_None._
+**#493** EventBridge Scheduler `cron(L/W/# ...)` qualifiers silently never fire — `L` (last), `W` (nearest weekday), `#` (nth weekday) are valid AWS EventBridge expressions. PR #491 excluded them; a schedule using them is created successfully but never executes with no error or log. Does not block any current use (our default is `rate(5 minutes)`), but makes debugging impossible if someone configures `var.reconciler_schedule = "cron(L * * * ? *)"`.
+
+**#494** bleephub `POST /login/oauth/access_token` always returns JSON — real GitHub returns `application/x-www-form-urlencoded` by default and JSON only when `Accept: application/json` is set. Does not block the current `ssh-connect.e2e.ts` test (Teleport's Go OAuth2 client sets `Accept: application/json`), but non-conformant for any client that doesn't.
 
 ## Resolved (sockerless — all fixed upstream)
 
