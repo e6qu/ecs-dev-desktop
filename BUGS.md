@@ -8,7 +8,12 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-_None._
+**#501** bleephub admin token is hardcoded (`ghp_0000000000000000000000000000000000000000` in
+`store.go:580`) and not configurable — no env var or config-file override. The value matches
+Trivy's `github-pat` regex, causing a CRITICAL false positive in `vuln-scan`. `.trivyignore.yaml`
+suppresses only the `github-pat` finding in `ssh-connect.e2e.ts` (targeted; other rules still
+active). Waiting for the fix to: add a configurable admin token; use a default value that does
+not match GitHub PAT patterns. **Blocks:** complete removal of `.trivyignore.yaml` suppression.
 
 ## Resolved (sockerless — all fixed upstream)
 

@@ -13,6 +13,13 @@ teleport:
   log:
     output: stderr
     severity: INFO
+  storage:
+    # Session recordings stored in S3 (the sockerless-aws-ssh sim, endpoint-only).
+    # `endpoint` points at the sim's Docker service name — reachable inside the
+    # compose network. Production: remove `endpoint` and set region + bucket only.
+    # NOTE: audit_sessions_uri moved from auth_service to teleport.storage in
+    # Teleport 17+; placing it under auth_service causes config parse failure.
+    audit_sessions_uri: "s3://edd-e2e-sessions?region=us-east-1&endpoint=http://sockerless-aws-ssh:4566&disablesse=true"
 auth_service:
   enabled: "yes"
   cluster_name: edd-e2e
@@ -22,10 +29,6 @@ auth_service:
   # value — real clusters use short-lived dynamic tokens (`tctl tokens add`).
   tokens:
     - "node:edd-e2e-node-join"
-  # Session recordings stored in S3 (the sockerless-aws-ssh sim, endpoint-only).
-  # `endpoint` points at the sim's Docker service name — reachable inside the
-  # compose network. Production: remove `endpoint` and set region + bucket only.
-  audit_sessions_uri: "s3://edd-e2e-sessions?region=us-east-1&endpoint=http://sockerless-aws-ssh:4566&disablesse=true"
 proxy_service:
   enabled: "yes"
   web_listen_addr: 0.0.0.0:3080
