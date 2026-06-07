@@ -14,6 +14,8 @@ export interface ComputeTask {
   readonly id: TaskId;
   /** The ECS-managed EBS volume created for (and released with) the task. */
   readonly volumeId: VolumeId;
+  /** Private IP of the task's ENI (awsvpc). The SSH gateway forwards to this address. Undefined when the compute backend doesn't expose it (e.g. the fake). */
+  readonly sshHost?: string;
 }
 
 export interface RunTaskInput {

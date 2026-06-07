@@ -57,6 +57,10 @@ export interface EcsComputeConfig {
    * env var; the heartbeat route verifies the same HMAC server-side.
    */
   agentSecret?: string;
+  /** CloudWatch Logs group for workspace container stdout/stderr (awslogs driver).
+   * When set, every task definition includes logConfiguration pointing here.
+   * Matches the log group created by the Terraform module (e.g. "/${appName}/workspaces"). */
+  logGroupName?: string;
 }
 
 export interface EcsComputeProviderDeps {
@@ -96,6 +100,20 @@ function ebsVolumeId(task: Task | undefined): string | undefined {
     for (const d of a.details ?? []) if (d.name === "volumeId" && d.value) return d.value;
   }
   return undefined;
+}
+
+/** The task's ENI private IP — set at RunTask time, present before RUNNING. */
+export function taskPrivateIp(task: Task | undefined): string | undefined {
+  // Prefer the attachment details (matches real Fargate DescribeTasks shape).
+  for (const a of task?.attachments ?? []) {
+    if (a.type !== "ElasticNetworkInterface") continue;
+    for (const d of a.details ?? []) {
+      if (d.name === "privateIPv4Address" && d.value) return d.value;
+    }
+  }
+  // Fall back to the per-container networkInterfaces array.
+  const ip = task?.containers?.[0]?.networkInterfaces?.[0]?.privateIpv4Address;
+  return ip ?? undefined;
 }
 
 /**
@@ -140,6 +158,18 @@ export class EcsComputeProvider implements ComputeProvider {
                 containerPath: this.config.mountPath ?? DEFAULT_WORKSPACE_MOUNT_PATH,
               },
             ],
+            ...(this.config.logGroupName !== undefined
+              ? {
+                  logConfiguration: {
+                    logDriver: "awslogs",
+                    options: {
+                      "awslogs-group": this.config.logGroupName,
+                      "awslogs-region": process.env.AWS_REGION ?? "us-east-1",
+                      "awslogs-stream-prefix": "workspace",
+                    },
+                  },
+                }
+              : {}),
           },
         ],
         volumes: [{ name: WORKSPACE_VOLUME, configuredAtLaunch: true }],
@@ -200,18 +230,19 @@ export class EcsComputeProvider implements ComputeProvider {
       }),
     );
     const arn = required(out.tasks?.[0]?.taskArn, "taskArn");
-    return { id: taskId(arn), volumeId: volumeId(await this.awaitVolumeId(arn)) };
+    const task = await this.awaitVolumeId(arn);
+    return { id: taskId(arn), volumeId: volumeId(task.volumeId), sshHost: task.sshHost };
   }
 
-  /** Poll DescribeTasks until ECS reports the managed EBS volume id. */
-  private async awaitVolumeId(taskArn: string): Promise<string> {
+  /** Poll DescribeTasks until ECS reports the managed EBS volume id. Also reads the ENI IP. */
+  private async awaitVolumeId(taskArn: string): Promise<{ volumeId: string; sshHost?: string }> {
     for (let i = 0; i < VOLUME_ATTEMPTS; i++) {
       const out = await this.client.send(
         new DescribeTasksCommand({ cluster: this.cluster(), tasks: [taskArn] }),
       );
       const task = out.tasks?.[0];
       const vol = ebsVolumeId(task);
-      if (vol !== undefined) return vol;
+      if (vol !== undefined) return { volumeId: vol, sshHost: taskPrivateIp(task) };
       if (task?.lastStatus === "STOPPED") {
         throw new Error(
           `task ${taskArn} stopped before attaching a volume: ${task.stoppedReason ?? "unknown"}`,
@@ -258,6 +289,7 @@ export class EcsComputeProvider implements ComputeProvider {
         ebsRoleArn,
         controlPlaneUrl: process.env.CONTROL_PLANE_URL,
         agentSecret,
+        logGroupName: process.env.ECS_LOG_GROUP_WORKSPACES,
       },
     });
   }

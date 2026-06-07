@@ -8,7 +8,14 @@ _(none)_
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-_(none — sockerless#514 resolved by PR #515, merged 2026-06-08)_
+- **sockerless#516** — Container-mode ECS: `DescribeTasks` returns a virtual VPC-allocated IP
+  (`AllocateSubnetIP`) as `privateIPv4Address`, not the Docker container's actual IP. The VPC
+  IP is non-routable on the Docker network; other containers cannot connect to it. On real
+  Fargate, the ENI IP is the real private VPC IP and is routable within the VPC.
+  Fix: after `StartContainerSync`, inspect the container to get its Docker IP and use it as
+  `privateIPv4Address` in the ENI attachment and `networkInterfaces`.
+  **Blocks:** wake-on-connect SSH proxy e2e (proxy cannot forward TCP to the workspace
+  container via its ENI IP). All other proxy infrastructure and domain changes are complete.
 
 ## Resolved (sockerless — fixed upstream; full detail in `WHAT_WE_DID.md`)
 

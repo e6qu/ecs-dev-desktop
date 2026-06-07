@@ -26,5 +26,6 @@ export function toWorkspaceDetail(ws: Workspace): WorkspaceDetailDto {
     ...(ws.taskId === undefined ? {} : { taskId: ws.taskId }),
     ...(ws.latestSnapshotId === undefined ? {} : { latestSnapshotId: ws.latestSnapshotId }),
     ...(ws.latestSnapshotAt === undefined ? {} : { latestSnapshotAt: ws.latestSnapshotAt }),
+    ...(ws.sshHost === undefined ? {} : { sshHost: ws.sshHost }),
   };
 }

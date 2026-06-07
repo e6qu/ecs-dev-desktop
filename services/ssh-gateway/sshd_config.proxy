@@ -1,0 +1,25 @@
+# SSH gateway proxy sshd_config
+# Users authenticate with a certificate signed by our CA. sshd runs
+# wake-and-forward.sh (ForceCommand) for every connection to wake the workspace
+# and proxy TCP to the workspace container's sshd.
+Port 22
+AddressFamily inet
+ListenAddress 0.0.0.0
+
+# Certificate-only auth.
+PubkeyAuthentication yes
+TrustedUserCAKeys /etc/ssh/workspace-ca.pub
+PasswordAuthentication no
+ChallengeResponseAuthentication no
+PermitRootLogin no
+
+# Accept any dev-* login user whose cert contains the matching principal.
+# AuthorizedPrincipalsCommand echoes the login username — the cert must carry
+# a principal equal to the login name (workspacePrincipal(workspaceId)).
+AuthorizedPrincipalsCommand /bin/echo %u
+AuthorizedPrincipalsCommandUser nobody
+
+# The gateway only forwards; it does not run user shells.
+ForceCommand /usr/local/bin/wake-and-forward.sh
+AllowTcpForwarding yes
+PermitTTY yes

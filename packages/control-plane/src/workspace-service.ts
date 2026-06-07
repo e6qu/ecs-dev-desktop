@@ -68,6 +68,7 @@ interface WorkspaceRecord {
   taskId?: string;
   latestSnapshotId?: string;
   latestSnapshotAt?: string;
+  sshHost?: string;
 }
 
 /** Brand a persisted record into a domain object (imperative-shell boundary). */
@@ -84,6 +85,7 @@ function toWorkspace(r: WorkspaceRecord): Workspace {
     latestSnapshotId: r.latestSnapshotId === undefined ? undefined : snapshotId(r.latestSnapshotId),
     latestSnapshotAt:
       r.latestSnapshotAt === undefined ? undefined : isoTimestamp(r.latestSnapshotAt),
+    sshHost: r.sshHost,
   };
 }
 
@@ -107,6 +109,7 @@ export class WorkspaceService {
       volumeId: task.volumeId,
       taskId: task.id,
       at,
+      sshHost: task.sshHost,
     });
     await this.persist(ws);
     return toWorkspaceDto(ws);
@@ -221,7 +224,7 @@ export class WorkspaceService {
       baseImage: ws.baseImage,
       fromSnapshot: ws.latestSnapshotId,
     });
-    const next = markStarted(ws, task.volumeId, task.id, at);
+    const next = markStarted(ws, task.volumeId, task.id, at, task.sshHost);
     if (!next.ok) return next;
     await this.persist(next.value);
     return ok(toWorkspaceDto(next.value));

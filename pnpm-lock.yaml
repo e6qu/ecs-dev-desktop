@@ -326,6 +326,10 @@ importers:
         version: 0.28.0
 
   services/ssh-gateway:
+    dependencies:
+      '@edd/core':
+        specifier: workspace:*
+        version: link:../../packages/core
     devDependencies:
       '@types/node':
         specifier: ^25.9.2

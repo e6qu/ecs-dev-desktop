@@ -31,6 +31,8 @@ export interface Workspace {
   readonly latestSnapshotId?: SnapshotId;
   /** When the latest snapshot was taken — drives scheduled-snapshot timing. */
   readonly latestSnapshotAt?: IsoTimestamp;
+  /** Private IP of the running task's ENI — used by the SSH gateway to forward. Absent when stopped. */
+  readonly sshHost?: string;
 }
 
 export interface ProvisionParams {
@@ -40,6 +42,7 @@ export interface ProvisionParams {
   volumeId: VolumeId;
   taskId: TaskId;
   at: IsoTimestamp;
+  sshHost?: string;
 }
 
 /** A freshly-provisioned, running workspace. */
@@ -53,6 +56,7 @@ export function provision(params: ProvisionParams): Workspace {
     lastActivity: params.at,
     volumeId: params.volumeId,
     taskId: params.taskId,
+    sshHost: params.sshHost,
   };
 }
 
@@ -74,6 +78,7 @@ export function markStopped(
     latestSnapshotAt: freshSnapshot?.at ?? ws.latestSnapshotAt,
     volumeId: undefined,
     taskId: undefined,
+    sshHost: undefined,
   }));
 }
 
@@ -83,6 +88,7 @@ export function markStarted(
   volumeId: VolumeId,
   taskId: TaskId,
   at: IsoTimestamp,
+  sshHost?: string,
 ): Result<Workspace, DomainError> {
   const woken = transition(ws.state, "wake");
   if (!woken.ok) return woken;
@@ -92,6 +98,7 @@ export function markStarted(
     lastActivity: at,
     volumeId,
     taskId,
+    sshHost,
   }));
 }
 
