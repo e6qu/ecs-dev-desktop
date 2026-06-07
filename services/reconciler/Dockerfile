@@ -58,4 +58,7 @@ WORKDIR /app
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/services/reconciler/dist/run.js ./services/reconciler/dist/run.js
 
+RUN addgroup -S reconciler && adduser -S reconciler -G reconciler
+USER reconciler
+
 ENTRYPOINT ["node", "services/reconciler/dist/run.js"]
