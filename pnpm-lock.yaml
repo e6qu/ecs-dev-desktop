@@ -145,6 +145,9 @@ importers:
         specifier: workspace:*
         version: link:../core
     devDependencies:
+      '@aws-sdk/client-ecs':
+        specifier: ^3.1063.0
+        version: 3.1063.0
       '@types/node':
         specifier: ^25.9.1
         version: 25.9.1
@@ -237,6 +240,9 @@ importers:
 
   packages/e2e:
     dependencies:
+      '@aws-sdk/client-cloudtrail':
+        specifier: ^3.1063.0
+        version: 3.1063.0
       '@aws-sdk/client-cloudwatch-logs':
         specifier: ^3.1063.0
         version: 3.1063.0
@@ -249,6 +255,9 @@ importers:
       '@aws-sdk/client-scheduler':
         specifier: ^3.1063.0
         version: 3.1063.0
+      '@edd/cloudtrail-audit':
+        specifier: workspace:*
+        version: link:../cloudtrail-audit
       '@edd/compute-ecs':
         specifier: workspace:*
         version: link:../compute-ecs
