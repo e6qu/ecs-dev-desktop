@@ -8,26 +8,7 @@ _None._
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-**#496** CloudTrail `LookupEvents` ignores `LookupAttributes` keys other than `EventName`,
-`EventSource`, `Username` — `cloudTrailEventMatches` (`cloudtrail.go:629`) has no cases for
-`EventId`, `ResourceType`, `ResourceName`, `AccessKeyId`, `ReadOnly`; those filters silently
-return all events. Blocks: the `LookupAttributes=[EventName=CreateCluster]` assertion in
-`cloudtrail-audit-source.integ.ts` (the "every returned event must be CreateCluster" check will
-fail because unmatched keys fall through and the response is unfiltered).
-
-**#497** CloudTrail does not record scheduler-fired `RunTask` (and SQS/SNS/Lambda targets) —
-`callJSONHandler` (`scheduler_firing.go:200`) calls the target handler directly via
-`httptest.NewRequest`, bypassing the `POST /` middleware in `main.go:102` that calls
-`cloudTrailRecordAPICall`. On real AWS the call is recorded with
-`invokedBy: scheduler.amazonaws.com`. Blocks: reconciler-container e2e test 3
-(`"CloudTrail captures the RunTask event fired by the EventBridge Scheduler"`).
-
-**#498** CloudTrail does not record EventBridge Scheduler API calls (`CreateSchedule`,
-`UpdateSchedule`, `DeleteSchedule`, etc.) — `registerScheduler(srv)` at `main.go:131` registers
-path-based routes directly on `srv`, outside the `POST /` CloudTrail middleware. On real AWS all
-Scheduler API operations are logged to CloudTrail. Blocks: `assert_cloudtrail "Scheduler
-CreateSchedule captured in CloudTrail"` in the `terraform-sim` CI step (the check will find zero
-events).
+_None._
 
 ## Resolved (sockerless — all fixed upstream)
 
@@ -109,6 +90,21 @@ idempotency checks un-gated; zero open upstream blockers.
 **#490** bleephub `/.well-known/openid-configuration` missing OAuth2 fields — `authorization_endpoint`, `token_endpoint`, `userinfo_endpoint` absent; blocked OIDC-discovery-driven clients and the full Teleport GitHub OAuth headless sim test. Added all three endpoints plus `response_modes_supported`, `grant_types_supported`, and `code` in `response_types_supported`. Fixed in PR #492 (merged 2026-06-07); submodule → `0b9af6e`. Enabled: full Teleport GitHub OAuth login test in `ssh-connect.e2e.ts`.
 **#493** EventBridge Scheduler `cron(L/W/# ...)` qualifiers silently never fired — `L` (last day/Saturday), `nL` (last weekday n), `W`/`LW` (nearest weekday), `d#n` (nth weekday) are valid AWS expressions. PR #491 excluded them; a schedule was created successfully but never executed with no error. Also added `ValidationException` for malformed expressions. Fixed in PR #495 (merged 2026-06-07); submodule → `def45a1`.
 **#494** bleephub `POST /login/oauth/access_token` always returned JSON — real GitHub returns `application/x-www-form-urlencoded` by default, JSON only with `Accept: application/json`. Now correctly content-negotiated. Existing bleephub tests updated to set `Accept` headers; form-encoded default pinned by new test. Fixed in PR #495 (merged 2026-06-07); submodule → `def45a1`.
+**#496** CloudTrail `LookupEvents` ignored 5 of 8 `LookupAttributes` filter keys —
+`cloudTrailEventMatches` had no cases for `EventId`, `ResourceType`, `ResourceName`,
+`AccessKeyId`, `ReadOnly`; those fell through and returned all events unfiltered. Also: invalid
+key now raises `InvalidLookupAttributesException`; `ReadOnly` populated from operation verb;
+`AccessKeyId` from SigV4 credential; per-operation `resources[]` extracted in
+`cloudtrail_resources.go`. Fixed in PR #500 (merged 2026-06-07); submodule → `fc03b15`.
+**#497** Scheduler-fired `RunTask`/`SendMessage`/`Publish`/`Invoke` not recorded in CloudTrail —
+`callJSONHandler` called target handlers via `httptest.NewRequest`, bypassing the `POST /`
+middleware that calls `cloudTrailRecordAPICall`. Each `fire*Target` now records the downstream
+call with `userIdentity.invokedBy = scheduler.amazonaws.com`. Fixed in PR #500 (merged
+2026-06-07); submodule → `fc03b15`.
+**#498** EventBridge Scheduler API calls (`CreateSchedule` etc.) not recorded in CloudTrail —
+`registerScheduler(srv)` used path-based routes outside the `POST /` recording middleware. Each
+route now wrapped with `schedulerRecorded`, recording against `scheduler.amazonaws.com`. Fixed in
+PR #500 (merged 2026-06-07); submodule → `fc03b15`.
 
 ---
 

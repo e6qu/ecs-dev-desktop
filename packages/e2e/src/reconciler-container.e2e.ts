@@ -181,10 +181,7 @@ describe(
       expect(container?.exitCode, "reconciler container exit code").toBe(0);
     });
 
-    // GATED on e6qu/sockerless#497: callJSONHandler (scheduler_firing.go:200) calls
-    // handleECSRunTask directly via httptest.NewRequest, bypassing the POST / middleware in
-    // main.go:102 that calls cloudTrailRecordAPICall. Scheduler-fired RunTask is never recorded.
-    it.skip("CloudTrail captures the RunTask event fired by the EventBridge Scheduler", async () => {
+    it("CloudTrail captures the RunTask event fired by the EventBridge Scheduler", async () => {
       const ctClient = new CloudTrailClient(SIM);
       const deadline = Date.now() + 30_000;
       let found = false;

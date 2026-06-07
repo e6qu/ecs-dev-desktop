@@ -2,7 +2,7 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-07 (CloudTrail-based resource tests + post-Terraform functional probes; zero open upstream blockers)
+**Last updated:** 2026-06-07 (submodule → fc03b15: sockerless #500 — CloudTrail LookupAttributes + scheduler recording; zero open upstream blockers)
 
 ## Current phase
 
@@ -54,13 +54,13 @@ and a full Teleport GitHub OAuth browser login.
   from acme/platform-admins; user created in Teleport verified via `tctl`), GitHub connector
   config proven, authenticated proxy-pass with `X-Pomerium-Jwt-Assertion` (full OIDC flow
   via azure-sim). No open sockerless blockers.
-- **CloudTrail-based tests + post-Terraform functional probes**: integration tests verify
-  specific event content (CreateCluster event appears in `recent()`, `LookupAttributes`
-  filter path); e2e workspace-lifecycle test asserts RunTask/StopTask/CreateSnapshot in
-  CloudTrail and via `CloudTrailAuditSource`; reconciler e2e test 3 asserts scheduler-fired
-  RunTask appears in CloudTrail; `terraform-sim` CI step now audits 8 post-apply provisioning
-  events and probes DynamoDB write/read, CloudWatch Logs write/read, ECS task-def registration
-  against the live provisioned resources.
+- **CloudTrail-based tests + post-Terraform functional probes** (submodule → `fc03b15`):
+  integration tests verify specific event content (CreateCluster event appears in `recent()`,
+  `LookupAttributes` filter path); e2e workspace-lifecycle test asserts RunTask/StopTask/
+  CreateSnapshot in CloudTrail and via `CloudTrailAuditSource`; reconciler e2e test 3 asserts
+  scheduler-fired RunTask appears in CloudTrail (unblocked by #500); `terraform-sim` CI step
+  audits 8 post-apply provisioning events incl. `CreateSchedule` (unblocked by #500) and probes
+  DynamoDB write/read, CloudWatch Logs write/read, ECS task-def registration. No open blockers.
 - **Test tiers**: unit/contract · integration (DynamoDB Local + process sim) · e2e
   (`.e2e.yml`/`.ssh.yml`: data-fidelity, lifecycle, GitHub+Entra auth, Pomerium, Teleport)
   · **portal e2e** (Playwright) · **`e2e-https`** (the sims served over TLS — mock-free Entra
