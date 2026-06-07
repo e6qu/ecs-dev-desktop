@@ -4,11 +4,21 @@
 
 ## Open
 
-_None._
+- **BUG-reconciler-build**: `services/reconciler` esbuild bundle crashes at runtime —
+  `Dynamic require of "node:https" is not supported`. `@smithy/node-http-handler` (CJS)
+  calls `require("node:https")` inside an ESM bundle; the esbuild `__require` shim throws
+  because `require` is not defined in ESM context. Fix: add
+  `import { createRequire } from "module"; const require = createRequire(import.meta.url);`
+  as an esbuild banner. Pending commit.
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-_None._
+- **sockerless#514** — Container-mode sim: scheduler-fired `RunTask` (EcsParameters target)
+  never launches a Docker container and never transitions the task to STOPPED.
+  CloudTrail records the call but `ListTasksCommand({ desiredStatus: "STOPPED" })` always
+  returns empty. Direct `RunTask` works correctly. Also: scheduler-fired `RunTask` skips
+  SG validation that direct `RunTask` enforces. Blocks `reconciler-container.e2e.ts`
+  tests 1 and 3.
 
 ## Resolved (sockerless — fixed upstream; full detail in `WHAT_WE_DID.md`)
 
