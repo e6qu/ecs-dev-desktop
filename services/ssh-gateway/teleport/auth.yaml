@@ -29,6 +29,13 @@ auth_service:
   # value — real clusters use short-lived dynamic tokens (`tctl tokens add`).
   tokens:
     - "node:edd-e2e-node-join"
+  # Synchronous recording: the auth server uploads each recording chunk to S3
+  # as the session progresses, so recordings are available immediately after
+  # the session ends. Default `node` mode uses an async UploadCompleter that
+  # runs on a periodic interval (>30s), which would cause the e2e test to time
+  # out waiting for the recording to appear in S3.
+  session_recording_config:
+    mode: node-sync
 proxy_service:
   enabled: "yes"
   web_listen_addr: 0.0.0.0:3080

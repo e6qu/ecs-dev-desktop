@@ -29,6 +29,12 @@ idp_provider_url: "http://azure-sim:4568/edd-e2e-tenant/v2.0"
 idp_client_id: "pomerium-edd"
 idp_client_secret: "pomerium-edd-secret"
 
+# Global identity header forwarding (belt + suspenders with per-route setting).
+# Ensures X-Pomerium-Jwt-Assertion is injected on all routes, including the
+# wildcard. Per-route pass_identity_headers on the wildcard route alone may
+# not apply in all Pomerium 0.32.x builds.
+pass_identity_headers: true
+
 routes:
   # Public health route — proves Pomerium reaches the workspace upstream at all.
   - from: "https://health.devbox.localhost"

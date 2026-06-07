@@ -143,16 +143,18 @@ jobs:
       - run: pnpm test:e2e
         env:
           RECONCILER_IMAGE: edd-reconciler:e2e
-      # Diagnostic: always dump Teleport auth logs + S3 bucket contents so we can
-      # diagnose session-recording upload failures without a separate CI run.
+      # Diagnostic: always dump Teleport auth logs + S3 bucket + Pomerium logs
+      # so recording-upload and JWT-assertion failures are diagnosable.
       - if: always()
-        name: Dump Teleport auth logs and S3 bucket contents
+        name: Dump Teleport auth logs, S3 bucket contents, and Pomerium logs
         run: |
           echo "=== teleport-auth logs ==="
           docker logs edd-teleport-auth 2>&1 || true
           echo "=== S3 bucket edd-e2e-sessions ==="
           curl -s -H "Host: edd-e2e-sessions.s3.amazonaws.com" \
             "http://localhost:4567/edd-e2e-sessions?list-type=2" || true
+          echo "=== pomerium logs ==="
+          docker logs ecs-dev-desktop-pomerium-1 2>&1 || true
       - if: always()
         run: docker compose -f docker-compose.e2e.yml down
       - if: always()
