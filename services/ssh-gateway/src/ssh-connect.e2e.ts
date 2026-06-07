@@ -16,7 +16,7 @@ import { workspacePrincipal } from "./index";
  *  1. Session lands on the node as the principal workspacePrincipal derives.
  *  2. A login not listed in the node's AuthorizedPrincipalsFile is denied.
  *
- * No Teleport: auth is certificate-based (our own CA), RBAC is via
+ * Auth is certificate-based (our own CA), RBAC is via
  * AuthorizedPrincipalsFile in the sshd_config.
  */
 

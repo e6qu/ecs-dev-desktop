@@ -27,19 +27,14 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
 
 - **CI fixes for PR #54 (round 2):** `pass_identity_headers: true` added to Pomerium
   wildcard route (`infra/proxy/pomerium.yaml`) — required for `X-Pomerium-Jwt-Assertion`
-  injection (Pomerium default is false). AWS credentials (`AWS_ACCESS_KEY_ID/SECRET`) added
-  to `teleport-auth` in `docker-compose.ssh.yml` — S3 client can't sign requests without
-  them; removed dead `TELEPORT_S3_ENDPOINT` (not a Teleport env var, 0 occurrences in
-  codebase). Teleport Enterprise blocker documented in `BUGS.md`. AGENTS.md rule 9 added:
-  upstream issues only in `github.com/e6qu/sockerless`.
+  injection (Pomerium default is false). AGENTS.md rule 9 added: upstream issues only in
+  `github.com/e6qu/sockerless`.
 - **CI fixes for PR #54 (round 1 — vuln-scan + terraform-sim + e2e SSH harness):** trivy
   `.trivyignore.yaml` + `trivyignores:` for bleephub admin token false positive; `assert_cloudtrail`
-  switched to server-side `--lookup-attributes` (avoids 50-event cap); `bucket-init` init
-  container pre-creates `edd-e2e-sessions` S3 bucket; `audit_sessions_uri` moved to
-  `teleport.storage` (Teleport 17+ config change). 12/14 CI jobs green.
+  switched to server-side `--lookup-attributes` (avoids 50-event cap). 12/14 CI jobs green.
 - **CloudTrail-based resource + functional tests:** integration tests verify specific CloudTrail event content (CreateCluster in `recent()`, newest-first ordering, `LookupAttributes` filter); workspace-lifecycle e2e asserts RunTask/StopTask/CreateSnapshot in CloudTrail and via `CloudTrailAuditSource`; reconciler e2e test 3 checks scheduler-fired RunTask in CloudTrail; `terraform-sim` CI step now audits 8 provisioning events post-apply + probes DynamoDB write/read, CloudWatch Logs write/read, ECS task-def registration against the live provisioned infra. If any new assertion exposes a sim gap, it will be filed upstream per §6.8.
-- **Full Teleport GitHub OAuth headless sim test (submodule → 0b9af6e):** sockerless PRs #491 + #492 fixed `cron()` evaluation, `N/step` parsing, and bleephub OIDC discovery. New `ssh-connect.e2e.ts` test 5: seeds bleephub (`acme` org + `platform-admins` team + `admin` member), drives `Teleport → bleephub ?auto=1 → Teleport callback` redirect chain headlessly, asserts `tctl get user/admin` shows `edd-ssh-e2e` role. No open sockerless blockers remaining.
-- **Phases 3/4/5 sim-testable (PR #55):** Reconciler container (`src/run.ts` + `Dockerfile` esbuild bundle); EventBridge scheduler→ECS→container e2e (`reconciler-container.e2e.ts`); authenticated Pomerium proxy-pass (`pomerium-authed.e2e.ts` — full OIDC flow via azure-sim → `X-Pomerium-Jwt-Assertion`); Teleport S3 session recording + GitHub connector (`ssh-connect.e2e.ts` additions); `docker-compose.ssh.yml` gains `sockerless-aws-ssh` + `bleephub-ssh`.
+- **Sockerless submodule → `0b9af6e` (#491+#492); cron + bleephub OIDC discovery fixed:** sockerless PRs #491 + #492 fixed `cron()` evaluation, `N/step` parsing, and bleephub OIDC discovery (`authorization_endpoint`, `token_endpoint`, `userinfo_endpoint` added). No open sockerless blockers remaining.
+- **Phases 3/4/5 sim-testable (PR #55):** Reconciler container (`src/run.ts` + `Dockerfile` esbuild bundle); EventBridge scheduler→ECS→container e2e (`reconciler-container.e2e.ts`); authenticated Pomerium proxy-pass (`pomerium-authed.e2e.ts` — full OIDC flow via azure-sim → `X-Pomerium-Jwt-Assertion`); SSH gateway: standard sshd + ephemeral CA (`ssh-connect.e2e.ts`).
 
 - **Phase 8C: CloudTrail + CloudWatch Logs adapters (PR #53).** `@edd/cloudtrail-audit` (`CloudTrailAuditSource`) + `@edd/cloudwatch-logs` (`CloudWatchLogSource`) — endpoint-only, sim-proven, integration tests in `test/`. `apps/web` selects real adapters via `AUDIT_PROVIDER=cloudtrail` / `LOG_PROVIDER=cloudwatch` / `EDD_APP_NAME`. Terraform injects all three. Phase 8 fully closed. Corrected the DO_NEXT misclassification: these were not AWS-gated; the sockerless sim has `cloudtrail.go` + `cloudwatch.go`.
 
@@ -58,7 +53,7 @@ observability = derive-now + CloudTrail/CloudWatch (no custom audit store).
   `temp/sim-tls`; `docker-compose.https.yml`; `EDD_SIM_SCHEME=https` flips `@edd/config`).
   The Entra login→group→role smoke (Graph + ROPC) runs over HTTPS with real CA trust
   (`NODE_EXTRA_CA_CERTS`, **no `--insecure`** — fails without the CA), and SSH connect +
-  authz-deny runs against the real Teleport cluster. Config-only (§6.8); no upstream gaps.
+  authz-deny runs against the real OpenSSH workspace node. Config-only (§6.8); no upstream gaps.
 - **Terraform platform module + full non-mocked sim apply in CI.** Reusable
   Terraform/Terragrunt module for the whole stack (VPC + NAT [managed or **fck-nat**], KMS,
   DynamoDB single-table w/ GSIs, ECR, ECS cluster + Fargate service + autoscaling, ALB +

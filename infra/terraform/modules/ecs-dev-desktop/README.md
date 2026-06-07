@@ -36,7 +36,7 @@ log groups.
 
 What it does **not** do (app/runtime layer, by design): build/push the
 control-plane image or golden images; create the auth secrets (you pass their
-ARNs); deploy Teleport (SSH) or Pomerium (identity-aware `*.devbox` routing) —
+ARNs); deploy the SSH gateway or Pomerium (identity-aware `*.devbox` routing) —
 those run behind this ALB and are configured at the app layer.
 
 ## Private networking & NAT

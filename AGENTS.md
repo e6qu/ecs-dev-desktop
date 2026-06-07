@@ -29,7 +29,7 @@ live. Hence:
 7. **Components build independently** (`pnpm --filter <name> build`).
 8. **TDD**: failing test → make it pass → refactor. No feature without a test.
 9. **File upstream issues only in `github.com/e6qu/sockerless`** — never open
-   issues in any other external project (e.g. Teleport, Pomerium, AWS, etc.).
+   issues in any other external project (e.g. Pomerium, AWS, etc.).
    If a third-party tool has a limitation, record it in `BUGS.md` and work
    around it or wait; do not file in their tracker.
 

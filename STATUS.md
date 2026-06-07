@@ -45,7 +45,7 @@ should now be green** — sockerless#508 (azure-sim v2.0 `userinfo_endpoint`) fi
   `CloudWatchLogSource`; fakes remain default.
 - **SSH** (`services/ssh-gateway`) + **Pomerium routing** (`infra/proxy`): real products
   in Docker, mock-free. SSH connect-as-principal + authz-deny proven with standard OpenSSH
-  (`sshd`) + ephemeral CA certificate auth (Teleport replaced; no external dependency).
+  (`sshd`) + ephemeral CA certificate auth (standard OpenSSH sshd; no external dependency).
   Pomerium identity-aware wildcard routing + authenticated proxy-pass (`X-Pomerium-Jwt-Assertion`)
   — all config applied; azure-sim OIDC v2.0 issuer fixed in sockerless#504/PR#506; blocked on
   sockerless#508 (azure-sim v2.0 `userinfo_endpoint` missing → Pomerium callback 500).

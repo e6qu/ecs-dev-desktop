@@ -20,16 +20,16 @@ UI, and an admin control plane. Think self-hosted Coder / GitHub Codespaces.
 
 ## Architecture at a glance
 
-| Dimension   | Decision                                                                |
-| ----------- | ----------------------------------------------------------------------- |
-| Compute     | AWS ECS Fargate (200+ workspaces)                                       |
-| Persistence | EBS snapshot as the unit of state (stateful + snapshot + scale-to-zero) |
-| Auth        | GitHub OAuth + Azure Entra ID, groups → roles                           |
-| RBAC        | CASL (shared by API and UI)                                             |
-| SSH         | Teleport (auth, audit, session recording)                               |
-| Web + API   | Next.js, API-first (UI consumes the same API)                           |
-| State store | DynamoDB single-table + ElectroDB                                       |
-| IaC         | Terraform · Monorepo: Turborepo + pnpm                                  |
+| Dimension   | Decision                                                                            |
+| ----------- | ----------------------------------------------------------------------------------- |
+| Compute     | AWS ECS Fargate (200+ workspaces)                                                   |
+| Persistence | EBS snapshot as the unit of state (stateful + snapshot + scale-to-zero)             |
+| Auth        | GitHub OAuth + Azure Entra ID, groups → roles                                       |
+| RBAC        | CASL (shared by API and UI)                                                         |
+| SSH         | OpenSSH (`sshd`) + our SSH CA (certificate auth, RBAC via AuthorizedPrincipalsFile) |
+| Web + API   | Next.js, API-first (UI consumes the same API)                                       |
+| State store | DynamoDB single-table + ElectroDB                                                   |
+| IaC         | Terraform · Monorepo: Turborepo + pnpm                                              |
 
 ## Contributing
 

@@ -26,7 +26,7 @@ Stateful-workspace mechanism proven mock-free: real Fargate task on the containe
 sim writes to ECS-managed EBS → snapshot → new task restores → data present
 (`packages/e2e`). `EcsComputeProvider` + full `WorkspaceService` lifecycle run on it.
 
-- ⬜ **AWS-gated:** `infra/images` golden base (code-server + Teleport/sshd + idle-agent,
+- ⬜ **AWS-gated:** `infra/images` golden base (code-server + sshd + idle-agent,
   Open VSX); real Fargate deploy; cold-start baseline; image vuln scan.
 - **Gate:** sim ✅; real EBS durability/latency + cold-start → `e2e-aws`.
 
@@ -45,8 +45,8 @@ identity-aware `*.devbox.<domain>` wildcard routing proven mock-free (`infra/pro
 (code issued immediately, no browser required); `X-Pomerium-Jwt-Assertion` present
 in proxied response; `_pomerium` session cookie set. (`packages/e2e/src/pomerium-authed.e2e.ts`)
 
-- ⬜ **Remaining:** real DNS/TLS/ACM (needs DNS #2); full Teleport GitHub OAuth browser
-  login (requires Playwright + DNS).
+- ⬜ **Remaining:** real DNS/TLS/ACM (needs DNS #2); full GitHub OAuth browser login
+  (requires Playwright + DNS).
 - **Gate:** CASL ✅; both group→role on the sim ✅; wildcard routing + gate ✅;
   authenticated proxy-pass with identity headers ✅; real DNS ⬜.
 
