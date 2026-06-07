@@ -31,6 +31,9 @@ routes:
 
   # Wildcard workspace routing, identity-gated: any `<name>.devbox.localhost`
   # routes to the workspace upstream but requires an authenticated identity.
+  # pass_identity_headers injects X-Pomerium-Jwt-Assertion into the proxied
+  # request so upstream services can verify the authenticated user's identity.
   - from: "https://*.devbox.localhost"
     to: "http://workspace-upstream:80"
     allow_any_authenticated_user: true
+    pass_identity_headers: true

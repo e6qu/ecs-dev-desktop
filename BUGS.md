@@ -6,6 +6,19 @@
 
 _None._
 
+## External blockers (upstream — `gravitational/teleport`)
+
+**gravitational/teleport#67533** `MarshalOSSGithubConnector` rejects any `endpoint_url` that
+is not empty or `https://github.com` with "GitHub endpoint URL is set: this feature requires
+Teleport Enterprise". This blocks OSS Teleport from federating against a self-hosted GitHub
+Enterprise Server (GHES) instance — including the bleephub-ssh sim we use as a stand-in in e2e
+tests. The restriction has been present since v14 (PR #32653, Oct 2023); PR #55405 (2025-06-09)
+relaxed it for `https://github.com` but custom endpoints are still blocked. **Blocks:** two `ssh-connect.e2e.ts` Phase 4 tests:
+
+- `accepts a Teleport GitHub connector pointing at bleephub-ssh`
+- `logs in to Teleport via GitHub OAuth` (cascades: connector not created → OAuth redirect
+  uses non-existent connector → user never provisioned)
+
 ## External blockers (upstream — `e6qu/sockerless`)
 
 **#501** bleephub admin token is hardcoded (`ghp_0000000000000000000000000000000000000000` in

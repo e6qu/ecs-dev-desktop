@@ -67,8 +67,12 @@ services:
     volumes:
       - ./services/ssh-gateway/teleport/auth.yaml:/etc/teleport/teleport.yaml:ro
     environment:
-      # Point Teleport's S3 session recording at the sim (endpoint-only, §6.8).
-      TELEPORT_S3_ENDPOINT: http://sockerless-aws-ssh:4566
+      # AWS credentials for the S3 session recording client. The sockerless sim
+      # accepts any non-empty credentials; real deployments use an IAM role.
+      # Without these, the AWS SDK cannot sign requests and recording uploads fail.
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
     ports:
       - "3080:3080"
       - "3025:3025"
