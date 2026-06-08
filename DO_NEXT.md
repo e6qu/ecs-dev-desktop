@@ -23,9 +23,9 @@ OpenSSH + our SSH CA.
 
 ## Available now (decision-free — immediate)
 
-- **Merge upstream sockerless PR #523, then PR #57** — open. Delivers: sockerless PR
-  #519 netns VPC fabric plus PR #523 host-egress/cleanup fixes, container-mode sim
-  netns-tier harness support, and overlapping-CIDR awsvpc e2e coverage. Branch:
+- **Merge PR #57** — open. Delivers: sockerless PR #519 netns VPC fabric plus PR #520
+  metadata/route-table egress fixes, container-mode sim netns-tier harness support,
+  and overlapping-CIDR awsvpc e2e coverage. Branch:
   `feat/sockerless-519-overlap-vpc-e2e`.
 - **Run/merge PR #56** — previous CI was 14/14 green; local focused #519 checks pass.
   Delivers: SSH cert API, wake-on-connect proxy
@@ -70,8 +70,8 @@ OpenSSH + our SSH CA.
 - **Container-mode AWS sim netns tier:** overlapping-CIDR awsvpc e2e requires the sim
   container to include `ip`/`nft`/`nsenter`/`sysctl` and run with `pid: host`, so the
   simulator can attach veths into sibling task network namespaces.
-- **sockerless #523 dependency:** netns ECS tasks needed host-side masquerade for
-  egress to simulator-adjacent endpoints such as DynamoDB Local, plus `host.docker.internal`
-  env rewriting because Docker/Podman reject ExtraHosts on containers sharing another
-  container's network namespace.
+- **sockerless #520 route-table egress:** netns ECS tasks need normal AWS egress state
+  (`0.0.0.0/0` via IGW + `AssignPublicIp=ENABLED`, or NAT) before they can reach
+  simulator-adjacent endpoints such as DynamoDB Local. This keeps tests endpoint-only
+  while matching the sim's route-table model.
 - **Pinned versions:** Pomerium `0.32.2`, `@playwright/test` ^1.60.

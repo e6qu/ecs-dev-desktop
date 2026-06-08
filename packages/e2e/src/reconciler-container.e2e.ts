@@ -19,9 +19,13 @@ import {
   GetLogEventsCommand,
 } from "@aws-sdk/client-cloudwatch-logs";
 import {
+  AttachInternetGatewayCommand,
+  CreateInternetGatewayCommand,
+  CreateRouteCommand,
   CreateSecurityGroupCommand,
   CreateSubnetCommand,
   CreateVpcCommand,
+  DescribeRouteTablesCommand,
   EC2Client,
 } from "@aws-sdk/client-ec2";
 import { awsSim, dynamodbLocal, DEFAULT_AWS_REGION } from "@edd/config";
@@ -86,6 +90,8 @@ describe(
       await ensureTable(dynamo, TABLE);
 
       // VPC + subnet + security group — sim enforces SG existence on RunTask.
+      // The container-mode sim also models route-table egress: tasks need an
+      // external route plus AssignPublicIp=ENABLED to reach host-side endpoints.
       const vpcOut = await ec2.send(new CreateVpcCommand({ CidrBlock: "10.99.0.0/16" }));
       const vpcId = req(vpcOut.Vpc?.VpcId, "VpcId");
       const subnetOut = await ec2.send(
@@ -100,14 +106,35 @@ describe(
         }),
       );
       sgId = req(sgOut.GroupId, "GroupId");
+      const igwOut = await ec2.send(new CreateInternetGatewayCommand({}));
+      const internetGatewayId = req(igwOut.InternetGateway?.InternetGatewayId, "InternetGatewayId");
+      await ec2.send(
+        new AttachInternetGatewayCommand({ InternetGatewayId: internetGatewayId, VpcId: vpcId }),
+      );
+      const routeTables = await ec2.send(
+        new DescribeRouteTablesCommand({ Filters: [{ Name: "vpc-id", Values: [vpcId] }] }),
+      );
+      const routeTableId = req(
+        routeTables.RouteTables?.find((rt) =>
+          rt.Associations?.some((association) => association.Main),
+        )?.RouteTableId,
+        "RouteTableId",
+      );
+      await ec2.send(
+        new CreateRouteCommand({
+          RouteTableId: routeTableId,
+          DestinationCidrBlock: "0.0.0.0/0",
+          GatewayId: internetGatewayId,
+        }),
+      );
 
       // ECS cluster.
       const clusterOut = await ecs.send(new CreateClusterCommand({ clusterName: CLUSTER }));
       clusterArn = req(clusterOut.cluster?.clusterArn, "clusterArn");
 
       // Reconciler task definition.
-      // Env wires the container to the sim via host.docker.internal — the
-      // container-mode sim adds `host.docker.internal:host-gateway` to every task.
+      // Env wires the container to simulator-adjacent endpoints. The sim rewrites
+      // host.docker.internal for netns tasks and enforces normal route-table egress.
       const tdOut = await ecs.send(
         new RegisterTaskDefinitionCommand({
           family: "edd-reconciler-e2e",
@@ -166,7 +193,7 @@ describe(
                 awsvpcConfiguration: {
                   Subnets: [subnetId],
                   SecurityGroups: [sgId],
-                  AssignPublicIp: "DISABLED",
+                  AssignPublicIp: "ENABLED",
                 },
               },
             },
