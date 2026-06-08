@@ -23,6 +23,9 @@ OpenSSH + our SSH CA.
 
 ## Available now (decision-free — immediate)
 
+- **Merge PR #57** — open. Delivers: sockerless PR #519 submodule pin,
+  container-mode sim netns-tier harness support, and overlapping-CIDR awsvpc e2e
+  coverage. Branch: `feat/sockerless-519-overlap-vpc-e2e`.
 - **Run/merge PR #56** — previous CI was 14/14 green; local focused #519 checks pass.
   Delivers: SSH cert API, wake-on-connect proxy
   infrastructure + full e2e (sockerless#518 VPC routing fixed; #519 netns VPC fabric merged),

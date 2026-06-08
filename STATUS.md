@@ -2,11 +2,15 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-08 (PR #56 open; sockerless #519 pinned; overlapping-CIDR e2e added/passing locally)
+**Last updated:** 2026-06-08 (PR #57 open; sockerless #519 pinned; overlapping-CIDR e2e added/passing locally)
 
 ## Current phase
 
-**PR #56** (`feat/phase-9-ssh-cert-proxy-cwlogs-journey`) is open against `main`, 14/14 green.
+**PR #57** (`feat/sockerless-519-overlap-vpc-e2e`) is open against `main`.
+Covers: sockerless PR #519 submodule pin, container-mode sim netns-tier harness support,
+and overlapping-CIDR awsvpc e2e coverage.
+
+**PR #56** (`feat/phase-9-ssh-cert-proxy-cwlogs-journey`) is also open against `main`, 14/14 green.
 Covers: SSH cert issuance API, wake-on-connect proxy infrastructure + `sshHost` domain field,
 workspace container CloudWatch log shipping, and full user-journey e2e.
 Proxy-to-ECS-container e2e is unblocked: sockerless#516 was fixed by PR #518, and PR #519
@@ -67,6 +71,7 @@ Nothing on AWS — no cloud infrastructure provisioned.
 
 ## Immediate focus
 
-1. **Run/merge PR #56** — previous CI was 14/14 green; local #519 follow-up focused checks pass.
-2. **AWS account/region decision** (`DO_NEXT` #1) — unlocks everything real.
-3. **No open sockerless blocker** — latest pin includes PR #519 (`cf7df7c`).
+1. **Merge PR #57** — adds the #519 overlapping-CIDR e2e and harness support.
+2. **Run/merge PR #56** — previous CI was 14/14 green; local #519 follow-up focused checks pass.
+3. **AWS account/region decision** (`DO_NEXT` #1) — unlocks everything real.
+4. **No open sockerless blocker** — latest pin includes PR #519 (`cf7df7c`).
