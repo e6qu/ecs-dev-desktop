@@ -14,8 +14,9 @@ a user maps to on a workspace node (`workspacePrincipal`).
 ## e2e (`docker-compose.ssh.yml`)
 
 A single `workspace-node` container runs `sshd`. Before bringing up the compose
-stack, run `scripts/gen-ssh-ca.sh` to generate an ephemeral CA into `temp/ssh-ca/`
-(gitignored); its public key is mounted into the container as `TrustedUserCAKeys`.
+stack, run `scripts/gen-ssh-ca.sh` to generate an ephemeral CA into
+`services/ssh-gateway/temp/ssh-ca/` by default (gitignored); its public key is
+mounted into the container as `TrustedUserCAKeys`.
 
 The e2e (`src/ssh-connect.e2e.ts`) signs a short-lived user certificate in `beforeAll`
 and connects with standard `ssh`, asserting:

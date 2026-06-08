@@ -16,8 +16,9 @@ services:
   sockerless-aws-exec:
     build:
       context: ./third_party/sockerless/simulators
-      dockerfile: aws/Dockerfile
+      dockerfile: ../../../infra/sim/sockerless-aws-exec.Dockerfile
     privileged: true
+    pid: host
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     ports:

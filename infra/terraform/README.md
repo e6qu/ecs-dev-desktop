@@ -18,8 +18,10 @@ versions.tf                provider baseline
 Start with [`modules/ecs-dev-desktop/README.md`](modules/ecs-dev-desktop/README.md)
 for inputs, outputs, architecture, prerequisites, and the deploy flow.
 
-CI (`.github/workflows/ci.yml` `terraform` job): `terraform fmt -check -recursive`,
-plus `init -backend=false` + `validate` of the module and the complete example;
-`check-deps` keeps the provider lock on the latest release. The full sim-backed
-apply test runs once `e6qu/sockerless#411` lands the three missing AWS operations
-(KMS rotation, application-autoscaling, EventBridge Scheduler).
+CI (`.github/workflows/ci.yml`): the `terraform` job runs
+`terraform fmt -check -recursive`, plus `init -backend=false` + `validate` of the
+module and the complete example. The `terraform-sim` job brings up the
+from-source sockerless AWS simulator, applies the full module, runs resource and
+functional assertions, verifies idempotency, and destroys the stack in the
+default, fck-nat, and DNS/TLS configurations. `check-deps` keeps the provider
+lock on the latest allowed release.

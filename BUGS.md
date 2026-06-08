@@ -4,15 +4,39 @@
 
 ## Open
 
-_(none)_
+_(none — the docs/live-simulator sweep found no new upstream bugs or repo bugs.)_
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-_(none — sockerless#516 resolved by PR #518, merged 2026-06-08)_
+_(none — sockerless#521/#522 resolved by PR #520, merged 2026-06-08; PR #523 closed as superseded)_
 
 ## Resolved (sockerless — fixed upstream; full detail in `WHAT_WE_DID.md`)
 
-**Most-recent batch** (submodule `7518722`, PR #518):
+**Most-recent batch** (submodule `85a62bc`, PR #520):
+
+- **sockerless#521 / PR #520** — Netns awsvpc ECS tasks from PR #519 could not
+  reach simulator-adjacent endpoints used by downstream container-mode e2e
+  (e.g. DynamoDB Local). Fix: netns metadata moved to link-local DNAT,
+  `host.docker.internal` env values are rewritten for pause-netns ECS tasks,
+  host egress masquerade is installed, and egress is governed by the simulated
+  route table. Downstream e2e now provisions an IGW/default route and
+  `AssignPublicIp=ENABLED`, matching that route-table model.
+- **sockerless#522 / PR #520** — Netns VPC cleanup could return 503 if the backing
+  route was already absent (`RTNETLINK answers: No such process`). Fix: subnet
+  route cleanup tolerates that already-clean state.
+
+**Previous batch** (submodule `cf7df7c`, PR #519):
+
+- **BUG-1572 / PR #519** — Follow-up to sockerless#516: the Docker-bridge VPC fabric from
+  PR #518 could not represent two AWS VPCs with overlapping CIDRs, and `DeleteVpc` leaked
+  backing networks. Fix: a Linux network-namespace-per-VPC fabric (`VPC = netns`,
+  `subnet = bridge`) for capable hosts, with ECS awsvpc tasks sharing a pause-container
+  network namespace and keeping the real ENI IP with no CIDR remap. The older Docker-network
+  tier remains for distinct CIDRs when netns capabilities are unavailable; overlap fails
+  loudly there. Added tier-agnostic VPC reachability/isolation tests, a netns-only
+  overlapping-CIDR test, and VPC fabric cleanup coverage.
+
+**Previous batch** (submodule `7518722`, PR #518):
 
 - **sockerless#516** — Container-mode ECS: `privateIPv4Address` was a virtual VPC-allocated IP
   that didn't route to the Docker container. Fix: each VPC is now a real Docker user-defined

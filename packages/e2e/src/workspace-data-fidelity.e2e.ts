@@ -4,7 +4,6 @@ import {
   DescribeTasksCommand,
   RegisterTaskDefinitionCommand,
   RunTaskCommand,
-  StopTaskCommand,
   type Task,
 } from "@aws-sdk/client-ecs";
 import { EcsComputeProvider } from "@edd/compute-ecs";
@@ -104,20 +103,17 @@ describe("workspace data fidelity (write → snapshot → restore → read) on t
   }
 
   it("a file written by a task survives snapshot → restore into a new task", async () => {
-    // 1. A task writes a marker file to its managed EBS volume, then idles.
-    await registerTask("edd-e2e-writer", [
-      "sh",
-      "-c",
-      `echo ${MARKER} > ${MOUNT}/m.txt; sync; sleep 120`,
-    ]);
+    // 1. A task writes a marker file to its retained managed EBS volume, syncs,
+    // then exits cleanly. Snapshotting after STOPPED avoids a timing race where
+    // the task has reached RUNNING but the write has not reached the mounted volume.
+    await registerTask("edd-e2e-writer", ["sh", "-c", `echo ${MARKER} > ${MOUNT}/m.txt; sync`]);
     const writer = await runTask("edd-e2e-writer");
-    const running = await waitFor(writer, "RUNNING");
-    const vol = managedVolumeId(running);
-    await sleep(3000); // let the container write
+    const written = await waitFor(writer, "STOPPED");
+    expect(written.containers?.[0]?.exitCode).toBe(0);
+    const vol = managedVolumeId(written);
 
-    // 2. Snapshot the volume via our real EBS adapter, then stop the task.
+    // 2. Snapshot the retained volume via our real EBS adapter.
     const snap = await storage.createSnapshot(volumeId(vol));
-    await ecs.send(new StopTaskCommand({ cluster: CLUSTER, task: writer }));
 
     // 3. A new task hydrates a fresh volume from that snapshot and asserts the
     //    marker is present (exit 0) — proving the data round-tripped.

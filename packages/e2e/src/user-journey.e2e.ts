@@ -28,8 +28,8 @@ import { dynamodbLocal } from "@edd/config";
  * The cert is signed via the same CA that gen-ssh-ca.sh generates before the
  * harness starts (same as ssh-connect.e2e.ts).
  *
- * Proxy-to-workspace-container forwarding (Task 2) is tested separately once
- * sockerless#516 (container-mode ENI IP routing) is fixed.
+ * Proxy-to-workspace-container forwarding is tested separately against the
+ * container-mode sim.
  */
 
 const TABLE = "ecs-dev-desktop-user-journey-e2e";

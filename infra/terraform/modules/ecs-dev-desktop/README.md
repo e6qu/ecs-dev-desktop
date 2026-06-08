@@ -116,14 +116,12 @@ docker push <control_plane_repository_url>:<tag>
 
 ## Testing against the simulator
 
-The module is meant to `terraform apply` identically against real AWS and the
-**sockerless** AWS simulator — point the provider's per-service `endpoints` at the
-sim (see [`tests/sim`](tests/sim)). Three sim operations are currently missing and
-block a full sim apply (filed upstream as
-[`e6qu/sockerless#411`](https://github.com/e6qu/sockerless/issues/411)): KMS
-`EnableKeyRotation`, Application Auto Scaling `RegisterScalableTarget`, and
-EventBridge Scheduler `CreateSchedule`. We do **not** branch the module around
-them (AGENTS.md §6.8); the sim apply-test is enabled once the sim implements them.
+The module `terraform apply`s identically against real AWS and the **sockerless**
+AWS simulator — point the provider's per-service `endpoints` at the sim (see
+[`tests/sim`](tests/sim)). The CI `terraform-sim` job applies, asserts,
+idempotency-checks, and destroys the module against the live sim for the default,
+fck-nat, and DNS/TLS configurations. We do **not** branch the module around the
+sim (AGENTS.md §6.8).
 
 ## Inputs
 

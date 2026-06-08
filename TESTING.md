@@ -10,23 +10,20 @@ in a **manual** suite on `main`.
 ## Substrate decision
 
 - **Primary integration substrate: [`sockerless`](https://github.com/e6qu/sockerless)**
-  (its `simulators/aws` + `bleephub` GitHub server), **built from source** from a
-  pinned `third_party/sockerless` submodule (no release awaited). It covers our
-  ECS/ECR/DynamoDB/IAM/Route53/ACM/KMS control-plane surface; run with
-  `SIM_RUNTIME=process` it serves the AWS API surface without a container runtime
-  (real container _execution_ needs a runtime + sockerless #333). We dogfood it.
+  (AWS simulator, Azure/Entra simulator, and `bleephub` GitHub server), **built
+  from source** from the pinned `third_party/sockerless` submodule (no release
+  awaited). AWS runs in two modes:
+  - `SIM_RUNTIME=process` for fast API-surface integration and Terraform apply.
+  - container mode for ECS/Fargate behavior that must execute real task
+    containers, including awsvpc networking and scheduler-fired tasks.
 - **When the simulator is missing/incorrect for something we need, we file (or
   comment on) an issue in `e6qu/sockerless`** and track it in `BUGS.md` under
-  _External blockers_. Known today:
-  - **Compute (EC2/ECS) execution** is metadata-only (sockerless #332/#333): no
-    real task/container execution, so a mounted volume's _file_ data round-trip
-    can't be proven at the sim level (it's the real-AWS tier's job). EBS volume
-    **lifecycle** + snapshots work (#347; restore fixed by #359); LB/SG enforced
-    (#334/#335); VPC/ENI real (#336).
-  - **No Azure Entra interactive `/authorize`** flow (sockerless #362); `bleephub`
-    covers GitHub. Token + JWKS exist (#261/#272).
+  _External blockers_. There are currently no open sockerless blockers for this
+  repo's active sim gates.
 - **LocalStack** is kept only as an optional cross-check where sockerless is
   immature; not a primary gate.
+- Live simulator coverage and candidate app surfaces are tracked in
+  [`docs/simulator-live-coverage.md`](./docs/simulator-live-coverage.md).
 
 ---
 
@@ -42,27 +39,30 @@ Pure logic + adapters-with-fakes. No network, no Docker.
 - `packages/auth` — claim/group → role mapping with synthetic IdP claims.
 - **Adapter contract tests** run the _same_ suite against the fake and the real
   adapter, keeping them honest. The `StorageProvider` fake (filesystem/loopback)
-  TDDs the **snapshot round-trip logic**, incl. data fidelity the EC2 adapter
-  can't cover without compute (sockerless #333).
+  TDDs snapshot round-trip logic; the container-mode e2e tier proves data fidelity
+  through a real task container where standard cloud APIs can observe it.
 
 Tooling: **Vitest**.
 
 ### 2. Integration — every PR, local + CI (sockerless substrate)
 
-| Concern                                      | Backed by                                               |
-| -------------------------------------------- | ------------------------------------------------------- |
-| ECS task lifecycle + **real container exec** | sockerless ECS backend + `simulators/aws`               |
-| DynamoDB single-table + GSIs                 | **DynamoDB Local** (or sockerless `dynamodb.go`)        |
-| ECR / IAM / Route53 / ACM / KMS (call-shape) | `simulators/aws`                                        |
-| GitHub OAuth / Apps                          | **bleephub**                                            |
-| Other OIDC (incl. Entra stand-in)            | **mock-oauth2-server** until a real Entra sim exists    |
-| SSH (OpenSSH)                                | **sshd-in-Docker** + ephemeral SSH CA; cert auth + RBAC |
-| Identity-aware proxy                         | **Pomerium-in-Docker** with the mock IdP                |
-| UI                                           | **Playwright** vs app with mocked API                   |
+| Concern                                      | Backed by                                                        |
+| -------------------------------------------- | ---------------------------------------------------------------- |
+| ECS task lifecycle + **real container exec** | sockerless AWS container mode                                    |
+| ECS awsvpc networking                        | sockerless AWS container mode, including overlapping VPC CIDRs   |
+| Reconciler schedule → container              | EventBridge Scheduler + ECS RunTask + CloudWatch Logs in the sim |
+| DynamoDB single-table + GSIs                 | DynamoDB Local in app/e2e; sockerless DynamoDB in Terraform sim  |
+| ECR / IAM / Route53 / ACM / KMS              | sockerless AWS process-mode Terraform apply + assertions         |
+| CloudTrail / CloudWatch Logs adapters        | sockerless AWS process mode                                      |
+| GitHub OAuth / Apps                          | `bleephub`                                                       |
+| Azure Entra Graph + OIDC                     | sockerless Azure/Entra simulator                                 |
+| SSH (OpenSSH)                                | `sshd` in Docker + ephemeral SSH CA; cert auth + RBAC            |
+| Identity-aware proxy                         | real Pomerium in Docker + sockerless Azure/Entra OIDC            |
+| UI                                           | Playwright vs built app with local/dev auth and local adapters   |
 
-Proves wiring/call-shapes and (where sockerless executes containers) real task
-behavior. Does **not** prove real EBS durability/latency, real network routing,
-real IAM enforcement, or real Entra federation — that's tier 3.
+Proves wiring/call-shapes and, in container mode, real task behavior. It does
+**not** prove real EBS latency, real Fargate capacity/cold-start, real IAM
+enforcement, or real IdP federation — that's tier 3.
 
 ### 3. `e2e-aws` — MANUAL, on `main` (real AWS/IdP)
 
@@ -83,8 +83,11 @@ Exclusively certifies what no simulator can:
 
 ## Infrastructure tests
 
-`terraform validate`, **`tflint`**, **`checkov`**, native **`terraform test`** in
-CI on `infra/terraform`. Real `apply` runs only in the manual `e2e-aws` job.
+CI runs `terraform fmt -check -recursive`, `init -backend=false`, and `validate`
+for the module and complete example. The `terraform-sim` job also applies,
+asserts, checks idempotency, and destroys the module against the live sockerless
+AWS simulator in the default, fck-nat, and DNS/TLS configurations. Real AWS
+`apply` remains in the manual `e2e-aws` tier.
 
 ## HTTPS e2e (TLS) — mock-free auth + SSH (`e2e-https` CI job)
 
@@ -113,13 +116,21 @@ EDD_SIM_SCHEME=https NODE_EXTRA_CA_CERTS="$PWD/temp/sim-tls/ca.pem" \
 pnpm --filter @edd/ssh-gateway exec vitest run --config vitest.e2e.config.ts src/ssh-connect.e2e.ts
 ```
 
-## Local quickstart (wired in Phase 0)
+## Local quickstart
 
 ```
-pnpm test                  # tier 1 (unit + contract) — no Docker
-# tier 2: start the harness first (DynamoDB Local + the from-source AWS sim), then test
+pnpm test                  # tier 1 (unit + contract) - no Docker
+
+# process-mode tier 2: DynamoDB Local + from-source AWS/Entra/bleephub sims
 docker compose -f docker-compose.tier2.yml up -d --build --wait
 pnpm test:integ
+
+# container-mode e2e: ECS task containers, awsvpc networking, scheduler -> RunTask
+docker build -f services/reconciler/Dockerfile -t edd-reconciler:e2e .
+docker compose -f docker-compose.e2e.yml up -d --build --wait
+RECONCILER_IMAGE=edd-reconciler:e2e \
+  pnpm --filter @edd/e2e exec vitest run --config vitest.e2e.config.ts
+
 pnpm --filter <pkg> test   # one component in isolation
 # tier 3 (e2e-aws): workflow_dispatch on main, or local only with explicit AWS creds
 ```

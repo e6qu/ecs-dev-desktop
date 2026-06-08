@@ -62,7 +62,7 @@ function required<T>(value: T | undefined, field: string): T {
  * §6.8). Implements the volume/snapshot **lifecycle** (create/snapshot/restore/
  * delete/enumerate); a volume's **file** contents cannot be read/written through
  * the EC2 API without attaching the volume to a running task, so `readFile`/
- * `writeFile` are deferred to the compute layer (sockerless #333 / real-AWS tier).
+ * `writeFile` are deferred to the compute layer.
  *
  * Created resources are tagged `edd:managed=true` (+ an optional `edd:scope`), and
  * enumeration filters to those tags both server-side (`tag:` Filters, honoured by
@@ -194,14 +194,14 @@ export class Ec2StorageProvider implements StorageProvider {
   readFile(): Promise<Buffer | null> {
     throw new Error(
       "Ec2StorageProvider cannot read volume files via the EC2 API; volume data I/O " +
-        "requires attaching to a running task (compute) — sockerless #333 / real-AWS tier.",
+        "requires attaching to a running task (compute).",
     );
   }
 
   writeFile(): Promise<void> {
     throw new Error(
       "Ec2StorageProvider cannot write volume files via the EC2 API; volume data I/O " +
-        "requires attaching to a running task (compute) — sockerless #333 / real-AWS tier.",
+        "requires attaching to a running task (compute).",
     );
   }
 }

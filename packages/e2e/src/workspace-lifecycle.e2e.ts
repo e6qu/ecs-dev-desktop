@@ -88,9 +88,8 @@ describe("workspace lifecycle through WorkspaceService on the sim (real ECS + EB
     const ws = await service.create({ ownerId: ownerId("e2e"), baseImage: baseImage(IMAGE) });
     expect(ws.state).toBe("running");
 
-    // sshHost is the ENI private IP read from DescribeTasks — routable within the
-    // VPC Docker bridge (sockerless#516 fixed by PR #518). Verify it is in the VPC
-    // subnet CIDR (10.0.1.0/24 from beforeAll).
+    // sshHost is the ENI private IP read from DescribeTasks. Verify it is in the
+    // VPC subnet CIDR (10.0.1.0/24 from beforeAll).
     const detail = await service.inspect(workspaceId(ws.id));
     expect(detail?.workspace.sshHost, "sshHost should be set to the task's ENI IP").toBeDefined();
     expect(detail?.workspace.sshHost).toMatch(/^10\.0\.1\.\d+$/);

@@ -26,18 +26,21 @@ terraform apply -auto-approve -var enable_dns=true
 ## CI
 
 The `terraform-sim` job (`.github/workflows/ci.yml`) brings the sim up and runs
-the **full non-mocked apply + destroy** of this fixture against the **live** sim
-every PR, in **both** configurations:
+the **full non-mocked apply + verification + idempotency + destroy** of this
+fixture against the **live** sim every PR, in three configurations:
 
-- **default** (DNS off) — the entire platform stack: `Apply complete! 55 added` →
-  `Destroy complete! 55 destroyed`.
-- **`enable_dns=true`** — adds the module's ACM cert + Route53 validation + HTTPS
-  listener (`dns.tf`): `Apply complete! 64 added` → `Destroy complete! 64 destroyed`.
+- **default** (DNS off) — the entire platform stack, resource assertions, IAM
+  simulation, CloudTrail provisioning-event checks, DynamoDB/CloudWatch/ECS
+  functional probes, idempotency, and destroy.
+- **`nat_mode=instance`** — the fck-nat path, including Launch Template, ENI,
+  IAM role, idempotency, and destroy.
+- **`enable_dns=true`** — the module's ACM cert + Route53 validation + HTTPS
+  listener (`dns.tf`), idempotency, and destroy.
 
 ## History
 
-Getting here took four upstream rounds — each fix let the apply reach the next
-real gap, all filed per §6.8 and fixed upstream:
+Getting here took repeated upstream rounds — each fix let the apply or
+idempotency check reach the next real gap, all filed per §6.8 and fixed upstream:
 
 | Round | Gap                                                                              | Fixed by                                            |
 | ----- | -------------------------------------------------------------------------------- | --------------------------------------------------- |

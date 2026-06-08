@@ -2,14 +2,25 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-08 (PR #56 open; 14/14 green; sockerless #518 (VPC routing); proxy e2e passing; ready to merge)
+**Last updated:** 2026-06-08 (PR #57 open; sockerless #520 pinned; e2e CI data-fidelity fix pushed)
 
 ## Current phase
 
-**PR #56** (`feat/phase-9-ssh-cert-proxy-cwlogs-journey`) is open against `main`, 14/14 green.
+**PR #57** (`feat/sockerless-519-overlap-vpc-e2e`) is open against `main`.
+Covers: sockerless PR #519/#520 submodule pins, container-mode sim netns-tier harness
+support, overlapping-CIDR awsvpc e2e coverage, and CI follow-up fixes for Trivy and
+container-mode e2e ordering/readiness. The PR also updated stale project docs and added
+`docs/simulator-live-coverage.md` to capture current AWS/Azure simulator coverage and
+next live-test candidates. The latest CI e2e failure in `workspace-data-fidelity.e2e.ts`
+was fixed by snapshotting the retained EBS volume only after the writer task exits cleanly.
+
+**PR #56** (`feat/phase-9-ssh-cert-proxy-cwlogs-journey`) is also open against `main`, 14/14 green.
 Covers: SSH cert issuance API, wake-on-connect proxy infrastructure + `sshHost` domain field,
 workspace container CloudWatch log shipping, and full user-journey e2e.
-Proxy-to-ECS-container e2e blocked on sockerless#516 (ENI IP routing in container-mode sim).
+Proxy-to-ECS-container e2e is unblocked: sockerless#516 was fixed by PR #518, and PR #519
+replaced the Docker-bridge-only VPC fabric with a netns-backed path for overlapping VPC CIDRs.
+Local focused verification added for the #519/#520 behavior and passed against the
+container-mode sim.
 
 ## What works (built, tested, merged to `main`)
 
@@ -29,8 +40,8 @@ Proxy-to-ECS-container e2e blocked on sockerless#516 (ENI IP routing in containe
 - **Deploy IaC** (`infra/terraform/modules/ecs-dev-desktop`): reusable parametric module
   (VPC + NAT [managed or fck-nat], KMS, DynamoDB+GSIs, ECR, ECS + Fargate + autoscaling,
   ALB + optional ACM/Route53, scheduler, IAM, logs). **`terraform-sim` CI job applies +
-  destroys the full stack every PR** in four configs (~175 assertions + idempotency,
-  fck-nat, DNS/TLS). Endpoint-only (§6.8). Real apply is AWS-gated.
+  destroys the full stack every PR** in the default, fck-nat, and DNS/TLS configs
+  (resource/functional assertions + idempotency). Endpoint-only (§6.8). Real apply is AWS-gated.
 - **Golden workspace image** (`infra/images/workspace/`): Node 20 + OpenVSCode Server
   v1.109.5, tini PID-1, idle-agent (heartbeats every 120s, HMAC machine-auth).
 - **Real adapter wiring** (`apps/web/lib/control-plane.ts`): `COMPUTE_PROVIDER=ecs`,
@@ -40,7 +51,8 @@ Proxy-to-ECS-container e2e blocked on sockerless#516 (ENI IP routing in containe
   connect-as-principal + authz-deny proven mock-free. PTY allocation tested (`-tt`).
 - **SSH cert API** (`POST /api/workspaces/:id/ssh-cert`): control plane signs user's
   public key with `ssh-keygen -s`; returns short-lived cert for `dev-<workspaceId>` principal.
-- **Wake-on-connect proxy**: `sshHost` (ENI private IP — routable since sockerless PR #518)
+- **Wake-on-connect proxy**: `sshHost` (ENI private IP — routable since sockerless PR #518;
+  overlapping-CIDR VPC fidelity improved by PR #519)
   stored on `Workspace`/DB; `GET /api/workspaces/:id/connect-info` returns `{host, port}`;
   `Dockerfile.proxy` + `wake-and-forward.sh` + `proxy-entrypoint.sh` ForceCommand gateway.
   Full chain e2e: client SSH → proxy container → stub CP → nc → workspace node.
@@ -52,8 +64,9 @@ Proxy-to-ECS-container e2e blocked on sockerless#516 (ENI IP routing in containe
   quotas, Logs/Audit); `@edd/cloudtrail-audit` + `@edd/cloudwatch-logs` endpoint-only
   adapters, integration-tested against the sim.
 - **Test tiers**: unit/contract · integration (DynamoDB Local + process sim) · e2e
-  (data-fidelity, lifecycle, auth, Pomerium, OpenSSH) · portal e2e (Playwright) ·
-  `e2e-https` (sims over TLS, real CA trust, no `--insecure`) · manual `e2e-aws`.
+  (data-fidelity, lifecycle, auth, Pomerium, OpenSSH, overlapping-CIDR awsvpc) · portal
+  e2e (Playwright) · `e2e-https` (sims over TLS, real CA trust, no `--insecure`) ·
+  manual `e2e-aws`.
 - **Engineering quality**: typed `Result<T, DomainError>` channel; compile-time
   exhaustiveness guards; typed `data-testid` registry; `waitForDynamo` harness
   determinism; `knip` + `jscpd` code-health gates; SAST + Trivy.
@@ -64,6 +77,9 @@ Nothing on AWS — no cloud infrastructure provisioned.
 
 ## Immediate focus
 
-1. **Merge PR #56** — 14/14 green.
-2. **AWS account/region decision** (`DO_NEXT` #1) — unlocks everything real.
-3. **Wait for sockerless#516** — blocks proxy-to-ECS-container e2e (ENI IP routing).
+1. **Merge PR #57** — now pins merged sockerless PR #520 (`85a62bc`), replacing the
+   temporary #523 branch pin, and includes the docs/live-simulator coverage refresh.
+2. **Run/merge PR #56** — previous CI was 14/14 green; local #519 follow-up focused checks pass.
+3. **AWS account/region decision** (`DO_NEXT` #1) — unlocks everything real.
+4. **No open sockerless blocker** — #521/#522 were resolved by merged PR #520; #523 was
+   closed as superseded.

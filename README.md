@@ -4,14 +4,20 @@ Self-hosted cloud dev-environment platform: per-user **VS Code** workspaces on
 **AWS ECS Fargate**, with SSH access, stateful + snapshottable storage, a login
 UI, and an admin control plane. Think self-hosted Coder / GitHub Codespaces.
 
-> **Status:** planning complete, Phase 0 (foundations) not yet started.
-> See [`STATUS.md`](./STATUS.md).
+> **Status:** active implementation. Core control-plane, auth, admin UI,
+> Terraform simulator apply, and container-mode workspace/reconciler e2e are
+> sim-proven; real AWS account/domain work remains gated. See
+> [`STATUS.md`](./STATUS.md).
 
 ## Documentation
 
 - [`AGENTS.md`](./AGENTS.md) — architecture decisions, component map, and the
   rules of engagement for contributors/agents. (`CLAUDE.md` is a symlink to it.)
 - [`PLAN.md`](./PLAN.md) — phased roadmap with per-phase deliverables + testing.
+- [`TESTING.md`](./TESTING.md) — unit, integration, e2e, HTTPS, Terraform, and
+  real-AWS test tiers.
+- [`docs/simulator-live-coverage.md`](./docs/simulator-live-coverage.md) — live
+  coverage and next test candidates against the sockerless AWS/Azure simulators.
 - **Continuity files** (kept in sync every task, past tense at PR close):
   [`STATUS.md`](./STATUS.md) ·
   [`WHAT_WE_DID.md`](./WHAT_WE_DID.md) ·
@@ -29,6 +35,7 @@ UI, and an admin control plane. Think self-hosted Coder / GitHub Codespaces.
 | SSH         | OpenSSH (`sshd`) + our SSH CA (certificate auth, RBAC via AuthorizedPrincipalsFile) |
 | Web + API   | Next.js, API-first (UI consumes the same API)                                       |
 | State store | DynamoDB single-table + ElectroDB                                                   |
+| Simulators  | sockerless AWS + Azure/Entra + bleephub, built from source                          |
 | IaC         | Terraform · Monorepo: Turborepo + pnpm                                              |
 
 ## Contributing
