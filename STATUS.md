@@ -2,7 +2,7 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-08 (PR #56 open; sockerless #518 (VPC routing) merged; proxy e2e added; CI pending)
+**Last updated:** 2026-06-08 (PR #56 open; 14/14 green; sockerless #518 (VPC routing); proxy e2e passing; ready to merge)
 
 ## Current phase
 

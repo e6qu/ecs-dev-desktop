@@ -24,7 +24,8 @@ OpenSSH + our SSH CA.
 ## Available now (decision-free — immediate)
 
 - **Merge PR #56** — 14/14 green. Delivers: SSH cert API, wake-on-connect proxy
-  infrastructure, workspace CloudWatch log shipping, full user-journey e2e.
+  infrastructure + full e2e (sockerless#518 VPC routing fixed), workspace CloudWatch
+  log shipping, user-journey e2e. Branch: `feat/phase-9-ssh-cert-proxy-cwlogs-journey`.
 
 ---
 
