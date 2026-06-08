@@ -11,31 +11,35 @@ import { workspacePrincipal } from "@edd/core";
  * SSH proxy e2e: client → gateway proxy container → workspace SSH node.
  *
  * Harness:
- *  - workspace SSH node (docker-compose.ssh.yml, localhost:2222)
- *  - SSH proxy container (edd-ssh-proxy:e2e, launched here via docker run, port 2223)
- *  - stub control plane HTTP server (in-process, port assigned by OS)
+ *  - workspace SSH node (docker-compose.ssh.yml, container name edd-workspace-node)
+ *  - SSH proxy container (edd-ssh-proxy:e2e, joined to the same Docker network, port 2223)
+ *  - stub control plane HTTP server (in-process, bound on 0.0.0.0)
+ *
+ * The proxy container joins the docker-compose.ssh.yml default network
+ * (ecs-dev-desktop_default) so it can reach edd-workspace-node:22 by container name.
+ * The stub runs on the host; the proxy container reaches it at host.docker.internal:<port>.
  *
  * Flow:
- *  1. Client SSHes to proxy (ProxyCommand pattern):
- *       outer ssh  →  inner ssh -p 2223 dev-e2e@localhost
- *                      → ForceCommand wake-and-forward.sh
- *                         → curl stub/connect, curl stub/connect-info
- *                         → exec nc host.docker.internal 2222
- *  2. Outer ssh authenticates to workspace sshd through the nc tunnel.
- *  3. Verifies `whoami` returns "dev-e2e".
- *
- * The stub returns `host.docker.internal:2222` as the workspace SSH endpoint.
- * `host.docker.internal` resolves to the Docker host from inside the proxy container,
- * giving the proxy nc access to the workspace node on the mapped port 2222.
+ *  1. Client SSHes to proxy using ProxyCommand (inner ssh → proxy → ForceCommand):
+ *       outer ssh -o ProxyCommand="ssh -p 2223 dev-e2e@localhost" dev-e2e@target
+ *       → proxy ForceCommand: wake-and-forward.sh
+ *          → curl stub/connect → 200
+ *          → curl stub/connect-info → {host:"edd-workspace-node", port:22}
+ *          → exec nc edd-workspace-node 22
+ *  2. Outer ssh authenticates to workspace sshd through the nc TCP tunnel.
+ *  3. `whoami` returns "dev-e2e".
  *
  * The proxy-to-workspace forwarding over real VPC ENI IPs is proven separately via the
- * workspace-lifecycle e2e (sshHost assertion) — that test proves the IP is set and in the
- * VPC CIDR; the sockerless #518 TestECSVPCNetworking proves intra-VPC TCP routability.
+ * workspace-lifecycle e2e (sshHost assertion + sockerless #518 TestECSVPCNetworking).
  */
 
 const PRINCIPAL = workspacePrincipal("e2e"); // "dev-e2e"
 const PROXY_PORT = "2223";
 const GATEWAY_TOKEN = "edd-test-token";
+// Docker Compose project default network (project name = directory name).
+const COMPOSE_NETWORK = "ecs-dev-desktop_default";
+// Workspace SSH node container name (from docker-compose.ssh.yml).
+const WORKSPACE_NODE = "edd-workspace-node";
 
 const TEMP = join(import.meta.dirname, "../../..", "services/ssh-gateway/temp/ssh-ca");
 const CA_PUB_KEY = join(TEMP, "ca.pub");
@@ -47,8 +51,17 @@ let proxyContainerId = "";
 let stubPort = 0;
 let stubServer: ReturnType<typeof createServer>;
 
-function run(cmd: string, args: string[]): { status: number; stdout: string; stderr: string } {
-  const res = spawnSync(cmd, args, { encoding: "utf8" });
+const SSH_TIMEOUT_MS = 30_000;
+
+function run(
+  cmd: string,
+  args: string[],
+  opts?: { timeout?: number },
+): { status: number; stdout: string; stderr: string } {
+  const res = spawnSync(cmd, args, {
+    encoding: "utf8",
+    timeout: opts?.timeout ?? SSH_TIMEOUT_MS,
+  });
   if (res.error) throw res.error;
   return { status: res.status ?? -1, stdout: res.stdout, stderr: res.stderr };
 }
@@ -119,16 +132,20 @@ describe(
       ]);
       if (signed.status !== 0) throw new Error(`cert sign failed: ${signed.stderr}`);
 
-      // Start the stub control plane.
-      // The proxy container accesses the host via host.docker.internal.
-      stubPort = await startStub("host.docker.internal", 2222);
+      // Start the stub control plane. Bound on 0.0.0.0 so the proxy container can
+      // reach it via host.docker.internal. The stub returns edd-workspace-node:22 as
+      // the SSH endpoint — accessible by container name on the shared Docker network.
+      stubPort = await startStub(WORKSPACE_NODE, 22);
 
-      // Launch the proxy container.
+      // Launch the proxy container, joined to the Compose network so it can reach
+      // edd-workspace-node by container name.
       const docker = run("docker", [
         "run",
         "-d",
         "-p",
         `${PROXY_PORT}:22`,
+        "--network",
+        COMPOSE_NETWORK,
         "--add-host",
         "host.docker.internal:host-gateway",
         "-v",
@@ -145,28 +162,22 @@ describe(
       // Wait for the proxy sshd to accept connections (up to 15 s).
       const deadline = Date.now() + 15_000;
       while (Date.now() < deadline) {
-        const probe = ssh(
-          "-p",
-          PROXY_PORT,
-          "-o",
-          "ConnectTimeout=1",
-          `${PRINCIPAL}@localhost`,
-          "exit 0 || true",
-        );
+        const probe = ssh("-p", PROXY_PORT, "-o", "ConnectTimeout=2", `${PRINCIPAL}@localhost`);
         if (probe.status === 0 || probe.stderr.includes("Permission denied")) break;
         await new Promise((r) => setTimeout(r, 500));
       }
     });
 
     afterAll(() => {
-      if (proxyContainerId) run("docker", ["rm", "-f", proxyContainerId]);
+      if (proxyContainerId) run("docker", ["rm", "-f", proxyContainerId], { timeout: 10_000 });
       stubServer.close();
     });
 
     it("SSHes through the gateway proxy to the workspace node and back", () => {
-      // Use ssh ProxyCommand: outer ssh connects via the proxy's ForceCommand nc tunnel.
-      // The proxy ForceCommand calls the stub control plane to get the workspace
-      // SSH endpoint (host.docker.internal:2222 = the workspace node).
+      // ProxyCommand connects to the proxy container. The proxy ForceCommand
+      // (wake-and-forward.sh) calls the stub CP, gets edd-workspace-node:22,
+      // and execs nc — providing a raw TCP tunnel to the workspace sshd.
+      // The outer ssh authenticates to the workspace sshd through this tunnel.
       const innerProxy = [
         "ssh",
         "-i",
@@ -183,8 +194,7 @@ describe(
       const res = ssh(
         "-o",
         `ProxyCommand=${innerProxy}`,
-        "-tt",
-        `${PRINCIPAL}@proxy-target`, // host is irrelevant — ProxyCommand provides the transport
+        `${PRINCIPAL}@${WORKSPACE_NODE}`, // outer destination — host is irrelevant (ProxyCommand provides transport)
         "whoami",
       );
       expect(res.status, `proxy SSH failed:\n${res.stdout}${res.stderr}`).toBe(0);
