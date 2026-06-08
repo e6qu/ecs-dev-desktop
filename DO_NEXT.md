@@ -32,6 +32,10 @@ OpenSSH + our SSH CA.
   infrastructure + full e2e (sockerless#518 VPC routing fixed; #519 netns VPC fabric merged),
   workspace CloudWatch
   log shipping, user-journey e2e. Branch: `feat/phase-9-ssh-cert-proxy-cwlogs-journey`.
+- **Expand live app tests after PR #57** — `docs/simulator-live-coverage.md` lists the
+  next decision-free candidates: admin routes with CloudTrail/CloudWatch adapters, portal
+  browser lifecycle against ECS container-mode sim, browser Pomerium login, full user
+  journey without fake compute, and Auth.js callback routes against sim IdPs.
 
 ---
 
@@ -74,4 +78,7 @@ OpenSSH + our SSH CA.
   (`0.0.0.0/0` via IGW + `AssignPublicIp=ENABLED`, or NAT) before they can reach
   simulator-adjacent endpoints such as DynamoDB Local. This keeps tests endpoint-only
   while matching the sim's route-table model.
+- **Live simulator coverage doc:** `docs/simulator-live-coverage.md` is the source of
+  truth for what parts of the app are already live-tested against sockerless AWS/Azure
+  and what can move there next without violating endpoint-only rules.
 - **Pinned versions:** Pomerium `0.32.2`, `@playwright/test` ^1.60.

@@ -2,14 +2,16 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-08 (PR #57 open; sockerless #520 pinned; CI fixes verified locally)
+**Last updated:** 2026-06-08 (PR #57 open; sockerless #520 pinned; docs/live-sim coverage updated)
 
 ## Current phase
 
 **PR #57** (`feat/sockerless-519-overlap-vpc-e2e`) is open against `main`.
 Covers: sockerless PR #519/#520 submodule pins, container-mode sim netns-tier harness
 support, overlapping-CIDR awsvpc e2e coverage, and CI follow-up fixes for Trivy and
-container-mode e2e ordering/readiness.
+container-mode e2e ordering/readiness. The PR also updated stale project docs and added
+`docs/simulator-live-coverage.md` to capture current AWS/Azure simulator coverage and
+next live-test candidates.
 
 **PR #56** (`feat/phase-9-ssh-cert-proxy-cwlogs-journey`) is also open against `main`, 14/14 green.
 Covers: SSH cert issuance API, wake-on-connect proxy infrastructure + `sshHost` domain field,
@@ -37,8 +39,8 @@ container-mode sim.
 - **Deploy IaC** (`infra/terraform/modules/ecs-dev-desktop`): reusable parametric module
   (VPC + NAT [managed or fck-nat], KMS, DynamoDB+GSIs, ECR, ECS + Fargate + autoscaling,
   ALB + optional ACM/Route53, scheduler, IAM, logs). **`terraform-sim` CI job applies +
-  destroys the full stack every PR** in four configs (~175 assertions + idempotency,
-  fck-nat, DNS/TLS). Endpoint-only (§6.8). Real apply is AWS-gated.
+  destroys the full stack every PR** in the default, fck-nat, and DNS/TLS configs
+  (resource/functional assertions + idempotency). Endpoint-only (§6.8). Real apply is AWS-gated.
 - **Golden workspace image** (`infra/images/workspace/`): Node 20 + OpenVSCode Server
   v1.109.5, tini PID-1, idle-agent (heartbeats every 120s, HMAC machine-auth).
 - **Real adapter wiring** (`apps/web/lib/control-plane.ts`): `COMPUTE_PROVIDER=ecs`,
@@ -61,8 +63,9 @@ container-mode sim.
   quotas, Logs/Audit); `@edd/cloudtrail-audit` + `@edd/cloudwatch-logs` endpoint-only
   adapters, integration-tested against the sim.
 - **Test tiers**: unit/contract · integration (DynamoDB Local + process sim) · e2e
-  (data-fidelity, lifecycle, auth, Pomerium, OpenSSH, overlapping-CIDR awsvpc) · portal e2e (Playwright) ·
-  `e2e-https` (sims over TLS, real CA trust, no `--insecure`) · manual `e2e-aws`.
+  (data-fidelity, lifecycle, auth, Pomerium, OpenSSH, overlapping-CIDR awsvpc) · portal
+  e2e (Playwright) · `e2e-https` (sims over TLS, real CA trust, no `--insecure`) ·
+  manual `e2e-aws`.
 - **Engineering quality**: typed `Result<T, DomainError>` channel; compile-time
   exhaustiveness guards; typed `data-testid` registry; `waitForDynamo` harness
   determinism; `knip` + `jscpd` code-health gates; SAST + Trivy.
@@ -74,7 +77,7 @@ Nothing on AWS — no cloud infrastructure provisioned.
 ## Immediate focus
 
 1. **Merge PR #57** — now pins merged sockerless PR #520 (`85a62bc`), replacing the
-   temporary #523 branch pin.
+   temporary #523 branch pin, and includes the docs/live-simulator coverage refresh.
 2. **Run/merge PR #56** — previous CI was 14/14 green; local #519 follow-up focused checks pass.
 3. **AWS account/region decision** (`DO_NEXT` #1) — unlocks everything real.
 4. **No open sockerless blocker** — #521/#522 were resolved by merged PR #520; #523 was

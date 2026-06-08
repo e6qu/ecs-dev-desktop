@@ -4,7 +4,7 @@
 
 ## Open
 
-_(none)_
+_(none — the docs/live-simulator sweep found no new upstream bugs or repo bugs.)_
 
 ## External blockers (upstream — `e6qu/sockerless`)
 

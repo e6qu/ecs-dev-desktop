@@ -2,16 +2,15 @@
 
 # Admin console + troubleshooting/health/logs — design
 
-> Status: **proposal** (2026-06-04). A full-fledged admin UI plus a
-> troubleshooting surface (component health, per-workspace diagnostics, logs/audit),
-> admin-only, that works **mock-free now** and lights up **real cloud data on AWS**
-> with no code change beyond endpoint/adapter config (`AGENTS.md` §6.8).
+> Status: **implemented through 8C** (2026-06-08). The admin UI and
+> troubleshooting surface (component health, per-workspace diagnostics, logs/audit)
+> are admin-only, work mock-free locally, and use CloudTrail/CloudWatch adapters
+> against the sockerless AWS simulator. Metrics/cost remain real-AWS gated.
 
 ## Principles
 
-- **Ports & adapters** (`AGENTS.md` §5). Observability is a set of ports with a
-  **fake/local adapter** (now) and an **AWS adapter** (later); the UI and API are
-  identical across both.
+- **Ports & adapters** (`AGENTS.md` §5). Observability is a set of ports with
+  local adapters and AWS adapters; the UI and API are identical across both.
 - **No custom audit/event store.** Per the product decision, events/audit/logs are
   **derived**: from the control plane's **current state** now, and from the cloud's
   native **CloudTrail** (audit of API mutations) + **CloudWatch Logs/Metrics**
@@ -19,7 +18,7 @@
   audit log in DynamoDB.
 - **Admin-only**, behind CASL (`manage`/admin) + the page principal check.
 - **Sim-testable now**: unit + integration + Playwright; CloudTrail/CloudWatch
-  validated at the `e2e-aws` tier.
+  adapters are integration-tested against the sockerless AWS simulator.
 
 ## Information architecture — a dedicated `/admin` shell
 
@@ -39,7 +38,7 @@ A separate admin section with a left **sidebar**, distinct from the user portal:
 
 ## Observability ports (new — `@edd/core` ports + fakes, real adapters per provider)
 
-| Port            | `query`/shape                              | Local adapter (now)                                                            | AWS adapter (later)                                    |
+| Port            | `query`/shape                              | Local adapter                                                                  | AWS adapter                                            |
 | --------------- | ------------------------------------------ | ------------------------------------------------------------------------------ | ------------------------------------------------------ |
 | `HealthChecker` | `check() → ComponentHealth[]`              | DynamoDB ping; compute/storage `health()`; reconciler freshness (derived)      | + ECS/EBS/SSH/Pomerium real checks                     |
 | `AuditSource`   | `query(filter) → AuditEvent[]`             | **derive** per-workspace timeline from records + in-process recent-action ring | **CloudTrail** `LookupEvents` (our roles/resources)    |
@@ -80,17 +79,20 @@ All gated by CASL `manage` (admin). Contracts in `@edd/api-contracts`; client in
 
 ## Phasing
 
-- **Phase A — Foundation + Health (now, mock-free):** the observability ports +
+- ✅ **Phase A — Foundation + Health:** the observability ports +
   local adapters; `GET /api/admin/health`; the `/admin` sidebar shell; the **Health
   board**; per-workspace **Inspect** (state + derived timeline + bindings +
   snapshots). Unit + integration + Playwright.
-- **Phase B — Audit/Logs + Overview + Workspaces + Quotas (now, mock-free):**
+- ✅ **Phase B — Audit/Logs + Overview + Workspaces + Quotas:**
   `AuditSource`/`LogSource` local adapters; the **Logs/Audit** screen; the admin
   **Overview** dashboard; the all-workspaces management table; **quotas** (config +
   create-time enforcement).
-- **Phase C — Real cloud data (AWS-gated):** CloudTrail audit adapter, CloudWatch
-  Logs adapter (container/app/reconciler), CloudWatch Metrics + Cost (dashboard),
-  real ECS/EBS/SSH/Pomerium health. Endpoint-only swap; validated at `e2e-aws`.
+- ✅ **Phase C — CloudTrail + CloudWatch Logs adapters:** CloudTrail audit adapter
+  and CloudWatch Logs adapter (container/app/reconciler), endpoint-only and
+  integration-tested against the sockerless AWS simulator.
+- ⬜ **Phase C remainder — Metrics/cost + deploy health:** CloudWatch Metrics +
+  Cost Explorer/CUR dashboard, plus real ECS/EBS/SSH/Pomerium health; validated at
+  `e2e-aws`.
 
 ## Notes / open points
 

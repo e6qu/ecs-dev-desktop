@@ -26,7 +26,7 @@ Stateful-workspace mechanism proven mock-free: real Fargate task on the containe
 sim writes to ECS-managed EBS → snapshot → new task restores → data present
 (`packages/e2e`). `EcsComputeProvider` + full `WorkspaceService` lifecycle run on it.
 
-- ⬜ **AWS-gated:** `infra/images` golden base (code-server + sshd + idle-agent,
+- ⬜ **AWS-gated:** `infra/images` golden base (OpenVSCode Server + sshd + idle-agent,
   Open VSX); real Fargate deploy; cold-start baseline; image vuln scan.
 - **Gate:** sim ✅; real EBS durability/latency + cold-start → `e2e-aws`.
 

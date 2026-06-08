@@ -8,7 +8,7 @@ import { Ec2StorageProvider } from "./index";
 describe("Ec2StorageProvider (unit)", () => {
   const sp = new Ec2StorageProvider({ client: new EC2Client({ region: "us-east-1" }) });
 
-  it("defers volume file I/O to the compute layer (sockerless #333)", () => {
+  it("defers volume file I/O to the compute layer", () => {
     expect(() => sp.readFile()).toThrow(/compute/);
     expect(() => sp.writeFile()).toThrow(/compute/);
   });
