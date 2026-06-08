@@ -9,6 +9,9 @@ import {
   listBaseImagesResponse,
   listWorkspacesResponse,
   logStreamResult,
+  sshCertRequest,
+  sshCertResponse,
+  sshConnectInfo,
   updateBaseImageRequest,
   workspace,
   workspaceInspection,
@@ -21,6 +24,9 @@ import {
   type ListWorkspacesResponse,
   type LogStreamDto,
   type LogStreamResultDto,
+  type SshCertRequest,
+  type SshCertResponse,
+  type SshConnectInfo,
   type UpdateBaseImageRequest,
   type WorkspaceDto,
   type WorkspaceInspectionDto,
@@ -121,6 +127,23 @@ export class ApiClient {
   async heartbeatWorkspace(id: string): Promise<WorkspaceDto> {
     const res = await this.send(`/api/workspaces/${id}/heartbeat`, { method: "POST" });
     return workspace.parse(await res.json());
+  }
+
+  /** Issue a short-lived SSH certificate signed by the workspace SSH CA. */
+  async sshCert(id: string, req: SshCertRequest): Promise<SshCertResponse> {
+    const body = sshCertRequest.parse(req);
+    const res = await this.send(`/api/workspaces/${id}/ssh-cert`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return sshCertResponse.parse(await res.json());
+  }
+
+  /** Get the SSH host:port of a running workspace's task ENI (wake first via connectWorkspace). */
+  async connectInfo(id: string): Promise<SshConnectInfo> {
+    const res = await this.send(`/api/workspaces/${id}/connect-info`);
+    return sshConnectInfo.parse(await res.json());
   }
 
   async deleteWorkspace(id: string): Promise<void> {

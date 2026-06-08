@@ -7,4 +7,5 @@ misconfigurations:
   - id: DS-0002
     paths:
       - services/ssh-gateway/Dockerfile.node
+      - services/ssh-gateway/Dockerfile.proxy
     statement: "sshd must run as root for PAM authentication and per-session privilege separation; the USER instruction is incompatible with standard sshd operation"

@@ -52,6 +52,8 @@ locals {
     AUDIT_PROVIDER = "cloudtrail"
     LOG_PROVIDER   = "cloudwatch"
     EDD_APP_NAME   = var.name
+    # CloudWatch log group for workspace container stdout/stderr (awslogs driver).
+    ECS_LOG_GROUP_WORKSPACES = aws_cloudwatch_log_group.workspaces.name
   }
   control_plane_environment = merge(local.base_environment, var.extra_environment)
 }

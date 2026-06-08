@@ -57,6 +57,8 @@ export const workspaceDetail = z.object({
   taskId: z.string().optional(),
   latestSnapshotId: z.string().optional(),
   latestSnapshotAt: z.iso.datetime().optional(),
+  /** Private IP of the running task's ENI; absent when stopped/scaled-to-zero. */
+  sshHost: z.string().optional(),
 });
 export type WorkspaceDetailDto = z.infer<typeof workspaceDetail>;
 
@@ -165,3 +167,28 @@ export const logStreamResult = z.object({
   lines: z.array(logLine),
 });
 export type LogStreamResultDto = z.infer<typeof logStreamResult>;
+
+// --- SSH: cert issuance + connect-info ---
+
+/** POST /api/workspaces/:id/ssh-cert — request body. */
+export const sshCertRequest = z.object({
+  /** User's SSH public key in OpenSSH authorized_keys format (e.g. "ssh-ed25519 AAAA... comment"). */
+  publicKey: z.string().min(1),
+});
+export type SshCertRequest = z.infer<typeof sshCertRequest>;
+
+/** POST /api/workspaces/:id/ssh-cert — response body. */
+export const sshCertResponse = z.object({
+  /** Signed OpenSSH certificate ready to write to ~/.ssh/id_*-cert.pub. */
+  cert: z.string(),
+});
+export type SshCertResponse = z.infer<typeof sshCertResponse>;
+
+/** GET /api/workspaces/:id/connect-info — response body. */
+export const sshConnectInfo = z.object({
+  /** Private IP of the workspace task's ENI (routable within the VPC). */
+  host: z.string(),
+  /** SSH port on the workspace container (always 22 in production). */
+  port: z.number().int().min(1).max(65535),
+});
+export type SshConnectInfo = z.infer<typeof sshConnectInfo>;

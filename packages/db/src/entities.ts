@@ -29,6 +29,8 @@ export function makeWorkspaceEntity(client: DynamoDBClient, table = TABLE) {
         latestSnapshotId: { type: "string", required: false },
         // When the latest snapshot was taken (drives scheduled-snapshot timing).
         latestSnapshotAt: { type: "string", required: false },
+        // Private IP of the running task's ENI; absent when stopped/scaled-to-zero.
+        sshHost: { type: "string", required: false },
       },
       indexes: {
         primary: {

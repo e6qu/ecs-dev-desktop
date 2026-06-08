@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SSH gateway proxy: authenticates users with certificate auth, then runs
+# wake-and-forward.sh (ForceCommand) to wake the workspace via the control plane
+# API and proxy the TCP session to the workspace container's sshd.
+#
+# Required at runtime (Docker / ECS env vars):
+#   EDD_CONTROL_PLANE_URL  — base URL of the control plane API
+#   EDD_GATEWAY_TOKEN      — bearer token (admin role) for control plane API calls
+#
+# The CA public key must be mounted at /etc/ssh/workspace-ca.pub.
+#
+# OS user note: each dev-* login username must exist as an OS user on this
+# container because sshd runs the ForceCommand as that user. In this image
+# we create dev-e2e for the test harness; a production image would provision
+# dev-* accounts via nss-extrausers/nss_wrapper or a PAM auto-create module.
+ARG GATEWAY_PRINCIPAL=dev-e2e
+
+FROM debian:trixie-slim
+ARG GATEWAY_PRINCIPAL
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends openssh-server curl netcat-openbsd \
+  && rm -rf /var/lib/apt/lists/* \
+  && useradd --create-home --shell /bin/bash "${GATEWAY_PRINCIPAL}" \
+  && usermod -p '*' "${GATEWAY_PRINCIPAL}" \
+  && ssh-keygen -A \
+  && mkdir -p /run/sshd
+COPY services/ssh-gateway/sshd_config.proxy /etc/ssh/sshd_config
+COPY services/ssh-gateway/wake-and-forward.sh /usr/local/bin/wake-and-forward.sh
+COPY services/ssh-gateway/proxy-entrypoint.sh /usr/local/bin/proxy-entrypoint.sh
+RUN chmod +x /usr/local/bin/wake-and-forward.sh /usr/local/bin/proxy-entrypoint.sh
+EXPOSE 22
+ENTRYPOINT ["/usr/local/bin/proxy-entrypoint.sh"]

@@ -10,10 +10,21 @@ import type { ComputeProvider, ComputeTask, RunTaskInput } from "./compute-provi
  * on wake) and `stopTask` releases it — mirroring how Fargate manages a task's
  * EBS volume.
  */
+export interface FakeComputeConfig {
+  /** Fixed SSH host returned in every ComputeTask (e.g. "localhost" in tests). */
+  sshHost?: string;
+}
+
 export class FakeComputeProvider implements ComputeProvider {
   private readonly volumes = new Map<TaskId, VolumeId>();
+  private readonly config: FakeComputeConfig;
 
-  constructor(private readonly storage: StorageProvider) {}
+  constructor(
+    private readonly storage: StorageProvider,
+    config: FakeComputeConfig = {},
+  ) {
+    this.config = config;
+  }
 
   async runTask(input: RunTaskInput): Promise<ComputeTask> {
     const volume = await this.storage.createVolume(
@@ -21,7 +32,7 @@ export class FakeComputeProvider implements ComputeProvider {
     );
     const id = newTaskId();
     this.volumes.set(id, volume.id);
-    return { id, volumeId: volume.id };
+    return { id, volumeId: volume.id, sshHost: this.config.sshHost };
   }
 
   async stopTask(taskId: TaskId): Promise<void> {

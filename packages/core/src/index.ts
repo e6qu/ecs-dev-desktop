@@ -105,6 +105,7 @@ export {
 
 // Compute port + fake.
 export type { ComputeProvider, ComputeTask, RunTaskInput } from "./compute/compute-provider";
+export type { FakeComputeConfig } from "./compute/fake-compute-provider";
 export { FakeComputeProvider } from "./compute/fake-compute-provider";
 
 // Clock.
@@ -136,3 +137,6 @@ export type {
   LogStreamResult,
 } from "./observability/logs";
 export { auditToLogLines } from "./observability/logs";
+
+// SSH: workspace principal derivation.
+export { workspacePrincipal } from "./domain/ssh";
