@@ -2,7 +2,7 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-08 (PR #56 `feat/phase-9-ssh-cert-proxy-cwlogs-journey` open; 14/14 green; ready to merge)
+**Last updated:** 2026-06-08 (PR #56 open; sockerless #518 (VPC routing) merged; proxy e2e added; CI pending)
 
 ## Current phase
 
@@ -40,10 +40,10 @@ Proxy-to-ECS-container e2e blocked on sockerless#516 (ENI IP routing in containe
   connect-as-principal + authz-deny proven mock-free. PTY allocation tested (`-tt`).
 - **SSH cert API** (`POST /api/workspaces/:id/ssh-cert`): control plane signs user's
   public key with `ssh-keygen -s`; returns short-lived cert for `dev-<workspaceId>` principal.
-- **Wake-on-connect proxy**: `sshHost` (ENI private IP) stored on `Workspace`/DB;
-  `GET /api/workspaces/:id/connect-info` returns `{host, port}` for proxy forwarding;
-  `services/ssh-gateway/Dockerfile.proxy` + `wake-and-forward.sh` ForceCommand script.
-  End-to-end forwarding blocked on sockerless#516.
+- **Wake-on-connect proxy**: `sshHost` (ENI private IP — routable since sockerless PR #518)
+  stored on `Workspace`/DB; `GET /api/workspaces/:id/connect-info` returns `{host, port}`;
+  `Dockerfile.proxy` + `wake-and-forward.sh` + `proxy-entrypoint.sh` ForceCommand gateway.
+  Full chain e2e: client SSH → proxy container → stub CP → nc → workspace node.
 - **Workspace CloudWatch log shipping**: `EcsComputeProvider` adds `awslogs` `logConfiguration`
   to every task definition; `ECS_LOG_GROUP_WORKSPACES` injected by Terraform.
 - **Pomerium routing** (`infra/proxy`): identity-aware wildcard routing + authenticated
