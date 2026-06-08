@@ -176,26 +176,40 @@ describe(
       expect(res.status, `nc from proxy to workspace failed:\n${res.stdout}${res.stderr}`).toBe(0);
     });
 
-    it("SSH through the proxy reaches the workspace node (full ForceCommand chain)", () => {
-      // Use ssh -J (ProxyJump) instead of ProxyCommand. ProxyJump creates a
-      // direct-tcpip channel on the proxy (does NOT trigger ForceCommand) and then
-      // the outer ssh connects through that tunnel. This is cleaner for testing
-      // TCP-layer routing through the proxy container.
-      //
-      // Note: this does NOT exercise wake-and-forward.sh (ForceCommand); it proves
-      // that the proxy container is on the right network and can forward TCP to the
-      // workspace node. The ForceCommand is exercised by the outer-SSH-ProxyCommand
-      // path which is harder to test because ForceCommand+nc blocks until EOF.
+    it("SSH through the proxy reaches the workspace node (TCP forwarding path)", () => {
+      // Use ProxyCommand with -W %h:%p on the inner ssh. -W creates a direct-tcpip
+      // channel on the proxy (ForceCommand does NOT apply to direct-tcpip), routing
+      // TCP to edd-workspace-node:22 without triggering wake-and-forward.sh.
+      // This proves the proxy is on the right network and can forward TCP to the
+      // workspace node. The -o options apply per-connection: inner ssh gets
+      // StrictHostKeyChecking=no via its own flags; outer ssh gets it via -o.
+      const innerCmd = [
+        "ssh",
+        "-i",
+        USER_KEY,
+        "-o",
+        "StrictHostKeyChecking=no",
+        "-o",
+        "UserKnownHostsFile=/dev/null",
+        "-o",
+        "ConnectTimeout=10",
+        "-p",
+        PROXY_PORT,
+        `${PRINCIPAL}@localhost`,
+        "-W",
+        `${WORKSPACE_NODE}:22`,
+      ].join(" ");
+
       const res = ssh(
         15_000,
-        "-J",
-        `${PRINCIPAL}@localhost:${PROXY_PORT}`,
-        "-p",
-        "22",
+        "-o",
+        `ProxyCommand=${innerCmd}`,
+        "-o",
+        "ConnectTimeout=10",
         `${PRINCIPAL}@${WORKSPACE_NODE}`,
         "whoami",
       );
-      expect(res.status, `proxy-jump SSH failed:\n${res.stdout}${res.stderr}`).toBe(0);
+      expect(res.status, `proxy SSH failed:\n${res.stdout}${res.stderr}`).toBe(0);
       expect(res.stdout.trim()).toBe(PRINCIPAL);
     });
   },
