@@ -2,14 +2,16 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-08 (PR #56 open; 14/14 green; sockerless #518 (VPC routing); proxy e2e passing; ready to merge)
+**Last updated:** 2026-06-08 (PR #56 open; sockerless #519 pinned; overlapping-CIDR e2e added/passing locally)
 
 ## Current phase
 
 **PR #56** (`feat/phase-9-ssh-cert-proxy-cwlogs-journey`) is open against `main`, 14/14 green.
 Covers: SSH cert issuance API, wake-on-connect proxy infrastructure + `sshHost` domain field,
 workspace container CloudWatch log shipping, and full user-journey e2e.
-Proxy-to-ECS-container e2e blocked on sockerless#516 (ENI IP routing in container-mode sim).
+Proxy-to-ECS-container e2e is unblocked: sockerless#516 was fixed by PR #518, and PR #519
+replaced the Docker-bridge-only VPC fabric with a netns-backed path for overlapping VPC CIDRs.
+Local focused verification added for the #519 behavior and passed against the container-mode sim.
 
 ## What works (built, tested, merged to `main`)
 
@@ -40,7 +42,8 @@ Proxy-to-ECS-container e2e blocked on sockerless#516 (ENI IP routing in containe
   connect-as-principal + authz-deny proven mock-free. PTY allocation tested (`-tt`).
 - **SSH cert API** (`POST /api/workspaces/:id/ssh-cert`): control plane signs user's
   public key with `ssh-keygen -s`; returns short-lived cert for `dev-<workspaceId>` principal.
-- **Wake-on-connect proxy**: `sshHost` (ENI private IP — routable since sockerless PR #518)
+- **Wake-on-connect proxy**: `sshHost` (ENI private IP — routable since sockerless PR #518;
+  overlapping-CIDR VPC fidelity improved by PR #519)
   stored on `Workspace`/DB; `GET /api/workspaces/:id/connect-info` returns `{host, port}`;
   `Dockerfile.proxy` + `wake-and-forward.sh` + `proxy-entrypoint.sh` ForceCommand gateway.
   Full chain e2e: client SSH → proxy container → stub CP → nc → workspace node.
@@ -52,7 +55,7 @@ Proxy-to-ECS-container e2e blocked on sockerless#516 (ENI IP routing in containe
   quotas, Logs/Audit); `@edd/cloudtrail-audit` + `@edd/cloudwatch-logs` endpoint-only
   adapters, integration-tested against the sim.
 - **Test tiers**: unit/contract · integration (DynamoDB Local + process sim) · e2e
-  (data-fidelity, lifecycle, auth, Pomerium, OpenSSH) · portal e2e (Playwright) ·
+  (data-fidelity, lifecycle, auth, Pomerium, OpenSSH, overlapping-CIDR awsvpc) · portal e2e (Playwright) ·
   `e2e-https` (sims over TLS, real CA trust, no `--insecure`) · manual `e2e-aws`.
 - **Engineering quality**: typed `Result<T, DomainError>` channel; compile-time
   exhaustiveness guards; typed `data-testid` registry; `waitForDynamo` harness
@@ -64,6 +67,6 @@ Nothing on AWS — no cloud infrastructure provisioned.
 
 ## Immediate focus
 
-1. **Merge PR #56** — 14/14 green.
+1. **Run/merge PR #56** — previous CI was 14/14 green; local #519 follow-up focused checks pass.
 2. **AWS account/region decision** (`DO_NEXT` #1) — unlocks everything real.
-3. **Wait for sockerless#516** — blocks proxy-to-ECS-container e2e (ENI IP routing).
+3. **No open sockerless blocker** — latest pin includes PR #519 (`cf7df7c`).

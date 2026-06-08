@@ -8,11 +8,22 @@ _(none)_
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-_(none — sockerless#516 resolved by PR #518, merged 2026-06-08)_
+_(none — sockerless#516 resolved by PR #518; follow-up overlapping-CIDR fabric resolved by PR #519, both merged 2026-06-08)_
 
 ## Resolved (sockerless — fixed upstream; full detail in `WHAT_WE_DID.md`)
 
-**Most-recent batch** (submodule `7518722`, PR #518):
+**Most-recent batch** (submodule `cf7df7c`, PR #519):
+
+- **BUG-1572 / PR #519** — Follow-up to sockerless#516: the Docker-bridge VPC fabric from
+  PR #518 could not represent two AWS VPCs with overlapping CIDRs, and `DeleteVpc` leaked
+  backing networks. Fix: a Linux network-namespace-per-VPC fabric (`VPC = netns`,
+  `subnet = bridge`) for capable hosts, with ECS awsvpc tasks sharing a pause-container
+  network namespace and keeping the real ENI IP with no CIDR remap. The older Docker-network
+  tier remains for distinct CIDRs when netns capabilities are unavailable; overlap fails
+  loudly there. Added tier-agnostic VPC reachability/isolation tests, a netns-only
+  overlapping-CIDR test, and VPC fabric cleanup coverage.
+
+**Previous batch** (submodule `7518722`, PR #518):
 
 - **sockerless#516** — Container-mode ECS: `privateIPv4Address` was a virtual VPC-allocated IP
   that didn't route to the Docker container. Fix: each VPC is now a real Docker user-defined

@@ -12,9 +12,8 @@ const SSH_PORT = 22;
 // GET /api/workspaces/:id/connect-info — returns the SSH host:port for a running
 // workspace's task ENI, so the gateway proxy can forward the TCP connection.
 // The workspace must be running or idle; call POST /connect to wake it first.
-// The host is the private IPv4 address of the Fargate task's ENI (routable within
-// the VPC). In the container-mode sim this field is present but non-routable until
-// sockerless#516 is fixed.
+// The host is the private IPv4 address of the Fargate task's ENI, routable within
+// the VPC.
 export async function GET(req: Request, { params }: Ctx) {
   const ctx = await loadOwnedWorkspace(req, params, "read");
   if (isResponse(ctx)) return ctx;

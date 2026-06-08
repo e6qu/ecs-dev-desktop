@@ -23,8 +23,10 @@ OpenSSH + our SSH CA.
 
 ## Available now (decision-free — immediate)
 
-- **Merge PR #56** — 14/14 green. Delivers: SSH cert API, wake-on-connect proxy
-  infrastructure + full e2e (sockerless#518 VPC routing fixed), workspace CloudWatch
+- **Run/merge PR #56** — previous CI was 14/14 green; local focused #519 checks pass.
+  Delivers: SSH cert API, wake-on-connect proxy
+  infrastructure + full e2e (sockerless#518 VPC routing fixed; #519 netns VPC fabric merged),
+  workspace CloudWatch
   log shipping, user-journey e2e. Branch: `feat/phase-9-ssh-cert-proxy-cwlogs-journey`.
 
 ---
@@ -61,4 +63,7 @@ OpenSSH + our SSH CA.
   `pkg/result/ignore.go` `IgnoreConfig` struct.
 - **CI registry rate limits:** harness bring-up steps retry/backoff (public.ecr.aws /
   Docker Hub on shared runner IPs).
+- **Container-mode AWS sim netns tier:** overlapping-CIDR awsvpc e2e requires the sim
+  container to include `ip`/`nft`/`nsenter`/`sysctl` and run with `pid: host`, so the
+  simulator can attach veths into sibling task network namespaces.
 - **Pinned versions:** Pomerium `0.32.2`, `@playwright/test` ^1.60.
