@@ -2,7 +2,7 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-08 (PR #57 open; sockerless #520 pinned; docs/live-sim coverage updated)
+**Last updated:** 2026-06-08 (PR #57 open; sockerless #520 pinned; e2e CI data-fidelity fix pushed)
 
 ## Current phase
 
@@ -11,7 +11,8 @@ Covers: sockerless PR #519/#520 submodule pins, container-mode sim netns-tier ha
 support, overlapping-CIDR awsvpc e2e coverage, and CI follow-up fixes for Trivy and
 container-mode e2e ordering/readiness. The PR also updated stale project docs and added
 `docs/simulator-live-coverage.md` to capture current AWS/Azure simulator coverage and
-next live-test candidates.
+next live-test candidates. The latest CI e2e failure in `workspace-data-fidelity.e2e.ts`
+was fixed by snapshotting the retained EBS volume only after the writer task exits cleanly.
 
 **PR #56** (`feat/phase-9-ssh-cert-proxy-cwlogs-journey`) is also open against `main`, 14/14 green.
 Covers: SSH cert issuance API, wake-on-connect proxy infrastructure + `sshHost` domain field,
