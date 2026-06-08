@@ -9,3 +9,7 @@ misconfigurations:
       - services/ssh-gateway/Dockerfile.node
       - services/ssh-gateway/Dockerfile.proxy
     statement: "sshd must run as root for PAM authentication and per-session privilege separation; the USER instruction is incompatible with standard sshd operation"
+  - id: DS-0002
+    paths:
+      - infra/sim/sockerless-aws-exec.Dockerfile
+    statement: "the container-mode AWS simulator must run as root for Linux network-namespace setup with iproute2/nftables/nsenter/sysctl"

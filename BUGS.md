@@ -8,7 +8,14 @@ _(none)_
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-_(none — sockerless#516 resolved by PR #518; follow-up overlapping-CIDR fabric resolved by PR #519, both merged 2026-06-08)_
+- **sockerless#521 / PR #523 open** — Netns awsvpc ECS tasks from PR #519 could not
+  resolve/reach `host.docker.internal` endpoints used by simulator-adjacent services
+  (e.g. DynamoDB Local). PR #523 adds host-side egress masquerade for realexec subnets
+  and rewrites `host.docker.internal` env values to the simulator container's default
+  gateway when task containers share a pause-container netns.
+- **sockerless#522 / PR #523 open** — Netns VPC cleanup could return 503 if the backing
+  route was already absent (`RTNETLINK answers: No such process`). PR #523 makes subnet
+  route cleanup tolerate that already-clean state.
 
 ## Resolved (sockerless — fixed upstream; full detail in `WHAT_WE_DID.md`)
 

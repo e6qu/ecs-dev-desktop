@@ -30,6 +30,7 @@ const OVERLAP_VPC_CIDR = "10.50.0.0/16";
 const OVERLAP_SUBNET_CIDR = "10.50.0.0/24";
 const OVERLAP_IP_PREFIX = "10.50.0.";
 const SERVER_SCRIPT = "mkdir -p /www && echo ok > /www/index.html && httpd -f -p 80 -h /www";
+const SAME_VPC_CLIENT_ATTEMPTS = 10;
 
 const SIM = {
   region: DEFAULT_AWS_REGION,
@@ -193,7 +194,7 @@ describe(
 
         const sameVpcClientDef = await registerTask(
           "overlap-client-same-vpc",
-          `wget -T 3 -q -O - http://${serverIp}/index.html | grep -q ok`,
+          `for i in $(seq 1 ${SAME_VPC_CLIENT_ATTEMPTS}); do wget -T 3 -q -O - http://${serverIp}/index.html | grep -q ok && exit 0; sleep 1; done; exit 1`,
         );
         const crossVpcClientDef = await registerTask(
           "overlap-client-cross-vpc",

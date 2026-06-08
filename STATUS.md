@@ -2,20 +2,22 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-08 (PR #57 open; sockerless #519 pinned; overlapping-CIDR e2e added/passing locally)
+**Last updated:** 2026-06-08 (PR #57 open; sockerless #523 dependency pinned; CI fixes verified locally)
 
 ## Current phase
 
 **PR #57** (`feat/sockerless-519-overlap-vpc-e2e`) is open against `main`.
-Covers: sockerless PR #519 submodule pin, container-mode sim netns-tier harness support,
-and overlapping-CIDR awsvpc e2e coverage.
+Covers: sockerless PR #519/#523 submodule pins, container-mode sim netns-tier harness
+support, overlapping-CIDR awsvpc e2e coverage, and CI follow-up fixes for Trivy and
+container-mode e2e ordering/readiness.
 
 **PR #56** (`feat/phase-9-ssh-cert-proxy-cwlogs-journey`) is also open against `main`, 14/14 green.
 Covers: SSH cert issuance API, wake-on-connect proxy infrastructure + `sshHost` domain field,
 workspace container CloudWatch log shipping, and full user-journey e2e.
 Proxy-to-ECS-container e2e is unblocked: sockerless#516 was fixed by PR #518, and PR #519
 replaced the Docker-bridge-only VPC fabric with a netns-backed path for overlapping VPC CIDRs.
-Local focused verification added for the #519 behavior and passed against the container-mode sim.
+Local focused verification added for the #519/#523 behavior and passed against the
+container-mode sim.
 
 ## What works (built, tested, merged to `main`)
 
@@ -71,7 +73,9 @@ Nothing on AWS — no cloud infrastructure provisioned.
 
 ## Immediate focus
 
-1. **Merge PR #57** — adds the #519 overlapping-CIDR e2e and harness support.
+1. **Merge upstream sockerless PR #523, then PR #57** — #57 currently pins the pushed
+   #523 commit (`94cd773`) so CI can verify before upstream merge.
 2. **Run/merge PR #56** — previous CI was 14/14 green; local #519 follow-up focused checks pass.
 3. **AWS account/region decision** (`DO_NEXT` #1) — unlocks everything real.
-4. **No open sockerless blocker** — latest pin includes PR #519 (`cf7df7c`).
+4. **Open sockerless follow-up:** #521/#522 are fixed by upstream PR #523; PR #57 pins
+   that commit while the upstream PR is open.
