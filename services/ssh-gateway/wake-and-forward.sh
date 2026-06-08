@@ -4,7 +4,7 @@
 #
 # Invoked by sshd when a user connects. The authenticated SSH login username
 # is "dev-<workspaceId>" (the workspace principal). This script:
-#   1. Extracts the workspace ID from $SSH_USER ("dev-abc123" → "abc123").
+#   1. Extracts the workspace ID from $USER ("dev-abc123" → "abc123").
 #   2. Calls POST /connect on the control plane to wake the workspace if stopped.
 #   3. Polls GET /workspaces/:id until state == "running".
 #   4. Calls GET /connect-info to get the workspace's ENI host:port.
@@ -29,12 +29,12 @@ fi
 
 : "${EDD_CONTROL_PLANE_URL:?EDD_CONTROL_PLANE_URL is required}"
 : "${EDD_GATEWAY_TOKEN:?EDD_GATEWAY_TOKEN is required}"
-: "${SSH_USER:?SSH_USER is set by sshd}"
+: "${USER:?USER (login username) is not set}"
 
 # "dev-abc123" → "abc123"
-WORKSPACE_ID="${SSH_USER#dev-}"
-if [ "$WORKSPACE_ID" = "$SSH_USER" ]; then
-  echo "error: SSH_USER '$SSH_USER' is not a dev-* principal" >&2
+WORKSPACE_ID="${USER#dev-}"
+if [ "$WORKSPACE_ID" = "$USER" ]; then
+  echo "error: USER '$USER' is not a dev-* principal" >&2
   exit 1
 fi
 
