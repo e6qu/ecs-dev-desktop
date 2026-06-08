@@ -159,11 +159,17 @@ describe(
       if (docker.status !== 0) throw new Error(`docker run failed: ${docker.stderr}`);
       proxyContainerId = docker.stdout.trim();
 
-      // Wait for the proxy sshd to accept connections (up to 15 s).
+      // Wait for the proxy sshd TCP port to be open (up to 15 s).
+      // Use nc -zw1 (TCP-only probe, no SSH handshake) so we don't trigger the
+      // ForceCommand (which would run nc → workspace sshd and block for 30 s).
       const deadline = Date.now() + 15_000;
       while (Date.now() < deadline) {
-        const probe = ssh("-p", PROXY_PORT, "-o", "ConnectTimeout=2", `${PRINCIPAL}@localhost`);
-        if (probe.status === 0 || probe.stderr.includes("Permission denied")) break;
+        try {
+          const probe = run("nc", ["-zw1", "localhost", PROXY_PORT], { timeout: 3_000 });
+          if (probe.status === 0) break;
+        } catch {
+          // nc not yet reachable — retry
+        }
         await new Promise((r) => setTimeout(r, 500));
       }
     });
