@@ -2,25 +2,26 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-08 (PR #57 open; sockerless #520 pinned; e2e CI data-fidelity fix pushed)
+**Last updated:** 2026-06-08 (PR #58 open: golden SSH/live-sim follow-up)
 
 ## Current phase
 
-**PR #57** (`feat/sockerless-519-overlap-vpc-e2e`) is open against `main`.
-Covers: sockerless PR #519/#520 submodule pins, container-mode sim netns-tier harness
-support, overlapping-CIDR awsvpc e2e coverage, and CI follow-up fixes for Trivy and
-container-mode e2e ordering/readiness. The PR also updated stale project docs and added
-`docs/simulator-live-coverage.md` to capture current AWS/Azure simulator coverage and
-next live-test candidates. The latest CI e2e failure in `workspace-data-fidelity.e2e.ts`
-was fixed by snapshotting the retained EBS volume only after the writer task exits cleanly.
+**PR #56** (`feat/phase-9-ssh-cert-proxy-cwlogs-journey`) and **PR #57**
+(`feat/sockerless-519-overlap-vpc-e2e`) are merged to `main`.
 
-**PR #56** (`feat/phase-9-ssh-cert-proxy-cwlogs-journey`) is also open against `main`, 14/14 green.
-Covers: SSH cert issuance API, wake-on-connect proxy infrastructure + `sshHost` domain field,
-workspace container CloudWatch log shipping, and full user-journey e2e.
-Proxy-to-ECS-container e2e is unblocked: sockerless#516 was fixed by PR #518, and PR #519
-replaced the Docker-bridge-only VPC fabric with a netns-backed path for overlapping VPC CIDRs.
-Local focused verification added for the #519/#520 behavior and passed against the
-container-mode sim.
+PR #56 delivered SSH cert issuance API, wake-on-connect proxy infrastructure,
+`sshHost` domain storage, workspace CloudWatch log shipping, and full user-journey e2e.
+
+PR #57 delivered sockerless PR #519/#520 submodule pins, container-mode sim netns-tier
+harness support, overlapping-CIDR awsvpc e2e coverage, route-table egress alignment,
+CI fixes, `docs/simulator-live-coverage.md`, and the data-fidelity snapshot-race fix.
+
+Current follow-up PR: **#58** (`feat/golden-ssh-live-sim-e2e`) — golden workspace
+SSH integration, live simulator app coverage, and sockerless #524 consumption are
+implemented in one PR.
+
+Upstream note: sockerless PR #524 is now pinned (`39a4291`) and covered by an ECS
+Exec smoke test in the container-mode AWS simulator.
 
 ## What works (built, tested, merged to `main`)
 
@@ -43,7 +44,9 @@ container-mode sim.
   destroys the full stack every PR** in the default, fck-nat, and DNS/TLS configs
   (resource/functional assertions + idempotency). Endpoint-only (§6.8). Real apply is AWS-gated.
 - **Golden workspace image** (`infra/images/workspace/`): Node 20 + OpenVSCode Server
-  v1.109.5, tini PID-1, idle-agent (heartbeats every 120s, HMAC machine-auth).
+  v1.109.5, tini PID-1, OpenSSH `sshd` with trusted CA/principal enforcement,
+  idle-agent (heartbeats every 120s, HMAC machine-auth), and multi-arch
+  OpenVSCode asset selection.
 - **Real adapter wiring** (`apps/web/lib/control-plane.ts`): `COMPUTE_PROVIDER=ecs`,
   `AUDIT_PROVIDER=cloudtrail`, `LOG_PROVIDER=cloudwatch`; fakes remain default.
 - **SSH gateway** (`services/ssh-gateway`): standard `sshd` + ephemeral CA
@@ -64,9 +67,10 @@ container-mode sim.
   quotas, Logs/Audit); `@edd/cloudtrail-audit` + `@edd/cloudwatch-logs` endpoint-only
   adapters, integration-tested against the sim.
 - **Test tiers**: unit/contract · integration (DynamoDB Local + process sim) · e2e
-  (data-fidelity, lifecycle, auth, Pomerium, OpenSSH, overlapping-CIDR awsvpc) · portal
-  e2e (Playwright) · `e2e-https` (sims over TLS, real CA trust, no `--insecure`) ·
-  manual `e2e-aws`.
+  (data-fidelity, lifecycle, auth, Pomerium, OpenSSH gateway, overlapping-CIDR
+  awsvpc, reconciler container, ECS Exec smoke) · live admin observability route
+  tests against sockerless AWS CloudTrail/CloudWatch · portal e2e (Playwright) ·
+  `e2e-https` (sims over TLS, real CA trust, no `--insecure`) · manual `e2e-aws`.
 - **Engineering quality**: typed `Result<T, DomainError>` channel; compile-time
   exhaustiveness guards; typed `data-testid` registry; `waitForDynamo` harness
   determinism; `knip` + `jscpd` code-health gates; SAST + Trivy.
@@ -77,9 +81,8 @@ Nothing on AWS — no cloud infrastructure provisioned.
 
 ## Immediate focus
 
-1. **Merge PR #57** — now pins merged sockerless PR #520 (`85a62bc`), replacing the
-   temporary #523 branch pin, and includes the docs/live-simulator coverage refresh.
-2. **Run/merge PR #56** — previous CI was 14/14 green; local #519 follow-up focused checks pass.
+1. **Review PR #58** — golden image SSH wiring, live simulator app coverage,
+   sockerless #524 pin/ECS Exec smoke, CI/test hardening, and docs sync.
+2. **Track sockerless blockers for full golden SSH e2e** — #526/#527 block full
+   WorkspaceService-managed-EBS/golden-image SSH through the AWS simulator.
 3. **AWS account/region decision** (`DO_NEXT` #1) — unlocks everything real.
-4. **No open sockerless blocker** — #521/#522 were resolved by merged PR #520; #523 was
-   closed as superseded.

@@ -24,10 +24,22 @@ and connects with standard `ssh`, asserting:
 - Session lands as the principal `workspacePrincipal` derives.
 - A login not listed in the node's `AuthorizedPrincipalsFile` is denied.
 
+The proxy e2e (`src/ssh-proxy.e2e.ts`) builds/runs `Dockerfile.proxy`, joins it to
+the same Docker network as the workspace node, and uses a stub control plane. It
+asserts:
+
+- the proxy container can reach the workspace node over Docker DNS;
+- `wake-and-forward.sh` calls `connect` and `connect-info`;
+- the outer SSH client can traverse proxy → workspace node and land as the
+  expected principal.
+
 Wiring:
 
 - ✅ workspace node + connect-as-principal + authz deny (certificate RBAC).
-- 🟡 Wake-on-connect: control-plane half done — `WorkspaceService.connect()` at
-  `POST /workspaces/:id/connect`. Gateway calls it before forwarding; golden image
-  auto-enrols the ssh agent on task start (AWS-tier).
+- ✅ Wake-on-connect proxy component path — `WorkspaceService.connect()` at
+  `POST /workspaces/:id/connect`; `GET /workspaces/:id/connect-info`; gateway calls
+  both before forwarding.
+- 🟡 Production workspace image integration — the golden image now runs `sshd`
+  and installs CA/principal wiring, but full simulator SSH e2e through the real
+  ECS workspace path is blocked by sockerless #526/#527.
 - ⬜ Session recording (deploy-tier; CloudTrail events for audit).

@@ -2,7 +2,12 @@
 import { baseImage } from "@edd/core";
 import { describe, expect, it } from "vitest";
 
-import { taskDefinitionFamily, taskPrivateIp } from "./ecs-compute-provider";
+import {
+  agentToken,
+  taskDefinitionFamily,
+  taskPrivateIp,
+  workspaceEnvironment,
+} from "./ecs-compute-provider";
 
 describe("taskDefinitionFamily", () => {
   it("derives a valid ECS family from a base-image reference", () => {
@@ -53,5 +58,28 @@ describe("taskPrivateIp", () => {
         ],
       }),
     ).toBeUndefined();
+  });
+});
+
+describe("workspaceEnvironment", () => {
+  it("injects workspace identity, heartbeat, and SSH CA variables", () => {
+    const secret = "unit-test-agent-secret-not-sensitive";
+    const env = workspaceEnvironment(
+      {
+        subnets: ["subnet-1"],
+        ebsRoleArn: "arn:aws:iam::123456789012:role/ecsInfrastructureRole",
+        controlPlaneUrl: "https://edd.example.test",
+        agentSecret: secret,
+        sshCaPublicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest edd-ca",
+      },
+      "ws-1",
+    );
+
+    expect(env).toEqual([
+      { name: "EDD_WORKSPACE_ID", value: "ws-1" },
+      { name: "EDD_CONTROL_PLANE_URL", value: "https://edd.example.test" },
+      { name: "EDD_AGENT_TOKEN", value: agentToken(secret, "ws-1") },
+      { name: "EDD_SSH_CA_PUBLIC_KEY", value: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest edd-ca" },
+    ]);
   });
 });

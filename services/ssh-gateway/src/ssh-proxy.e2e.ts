@@ -108,6 +108,29 @@ function startStub(workspaceHost: string, workspacePort: number): Promise<number
   });
 }
 
+function hostControlPlaneTarget(): { host: string; dockerArgs: string[] } {
+  const probe = run(
+    "docker",
+    [
+      "run",
+      "--rm",
+      "--add-host",
+      "host.docker.internal:host-gateway",
+      "--entrypoint",
+      "true",
+      PROXY_IMAGE,
+    ],
+    { timeout: 10_000 },
+  );
+  if (probe.status === 0) {
+    return {
+      host: "host.docker.internal",
+      dockerArgs: ["--add-host", "host.docker.internal:host-gateway"],
+    };
+  }
+  return { host: "host.containers.internal", dockerArgs: [] };
+}
+
 describe(
   "SSH proxy: gateway container → workspace node (stub control plane)",
   { timeout: 60_000 },
@@ -130,6 +153,7 @@ describe(
       if (signed.status !== 0) throw new Error(`cert sign failed: ${signed.stderr}`);
 
       stubPort = await startStub(WORKSPACE_NODE, 22);
+      const controlPlane = hostControlPlaneTarget();
 
       const docker = run("docker", [
         "run",
@@ -138,12 +162,11 @@ describe(
         `${PROXY_PORT}:22`,
         "--network",
         COMPOSE_NETWORK,
-        "--add-host",
-        "host.docker.internal:host-gateway",
+        ...controlPlane.dockerArgs,
         "-v",
         `${CA_PUB_KEY}:/etc/ssh/workspace-ca.pub:ro`,
         "-e",
-        `EDD_CONTROL_PLANE_URL=http://host.docker.internal:${stubPort}`,
+        `EDD_CONTROL_PLANE_URL=http://${controlPlane.host}:${stubPort}`,
         "-e",
         `EDD_GATEWAY_TOKEN=${GATEWAY_TOKEN}`,
         PROXY_IMAGE,

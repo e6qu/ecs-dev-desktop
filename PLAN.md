@@ -26,8 +26,9 @@ Stateful-workspace mechanism proven mock-free: real Fargate task on the containe
 sim writes to ECS-managed EBS → snapshot → new task restores → data present
 (`packages/e2e`). `EcsComputeProvider` + full `WorkspaceService` lifecycle run on it.
 
-- ⬜ **AWS-gated:** `infra/images` golden base (OpenVSCode Server + sshd + idle-agent,
-  Open VSX); real Fargate deploy; cold-start baseline; image vuln scan.
+- ⬜ **AWS-gated:** publish the `infra/images` golden base (OpenVSCode Server +
+  idle-agent, Open VSX, OpenSSH CA/principal wiring); real Fargate deploy;
+  cold-start baseline; image vuln scan.
 - **Gate:** sim ✅; real EBS durability/latency + cold-start → `e2e-aws`.
 
 ## Phase 2 — Control-plane API — ✅ done
@@ -55,12 +56,13 @@ in proxied response; `_pomerium` session cookie set. (`packages/e2e/src/pomerium
 ✅ Standard OpenSSH (`sshd`) workspace node + ephemeral SSH CA + certificate auth +
 `AuthorizedPrincipalsFile` RBAC — connect-as-principal + authz-deny mock-free in Docker
 (`services/ssh-gateway`). Control plane owns the CA; Auth.js handles user auth, portal
-issues short-lived SSH certificates. ✅ Wake-on-connect (control-plane half):
-`WorkspaceService.connect()` — idempotent, wakes scaled-to-zero from snapshot, proven
-on real ECS+EBS.
+issues short-lived SSH certificates. ✅ Wake-on-connect proxy component path:
+`WorkspaceService.connect()` is idempotent and wakes scaled-to-zero from snapshot;
+the gateway calls `connect` + `connect-info` before forwarding to a workspace node.
 
-- ⬜ **Remaining:** session recording (deploy-tier, CloudTrail for audit); the
-  wake-on-connect **trigger** (golden image SSH agent enrolment — AWS-tier).
+- ⬜ **Remaining:** restore full golden-image SSH e2e after sockerless #526/#527;
+  session recording (deploy-tier, CloudTrail for audit); full wake-on-connect through
+  a real ECS workspace task.
 - **Gate:** `ssh` connect-as-principal ✅; authz-deny ✅; connect-time wake ✅;
   session recording ⬜; e2e-aws SSH-wakes-stopped ⬜.
 

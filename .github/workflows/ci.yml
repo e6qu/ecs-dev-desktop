@@ -142,6 +142,16 @@ jobs:
             sleep "$((attempt * 20))"
           done
           exit 1
+      - name: Build golden workspace image for e2e
+        run: |
+          for attempt in 1 2 3; do
+            if docker build -t edd-workspace:e2e infra/images/workspace; then
+              exit 0
+            fi
+            echo "::warning::golden workspace image build failed (attempt ${attempt}); retrying"
+            sleep "$((attempt * 20))"
+          done
+          exit 1
       - run: pnpm test:e2e
         env:
           RECONCILER_IMAGE: edd-reconciler:e2e

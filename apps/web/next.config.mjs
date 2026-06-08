@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  // We lint via the repo-wide ESLint config (`pnpm lint`), not Next's bundled
-  // eslint-config-next, so skip ESLint during `next build`.
-  eslint: { ignoreDuringBuilds: true },
+  turbopack: { root: repoRoot },
   // Workspace packages ship TS source (no prebuilt dist) — Next transpiles them.
   transpilePackages: [
     "@edd/api-client",

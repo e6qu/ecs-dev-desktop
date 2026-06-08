@@ -4,11 +4,27 @@
 
 ## Open
 
-_(none — the docs/live-simulator sweep found no new upstream bugs or repo bugs.)_
+_(none in repo code currently known)_
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-_(none — sockerless#521/#522 resolved by PR #520, merged 2026-06-08; PR #523 closed as superseded)_
+- **sockerless#525** — Azure sim accepts duplicate Entra `userPrincipalName` values
+  and ROPC can resolve the stale user. Downstream e2e now uses unique UPN/group names
+  per run, but the sim still diverges from real Entra uniqueness.
+- **sockerless#526** — AWS ECS managed-EBS awsvpc task private IP was not reachable
+  from a same-VPC client task when launched through `WorkspaceService`/
+  `EcsComputeProvider`. This blocks the full production-shaped golden workspace SSH
+  e2e path through managed EBS.
+- **sockerless#527** — AWS ECS Fargate sandbox drops `SYS_CHROOT`, so OpenSSH preauth
+  fails `chroot("/run/sshd")` and resets a same-VPC SSH connection after the banner.
+  This blocks enabling the golden-image OpenSSH awsvpc e2e assertion in CI.
+
+## Resolved (repo)
+
+- **BUG-golden-image-sshd** — Fixed locally on the follow-up branch: the golden
+  workspace image now installs OpenSSH Server, writes the trusted workspace CA and
+  `dev-<workspaceId>` principal file at startup, validates required SSH/agent env,
+  starts `sshd`, and runs idle-agent/OpenVSCode as `workspace`.
 
 ## Resolved (sockerless — fixed upstream; full detail in `WHAT_WE_DID.md`)
 

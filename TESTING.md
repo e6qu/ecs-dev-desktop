@@ -18,8 +18,9 @@ in a **manual** suite on `main`.
     containers, including awsvpc networking and scheduler-fired tasks.
 - **When the simulator is missing/incorrect for something we need, we file (or
   comment on) an issue in `e6qu/sockerless`** and track it in `BUGS.md` under
-  _External blockers_. There are currently no open sockerless blockers for this
-  repo's active sim gates.
+  _External blockers_. Current open blockers (#526/#527) prevent enabling full
+  golden workspace SSH e2e through the AWS simulator; #525 is an Azure uniqueness
+  fidelity bug avoided downstream with unique test users.
 - **LocalStack** is kept only as an optional cross-check where sockerless is
   immature; not a primary gate.
 - Live simulator coverage and candidate app surfaces are tracked in
@@ -51,12 +52,14 @@ Tooling: **Vitest**.
 | ECS task lifecycle + **real container exec** | sockerless AWS container mode                                    |
 | ECS awsvpc networking                        | sockerless AWS container mode, including overlapping VPC CIDRs   |
 | Reconciler schedule → container              | EventBridge Scheduler + ECS RunTask + CloudWatch Logs in the sim |
+| ECS Exec smoke                               | sockerless AWS container mode (`ExecuteCommand`)                 |
 | DynamoDB single-table + GSIs                 | DynamoDB Local in app/e2e; sockerless DynamoDB in Terraform sim  |
 | ECR / IAM / Route53 / ACM / KMS              | sockerless AWS process-mode Terraform apply + assertions         |
 | CloudTrail / CloudWatch Logs adapters        | sockerless AWS process mode                                      |
 | GitHub OAuth / Apps                          | `bleephub`                                                       |
 | Azure Entra Graph + OIDC                     | sockerless Azure/Entra simulator                                 |
 | SSH (OpenSSH)                                | `sshd` in Docker + ephemeral SSH CA; cert auth + RBAC            |
+| SSH wake-on-connect proxy                    | OpenSSH proxy container + stub control plane + workspace node    |
 | Identity-aware proxy                         | real Pomerium in Docker + sockerless Azure/Entra OIDC            |
 | UI                                           | Playwright vs built app with local/dev auth and local adapters   |
 
@@ -127,9 +130,12 @@ pnpm test:integ
 
 # container-mode e2e: ECS task containers, awsvpc networking, scheduler -> RunTask
 docker build -f services/reconciler/Dockerfile -t edd-reconciler:e2e .
+docker build -t edd-workspace:e2e infra/images/workspace
+docker build -f services/ssh-gateway/Dockerfile.proxy -t edd-ssh-proxy:e2e .
 docker compose -f docker-compose.e2e.yml up -d --build --wait
-RECONCILER_IMAGE=edd-reconciler:e2e \
-  pnpm --filter @edd/e2e exec vitest run --config vitest.e2e.config.ts
+sh scripts/gen-ssh-ca.sh
+docker compose -f docker-compose.ssh.yml up -d --build --wait
+RECONCILER_IMAGE=edd-reconciler:e2e PROXY_IMAGE=edd-ssh-proxy:e2e pnpm test:e2e
 
 pnpm --filter <pkg> test   # one component in isolation
 # tier 3 (e2e-aws): workflow_dispatch on main, or local only with explicit AWS creds

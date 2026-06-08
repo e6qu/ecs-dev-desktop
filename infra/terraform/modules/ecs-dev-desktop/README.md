@@ -146,6 +146,7 @@ sim (AGENTS.md §6.8).
 | `control_plane_min_count` / `control_plane_max_count` | number       | `2` / `10`        | Autoscaling bounds.                                          |
 | `extra_environment`                                   | map(string)  | `{}`              | Extra plain env vars.                                        |
 | `secret_environment`                                  | map(string)  | `{}`              | Env var → Secrets Manager ARN.                               |
+| `ssh_ca_public_key`                                   | string       | `""`              | OpenSSH CA public key for golden workspace SSH.              |
 | `domain_name`                                         | string       | `""`              | Base domain (empty = HTTP-only dev).                         |
 | `route53_zone_id`                                     | string       | `""`              | Zone id (required with `domain_name`).                       |
 | `workspaces_subdomain`                                | string       | `devbox`          | `*.<this>.<domain>` routing.                                 |

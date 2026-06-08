@@ -55,7 +55,10 @@ locals {
     # CloudWatch log group for workspace container stdout/stderr (awslogs driver).
     ECS_LOG_GROUP_WORKSPACES = aws_cloudwatch_log_group.workspaces.name
   }
-  control_plane_environment = merge(local.base_environment, var.extra_environment)
+  ssh_environment = var.ssh_ca_public_key == "" ? {} : {
+    EDD_SSH_CA_PUBLIC_KEY = var.ssh_ca_public_key
+  }
+  control_plane_environment = merge(local.base_environment, local.ssh_environment, var.extra_environment)
 }
 
 resource "aws_ecs_task_definition" "control_plane" {

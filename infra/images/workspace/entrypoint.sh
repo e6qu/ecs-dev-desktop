@@ -1,7 +1,8 @@
 #!/bin/sh
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Container entrypoint: starts the idle-agent in the background then execs
-# OpenVSCode Server in the foreground. tini (PID 1) reaps the background child.
+# Container entrypoint: configures SSH certificate auth, starts sshd and the
+# idle-agent in the background, then execs OpenVSCode Server as the workspace
+# user. tini (PID 1) reaps the background children.
 
 set -eu
 
@@ -10,15 +11,36 @@ set -eu
 : "${EDD_WORKSPACE_ID:?EDD_WORKSPACE_ID is required}"
 : "${EDD_CONTROL_PLANE_URL:?EDD_CONTROL_PLANE_URL is required}"
 : "${EDD_AGENT_TOKEN:?EDD_AGENT_TOKEN is required}"
+: "${EDD_SSH_CA_PUBLIC_KEY:?EDD_SSH_CA_PUBLIC_KEY is required}"
+
+if ! printf '%s' "${EDD_WORKSPACE_ID}" | grep -Eq '^[a-z0-9][a-z0-9-]{0,38}$'; then
+  echo "invalid EDD_WORKSPACE_ID for SSH principal: ${EDD_WORKSPACE_ID}" >&2
+  exit 1
+fi
+
+workspace_principal="dev-${EDD_WORKSPACE_ID}"
+
+install -d -o root -g root -m 0755 /etc/ssh/principals /run/sshd
+install -d -o workspace -g workspace -m 0755 /home/workspace
+
+printf '%s\n' "${EDD_SSH_CA_PUBLIC_KEY}" >/etc/ssh/workspace-ca.pub
+chmod 0644 /etc/ssh/workspace-ca.pub
+
+printf '%s\n' "${workspace_principal}" >/etc/ssh/principals/workspace
+chmod 0644 /etc/ssh/principals/workspace
+
+ssh-keygen -A >/dev/null
+/usr/sbin/sshd -t -f /etc/ssh/sshd_config
+/usr/sbin/sshd -D -e &
 
 # Start idle-agent in the background.
-edd-idle-agent &
+gosu workspace edd-idle-agent &
 
 # CONNECTION_TOKEN comes from ECS secrets (Secrets Manager); default to a
 # random value if unset (acceptable in dev/CI where Pomerium isn't present).
 _token="${CONNECTION_TOKEN:-$(cat /proc/sys/kernel/random/uuid 2>/dev/null || od -An -N16 -tx1 /dev/urandom | tr -d ' \n')}"
 
-exec openvscode-server \
+exec gosu workspace openvscode-server \
   --host 0.0.0.0 \
   --port 3000 \
   --connection-token "${_token}" \

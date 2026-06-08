@@ -16,6 +16,7 @@ unset CDPATH
 
 OUTDIR="${1:-services/ssh-gateway/temp/ssh-ca}"
 mkdir -p "${OUTDIR}"
+rm -f "${OUTDIR}/ca" "${OUTDIR}/ca.pub"
 
 # Ed25519 host CA — small, fast, widely supported by modern OpenSSH.
 # -N ""   no passphrase (test use only)
