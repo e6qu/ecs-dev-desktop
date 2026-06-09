@@ -23,12 +23,9 @@ OpenSSH + our SSH CA.
 
 ## Available now (decision-free — immediate)
 
-- **Review the combined follow-up PR** — it contains the docs/live-simulator audit,
-  golden workspace SSH wiring, admin observability live route coverage, sockerless
-  #524 pin/ECS Exec smoke, and CI/test hardening.
-- **Unskip golden-image SSH awsvpc e2e after upstream fixes** — once sockerless #526
-  and #527 are resolved, restore the full WorkspaceService-managed-EBS golden SSH
-  path and remove the temporary skipped same-VPC OpenSSH assertion.
+- **Finish the sockerless #532 follow-up** — it carries the unmerged #529/#531
+  consumption after PR #58, pins sockerless #532, restores managed-EBS golden SSH
+  e2e, and keeps the ECS Exec smoke coverage.
 - **Expand live app tests further** — `docs/simulator-live-coverage.md` lists the next
   decision-free candidates: portal browser lifecycle against ECS container-mode sim,
   browser Pomerium login, full user journey without fake compute, and Auth.js callback
@@ -63,6 +60,8 @@ OpenSSH + our SSH CA.
 - **check-deps churn:** "latest ≥1-day-old" gate goes stale mid-PR — `pnpm update
 --latest -r` + commit; `terraform providers lock -platform=linux_amd64
 -platform=darwin_arm64` for the TF lock.
+- **jscpd 5.x:** PR #58 updated `jscpd` to `5.0.4`; the e2e AWS sim setup helper
+  keeps the stricter duplication gate below 1%.
 - **Trivy `.trivyignore.yaml` format:** key is `misconfigurations:` (not `misconfigs:`);
   ID is exact string match (e.g. `DS-0002` not `DS002`). Source: Trivy
   `pkg/result/ignore.go` `IgnoreConfig` struct.
@@ -75,15 +74,15 @@ OpenSSH + our SSH CA.
   (`0.0.0.0/0` via IGW + `AssignPublicIp=ENABLED`, or NAT) before they can reach
   simulator-adjacent endpoints such as DynamoDB Local. This keeps tests endpoint-only
   while matching the sim's route-table model.
-- **sockerless #525/#526/#527:** #525 remains an Azure uniqueness fidelity bug but is
-  avoided downstream with unique UPNs. #526/#527 block full golden workspace SSH e2e:
-  managed-EBS awsvpc reachability and Fargate `SYS_CHROOT` for OpenSSH preauth.
+- **sockerless #525/#526/#527/#530:** fixed upstream by PRs #529/#531 and included
+  in the #532 pin (`638f65a`) on the follow-up branch.
 - **Live simulator coverage doc:** `docs/simulator-live-coverage.md` is the source of
   truth for what parts of the app are already live-tested against sockerless AWS/Azure
   and what can move there next without violating endpoint-only rules.
-- **sockerless #524:** pinned at `39a4291`; ECS `ExecuteCommand` has a live smoke test
-  in `packages/e2e/src/golden-workspace-ssh.e2e.ts`.
-- **Golden image SSH:** `infra/images/workspace` includes `sshd`/CA/principal wiring,
-  but full simulator SSH remains blocked upstream (#526/#527); do not describe that
-  path as fully e2e-proven until those are fixed and the skipped test is restored.
+- **sockerless #524/#529/#531/#532:** the follow-up branch pins `638f65a`; ECS
+  `ExecuteCommand` and managed-EBS golden SSH have live coverage in
+  `packages/e2e/src/golden-workspace-ssh.e2e.ts`.
+- **Golden image SSH:** `infra/images/workspace` includes `sshd`/CA/principal wiring
+  and is covered through the AWS container-mode simulator with `EcsComputeProvider`
+  managed EBS. Real deploy remains AWS-account gated.
 - **Pinned versions:** Pomerium `0.32.2`, `@playwright/test` ^1.60.

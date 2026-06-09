@@ -39,7 +39,7 @@ Wiring:
 - ✅ Wake-on-connect proxy component path — `WorkspaceService.connect()` at
   `POST /workspaces/:id/connect`; `GET /workspaces/:id/connect-info`; gateway calls
   both before forwarding.
-- 🟡 Production workspace image integration — the golden image now runs `sshd`
-  and installs CA/principal wiring, but full simulator SSH e2e through the real
-  ECS workspace path is blocked by sockerless #526/#527.
+- ✅ Production workspace image integration — the golden image runs `sshd`,
+  installs CA/principal wiring, and is covered through the AWS container-mode
+  simulator via the managed-EBS `EcsComputeProvider` path.
 - ⬜ Session recording (deploy-tier; CloudTrail events for audit).

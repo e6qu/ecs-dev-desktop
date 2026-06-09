@@ -7,29 +7,19 @@ import {
   type Task,
 } from "@aws-sdk/client-ecs";
 import { EcsComputeProvider } from "@edd/compute-ecs";
-import { awsSim, DEFAULT_AWS_REGION } from "@edd/config";
 import { volumeId } from "@edd/core";
 import { Ec2StorageProvider } from "@edd/storage-ec2";
 import { beforeAll, describe, expect, it } from "vitest";
 
-// Point the AWS SDK at the CONTAINER-MODE sockerless sim (docker-compose.e2e.yml).
-process.env.AWS_ENDPOINT_URL ??= awsSim.endpoint;
-process.env.AWS_REGION ??= DEFAULT_AWS_REGION;
-process.env.AWS_ACCESS_KEY_ID ??= "test";
-process.env.AWS_SECRET_ACCESS_KEY ??= "test";
+import { configureAwsSimEnv, required, sleep } from "./aws-sim";
+
+configureAwsSimEnv();
 
 const CLUSTER = "edd-e2e";
 const MARKER = "PERSISTED-edd-e2e";
 const MOUNT = "/work";
 const EBS_ROLE_ARN = "arn:aws:iam::123456789012:role/ecsInfrastructureRole";
 const IMAGE = "alpine:3.20";
-
-function required<T>(value: T | undefined, field: string): T {
-  if (value === undefined) throw new Error(`missing ${field}`);
-  return value;
-}
-
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 describe("workspace data fidelity (write → snapshot → restore → read) on the sim", () => {
   const ecs = EcsComputeProvider.client();

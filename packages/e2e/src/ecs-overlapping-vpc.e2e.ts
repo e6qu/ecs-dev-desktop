@@ -15,14 +15,11 @@ import {
   StopTaskCommand,
   type Task,
 } from "@aws-sdk/client-ecs";
-import { awsSim, DEFAULT_AWS_REGION } from "@edd/config";
 import { describe, expect, it } from "vitest";
 
-// Point the AWS SDK at the CONTAINER-MODE sockerless sim (docker-compose.e2e.yml).
-process.env.AWS_ENDPOINT_URL ??= awsSim.endpoint;
-process.env.AWS_REGION ??= DEFAULT_AWS_REGION;
-process.env.AWS_ACCESS_KEY_ID ??= "test";
-process.env.AWS_SECRET_ACCESS_KEY ??= "test";
+import { awsSimClientConfig, configureAwsSimEnv, required, sleep } from "./aws-sim";
+
+configureAwsSimEnv();
 
 const CLUSTER = "edd-overlap-vpc-e2e";
 const IMAGE = "public.ecr.aws/docker/library/busybox:latest";
@@ -32,18 +29,7 @@ const OVERLAP_IP_PREFIX = "10.50.0.";
 const SERVER_SCRIPT = "mkdir -p /www && echo ok > /www/index.html && httpd -f -p 80 -h /www";
 const SAME_VPC_CLIENT_ATTEMPTS = 10;
 
-const SIM = {
-  region: DEFAULT_AWS_REGION,
-  endpoint: awsSim.endpoint,
-  credentials: { accessKeyId: "test", secretAccessKey: "test" },
-};
-
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-
-function required<T>(value: T | undefined, field: string): T {
-  if (value === undefined) throw new Error(`missing ${field}`);
-  return value;
-}
+const SIM = awsSimClientConfig();
 
 function taskPrivateIp(task: Task): string {
   for (const container of task.containers ?? []) {

@@ -4,7 +4,6 @@ import { CreateSubnetCommand, CreateVpcCommand, EC2Client } from "@aws-sdk/clien
 import { CreateClusterCommand, ECSClient } from "@aws-sdk/client-ecs";
 import { CloudTrailAuditSource } from "@edd/cloudtrail-audit";
 import { EcsComputeProvider } from "@edd/compute-ecs";
-import { awsSim, DEFAULT_AWS_REGION } from "@edd/config";
 import { WorkspaceService } from "@edd/control-plane";
 import { baseImage, ownerId, systemClock, unwrap, workspaceId } from "@edd/core";
 import {
@@ -17,11 +16,9 @@ import {
 import { Ec2StorageProvider } from "@edd/storage-ec2";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-// Point the SDKs at the CONTAINER-MODE sim (ECS/EC2) + DynamoDB Local.
-process.env.AWS_ENDPOINT_URL ??= awsSim.endpoint;
-process.env.AWS_REGION ??= DEFAULT_AWS_REGION;
-process.env.AWS_ACCESS_KEY_ID ??= "test";
-process.env.AWS_SECRET_ACCESS_KEY ??= "test";
+import { awsSimClientConfig, configureAwsSimEnv, required, sleep } from "./aws-sim";
+
+configureAwsSimEnv();
 process.env.DYNAMODB_ENDPOINT ??= dynamodbLocal.endpoint;
 
 const TABLE = "ecs-dev-desktop-e2e-lifecycle";
@@ -29,18 +26,7 @@ const CLUSTER = "edd-workspaces";
 const IMAGE = "nginx:alpine"; // long-running default CMD, so the task stays RUNNING
 const EBS_ROLE = "arn:aws:iam::123456789012:role/ecsInfrastructureRole";
 
-const SIM = {
-  region: DEFAULT_AWS_REGION,
-  endpoint: awsSim.endpoint,
-  credentials: { accessKeyId: "local", secretAccessKey: "local" },
-};
-
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
-
-function req<T>(value: T | undefined, field: string): T {
-  if (value === undefined) throw new Error(`missing ${field}`);
-  return value;
-}
+const SIM = awsSimClientConfig({ accessKeyId: "local", secretAccessKey: "local" });
 
 describe("workspace lifecycle through WorkspaceService on the sim (real ECS + EBS)", () => {
   let dynamo: ReturnType<typeof createDynamoClient>;
@@ -50,11 +36,11 @@ describe("workspace lifecycle through WorkspaceService on the sim (real ECS + EB
     const ec2 = new EC2Client(SIM);
     const ecs = new ECSClient(SIM);
 
-    const vpc = req(
+    const vpc = required(
       (await ec2.send(new CreateVpcCommand({ CidrBlock: "10.0.0.0/16" }))).Vpc,
       "Vpc",
     );
-    const subnet = req(
+    const subnet = required(
       (await ec2.send(new CreateSubnetCommand({ VpcId: vpc.VpcId, CidrBlock: "10.0.1.0/24" })))
         .Subnet,
       "Subnet",
@@ -72,7 +58,7 @@ describe("workspace lifecycle through WorkspaceService on the sim (real ECS + EB
         client: EcsComputeProvider.client(),
         config: {
           cluster: CLUSTER,
-          subnets: [req(subnet.SubnetId, "SubnetId")],
+          subnets: [required(subnet.SubnetId, "SubnetId")],
           ebsRoleArn: EBS_ROLE,
         },
       }),
