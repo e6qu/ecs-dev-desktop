@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { randomUUID } from "node:crypto";
+
 import { mapClaimsToRole } from "@edd/auth";
 import { entraSim } from "@edd/config";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -19,11 +21,12 @@ import { normalizeClaims } from "./claims";
  */
 const CLIENT_ID = "edd-e2e-client";
 const CLIENT_SECRET = "edd-e2e-secret";
-const USER_UPN = "alice@edd-e2e.example.com";
+const RUN_ID = randomUUID().slice(0, 8);
+const USER_UPN = `alice-${RUN_ID}@edd-e2e.example.com`;
 // ROPC password — real Entra validates it against the user's passwordProfile; the
 // sim looks the user up by userPrincipalName. Sent on both create and login.
 const USER_PASSWORD = "Edd-e2e-Passw0rd!";
-const ADMIN_GROUP_NAME = "EDD Platform Admins";
+const ADMIN_GROUP_NAME = `EDD Platform Admins ${RUN_ID}`;
 
 const TOKEN_URL = `${entraSim.authority}/oauth2/v2.0/token`;
 const FORM_HEADERS = {
@@ -79,7 +82,7 @@ describe("Entra login → group → role (mock-free, standard Graph + ROPC)", ()
     // 1. Provision a security group (Microsoft Graph — standard).
     const groupRes = await graph("/groups", {
       displayName: ADMIN_GROUP_NAME,
-      mailNickname: "edd-platform-admins",
+      mailNickname: `edd-platform-admins-${RUN_ID}`,
       securityEnabled: true,
       mailEnabled: false,
     });
@@ -91,7 +94,7 @@ describe("Entra login → group → role (mock-free, standard Graph + ROPC)", ()
       accountEnabled: true,
       displayName: "Alice Admin",
       userPrincipalName: USER_UPN,
-      mailNickname: "alice",
+      mailNickname: `alice-${RUN_ID}`,
       passwordProfile: { password: USER_PASSWORD, forceChangePasswordNextSignIn: false },
     });
     if (!userRes.ok) throw new Error(`create user failed: ${String(userRes.status)}`);

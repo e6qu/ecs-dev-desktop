@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { randomUUID } from "node:crypto";
+
 import { CloudTrailClient, LookupEventsCommand } from "@aws-sdk/client-cloudtrail";
 import {
   CreateScheduleCommand,
@@ -49,9 +51,10 @@ process.env.DYNAMODB_ENDPOINT ??= dynamodbLocal.endpoint;
 
 // The reconciler image must be pre-built: `docker build -f services/reconciler/Dockerfile -t edd-reconciler:e2e .`
 const RECONCILER_IMAGE = process.env.RECONCILER_IMAGE ?? "edd-reconciler:e2e";
-const CLUSTER = "edd-reconciler-e2e";
-const TABLE = "ecs-dev-desktop-reconciler-container-e2e";
-const LOG_GROUP = "/edd/reconciler-e2e";
+const RUN_ID = randomUUID().slice(0, 8);
+const CLUSTER = `edd-reconciler-e2e-${RUN_ID}`;
+const TABLE = `edd-reconciler-e2e-${RUN_ID}`;
+const LOG_GROUP = `/edd/reconciler-e2e/${RUN_ID}`;
 const FAKE_EBS_ROLE = "arn:aws:iam::000000000000:role/ecsInfrastructureRole";
 
 const SIM = {
@@ -100,7 +103,7 @@ describe(
       subnetId = req(subnetOut.Subnet?.SubnetId, "SubnetId");
       const sgOut = await ec2.send(
         new CreateSecurityGroupCommand({
-          GroupName: "reconciler-e2e-sg",
+          GroupName: `reconciler-e2e-sg-${RUN_ID}`,
           Description: "reconciler e2e security group",
           VpcId: vpcId,
         }),
@@ -137,7 +140,7 @@ describe(
       // host.docker.internal for netns tasks and enforces normal route-table egress.
       const tdOut = await ecs.send(
         new RegisterTaskDefinitionCommand({
-          family: "edd-reconciler-e2e",
+          family: `edd-reconciler-e2e-${RUN_ID}`,
           requiresCompatibilities: ["FARGATE"],
           networkMode: "awsvpc",
           cpu: "256",
@@ -176,7 +179,7 @@ describe(
       const fireAt = new Date(Date.now() + 3_000).toISOString().replace(/\.\d+Z$/, "");
       await scheduler.send(
         new CreateScheduleCommand({
-          Name: "reconciler-e2e-once",
+          Name: `reconciler-e2e-once-${RUN_ID}`,
           GroupName: "default",
           ScheduleExpression: `at(${fireAt})`,
           ScheduleExpressionTimezone: "UTC",

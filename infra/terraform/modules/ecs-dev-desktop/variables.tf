@@ -159,6 +159,12 @@ variable "secret_environment" {
   default     = {}
 }
 
+variable "ssh_ca_public_key" {
+  description = "OpenSSH CA public key injected into workspace tasks as EDD_SSH_CA_PUBLIC_KEY. Required for golden-image SSH."
+  type        = string
+  default     = ""
+}
+
 # ---- DNS / TLS (optional; gated on domain_name) ----
 
 variable "domain_name" {

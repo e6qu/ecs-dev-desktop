@@ -33,7 +33,9 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@aws-sdk/client-cloudwatch-logs": "^3.1063.0",
     "@aws-sdk/client-dynamodb": "^3.1063.0",
+    "@aws-sdk/client-ecs": "^3.1063.0",
     "@playwright/test": "^1.60.0",
     "@types/node": "^25.9.2",
     "@types/react": "^19.2.17"

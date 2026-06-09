@@ -6,9 +6,10 @@
 misconfigurations:
   - id: DS-0002
     paths:
+      - infra/images/workspace/Dockerfile
       - services/ssh-gateway/Dockerfile.node
       - services/ssh-gateway/Dockerfile.proxy
-    statement: "sshd must run as root for PAM authentication and per-session privilege separation; the USER instruction is incompatible with standard sshd operation"
+    statement: "sshd must start as root for OpenSSH privilege separation and host-key setup; the workspace image drops OpenVSCode and idle-agent to the non-root workspace user with gosu"
   - id: DS-0002
     paths:
       - infra/sim/sockerless-aws-exec.Dockerfile

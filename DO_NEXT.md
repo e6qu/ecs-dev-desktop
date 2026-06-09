@@ -23,19 +23,16 @@ OpenSSH + our SSH CA.
 
 ## Available now (decision-free — immediate)
 
-- **Merge PR #57** — open. Delivers: sockerless PR #519 netns VPC fabric plus PR #520
-  metadata/route-table egress fixes, container-mode sim netns-tier harness support,
-  and overlapping-CIDR awsvpc e2e coverage. Branch:
-  `feat/sockerless-519-overlap-vpc-e2e`.
-- **Run/merge PR #56** — previous CI was 14/14 green; local focused #519 checks pass.
-  Delivers: SSH cert API, wake-on-connect proxy
-  infrastructure + full e2e (sockerless#518 VPC routing fixed; #519 netns VPC fabric merged),
-  workspace CloudWatch
-  log shipping, user-journey e2e. Branch: `feat/phase-9-ssh-cert-proxy-cwlogs-journey`.
-- **Expand live app tests after PR #57** — `docs/simulator-live-coverage.md` lists the
-  next decision-free candidates: admin routes with CloudTrail/CloudWatch adapters, portal
-  browser lifecycle against ECS container-mode sim, browser Pomerium login, full user
-  journey without fake compute, and Auth.js callback routes against sim IdPs.
+- **Review the combined follow-up PR** — it contains the docs/live-simulator audit,
+  golden workspace SSH wiring, admin observability live route coverage, sockerless
+  #524 pin/ECS Exec smoke, and CI/test hardening.
+- **Unskip golden-image SSH awsvpc e2e after upstream fixes** — once sockerless #526
+  and #527 are resolved, restore the full WorkspaceService-managed-EBS golden SSH
+  path and remove the temporary skipped same-VPC OpenSSH assertion.
+- **Expand live app tests further** — `docs/simulator-live-coverage.md` lists the next
+  decision-free candidates: portal browser lifecycle against ECS container-mode sim,
+  browser Pomerium login, full user journey without fake compute, and Auth.js callback
+  route coverage against sim IdPs.
 
 ---
 
@@ -78,7 +75,15 @@ OpenSSH + our SSH CA.
   (`0.0.0.0/0` via IGW + `AssignPublicIp=ENABLED`, or NAT) before they can reach
   simulator-adjacent endpoints such as DynamoDB Local. This keeps tests endpoint-only
   while matching the sim's route-table model.
+- **sockerless #525/#526/#527:** #525 remains an Azure uniqueness fidelity bug but is
+  avoided downstream with unique UPNs. #526/#527 block full golden workspace SSH e2e:
+  managed-EBS awsvpc reachability and Fargate `SYS_CHROOT` for OpenSSH preauth.
 - **Live simulator coverage doc:** `docs/simulator-live-coverage.md` is the source of
   truth for what parts of the app are already live-tested against sockerless AWS/Azure
   and what can move there next without violating endpoint-only rules.
+- **sockerless #524:** pinned at `39a4291`; ECS `ExecuteCommand` has a live smoke test
+  in `packages/e2e/src/golden-workspace-ssh.e2e.ts`.
+- **Golden image SSH:** `infra/images/workspace` includes `sshd`/CA/principal wiring,
+  but full simulator SSH remains blocked upstream (#526/#527); do not describe that
+  path as fully e2e-proven until those are fixed and the skipped test is restored.
 - **Pinned versions:** Pomerium `0.32.2`, `@playwright/test` ^1.60.

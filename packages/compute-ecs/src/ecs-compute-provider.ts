@@ -27,6 +27,11 @@ import {
   type TaskId,
 } from "@edd/core";
 
+interface EnvironmentEntry {
+  name: string;
+  value: string;
+}
+
 /** Task-definition volume name; mounted at the configured path in the container. */
 const WORKSPACE_VOLUME = "workspace";
 /** Max attempts (×2s) to observe the managed EBS volume id on the new task. */
@@ -57,6 +62,8 @@ export interface EcsComputeConfig {
    * env var; the heartbeat route verifies the same HMAC server-side.
    */
   agentSecret?: string;
+  /** OpenSSH CA public key trusted by workspace sshd for user certificates. */
+  sshCaPublicKey?: string;
   /** CloudWatch Logs group for workspace container stdout/stderr (awslogs driver).
    * When set, every task definition includes logConfiguration pointing here.
    * Matches the log group created by the Terraform module (e.g. "/${appName}/workspaces"). */
@@ -91,6 +98,23 @@ export function verifyAgentToken(secret: string, wsId: string, candidate: string
   const expected = agentToken(secret, wsId);
   if (expected.length !== candidate.length) return false;
   return timingSafeEqual(Buffer.from(expected), Buffer.from(candidate));
+}
+
+export function workspaceEnvironment(
+  config: EcsComputeConfig,
+  workspaceId: string,
+): EnvironmentEntry[] {
+  const env: EnvironmentEntry[] = [{ name: "EDD_WORKSPACE_ID", value: workspaceId }];
+  if (config.controlPlaneUrl !== undefined)
+    env.push({ name: "EDD_CONTROL_PLANE_URL", value: config.controlPlaneUrl });
+  if (config.agentSecret !== undefined)
+    env.push({
+      name: "EDD_AGENT_TOKEN",
+      value: agentToken(config.agentSecret, workspaceId),
+    });
+  if (config.sshCaPublicKey !== undefined)
+    env.push({ name: "EDD_SSH_CA_PUBLIC_KEY", value: config.sshCaPublicKey });
+  return env;
 }
 
 /** The managed EBS volume id ECS attached to the task, if present yet. */
@@ -183,17 +207,7 @@ export class EcsComputeProvider implements ComputeProvider {
   async runTask(input: RunTaskInput): Promise<ComputeTask> {
     const taskDef = await this.ensureTaskDef(input.baseImage);
 
-    // Build workspace-identity env vars injected into every task at launch.
-    const workspaceEnv: { name: string; value: string }[] = [
-      { name: "EDD_WORKSPACE_ID", value: input.workspaceId },
-    ];
-    if (this.config.controlPlaneUrl !== undefined)
-      workspaceEnv.push({ name: "EDD_CONTROL_PLANE_URL", value: this.config.controlPlaneUrl });
-    if (this.config.agentSecret !== undefined)
-      workspaceEnv.push({
-        name: "EDD_AGENT_TOKEN",
-        value: agentToken(this.config.agentSecret, input.workspaceId),
-      });
+    const workspaceEnv = workspaceEnvironment(this.config, input.workspaceId);
 
     const out = await this.client.send(
       new RunTaskCommand({
@@ -272,7 +286,7 @@ export class EcsComputeProvider implements ComputeProvider {
    * Build a provider from the ambient AWS env and control-plane env vars.
    * Reads: AWS_REGION, AWS_ENDPOINT_URL, ECS_CLUSTER, ECS_SUBNETS (comma-separated),
    * ECS_SECURITY_GROUPS (comma-separated), ECS_EBS_ROLE_ARN, CONTROL_PLANE_URL,
-   * EDD_AGENT_SECRET. Throws loudly if required vars are absent.
+   * EDD_AGENT_SECRET, EDD_SSH_CA_PUBLIC_KEY. Throws loudly if required vars are absent.
    */
   static fromEnv(agentSecret?: string): EcsComputeProvider {
     const subnets = process.env.ECS_SUBNETS?.split(",").filter(Boolean) ?? [];
@@ -289,6 +303,7 @@ export class EcsComputeProvider implements ComputeProvider {
         ebsRoleArn,
         controlPlaneUrl: process.env.CONTROL_PLANE_URL,
         agentSecret,
+        sshCaPublicKey: process.env.EDD_SSH_CA_PUBLIC_KEY,
         logGroupName: process.env.ECS_LOG_GROUP_WORKSPACES,
       },
     });

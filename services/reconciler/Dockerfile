@@ -31,7 +31,7 @@ COPY packages/storage-ec2/package.json                 packages/storage-ec2/
 COPY services/reconciler/package.json                  services/reconciler/
 COPY services/ssh-gateway/package.json                 services/ssh-gateway/
 
-RUN pnpm install --frozen-lockfile
+RUN pnpm install --frozen-lockfile --filter @edd/reconciler...
 
 # Copy sources for the reconciler and its workspace dependencies.
 COPY tsconfig.base.json ./
@@ -46,15 +46,16 @@ COPY packages/storage-ec2/src      packages/storage-ec2/src
 COPY services/reconciler/src       services/reconciler/src
 COPY services/reconciler/tsconfig.json services/reconciler/
 
-# Type-check then bundle: esbuild follows all workspace imports and inlines
-# them into a single ESM file; npm packages stay in node_modules.
+# Type-check then bundle: esbuild follows workspace and npm imports and inlines
+# them into a single ESM file.
 RUN pnpm --filter @edd/reconciler build
 
 # ---- Stage 2: minimal runtime image ----------------------------------------
 FROM node:22-alpine
 WORKDIR /app
 
-# Only the npm packages (the workspace source is bundled into dist/run.js).
+# Keep node_modules available for Node's module metadata lookup and future
+# runtime-only dependencies; application code is bundled into dist/run.js.
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/services/reconciler/dist/run.js ./services/reconciler/dist/run.js
 
