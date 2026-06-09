@@ -410,3 +410,43 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
 - **2026-06-08** — **Golden workspace SSH + live simulator follow-up prepared.** The follow-up branch pinned sockerless to PR #524 merge commit `39a4291` and added a live ECS Exec smoke test. The golden workspace image now installs OpenSSH Server, supports multi-arch OpenVSCode assets, writes the injected SSH CA and `dev-<workspaceId>` principal at startup, starts `sshd`, and runs idle-agent/OpenVSCode as `workspace`; `EcsComputeProvider` injects `EDD_SSH_CA_PUBLIC_KEY` and tests the task environment. Added live admin observability route coverage against sockerless CloudTrail/CloudWatch, made Entra e2e users/groups unique per run, made reconciler e2e resources unique per run, fixed the SSH CA generator overwrite prompt, fixed Podman-compatible host alias probing in SSH proxy e2e, built the workspace image in CI before e2e, scoped the reconciler Docker install, quieted esbuild output to real warnings, and fixed Turbo build outputs for type-check-only packages. Filed upstream **sockerless#525** (duplicate Entra UPN), **#526** (managed-EBS awsvpc task private IP unreachable from same-VPC task), and **#527** (Fargate sandbox lacks `SYS_CHROOT`, breaking OpenSSH preauth). Full e2e passed with 20 running tests and one skipped golden-image OpenSSH awsvpc assertion pending #527.
 
 - **2026-06-08** — **PR #58 opened for the combined golden SSH/live-simulator follow-up.** Opened one PR only: <https://github.com/e6qu/ecs-dev-desktop/pull/58>.
+
+- **2026-06-09** — **sockerless PR #529 consumed in PR #58.** Upstream merged
+  `e6qu/sockerless#529` at merge commit `39d15b5`, fixing all three downstream
+  blockers: #525 (duplicate Entra UPN + deterministic ROPC resolver), #526
+  (managed-EBS awsvpc same-VPC private-IP reachability), and #527 (Fargate sandbox
+  `SYS_CHROOT` for OpenSSH preauth chroot). The follow-up branch tested the
+  submodule at `39d15b5`, moved #525/#526/#527 to resolved, and restored the golden
+  workspace SSH e2e locally as an active managed-EBS `EcsComputeProvider` test instead
+  of a skipped direct ECS task assertion. That immediately exposed a new simulator
+  fidelity blocker, **sockerless#530**: container-mode ECS does not apply
+  `RunTask.overrides.containerOverrides[].environment`, so the golden image exits
+  with `EDD_WORKSPACE_ID is required`. Filed upstream and halted without a downstream
+  workaround.
+
+- **2026-06-09** — **sockerless PR #531 consumed in PR #58.** Upstream merged
+  `e6qu/sockerless#531` at merge commit `dade6ca`, fixing #530 by applying standard
+  ECS `RunTask` task/container overrides to runtime containers. The follow-up branch
+  pinned the submodule to `dade6ca`; the restored managed-EBS golden workspace SSH e2e
+  now passes locally through `EcsComputeProvider` → Fargate managed EBS → golden image
+  OpenSSH → same-VPC SSH client task. No additional sockerless fidelity bug was found
+  in that path.
+
+- **2026-06-09** — **PR #58 local gates were brought back to green after #531.**
+  `jscpd` aged into the dependency freshness gate, so it was updated to `5.0.4`.
+  Its stricter detector pushed duplication above the 1% threshold; the e2e AWS sim
+  env/client/`required`/sleep setup was extracted into `packages/e2e/src/aws-sim.ts`.
+  Verification passed: `pnpm lint`, `pnpm test`, `pnpm build`, `pnpm cpd`,
+  `pnpm check-deps`, process-mode `pnpm test:integ`, and full container-mode
+  `pnpm test:e2e` (including managed-EBS golden workspace SSH and ECS Exec).
+
+- **2026-06-09** — **sockerless PR #532 was reviewed for downstream impact.**
+  Upstream merged `e6qu/sockerless#532` at merge commit `638f65a`. It includes the
+  prior #531 fix and adds broad simulator coverage: Azure Logic Apps/ACI, GCP
+  Spanner/Dataflow/Bigtable, and AWS SDK audit-test cleanup for SSM, Glue,
+  CodeBuild, Step Functions, CloudWatch Logs, SQS, and ElastiCache. The
+  ecs-dev-desktop follow-up branch moved from the #531 pin to `638f65a`; no new
+  app-specific simulator blocker was identified from the PR surface. Local
+  verification passed against #532: `pnpm lint`, `pnpm test`, `pnpm build`,
+  `pnpm cpd`, `pnpm check-deps`, `pnpm test:integ`, and full container-mode
+  `pnpm test:e2e`.

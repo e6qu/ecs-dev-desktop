@@ -8,16 +8,10 @@ _(none in repo code currently known)_
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-- **sockerless#525** — Azure sim accepts duplicate Entra `userPrincipalName` values
-  and ROPC can resolve the stale user. Downstream e2e now uses unique UPN/group names
-  per run, but the sim still diverges from real Entra uniqueness.
-- **sockerless#526** — AWS ECS managed-EBS awsvpc task private IP was not reachable
-  from a same-VPC client task when launched through `WorkspaceService`/
-  `EcsComputeProvider`. This blocks the full production-shaped golden workspace SSH
-  e2e path through managed EBS.
-- **sockerless#527** — AWS ECS Fargate sandbox drops `SYS_CHROOT`, so OpenSSH preauth
-  fails `chroot("/run/sshd")` and resets a same-VPC SSH connection after the banner.
-  This blocks enabling the golden-image OpenSSH awsvpc e2e assertion in CI.
+_(none currently known)_
+
+Latest full simulator pass (2026-06-09, submodule `638f65a`) found no additional
+sockerless fidelity bugs for the follow-up branch's app/e2e surfaces.
 
 ## Resolved (repo)
 
@@ -28,7 +22,29 @@ _(none in repo code currently known)_
 
 ## Resolved (sockerless — fixed upstream; full detail in `WHAT_WE_DID.md`)
 
-**Most-recent batch** (submodule `85a62bc`, PR #520):
+**Most-recent batch** (submodule `638f65a`, PR #532):
+
+- **sockerless PR #532** — Added Azure Logic Apps/ACI and GCP
+  Spanner/Dataflow/Bigtable simulator slices plus AWS SDK coverage cleanup across
+  SSM, Glue, CodeBuild, Step Functions, CloudWatch Logs, SQS, and ElastiCache.
+  No new ecs-dev-desktop blocker was identified from this PR surface.
+
+**Previous batch** (submodule `dade6ca`, PR #531):
+
+- **sockerless#530 / PR #531** — ECS container-mode `RunTask` now applies
+  `overrides.containerOverrides[].environment` to the named runtime container,
+  unblocking the managed-EBS golden workspace SSH e2e path.
+
+**Previous batch** (submodule `39d15b5`, PR #529):
+
+- **sockerless#525 / PR #529** — Azure sim now rejects duplicate Entra
+  `userPrincipalName` values and ROPC uses the same case-insensitive UPN resolver.
+- **sockerless#526 / PR #529** — ECS managed-EBS awsvpc task private IP reachability
+  now works from a same-VPC task, unblocking the production-shaped golden SSH e2e path.
+- **sockerless#527 / PR #529** — Fargate sandbox now grants `SYS_CHROOT`, so OpenSSH
+  preauth chroot works in container-mode ECS tasks.
+
+**Previous batch** (submodule `85a62bc`, PR #520):
 
 - **sockerless#521 / PR #520** — Netns awsvpc ECS tasks from PR #519 could not
   reach simulator-adjacent endpoints used by downstream container-mode e2e

@@ -2,7 +2,7 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-08 (PR #58 open: golden SSH/live-sim follow-up)
+**Last updated:** 2026-06-09 (sockerless #532 follow-up branch)
 
 ## Current phase
 
@@ -16,12 +16,23 @@ PR #57 delivered sockerless PR #519/#520 submodule pins, container-mode sim netn
 harness support, overlapping-CIDR awsvpc e2e coverage, route-table egress alignment,
 CI fixes, `docs/simulator-live-coverage.md`, and the data-fidelity snapshot-race fix.
 
-Current follow-up PR: **#58** (`feat/golden-ssh-live-sim-e2e`) — golden workspace
-SSH integration, live simulator app coverage, and sockerless #524 consumption are
-implemented in one PR.
+PR #58 (`feat/golden-ssh-live-sim-e2e`) merged to `main` with golden workspace
+SSH integration, live simulator app coverage, sockerless #524 consumption, and
+the ECS Exec smoke test.
 
-Upstream note: sockerless PR #524 is now pinned (`39a4291`) and covered by an ECS
-Exec smoke test in the container-mode AWS simulator.
+Current follow-up branch: `feat/sockerless-532-golden-ssh` — consumes sockerless
+#529/#531/#532 after PR #58, restores the managed-EBS golden workspace SSH e2e,
+and keeps the ECS Exec smoke test.
+
+Upstream note: sockerless PR #532 is now pinned (`638f65a`). It includes #531,
+which fixed the remaining golden SSH blocker (#530), so the managed-EBS golden
+workspace SSH e2e is active on this branch. #532 itself mostly adds broader
+Azure/GCP simulator slices plus AWS coverage cleanup; no new ecs-dev-desktop
+blocker was identified from its PR surface.
+
+Local verification against the #532 pin passed: `pnpm lint`, `pnpm test`,
+`pnpm build`, `pnpm cpd`, `pnpm check-deps`, `pnpm test:integ`, and full
+container-mode `pnpm test:e2e`.
 
 ## What works (built, tested, merged to `main`)
 
@@ -68,9 +79,11 @@ Exec smoke test in the container-mode AWS simulator.
   adapters, integration-tested against the sim.
 - **Test tiers**: unit/contract · integration (DynamoDB Local + process sim) · e2e
   (data-fidelity, lifecycle, auth, Pomerium, OpenSSH gateway, overlapping-CIDR
-  awsvpc, reconciler container, ECS Exec smoke) · live admin observability route
-  tests against sockerless AWS CloudTrail/CloudWatch · portal e2e (Playwright) ·
-  `e2e-https` (sims over TLS, real CA trust, no `--insecure`) · manual `e2e-aws`.
+  awsvpc, reconciler container, ECS Exec smoke; managed-EBS golden workspace SSH
+  is active on the sockerless #532 follow-up branch) · live admin observability
+  route tests against sockerless AWS CloudTrail/CloudWatch · portal e2e
+  (Playwright) · `e2e-https` (sims over TLS, real CA trust, no `--insecure`) ·
+  manual `e2e-aws`.
 - **Engineering quality**: typed `Result<T, DomainError>` channel; compile-time
   exhaustiveness guards; typed `data-testid` registry; `waitForDynamo` harness
   determinism; `knip` + `jscpd` code-health gates; SAST + Trivy.
@@ -81,8 +94,6 @@ Nothing on AWS — no cloud infrastructure provisioned.
 
 ## Immediate focus
 
-1. **Review PR #58** — golden image SSH wiring, live simulator app coverage,
-   sockerless #524 pin/ECS Exec smoke, CI/test hardening, and docs sync.
-2. **Track sockerless blockers for full golden SSH e2e** — #526/#527 block full
-   WorkspaceService-managed-EBS/golden-image SSH through the AWS simulator.
-3. **AWS account/region decision** (`DO_NEXT` #1) — unlocks everything real.
+1. **Finish the sockerless #532 follow-up** — pin #532, keep managed-EBS golden
+   SSH e2e active, verify CI-equivalent gates, and open one PR if green.
+2. **AWS account/region decision** (`DO_NEXT` #1) — unlocks everything real.

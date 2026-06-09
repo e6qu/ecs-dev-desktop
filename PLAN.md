@@ -60,11 +60,10 @@ issues short-lived SSH certificates. ✅ Wake-on-connect proxy component path:
 `WorkspaceService.connect()` is idempotent and wakes scaled-to-zero from snapshot;
 the gateway calls `connect` + `connect-info` before forwarding to a workspace node.
 
-- ⬜ **Remaining:** restore full golden-image SSH e2e after sockerless #526/#527;
-  session recording (deploy-tier, CloudTrail for audit); full wake-on-connect through
-  a real ECS workspace task.
-- **Gate:** `ssh` connect-as-principal ✅; authz-deny ✅; connect-time wake ✅;
-  session recording ⬜; e2e-aws SSH-wakes-stopped ⬜.
+- ⬜ **Remaining:** session recording (deploy-tier, CloudTrail for audit);
+  full wake-on-connect through a real ECS workspace task.
+- **Gate:** `ssh` connect-as-principal ✅; authz-deny ✅; managed-EBS golden SSH ✅;
+  connect-time wake ✅; session recording ⬜; e2e-aws SSH-wakes-stopped ⬜.
 
 ## Phase 5 — Scale-to-zero + snapshot automation — 🟡
 

@@ -18,9 +18,9 @@ in a **manual** suite on `main`.
     containers, including awsvpc networking and scheduler-fired tasks.
 - **When the simulator is missing/incorrect for something we need, we file (or
   comment on) an issue in `e6qu/sockerless`** and track it in `BUGS.md` under
-  _External blockers_. Current open blockers (#526/#527) prevent enabling full
-  golden workspace SSH e2e through the AWS simulator; #525 is an Azure uniqueness
-  fidelity bug avoided downstream with unique test users.
+  _External blockers_. Current sockerless blockers are cleared; #530 was fixed
+  by PR #531 and is included in the current #532 follow-up pin, with managed-EBS
+  golden workspace SSH e2e active on that branch.
 - **LocalStack** is kept only as an optional cross-check where sockerless is
   immature; not a primary gate.
 - Live simulator coverage and candidate app surfaces are tracked in

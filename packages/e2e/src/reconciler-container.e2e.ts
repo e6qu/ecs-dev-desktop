@@ -30,9 +30,11 @@ import {
   DescribeRouteTablesCommand,
   EC2Client,
 } from "@aws-sdk/client-ec2";
-import { awsSim, dynamodbLocal, DEFAULT_AWS_REGION } from "@edd/config";
+import { dynamodbLocal, DEFAULT_AWS_REGION } from "@edd/config";
 import { createDynamoClient, dropTable, ensureTable } from "@edd/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import { awsSimClientConfig, configureAwsSimEnv, required, sleep } from "./aws-sim";
 
 /**
  * Container-mode e2e: EventBridge Scheduler fires → ECS RunTask → real
@@ -43,10 +45,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
  * this test runs (see ci.yml `e2e` job).
  */
 
-process.env.AWS_ENDPOINT_URL ??= awsSim.endpoint;
-process.env.AWS_REGION ??= DEFAULT_AWS_REGION;
-process.env.AWS_ACCESS_KEY_ID ??= "test";
-process.env.AWS_SECRET_ACCESS_KEY ??= "test";
+configureAwsSimEnv();
 process.env.DYNAMODB_ENDPOINT ??= dynamodbLocal.endpoint;
 
 // The reconciler image must be pre-built: `docker build -f services/reconciler/Dockerfile -t edd-reconciler:e2e .`
@@ -57,18 +56,7 @@ const TABLE = `edd-reconciler-e2e-${RUN_ID}`;
 const LOG_GROUP = `/edd/reconciler-e2e/${RUN_ID}`;
 const FAKE_EBS_ROLE = "arn:aws:iam::000000000000:role/ecsInfrastructureRole";
 
-const SIM = {
-  region: DEFAULT_AWS_REGION,
-  endpoint: awsSim.endpoint,
-  credentials: { accessKeyId: "test", secretAccessKey: "test" },
-};
-
-function req<T>(v: T | undefined, field: string): T {
-  if (v === undefined) throw new Error(`missing ${field}`);
-  return v;
-}
-
-const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
+const SIM = awsSimClientConfig();
 
 describe(
   "Reconciler container fired by EventBridge Scheduler (container-mode sim)",
@@ -96,11 +84,11 @@ describe(
       // The container-mode sim also models route-table egress: tasks need an
       // external route plus AssignPublicIp=ENABLED to reach host-side endpoints.
       const vpcOut = await ec2.send(new CreateVpcCommand({ CidrBlock: "10.99.0.0/16" }));
-      const vpcId = req(vpcOut.Vpc?.VpcId, "VpcId");
+      const vpcId = required(vpcOut.Vpc?.VpcId, "VpcId");
       const subnetOut = await ec2.send(
         new CreateSubnetCommand({ VpcId: vpcId, CidrBlock: "10.99.0.0/24" }),
       );
-      subnetId = req(subnetOut.Subnet?.SubnetId, "SubnetId");
+      subnetId = required(subnetOut.Subnet?.SubnetId, "SubnetId");
       const sgOut = await ec2.send(
         new CreateSecurityGroupCommand({
           GroupName: `reconciler-e2e-sg-${RUN_ID}`,
@@ -108,16 +96,19 @@ describe(
           VpcId: vpcId,
         }),
       );
-      sgId = req(sgOut.GroupId, "GroupId");
+      sgId = required(sgOut.GroupId, "GroupId");
       const igwOut = await ec2.send(new CreateInternetGatewayCommand({}));
-      const internetGatewayId = req(igwOut.InternetGateway?.InternetGatewayId, "InternetGatewayId");
+      const internetGatewayId = required(
+        igwOut.InternetGateway?.InternetGatewayId,
+        "InternetGatewayId",
+      );
       await ec2.send(
         new AttachInternetGatewayCommand({ InternetGatewayId: internetGatewayId, VpcId: vpcId }),
       );
       const routeTables = await ec2.send(
         new DescribeRouteTablesCommand({ Filters: [{ Name: "vpc-id", Values: [vpcId] }] }),
       );
-      const routeTableId = req(
+      const routeTableId = required(
         routeTables.RouteTables?.find((rt) =>
           rt.Associations?.some((association) => association.Main),
         )?.RouteTableId,
@@ -133,7 +124,7 @@ describe(
 
       // ECS cluster.
       const clusterOut = await ecs.send(new CreateClusterCommand({ clusterName: CLUSTER }));
-      clusterArn = req(clusterOut.cluster?.clusterArn, "clusterArn");
+      clusterArn = required(clusterOut.cluster?.clusterArn, "clusterArn");
 
       // Reconciler task definition.
       // Env wires the container to simulator-adjacent endpoints. The sim rewrites
@@ -173,7 +164,7 @@ describe(
           ],
         }),
       );
-      taskDefArn = req(tdOut.taskDefinition?.taskDefinitionArn, "taskDefinitionArn");
+      taskDefArn = required(tdOut.taskDefinition?.taskDefinitionArn, "taskDefinitionArn");
 
       // EventBridge Scheduler: fire once, 3 seconds from now.
       const fireAt = new Date(Date.now() + 3_000).toISOString().replace(/\.\d+Z$/, "");

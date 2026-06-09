@@ -26,14 +26,14 @@ import {
   StopTaskCommand,
   type Task,
 } from "@aws-sdk/client-ecs";
-import { awsSim, DEFAULT_AWS_REGION } from "@edd/config";
-import { workspacePrincipal } from "@edd/core";
+import { EcsComputeProvider } from "@edd/compute-ecs";
+import { DEFAULT_AWS_REGION } from "@edd/config";
+import { baseImage, workspaceId, workspacePrincipal } from "@edd/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-process.env.AWS_ENDPOINT_URL ??= awsSim.endpoint;
-process.env.AWS_REGION ??= DEFAULT_AWS_REGION;
-process.env.AWS_ACCESS_KEY_ID ??= "test";
-process.env.AWS_SECRET_ACCESS_KEY ??= "test";
+import { awsSimClientConfig, configureAwsSimEnv, required, sleep } from "./aws-sim";
+
+configureAwsSimEnv();
 
 const RUN_ID = randomUUID().slice(0, 8);
 const CLUSTER = `edd-golden-ssh-${RUN_ID}`;
@@ -45,24 +45,15 @@ const WORKSPACE_CONTAINER = "workspace";
 const WORKSPACE_ID = `ws-golden-${RUN_ID}`;
 const LOG_GROUP = `/edd/e2e/golden-ssh-${RUN_ID}`;
 const CONTROL_PLANE_URL = "http://127.0.0.1:3000";
+const EBS_ROLE = "arn:aws:iam::123456789012:role/ecsInfrastructureRole";
+const AGENT_SECRET = "a".repeat(64);
 const SSH_ATTEMPTS = 30;
 const SSH_CA_DIR = join(import.meta.dirname, "../../../services/ssh-gateway/temp/ssh-ca");
 const CA_KEY = join(SSH_CA_DIR, "ca");
 const CA_PUB = join(SSH_CA_DIR, "ca.pub");
 const USER_KEY = join(SSH_CA_DIR, `golden-${RUN_ID}`);
 
-const SIM = {
-  region: DEFAULT_AWS_REGION,
-  endpoint: awsSim.endpoint,
-  credentials: { accessKeyId: "test", secretAccessKey: "test" },
-};
-
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-
-function required<T>(value: T | null | undefined, field: string): T {
-  if (value === undefined || value === null) throw new Error(`missing ${field}`);
-  return value;
-}
+const SIM = awsSimClientConfig();
 
 function run(cmd: string, args: string[]): { status: number; stderr: string } {
   const res = spawnSync(cmd, args, { encoding: "utf8" });
@@ -72,21 +63,6 @@ function run(cmd: string, args: string[]): { status: number; stderr: string } {
 
 function taskExitCode(task: Task): number {
   return required(task.containers?.[0]?.exitCode, "container exitCode");
-}
-
-function taskPrivateIp(task: Task): string {
-  for (const container of task.containers ?? []) {
-    for (const network of container.networkInterfaces ?? []) {
-      if (network.privateIpv4Address !== undefined) return network.privateIpv4Address;
-    }
-  }
-  for (const attachment of task.attachments ?? []) {
-    if (attachment.type !== "ElasticNetworkInterface") continue;
-    for (const detail of attachment.details ?? []) {
-      if (detail.name === "privateIPv4Address" && detail.value !== undefined) return detail.value;
-    }
-  }
-  throw new Error(`task ${task.taskArn ?? "(unknown)"} has no private IPv4 address`);
 }
 
 async function waitForTask(
@@ -169,39 +145,26 @@ describe(
       await ec2.send(new DeleteVpcCommand({ VpcId: vpcId }));
     });
 
-    async function registerWorkspaceTask(): Promise<string> {
-      const out = await ecs.send(
-        new RegisterTaskDefinitionCommand({
-          family: `golden-workspace-${RUN_ID}`,
-          requiresCompatibilities: ["FARGATE"],
-          networkMode: "awsvpc",
-          cpu: "512",
-          memory: "1024",
-          containerDefinitions: [
-            {
-              name: WORKSPACE_CONTAINER,
-              image: WORKSPACE_IMAGE,
-              essential: true,
-              environment: [
-                { name: "EDD_WORKSPACE_ID", value: WORKSPACE_ID },
-                { name: "EDD_CONTROL_PLANE_URL", value: CONTROL_PLANE_URL },
-                { name: "EDD_AGENT_TOKEN", value: "test" },
-                { name: "EDD_HEARTBEAT_INTERVAL_S", value: "3600" },
-                { name: "EDD_SSH_CA_PUBLIC_KEY", value: readFileSync(CA_PUB, "utf8").trim() },
-              ],
-              logConfiguration: {
-                logDriver: "awslogs",
-                options: {
-                  "awslogs-group": LOG_GROUP,
-                  "awslogs-region": DEFAULT_AWS_REGION,
-                  "awslogs-stream-prefix": "golden-workspace",
-                },
-              },
-            },
-          ],
-        }),
-      );
-      return required(out.taskDefinition?.taskDefinitionArn, "taskDefinitionArn");
+    async function runWorkspaceTask(): Promise<{ taskArn: string; sshHost: string }> {
+      const compute = new EcsComputeProvider({
+        client: ecs,
+        config: {
+          cluster: CLUSTER,
+          subnets: [subnetId],
+          ebsRoleArn: EBS_ROLE,
+          assignPublicIp: false,
+          containerName: WORKSPACE_CONTAINER,
+          controlPlaneUrl: CONTROL_PLANE_URL,
+          agentSecret: AGENT_SECRET,
+          sshCaPublicKey: readFileSync(CA_PUB, "utf8").trim(),
+          logGroupName: LOG_GROUP,
+        },
+      });
+      const task = await compute.runTask({
+        workspaceId: workspaceId(WORKSPACE_ID),
+        baseImage: baseImage(WORKSPACE_IMAGE),
+      });
+      return { taskArn: task.id, sshHost: required(task.sshHost, "sshHost") };
     }
 
     async function registerClientTask(
@@ -258,22 +221,10 @@ describe(
       return (out.events ?? []).map((event) => event.message ?? "").join("\n");
     }
 
-    it.skip("launches the golden image as an ECS task and accepts CA-signed SSH (blocked by sockerless#527)", async () => {
-      const workspaceTaskDef = await registerWorkspaceTask();
-      const workspaceRun = await ecs.send(
-        new RunTaskCommand({
-          cluster: CLUSTER,
-          taskDefinition: workspaceTaskDef,
-          launchType: "FARGATE",
-          networkConfiguration: {
-            awsvpcConfiguration: { subnets: [subnetId], assignPublicIp: "DISABLED" },
-          },
-        }),
-      );
-      const workspaceTaskArn = required(workspaceRun.tasks?.[0]?.taskArn, "workspace taskArn");
+    it("launches the managed-EBS golden image and accepts CA-signed SSH", async () => {
+      const { taskArn: workspaceTaskArn, sshHost } = await runWorkspaceTask();
       try {
-        const workspaceTask = await waitForTask(ecs, workspaceTaskArn, "RUNNING");
-        const sshHost = taskPrivateIp(workspaceTask);
+        await waitForTask(ecs, workspaceTaskArn, "RUNNING");
         expect(sshHost).toMatch(/^10\.71\.1\.\d+$/);
 
         const { privateKeyBase64, cert } = signUserCert(workspacePrincipal(WORKSPACE_ID));

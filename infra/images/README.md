@@ -13,6 +13,7 @@ At startup it writes the injected workspace SSH CA public key and
 OpenVSCode Server as `workspace`. Image publication to the Terraform-created ECR
 repositories and real deploy scanning remain AWS-gated.
 
-The golden-image SSH path is implemented, but full AWS simulator e2e coverage is
-blocked upstream by sockerless #526/#527; the direct OpenSSH image behavior has
-been diagnosed and tracked in `BUGS.md`.
+The golden-image SSH path is covered against the AWS container-mode simulator:
+`EcsComputeProvider` launches the image with managed EBS, the task exposes its
+awsvpc private IP, and a same-VPC client task connects with a CA-signed OpenSSH
+certificate. Image publication and real deploy scanning remain AWS-gated.
