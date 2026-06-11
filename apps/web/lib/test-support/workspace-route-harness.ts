@@ -29,8 +29,33 @@ export const member = (id: string) => ({
   "content-type": "application/json",
 });
 
+/** Dev-auth headers identifying `id` as an `admin` (gated on `EDD_DEV_AUTH`). */
+export const admin = (id: string) => ({
+  [USER_ID_HEADER]: id,
+  [ROLE_HEADER]: "admin",
+  "content-type": "application/json",
+});
+
 /** The Next.js route context (`{ params }`) for a `[id]` dynamic segment. */
 export const routeCtx = (id: string) => ({ params: Promise.resolve({ id }) });
+
+type LifecycleHandler = (
+  req: Request,
+  ctx: { params: Promise<{ id: string }> },
+) => Promise<Response>;
+
+/** Invoke a body-less lifecycle route (`start`/`stop`/`snapshot`/`connect`) as `actor`. */
+export function postLifecycle(
+  handler: LifecycleHandler,
+  segment: string,
+  actor: string,
+  id: string,
+): Promise<Response> {
+  return handler(
+    new Request(`${apiBase}/${id}/${segment}`, { method: "POST", headers: member(actor) }),
+    routeCtx(id),
+  );
+}
 
 /**
  * Point the web app at DynamoDB Local + a per-suite table with dev-auth on, and
