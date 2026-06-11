@@ -261,6 +261,9 @@ importers:
       '@aws-sdk/client-scheduler':
         specifier: ^3.1063.0
         version: 3.1063.0
+      '@edd/api-contracts':
+        specifier: workspace:*
+        version: link:../api-contracts
       '@edd/cloudtrail-audit':
         specifier: workspace:*
         version: link:../cloudtrail-audit

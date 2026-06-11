@@ -13,6 +13,7 @@
     "@aws-sdk/client-ec2": "^3.1063.0",
     "@aws-sdk/client-ecs": "^3.1063.0",
     "@aws-sdk/client-scheduler": "^3.1063.0",
+    "@edd/api-contracts": "workspace:*",
     "@edd/cloudtrail-audit": "workspace:*",
     "@edd/compute-ecs": "workspace:*",
     "@edd/config": "workspace:*",

@@ -12,11 +12,14 @@
 #
 # Required env vars (set by the docker-compose service):
 #   EDD_CONTROL_PLANE_URL  — base URL of the control plane API (no trailing slash)
-#   EDD_GATEWAY_TOKEN      — bearer token the gateway uses to authenticate to the API
+#   EDD_GATEWAY_SECRET     — 32-byte hex machine-auth secret shared with the
+#                            control plane (its EDD_GATEWAY_SECRET)
 #
-# The gateway uses a bearer token (not a session cookie) because it is a service
-# process, not an interactive user. The control plane issues this token via the
-# EDD_GATEWAY_TOKEN env var (admin role), gated on a shared secret.
+# The gateway is a service process, not an interactive user, so it authenticates
+# with a per-workspace bearer token derived from the shared secret:
+#   token = HMAC-SHA256(hexkey(EDD_GATEWAY_SECRET), workspaceId)
+# — the same machine-auth scheme the in-workspace idle-agent uses for heartbeats.
+# A token observed for one workspace cannot wake or inspect another.
 
 set -eu
 
@@ -28,7 +31,7 @@ if [ -f /run/edd-env ]; then
 fi
 
 : "${EDD_CONTROL_PLANE_URL:?EDD_CONTROL_PLANE_URL is required}"
-: "${EDD_GATEWAY_TOKEN:?EDD_GATEWAY_TOKEN is required}"
+: "${EDD_GATEWAY_SECRET:?EDD_GATEWAY_SECRET is required}"
 : "${USER:?USER (login username) is not set}"
 
 # "dev-abc123" → "abc123"
@@ -38,7 +41,17 @@ if [ "$WORKSPACE_ID" = "$USER" ]; then
   exit 1
 fi
 
-AUTH_HEADER="Authorization: Bearer ${EDD_GATEWAY_TOKEN}"
+# Per-workspace machine-auth token: HMAC-SHA256 keyed with the hex secret.
+# `openssl dgst` prints "HMAC-SHA2-256(stdin)= <hex>" — keep the last field.
+GATEWAY_TOKEN=$(printf '%s' "$WORKSPACE_ID" |
+  openssl dgst -sha256 -mac HMAC -macopt "hexkey:${EDD_GATEWAY_SECRET}" |
+  awk '{print $NF}')
+if [ -z "$GATEWAY_TOKEN" ]; then
+  echo "error: could not derive gateway machine-auth token" >&2
+  exit 1
+fi
+
+AUTH_HEADER="Authorization: Bearer ${GATEWAY_TOKEN}"
 CP="${EDD_CONTROL_PLANE_URL}"
 
 # Step 1: wake the workspace (idempotent — no-op if already running).

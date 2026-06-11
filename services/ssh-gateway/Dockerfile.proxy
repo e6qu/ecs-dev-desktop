@@ -5,7 +5,8 @@
 #
 # Required at runtime (Docker / ECS env vars):
 #   EDD_CONTROL_PLANE_URL  — base URL of the control plane API
-#   EDD_GATEWAY_TOKEN      — bearer token (admin role) for control plane API calls
+#   EDD_GATEWAY_SECRET     — hex machine-auth secret; wake-and-forward.sh derives
+#                            a per-workspace HMAC bearer token from it
 #
 # The CA public key must be mounted at /etc/ssh/workspace-ca.pub.
 #
@@ -18,7 +19,7 @@ ARG GATEWAY_PRINCIPAL=dev-e2e
 FROM debian:trixie-slim
 ARG GATEWAY_PRINCIPAL
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssh-server curl netcat-openbsd \
+  && apt-get install -y --no-install-recommends openssh-server curl netcat-openbsd openssl \
   && rm -rf /var/lib/apt/lists/* \
   && useradd --create-home --shell /bin/bash "${GATEWAY_PRINCIPAL}" \
   && usermod -p '*' "${GATEWAY_PRINCIPAL}" \

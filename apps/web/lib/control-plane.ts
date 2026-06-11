@@ -107,10 +107,17 @@ async function build(): Promise<WorkspaceService> {
     });
   }
   const storage = await FakeStorageProvider.create();
+  // The fake compute provider records no real ENI; e2e harnesses that pair the
+  // fake control plane with a real sshd container set EDD_FAKE_SSH_HOST so
+  // /connect-info returns a reachable host (config of the fake, not a sim branch).
+  const fakeSshHost = process.env.EDD_FAKE_SSH_HOST;
   return new WorkspaceService({
     workspaces: makeWorkspaceEntity(client, tableName()),
     storage,
-    compute: new FakeComputeProvider(storage),
+    compute: new FakeComputeProvider(
+      storage,
+      fakeSshHost !== undefined && fakeSshHost.length > 0 ? { sshHost: fakeSshHost } : {},
+    ),
     clock: systemClock,
   });
 }

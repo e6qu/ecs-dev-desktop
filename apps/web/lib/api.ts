@@ -7,6 +7,7 @@ import type { WorkspaceService } from "@edd/control-plane";
 import { domainErrorMessage, workspaceId, type DomainError, type WorkspaceId } from "@edd/core";
 
 import { getControlPlane } from "./control-plane";
+import { checkGatewayAuth } from "./machine-auth";
 import { getPrincipal } from "./principal";
 
 const unauthorized = () => NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -78,4 +79,30 @@ export async function loadOwnedWorkspace(
   if (!ws) return notFound();
   if (!ownsOrAdmin(principal, ws.ownerId)) return forbidden();
   return { cp, id: wsId, ws };
+}
+
+/**
+ * Like {@link loadOwnedWorkspace}, but additionally accepts the SSH gateway's
+ * per-workspace machine-auth token (`Authorization: Bearer <HMAC>`, secret in
+ * `EDD_GATEWAY_SECRET`) — the gateway is a service process with no Auth.js
+ * session. Only the wake-on-connect read/wake routes use this; destructive
+ * routes (delete, stop, …) stay session-only.
+ */
+export async function loadConnectableWorkspace(
+  req: Request,
+  params: Promise<{ id: string }>,
+  action: Action,
+): Promise<OwnedWorkspace | NextResponse> {
+  const { id } = await params;
+  const gateway = checkGatewayAuth(req, id);
+  if (gateway === "invalid") return unauthorized();
+  if (gateway === "valid") {
+    const wsId = workspaceId(id);
+    const cp = await getControlPlane();
+    const ws = await cp.get(wsId);
+    if (!ws) return notFound();
+    return { cp, id: wsId, ws };
+  }
+  // No machine credential presented — normal session auth applies.
+  return loadOwnedWorkspace(req, params, action);
 }

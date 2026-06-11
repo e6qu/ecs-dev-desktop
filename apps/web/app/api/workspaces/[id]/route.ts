@@ -1,15 +1,22 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { NextResponse } from "next/server";
 
-import { domainErrorResponse, isResponse, loadOwnedWorkspace } from "../../../../lib/api";
+import {
+  domainErrorResponse,
+  isResponse,
+  loadConnectableWorkspace,
+  loadOwnedWorkspace,
+} from "../../../../lib/api";
 
 interface Ctx {
   params: Promise<{ id: string }>;
 }
 
-// GET /api/workspaces/:id — the caller's own workspace (admins, any).
+// GET /api/workspaces/:id — the caller's own workspace (admins, any). Also
+// accepts the SSH gateway's machine-auth token: the gateway polls this route
+// for `state` while waking a workspace on connect.
 export async function GET(req: Request, { params }: Ctx) {
-  const ctx = await loadOwnedWorkspace(req, params, "read");
+  const ctx = await loadConnectableWorkspace(req, params, "read");
   if (isResponse(ctx)) return ctx;
   return NextResponse.json(ctx.ws);
 }
