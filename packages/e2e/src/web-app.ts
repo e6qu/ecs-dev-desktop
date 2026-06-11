@@ -54,10 +54,16 @@ function ensureWebBuilt(): void {
  * Start the production web app on a free port with the given env (dev-auth on,
  * DynamoDB Local table of the caller's choosing). Resolves once /api/healthz
  * responds. Caller owns the table lifecycle; `stop()` kills the server.
+ *
+ * `makeEnv` receives the chosen port so callers can reference the app's own
+ * URL in env values (e.g. CONTROL_PLANE_URL injected into workspace tasks).
  */
-export async function startWebApp(env: Record<string, string>): Promise<WebApp> {
+export async function startWebApp(
+  makeEnv: (port: number) => Record<string, string>,
+): Promise<WebApp> {
   ensureWebBuilt();
   const port = await freePort();
+  const env = makeEnv(port);
   const child: ChildProcess = spawn(
     join(WEB_DIR, "node_modules", ".bin", "next"),
     ["start", "-p", String(port)],

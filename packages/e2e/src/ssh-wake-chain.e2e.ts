@@ -93,14 +93,14 @@ describe("SSH wake-on-connect chain against the real control plane", { timeout: 
       clock: systemClock,
     }).create({ name: "Node 20", image: baseImage(NODE_IMAGE) });
 
-    web = await startWebApp({
+    web = await startWebApp(() => ({
       DYNAMODB_ENDPOINT: process.env.DYNAMODB_ENDPOINT ?? dynamodbLocal.endpoint,
       DYNAMODB_TABLE: TABLE,
       EDD_GATEWAY_SECRET: GATEWAY_SECRET,
       EDD_SSH_CA_KEY_PATH: CA_KEY,
       // Fake compute records no ENI; point connect-info at the harness node.
       EDD_FAKE_SSH_HOST: WORKSPACE_NODE,
-    });
+    }));
 
     // Create the workspace through the real API, as a member.
     const created = await api("/workspaces", {

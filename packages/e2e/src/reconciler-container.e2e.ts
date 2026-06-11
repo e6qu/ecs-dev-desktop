@@ -20,21 +20,18 @@ import {
   DescribeLogStreamsCommand,
   GetLogEventsCommand,
 } from "@aws-sdk/client-cloudwatch-logs";
-import {
-  AttachInternetGatewayCommand,
-  CreateInternetGatewayCommand,
-  CreateRouteCommand,
-  CreateSecurityGroupCommand,
-  CreateSubnetCommand,
-  CreateVpcCommand,
-  DescribeRouteTablesCommand,
-  EC2Client,
-} from "@aws-sdk/client-ec2";
+import { EC2Client } from "@aws-sdk/client-ec2";
 import { dynamodbLocal, DEFAULT_AWS_REGION } from "@edd/config";
 import { createDynamoClient, dropTable, ensureTable } from "@edd/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { awsSimClientConfig, configureAwsSimEnv, required, sleep } from "./aws-sim";
+import {
+  awsSimClientConfig,
+  configureAwsSimEnv,
+  createVpcWithEgress,
+  required,
+  sleep,
+} from "./aws-sim";
 
 /**
  * Container-mode e2e: EventBridge Scheduler fires → ECS RunTask → real
@@ -83,44 +80,13 @@ describe(
       // VPC + subnet + security group — sim enforces SG existence on RunTask.
       // The container-mode sim also models route-table egress: tasks need an
       // external route plus AssignPublicIp=ENABLED to reach host-side endpoints.
-      const vpcOut = await ec2.send(new CreateVpcCommand({ CidrBlock: "10.99.0.0/16" }));
-      const vpcId = required(vpcOut.Vpc?.VpcId, "VpcId");
-      const subnetOut = await ec2.send(
-        new CreateSubnetCommand({ VpcId: vpcId, CidrBlock: "10.99.0.0/24" }),
-      );
-      subnetId = required(subnetOut.Subnet?.SubnetId, "SubnetId");
-      const sgOut = await ec2.send(
-        new CreateSecurityGroupCommand({
-          GroupName: `reconciler-e2e-sg-${RUN_ID}`,
-          Description: "reconciler e2e security group",
-          VpcId: vpcId,
-        }),
-      );
-      sgId = required(sgOut.GroupId, "GroupId");
-      const igwOut = await ec2.send(new CreateInternetGatewayCommand({}));
-      const internetGatewayId = required(
-        igwOut.InternetGateway?.InternetGatewayId,
-        "InternetGatewayId",
-      );
-      await ec2.send(
-        new AttachInternetGatewayCommand({ InternetGatewayId: internetGatewayId, VpcId: vpcId }),
-      );
-      const routeTables = await ec2.send(
-        new DescribeRouteTablesCommand({ Filters: [{ Name: "vpc-id", Values: [vpcId] }] }),
-      );
-      const routeTableId = required(
-        routeTables.RouteTables?.find((rt) =>
-          rt.Associations?.some((association) => association.Main),
-        )?.RouteTableId,
-        "RouteTableId",
-      );
-      await ec2.send(
-        new CreateRouteCommand({
-          RouteTableId: routeTableId,
-          DestinationCidrBlock: "0.0.0.0/0",
-          GatewayId: internetGatewayId,
-        }),
-      );
+      const vpc = await createVpcWithEgress(ec2, {
+        vpcCidr: "10.99.0.0/16",
+        subnetCidr: "10.99.0.0/24",
+        securityGroupName: `reconciler-e2e-sg-${RUN_ID}`,
+      });
+      subnetId = vpc.subnetId;
+      sgId = vpc.securityGroupId;
 
       // ECS cluster.
       const clusterOut = await ecs.send(new CreateClusterCommand({ clusterName: CLUSTER }));

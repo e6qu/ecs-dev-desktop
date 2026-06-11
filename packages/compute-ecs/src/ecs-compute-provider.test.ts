@@ -82,4 +82,24 @@ describe("workspaceEnvironment", () => {
       { name: "EDD_SSH_CA_PUBLIC_KEY", value: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest edd-ca" },
     ]);
   });
+
+  it("injects the heartbeat interval when configured (scale-to-zero tuning)", () => {
+    const env = workspaceEnvironment(
+      {
+        subnets: ["subnet-1"],
+        ebsRoleArn: "arn:aws:iam::123456789012:role/ecsInfrastructureRole",
+        heartbeatIntervalS: 5,
+      },
+      "ws-2",
+    );
+    expect(env).toContainEqual({ name: "EDD_HEARTBEAT_INTERVAL_S", value: "5" });
+  });
+
+  it("omits the heartbeat interval when unset (image default applies)", () => {
+    const env = workspaceEnvironment(
+      { subnets: ["subnet-1"], ebsRoleArn: "arn:aws:iam::123456789012:role/x" },
+      "ws-3",
+    );
+    expect(env.map((e) => e.name)).not.toContain("EDD_HEARTBEAT_INTERVAL_S");
+  });
 });
