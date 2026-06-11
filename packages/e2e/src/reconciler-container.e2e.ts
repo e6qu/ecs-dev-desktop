@@ -20,9 +20,16 @@ import {
   DescribeLogStreamsCommand,
   GetLogEventsCommand,
 } from "@aws-sdk/client-cloudwatch-logs";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { EC2Client } from "@aws-sdk/client-ec2";
+import { EcsComputeProvider } from "@edd/compute-ecs";
 import { dynamodbLocal, DEFAULT_AWS_REGION } from "@edd/config";
-import { createDynamoClient, dropTable, ensureTable } from "@edd/db";
+import { WorkspaceService } from "@edd/control-plane";
+import { baseImage, ownerId, systemClock } from "@edd/core";
+import { createDynamoClient, dropTable, ensureTable, makeWorkspaceEntity } from "@edd/db";
+import { Ec2StorageProvider } from "@edd/storage-ec2";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -37,9 +44,14 @@ import {
  * Container-mode e2e: EventBridge Scheduler fires → ECS RunTask → real
  * reconciler Docker image runs one maintenance sweep → CloudWatch Logs.
  *
+ * The sweep is NOT a no-op: a stale workspace (running golden-image task,
+ * lastActivity backdated past the idle threshold) is seeded first, so the
+ * reconciler must really select it, snapshot its managed volume, and stop the
+ * ECS task — the full scale-to-zero path against real sim compute.
+ *
  * Harness: docker-compose.e2e.yml (container-mode sockerless sim + DynamoDB
- * Local). The reconciler image must be built and accessible to Docker before
- * this test runs (see ci.yml `e2e` job).
+ * Local). The reconciler + workspace images must be built and accessible to
+ * Docker before this test runs (see ci.yml `e2e` job).
  */
 
 configureAwsSimEnv();
@@ -47,11 +59,19 @@ process.env.DYNAMODB_ENDPOINT ??= dynamodbLocal.endpoint;
 
 // The reconciler image must be pre-built: `docker build -f services/reconciler/Dockerfile -t edd-reconciler:e2e .`
 const RECONCILER_IMAGE = process.env.RECONCILER_IMAGE ?? "edd-reconciler:e2e";
+const WORKSPACE_IMAGE = "edd-workspace:e2e";
 const RUN_ID = randomUUID().slice(0, 8);
 const CLUSTER = `edd-reconciler-e2e-${RUN_ID}`;
 const TABLE = `edd-reconciler-e2e-${RUN_ID}`;
 const LOG_GROUP = `/edd/reconciler-e2e/${RUN_ID}`;
 const FAKE_EBS_ROLE = "arn:aws:iam::000000000000:role/ecsInfrastructureRole";
+// The golden image validates these at startup; the agent's heartbeats failing
+// (TEST-NET control plane) is exactly the "user went away" idle scenario.
+const UNREACHABLE_CP = "http://192.0.2.1:9";
+const AGENT_SECRET = "f".repeat(64);
+const SSH_CA_PUB = join(import.meta.dirname, "../../../services/ssh-gateway/temp/ssh-ca/ca.pub");
+// Backdated past DEFAULT_IDLE_THRESHOLD_MS (30 min) so the sweep must stop it.
+const STALE_BY_MS = 45 * 60 * 1000;
 
 const SIM = awsSimClientConfig();
 
@@ -71,6 +91,15 @@ describe(
     let clusterArn: string;
     let subnetId: string;
     let sgId: string;
+    let staleWorkspaceId = "";
+    let staleTaskArn = "";
+
+    const workspaceEntity = () => makeWorkspaceEntity(dynamo, TABLE);
+
+    async function taskStatus(taskArn: string): Promise<string> {
+      const out = await ecs.send(new DescribeTasksCommand({ cluster: CLUSTER, tasks: [taskArn] }));
+      return required(out.tasks?.[0]?.lastStatus, "task lastStatus");
+    }
 
     beforeAll(async () => {
       // Fresh DynamoDB table (no workspaces → reconciler sweeps 0 items).
@@ -91,6 +120,45 @@ describe(
       // ECS cluster.
       const clusterOut = await ecs.send(new CreateClusterCommand({ clusterName: CLUSTER }));
       clusterArn = required(clusterOut.cluster?.clusterArn, "clusterArn");
+
+      // Seed a STALE workspace backed by a real golden-image task: created via
+      // the real service + providers, then lastActivity backdated past the
+      // idle threshold so the reconciler sweep must scale it to zero.
+      const service = new WorkspaceService({
+        workspaces: workspaceEntity(),
+        storage: Ec2StorageProvider.fromEnv(),
+        compute: new EcsComputeProvider({
+          client: ecs,
+          config: {
+            cluster: CLUSTER,
+            subnets: [subnetId],
+            securityGroups: [sgId],
+            ebsRoleArn: FAKE_EBS_ROLE,
+            assignPublicIp: true,
+            controlPlaneUrl: UNREACHABLE_CP,
+            agentSecret: AGENT_SECRET,
+            sshCaPublicKey: readFileSync(SSH_CA_PUB, "utf8").trim(),
+          },
+        }),
+        clock: systemClock,
+      });
+      const ws = await service.create({
+        ownerId: ownerId("stale-user"),
+        baseImage: baseImage(WORKSPACE_IMAGE),
+      });
+      staleWorkspaceId = ws.id;
+      const { data: seeded } = await workspaceEntity().get({ id: staleWorkspaceId }).go();
+      staleTaskArn = required(seeded?.taskId, "seeded workspace taskId");
+      const runningDeadline = Date.now() + 120_000;
+      while ((await taskStatus(staleTaskArn)) !== "RUNNING") {
+        if (Date.now() > runningDeadline) throw new Error("seeded workspace task never RUNNING");
+        await sleep(2_000);
+      }
+      const staleActivity = new Date(Date.now() - STALE_BY_MS).toISOString();
+      await workspaceEntity()
+        .patch({ id: staleWorkspaceId })
+        .set({ lastActivity: staleActivity })
+        .go();
 
       // Reconciler task definition.
       // Env wires the container to simulator-adjacent endpoints. The sim rewrites
@@ -167,27 +235,45 @@ describe(
     });
 
     it("scheduler fires the reconciler task and it runs to completion with exit 0", async () => {
-      const deadline = Date.now() + 60_000;
-      let stoppedTaskArn: string | undefined;
+      // The cluster also hosts the seeded workspace task, so match the
+      // reconciler's own task definition among the stopped tasks.
+      const deadline = Date.now() + 90_000;
+      let reconcilerExit: number | undefined;
 
       while (Date.now() < deadline) {
         const listed = await ecs.send(
           new ListTasksCommand({ cluster: CLUSTER, desiredStatus: "STOPPED" }),
         );
-        const firstArn = listed.taskArns?.[0];
-        if (firstArn) {
-          stoppedTaskArn = firstArn;
-          break;
+        const arns = listed.taskArns ?? [];
+        if (arns.length > 0) {
+          const described = await ecs.send(
+            new DescribeTasksCommand({ cluster: CLUSTER, tasks: arns }),
+          );
+          const reconcilerTask = described.tasks?.find((t) => t.taskDefinitionArn === taskDefArn);
+          if (reconcilerTask) {
+            reconcilerExit = reconcilerTask.containers?.[0]?.exitCode;
+            break;
+          }
         }
         await sleep(2_000);
       }
-      expect(stoppedTaskArn, "reconciler ECS task never stopped within 60s").toBeDefined();
+      expect(reconcilerExit, "reconciler container exit code").toBe(0);
+    });
 
-      const described = await ecs.send(
-        new DescribeTasksCommand({ cluster: CLUSTER, tasks: [stoppedTaskArn ?? ""] }),
-      );
-      const container = described.tasks?.[0]?.containers?.[0];
-      expect(container?.exitCode, "reconciler container exit code").toBe(0);
+    it("the sweep stops the stale workspace's real ECS task and records its snapshot", async () => {
+      const deadline = Date.now() + 90_000;
+      while ((await taskStatus(staleTaskArn)) !== "STOPPED") {
+        if (Date.now() > deadline) {
+          throw new Error("stale workspace task was never stopped by the reconciler");
+        }
+        await sleep(2_000);
+      }
+
+      const { data } = await workspaceEntity().get({ id: staleWorkspaceId }).go();
+      expect(data?.state).toBe("stopped");
+      expect(data?.latestSnapshotId).toMatch(/^snap-/);
+      expect(data?.taskId).toBeUndefined();
+      expect(data?.volumeId).toBeUndefined();
     });
 
     it("CloudTrail captures the RunTask event fired by the EventBridge Scheduler", async () => {
@@ -250,6 +336,8 @@ describe(
       expect(result).toHaveProperty("idle");
       expect(result).toHaveProperty("snapshots");
       expect(result).toHaveProperty("gc");
+      // The sweep really scaled the seeded stale workspace to zero.
+      expect(logLine).toContain('"stopped":1');
     });
   },
 );
