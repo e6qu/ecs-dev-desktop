@@ -13,6 +13,7 @@ import {
   ECSClient,
   ListTasksCommand,
   RegisterTaskDefinitionCommand,
+  StopTaskCommand,
 } from "@aws-sdk/client-ecs";
 import {
   CloudWatchLogsClient,
@@ -27,7 +28,7 @@ import { EC2Client } from "@aws-sdk/client-ec2";
 import { EcsComputeProvider } from "@edd/compute-ecs";
 import { dynamodbLocal, DEFAULT_AWS_REGION } from "@edd/config";
 import { WorkspaceService } from "@edd/control-plane";
-import { baseImage, ownerId, systemClock } from "@edd/core";
+import { baseImage, ownerId, systemClock, workspaceId } from "@edd/core";
 import { createDynamoClient, dropTable, ensureTable, makeWorkspaceEntity } from "@edd/db";
 import { Ec2StorageProvider } from "@edd/storage-ec2";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -93,6 +94,12 @@ describe(
     let sgId: string;
     let staleWorkspaceId = "";
     let staleTaskArn = "";
+    // A second seeded workspace whose task is killed OUT-OF-BAND before the
+    // scheduler fires, so the reconciler CONTAINER's drift sweep must reconcile
+    // it (exercising the containerized runMaintenance drift path, not just the
+    // in-process reconciler covered by drift-recovery.e2e).
+    let driftWorkspaceId = "";
+    let driftTaskArn = "";
 
     const workspaceEntity = () => makeWorkspaceEntity(dynamo, TABLE);
 
@@ -159,6 +166,34 @@ describe(
         .patch({ id: staleWorkspaceId })
         .set({ lastActivity: staleActivity })
         .go();
+
+      // Seed a DRIFTED workspace: created + snapshotted, then its task is killed
+      // out-of-band so the record still claims "running" with a dead task. The
+      // reconciler container's drift sweep (runs FIRST in runMaintenance) must
+      // reconcile it to "stopped" (a snapshot exists) and clear the bindings.
+      const driftWs = await service.create({
+        ownerId: ownerId("drift-user"),
+        baseImage: baseImage(WORKSPACE_IMAGE),
+      });
+      driftWorkspaceId = driftWs.id;
+      driftTaskArn = required(
+        (await workspaceEntity().get({ id: driftWorkspaceId }).go()).data?.taskId,
+        "drift workspace taskId",
+      );
+      const driftRunningDeadline = Date.now() + 120_000;
+      while ((await taskStatus(driftTaskArn)) !== "RUNNING") {
+        if (Date.now() > driftRunningDeadline) throw new Error("drift workspace task never RUNNING");
+        await sleep(2_000);
+      }
+      // Snapshot so the drift outcome is the recoverable "stopped" (not "error").
+      await service.snapshot(workspaceId(driftWorkspaceId));
+      // Kill the task out-of-band — the control plane never hears about it.
+      await ecs.send(new StopTaskCommand({ cluster: CLUSTER, task: driftTaskArn }));
+      const driftDeadline = Date.now() + 120_000;
+      while ((await taskStatus(driftTaskArn)) !== "STOPPED") {
+        if (Date.now() > driftDeadline) throw new Error("drift task never stopped out-of-band");
+        await sleep(2_000);
+      }
 
       // Reconciler task definition.
       // Env wires the container to simulator-adjacent endpoints. The sim rewrites
@@ -274,6 +309,28 @@ describe(
       expect(data?.latestSnapshotId).toMatch(/^snap-/);
       expect(data?.taskId).toBeUndefined();
       expect(data?.volumeId).toBeUndefined();
+    });
+
+    it("the container's drift sweep reconciles the out-of-band-killed workspace", async () => {
+      // The drift workspace's task was killed before the sweep; the containerized
+      // runMaintenance drift pass must have reconciled the record to stopped
+      // (snapshot present) and cleared its dead bindings.
+      const deadline = Date.now() + 90_000;
+      for (;;) {
+        const { data } = await workspaceEntity().get({ id: driftWorkspaceId }).go();
+        if (data?.state === "stopped") {
+          expect(data.latestSnapshotId).toMatch(/^snap-/);
+          expect(data.taskId).toBeUndefined();
+          expect(data.volumeId).toBeUndefined();
+          break;
+        }
+        if (Date.now() > deadline) {
+          throw new Error(
+            `drift workspace was not reconciled by the container (state: ${data?.state ?? "?"})`,
+          );
+        }
+        await sleep(2_000);
+      }
     });
 
     it("CloudTrail captures the RunTask event fired by the EventBridge Scheduler", async () => {
