@@ -525,3 +525,31 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   new sockerless issue: the azure-sim behaved per spec throughout. Local
   footnote: a stray pre-session `bleephub-server --addr :8443` (expired 1-day
   cert) squatted the port and was killed.
+
+- **2026-06-12** — **Correctness-hardening pass (unhappy paths): two real bugs
+  fixed, drift detection added.** A coverage review of failure modes the
+  happy-path tests never reached turned up two genuine product bugs, both now
+  fixed and locked with tests. (1) **Concurrent-wake task leak:**
+  `WorkspaceService.persist` was an unconditional PutItem, so two simultaneous
+  `connect`/`start` calls on a stopped workspace each launched a real ECS task
+  and the last write won — the losers' tasks leaked (GC reaps storage, not
+  tasks), and the gateway's per-connection wake plus a portal Start click make
+  concurrent connects normal. Fixed with an optimistic-concurrency `version`
+  field + conditional `persistTransition`; the wake loser stops its own task
+  and returns the winner's state (idempotent). (2) **Quota bypass at scale:**
+  `list()` read a single ≤1 MB DynamoDB page, so past that the per-owner quota
+  count undercounted (bypass) and the admin list truncated — fixed with
+  `pages:"all"`. Also added **drift detection** (a new feature): the reconciler
+  sweeps first for tasks that died out-of-band (new `ComputeProvider.taskState`)
+  and reconciles the record to `stopped`/`error` so connect-info never serves a
+  dead ENI and the idle sweep never snapshots a released volume; plus
+  crash-consistency compensation (stop a launched task if persist fails),
+  adversarial auth tests (Pomerium forged cookie; Auth.js PKCE/replay — PKCE is
+  the GitHub provider's active check, verified in @auth/core, not state;
+  wrong-CA/expired SSH certs), a 64 MiB checksummed data-fidelity case, and the
+  EBS adapter over the TLS aws-sim. `/security-review` on the diff: no
+  HIGH/MEDIUM findings. Lesson: a stub of our OWN persistence (unconditional
+  put) hid a cross-request race that only a real concurrent test surfaces — and
+  pagination defaults are a silent correctness AND authz risk, not just a perf
+  one. Sockerless pin bumped to #550 (`9d43f3d`); no downstream impact (bleephub
+  = OAuth only), auth e2e green on it.

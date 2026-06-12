@@ -78,4 +78,25 @@ describe("Pomerium identity-aware wildcard routing (mock-free, real proxy)", () 
     expect(res.status).toBe(302);
     expect(new URL(res.location ?? "").pathname).toBe("/.pomerium/sign_in");
   });
+
+  it("a forged session cookie does not pass the gate (and is not a 500)", async () => {
+    // Garbage in the session slot must behave like no session: redirect to
+    // sign-in, never proxy to the upstream, never crash.
+    const forged = await pomeriumRequest(new URL(`https://ws-mallory.${ROUTE_DOMAIN}/`), {
+      Cookie: "_pomerium=AAAA.BBBB.CCCC",
+    });
+    expect(forged.status).toBe(302);
+    expect(forged.body).not.toMatch(/X-Pomerium-Jwt-Assertion/i);
+
+    // A structurally-valid-looking but unsigned JWT is equally worthless.
+    const header = Buffer.from(JSON.stringify({ alg: "ES256", typ: "JWT" })).toString("base64url");
+    const payload = Buffer.from(
+      JSON.stringify({ sub: "mallory", email: "mallory@example.com" }),
+    ).toString("base64url");
+    const tampered = await pomeriumRequest(new URL(`https://ws-mallory.${ROUTE_DOMAIN}/`), {
+      Cookie: `_pomerium=${header}.${payload}.AAAA`,
+    });
+    expect(tampered.status).toBe(302);
+    expect(tampered.body).not.toMatch(/X-Pomerium-Jwt-Assertion/i);
+  });
 });

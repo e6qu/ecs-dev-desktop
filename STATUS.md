@@ -2,36 +2,55 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-12 (post-PR #63; no branch in flight)
+**Last updated:** 2026-06-12 (correctness-hardening branch)
 
 ## Current phase
 
-**PRs #60–#63 are merged to `main`; nothing is in flight.** The 2026-06-12
-test-gap closure arc is complete:
+**PRs #56–#64 are merged to `main`** (test-gap closure, gateway machine-auth,
+sockerless #549 consumption, live portal + Pomerium browser e2e over TLS, and
+the #64 STATUS sync).
 
-- **PR #60** — closed every untested seam from the coverage review, with
-  hardening where tests exposed real product gaps: per-workspace HMAC
-  **gateway machine-auth** (`EDD_GATEWAY_SECRET`; the old bearer token was
-  never accepted server-side — masked by a stub CP), the real-control-plane
-  wake-on-connect chain e2e, the LIVE user journey on `COMPUTE_PROVIDER=ecs`
-  (in-workspace idle-agent heartbeats proven), reconciler scale-to-zero
-  against a real stale task, Auth.js callback-route e2e, route-level integ
-  suites, and the scale-to-zero tuning knobs (`EDD_HEARTBEAT_INTERVAL_S`,
-  `EDD_IDLE_THRESHOLD_MS`/`EDD_SNAPSHOT_INTERVAL_MS`/`EDD_GC_GRACE_MS`).
-- **PR #61** — consumed sockerless PR #549 (pin `777ffd3`), which fixed our
-  same-day reports #547/#548; Entra group→admin is asserted through the
-  interactive Auth.js flow via standard `login_hint`.
-- **PR #62** — LIVE portal browser e2e (`test:pw:live`): UI lifecycle clicks
-  act on real golden-image ECS tasks; admin Inspect confirms real bindings.
-- **PR #63** — browser OIDC login through Pomerium (`test:pw:pomerium`); the
-  Pomerium harness moved to **real TLS** (Pomerium forces https in all
-  absolute URLs — verified in its source), SPKI-pinned Chromium trust.
+Current branch: `feat/hardening-races-drift-scale` (PR #65) — the unhappy-path
+hardening pass (the failure modes the happy-path coverage didn't reach), each
+found or fixed via a test:
 
-**Every live-coverage candidate in `docs/simulator-live-coverage.md` is now
-covered.** No open bugs; no upstream blockers; sockerless pin current. The
-project is at the decision gate: all remaining work is blocked on the open
-decisions in `DO_NEXT.md` (AWS account/region foremost), except the optional
-ECS Exec workspace probe (itself gated on a product decision).
+- **Concurrent-wake task leak (real bug, fixed):** `WorkspaceService.persist`
+  was an unconditional PutItem, so two simultaneous `connect`/`start` calls on
+  a stopped workspace both launched a real ECS task and the loser's leaked
+  forever. Added an optimistic-concurrency `version` field; every transition is
+  a conditional update (`persistTransition`), the wake loser stops its own
+  just-launched task and returns the winner's state (idempotent). E2e fires 5
+  concurrent connects and asserts exactly one task survives.
+- **Crash-consistency (fixed):** `create`/`start` launch the task before
+  persisting; a persist failure now stops the just-launched task instead of
+  orphaning it. Integ injects a DynamoDB write outage via the AWS SDK
+  middleware stack.
+- **Drift detection (new feature):** the reconciler now runs a drift sweep
+  FIRST — a record whose task died out-of-band (crash/eviction) is reconciled
+  via the new `ComputeProvider.taskState()` to `stopped` (snapshot → wake-able)
+  or `error` (nothing to restore), so connect-info never hands out a dead ENI
+  and the idle sweep never snapshots a released volume. E2e kills a task with
+  raw ECS StopTask and asserts recovery.
+- **Pagination / quota-bypass (real bug, fixed):** `WorkspaceService.list`
+  used a single-page `.go()`; past DynamoDB's 1 MB page it truncated, which
+  undercounted the per-owner quota check (a **quota bypass at scale**) and hid
+  workspaces from the admin list. Now `pages: "all"`; integ seeds >1 MB and a
+  reconciler integ sweeps a 450-record fleet.
+- **Adversarial auth tests:** forged/tampered Pomerium session cookie stays
+  gated; Auth.js callback rejects a missing-PKCE-verifier replay and a reused
+  authorization code (PKCE is the GitHub provider's active check, verified in
+  `@auth/core`); sshd rejects a wrong-CA and an expired certificate.
+- **Heavy data fidelity:** 64 MiB random payload round-trips snapshot→restore
+  byte-for-byte (`sha256sum -c`). **TLS storage adapter:** the EBS adapter runs
+  over the TLS aws-sim with real CA trust in `e2e-https`.
+
+Security review (`/security-review`) on the branch diff: no HIGH/MEDIUM
+findings; the pagination fix is itself a quota-bypass remediation.
+
+Upstream: sockerless **PR #550** (bleephub Actions follow-ups — cancellation,
+runner groups, composite actions, runner-on-cloud volume translation) merged
+and the submodule pin bumped to `9d43f3d`; none of it touches our surfaces
+(we consume bleephub for OAuth only), and the bleephub auth e2e pass on it.
 
 ## What works (built, tested, merged to `main`)
 

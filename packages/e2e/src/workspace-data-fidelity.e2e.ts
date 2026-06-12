@@ -113,4 +113,31 @@ describe("workspace data fidelity (write → snapshot → restore → read) on t
 
     expect(stopped.containers?.[0]?.exitCode).toBe(0);
   });
+
+  it("a 64 MiB payload survives snapshot → restore byte-for-byte (checksum)", async () => {
+    // The marker test proves a tiny write round-trips; this proves real bulk
+    // data does, with no silent corruption. The writer generates 64 MiB of
+    // random bytes, records their sha256, and exits; the verifier recomputes
+    // the digest against the restored volume (`sha256sum -c` → exit 0 only if
+    // every byte matches). Random (not zeros) so a sparse/short read can't pass.
+    await registerTask("edd-e2e-bigwriter", [
+      "sh",
+      "-c",
+      `dd if=/dev/urandom of=${MOUNT}/big.bin bs=1M count=64 && sha256sum ${MOUNT}/big.bin > ${MOUNT}/big.sha && sync`,
+    ]);
+    const writer = await runTask("edd-e2e-bigwriter");
+    const written = await waitFor(writer, "STOPPED");
+    expect(written.containers?.[0]?.exitCode, "64 MiB write should succeed").toBe(0);
+
+    const snap = await storage.createSnapshot(volumeId(managedVolumeId(written)));
+
+    await registerTask("edd-e2e-bigverifier", ["sh", "-c", `cd ${MOUNT} && sha256sum -c big.sha`]);
+    const verifier = await runTask("edd-e2e-bigverifier", snap.id);
+    const stopped = await waitFor(verifier, "STOPPED");
+
+    expect(
+      stopped.containers?.[0]?.exitCode,
+      "restored 64 MiB must match the recorded digest",
+    ).toBe(0);
+  });
 });

@@ -37,13 +37,16 @@ credentials, and normal cloud configuration.
 These are feasible against the current simulators and should stay in the same
 endpoint-only model: no product branches, no special fake code paths.
 
-| Candidate                | Simulator path                            | Reason                                                                                                                                  |
-| ------------------------ | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| ECS Exec workspace probe | AWS container-mode sim (`ExecuteCommand`) | The smoke test proves the API contract. This could become a standard in-workspace probe if the product adopts ECS Exec for diagnostics. |
+| Candidate                       | Simulator path                            | Reason                                                                                                                                                                |
+| ------------------------------- | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ECS Exec workspace probe        | AWS container-mode sim (`ExecuteCommand`) | The smoke test proves the API contract. This could become a standard in-workspace probe if the product adopts ECS Exec for diagnostics.                               |
+| Idle-agent heartbeat RESUMPTION | golden image + togglable control plane    | Tolerance of an unreachable control plane is already shown (the agent never crashes the task); _resumption_ after the CP returns needs a togglable-CP harness to add. |
 
 Done since the last revision: the full user journey, the portal browser
-lifecycle, and the browser Pomerium OIDC login now run live (rows above); the
-Auth.js callback routes are covered against both sim IdPs.
+lifecycle, and the browser Pomerium OIDC login run live; the Auth.js callback
+routes are covered against both sim IdPs; and the hardening pass added
+concurrent-wake-race, crash-consistency, drift-detection, scale/pagination,
+heavy data-fidelity, TLS storage-adapter, and adversarial-auth coverage.
 
 Container-mode ECS tasks that reach simulator-adjacent services must be configured
 like normal AWS tasks: route-table egress exists and public egress is explicit

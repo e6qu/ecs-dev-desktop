@@ -234,9 +234,18 @@ jobs:
           EDD_SIM_SCHEME: https
           NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/temp/sim-tls/ca.pem
         run: pnpm --filter @edd/web exec vitest run --config vitest.e2e.config.ts lib/entra-auth.e2e.ts lib/nextauth-callback.e2e.ts
-      # SSH connect-as-principal + authz-deny: standard sshd + ephemeral CA certs.
-      - name: SSH connect + authz-deny (mock-free standard sshd)
+      # SSH connect-as-principal + authz-deny + adversarial certs (wrong CA,
+      # expired): standard sshd + ephemeral CA certs.
+      - name: SSH connect + authz-deny + adversarial certs (mock-free standard sshd)
         run: pnpm --filter @edd/ssh-gateway exec vitest run --config vitest.e2e.config.ts src/ssh-connect.e2e.ts
+      # The real EBS StorageProvider over the AWS SDK against the TLS aws-sim,
+      # CA trusted (no --insecure) — the storage/compute SDK path the plain-HTTP
+      # tiers exercise, now proven the way real cloud always runs.
+      - name: EBS storage adapter over HTTPS (real CA trust)
+        env:
+          EDD_SIM_SCHEME: https
+          NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/temp/sim-tls/ca.pem
+        run: pnpm --filter @edd/storage-ec2 test:integ
       - if: always()
         run: docker compose -f docker-compose.https.yml down
       - if: always()

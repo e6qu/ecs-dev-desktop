@@ -91,13 +91,19 @@ seeds a stale workspace backed by a running golden-image task; the sweep snapsho
 and stops it. ✅ **In-workspace heartbeat proven live:** the idle-agent in a real
 task posts HMAC heartbeats to the real control plane (live user journey). Tuning
 knobs exist: `EDD_HEARTBEAT_INTERVAL_S` (task env), `EDD_IDLE_THRESHOLD_MS`/
-`EDD_SNAPSHOT_INTERVAL_MS`/`EDD_GC_GRACE_MS` (reconciler).
+`EDD_SNAPSHOT_INTERVAL_MS`/`EDD_GC_GRACE_MS` (reconciler). ✅ **Drift detection:**
+the reconciler sweeps first for tasks that died out-of-band (crash/eviction) via
+`ComputeProvider.taskState()` and reconciles the record to `stopped`/`error`
+(e2e kills a task with raw ECS StopTask). ✅ **Scale honesty:** lifecycle reads
+paginate fully (`pages:"all"`) — fixing a quota-bypass-at-scale; integ sweeps a
+450-record fleet. ✅ **Concurrency-safe:** optimistic-concurrency `version`
+conditions every transition write so concurrent wakes can't leak ECS tasks.
 
 - ⬜ **AWS-gated:** cron (`rate(5 minutes)` default; `cron()` also works —
   BUG-1531/#489 fixed upstream); SOCI; cost metric.
 - **Gate:** idle→stop→snapshot→wake ✅; GC reaps orphans only ✅; heartbeat keep-alive ✅
   (incl. live in-workspace agent); reconciler container + scheduler e2e ✅ (incl.
-  real task stop); real cron + cost metric ⬜.
+  real task stop); drift detection ✅; concurrent-wake no-leak ✅; real cron + cost metric ⬜.
 
 ## Phase 6 — User portal + base-image catalog — ✅ (UI complete)
 

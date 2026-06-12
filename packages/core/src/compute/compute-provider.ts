@@ -25,12 +25,22 @@ export interface RunTaskInput {
   fromSnapshot?: SnapshotId;
 }
 
+/** Coarse liveness of a task as the compute platform sees it. A task that is
+ * on its way up still counts as "running" (drift detection must not flag a
+ * wake in progress); one that is stopping, stopped, or unknown is "stopped". */
+export type TaskLiveness = "running" | "stopped";
+
 export interface ComputeProvider {
   /** Launch a task with a fresh or snapshot-hydrated managed EBS volume. */
   runTask(input: RunTaskInput): Promise<ComputeTask>;
 
   /** Stop the task; the platform releases its managed EBS volume. */
   stopTask(taskId: TaskId): Promise<void>;
+
+  /** Observed liveness of a task — the reconciler's drift-detection input
+   * (a record claiming `running` whose task died out-of-band must stop
+   * advertising live bindings). */
+  taskState(taskId: TaskId): Promise<TaskLiveness>;
 
   /** Dependency health (admin Health board). Real adapters do a live check; absent
    * ⇒ reported as `unknown` (real check available on AWS). */

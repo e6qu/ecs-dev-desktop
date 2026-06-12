@@ -108,6 +108,31 @@ export function recordSnapshot(ws: Workspace, snapshot: SnapshotId, at: IsoTimes
 }
 
 /**
+ * Reconcile an out-of-band task death (crash, Fargate eviction, manual stop):
+ * the compute platform released the managed volume with the task, so the
+ * record must stop claiming live bindings. With a snapshot the workspace is
+ * recoverable (→ `stopped`, wake-able); without one nothing can be restored
+ * (→ `error`, surfaced honestly instead of pretending to be reachable).
+ * Only an active, task-bound workspace can lose its task — err otherwise.
+ */
+export function markTaskLost(ws: Workspace, at: IsoTimestamp): Result<Workspace, DomainError> {
+  if (ws.state !== "provisioning" && ws.state !== "running" && ws.state !== "idle") {
+    return err(conflictError(`cannot reconcile task loss for ${ws.id}: workspace is ${ws.state}`));
+  }
+  if (ws.taskId === undefined) {
+    return err(conflictError(`cannot reconcile task loss for ${ws.id}: no task bound`));
+  }
+  return ok({
+    ...ws,
+    state: ws.latestSnapshotId === undefined ? "error" : "stopped",
+    lastActivity: at,
+    volumeId: undefined,
+    taskId: undefined,
+    sshHost: undefined,
+  });
+}
+
+/**
  * Record user/editor/SSH activity (an idle-agent heartbeat): refresh `lastActivity`
  * so the reconciler doesn't scale the workspace to zero, and wake it from idle.
  * Only an active workspace can have activity — throws otherwise.

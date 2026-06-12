@@ -2,7 +2,7 @@
 import { newTaskId, type TaskId, type VolumeId } from "../domain/ids";
 import type { ComponentHealth } from "../observability/health";
 import type { StorageProvider } from "../storage/storage-provider";
-import type { ComputeProvider, ComputeTask, RunTaskInput } from "./compute-provider";
+import type { ComputeProvider, ComputeTask, RunTaskInput, TaskLiveness } from "./compute-provider";
 
 /**
  * In-memory ComputeProvider for tests. Models ECS-managed EBS: `runTask` creates
@@ -41,6 +41,11 @@ export class FakeComputeProvider implements ComputeProvider {
       await this.storage.deleteVolume(volumeId);
       this.volumes.delete(taskId);
     }
+  }
+
+  /** A task is live exactly while its managed volume is still attached. */
+  taskState(taskId: TaskId): Promise<TaskLiveness> {
+    return Promise.resolve(this.volumes.has(taskId) ? "running" : "stopped");
   }
 
   health(): Promise<ComponentHealth> {
