@@ -27,13 +27,12 @@ OpenSSH + our SSH CA.
 ## Available now (decision-free — immediate)
 
 - **Expand live app tests further** — `docs/simulator-live-coverage.md` lists the
-  remaining decision-free candidates: portal browser lifecycle against the ECS
-  container-mode sim, and browser Pomerium OIDC login. (The full live user
-  journey, Auth.js callback routes, real-CP wake chain, idle-agent heartbeat,
-  and reconciler scale-to-zero landed in the test-gap closure PR.)
-- _(Entra group→role through the interactive Auth.js flow landed once
-  sockerless PR #549 fixed #547 — covered via `login_hint` in
-  `apps/web/lib/nextauth-callback.e2e.ts`.)_
+  remaining decision-free candidate: browser Pomerium OIDC login (Playwright
+  against Pomerium + the Azure/Entra sim). The portal browser lifecycle on
+  real ECS compute (`test:pw:live`), the live user journey, Auth.js callback
+  routes (incl. Entra `login_hint` group→role after sockerless #549), the
+  real-CP wake chain, idle-agent heartbeat, and reconciler scale-to-zero are
+  all covered.
 
 ---
 

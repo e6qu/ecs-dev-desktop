@@ -4,7 +4,13 @@
   "ignoreBinaries": ["ssh-keygen"],
   "workspaces": {
     "apps/web": {
-      "entry": ["e2e/**/*.pw.ts", "**/*.test.ts", "**/*.integ.ts"]
+      "entry": [
+        "e2e/**/*.pw.ts",
+        "e2e/**/*.pwlive.ts",
+        "e2e/live-cloud-setup.ts",
+        "**/*.test.ts",
+        "**/*.integ.ts"
+      ]
     },
     "packages/*": {
       "entry": ["**/*.test.ts", "**/*.integ.ts"]

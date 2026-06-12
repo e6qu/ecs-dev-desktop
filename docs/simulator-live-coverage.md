@@ -28,6 +28,7 @@ credentials, and normal cloud configuration.
 | SSH wake-on-connect chain (real CP)    | OpenSSH proxy + production `next start` + DynamoDB Local | `packages/e2e/src/ssh-wake-chain.e2e.ts`                          | ssh → ForceCommand → real `/connect` (HMAC gateway machine-auth) wakes a STOPPED workspace → `/connect-info` → forward; user cert from the real `/ssh-cert` route.                                                                                                                                     |
 | LIVE user journey (real API, no fakes) | AWS container mode + production `next start`             | `packages/e2e/src/user-journey.e2e.ts`                            | Create→inspect→snapshot→stop→wake→delete through the real HTTP API with `COMPUTE_PROVIDER=ecs`: real golden-image tasks, managed EBS, ENI `sshHost`, API-issued SSH cert — and the in-workspace idle-agent posting real HMAC heartbeats (lastActivity advances).                                       |
 | Reconciler scale-to-zero               | AWS container mode                                       | `packages/e2e/src/reconciler-container.e2e.ts`                    | A seeded stale workspace backed by a RUNNING golden-image task is snapshotted and stopped by the scheduler-fired sweep.                                                                                                                                                                                |
+| LIVE portal browser lifecycle          | AWS container mode + production `next start` + Chromium  | `apps/web/e2e/portal-live.pwlive.ts` (`test:pw:live`)             | Browser create/stop/start/delete clicks act on real golden-image ECS tasks (`COMPUTE_PROVIDER=ecs`): admin Inspect confirms a real task ARN, managed volume, live-subnet ENI; the wake binds a NEW task ARN with the stop snapshot recorded.                                                           |
 | Auth.js callback routes                | `bleephub` + Azure/Entra sim                             | `apps/web/lib/nextauth-callback.e2e.ts`                           | The real NextAuth handlers: csrf → signin → IdP authorize → callback (code exchange, JWKS id_token checks) → session with the mapped role. GitHub team→admin; Entra group→admin via standard `login_hint` (sockerless PR #549) + unknown-hint `login_required`. Entra legs are TLS-only (`e2e-https`). |
 
 ## Next Live-Test Candidates
@@ -35,15 +36,14 @@ credentials, and normal cloud configuration.
 These are feasible against the current simulators and should stay in the same
 endpoint-only model: no product branches, no special fake code paths.
 
-| Candidate                                               | Simulator path                                                                                                                      | Reason                                                                                                                                  |
-| ------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| Portal/admin browser lifecycle against real ECS compute | Playwright against built `apps/web` with `COMPUTE_PROVIDER=ecs`, `STORAGE_PROVIDER=ec2`, DynamoDB Local, and AWS container-mode sim | Moves create/stop/snapshot UI flows from local/fake compute to the same live container-mode path used by package e2e.                   |
-| Browser OIDC login through Pomerium                     | Playwright against Pomerium + Azure/Entra sim                                                                                       | The HTTP-client e2e already proves the flow. Browser coverage would prove cookie and redirect behavior in the user agent.               |
-| ECS Exec workspace probe                                | AWS container-mode sim (`ExecuteCommand`)                                                                                           | The smoke test proves the API contract. This could become a standard in-workspace probe if the product adopts ECS Exec for diagnostics. |
+| Candidate                           | Simulator path                                | Reason                                                                                                                                  |
+| ----------------------------------- | --------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Browser OIDC login through Pomerium | Playwright against Pomerium + Azure/Entra sim | The HTTP-client e2e already proves the flow. Browser coverage would prove cookie and redirect behavior in the user agent.               |
+| ECS Exec workspace probe            | AWS container-mode sim (`ExecuteCommand`)     | The smoke test proves the API contract. This could become a standard in-workspace probe if the product adopts ECS Exec for diagnostics. |
 
-Done since the last revision: the full user journey now runs on container-mode
-adapters through the real API, and the Auth.js callback routes are covered
-against both sim IdPs (rows above).
+Done since the last revision: the full user journey and the portal browser
+lifecycle now run on container-mode adapters through the real API/UI, and the
+Auth.js callback routes are covered against both sim IdPs (rows above).
 
 Container-mode ECS tasks that reach simulator-adjacent services must be configured
 like normal AWS tasks: route-table egress exists and public egress is explicit

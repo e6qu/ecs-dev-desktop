@@ -114,6 +114,6 @@ Nothing on AWS — no cloud infrastructure provisioned.
 
 1. **AWS account/region decision** (`DO_NEXT` #1) — the top blocker; unlocks
    everything real.
-2. **Remaining live-test candidates** (`docs/simulator-live-coverage.md`):
-   portal browser lifecycle against real ECS compute, browser Pomerium OIDC
-   login.
+2. **Remaining live-test candidate** (`docs/simulator-live-coverage.md`):
+   browser Pomerium OIDC login. (Portal browser lifecycle on real ECS compute
+   landed as `test:pw:live` — browser clicks act on real golden-image tasks.)

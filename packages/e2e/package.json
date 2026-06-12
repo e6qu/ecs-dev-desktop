@@ -3,6 +3,10 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "exports": {
+    "./aws-sim": "./src/aws-sim.ts",
+    "./docker-host": "./src/docker-host.ts"
+  },
   "scripts": {
     "lint": "eslint .",
     "test:e2e": "vitest run --config vitest.e2e.config.ts"
