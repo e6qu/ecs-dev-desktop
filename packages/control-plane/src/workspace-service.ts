@@ -11,6 +11,7 @@ import {
   markActivity,
   markStarted,
   markStopped,
+  markTaskLost,
   newWorkspaceId,
   notFoundError,
   ok,
@@ -69,6 +70,24 @@ interface WorkspaceRecord {
   latestSnapshotId?: string;
   latestSnapshotAt?: string;
   sshHost?: string;
+  version: number;
+}
+
+/** A loaded workspace plus the persistence version that read observed — every
+ * transition write is conditioned on it (optimistic concurrency). */
+interface LoadedWorkspace {
+  ws: Workspace;
+  version: number;
+}
+
+/** True when a write was rejected by its condition expression: a concurrent
+ * writer advanced the record since our read (or deleted it). */
+function isVersionConflict(err: unknown): boolean {
+  for (let e: unknown = err; e instanceof Error; e = e.cause) {
+    if (e.name === "ConditionalCheckFailedException") return true;
+    if (/conditional request failed/i.test(e.message)) return true;
+  }
+  return false;
 }
 
 /** Brand a persisted record into a domain object (imperative-shell boundary). */
@@ -111,27 +130,39 @@ export class WorkspaceService {
       at,
       sshHost: task.sshHost,
     });
-    await this.persist(ws);
+    try {
+      await this.persistNew(ws);
+    } catch (err) {
+      // Crash-consistency: the task launched but the record never landed —
+      // stop the task so nothing real leaks, then surface the original error.
+      await this.deps.compute.stopTask(task.id);
+      throw err;
+    }
     return toWorkspaceDto(ws);
   }
 
   async list(filter?: { ownerId?: OwnerId }): Promise<WorkspaceDto[]> {
     const owner = filter?.ownerId;
+    // `pages: "all"` is mandatory: a single DynamoDB page caps at 1 MB, so a
+    // bare `.go()` silently truncates. That undercounts the per-owner list used
+    // for quota enforcement (a quota BYPASS at scale) and hides workspaces from
+    // the admin all-list. ElectroDB paginates fully only when asked.
     const { data } = owner
-      ? await this.deps.workspaces.query.byOwner({ ownerId: owner }).go()
-      : await this.deps.workspaces.scan.go();
+      ? await this.deps.workspaces.query.byOwner({ ownerId: owner }).go({ pages: "all" })
+      : await this.deps.workspaces.scan.go({ pages: "all" });
     return data.map((r: WorkspaceRecord) => toWorkspaceDto(toWorkspace(r)));
   }
 
   async get(id: WorkspaceId): Promise<WorkspaceDto | null> {
-    const ws = await this.find(id);
-    return ws === null ? null : toWorkspaceDto(ws);
+    const loaded = await this.find(id);
+    return loaded === null ? null : toWorkspaceDto(loaded.ws);
   }
 
   /** Full admin diagnostics: the detailed record + a derived lifecycle timeline. */
   async inspect(id: WorkspaceId): Promise<WorkspaceInspectionDto | null> {
-    const ws = await this.find(id);
-    if (ws === null) return null;
+    const loaded = await this.find(id);
+    if (loaded === null) return null;
+    const { ws } = loaded;
     return {
       workspace: toWorkspaceDetail(ws),
       timeline: deriveWorkspaceTimeline({
@@ -189,7 +220,7 @@ export class WorkspaceService {
   async stop(id: WorkspaceId): Promise<Result<WorkspaceDto, DomainError>> {
     const found = await this.require(id);
     if (!found.ok) return found;
-    const ws = found.value;
+    const { ws, version } = found.value;
     const validated = transition(ws.state, "stop"); // validate-first, before any I/O
     if (!validated.ok) return validated;
     const at = isoTimestamp(this.deps.clock.now());
@@ -201,7 +232,19 @@ export class WorkspaceService {
     if (ws.taskId !== undefined) await this.deps.compute.stopTask(ws.taskId);
     const next = markStopped(ws, freshSnapshot, at);
     if (!next.ok) return next;
-    await this.persist(next.value);
+    try {
+      await this.persistTransition(next.value, version);
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+      // A concurrent writer advanced the record. If it also reached "stopped"
+      // the outcome stands (idempotent); anything else is a real conflict.
+      // The stopTask/snapshot already performed are safe: stopping a stopped
+      // task is a no-op, and an unreferenced snapshot is reaped by GC.
+      const current = await this.find(id);
+      if (current === null) return err(notFoundError("workspace", id));
+      if (current.ws.state === "stopped") return ok(toWorkspaceDto(current.ws));
+      return err(conflictError(`stop of ${id} lost a concurrent update (now ${current.ws.state})`));
+    }
     return ok(toWorkspaceDto(next.value));
   }
 
@@ -209,7 +252,7 @@ export class WorkspaceService {
   async start(id: WorkspaceId): Promise<Result<WorkspaceDto, DomainError>> {
     const found = await this.require(id);
     if (!found.ok) return found;
-    const ws = found.value;
+    const { ws, version } = found.value;
     // validate-first (wake → provisioned), before any I/O.
     const woken = transition(ws.state, "wake");
     if (!woken.ok) return woken;
@@ -226,7 +269,27 @@ export class WorkspaceService {
     });
     const next = markStarted(ws, task.volumeId, task.id, at, task.sshHost);
     if (!next.ok) return next;
-    await this.persist(next.value);
+    try {
+      await this.persistTransition(next.value, version);
+    } catch (e) {
+      if (isVersionConflict(e)) {
+        // Lost the wake race: another writer (a concurrent connect/start) won.
+        // Stop OUR freshly launched task so it cannot leak, then return the
+        // winner's state if it serves the caller's intent (idempotent wake).
+        await this.deps.compute.stopTask(task.id);
+        const current = await this.find(id);
+        if (current === null) return err(notFoundError("workspace", id));
+        const { state } = current.ws;
+        if (state === "running" || state === "idle" || state === "provisioning") {
+          return ok(toWorkspaceDto(current.ws));
+        }
+        return err(conflictError(`wake of ${id} lost a concurrent update (now ${state})`));
+      }
+      // Crash-consistency: persistence failed outright — the task launched but
+      // no record references it. Stop it, then surface the original error.
+      await this.deps.compute.stopTask(task.id);
+      throw e;
+    }
     return ok(toWorkspaceDto(next.value));
   }
 
@@ -237,7 +300,7 @@ export class WorkspaceService {
   async connect(id: WorkspaceId): Promise<Result<WorkspaceDto, DomainError>> {
     const found = await this.require(id);
     if (!found.ok) return found;
-    const ws = found.value;
+    const { ws } = found.value;
     const action = planConnect(ws.state);
     switch (action) {
       case "ready":
@@ -253,35 +316,82 @@ export class WorkspaceService {
   }
 
   /** Idle-agent heartbeat: record activity so the reconciler doesn't scale the
-   * workspace to zero (and wake it from idle). */
+   * workspace to zero (and wake it from idle). Heartbeats are frequent and
+   * harmless, so a lost write race retries once before reporting conflict. */
   async heartbeat(id: WorkspaceId): Promise<Result<WorkspaceDto, DomainError>> {
-    const found = await this.require(id);
-    if (!found.ok) return found;
-    const next = markActivity(found.value, isoTimestamp(this.deps.clock.now()));
-    if (!next.ok) return next;
-    await this.persist(next.value);
-    return ok(toWorkspaceDto(next.value));
+    for (let attempt = 0; ; attempt++) {
+      const found = await this.require(id);
+      if (!found.ok) return found;
+      const next = markActivity(found.value.ws, isoTimestamp(this.deps.clock.now()));
+      if (!next.ok) return next;
+      try {
+        await this.persistTransition(next.value, found.value.version);
+      } catch (e) {
+        if (isVersionConflict(e) && attempt === 0) continue;
+        if (isVersionConflict(e))
+          return err(conflictError(`heartbeat for ${id} lost concurrent updates`));
+        throw e;
+      }
+      return ok(toWorkspaceDto(next.value));
+    }
   }
 
   /** Point-in-time snapshot of a running workspace. */
   async snapshot(id: WorkspaceId): Promise<Result<WorkspaceDto, DomainError>> {
     const found = await this.require(id);
     if (!found.ok) return found;
-    const ws = found.value;
+    const { ws, version } = found.value;
     if (ws.volumeId === undefined) {
       return err(conflictError(`cannot snapshot ${id}: no active volume`));
     }
     const snap = await this.deps.storage.createSnapshot(ws.volumeId);
     const next = recordSnapshot(ws, snap.id, isoTimestamp(this.deps.clock.now()));
-    await this.persist(next);
+    try {
+      await this.persistTransition(next, version);
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+      // The snapshot itself exists either way; an unreferenced one is GC'd.
+      return err(conflictError(`snapshot of ${id} lost a concurrent update`));
+    }
     return ok(toWorkspaceDto(next));
+  }
+
+  /**
+   * Drift detection (reconciler): if the record claims an active task that the
+   * compute platform says is gone (crash, eviction, out-of-band stop), stop
+   * advertising live bindings — `stopped` when a snapshot can restore it,
+   * `error` when nothing can. Returns `lost: false` when the task is healthy.
+   */
+  async reconcileTaskLoss(
+    id: WorkspaceId,
+  ): Promise<Result<{ lost: boolean; workspace: WorkspaceDto }, DomainError>> {
+    const found = await this.require(id);
+    if (!found.ok) return found;
+    const { ws, version } = found.value;
+    if (ws.taskId === undefined || (ws.state !== "running" && ws.state !== "idle")) {
+      return ok({ lost: false, workspace: toWorkspaceDto(ws) });
+    }
+    if ((await this.deps.compute.taskState(ws.taskId)) === "running") {
+      return ok({ lost: false, workspace: toWorkspaceDto(ws) });
+    }
+    const next = markTaskLost(ws, isoTimestamp(this.deps.clock.now()));
+    if (!next.ok) return next;
+    try {
+      await this.persistTransition(next.value, version);
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+      // A concurrent writer (user action) advanced the record — defer to it;
+      // the next sweep re-evaluates from the fresh state.
+      return err(conflictError(`drift reconcile of ${id} lost a concurrent update`));
+    }
+    return ok({ lost: true, workspace: toWorkspaceDto(next.value) });
   }
 
   /** Permanently delete the workspace and its runtime resources. */
   async remove(id: WorkspaceId): Promise<Result<void, DomainError>> {
     const found = await this.require(id);
     if (!found.ok) return found;
-    const ws = found.value;
+    const { ws } = found.value;
     const terminable = assertTerminable(ws);
     if (!terminable.ok) return terminable;
     // Running: stopping the task releases its managed volume. Stopped: the volume
@@ -293,20 +403,41 @@ export class WorkspaceService {
     return ok(undefined);
   }
 
-  private async find(id: WorkspaceId): Promise<Workspace | null> {
+  private async find(id: WorkspaceId): Promise<LoadedWorkspace | null> {
     const { data } = await this.deps.workspaces.get({ id }).go();
-    return data === null ? null : toWorkspace(data);
+    return data === null ? null : { ws: toWorkspace(data), version: data.version };
   }
 
-  private async require(id: WorkspaceId): Promise<Result<Workspace, DomainError>> {
-    const ws = await this.find(id);
-    return ws === null ? err(notFoundError("workspace", id)) : ok(ws);
+  private async require(id: WorkspaceId): Promise<Result<LoadedWorkspace, DomainError>> {
+    const loaded = await this.find(id);
+    return loaded === null ? err(notFoundError("workspace", id)) : ok(loaded);
   }
 
-  /** Upsert the domain workspace; PutItem replaces the item so cleared optional
-   * bindings (volume/task on stop) are removed. The full-detail DTO is exactly the
-   * persisted shape, so it doubles as the put payload (one mapping, not two). */
-  private async persist(ws: Workspace): Promise<void> {
-    await this.deps.workspaces.put(toWorkspaceDetail(ws)).go();
+  /** Insert a brand-new workspace record (fails if the id already exists). */
+  private async persistNew(ws: Workspace): Promise<void> {
+    await this.deps.workspaces.create({ ...toWorkspaceDetail(ws), version: 0 }).go();
+  }
+
+  /** Persist a lifecycle transition, conditioned on the version the caller's
+   * read observed: a concurrent writer makes this throw a version conflict
+   * instead of silently overwriting (and possibly leaking a real task).
+   * Cleared optional bindings (volume/task on stop) are removed explicitly —
+   * an update, unlike PutItem, keeps attributes it isn't told about. */
+  private async persistTransition(ws: Workspace, observedVersion: number): Promise<void> {
+    const detail = toWorkspaceDetail(ws);
+    const clearable = [
+      "volumeId",
+      "taskId",
+      "latestSnapshotId",
+      "latestSnapshotAt",
+      "sshHost",
+    ] as const;
+    const cleared = clearable.filter((field) => detail[field] === undefined);
+    const { id, ...fields } = detail;
+    let mutation = this.deps.workspaces
+      .patch({ id })
+      .set({ ...fields, version: observedVersion + 1 });
+    if (cleared.length > 0) mutation = mutation.remove([...cleared]);
+    await mutation.where(({ version }, { eq }) => eq(version, observedVersion)).go();
   }
 }

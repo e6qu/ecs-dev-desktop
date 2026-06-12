@@ -127,4 +127,37 @@ describe("Reconciler against DynamoDB Local", () => {
     expect(gc.snapshotsDeleted).toBe(1); // only the superseded snapshot #1
     expect((await storage.listSnapshots()).length).toBe(1);
   });
+
+  it("scales to zero across a large stale fleet (paginated sweep honesty)", async () => {
+    // listActive() reads every running/idle record via byState (pages:"all").
+    // A bare single-page read would cap the sweep at ~1 MB of items, silently
+    // leaving most idle workspaces running. Seed well past one page.
+    const FLEET = 450;
+    const PAD = "x".repeat(2048);
+    const { reconciler, advance } = await harness();
+    const entity = makeWorkspaceEntity(client, TEST_TABLE);
+    await Promise.all(
+      Array.from({ length: FLEET }, (_unused, i) =>
+        entity
+          .create({
+            id: `ws-fleet-${String(i)}`,
+            ownerId: `fleet-${String(i % 7)}`,
+            baseImage: `img#${PAD}`,
+            state: "running",
+            createdAt: T0,
+            lastActivity: T0, // stale relative to LATER
+            version: 0,
+          })
+          .go(),
+      ),
+    );
+
+    advance(LATER);
+    const result = await reconciler.runOnce();
+    expect(result.scanned).toBe(FLEET);
+    expect(result.stopped).toBe(FLEET);
+
+    // Nothing left running/idle: a second sweep finds an empty active set.
+    expect((await reconciler.runOnce()).scanned).toBe(0);
+  });
 });

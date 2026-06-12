@@ -56,6 +56,7 @@ export {
   markStarted,
   markStopped,
   provision,
+  markTaskLost,
   recordSnapshot,
 } from "./domain/workspace";
 
@@ -104,7 +105,12 @@ export {
 } from "./maintenance/select";
 
 // Compute port + fake.
-export type { ComputeProvider, ComputeTask, RunTaskInput } from "./compute/compute-provider";
+export type {
+  ComputeProvider,
+  ComputeTask,
+  RunTaskInput,
+  TaskLiveness,
+} from "./compute/compute-provider";
 export type { FakeComputeConfig } from "./compute/fake-compute-provider";
 export { FakeComputeProvider } from "./compute/fake-compute-provider";
 

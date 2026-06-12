@@ -20,6 +20,8 @@ const ONE_HOUR = 60 * 60 * 1000;
 function fakeService(overrides: Partial<ReconcilerService> = {}): ReconcilerService {
   return {
     listActive: () => Promise.resolve([]),
+    // Default: every listed task is healthy (drift sweep finds nothing).
+    reconcileTaskLoss: () => Promise.resolve(ok({ lost: false, workspace: undefined })),
     stop: () => Promise.reject(new Error("stop not expected")),
     listSnapshotCandidates: () => Promise.resolve([]),
     snapshot: () => Promise.reject(new Error("snapshot not expected")),
@@ -40,6 +42,48 @@ describe("selectIdle", () => {
       { id: workspaceId("ws-fresh"), lastActivity: isoTimestamp("2026-06-01T00:59:00.000Z") },
     ];
     expect(selectIdle(active, now, THIRTY_MIN)).toEqual([workspaceId("ws-old")]);
+  });
+});
+
+describe("Reconciler.detectDrift", () => {
+  it("counts lost and skipped reconciles and runs before the idle sweep", async () => {
+    const calls: string[] = [];
+    const active = [
+      { id: workspaceId("ws-lost"), lastActivity: isoTimestamp("2026-06-01T00:00:00.000Z") },
+      { id: workspaceId("ws-ok"), lastActivity: isoTimestamp("2026-06-01T00:00:00.000Z") },
+      { id: workspaceId("ws-raced"), lastActivity: isoTimestamp("2026-06-01T00:00:00.000Z") },
+    ];
+    const service = fakeService({
+      listActive: () => Promise.resolve(active),
+      reconcileTaskLoss: (id) => {
+        calls.push(`drift:${id}`);
+        if (id === workspaceId("ws-lost"))
+          return Promise.resolve(ok({ lost: true, workspace: undefined }));
+        if (id === workspaceId("ws-raced"))
+          return Promise.resolve(err(conflictError("concurrent update")));
+        return Promise.resolve(ok({ lost: false, workspace: undefined }));
+      },
+      stop: (id) => {
+        calls.push(`stop:${id}`);
+        return Promise.resolve(ok(undefined));
+      },
+      snapshot: () => Promise.resolve(ok(undefined)),
+    });
+
+    const reconciler = new Reconciler({
+      service,
+      storage: await emptyStorage(),
+      clock: fixedClock(isoTimestamp("2026-06-01T02:00:00.000Z")),
+    });
+    const result = await reconciler.runMaintenance();
+
+    expect(result.drift).toEqual({ scanned: 3, lost: 1, skipped: 1 });
+    // Every drift reconcile happened before any idle stop.
+    const firstStop = calls.findIndex((c) => c.startsWith("stop:"));
+    const lastDrift = calls
+      .map((c, i) => (c.startsWith("drift:") ? i : -1))
+      .reduce((a, b) => Math.max(a, b), -1);
+    expect(lastDrift).toBeLessThan(firstStop === -1 ? Number.MAX_SAFE_INTEGER : firstStop);
   });
 });
 

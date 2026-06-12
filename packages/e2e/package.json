@@ -24,6 +24,7 @@
     "@edd/control-plane": "workspace:*",
     "@edd/core": "workspace:*",
     "@edd/db": "workspace:*",
+    "@edd/reconciler": "workspace:*",
     "@edd/storage-ec2": "workspace:*"
   },
   "devDependencies": {

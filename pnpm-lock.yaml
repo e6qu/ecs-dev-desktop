@@ -291,6 +291,9 @@ importers:
       '@edd/db':
         specifier: workspace:*
         version: link:../db
+      '@edd/reconciler':
+        specifier: workspace:*
+        version: link:../../services/reconciler
       '@edd/storage-ec2':
         specifier: workspace:*
         version: link:../storage-ec2

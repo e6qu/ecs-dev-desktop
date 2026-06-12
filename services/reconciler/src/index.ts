@@ -30,6 +30,10 @@ export interface ActiveWorkspace {
  */
 export interface ReconcilerService {
   listActive(): Promise<readonly ActiveWorkspace[]>;
+  /** Drift detection: reconcile a record whose task died out-of-band. */
+  reconcileTaskLoss(
+    id: WorkspaceId,
+  ): Promise<Result<{ lost: boolean; workspace: unknown }, DomainError>>;
   /** Scale to zero. Returns a typed Result so a benign race (the workspace
    * changed state since it was listed) is skipped, not thrown — see `runOnce`. */
   stop(id: WorkspaceId): Promise<Result<unknown, DomainError>>;
@@ -66,6 +70,14 @@ export interface ReconcilerDeps {
   gcGraceMs?: number;
 }
 
+export interface DriftResult {
+  scanned: number;
+  /** Records whose task was gone; transitioned to stopped (snapshot) or error. */
+  lost: number;
+  /** Reconciles rejected by a concurrent update (skipped, not failed). */
+  skipped: number;
+}
+
 export interface ReconcileResult {
   scanned: number;
   stopped: number;
@@ -86,6 +98,7 @@ export interface GcResult {
 }
 
 export interface MaintenanceResult {
+  drift: DriftResult;
   idle: ReconcileResult;
   snapshots: SnapshotResult;
   gc: GcResult;
@@ -108,6 +121,24 @@ export class Reconciler {
 
   private now(): IsoTimestamp {
     return isoTimestamp(this.deps.clock.now());
+  }
+
+  /**
+   * Drift sweep: notice tasks that died out-of-band (crash, eviction, manual
+   * stop) and stop their records advertising live bindings. MUST run before
+   * the idle sweep — stop() on a drifted record would try to snapshot a
+   * volume the platform already released with the dead task.
+   */
+  async detectDrift(): Promise<DriftResult> {
+    const active = await this.deps.service.listActive();
+    let lost = 0;
+    let skipped = 0;
+    for (const ws of active) {
+      const result = await this.deps.service.reconcileTaskLoss(ws.id);
+      if (!result.ok) skipped += 1;
+      else if (result.value.lost) lost += 1;
+    }
+    return { scanned: active.length, lost, skipped };
   }
 
   /** Scale idle workspaces to zero (snapshot + tear down). A stop rejected by a
@@ -168,9 +199,12 @@ export class Reconciler {
 
   /** One full maintenance sweep: scale-to-zero, scheduled snapshots, then GC. */
   async runMaintenance(): Promise<MaintenanceResult> {
+    // Drift first: stop() on a record whose task died out-of-band would try
+    // to snapshot a volume the platform already released.
+    const drift = await this.detectDrift();
     const idle = await this.runOnce();
     const snapshots = await this.snapshotDue();
     const gc = await this.collectGarbage();
-    return { idle, snapshots, gc };
+    return { drift, idle, snapshots, gc };
   }
 }

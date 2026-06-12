@@ -23,6 +23,7 @@ import {
   type BaseImage,
   type ComputeProvider,
   type ComputeTask,
+  type TaskLiveness,
   type RunTaskInput,
   type TaskId,
 } from "@edd/core";
@@ -275,6 +276,21 @@ export class EcsComputeProvider implements ComputeProvider {
 
   async stopTask(id: TaskId): Promise<void> {
     await this.client.send(new StopTaskCommand({ cluster: this.cluster(), task: id }));
+  }
+
+  /** Observed liveness via DescribeTasks. A missing/expired task (ECS prunes
+   * stopped tasks after a retention window) and every wind-down status count
+   * as stopped; PENDING/PROVISIONING count as running so an in-flight wake is
+   * never flagged as drift. */
+  async taskState(id: TaskId): Promise<TaskLiveness> {
+    const out = await this.client.send(
+      new DescribeTasksCommand({ cluster: this.cluster(), tasks: [id] }),
+    );
+    const status = out.tasks?.[0]?.lastStatus;
+    if (status === undefined) return "stopped";
+    return ["DEACTIVATING", "STOPPING", "DEPROVISIONING", "STOPPED", "DELETED"].includes(status)
+      ? "stopped"
+      : "running";
   }
 
   /** Build an ECS client from the ambient AWS env (`AWS_ENDPOINT_URL` → the sim). */

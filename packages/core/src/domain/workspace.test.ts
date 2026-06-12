@@ -3,7 +3,14 @@ import { describe, expect, it } from "vitest";
 
 import { unwrap } from "../result";
 import { baseImage, isoTimestamp, ownerId, snapshotId, taskId, volumeId, workspaceId } from "./ids";
-import { markActivity, markStarted, markStopped, provision, recordSnapshot } from "./workspace";
+import {
+  markActivity,
+  markStarted,
+  markStopped,
+  markTaskLost,
+  provision,
+  recordSnapshot,
+} from "./workspace";
 
 const t0 = isoTimestamp("2026-06-01T00:00:00.000Z");
 const t1 = isoTimestamp("2026-06-01T01:00:00.000Z");
@@ -75,6 +82,29 @@ describe("workspace domain (functional core)", () => {
   it("rejects activity on a non-active workspace with a conflict", () => {
     const stopped = unwrap(markStopped(base, { id: snapshotId("snap-1"), at: t1 }, t1));
     const result = markActivity(stopped, t1);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe("conflict");
+  });
+
+  it("task loss with a snapshot transitions to stopped and clears bindings", () => {
+    const snapped = recordSnapshot(base, snapshotId("snap-7"), t1);
+    const lost = unwrap(markTaskLost(snapped, t1));
+    expect(lost.state).toBe("stopped");
+    expect(lost.taskId).toBeUndefined();
+    expect(lost.volumeId).toBeUndefined();
+    expect(lost.sshHost).toBeUndefined();
+    expect(lost.latestSnapshotId).toBe("snap-7");
+  });
+
+  it("task loss without a snapshot transitions to error (nothing restorable)", () => {
+    const lost = unwrap(markTaskLost(base, t1));
+    expect(lost.state).toBe("error");
+    expect(lost.taskId).toBeUndefined();
+  });
+
+  it("rejects task loss on a stopped workspace with a conflict", () => {
+    const stopped = unwrap(markStopped(base, { id: snapshotId("snap-1"), at: t1 }, t1));
+    const result = markTaskLost(stopped, t1);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.kind).toBe("conflict");
   });

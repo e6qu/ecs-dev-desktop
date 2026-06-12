@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { mkdirSync } from "node:fs";
+import { mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 
@@ -96,5 +96,71 @@ describe("SSH to a workspace (mock-free, standard sshd + certificate auth)", () 
     // root is not listed in /etc/ssh/principals/root, so sshd rejects the cert.
     const res = ssh(`root@${NODE_HOST}`, "whoami");
     expect(res.status, "root login should be denied").not.toBe(0);
+  });
+
+  /** ssh with an explicit identity, BatchMode (no prompts), IdentitiesOnly. */
+  function sshAs(key: string): { status: number; stdout: string; stderr: string } {
+    return run("ssh", [
+      "-i",
+      key,
+      "-o",
+      "StrictHostKeyChecking=no",
+      "-o",
+      "UserKnownHostsFile=/dev/null",
+      "-o",
+      "IdentitiesOnly=yes",
+      "-o",
+      "BatchMode=yes",
+      "-p",
+      NODE_PORT,
+      `${PRINCIPAL}@${NODE_HOST}`,
+      "whoami",
+    ]);
+  }
+
+  it("rejects a certificate signed by a DIFFERENT CA (forged issuer)", () => {
+    // An attacker with their own CA mints a cert carrying the right principal —
+    // sshd must reject it because only OUR CA is in TrustedUserCAKeys.
+    const rogueCa = join(TEMP, "rogue-ca");
+    const rogueKey = join(TEMP, "rogue-id");
+    for (const f of [rogueCa, rogueKey])
+      for (const ext of ["", ".pub", "-cert.pub"]) rmSync(f + ext, { force: true });
+    run("ssh-keygen", ["-q", "-t", "ed25519", "-N", "", "-f", rogueCa, "-C", "rogue-ca"]);
+    run("ssh-keygen", ["-q", "-t", "ed25519", "-N", "", "-f", rogueKey, "-C", "rogue-user"]);
+    const signed = run("ssh-keygen", [
+      "-s",
+      rogueCa,
+      "-I",
+      "rogue",
+      "-n",
+      PRINCIPAL,
+      "-V",
+      "+1h",
+      `${rogueKey}.pub`,
+    ]);
+    expect(signed.status, signed.stderr).toBe(0);
+
+    expect(sshAs(rogueKey).status, "wrong-CA certificate must be denied").not.toBe(0);
+  });
+
+  it("rejects an EXPIRED certificate from the trusted CA", () => {
+    const expiredKey = join(TEMP, "expired-id");
+    for (const ext of ["", ".pub", "-cert.pub"]) rmSync(expiredKey + ext, { force: true });
+    run("ssh-keygen", ["-q", "-t", "ed25519", "-N", "", "-f", expiredKey, "-C", "expired-user"]);
+    // Validity window entirely in the past (-2h … -1h).
+    const signed = run("ssh-keygen", [
+      "-s",
+      CA_KEY,
+      "-I",
+      "edd-expired",
+      "-n",
+      PRINCIPAL,
+      "-V",
+      "-2h:-1h",
+      `${expiredKey}.pub`,
+    ]);
+    expect(signed.status, signed.stderr).toBe(0);
+
+    expect(sshAs(expiredKey).status, "expired certificate must be denied").not.toBe(0);
   });
 });

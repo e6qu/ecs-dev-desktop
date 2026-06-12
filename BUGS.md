@@ -10,12 +10,29 @@ _(none in repo code currently known)_
 
 _(none currently known)_
 
-Latest full simulator pass (2026-06-12, submodule `777ffd3`) found no other
-sockerless fidelity bugs across the new live surfaces (real-CP wake chain,
-live user journey, reconciler scale-to-zero, Auth.js callback routes).
+Latest full simulator pass (2026-06-12, submodule `9d43f3d` / PR #550) found no
+sockerless fidelity bugs across all live surfaces (real-CP wake chain, live
+user journey, reconciler scale-to-zero + drift, Auth.js callback routes,
+concurrent-wake race, TLS storage adapter). PR #550 is bleephub-Actions-only;
+no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **BUG-concurrent-wake-leak (2026-06-12)** — `WorkspaceService.persist` was an
+  unconditional ElectroDB PutItem, so two simultaneous `connect`/`start` calls
+  on a stopped workspace both read "stopped", both launched a real ECS task,
+  and the last write won — the losers' tasks leaked permanently (GC reaps
+  storage, not tasks). Concurrent connects are normal (SSH gateway wakes per
+  connection; portal Start races it). Fixed with an optimistic-concurrency
+  `version` attribute + conditional `persistTransition`; the wake loser stops
+  its own just-launched task and returns the winner's state. Locked by
+  `packages/e2e/src/concurrent-connect.e2e.ts`.
+- **BUG-quota-bypass-pagination (2026-06-12)** — `WorkspaceService.list` used a
+  single-page `.go()`. Past DynamoDB's 1 MB page it silently truncated, so the
+  per-owner count behind quota enforcement undercounted (a quota BYPASS at
+  scale) and the admin all-workspaces list hid records. Fixed with
+  `pages:"all"`; locked by `packages/control-plane/src/scale-pagination.integ.ts`
+  (seeds >1 MB) and a 450-record reconciler sweep integ.
 - **BUG-gateway-token-auth (2026-06-12)** — `wake-and-forward.sh` authenticated
   with `EDD_GATEWAY_TOKEN`, but no control-plane code path ever accepted it:
   every real gateway call would have been a 401. Masked by the stub control
