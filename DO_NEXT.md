@@ -31,9 +31,9 @@ OpenSSH + our SSH CA.
   container-mode sim, and browser Pomerium OIDC login. (The full live user
   journey, Auth.js callback routes, real-CP wake chain, idle-agent heartbeat,
   and reconciler scale-to-zero landed in the test-gap closure PR.)
-- **Entra group→role through the interactive Auth.js flow** — unblocks when
-  sockerless #547 (authorize not user-bound / `login_hint`) is fixed upstream;
-  the assertion slot is marked in `apps/web/lib/nextauth-callback.e2e.ts`.
+- _(Entra group→role through the interactive Auth.js flow landed once
+  sockerless PR #549 fixed #547 — covered via `login_hint` in
+  `apps/web/lib/nextauth-callback.e2e.ts`.)_
 
 ---
 
@@ -103,10 +103,10 @@ OpenSSH + our SSH CA.
   `client_secret_basic`; we configure `client_secret_post` (MSAL convention;
   also sockerless #548). `AUTH_GITHUB_URL` = GHES/bleephub web base
   (provider's standard `enterprise.baseUrl`).
-- **sockerless #547/#548 (filed 2026-06-12, non-blocking):** azure-sim
-  authorize is not user-bound (`login_hint` ignored; active user only settable
-  via sim-internal seed endpoint) and the token endpoint rejects
-  `client_secret_basic`. Tracked in `BUGS.md`.
+- **sockerless #547/#548 → fixed by PR #549** (pinned `777ffd3`): `/authorize`
+  honours `login_hint` (code bound to the resolved user; unknown hint →
+  `error=login_required`) and the token endpoint accepts `client_secret_basic`.
+  The Entra callback leg asserts group→admin interactively via `login_hint`.
 - **Golden image SSH:** `infra/images/workspace` includes `sshd`/CA/principal wiring
   and is covered through the AWS container-mode simulator with `EcsComputeProvider`
   managed EBS. Real deploy remains AWS-account gated.

@@ -8,20 +8,9 @@ _(none in repo code currently known)_
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-_(none blocking; two non-blocking fidelity gaps filed 2026-06-12)_
+_(none currently known)_
 
-- **sockerless#547** — azure-sim `/oauth2/v2.0/authorize` issues codes without
-  binding a user (`login_hint` ignored; the id_token is minted for a global
-  "active user" only settable via the sim-internal `/sim/v1/entra/users` seed
-  endpoint). Effect: the Auth.js callback-route e2e can assert group→role via
-  the interactive flow only on the GitHub/bleephub leg; the Entra leg asserts
-  the default-user/default-role path until fixed.
-- **sockerless#548** — azure-sim token endpoint rejects `client_secret_basic`
-  (real AAD accepts it; RFC 6749 §2.3.1). Not blocking: we configure the
-  Auth.js Entra provider with `client_secret_post`, which is MSAL's own
-  convention and valid against real AAD — standard config, not a sim branch.
-
-Latest full simulator pass (2026-06-12, submodule `638f65a`) found no other
+Latest full simulator pass (2026-06-12, submodule `777ffd3`) found no other
 sockerless fidelity bugs across the new live surfaces (real-CP wake chain,
 live user journey, reconciler scale-to-zero, Auth.js callback routes).
 
@@ -40,7 +29,19 @@ live user journey, reconciler scale-to-zero, Auth.js callback routes).
 
 ## Resolved (sockerless — fixed upstream; full detail in `WHAT_WE_DID.md`)
 
-**Most-recent batch** (submodule `638f65a`, PR #532):
+**Most-recent batch** (submodule `777ffd3`, PR #549):
+
+- **sockerless#547 / PR #549 (BUG-1743)** — azure-sim `/authorize` now honours
+  `login_hint` (UPN lookup, ROPC-style resolution), binds the resolved OID into
+  the auth-code record, and mints id/access tokens for that user; unknown hint
+  → `error=login_required`. Graph-provisioned users can drive the interactive
+  OIDC flow — the Auth.js callback-route e2e now asserts Entra group→admin via
+  `login_hint` (HTTPS leg).
+- **sockerless#548 / PR #549 (BUG-1742)** — azure-sim token endpoint accepts
+  `client_secret_basic` across all grants; discovery advertises both methods.
+  We keep `client_secret_post` (MSAL convention, valid on real AAD).
+
+**Previous batch** (submodule `638f65a`, PR #532):
 
 - **sockerless PR #532** — Added Azure Logic Apps/ACI and GCP
   Spanner/Dataflow/Bigtable simulator slices plus AWS SDK coverage cleanup across
