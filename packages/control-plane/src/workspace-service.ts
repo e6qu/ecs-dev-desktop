@@ -6,6 +6,7 @@ import {
   baseImage,
   conflictError,
   deriveWorkspaceTimeline,
+  email,
   err,
   isoTimestamp,
   markActivity,
@@ -28,6 +29,7 @@ import {
   type Clock,
   type ComputeProvider,
   type DomainError,
+  type Email,
   type IsoTimestamp,
   type OwnerId,
   type ReferencedStorage,
@@ -61,6 +63,7 @@ export interface ActiveWorkspace {
 interface WorkspaceRecord {
   id: string;
   ownerId: string;
+  ownerEmail?: string;
   baseImage: string;
   state: WorkspaceState;
   createdAt: string;
@@ -109,6 +112,7 @@ function toWorkspace(r: WorkspaceRecord): Workspace {
   return {
     id: workspaceId(r.id),
     ownerId: ownerId(r.ownerId),
+    ownerEmail: r.ownerEmail === undefined ? undefined : email(r.ownerEmail),
     baseImage: baseImage(r.baseImage),
     state: r.state,
     createdAt: isoTimestamp(r.createdAt),
@@ -130,7 +134,11 @@ function toWorkspace(r: WorkspaceRecord): Workspace {
 export class WorkspaceService {
   constructor(private readonly deps: WorkspaceServiceDeps) {}
 
-  async create(input: { ownerId: OwnerId; baseImage: BaseImage }): Promise<WorkspaceDto> {
+  async create(input: {
+    ownerId: OwnerId;
+    ownerEmail?: Email;
+    baseImage: BaseImage;
+  }): Promise<WorkspaceDto> {
     const id = newWorkspaceId();
     const at = isoTimestamp(this.deps.clock.now());
     // ECS creates the managed EBS volume at task launch and returns its id.
@@ -138,6 +146,7 @@ export class WorkspaceService {
     const ws = provision({
       id,
       ownerId: input.ownerId,
+      ownerEmail: input.ownerEmail,
       baseImage: input.baseImage,
       volumeId: task.volumeId,
       taskId: task.id,

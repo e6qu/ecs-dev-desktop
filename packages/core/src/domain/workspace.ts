@@ -4,6 +4,7 @@ import { err, map, ok, type Result } from "../result";
 import { conflictError, type DomainError } from "./errors";
 import type {
   BaseImage,
+  Email,
   IsoTimestamp,
   OwnerId,
   SnapshotId,
@@ -22,6 +23,11 @@ import type {
 export interface Workspace {
   readonly id: WorkspaceId;
   readonly ownerId: OwnerId;
+  /** Owner's email — the identity the proxy matches a caller against for
+   * per-workspace access (DO_NEXT #5). Optional: records created before the
+   * field, or by paths without a session email, have none (proxy fails closed
+   * for non-admins). */
+  readonly ownerEmail?: Email;
   readonly baseImage: BaseImage;
   readonly state: WorkspaceState;
   readonly createdAt: IsoTimestamp;
@@ -38,6 +44,7 @@ export interface Workspace {
 export interface ProvisionParams {
   id: WorkspaceId;
   ownerId: OwnerId;
+  ownerEmail?: Email;
   baseImage: BaseImage;
   volumeId: VolumeId;
   taskId: TaskId;
@@ -50,6 +57,7 @@ export function provision(params: ProvisionParams): Workspace {
   return {
     id: params.id,
     ownerId: params.ownerId,
+    ownerEmail: params.ownerEmail,
     baseImage: params.baseImage,
     state: "running",
     createdAt: params.at,

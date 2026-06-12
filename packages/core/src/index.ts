@@ -7,6 +7,7 @@
 export type {
   BaseImage,
   BaseImageId,
+  Email,
   IsoTimestamp,
   OwnerId,
   SnapshotId,
@@ -17,6 +18,7 @@ export type {
 export {
   baseImage,
   baseImageId,
+  email,
   isoTimestamp,
   newBaseImageId,
   newSnapshotId,
@@ -59,6 +61,10 @@ export {
   markTaskLost,
   recordSnapshot,
 } from "./domain/workspace";
+
+// Per-workspace proxy authorization (pure): host→id + access decision.
+export type { WorkspaceAccessInput } from "./domain/proxy-authz";
+export { decideWorkspaceAccess, workspaceIdFromHost } from "./domain/proxy-authz";
 
 // Per-role workspace quota gate (pure).
 export { withinWorkspaceQuota } from "./domain/quota";

@@ -12,7 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@aws-sdk/client-ecs": "^3.1066.0",
+    "@aws-sdk/client-ecs": "^3.1067.0",
     "@edd/config": "workspace:*",
     "@edd/core": "workspace:*"
   },

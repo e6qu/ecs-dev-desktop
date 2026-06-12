@@ -94,6 +94,47 @@ export const entraSim = {
 } as const;
 
 /**
+ * Base domain under which every workspace is reached as
+ * `<ws-id>.<baseDomain>` through the identity-aware proxy. The harness default
+ * is `devbox.localhost`; real deployments set `EDD_WORKSPACE_BASE_DOMAIN`
+ * (e.g. `devbox.example.com`). Endpoint/base-domain-only config (§6.8).
+ */
+export const WORKSPACE_BASE_DOMAIN = process.env.EDD_WORKSPACE_BASE_DOMAIN ?? "devbox.localhost";
+
+/** Control-plane path the workspace gate (PEP) consults for a per-request
+ * access decision (PDP). Mounted under the Next.js app router. */
+export const WORKSPACE_AUTHZ_PATH = "/api/internal/authz";
+
+/** Header the gate uses to tell the PDP which workspace host it is fronting
+ * (the PDP also requires the proxy JWT's `aud` to equal this host). */
+export const WORKSPACE_HOST_HEADER = "x-edd-workspace-host";
+
+/** Pomerium signs the identity assertion injected as this header; the PDP
+ * verifies it against Pomerium's JWKS. Lowercase per the HTTP/2 convention the
+ * proxy emits. */
+export const POMERIUM_ASSERTION_HEADER = "x-pomerium-jwt-assertion";
+
+const WORKSPACE_GATE_PORT = 8080;
+
+/** Env var holding Pomerium's JWKS URL the PDP verifies assertions against. Read
+ * at verification time (not module load) so a test can point it at a dynamically
+ * bound JWKS server, and production injects the real proxy URL. */
+export const POMERIUM_JWKS_URL_ENV = "EDD_POMERIUM_JWKS_URL";
+
+/**
+ * Workspace authorization gate (PEP) wiring. `port` is where the thin gate
+ * listens for proxied workspace traffic; `pdpUrl` is the control-plane decision
+ * endpoint it consults; `upstreamUrl` is the workspace HTTP target it forwards
+ * allowed requests to. All overridable via env so the same code runs in the
+ * harness and real cloud.
+ */
+export const workspaceGate = {
+  port: WORKSPACE_GATE_PORT,
+  pdpUrl: process.env.EDD_WORKSPACE_PDP_URL ?? `http://127.0.0.1:3000${WORKSPACE_AUTHZ_PATH}`,
+  upstreamUrl: process.env.EDD_WORKSPACE_UPSTREAM_URL,
+} as const;
+
+/**
  * Default per-role cap on the number of workspaces a user may own (`null` =
  * unlimited). Overridable per role via `EDD_QUOTA_<ROLE>` (e.g. `EDD_QUOTA_MEMBER=10`).
  * Keyed by `Role` (not `string`): every role must have a quota, and a typo'd or

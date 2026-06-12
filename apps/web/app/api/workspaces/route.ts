@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 import { createWorkspaceRequest } from "@edd/api-contracts";
 import { defineAbilityFor } from "@edd/authz";
-import { baseImage, ownerId, withinWorkspaceQuota } from "@edd/core";
+import { baseImage, email, ownerId, withinWorkspaceQuota } from "@edd/core";
 
 import {
   authenticate,
@@ -57,6 +57,18 @@ export async function POST(req: Request) {
     return conflict(`workspace quota reached (${owned.length.toString()})`);
   }
 
-  const workspace = await cp.create({ ownerId: ownerId(principal.id), baseImage: image });
+  // Record the owner's email (when the session carries one) so the proxy can
+  // match a caller to this workspace; a malformed value is dropped, not fatal.
+  let ownerEmail;
+  try {
+    ownerEmail = principal.email === undefined ? undefined : email(principal.email);
+  } catch {
+    ownerEmail = undefined;
+  }
+  const workspace = await cp.create({
+    ownerId: ownerId(principal.id),
+    ...(ownerEmail === undefined ? {} : { ownerEmail }),
+    baseImage: image,
+  });
   return NextResponse.json(workspace, { status: 201 });
 }

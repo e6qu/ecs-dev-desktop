@@ -22,6 +22,9 @@ export type AppAbility = MongoAbility<[Action, Subject]>;
 export interface Principal {
   id: string;
   role: Role;
+  /** Caller's email, when the identity source provides it. Carried so a created
+   * workspace records its owner's email for per-workspace proxy authorization. */
+  email?: string;
 }
 
 export function defineAbilityFor(principal: Principal): AppAbility {

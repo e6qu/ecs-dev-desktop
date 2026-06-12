@@ -600,3 +600,23 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
     (One local-only snag: a stale `edd-reconciler:e2e` image predating `detectDrift`
     made the container test fail until rebuilt — verified by rebuild; CI builds the
     image fresh each run.)
+
+- **2026-06-12 — Per-workspace proxy authorization (decision #5; closes the last
+  open `BUGS`/`DO_NEXT` item).** The Pomerium wildcard route was
+  `allow_any_authenticated_user`, enforcing no per-workspace ownership. Verified
+  from Pomerium v0.32.2 source that Pomerium OSS cannot call an external authz
+  endpoint per request (forward-auth is deprecated; PPL/rego see only token
+  claims), and that the assertion JWT sets `aud`/`iss` = the route hostname and
+  carries `email`/`groups`/`sub` (`authorize/evaluator/headers_evaluator_evaluation.go`).
+  Chose external-authz → control plane, realized as a PEP/PDP split: a thin
+  **workspace gate** (`services/workspace-gate`) verifies nothing itself but
+  forwards the assertion + host to a control-plane **PDP** (`/api/internal/authz`),
+  which verifies the assertion against Pomerium's JWKS (jose; `aud`/`iss` bound to
+  the host ⇒ no cross-workspace replay) and allows only the owner or an admin.
+  Match key is **email** — the Auth.js portal IdP (`sub`/`oid`) and the Pomerium
+  proxy IdP mint different subjects, but share email — so workspaces now record
+  `ownerEmail` (`@edd/core` + `@edd/db` + create flow + `Principal.email`).
+  Lesson: the literal "Pomerium calls our endpoint" isn't an OSS feature; the
+  faithful realization is downstream JWT verification at a gate. Proven by core
+  unit tests, the gate component test (HTTP + WS), the PDP integration test, and
+  an e2e against a REAL Pomerium assertion + real JWKS. No sockerless bugs.
