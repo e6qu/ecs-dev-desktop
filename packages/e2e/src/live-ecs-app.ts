@@ -5,7 +5,12 @@
 // EcsComputeProvider/Ec2StorageProvider (COMPUTE_PROVIDER=ecs). Endpoint-only
 // (§6.8) — only AWS endpoint/credentials differ from real cloud.
 import { CloudWatchLogsClient, CreateLogGroupCommand } from "@aws-sdk/client-cloudwatch-logs";
-import { CreateClusterCommand, ECSClient } from "@aws-sdk/client-ecs";
+import {
+  CreateClusterCommand,
+  ECSClient,
+  ListTasksCommand,
+  StopTaskCommand,
+} from "@aws-sdk/client-ecs";
 import { EC2Client } from "@aws-sdk/client-ec2";
 import { awsSim, dynamodbLocal } from "@edd/config";
 import { CatalogService } from "@edd/control-plane";
@@ -105,6 +110,17 @@ export async function startLiveEcsApp(opts: LiveEcsAppOptions): Promise<LiveEcsA
     securityGroupId: vpc.securityGroupId,
     stop: async () => {
       web.stop();
+      // Drain the cluster's still-running tasks so this suite doesn't leak
+      // golden-image containers into the shared sim for later suites (cumulative
+      // load was a source of "task stopped before RUNNING" flakes downstream).
+      try {
+        const listed = await ecs.send(new ListTasksCommand({ cluster, desiredStatus: "RUNNING" }));
+        await Promise.all(
+          (listed.taskArns ?? []).map((task) => ecs.send(new StopTaskCommand({ cluster, task }))),
+        );
+      } catch {
+        // Best-effort cleanup — never fail teardown over it.
+      }
       await dropTable(createDynamoClient(), table);
     },
   };
