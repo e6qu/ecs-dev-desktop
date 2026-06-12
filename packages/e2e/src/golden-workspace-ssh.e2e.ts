@@ -2,7 +2,6 @@
 import { randomUUID } from "node:crypto";
 import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
-import { spawnSync } from "node:child_process";
 
 import {
   CloudWatchLogsClient,
@@ -32,6 +31,7 @@ import { baseImage, workspaceId, workspacePrincipal } from "@edd/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { awsSimClientConfig, configureAwsSimEnv, required, sleep } from "./aws-sim";
+import { run, taskExitCode } from "./golden-ssh-helpers";
 
 configureAwsSimEnv();
 
@@ -54,16 +54,6 @@ const CA_PUB = join(SSH_CA_DIR, "ca.pub");
 const USER_KEY = join(SSH_CA_DIR, `golden-${RUN_ID}`);
 
 const SIM = awsSimClientConfig();
-
-function run(cmd: string, args: string[]): { status: number; stderr: string } {
-  const res = spawnSync(cmd, args, { encoding: "utf8" });
-  if (res.error) throw res.error;
-  return { status: res.status ?? -1, stderr: res.stderr };
-}
-
-function taskExitCode(task: Task): number {
-  return required(task.containers?.[0]?.exitCode, "container exitCode");
-}
 
 async function waitForTask(
   ecs: ECSClient,
