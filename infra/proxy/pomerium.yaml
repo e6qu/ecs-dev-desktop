@@ -5,9 +5,15 @@
 # the e2e points it at an OIDC IdP (the sockerless azure sim) and a workspace
 # upstream, then asserts wildcard routing + the identity gate.
 #
-# All-in-one mode (authenticate+authorize+proxy in one process), HTTP for the e2e.
-address: ":80"
-insecure_server: true
+# All-in-one mode (authenticate+authorize+proxy in one process), real TLS:
+# Pomerium builds every absolute URL (sign-in redirects, post-auth return) with
+# the https scheme unconditionally (urlutil.GetAbsoluteURL in the Pomerium
+# source), so a real browser can only complete the flow against a TLS listener.
+# The harness cert comes from scripts/gen-sim-tls-cert.sh (SANs cover
+# *.devbox.localhost); production injects real certificates.
+address: ":443"
+certificate_file: "/pomerium/tls/server.pem"
+certificate_key_file: "/pomerium/tls/server-key.pem"
 
 # Throwaway, all-zeros test secrets (base64 of 32 zero bytes) — NOT real keys.
 # Real deployments inject 32-byte random secrets via env/Secrets Manager.
@@ -21,7 +27,9 @@ cookie_secret: "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 signing_key: "LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JR0hBZ0VBTUJNR0J5cUdTTTQ5QWdFR0NDcUdTTTQ5QXdFSEJHMHdhd0lCQVFRZ0dGcU14MGhDNWtmWDlrRU4KUXJKQVNTZHBPMEZBdGFRc0F0YXd0L2xaOVlhaFJBTkNBQVRjNFZrQWV2UGJFSk5qY1NEL1RlbWRYL0lYejNuagoxRmZRbnhnTEN6REdRNHNTZ1dQb25OSldLdHlqelA5QWJGaFdPRTZ2WGlMc3RGa01ITU1OWHFsQwotLS0tLUVORCBQUklWQVRFIEtFWS0tLS0tCg=="
 
 # The authenticate service is served by this same process on its own route host.
-authenticate_service_url: "https://authenticate.devbox.localhost"
+# The published harness port (8443) is part of the externally-visible URL so a
+# real user agent can follow the issued redirects; production serves 443.
+authenticate_service_url: "https://authenticate.devbox.localhost:8443"
 
 # OIDC identity provider = the sockerless azure/Entra sim (standard discovery).
 idp_provider: "oidc"

@@ -116,6 +116,9 @@ jobs:
         run: docker build -f services/reconciler/Dockerfile -t edd-reconciler:e2e .
       - name: Build SSH proxy Docker image
         run: docker build -f services/ssh-gateway/Dockerfile.proxy -t edd-ssh-proxy:e2e .
+      # Pomerium serves real TLS; the cert must exist before compose mounts it.
+      - name: Generate the sim TLS cert (Pomerium harness)
+        run: sh scripts/gen-sim-tls-cert.sh
       # Retry harness bring-up: image pulls can transiently hit registry rate
       # limits (public.ecr.aws / Docker Hub) on shared runner IPs.
       - name: Build & start the e2e harness (container-mode sim + DynamoDB Local)
@@ -163,6 +166,9 @@ jobs:
         run: pnpm --filter web exec playwright install --with-deps chromium
       - name: Portal browser lifecycle on real ECS compute
         run: pnpm --filter web test:pw:live
+      # Browser OIDC login through Pomerium (real TLS; SPKI-pinned trust).
+      - name: Browser OIDC login through Pomerium
+        run: pnpm --filter web test:pw:pomerium
       - if: always()
         name: Dump Pomerium logs on failure
         run: docker logs ecs-dev-desktop-pomerium-1 2>&1 || true

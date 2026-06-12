@@ -89,7 +89,9 @@ leg asserts group→admin through the interactive flow via `login_hint`.
 - **Workspace CloudWatch log shipping**: `EcsComputeProvider` adds `awslogs` `logConfiguration`
   to every task definition; `ECS_LOG_GROUP_WORKSPACES` injected by Terraform.
 - **Pomerium routing** (`infra/proxy`): identity-aware wildcard routing + authenticated
-  proxy-pass (`X-Pomerium-Jwt-Assertion`) — both proven mock-free against azure-sim.
+  proxy-pass (`X-Pomerium-Jwt-Assertion`) — both proven mock-free against azure-sim,
+  over real TLS (Pomerium forces https in all absolute URLs), incl. a real-browser
+  OIDC login (`test:pw:pomerium`).
 - **Phase 8 (8A+8B+8C)**: admin console (health board, all-workspaces, Inspect, Overview,
   quotas, Logs/Audit); `@edd/cloudtrail-audit` + `@edd/cloudwatch-logs` endpoint-only
   adapters, integration-tested against the sim.
@@ -114,6 +116,8 @@ Nothing on AWS — no cloud infrastructure provisioned.
 
 1. **AWS account/region decision** (`DO_NEXT` #1) — the top blocker; unlocks
    everything real.
-2. **Remaining live-test candidate** (`docs/simulator-live-coverage.md`):
-   browser Pomerium OIDC login. (Portal browser lifecycle on real ECS compute
-   landed as `test:pw:live` — browser clicks act on real golden-image tasks.)
+2. **Live-test candidates exhausted** (`docs/simulator-live-coverage.md`):
+   browser Pomerium OIDC login landed as `test:pw:pomerium` (real-TLS Pomerium
+   harness; Chromium completes gate → IdP → callback → workspace), after
+   `test:pw:live` (browser lifecycle on real ECS compute). Only the optional
+   ECS Exec workspace probe remains, gated on a product decision.

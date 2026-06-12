@@ -503,3 +503,25 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   ordering above. Shared spec helpers extracted to `apps/web/e2e/support.ts`;
   `@edd/e2e` grew `exports` for its `aws-sim`/`docker-host` harness modules.
   CI: the `e2e` job runs `test:pw:live` after the package e2e suites.
+
+- **2026-06-12** — **Browser OIDC login through Pomerium — the last live-coverage
+  candidate — landed, and the Pomerium harness moved to real TLS.** Root cause
+  for why plain HTTP could never work in a browser, verified in the Pomerium
+  v0.32.2 source: `urlutil.GetAbsoluteURL` unconditionally sets
+  `u.Scheme = "https"`, so every sign-in/post-auth redirect is https even with
+  `insecure_server` (an http authenticate URL attempt also broke the signed
+  sign-in URLs — reverted). The harness now serves the gen-sim-tls-cert.sh
+  cert (SANs extended with `devbox.localhost` + `*.devbox.localhost`),
+  published at 8443:443; both Node suites moved to HTTPS with the CA trusted
+  explicitly (shared `packages/e2e/src/pomerium-proxy.ts` transport). The new
+  Chromium spec (`test:pw:pomerium`) completes gate → IdP → callback →
+  workspace in one navigation, asserts the identity header at the upstream,
+  the stored Secure session cookie, and session reuse with no second
+  authenticate round trip. Chromium trusts the harness key via
+  `--ignore-certificate-errors-spki-list` (SPKI pin of OUR CA/leaf only — any
+  other untrusted cert still fails; Chromium reads no NODE_EXTRA_CA_CERTS and
+  OS trust stores aren't automatable cross-platform). CI: cert generation
+  moved before harness bring-up; `test:pw:pomerium` runs in the e2e job. No
+  new sockerless issue: the azure-sim behaved per spec throughout. Local
+  footnote: a stray pre-session `bleephub-server --addr :8443` (expired 1-day
+  cert) squatted the port and was killed.
