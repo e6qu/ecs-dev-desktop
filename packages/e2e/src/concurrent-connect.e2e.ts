@@ -72,11 +72,21 @@ describe(
     });
 
     it("exactly one task survives N concurrent connects; every racer gets an idempotent 200", async () => {
-      // Create, then scale to zero (snapshot recorded).
-      const created = await api("/workspaces", {
+      // Create the workspace under test. A first RunTask can transiently 5xx
+      // on the shared sim under multi-suite load (the same class the e2e
+      // harness retries elsewhere); retry the SETUP create so an environmental
+      // blip never masks the race assertion below. The race itself is strict.
+      let created = await api("/workspaces", {
         method: "POST",
         body: JSON.stringify({ baseImage: WORKSPACE_IMAGE }),
       });
+      for (let attempt = 0; created.status >= 500 && attempt < 3; attempt++) {
+        await sleep(3_000);
+        created = await api("/workspaces", {
+          method: "POST",
+          body: JSON.stringify({ baseImage: WORKSPACE_IMAGE }),
+        });
+      }
       expect(created.status).toBe(201);
       wsId = workspace.parse(await created.json()).id;
       expect((await api(`/workspaces/${wsId}/stop`, { method: "POST" })).status).toBe(200);
