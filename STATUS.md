@@ -6,13 +6,27 @@
 
 ## Current phase
 
-**PRs #56–#65 are merged to `main`** (test-gap closure, gateway machine-auth,
+**PRs #56–#66 are merged to `main`** (test-gap closure, gateway machine-auth,
 sockerless #549/#550 consumption, live portal + Pomerium browser e2e over TLS,
-and the lifecycle correctness-hardening pass — concurrent-wake leak fix,
-quota-bypass-at-scale fix, drift detection).
+the lifecycle correctness-hardening pass, and the authz/concurrency depth pass —
+delete-vs-wake leak fix, exhaustive CASL matrices, snapshot-vs-stop conflict fix).
 
-A follow-up depth pass (this branch, `feat/authz-matrix-concurrency-gc`) hardens
-the remaining unhappy paths and found one more real bug:
+Current branch `feat/data-durability-container-drift` adds the two end-to-end
+gaps from the latest review (no new product bugs found):
+
+- **Data durability across a real scale-to-zero cycle** — through
+  `WorkspaceService`: SSH writes a marker+checksum into the workspace, `stop()`
+  snapshots, `connect()` wakes a NEW task from the snapshot, and SSH into the
+  woken task confirms the file is byte-identical. Proves "your work survives
+  scale-to-zero" end to end (the prior data-fidelity test only covered the EBS
+  primitives via bare tasks). `packages/e2e/src/data-durability.e2e.ts`.
+- **Reconciler CONTAINER drift sweep** — `reconciler-container.e2e.ts` now also
+  seeds a workspace whose task is killed out-of-band; the scheduler-fired
+  reconciler container's `runMaintenance` drift pass reconciles it to stopped
+  (the in-process drift path was already covered by `drift-recovery.e2e.ts`).
+
+A follow-up depth pass (PR #66, `feat/authz-matrix-concurrency-gc`) hardened the
+remaining unhappy paths and found one more real bug:
 
 - **delete-vs-wake task leak (real bug, fixed):** `remove()` used an
   unconditional `.delete()`, so a delete racing a wake could remove the record

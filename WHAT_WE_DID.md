@@ -579,3 +579,24 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   Pomerium can't map subdomain→owner without the control plane. Lesson: the
   version-CAS added in the prior pass made connect/start safe but the audit
   proved you must apply it to EVERY mutating path — delete had been missed.
+
+- **2026-06-12** — \*\*End-to-end coverage pass: data durability across scale-to-zero
+  - the reconciler container's drift sweep.** Two gaps the unit/component tiers
+    didn't reach. (1) **Data durability through the real lifecycle**
+    (`data-durability.e2e.ts`): the prior data-fidelity test proved EBS
+    snapshot/restore preserves bytes using bare tasks; this proves it through
+    `WorkspaceService` — SSH writes a marker+checksum into a workspace's managed
+    mount, `stop()` snapshots, `connect()` wakes a NEW task hydrated from that
+    snapshot, and SSH into the woken task confirms the file byte-for-byte
+    (`sha256sum -c`). The headline "your work survives scale-to-zero" promise,
+    observed the way a user reaches it. (2) **Containerized drift sweep\**:
+    `reconciler-container.e2e.ts` now seeds a second workspace whose task is killed
+    out-of-band, so the scheduler-fired reconciler *container's\* `runMaintenance`
+    drift pass (not just the in-process reconciler) reconciles it to stopped.
+    Shared golden-image SSH plumbing (cert signing, in-subnet client task,
+    task-status polling) extracted to `golden-ssh-helpers.ts`. No product bugs
+    found and no sockerless issues: the sim faithfully handled EBS snapshot/restore
+    data persistence, DescribeTasks status for the killed task, and awsvpc SSH.
+    (One local-only snag: a stale `edd-reconciler:e2e` image predating `detectDrift`
+    made the container test fail until rebuilt — verified by rebuild; CI builds the
+    image fresh each run.)
