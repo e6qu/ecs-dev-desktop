@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { NextResponse } from "next/server";
 
-import { conflict, isResponse, loadOwnedWorkspace, notFound } from "../../../../../lib/api";
+import { conflict, isResponse, loadConnectableWorkspace, notFound } from "../../../../../lib/api";
 
 interface Ctx {
   params: Promise<{ id: string }>;
@@ -13,9 +13,9 @@ const SSH_PORT = 22;
 // workspace's task ENI, so the gateway proxy can forward the TCP connection.
 // The workspace must be running or idle; call POST /connect to wake it first.
 // The host is the private IPv4 address of the Fargate task's ENI, routable within
-// the VPC.
+// the VPC. Accepts the gateway's machine-auth token as well as a user session.
 export async function GET(req: Request, { params }: Ctx) {
-  const ctx = await loadOwnedWorkspace(req, params, "read");
+  const ctx = await loadConnectableWorkspace(req, params, "read");
   if (isResponse(ctx)) return ctx;
 
   if (ctx.ws.state !== "running" && ctx.ws.state !== "idle") {

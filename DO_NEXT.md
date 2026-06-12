@@ -12,7 +12,10 @@
 2. **Domain & DNS owner** — base domain for `*.devbox.<domain>` + cert/DNS delegation.
    Gates the identity-aware proxy + ACM cert issuance.
 3. **Identity-aware proxy** — confirm Pomerium (sim-proven; vs Authentik/in-house).
-4. **Heartbeat interval & idle threshold** — scale-to-zero tuning.
+4. **Heartbeat interval & idle threshold** — scale-to-zero tuning. The knobs
+   now exist (`EDD_HEARTBEAT_INTERVAL_S` injected into workspace tasks;
+   `EDD_IDLE_THRESHOLD_MS`/`EDD_SNAPSHOT_INTERVAL_MS`/`EDD_GC_GRACE_MS` on the
+   reconciler) — the open decision is only the production default values.
 
 Resolved: DynamoDB+ElectroDB · sockerless from source · Fargate managed-EBS ·
 manual real-AWS on `main` · AGPL-3.0-or-later · Turborepo+pnpm · CASL · dep floor
@@ -23,13 +26,14 @@ OpenSSH + our SSH CA.
 
 ## Available now (decision-free — immediate)
 
-- **Finish the sockerless #532 follow-up** — it carries the unmerged #529/#531
-  consumption after PR #58, pins sockerless #532, restores managed-EBS golden SSH
-  e2e, and keeps the ECS Exec smoke coverage.
-- **Expand live app tests further** — `docs/simulator-live-coverage.md` lists the next
-  decision-free candidates: portal browser lifecycle against ECS container-mode sim,
-  browser Pomerium login, full user journey without fake compute, and Auth.js callback
-  route coverage against sim IdPs.
+- **Expand live app tests further** — `docs/simulator-live-coverage.md` lists the
+  remaining decision-free candidates: portal browser lifecycle against the ECS
+  container-mode sim, and browser Pomerium OIDC login. (The full live user
+  journey, Auth.js callback routes, real-CP wake chain, idle-agent heartbeat,
+  and reconciler scale-to-zero landed in the test-gap closure PR.)
+- **Entra group→role through the interactive Auth.js flow** — unblocks when
+  sockerless #547 (authorize not user-bound / `login_hint`) is fixed upstream;
+  the assertion slot is marked in `apps/web/lib/nextauth-callback.e2e.ts`.
 
 ---
 
@@ -79,9 +83,30 @@ OpenSSH + our SSH CA.
 - **Live simulator coverage doc:** `docs/simulator-live-coverage.md` is the source of
   truth for what parts of the app are already live-tested against sockerless AWS/Azure
   and what can move there next without violating endpoint-only rules.
-- **sockerless #524/#529/#531/#532:** the follow-up branch pins `638f65a`; ECS
+- **sockerless #524/#529/#531/#532:** pinned at `638f65a` (PR #59); ECS
   `ExecuteCommand` and managed-EBS golden SSH have live coverage in
   `packages/e2e/src/golden-workspace-ssh.e2e.ts`.
+- **Gateway machine-auth:** the SSH gateway authenticates to the control plane
+  with per-workspace HMAC bearer tokens derived from `EDD_GATEWAY_SECRET`
+  (`apps/web/lib/machine-auth.ts`, `wake-and-forward.sh` via `openssl dgst
+-mac HMAC -macopt hexkey:`). Wake routes accept it; destructive routes are
+  session-only. Same scheme as the idle-agent's `EDD_AGENT_SECRET` (different
+  trust domain → different secret).
+- **Real-control-plane e2e harness:** `packages/e2e/src/web-app.ts` boots the
+  production `next start` build on a free port (builds `apps/web` on demand if
+  `.next` is missing); `docker-host.ts` probes whether containers reach the
+  host via `host.docker.internal` (+`host-gateway`) or `host.containers.internal`
+  (colima-style runtimes). Used by the wake-chain e2e and the live user journey.
+- **Auth.js notes:** the Entra provider re-discovers the issuer for the
+  id_token `tid` without `allowInsecureRequests`, so the Entra callback-route
+  leg is HTTPS-only (runs in `e2e-https`). Auth.js defaults to
+  `client_secret_basic`; we configure `client_secret_post` (MSAL convention;
+  also sockerless #548). `AUTH_GITHUB_URL` = GHES/bleephub web base
+  (provider's standard `enterprise.baseUrl`).
+- **sockerless #547/#548 (filed 2026-06-12, non-blocking):** azure-sim
+  authorize is not user-bound (`login_hint` ignored; active user only settable
+  via sim-internal seed endpoint) and the token endpoint rejects
+  `client_secret_basic`. Tracked in `BUGS.md`.
 - **Golden image SSH:** `infra/images/workspace` includes `sshd`/CA/principal wiring
   and is covered through the AWS container-mode simulator with `EcsComputeProvider`
   managed EBS. Real deploy remains AWS-account gated.

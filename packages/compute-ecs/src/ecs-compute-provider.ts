@@ -64,6 +64,10 @@ export interface EcsComputeConfig {
   agentSecret?: string;
   /** OpenSSH CA public key trusted by workspace sshd for user certificates. */
   sshCaPublicKey?: string;
+  /** Idle-agent heartbeat interval (seconds) injected into the workspace
+   * container as EDD_HEARTBEAT_INTERVAL_S; the image defaults to
+   * DEFAULT_HEARTBEAT_INTERVAL_S when absent (scale-to-zero tuning knob). */
+  heartbeatIntervalS?: number;
   /** CloudWatch Logs group for workspace container stdout/stderr (awslogs driver).
    * When set, every task definition includes logConfiguration pointing here.
    * Matches the log group created by the Terraform module (e.g. "/${appName}/workspaces"). */
@@ -114,6 +118,8 @@ export function workspaceEnvironment(
     });
   if (config.sshCaPublicKey !== undefined)
     env.push({ name: "EDD_SSH_CA_PUBLIC_KEY", value: config.sshCaPublicKey });
+  if (config.heartbeatIntervalS !== undefined)
+    env.push({ name: "EDD_HEARTBEAT_INTERVAL_S", value: String(config.heartbeatIntervalS) });
   return env;
 }
 
@@ -294,6 +300,14 @@ export class EcsComputeProvider implements ComputeProvider {
     const ebsRoleArn = process.env.ECS_EBS_ROLE_ARN;
     if (subnets.length === 0) throw new Error("COMPUTE_PROVIDER=ecs requires ECS_SUBNETS");
     if (!ebsRoleArn) throw new Error("COMPUTE_PROVIDER=ecs requires ECS_EBS_ROLE_ARN");
+    const heartbeatRaw = process.env.EDD_HEARTBEAT_INTERVAL_S;
+    let heartbeatIntervalS: number | undefined;
+    if (heartbeatRaw !== undefined && heartbeatRaw.length > 0) {
+      heartbeatIntervalS = Number(heartbeatRaw);
+      if (!Number.isFinite(heartbeatIntervalS) || heartbeatIntervalS <= 0) {
+        throw new Error(`EDD_HEARTBEAT_INTERVAL_S must be a positive number: ${heartbeatRaw}`);
+      }
+    }
     return new EcsComputeProvider({
       client: EcsComputeProvider.client(),
       config: {
@@ -301,10 +315,13 @@ export class EcsComputeProvider implements ComputeProvider {
         subnets,
         securityGroups,
         ebsRoleArn,
+        // Public-subnet egress (image pulls; sim route-table model needs it too).
+        assignPublicIp: process.env.ECS_ASSIGN_PUBLIC_IP === "1",
         controlPlaneUrl: process.env.CONTROL_PLANE_URL,
         agentSecret,
         sshCaPublicKey: process.env.EDD_SSH_CA_PUBLIC_KEY,
         logGroupName: process.env.ECS_LOG_GROUP_WORKSPACES,
+        heartbeatIntervalS,
       },
     });
   }

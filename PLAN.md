@@ -46,10 +46,15 @@ identity-aware `*.devbox.<domain>` wildcard routing proven mock-free (`infra/pro
 (code issued immediately, no browser required); `X-Pomerium-Jwt-Assertion` present
 in proxied response; `_pomerium` session cookie set. (`packages/e2e/src/pomerium-authed.e2e.ts`)
 
+✅ **Auth.js callback routes** proven against the sims: the real NextAuth handlers
+driven csrf → signin → IdP → callback → session (bleephub team→admin role; Entra
+leg over TLS in `e2e-https`; sockerless#547 gates Entra group→role interactively).
+
 - ⬜ **Remaining:** real DNS/TLS/ACM (needs DNS #2); full GitHub OAuth browser login
   (requires Playwright + DNS).
 - **Gate:** CASL ✅; both group→role on the sim ✅; wildcard routing + gate ✅;
-  authenticated proxy-pass with identity headers ✅; real DNS ⬜.
+  authenticated proxy-pass with identity headers ✅; Auth.js callback wiring ✅;
+  real DNS ⬜.
 
 ## Phase 4 — SSH gateway — 🟡
 
@@ -60,10 +65,15 @@ issues short-lived SSH certificates. ✅ Wake-on-connect proxy component path:
 `WorkspaceService.connect()` is idempotent and wakes scaled-to-zero from snapshot;
 the gateway calls `connect` + `connect-info` before forwarding to a workspace node.
 
-- ⬜ **Remaining:** session recording (deploy-tier, CloudTrail for audit);
-  full wake-on-connect through a real ECS workspace task.
+✅ **Gateway machine-auth + real-control-plane wake chain (sim):** per-workspace
+HMAC tokens (`EDD_GATEWAY_SECRET`); chain e2e proves ssh → ForceCommand → real
+`/connect` wake from stopped → forward. The LIVE user journey covers
+wake-on-connect against a real ECS workspace task on the container-mode sim.
+
+- ⬜ **Remaining:** session recording (deploy-tier, CloudTrail for audit).
 - **Gate:** `ssh` connect-as-principal ✅; authz-deny ✅; managed-EBS golden SSH ✅;
-  connect-time wake ✅; session recording ⬜; e2e-aws SSH-wakes-stopped ⬜.
+  connect-time wake (real CP + real sim task) ✅; session recording ⬜;
+  e2e-aws SSH-wakes-stopped ⬜.
 
 ## Phase 5 — Scale-to-zero + snapshot automation — 🟡
 
@@ -76,11 +86,18 @@ test** (`packages/e2e/src/reconciler-container.e2e.ts`): EventBridge `at(...)` s
 fires → ECS RunTask → reconciler container sweeps → exits 0 → CloudWatch Logs contain
 JSON result.
 
-- ⬜ **AWS-gated:** real `COMPUTE_PROVIDER=ecs` run (idle detection over real ECS tasks);
-  real in-workspace heartbeat (idle-agent already ships in the golden image); cron
-  (`rate(5 minutes)` default; `cron()` syntax also works — BUG-1531/#489 fixed upstream); SOCI.
-- **Gate:** idle→stop→snapshot→wake ✅; GC reaps orphans only ✅; heartbeat keep-alive ✅;
-  reconciler container + scheduler e2e ✅; real cron + cost metric ⬜.
+✅ **Scale-to-zero proven against real sim compute:** the reconciler container e2e
+seeds a stale workspace backed by a running golden-image task; the sweep snapshots
+and stops it. ✅ **In-workspace heartbeat proven live:** the idle-agent in a real
+task posts HMAC heartbeats to the real control plane (live user journey). Tuning
+knobs exist: `EDD_HEARTBEAT_INTERVAL_S` (task env), `EDD_IDLE_THRESHOLD_MS`/
+`EDD_SNAPSHOT_INTERVAL_MS`/`EDD_GC_GRACE_MS` (reconciler).
+
+- ⬜ **AWS-gated:** cron (`rate(5 minutes)` default; `cron()` also works —
+  BUG-1531/#489 fixed upstream); SOCI; cost metric.
+- **Gate:** idle→stop→snapshot→wake ✅; GC reaps orphans only ✅; heartbeat keep-alive ✅
+  (incl. live in-workspace agent); reconciler container + scheduler e2e ✅ (incl.
+  real task stop); real cron + cost metric ⬜.
 
 ## Phase 6 — User portal + base-image catalog — ✅ (UI complete)
 

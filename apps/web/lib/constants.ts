@@ -23,13 +23,21 @@ export const MEMBER_GROUPS_ENV = "EDD_MEMBER_GROUPS";
 
 /** Override the GitHub REST API base URL (GitHub Enterprise, or the bleephub sim). */
 export const GITHUB_API_URL_ENV = "AUTH_GITHUB_API_URL";
+/** Override the GitHub WEB base URL (GitHub Enterprise, or the bleephub sim) —
+ * sets the OAuth authorize/token endpoints via the provider's standard
+ * `enterprise.baseUrl` option. Endpoint-only (§6.8); unset = github.com. */
+export const GITHUB_URL_ENV = "AUTH_GITHUB_URL";
 
 /**
- * Machine-auth for the in-workspace idle-agent heartbeat path.
- * The control plane holds the secret; the agent holds a per-workspace HMAC token
- * derived from it. Both are injected as ECS task env vars at launch time.
+ * Machine-auth for non-interactive callers (per-workspace HMAC bearer tokens,
+ * see `machine-auth.ts`). Two trust domains, two secrets:
+ *   - the idle-agent inside each workspace container (heartbeat route);
+ *   - the SSH gateway service (wake-on-connect routes).
  */
 /** Env var on the control plane: 32-byte hex secret used to generate agent tokens. */
 export const AGENT_SECRET_ENV = "EDD_AGENT_SECRET";
-/** Bearer token header sent by the idle-agent on every heartbeat request. */
-export const AGENT_AUTH_HEADER = "authorization";
+/** Env var on the control plane AND the SSH gateway: 32-byte hex secret the
+ * gateway derives per-workspace wake-on-connect tokens from. */
+export const GATEWAY_SECRET_ENV = "EDD_GATEWAY_SECRET";
+/** Bearer token header sent by machine callers (idle-agent, SSH gateway). */
+export const MACHINE_AUTH_HEADER = "authorization";

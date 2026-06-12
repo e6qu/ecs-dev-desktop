@@ -450,3 +450,29 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   verification passed against #532: `pnpm lint`, `pnpm test`, `pnpm build`,
   `pnpm cpd`, `pnpm check-deps`, `pnpm test:integ`, and full container-mode
   `pnpm test:e2e`.
+
+- **2026-06-12** — **Test-gap closure: every seam from the coverage review got a
+  real test, and the tests exposed one real product bug.** The SSH gateway's
+  `wake-and-forward.sh` authenticated with a bearer token (`EDD_GATEWAY_TOKEN`)
+  no control-plane code path accepted — every real gateway call would have
+  401'd; the stub control plane in the proxy e2e had masked it. Fixed with
+  per-workspace HMAC machine-auth (`EDD_GATEWAY_SECRET`, same scheme as the
+  idle-agent), accepted by the wake routes via `loadConnectableWorkspace`
+  (destructive routes stay session-only). New coverage, all green locally:
+  route-level integ tests for stop/start/snapshot/connect + healthz + admin
+  data routes + gateway auth; a wake-on-connect chain e2e against the REAL
+  production-built control plane; the user journey rewritten to drive the real
+  HTTP API with `COMPUTE_PROVIDER=ecs` on the container-mode sim (the
+  in-workspace idle-agent's real heartbeats advance `lastActivity`); the
+  reconciler container e2e seeding a stale real-task workspace that the sweep
+  must snapshot + stop; and an Auth.js callback-route e2e driving the real
+  NextAuth handlers against bleephub (team→admin) and the Azure sim (TLS leg
+  in `e2e-https`). Product knobs added along the way: `ECS_ASSIGN_PUBLIC_IP`,
+  `EDD_HEARTBEAT_INTERVAL_S` injection, reconciler `EDD_IDLE_THRESHOLD_MS`/
+  `EDD_SNAPSHOT_INTERVAL_MS`/`EDD_GC_GRACE_MS`, `AUTH_GITHUB_URL` (GHES
+  `enterprise.baseUrl`), Entra `client_secret_post` + no stock photo fetch.
+  Upstream: filed sockerless#547 (azure-sim authorize not user-bound) and
+  sockerless#548 (token endpoint rejects `client_secret_basic`) — fidelity
+  gaps, neither blocking. Lesson: a stub of OUR OWN service in an e2e can hide
+  a broken cross-service contract — point chain tests at the real component
+  and keep stubs only for component isolation.

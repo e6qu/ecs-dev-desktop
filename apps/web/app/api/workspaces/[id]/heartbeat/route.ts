@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 import { workspaceId } from "@edd/core";
 
-import { checkAgentAuth } from "../../../../../lib/agent-auth";
+import { checkAgentAuth } from "../../../../../lib/machine-auth";
 import {
   domainErrorResponse,
   isResponse,

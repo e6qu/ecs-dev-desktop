@@ -28,7 +28,7 @@ import { workspacePrincipal } from "@edd/core";
 
 const PRINCIPAL = workspacePrincipal("e2e"); // "dev-e2e"
 const PROXY_PORT = "2223";
-const GATEWAY_TOKEN = "edd-test-token";
+const GATEWAY_SECRET = "d".repeat(64); // hex machine-auth secret (stub accepts any)
 const COMPOSE_NETWORK = "ecs-dev-desktop_default";
 const WORKSPACE_NODE = "edd-workspace-node";
 
@@ -168,7 +168,7 @@ describe(
         "-e",
         `EDD_CONTROL_PLANE_URL=http://${controlPlane.host}:${stubPort}`,
         "-e",
-        `EDD_GATEWAY_TOKEN=${GATEWAY_TOKEN}`,
+        `EDD_GATEWAY_SECRET=${GATEWAY_SECRET}`,
         PROXY_IMAGE,
       ]);
       if (docker.status !== 0) throw new Error(`docker run failed: ${docker.stderr}`);

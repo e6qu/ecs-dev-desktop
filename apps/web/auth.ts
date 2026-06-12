@@ -6,6 +6,7 @@ import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
 
 import { roleMappingConfig } from "./lib/auth-config";
 import { normalizeClaims } from "./lib/claims";
+import { GITHUB_URL_ENV } from "./lib/constants";
 import { fetchGithubTeamGroups } from "./lib/github-teams";
 
 /**
@@ -14,11 +15,36 @@ import { fetchGithubTeamGroups } from "./lib/github-teams";
  * AUTH_SECRET). The role is derived from IdP groups via `@edd/auth` at sign-in
  * and carried in the JWT/session. GitHub teams aren't in the OAuth profile, so
  * they're fetched from `/user/teams` (the `read:org` scope below) at sign-in.
+ *
+ * AUTH_GITHUB_URL (GitHub Enterprise web base — or the bleephub sim) switches
+ * the OAuth endpoints via the provider's standard `enterprise` option; unset
+ * means github.com. Endpoint-only, never a behavioural branch (§6.8).
  */
+const githubEnterpriseUrl = process.env[GITHUB_URL_ENV];
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
-    GitHub({ authorization: { params: { scope: "read:user user:email read:org" } } }),
-    MicrosoftEntraID,
+    GitHub({
+      ...(githubEnterpriseUrl !== undefined && githubEnterpriseUrl.length > 0
+        ? { enterprise: { baseUrl: githubEnterpriseUrl } }
+        : {}),
+      authorization: { params: { scope: "read:user user:email read:org" } },
+    }),
+    MicrosoftEntraID({
+      // The stock profile() fetches the user's photo from a hardcoded
+      // graph.microsoft.com URL on every sign-in. We never consume it (uid and
+      // role come from the id_token claims in jwt() below), so skip the call —
+      // it would also be the one non-endpoint-configurable cloud request.
+      profile: (profile) => ({
+        id: profile.sub,
+        name: profile.name,
+        email: profile.email,
+        image: null,
+      }),
+      // Send client credentials in the token-request body (what MSAL does and
+      // what AAD's discovery advertises), not Auth.js's Basic-header default.
+      client: { token_endpoint_auth_method: "client_secret_post" },
+    }),
   ],
   session: { strategy: "jwt" },
   callbacks: {

@@ -213,12 +213,14 @@ jobs:
           exit 1
       # Entra login → group → role over HTTPS: Graph provisioning + ROPC against
       # the TLS azure-sim, with the CA trusted (EDD_SIM_SCHEME=https flips the
-      # @edd/config sim base URLs to https).
-      - name: Entra auth smoke over HTTPS (mock-free; real CA trust)
+      # @edd/config sim base URLs to https). The Auth.js callback-route e2e also
+      # runs here: its Entra leg is HTTPS-only (Auth.js re-discovers the issuer
+      # for the id_token tid without oauth4webapi's allowInsecureRequests).
+      - name: Entra + Auth.js callback routes over HTTPS (mock-free; real CA trust)
         env:
           EDD_SIM_SCHEME: https
           NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/temp/sim-tls/ca.pem
-        run: pnpm --filter @edd/web exec vitest run --config vitest.e2e.config.ts lib/entra-auth.e2e.ts
+        run: pnpm --filter @edd/web exec vitest run --config vitest.e2e.config.ts lib/entra-auth.e2e.ts lib/nextauth-callback.e2e.ts
       # SSH connect-as-principal + authz-deny: standard sshd + ephemeral CA certs.
       - name: SSH connect + authz-deny (mock-free standard sshd)
         run: pnpm --filter @edd/ssh-gateway exec vitest run --config vitest.e2e.config.ts src/ssh-connect.e2e.ts

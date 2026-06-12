@@ -2,37 +2,50 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-09 (sockerless #532 follow-up branch)
+**Last updated:** 2026-06-12 (test-gap closure + gateway machine-auth branch)
 
 ## Current phase
 
-**PR #56** (`feat/phase-9-ssh-cert-proxy-cwlogs-journey`) and **PR #57**
-(`feat/sockerless-519-overlap-vpc-e2e`) are merged to `main`.
+**PRs #56–#59 are merged to `main`** (SSH cert API + wake-on-connect proxy +
+CloudWatch log shipping; overlapping-CIDR awsvpc e2e; golden SSH + live sim
+coverage; sockerless #532 pin with managed-EBS golden SSH active).
 
-PR #56 delivered SSH cert issuance API, wake-on-connect proxy infrastructure,
-`sshHost` domain storage, workspace CloudWatch log shipping, and full user-journey e2e.
+Current branch: `feat/close-test-gaps-one-pr` — closed every untested seam the
+2026-06-12 coverage review found, with hardening where the tests exposed real
+product gaps:
 
-PR #57 delivered sockerless PR #519/#520 submodule pins, container-mode sim netns-tier
-harness support, overlapping-CIDR awsvpc e2e coverage, route-table egress alignment,
-CI fixes, `docs/simulator-live-coverage.md`, and the data-fidelity snapshot-race fix.
+- **Gateway machine-auth (product fix):** `wake-and-forward.sh` sent a bearer
+  token the control plane never accepted (masked by the stub CP in the proxy
+  e2e). The gateway now derives a per-workspace HMAC token from
+  `EDD_GATEWAY_SECRET` (same scheme as the idle-agent); `POST /connect`,
+  `GET /:id`, `GET /connect-info` accept it (`loadConnectableWorkspace`);
+  destructive routes stay session-only.
+- **Wake-on-connect chain e2e** against the REAL control plane (production
+  `next start`): ssh → gateway ForceCommand → real `/connect` wake from
+  stopped → `/connect-info` → forward to the workspace node, with the user
+  cert issued by the real `/ssh-cert` route.
+- **LIVE user journey**: `user-journey.e2e.ts` now drives the real HTTP API
+  with `COMPUTE_PROVIDER=ecs` on the container-mode sim — create launches the
+  golden image with managed EBS, the in-workspace **idle-agent posts real HMAC
+  heartbeats** (lastActivity advances), snapshot/stop/wake/delete act on real
+  sim tasks/volumes.
+- **Reconciler scale-to-zero proven**: the container e2e seeds a stale
+  workspace backed by a real running task; the sweep snapshots and stops it
+  (previously it swept an empty table). `run.ts` gained
+  `EDD_IDLE_THRESHOLD_MS`/`EDD_SNAPSHOT_INTERVAL_MS`/`EDD_GC_GRACE_MS`;
+  `EcsComputeProvider` gained `ECS_ASSIGN_PUBLIC_IP` and
+  `EDD_HEARTBEAT_INTERVAL_S` injection (DO_NEXT #4 tuning knobs).
+- **Auth.js callback-route e2e**: the real NextAuth handlers driven through
+  csrf → signin → IdP → callback → session against bleephub (team→admin role)
+  and the Azure sim (HTTPS leg in `e2e-https`). `AUTH_GITHUB_URL` (standard
+  GHES `enterprise.baseUrl`) added; Entra provider uses `client_secret_post`
+  and skips the stock graph.microsoft.com photo fetch.
+- **Route-level integ tests** for stop/start/snapshot/connect (+ healthz, +
+  admin data routes' positive paths); gateway-auth integ suite.
 
-PR #58 (`feat/golden-ssh-live-sim-e2e`) merged to `main` with golden workspace
-SSH integration, live simulator app coverage, sockerless #524 consumption, and
-the ECS Exec smoke test.
-
-Current follow-up branch: `feat/sockerless-532-golden-ssh` — consumes sockerless
-#529/#531/#532 after PR #58, restores the managed-EBS golden workspace SSH e2e,
-and keeps the ECS Exec smoke test.
-
-Upstream note: sockerless PR #532 is now pinned (`638f65a`). It includes #531,
-which fixed the remaining golden SSH blocker (#530), so the managed-EBS golden
-workspace SSH e2e is active on this branch. #532 itself mostly adds broader
-Azure/GCP simulator slices plus AWS coverage cleanup; no new ecs-dev-desktop
-blocker was identified from its PR surface.
-
-Local verification against the #532 pin passed: `pnpm lint`, `pnpm test`,
-`pnpm build`, `pnpm cpd`, `pnpm check-deps`, `pnpm test:integ`, and full
-container-mode `pnpm test:e2e`.
+Upstream: filed sockerless **#547** (azure-sim authorize not user-bound) and
+**#548** (token endpoint rejects `client_secret_basic`) — both fidelity gaps,
+neither blocking.
 
 ## What works (built, tested, merged to `main`)
 
@@ -68,8 +81,10 @@ container-mode `pnpm test:e2e`.
 - **Wake-on-connect proxy**: `sshHost` (ENI private IP — routable since sockerless PR #518;
   overlapping-CIDR VPC fidelity improved by PR #519)
   stored on `Workspace`/DB; `GET /api/workspaces/:id/connect-info` returns `{host, port}`;
-  `Dockerfile.proxy` + `wake-and-forward.sh` + `proxy-entrypoint.sh` ForceCommand gateway.
-  Full chain e2e: client SSH → proxy container → stub CP → nc → workspace node.
+  `Dockerfile.proxy` + `wake-and-forward.sh` + `proxy-entrypoint.sh` ForceCommand gateway
+  authenticating with per-workspace HMAC machine-auth (`EDD_GATEWAY_SECRET`).
+  Full chain e2e: client SSH → proxy container → REAL control plane (wake from
+  stopped) → nc → workspace node; the stub-CP variant remains as a component test.
 - **Workspace CloudWatch log shipping**: `EcsComputeProvider` adds `awslogs` `logConfiguration`
   to every task definition; `ECS_LOG_GROUP_WORKSPACES` injected by Terraform.
 - **Pomerium routing** (`infra/proxy`): identity-aware wildcard routing + authenticated
@@ -77,13 +92,15 @@ container-mode `pnpm test:e2e`.
 - **Phase 8 (8A+8B+8C)**: admin console (health board, all-workspaces, Inspect, Overview,
   quotas, Logs/Audit); `@edd/cloudtrail-audit` + `@edd/cloudwatch-logs` endpoint-only
   adapters, integration-tested against the sim.
-- **Test tiers**: unit/contract · integration (DynamoDB Local + process sim) · e2e
-  (data-fidelity, lifecycle, auth, Pomerium, OpenSSH gateway, overlapping-CIDR
-  awsvpc, reconciler container, ECS Exec smoke; managed-EBS golden workspace SSH
-  is active on the sockerless #532 follow-up branch) · live admin observability
+- **Test tiers**: unit/contract · integration (DynamoDB Local + process sim;
+  route-level lifecycle/gateway-auth/admin-data suites) · e2e (data-fidelity,
+  LIVE user journey through the real API on container-mode adapters, lifecycle,
+  auth incl. Auth.js callback routes, Pomerium, OpenSSH gateway + real-CP wake
+  chain, overlapping-CIDR awsvpc, reconciler container incl. real scale-to-zero,
+  managed-EBS golden workspace SSH, ECS Exec smoke) · live admin observability
   route tests against sockerless AWS CloudTrail/CloudWatch · portal e2e
-  (Playwright) · `e2e-https` (sims over TLS, real CA trust, no `--insecure`) ·
-  manual `e2e-aws`.
+  (Playwright) · `e2e-https` (sims over TLS, real CA trust, no `--insecure`;
+  incl. the Entra Auth.js callback leg) · manual `e2e-aws`.
 - **Engineering quality**: typed `Result<T, DomainError>` channel; compile-time
   exhaustiveness guards; typed `data-testid` registry; `waitForDynamo` harness
   determinism; `knip` + `jscpd` code-health gates; SAST + Trivy.
@@ -94,6 +111,8 @@ Nothing on AWS — no cloud infrastructure provisioned.
 
 ## Immediate focus
 
-1. **Finish the sockerless #532 follow-up** — pin #532, keep managed-EBS golden
-   SSH e2e active, verify CI-equivalent gates, and open one PR if green.
-2. **AWS account/region decision** (`DO_NEXT` #1) — unlocks everything real.
+1. **AWS account/region decision** (`DO_NEXT` #1) — the top blocker; unlocks
+   everything real.
+2. **Remaining live-test candidates** (`docs/simulator-live-coverage.md`):
+   portal browser lifecycle against real ECS compute, browser Pomerium OIDC
+   login.
