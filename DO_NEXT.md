@@ -26,13 +26,13 @@ OpenSSH + our SSH CA.
 
 ## Available now (decision-free — immediate)
 
-- **Expand live app tests further** — `docs/simulator-live-coverage.md` lists the
-  remaining decision-free candidate: browser Pomerium OIDC login (Playwright
-  against Pomerium + the Azure/Entra sim). The portal browser lifecycle on
-  real ECS compute (`test:pw:live`), the live user journey, Auth.js callback
-  routes (incl. Entra `login_hint` group→role after sockerless #549), the
-  real-CP wake chain, idle-agent heartbeat, and reconciler scale-to-zero are
-  all covered.
+- **Live-coverage candidates are exhausted** except the optional ECS Exec
+  workspace probe (only if the product adopts ECS Exec for diagnostics) —
+  `docs/simulator-live-coverage.md`. Browser Pomerium OIDC login
+  (`test:pw:pomerium`, real TLS), portal browser lifecycle on real ECS compute
+  (`test:pw:live`), the live user journey, Auth.js callback routes (incl.
+  Entra `login_hint` group→role after sockerless #549), the real-CP wake
+  chain, idle-agent heartbeat, and reconciler scale-to-zero are all covered.
 
 ---
 

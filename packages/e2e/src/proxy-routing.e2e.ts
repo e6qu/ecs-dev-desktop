@@ -1,25 +1,27 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { request } from "node:http";
+import { URL } from "node:url";
 
 import { beforeAll, describe, expect, it } from "vitest";
+
+import { pomeriumRequest, POMERIUM_PORT, ROUTE_DOMAIN } from "./pomerium-proxy";
 
 /**
  * Identity-aware wildcard routing e2e against a REAL Pomerium proxy in Docker
  * (docker-compose.e2e.yml — Pomerium is the real product, not a simulator). It
  * proves the production routing model (AGENTS.md §1): every workspace is reachable
  * at `<name>.devbox.<domain>` and access is gated on a real OIDC identity (the
- * sockerless azure sim is the IdP).
+ * sockerless azure sim is the IdP). Transport is real TLS with the harness CA
+ * trusted (`pomerium-proxy.ts`).
  *
  * - A public health route reaches the workspace upstream through Pomerium (200).
  * - Any `<name>.devbox.<domain>` matches the wildcard workspace route but, without
  *   an identity, is redirected to sign in (the identity gate) — verified for two
  *   distinct subdomains, so it's genuinely wildcard, not a single host.
  */
-const PROXY_HOST = "127.0.0.1";
-const PROXY_PORT = 8089;
-const ROUTE_DOMAIN = "devbox.localhost";
 const HEALTH_HOST = `health.${ROUTE_DOMAIN}`;
-const AUTHENTICATE_HOST = `authenticate.${ROUTE_DOMAIN}`;
+// The externally-visible authenticate host carries the published harness port
+// (authenticate_service_url in infra/proxy/pomerium.yaml).
+const AUTHENTICATE_HOST = `authenticate.${ROUTE_DOMAIN}:${POMERIUM_PORT.toString()}`;
 
 interface Probe {
   status: number;
@@ -27,24 +29,15 @@ interface Probe {
   body: string;
 }
 
-/** GET `/` at the proxy with an explicit Host header; do not follow redirects. */
-function probe(host: string): Promise<Probe> {
-  return new Promise((resolve, reject) => {
-    const req = request(
-      { host: PROXY_HOST, port: PROXY_PORT, path: "/", method: "GET", headers: { Host: host } },
-      (res) => {
-        let body = "";
-        res.on("data", (c: Buffer) => {
-          body += c.toString();
-        });
-        res.on("end", () => {
-          resolve({ status: res.statusCode ?? 0, location: res.headers.location, body });
-        });
-      },
-    );
-    req.on("error", reject);
-    req.end();
-  });
+/** GET `/` at the proxy for a virtual host; do not follow redirects. */
+async function probe(host: string): Promise<Probe> {
+  const res = await pomeriumRequest(new URL(`https://${host}/`));
+  const location = res.headers.location;
+  return {
+    status: res.status,
+    location: Array.isArray(location) ? location[0] : location,
+    body: res.body,
+  };
 }
 
 describe("Pomerium identity-aware wildcard routing (mock-free, real proxy)", () => {

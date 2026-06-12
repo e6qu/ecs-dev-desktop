@@ -140,10 +140,13 @@ pnpm build
 docker build -f services/reconciler/Dockerfile -t edd-reconciler:e2e .
 docker build -t edd-workspace:e2e infra/images/workspace
 docker build -f services/ssh-gateway/Dockerfile.proxy -t edd-ssh-proxy:e2e .
+sh scripts/gen-sim-tls-cert.sh   # Pomerium serves real TLS; cert mounted by compose
 docker compose -f docker-compose.e2e.yml up -d --build --wait
 sh scripts/gen-ssh-ca.sh
 docker compose -f docker-compose.ssh.yml up -d --build --wait
 RECONCILER_IMAGE=edd-reconciler:e2e PROXY_IMAGE=edd-ssh-proxy:e2e pnpm test:e2e
+pnpm --filter web test:pw:live      # browser lifecycle on real ECS compute
+pnpm --filter web test:pw:pomerium  # browser OIDC login through Pomerium (TLS)
 
 pnpm --filter <pkg> test   # one component in isolation
 # tier 3 (e2e-aws): workflow_dispatch on main, or local only with explicit AWS creds

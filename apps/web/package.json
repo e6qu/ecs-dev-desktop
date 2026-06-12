@@ -13,7 +13,8 @@
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:pw": "playwright test",
     "test:pw:live": "playwright test --config playwright.live.config.ts",
-    "test:pw:live:provision": "tsx e2e/live-cloud-setup.ts"
+    "test:pw:live:provision": "tsx e2e/live-cloud-setup.ts",
+    "test:pw:pomerium": "playwright test --config playwright.pomerium.config.ts"
   },
   "dependencies": {
     "@edd/api-client": "workspace:*",
