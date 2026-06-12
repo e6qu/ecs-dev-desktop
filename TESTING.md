@@ -47,21 +47,25 @@ Tooling: **Vitest**.
 
 ### 2. Integration — every PR, local + CI (sockerless substrate)
 
-| Concern                                      | Backed by                                                        |
-| -------------------------------------------- | ---------------------------------------------------------------- |
-| ECS task lifecycle + **real container exec** | sockerless AWS container mode                                    |
-| ECS awsvpc networking                        | sockerless AWS container mode, including overlapping VPC CIDRs   |
-| Reconciler schedule → container              | EventBridge Scheduler + ECS RunTask + CloudWatch Logs in the sim |
-| ECS Exec smoke                               | sockerless AWS container mode (`ExecuteCommand`)                 |
-| DynamoDB single-table + GSIs                 | DynamoDB Local in app/e2e; sockerless DynamoDB in Terraform sim  |
-| ECR / IAM / Route53 / ACM / KMS              | sockerless AWS process-mode Terraform apply + assertions         |
-| CloudTrail / CloudWatch Logs adapters        | sockerless AWS process mode                                      |
-| GitHub OAuth / Apps                          | `bleephub`                                                       |
-| Azure Entra Graph + OIDC                     | sockerless Azure/Entra simulator                                 |
-| SSH (OpenSSH)                                | `sshd` in Docker + ephemeral SSH CA; cert auth + RBAC            |
-| SSH wake-on-connect proxy                    | OpenSSH proxy container + stub control plane + workspace node    |
-| Identity-aware proxy                         | real Pomerium in Docker + sockerless Azure/Entra OIDC            |
-| UI                                           | Playwright vs built app with local/dev auth and local adapters   |
+| Concern                                      | Backed by                                                                                            |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| ECS task lifecycle + **real container exec** | sockerless AWS container mode                                                                        |
+| ECS awsvpc networking                        | sockerless AWS container mode, including overlapping VPC CIDRs                                       |
+| Reconciler schedule → container              | EventBridge Scheduler + ECS RunTask + CloudWatch Logs in the sim                                     |
+| ECS Exec smoke                               | sockerless AWS container mode (`ExecuteCommand`)                                                     |
+| DynamoDB single-table + GSIs                 | DynamoDB Local in app/e2e; sockerless DynamoDB in Terraform sim                                      |
+| ECR / IAM / Route53 / ACM / KMS              | sockerless AWS process-mode Terraform apply + assertions                                             |
+| CloudTrail / CloudWatch Logs adapters        | sockerless AWS process mode                                                                          |
+| GitHub OAuth / Apps                          | `bleephub`                                                                                           |
+| Azure Entra Graph + OIDC                     | sockerless Azure/Entra simulator                                                                     |
+| SSH (OpenSSH)                                | `sshd` in Docker + ephemeral SSH CA; cert auth + RBAC                                                |
+| SSH wake-on-connect proxy (component)        | OpenSSH proxy container + stub control plane + workspace node                                        |
+| SSH wake-on-connect chain (real CP)          | OpenSSH proxy + production `next start` + DynamoDB Local                                             |
+| LIVE user journey (real API, no fakes)       | production `next start` + `COMPUTE_PROVIDER=ecs` on container-mode sim (idle-agent heartbeats incl.) |
+| Reconciler scale-to-zero (real task)         | seeded stale workspace + scheduler-fired sweep on container-mode sim                                 |
+| Auth.js callback routes                      | real NextAuth handlers vs `bleephub` + Azure/Entra sim (Entra leg TLS-only → `e2e-https`)            |
+| Identity-aware proxy                         | real Pomerium in Docker + sockerless Azure/Entra OIDC                                                |
+| UI                                           | Playwright vs built app with local/dev auth and local adapters                                       |
 
 Proves wiring/call-shapes and, in container mode, real task behavior. It does
 **not** prove real EBS latency, real Fargate capacity/cold-start, real IAM
@@ -128,7 +132,10 @@ pnpm test                  # tier 1 (unit + contract) - no Docker
 docker compose -f docker-compose.tier2.yml up -d --build --wait
 pnpm test:integ
 
-# container-mode e2e: ECS task containers, awsvpc networking, scheduler -> RunTask
+# container-mode e2e: ECS task containers, awsvpc networking, scheduler -> RunTask,
+# plus the real-control-plane chains (they run the production `next start` build —
+# `pnpm build` covers it; the harness builds apps/web on demand if .next is missing)
+pnpm build
 docker build -f services/reconciler/Dockerfile -t edd-reconciler:e2e .
 docker build -t edd-workspace:e2e infra/images/workspace
 docker build -f services/ssh-gateway/Dockerfile.proxy -t edd-ssh-proxy:e2e .

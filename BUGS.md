@@ -8,14 +8,32 @@ _(none in repo code currently known)_
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-_(none currently known)_
+_(none blocking; two non-blocking fidelity gaps filed 2026-06-12)_
 
-Latest full simulator pass (2026-06-09, submodule `638f65a`) found no additional
-sockerless fidelity bugs for the follow-up branch's app/e2e surfaces.
+- **sockerless#547** — azure-sim `/oauth2/v2.0/authorize` issues codes without
+  binding a user (`login_hint` ignored; the id_token is minted for a global
+  "active user" only settable via the sim-internal `/sim/v1/entra/users` seed
+  endpoint). Effect: the Auth.js callback-route e2e can assert group→role via
+  the interactive flow only on the GitHub/bleephub leg; the Entra leg asserts
+  the default-user/default-role path until fixed.
+- **sockerless#548** — azure-sim token endpoint rejects `client_secret_basic`
+  (real AAD accepts it; RFC 6749 §2.3.1). Not blocking: we configure the
+  Auth.js Entra provider with `client_secret_post`, which is MSAL's own
+  convention and valid against real AAD — standard config, not a sim branch.
+
+Latest full simulator pass (2026-06-12, submodule `638f65a`) found no other
+sockerless fidelity bugs across the new live surfaces (real-CP wake chain,
+live user journey, reconciler scale-to-zero, Auth.js callback routes).
 
 ## Resolved (repo)
 
-- **BUG-golden-image-sshd** — Fixed locally on the follow-up branch: the golden
+- **BUG-gateway-token-auth (2026-06-12)** — `wake-and-forward.sh` authenticated
+  with `EDD_GATEWAY_TOKEN`, but no control-plane code path ever accepted it:
+  every real gateway call would have been a 401. Masked by the stub control
+  plane in `ssh-proxy.e2e.ts`. Fixed by per-workspace HMAC machine-auth
+  (`EDD_GATEWAY_SECRET`, `loadConnectableWorkspace`) + a chain e2e against the
+  real control plane (`packages/e2e/src/ssh-wake-chain.e2e.ts`).
+- **BUG-golden-image-sshd** — Fixed on the #532 follow-up branch: the golden
   workspace image now installs OpenSSH Server, writes the trusted workspace CA and
   `dev-<workspaceId>` principal file at startup, validates required SSH/agent env,
   starts `sshd`, and runs idle-agent/OpenVSCode as `workspace`.
