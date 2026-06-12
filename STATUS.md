@@ -2,51 +2,36 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-12 (test-gap closure + gateway machine-auth branch)
+**Last updated:** 2026-06-12 (post-PR #63; no branch in flight)
 
 ## Current phase
 
-**PRs #56–#59 are merged to `main`** (SSH cert API + wake-on-connect proxy +
-CloudWatch log shipping; overlapping-CIDR awsvpc e2e; golden SSH + live sim
-coverage; sockerless #532 pin with managed-EBS golden SSH active).
+**PRs #60–#63 are merged to `main`; nothing is in flight.** The 2026-06-12
+test-gap closure arc is complete:
 
-Current branch: `feat/close-test-gaps-one-pr` — closed every untested seam the
-2026-06-12 coverage review found, with hardening where the tests exposed real
-product gaps:
+- **PR #60** — closed every untested seam from the coverage review, with
+  hardening where tests exposed real product gaps: per-workspace HMAC
+  **gateway machine-auth** (`EDD_GATEWAY_SECRET`; the old bearer token was
+  never accepted server-side — masked by a stub CP), the real-control-plane
+  wake-on-connect chain e2e, the LIVE user journey on `COMPUTE_PROVIDER=ecs`
+  (in-workspace idle-agent heartbeats proven), reconciler scale-to-zero
+  against a real stale task, Auth.js callback-route e2e, route-level integ
+  suites, and the scale-to-zero tuning knobs (`EDD_HEARTBEAT_INTERVAL_S`,
+  `EDD_IDLE_THRESHOLD_MS`/`EDD_SNAPSHOT_INTERVAL_MS`/`EDD_GC_GRACE_MS`).
+- **PR #61** — consumed sockerless PR #549 (pin `777ffd3`), which fixed our
+  same-day reports #547/#548; Entra group→admin is asserted through the
+  interactive Auth.js flow via standard `login_hint`.
+- **PR #62** — LIVE portal browser e2e (`test:pw:live`): UI lifecycle clicks
+  act on real golden-image ECS tasks; admin Inspect confirms real bindings.
+- **PR #63** — browser OIDC login through Pomerium (`test:pw:pomerium`); the
+  Pomerium harness moved to **real TLS** (Pomerium forces https in all
+  absolute URLs — verified in its source), SPKI-pinned Chromium trust.
 
-- **Gateway machine-auth (product fix):** `wake-and-forward.sh` sent a bearer
-  token the control plane never accepted (masked by the stub CP in the proxy
-  e2e). The gateway now derives a per-workspace HMAC token from
-  `EDD_GATEWAY_SECRET` (same scheme as the idle-agent); `POST /connect`,
-  `GET /:id`, `GET /connect-info` accept it (`loadConnectableWorkspace`);
-  destructive routes stay session-only.
-- **Wake-on-connect chain e2e** against the REAL control plane (production
-  `next start`): ssh → gateway ForceCommand → real `/connect` wake from
-  stopped → `/connect-info` → forward to the workspace node, with the user
-  cert issued by the real `/ssh-cert` route.
-- **LIVE user journey**: `user-journey.e2e.ts` now drives the real HTTP API
-  with `COMPUTE_PROVIDER=ecs` on the container-mode sim — create launches the
-  golden image with managed EBS, the in-workspace **idle-agent posts real HMAC
-  heartbeats** (lastActivity advances), snapshot/stop/wake/delete act on real
-  sim tasks/volumes.
-- **Reconciler scale-to-zero proven**: the container e2e seeds a stale
-  workspace backed by a real running task; the sweep snapshots and stops it
-  (previously it swept an empty table). `run.ts` gained
-  `EDD_IDLE_THRESHOLD_MS`/`EDD_SNAPSHOT_INTERVAL_MS`/`EDD_GC_GRACE_MS`;
-  `EcsComputeProvider` gained `ECS_ASSIGN_PUBLIC_IP` and
-  `EDD_HEARTBEAT_INTERVAL_S` injection (DO_NEXT #4 tuning knobs).
-- **Auth.js callback-route e2e**: the real NextAuth handlers driven through
-  csrf → signin → IdP → callback → session against bleephub (team→admin role)
-  and the Azure sim (HTTPS leg in `e2e-https`). `AUTH_GITHUB_URL` (standard
-  GHES `enterprise.baseUrl`) added; Entra provider uses `client_secret_post`
-  and skips the stock graph.microsoft.com photo fetch.
-- **Route-level integ tests** for stop/start/snapshot/connect (+ healthz, +
-  admin data routes' positive paths); gateway-auth integ suite.
-
-Upstream: filed sockerless **#547** (azure-sim authorize not user-bound) and
-**#548** (token endpoint rejects `client_secret_basic`); both were fixed the
-same day by sockerless **PR #549**, now pinned (`777ffd3`). The Entra callback
-leg asserts group→admin through the interactive flow via `login_hint`.
+**Every live-coverage candidate in `docs/simulator-live-coverage.md` is now
+covered.** No open bugs; no upstream blockers; sockerless pin current. The
+project is at the decision gate: all remaining work is blocked on the open
+decisions in `DO_NEXT.md` (AWS account/region foremost), except the optional
+ECS Exec workspace probe (itself gated on a product decision).
 
 ## What works (built, tested, merged to `main`)
 
