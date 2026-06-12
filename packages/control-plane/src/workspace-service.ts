@@ -391,15 +391,28 @@ export class WorkspaceService {
   async remove(id: WorkspaceId): Promise<Result<void, DomainError>> {
     const found = await this.require(id);
     if (!found.ok) return found;
-    const { ws } = found.value;
+    const { ws, version } = found.value;
     const terminable = assertTerminable(ws);
     if (!terminable.ok) return terminable;
-    // Running: stopping the task releases its managed volume. Stopped: the volume
-    // was already released; reap the retained snapshot.
+    // Version-conditioned, like every other transition: a delete racing a wake
+    // must NOT remove the record out from under the task the wake just launched
+    // (an unconditional delete left that task orphaned). Claim the deletion FIRST
+    // via the conditional write; only the winner then tears down resources.
+    try {
+      await this.deps.workspaces
+        .delete({ id })
+        .where(({ version: v }, { eq }) => eq(v, version))
+        .go();
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+      return err(conflictError(`delete of ${id} lost a concurrent update`));
+    }
+    // The record is gone, so this delete owns teardown. Stopping the task
+    // releases its managed volume. The retained snapshot is left to GC — it is
+    // now unreferenced and reaped after the grace window. (GC is the single
+    // storage reaper; deleting it synchronously here would race a concurrent
+    // wake hydrating a new volume from that very snapshot.)
     if (ws.taskId !== undefined) await this.deps.compute.stopTask(ws.taskId);
-    if (ws.latestSnapshotId !== undefined)
-      await this.deps.storage.deleteSnapshot(ws.latestSnapshotId);
-    await this.deps.workspaces.delete({ id }).go();
     return ok(undefined);
   }
 

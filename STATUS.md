@@ -6,9 +6,32 @@
 
 ## Current phase
 
-**PRs #56–#64 are merged to `main`** (test-gap closure, gateway machine-auth,
-sockerless #549 consumption, live portal + Pomerium browser e2e over TLS, and
-the #64 STATUS sync).
+**PRs #56–#65 are merged to `main`** (test-gap closure, gateway machine-auth,
+sockerless #549/#550 consumption, live portal + Pomerium browser e2e over TLS,
+and the lifecycle correctness-hardening pass — concurrent-wake leak fix,
+quota-bypass-at-scale fix, drift detection).
+
+A follow-up depth pass (this branch, `feat/authz-matrix-concurrency-gc`) hardens
+the remaining unhappy paths and found one more real bug:
+
+- **delete-vs-wake task leak (real bug, fixed):** `remove()` used an
+  unconditional `.delete()`, so a delete racing a wake could remove the record
+  while `start()` launched a task — orphaning it. `remove()` is now
+  version-conditioned (claim-the-delete-first) and defers snapshot reaping to GC
+  (the single storage reaper, with a grace window), which also removes a
+  snapshot-vs-wake race. Proven by `concurrency-pairs.integ.ts`.
+- **CASL matrices:** the unit ability table is now exhaustive (every
+  role × action × subject, 62 cases); a route-level matrix asserts each HTTP
+  route enforces it (viewer denied across every verb, member can't mutate the
+  catalog, unauth → 401).
+- **Concurrency pairs:** stop-vs-snapshot, stop-vs-heartbeat, two-snapshots, and
+  delete-vs-wake each prove exactly one winner + one clean conflict (no 500, no
+  double side effect) under the version guard.
+- **GC TOCTOU:** a freshly-created unreferenced volume within the grace window
+  is never reaped (protects a create racing the sweep).
+- **ssh-cert hardening:** the public-key contract now rejects malformed/oversized
+  /multi-line/unknown-type keys with 400 at the boundary (was a 500 from
+  `ssh-keygen`); no shell injection (key written to a file).
 
 Current branch: `feat/hardening-races-drift-scale` (PR #65) — the unhappy-path
 hardening pass (the failure modes the happy-path coverage didn't reach), each

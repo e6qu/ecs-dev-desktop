@@ -44,9 +44,16 @@ endpoint-only model: no product branches, no special fake code paths.
 
 Done since the last revision: the full user journey, the portal browser
 lifecycle, and the browser Pomerium OIDC login run live; the Auth.js callback
-routes are covered against both sim IdPs; and the hardening pass added
+routes are covered against both sim IdPs; and the hardening passes added
 concurrent-wake-race, crash-consistency, drift-detection, scale/pagination,
-heavy data-fidelity, TLS storage-adapter, and adversarial-auth coverage.
+heavy data-fidelity, TLS storage-adapter, and adversarial-auth coverage, plus a
+depth pass (exhaustive CASL ability + route-authz matrices, concurrency-pair
+safety incl. a delete-vs-wake leak fix, GC TOCTOU, ssh-cert input hardening).
+
+Known gap (not a test gap): the Pomerium wildcard route is
+`allow_any_authenticated_user`, so the proxy grants no per-workspace ownership
+isolation (only the OpenVSCode connection-token / SSH cert gate actual use).
+Tracked as `DO_NEXT` decision #5 + a `BUGS.md` known limitation.
 
 Container-mode ECS tasks that reach simulator-adjacent services must be configured
 like normal AWS tasks: route-table egress exists and public egress is explicit

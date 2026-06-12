@@ -170,10 +170,39 @@ export type LogStreamResultDto = z.infer<typeof logStreamResult>;
 
 // --- SSH: cert issuance + connect-info ---
 
+/** Algorithms our SSH CA will sign — modern OpenSSH public-key types, including
+ * FIDO/U2F (`sk-`) variants. Legacy `ssh-dss` is intentionally excluded. */
+const SSH_PUBLIC_KEY_TYPES = [
+  "ssh-ed25519",
+  "ssh-rsa",
+  "ecdsa-sha2-nistp256",
+  "ecdsa-sha2-nistp384",
+  "ecdsa-sha2-nistp521",
+  "sk-ssh-ed25519@openssh.com",
+  "sk-ecdsa-sha2-nistp256@openssh.com",
+] as const;
+
+/** A single-line OpenSSH `authorized_keys` entry: `<type> <base64-blob> [comment]`.
+ * Validating shape here (the single source of API truth) turns hostile/garbage
+ * input into a 400 at the contract boundary instead of a 500 from `ssh-keygen`. */
+const SSH_PUBLIC_KEY_RE = new RegExp(
+  `^(?:${SSH_PUBLIC_KEY_TYPES.map((t) => t.replace(/[.\-@]/g, "\\$&")).join("|")}) ` +
+    `[A-Za-z0-9+/]+={0,3}(?: [^\\r\\n]*)?$`,
+);
+/** Cap on the whole entry — a 4096-bit RSA key is ~750 chars; 16 KiB is ample
+ * and rejects absurd payloads. */
+const SSH_PUBLIC_KEY_MAX = 16 * 1024;
+
 /** POST /api/workspaces/:id/ssh-cert — request body. */
 export const sshCertRequest = z.object({
-  /** User's SSH public key in OpenSSH authorized_keys format (e.g. "ssh-ed25519 AAAA... comment"). */
-  publicKey: z.string().min(1),
+  /** User's SSH public key in OpenSSH authorized_keys format (e.g. "ssh-ed25519 AAAA... comment").
+   * One line, known key type, base64 blob — no newlines (so it can't smuggle a
+   * second key) and length-capped. */
+  publicKey: z
+    .string()
+    .min(1)
+    .max(SSH_PUBLIC_KEY_MAX, "publicKey is too large")
+    .refine((s) => SSH_PUBLIC_KEY_RE.test(s.trim()), "publicKey is not a valid OpenSSH public key"),
 });
 export type SshCertRequest = z.infer<typeof sshCertRequest>;
 

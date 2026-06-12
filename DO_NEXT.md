@@ -16,6 +16,17 @@
    now exist (`EDD_HEARTBEAT_INTERVAL_S` injected into workspace tasks;
    `EDD_IDLE_THRESHOLD_MS`/`EDD_SNAPSHOT_INTERVAL_MS`/`EDD_GC_GRACE_MS` on the
    reconciler) — the open decision is only the production default values.
+5. **Per-workspace proxy authorization** — the Pomerium wildcard route is
+   `allow_any_authenticated_user`, so ANY authenticated user passes the gate to
+   ANY `<ws>.devbox.<domain>` HTTP endpoint; today only the OpenVSCode
+   connection-token (HTTP) and the SSH cert principal (SSH) gate actual use, so
+   it is not wide open, but the proxy does not enforce that the caller owns the
+   workspace named in the subdomain. Closing it needs a decision on HOW —
+   Pomerium can't map `ws-<id>`→owner alone (that mapping lives in DynamoDB):
+   **(a)** Pomerium external-authz calling a control-plane endpoint, **(b)** a
+   per-route policy on an identity claim, or **(c)** treat the connection-token
+   /SSH-cert as sufficient and document it. Interacts with decisions #2/#3.
+   Tracked as a known limitation in `BUGS.md`.
 
 Resolved: DynamoDB+ElectroDB · sockerless from source · Fargate managed-EBS ·
 manual real-AWS on `main` · AGPL-3.0-or-later · Turborepo+pnpm · CASL · dep floor
