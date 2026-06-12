@@ -23,6 +23,10 @@ export const MEMBER_GROUPS_ENV = "EDD_MEMBER_GROUPS";
 
 /** Override the GitHub REST API base URL (GitHub Enterprise, or the bleephub sim). */
 export const GITHUB_API_URL_ENV = "AUTH_GITHUB_API_URL";
+/** Override the GitHub WEB base URL (GitHub Enterprise, or the bleephub sim) —
+ * sets the OAuth authorize/token endpoints via the provider's standard
+ * `enterprise.baseUrl` option. Endpoint-only (§6.8); unset = github.com. */
+export const GITHUB_URL_ENV = "AUTH_GITHUB_URL";
 
 /**
  * Machine-auth for non-interactive callers (per-workspace HMAC bearer tokens,
