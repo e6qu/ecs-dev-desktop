@@ -553,3 +553,29 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   pagination defaults are a silent correctness AND authz risk, not just a perf
   one. Sockerless pin bumped to #550 (`9d43f3d`); no downstream impact (bleephub
   = OAuth only), auth e2e green on it.
+
+- **2026-06-12** — **Depth-hardening pass (authz matrices, concurrency pairs,
+  GC TOCTOU, ssh-cert input): one more real bug fixed.** Following the
+  races/drift pass, a review of the remaining unhappy paths surfaced a
+  **delete-vs-wake task leak**: `WorkspaceService.remove()` used an
+  unconditional ElectroDB `.delete()`, so a delete racing a `start`/`connect`
+  could remove the record while the wake launched a task — orphaning it (the
+  same class as the connect-race, but on the delete path). Fixed by making
+  `remove()` version-conditioned (claim the deletion via a conditional write
+  before any teardown) and deferring snapshot reaping to GC (the single storage
+  reaper with a grace window), which also eliminated a snapshot-vs-wake ENOENT
+  race the test first exposed. Plus: an exhaustive CASL ability matrix (every
+  role × action × subject) and a route-level authorization matrix (viewer
+  denied on every workspace verb, member can't mutate the catalog, unauth →
+  401); concurrency-pair integ tests (stop/snapshot, stop/heartbeat, two
+  snapshots, delete/wake → exactly one winner + one clean conflict, never a
+  500); a GC TOCTOU test (a brand-new unreferenced volume within grace is never
+  reaped); and ssh-cert input hardening (the public-key Zod contract rejects
+  malformed/oversized/multi-line/unknown-type keys with 400 instead of a 500
+  from ssh-keygen — no shell injection since the key is written to a file). The
+  one genuine gap NOT fixed here is per-workspace proxy authorization
+  (`allow_any_authenticated_user` on the wildcard route) — it needs a design
+  decision (DO_NEXT #5; tracked as a known limitation in BUGS.md) because
+  Pomerium can't map subdomain→owner without the control plane. Lesson: the
+  version-CAS added in the prior pass made connect/start safe but the audit
+  proved you must apply it to EVERY mutating path — delete had been missed.

@@ -113,6 +113,19 @@ describe("Reconciler against DynamoDB Local", () => {
     expect(remaining.length).toBe(1);
   });
 
+  it("never reaps a freshly-created volume within the grace window (GC vs create TOCTOU)", async () => {
+    // GC reads the keep-set, then deletes. A volume created by a concurrent
+    // create() between those steps is unreferenced but BRAND NEW; the grace
+    // window is what protects it from being reaped out from under the in-flight
+    // create. Here the clock does NOT advance, so the orphan is within grace.
+    const { storage, reconciler } = await harness(ONE_HOUR);
+    const justCreated = await storage.createVolume(); // unreferenced, age ~0
+
+    const result = await reconciler.collectGarbage();
+    expect(result.volumesDeleted).toBe(0);
+    expect((await storage.listVolumes()).map((v) => v.id)).toContain(justCreated.id);
+  });
+
   it("reaps the snapshot superseded after a stop→start cycle", async () => {
     // grace 0 so the just-superseded snapshot is immediately eligible.
     const { storage, service, reconciler } = await harness(0);

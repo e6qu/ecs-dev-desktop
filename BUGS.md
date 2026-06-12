@@ -4,7 +4,16 @@
 
 ## Open
 
-_(none in repo code currently known)_
+- **Known limitation — proxy does not enforce per-workspace ownership.** The
+  Pomerium wildcard route (`infra/proxy/pomerium.yaml`) is
+  `allow_any_authenticated_user: true`, so any authenticated user passes the
+  identity gate to any `<ws>.devbox.<domain>` HTTP endpoint. Defense in depth
+  still applies — OpenVSCode requires its per-workspace connection-token and
+  SSH requires a CA cert for the `dev-<wsId>` principal — so it is not a direct
+  takeover, but the proxy layer itself grants no per-workspace isolation.
+  Closing it is **decision #5 in `DO_NEXT.md`** (external-authz vs claim policy
+  vs accept-and-document); not fixed yet because it needs that decision and
+  interacts with the DNS/Pomerium-ratification decisions.
 
 ## External blockers (upstream — `e6qu/sockerless`)
 

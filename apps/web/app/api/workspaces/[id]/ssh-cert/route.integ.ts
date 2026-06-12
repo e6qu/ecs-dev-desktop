@@ -66,6 +66,23 @@ describe("POST /api/workspaces/:id/ssh-cert (DynamoDB Local)", () => {
     expect(res.status).toBe(400);
   });
 
+  it("rejects hostile/malformed public keys with 400 (not 500)", async () => {
+    const id = await createWorkspaceFor("alice");
+    const cases: { name: string; key: string }[] = [
+      { name: "garbage", key: "not a key at all" },
+      { name: "unknown type", key: "ssh-dss AAAAB3NzaC1kc3M= legacy" },
+      { name: "non-base64 blob", key: "ssh-ed25519 !!!not-base64!!! x" },
+      { name: "private key paste", key: "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END-----" },
+      // A second key smuggled on a new line must be rejected (no multi-line).
+      { name: "second key on newline", key: `${userPubKey}\nssh-ed25519 AAAAC3Nz evil` },
+      { name: "oversized", key: `ssh-ed25519 ${"A".repeat(20000)} big` },
+    ];
+    for (const c of cases) {
+      const res = await postCert("alice", id, c.key);
+      expect(res.status, `${c.name} should be 400`).toBe(400);
+    }
+  });
+
   it("returns 404 for a nonexistent workspace", async () => {
     const res = await postCert("alice", "does-not-exist", userPubKey);
     expect(res.status).toBe(404);
