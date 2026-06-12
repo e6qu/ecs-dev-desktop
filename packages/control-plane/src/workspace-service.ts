@@ -90,6 +90,20 @@ function isVersionConflict(err: unknown): boolean {
   return false;
 }
 
+/** True when a storage op failed because its target volume/snapshot is gone —
+ * EBS `InvalidVolume.NotFound` on real cloud, `ENOENT` from the filesystem fake.
+ * During a transition this means a concurrent op tore the resource down (a lost
+ * race), as distinct from a genuine storage outage. */
+function isResourceGoneError(err: unknown): boolean {
+  for (let e: unknown = err; e instanceof Error; e = e.cause) {
+    const codes = e as { code?: string; Code?: string };
+    if (codes.code === "ENOENT" || codes.Code === "ENOENT") return true;
+    const haystack = `${e.name} ${codes.code ?? ""} ${codes.Code ?? ""} ${e.message}`;
+    if (/not.?found|does not exist|no such file/i.test(haystack)) return true;
+  }
+  return false;
+}
+
 /** Brand a persisted record into a domain object (imperative-shell boundary). */
 function toWorkspace(r: WorkspaceRecord): Workspace {
   return {
@@ -215,6 +229,32 @@ export class WorkspaceService {
     return pages.flatMap((page) => page.data.map((r: WorkspaceRecord) => r));
   }
 
+  /** Snapshot a volume as part of a transition, conditioned on `version`. A
+   * concurrent transition can delete the volume mid-snapshot (e.g. another stop
+   * releasing it), which surfaces as a storage error (EBS `InvalidVolume.NotFound`;
+   * the fake's ENOENT). If the record has since advanced, that error IS the lost
+   * race — report a conflict instead of throwing a 500; otherwise it is a genuine
+   * storage failure and rethrows. */
+  private async snapshotForTransition(
+    id: WorkspaceId,
+    volumeId: VolumeId,
+    version: number,
+  ): Promise<Result<SnapshotId, DomainError>> {
+    try {
+      const snap = await this.deps.storage.createSnapshot(volumeId);
+      return ok(snap.id);
+    } catch (e) {
+      // The volume vanished (concurrent teardown) OR the record already advanced
+      // since our read — either way this transition lost the race. Anything else
+      // is a genuine storage failure and propagates.
+      const current = await this.find(id);
+      if (isResourceGoneError(e) || current?.version !== version) {
+        return err(conflictError(`snapshot of ${id} lost a concurrent update`));
+      }
+      throw e;
+    }
+  }
+
   /** Scale to zero: snapshot the managed volume, then stop the task (which
    * releases the volume). Snapshot first — stopping the task tears the volume down. */
   async stop(id: WorkspaceId): Promise<Result<WorkspaceDto, DomainError>> {
@@ -226,8 +266,9 @@ export class WorkspaceService {
     const at = isoTimestamp(this.deps.clock.now());
     let freshSnapshot: { id: SnapshotId; at: IsoTimestamp } | undefined;
     if (ws.volumeId !== undefined) {
-      const snap = await this.deps.storage.createSnapshot(ws.volumeId);
-      freshSnapshot = { id: snap.id, at };
+      const snap = await this.snapshotForTransition(id, ws.volumeId, version);
+      if (!snap.ok) return snap;
+      freshSnapshot = { id: snap.value, at };
     }
     if (ws.taskId !== undefined) await this.deps.compute.stopTask(ws.taskId);
     const next = markStopped(ws, freshSnapshot, at);
@@ -344,8 +385,9 @@ export class WorkspaceService {
     if (ws.volumeId === undefined) {
       return err(conflictError(`cannot snapshot ${id}: no active volume`));
     }
-    const snap = await this.deps.storage.createSnapshot(ws.volumeId);
-    const next = recordSnapshot(ws, snap.id, isoTimestamp(this.deps.clock.now()));
+    const snap = await this.snapshotForTransition(id, ws.volumeId, version);
+    if (!snap.ok) return snap;
+    const next = recordSnapshot(ws, snap.value, isoTimestamp(this.deps.clock.now()));
     try {
       await this.persistTransition(next, version);
     } catch (e) {

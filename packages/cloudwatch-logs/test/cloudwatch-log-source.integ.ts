@@ -4,6 +4,7 @@ import {
   CreateLogGroupCommand,
   CreateLogStreamCommand,
   PutLogEventsCommand,
+  ResourceAlreadyExistsException,
 } from "@aws-sdk/client-cloudwatch-logs";
 import { awsSim, DEFAULT_AWS_REGION } from "@edd/config";
 import { beforeAll, describe, expect, it } from "vitest";
@@ -24,9 +25,21 @@ describe("CloudWatchLogSource against the sockerless AWS sim", () => {
   const cw = new CloudWatchLogsClient({});
   const src = CloudWatchLogSource.fromEnv(APP_NAME);
 
+  /** The sim persists state across local runs, so creation is idempotent: an
+   * already-existing group/stream is the desired state, not a failure. */
+  async function ensureExists(op: Promise<unknown>): Promise<void> {
+    try {
+      await op;
+    } catch (e) {
+      if (!(e instanceof ResourceAlreadyExistsException)) throw e;
+    }
+  }
+
   beforeAll(async () => {
-    await cw.send(new CreateLogGroupCommand({ logGroupName: GROUP }));
-    await cw.send(new CreateLogStreamCommand({ logGroupName: GROUP, logStreamName: STREAM }));
+    await ensureExists(cw.send(new CreateLogGroupCommand({ logGroupName: GROUP })));
+    await ensureExists(
+      cw.send(new CreateLogStreamCommand({ logGroupName: GROUP, logStreamName: STREAM })),
+    );
     await cw.send(
       new PutLogEventsCommand({
         logGroupName: GROUP,
