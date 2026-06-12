@@ -11,7 +11,9 @@
     "test": "vitest run",
     "test:integ": "vitest run --config vitest.integ.config.ts",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
-    "test:pw": "playwright test"
+    "test:pw": "playwright test",
+    "test:pw:live": "playwright test --config playwright.live.config.ts",
+    "test:pw:live:provision": "tsx e2e/live-cloud-setup.ts"
   },
   "dependencies": {
     "@edd/api-client": "workspace:*",
@@ -35,9 +37,12 @@
   "devDependencies": {
     "@aws-sdk/client-cloudwatch-logs": "^3.1066.0",
     "@aws-sdk/client-dynamodb": "^3.1066.0",
+    "@aws-sdk/client-ec2": "^3.1066.0",
     "@aws-sdk/client-ecs": "^3.1066.0",
+    "@edd/e2e": "workspace:*",
     "@playwright/test": "^1.60.0",
     "@types/node": "^25.9.3",
-    "@types/react": "^19.2.17"
+    "@types/react": "^19.2.17",
+    "tsx": "^4.22.4"
   }
 }

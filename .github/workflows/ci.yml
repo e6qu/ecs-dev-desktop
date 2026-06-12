@@ -156,6 +156,13 @@ jobs:
         env:
           RECONCILER_IMAGE: edd-reconciler:e2e
           PROXY_IMAGE: edd-ssh-proxy:e2e
+      # LIVE portal browser e2e: the UI tier on the same container-mode path
+      # (COMPUTE_PROVIDER=ecs; cloud state provisioned by its webServer command —
+      # see apps/web/e2e/start-live-app.sh).
+      - name: Install Playwright browser
+        run: pnpm --filter web exec playwright install --with-deps chromium
+      - name: Portal browser lifecycle on real ECS compute
+        run: pnpm --filter web test:pw:live
       - if: always()
         name: Dump Pomerium logs on failure
         run: docker logs ecs-dev-desktop-pomerium-1 2>&1 || true

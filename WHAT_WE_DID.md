@@ -487,3 +487,19 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   via standard `login_hint` and lands a session with the admin role, plus the
   unknown-hint negative path. Graph provisioning was extracted to
   `apps/web/lib/test-support/entra-graph.ts` (shared with `entra-auth.e2e.ts`).
+
+- **2026-06-12** — **LIVE portal browser e2e: the UI tier moved onto the
+  container-mode path.** New `playwright.live.config.ts` + `portal-live.pwlive.ts`
+  run the production build with `COMPUTE_PROVIDER=ecs`: browser
+  create/stop/start/delete clicks act on real golden-image ECS tasks, and the
+  admin Inspect API confirms a real task ARN, managed volume, and live-subnet
+  ENI — with the wake binding a NEW task ARN and the stop snapshot recorded.
+  Because Playwright launches the webServer BEFORE globalSetup (verified
+  empirically), cloud provisioning lives in the webServer command:
+  `start-live-app.sh` → tsx `live-cloud-setup.ts` → `temp/live-pw.env` →
+  `next start`. Two stale assumptions corrected along the way (both probed,
+  not assumed): current Playwright DOES transpile workspace TS imports (the
+  old global-setup comment predates this), and the webServer/globalSetup
+  ordering above. Shared spec helpers extracted to `apps/web/e2e/support.ts`;
+  `@edd/e2e` grew `exports` for its `aws-sim`/`docker-host` harness modules.
+  CI: the `e2e` job runs `test:pw:live` after the package e2e suites.
