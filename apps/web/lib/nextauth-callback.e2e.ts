@@ -20,6 +20,7 @@ import {
   bleephubProvisionTeam,
   bleephubSession,
 } from "./test-support/bleephub-oauth";
+import { acquireGraphToken, provisionEntraUserWithGroup } from "./test-support/entra-graph";
 
 const ORIGIN = "http://localhost:3000";
 const USER = "admin";
@@ -64,14 +65,22 @@ function absorb(jar: Map<string, string>, res: Response): void {
 const cookieHeader = (jar: Map<string, string>): string =>
   [...jar.entries()].map(([k, v]) => `${k}=${v}`).join("; ");
 
-/** csrf → signin: returns the IdP authorize URL Auth.js redirects to. */
-async function beginSignIn(jar: Map<string, string>, provider: string): Promise<string> {
+/** csrf → signin: returns the IdP authorize URL Auth.js redirects to.
+ * `extraQuery` params on the signin request are forwarded into the authorize
+ * URL by Auth.js (e.g. the standard OIDC `login_hint`). */
+async function beginSignIn(
+  jar: Map<string, string>,
+  provider: string,
+  extraQuery?: Record<string, string>,
+): Promise<string> {
   const csrfRes = await GET(new Request(`${ORIGIN}/api/auth/csrf`));
   absorb(jar, csrfRes);
   const { csrfToken } = csrfSchema.parse(await csrfRes.json());
 
+  const signinQuery =
+    extraQuery === undefined ? "" : `?${new URLSearchParams(extraQuery).toString()}`;
   const signinRes = await POST(
-    new Request(`${ORIGIN}/api/auth/signin/${provider}`, {
+    new Request(`${ORIGIN}/api/auth/signin/${provider}${signinQuery}`, {
       method: "POST",
       headers: {
         cookie: cookieHeader(jar),
@@ -166,12 +175,54 @@ describe("Auth.js callback routes against the live sims", { timeout: 60_000 }, (
       );
 
       const session = await finishSignIn(jar, callbackLocation);
-      // The sim's active user carries no groups → the default role applies.
-      // (Selecting a Graph-provisioned user for the interactive flow is a sim
-      // fidelity gap — tracked upstream; group→role via callback is proven on
-      // the GitHub leg above.)
+      // No login_hint → the sim's default active user, no groups → default role.
       expect(session.user.role).toBe("viewer");
       expect(session.user.id.length).toBeGreaterThan(0);
+    },
+  );
+
+  it.runIf(process.env.EDD_SIM_SCHEME === "https")(
+    "Entra: login_hint selects a Graph-provisioned grouped user → admin role (sockerless#547)",
+    async () => {
+      // Standard Graph provisioning: a user in a security group.
+      const runId = Math.random().toString(36).slice(2, 10);
+      const upn = `callback-${runId}@edd-e2e.example.com`;
+      const accessToken = await acquireGraphToken(ENTRA_APP.id, ENTRA_APP.secret);
+      const { userId, groupId } = await provisionEntraUserWithGroup(accessToken, {
+        userPrincipalName: upn,
+        password: "Edd-e2e-Passw0rd!",
+        displayName: "Callback Admin",
+        groupDisplayName: `EDD Callback Admins ${runId}`,
+        mailNickname: `callback-${runId}`,
+        groupMailNickname: `edd-callback-admins-${runId}`,
+      });
+      expect(userId.length).toBeGreaterThan(0);
+      // The jwt() callback reads the role mapping from env per sign-in.
+      process.env[ADMIN_GROUPS_ENV] = `${ORG}/${TEAM},${groupId}`;
+
+      // login_hint (standard OIDC) rides the signin request into the authorize
+      // URL; the IdP binds the issued code to that user (real-AAD behaviour).
+      const jar = new Map<string, string>();
+      const authorizeUrl = await beginSignIn(jar, "microsoft-entra-id", { login_hint: upn });
+      expect(new URL(authorizeUrl).searchParams.get("login_hint")).toBe(upn);
+
+      const idpRes = await fetch(authorizeUrl, { redirect: "manual" });
+      const callbackLocation = idpRes.headers.get("location");
+      if (callbackLocation === null) throw new Error("azure-sim authorize returned no redirect");
+
+      const session = await finishSignIn(jar, callbackLocation);
+      // The id_token carried the provisioned user's groups → admin.
+      expect(session.user.role).toBe("admin");
+
+      // Unknown login_hint → error redirect (AADSTS50058-style), never a code.
+      const badJar = new Map<string, string>();
+      const badAuthorize = await beginSignIn(badJar, "microsoft-entra-id", {
+        login_hint: `nobody-${runId}@edd-e2e.example.com`,
+      });
+      const badRes = await fetch(badAuthorize, { redirect: "manual" });
+      const badLocation = badRes.headers.get("location") ?? "";
+      expect(badLocation).toContain("error=login_required");
+      expect(badLocation).not.toContain("code=");
     },
   );
 });

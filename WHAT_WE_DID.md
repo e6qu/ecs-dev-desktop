@@ -476,3 +476,14 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   gaps, neither blocking. Lesson: a stub of OUR OWN service in an e2e can hide
   a broken cross-service contract — point chain tests at the real component
   and keep stubs only for component isolation.
+
+- **2026-06-12** — **sockerless PR #549 consumed (pin `777ffd3`): both same-day
+  issues fixed upstream.** #547: `/authorize` honours `login_hint`, binds the
+  resolved user into the auth code, and unknown hints redirect with
+  `error=login_required`; #548: the token endpoint accepts
+  `client_secret_basic` (we keep `client_secret_post`, MSAL's convention). The
+  Auth.js callback-route e2e gained the previously-gated assertion: a
+  Graph-provisioned user in a security group drives the full interactive flow
+  via standard `login_hint` and lands a session with the admin role, plus the
+  unknown-hint negative path. Graph provisioning was extracted to
+  `apps/web/lib/test-support/entra-graph.ts` (shared with `entra-auth.e2e.ts`).

@@ -44,8 +44,9 @@ product gaps:
   admin data routes' positive paths); gateway-auth integ suite.
 
 Upstream: filed sockerless **#547** (azure-sim authorize not user-bound) and
-**#548** (token endpoint rejects `client_secret_basic`) — both fidelity gaps,
-neither blocking.
+**#548** (token endpoint rejects `client_secret_basic`); both were fixed the
+same day by sockerless **PR #549**, now pinned (`777ffd3`). The Entra callback
+leg asserts group→admin through the interactive flow via `login_hint`.
 
 ## What works (built, tested, merged to `main`)
 

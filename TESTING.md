@@ -18,9 +18,9 @@ in a **manual** suite on `main`.
     containers, including awsvpc networking and scheduler-fired tasks.
 - **When the simulator is missing/incorrect for something we need, we file (or
   comment on) an issue in `e6qu/sockerless`** and track it in `BUGS.md` under
-  _External blockers_. Current sockerless blockers are cleared; #530 was fixed
-  by PR #531 and is included in the current #532 follow-up pin, with managed-EBS
-  golden workspace SSH e2e active on that branch.
+  _External blockers_. Current sockerless blockers are cleared; the pin is
+  PR #549 (`777ffd3`), which also fixed our #547/#548 Entra OIDC fidelity
+  reports (`login_hint` user binding; `client_secret_basic`).
 - **LocalStack** is kept only as an optional cross-check where sockerless is
   immature; not a primary gate.
 - Live simulator coverage and candidate app surfaces are tracked in

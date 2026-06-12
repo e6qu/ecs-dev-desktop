@@ -7,6 +7,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { normalizeClaims } from "./claims";
+import { acquireGraphToken, provisionEntraUserWithGroup } from "./test-support/entra-graph";
 
 /**
  * Mock-free Entra login → group → role e2e, driven entirely through STANDARD
@@ -15,6 +16,8 @@ import { normalizeClaims } from "./claims";
  * id_token. Nothing here is sim-specific — only `entraSim.authority`/`graphUrl`
  * (base URLs) differ from real cloud (`login.microsoftonline.com` /
  * `graph.microsoft.com`), the allowed endpoint-only exception (`AGENTS.md` §6.8).
+ * Provisioning helpers: `test-support/entra-graph.ts` (shared with the Auth.js
+ * callback-route e2e).
  *
  * App-registration coordinates (client/tenant) and the test identity are plain
  * fixtures; against real Entra they'd come from env-supplied app credentials.
@@ -26,7 +29,6 @@ const USER_UPN = `alice-${RUN_ID}@edd-e2e.example.com`;
 // ROPC password — real Entra validates it against the user's passwordProfile; the
 // sim looks the user up by userPrincipalName. Sent on both create and login.
 const USER_PASSWORD = "Edd-e2e-Passw0rd!";
-const ADMIN_GROUP_NAME = `EDD Platform Admins ${RUN_ID}`;
 
 const TOKEN_URL = `${entraSim.authority}/oauth2/v2.0/token`;
 const FORM_HEADERS = {
@@ -35,11 +37,6 @@ const FORM_HEADERS = {
 };
 
 const tokenResponse = z.object({ access_token: z.string(), id_token: z.string().optional() });
-const graphCreated = z.object({ id: z.string() });
-
-function formBody(params: Record<string, string>): string {
-  return new URLSearchParams(params).toString();
-}
 
 /** Decode a JWT payload (no verification needed — we assert on our own claims). */
 function decodeJwtPayload(jwt: string): unknown {
@@ -48,63 +45,19 @@ function decodeJwtPayload(jwt: string): unknown {
   return JSON.parse(Buffer.from(segments[1], "base64url").toString("utf8"));
 }
 
-/** App-only token (client_credentials) — the admin credential Graph provisioning
- * requires on real cloud. Sent as Bearer on every Graph call below. */
-async function acquireGraphToken(): Promise<string> {
-  const res = await fetch(TOKEN_URL, {
-    method: "POST",
-    headers: FORM_HEADERS,
-    body: formBody({
-      grant_type: "client_credentials",
-      client_id: CLIENT_ID,
-      client_secret: CLIENT_SECRET,
-      scope: "https://graph.microsoft.com/.default",
-    }),
-  });
-  if (!res.ok) throw new Error(`client_credentials token failed: ${String(res.status)}`);
-  return tokenResponse.parse(await res.json()).access_token;
-}
-
 describe("Entra login → group → role (mock-free, standard Graph + ROPC)", () => {
   let groupId: string;
-  let userId: string;
 
   beforeAll(async () => {
-    const accessToken = await acquireGraphToken();
-    const headers = {
-      Authorization: `Bearer ${accessToken}`,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    };
-    const graph = (path: string, body: unknown): Promise<Response> =>
-      fetch(`${entraSim.graphUrl}${path}`, { method: "POST", headers, body: JSON.stringify(body) });
-
-    // 1. Provision a security group (Microsoft Graph — standard).
-    const groupRes = await graph("/groups", {
-      displayName: ADMIN_GROUP_NAME,
-      mailNickname: `edd-platform-admins-${RUN_ID}`,
-      securityEnabled: true,
-      mailEnabled: false,
-    });
-    if (!groupRes.ok) throw new Error(`create group failed: ${String(groupRes.status)}`);
-    groupId = graphCreated.parse(await groupRes.json()).id;
-
-    // 2. Provision the user (Microsoft Graph — standard).
-    const userRes = await graph("/users", {
-      accountEnabled: true,
-      displayName: "Alice Admin",
+    const accessToken = await acquireGraphToken(CLIENT_ID, CLIENT_SECRET);
+    ({ groupId } = await provisionEntraUserWithGroup(accessToken, {
       userPrincipalName: USER_UPN,
+      password: USER_PASSWORD,
+      displayName: "Alice Admin",
+      groupDisplayName: `EDD Platform Admins ${RUN_ID}`,
       mailNickname: `alice-${RUN_ID}`,
-      passwordProfile: { password: USER_PASSWORD, forceChangePasswordNextSignIn: false },
-    });
-    if (!userRes.ok) throw new Error(`create user failed: ${String(userRes.status)}`);
-    userId = graphCreated.parse(await userRes.json()).id;
-
-    // 3. Add the user to the group (Microsoft Graph members/$ref — standard).
-    const memberRes = await graph(`/groups/${groupId}/members/$ref`, {
-      "@odata.id": `${entraSim.graphUrl}/directoryObjects/${userId}`,
-    });
-    if (!memberRes.ok) throw new Error(`add member failed: ${String(memberRes.status)}`);
+      groupMailNickname: `edd-platform-admins-${RUN_ID}`,
+    }));
   });
 
   it("derives the role from the user's Entra groups after a (ROPC) login", async () => {
@@ -112,14 +65,14 @@ describe("Entra login → group → role (mock-free, standard Graph + ROPC)", ()
     const res = await fetch(TOKEN_URL, {
       method: "POST",
       headers: FORM_HEADERS,
-      body: formBody({
+      body: new URLSearchParams({
         grant_type: "password",
         client_id: CLIENT_ID,
         client_secret: CLIENT_SECRET,
         username: USER_UPN,
         password: USER_PASSWORD,
         scope: "openid profile",
-      }),
+      }).toString(),
     });
     expect(res.ok).toBe(true);
     const idToken = tokenResponse.parse(await res.json()).id_token;
