@@ -49,6 +49,9 @@ export type ListWorkspacesResponse = z.infer<typeof listWorkspacesResponse>;
 export const workspaceDetail = z.object({
   id: z.string(),
   ownerId: z.string(),
+  /** Owner's email — the identity the proxy matches a caller against for
+   * per-workspace access. Absent on records created without a session email. */
+  ownerEmail: z.string().optional(),
   baseImage: z.string(),
   state: workspaceState,
   createdAt: z.iso.datetime(),

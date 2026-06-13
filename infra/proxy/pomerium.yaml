@@ -52,7 +52,26 @@ routes:
   # Wildcard workspace routing, identity-gated: any `<name>.devbox.localhost`
   # routes to the workspace upstream but requires an authenticated identity.
   # pass_identity_headers injects X-Pomerium-Jwt-Assertion into the proxied
-  # request so upstream services can verify the authenticated user's identity.
+  # request so the downstream can verify the authenticated user's identity.
+  #
+  # PER-WORKSPACE OWNERSHIP (DO_NEXT #5): Pomerium authenticates the user but
+  # cannot itself enforce that the caller OWNS the workspace named in the
+  # subdomain — that mapping (`ws-<id>`→owner) lives in DynamoDB, not in any
+  # token claim. Enforcement is delegated to the workspace gate (PEP,
+  # `services/workspace-gate`): in a real deployment this route's `to:` targets
+  # the gate, which verifies the assertion against Pomerium's JWKS and calls the
+  # control-plane PDP (`/api/internal/authz`) before forwarding to the
+  # workspace, so only the owner (or an admin) reaches it:
+  #
+  #     to: "http://workspace-gate:8080"
+  #     preserve_host_header: true   # the gate needs the <ws>.<domain> host
+  #
+  # The harness keeps the direct `to: workspace-upstream` route below so the
+  # identity-layer suites (proxy-routing, pomerium-authed, the browser login)
+  # exercise the gate-independent identity gate; the gate+PDP enforcement is
+  # proven end-to-end with a real Pomerium assertion in
+  # `apps/web/app/api/internal/authz/route.e2e.ts` (plus the gate component and
+  # PDP integration tests).
   - from: "https://*.devbox.localhost"
     to: "http://workspace-upstream:80"
     allow_any_authenticated_user: true

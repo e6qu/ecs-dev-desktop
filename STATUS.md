@@ -6,10 +6,35 @@
 
 ## Current phase
 
-**PRs #56–#66 are merged to `main`** (test-gap closure, gateway machine-auth,
+**PRs #56–#67 are merged to `main`** (test-gap closure, gateway machine-auth,
 sockerless #549/#550 consumption, live portal + Pomerium browser e2e over TLS,
-the lifecycle correctness-hardening pass, and the authz/concurrency depth pass —
-delete-vs-wake leak fix, exhaustive CASL matrices, snapshot-vs-stop conflict fix).
+the lifecycle correctness-hardening pass, the authz/concurrency depth pass —
+delete-vs-wake leak fix, exhaustive CASL matrices, snapshot-vs-stop conflict fix
+— and data durability across a real scale-to-zero cycle + the reconciler
+container drift sweep).
+
+Current branch `feat/proxy-per-workspace-authz` closes the last open
+`DO_NEXT`/`BUGS` item — **per-workspace proxy authorization** (decision #5):
+
+- **The gap:** the Pomerium wildcard route was `allow_any_authenticated_user`, so
+  the proxy enforced no per-workspace ownership.
+- **The fix (external-authz → control plane):** a workspace **gate**
+  (PEP, `services/workspace-gate`) fronts each workspace, verifies the Pomerium
+  identity assertion against Pomerium's JWKS, and calls a control-plane **PDP**
+  (`/api/internal/authz`) that maps `<ws-id>` subdomain → owner in DynamoDB and
+  allows only the owner (by **email** — the identity the Auth.js portal IdP and
+  the Pomerium proxy IdP share; `sub`/`oid` differ) or an admin. Workspaces now
+  record `ownerEmail`. Pomerium binds the assertion `aud` to the workspace host
+  (verified in v0.32.2 source: `authorize/evaluator/headers_evaluator_evaluation.go`),
+  so a token can't be replayed across workspaces.
+- **Proof:** core unit tests (host→id parse, access decision), the gate component
+  test (HTTP + WebSocket, allow/deny/missing/PDP-down), the PDP integration test
+  (DynamoDB ownership, admin bypass, replay/expiry/forgery), and an end-to-end
+  test that verifies a REAL Pomerium assertion against Pomerium's real JWKS
+  (`apps/web/app/api/internal/authz/route.e2e.ts`). The harness `pomerium.yaml`
+  keeps the direct identity-gate route for the identity-layer suites; production
+  routes the workspace `to:` through the gate (documented inline).
+- No sockerless bugs found (Pomerium assertion + JWKS verified faithfully).
 
 Current branch `feat/data-durability-container-drift` adds the two end-to-end
 gaps from the latest review (no new product bugs found):

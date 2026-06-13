@@ -16,6 +16,9 @@ export function makeWorkspaceEntity(client: DynamoDBClient, table = TABLE) {
       attributes: {
         id: { type: "string", required: true },
         ownerId: { type: "string", required: true },
+        // Owner's email — the identity the proxy matches a caller against for
+        // per-workspace access. Optional: records predating the field have none.
+        ownerEmail: { type: "string", required: false },
         baseImage: { type: "string", required: true },
         state: {
           type: ["provisioning", "running", "idle", "stopped", "terminated", "error"] as const,

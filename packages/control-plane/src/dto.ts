@@ -18,6 +18,7 @@ export function toWorkspaceDetail(ws: Workspace): WorkspaceDetailDto {
   return {
     id: ws.id,
     ownerId: ws.ownerId,
+    ...(ws.ownerEmail === undefined ? {} : { ownerEmail: ws.ownerEmail }),
     baseImage: ws.baseImage,
     state: ws.state,
     createdAt: ws.createdAt,

@@ -4,16 +4,7 @@
 
 ## Open
 
-- **Known limitation — proxy does not enforce per-workspace ownership.** The
-  Pomerium wildcard route (`infra/proxy/pomerium.yaml`) is
-  `allow_any_authenticated_user: true`, so any authenticated user passes the
-  identity gate to any `<ws>.devbox.<domain>` HTTP endpoint. Defense in depth
-  still applies — OpenVSCode requires its per-workspace connection-token and
-  SSH requires a CA cert for the `dev-<wsId>` principal — so it is not a direct
-  takeover, but the proxy layer itself grants no per-workspace isolation.
-  Closing it is **decision #5 in `DO_NEXT.md`** (external-authz vs claim policy
-  vs accept-and-document); not fixed yet because it needs that decision and
-  interacts with the DNS/Pomerium-ratification decisions.
+_(none currently known)_
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
@@ -27,6 +18,25 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **Per-workspace proxy authorization (2026-06-12)** — the Pomerium wildcard
+  route was `allow_any_authenticated_user`, so the proxy enforced no
+  per-workspace ownership (only the OpenVSCode connection-token / SSH cert gated
+  use). Closed via decision #5's chosen design (external-authz → control plane):
+  a workspace **gate** (PEP, `services/workspace-gate`) fronts each workspace,
+  verifies the Pomerium identity assertion against Pomerium's JWKS, and calls a
+  control-plane **PDP** (`/api/internal/authz`, `apps/web`) that maps the
+  `<ws-id>` subdomain → owner in DynamoDB and allows only the owner (by email —
+  the provider-agnostic identity the Auth.js portal IdP and the Pomerium proxy
+  IdP share) or an admin. Workspaces now record `ownerEmail`. Pomerium binds the
+  assertion's `aud` to the workspace host (verified in v0.32.2 source), so a
+  token cannot be replayed across workspaces. Proven by the gate component test
+  (HTTP+WS, allow/deny/PDP-down), the PDP integration test (DynamoDB ownership,
+  admin bypass, replay/expiry/forgery), and an end-to-end test with a REAL
+  Pomerium assertion verified against Pomerium's real JWKS
+  (`apps/web/app/api/internal/authz/route.e2e.ts`). The harness's shared
+  `pomerium.yaml` keeps the direct identity-gate route for the identity-layer
+  suites; production routes the workspace `to:` through the gate (documented
+  inline in `pomerium.yaml`).
 - **BUG-concurrent-wake-leak (2026-06-12)** — `WorkspaceService.persist` was an
   unconditional ElectroDB PutItem, so two simultaneous `connect`/`start` calls
   on a stopped workspace both read "stopped", both launched a real ECS task,
