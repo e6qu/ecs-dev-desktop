@@ -10,6 +10,7 @@ import {
 import { CreateClusterCommand, ECSClient } from "@aws-sdk/client-ecs";
 import { auditFeedResponse, logStreamResult } from "@edd/api-contracts";
 import { aws, DEFAULT_AWS_REGION } from "@edd/config";
+import { Ec2StorageProvider } from "@edd/storage-ec2";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -60,6 +61,13 @@ describe("admin observability routes against live AWS simulator adapters", () =>
     const logs = new CloudWatchLogsClient(SIM);
 
     await ecs.send(new CreateClusterCommand({ clusterName: SEEDED_CLUSTER }));
+
+    // Exercise OUR real EBS adapter (the product path, coordinate-only via
+    // AWS_ENDPOINT_URL) so the CloudTrail feed must capture the actual EC2 calls
+    // the platform makes — not just a bare CreateCluster.
+    const storage = Ec2StorageProvider.fromEnv();
+    const volume = await storage.createVolume();
+    await storage.createSnapshot(volume.id);
     await logs.send(new CreateLogGroupCommand({ logGroupName: LOG_GROUP }));
     await logs.send(
       new CreateLogStreamCommand({ logGroupName: LOG_GROUP, logStreamName: LOG_STREAM }),
@@ -79,6 +87,18 @@ describe("admin observability routes against live AWS simulator adapters", () =>
 
     const body = auditFeedResponse.parse(await json(res));
     expect(body.events.some((event) => event.action === "CreateCluster")).toBe(true);
+  });
+
+  it("captures the platform's real EBS operations (CreateVolume + CreateSnapshot) in the feed", async () => {
+    // Coverage for the actual EC2/EBS calls the EBS provider makes — previously
+    // only a bare CreateCluster was asserted. If the CloudTrail adapter/sim does
+    // not record these standard ops, that is a coordinate-level divergence to
+    // file upstream (e6qu/sockerless), not to work around.
+    const res = await auditGet(adminRequest(`${ADMIN}/audit`));
+    expect(res.status).toBe(200);
+    const actions = new Set(auditFeedResponse.parse(await json(res)).events.map((e) => e.action));
+    expect(actions.has("CreateVolume")).toBe(true);
+    expect(actions.has("CreateSnapshot")).toBe(true);
   });
 
   it("serves CloudWatch-backed control-plane logs through the admin API route", async () => {

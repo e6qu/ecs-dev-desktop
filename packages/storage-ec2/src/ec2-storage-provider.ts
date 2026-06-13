@@ -65,9 +65,9 @@ function required<T>(value: T | undefined, field: string): T {
  * `writeFile` are deferred to the compute layer.
  *
  * Created resources are tagged `edd:managed=true` (+ an optional `edd:scope`), and
- * enumeration filters to those tags both server-side (`tag:` Filters, honoured by
- * real AWS) and client-side (the returned `Tags`, for the sim which ignores
- * Filters) — so GC stays scoped to what we manage.
+ * enumeration scopes to those tags with server-side `tag:` Filters — so GC stays
+ * scoped to what we manage. (Standard EC2 behaviour; no client-side re-filter,
+ * which would be a target-specific workaround — §6.9.)
  */
 export class Ec2StorageProvider implements StorageProvider {
   private readonly client: EC2Client;
@@ -104,14 +104,6 @@ export class Ec2StorageProvider implements StorageProvider {
     if (this.scope !== undefined)
       filters.push({ Name: `tag:${SCOPE_TAG_KEY}`, Values: [this.scope] });
     return filters;
-  }
-
-  /** Client-side equivalent of {@link managedFilters} (the sim ignores Filters). */
-  private isManaged(tags: Tag[] | undefined): boolean {
-    const has = (key: string, value: string): boolean =>
-      (tags ?? []).some((t) => t.Key === key && t.Value === value);
-    if (!has(MANAGED_TAG_KEY, MANAGED_TAG_VALUE)) return false;
-    return this.scope === undefined || has(SCOPE_TAG_KEY, this.scope);
   }
 
   async createVolume(opts?: { fromSnapshot?: SnapshotId }): Promise<Volume> {
@@ -162,7 +154,6 @@ export class Ec2StorageProvider implements StorageProvider {
       { Filters: this.managedFilters() },
     )) {
       for (const v of page.Volumes ?? []) {
-        if (!this.isManaged(v.Tags)) continue;
         refs.push({
           id: volumeId(required(v.VolumeId, "VolumeId")),
           createdAt: isoTimestamp(required(v.CreateTime, "CreateTime").toISOString()),
@@ -180,7 +171,6 @@ export class Ec2StorageProvider implements StorageProvider {
       { OwnerIds: ["self"], Filters: this.managedFilters() },
     )) {
       for (const s of page.Snapshots ?? []) {
-        if (!this.isManaged(s.Tags)) continue;
         refs.push({
           id: snapshotId(required(s.SnapshotId, "SnapshotId")),
           createdAt: isoTimestamp(required(s.StartTime, "StartTime").toISOString()),
