@@ -7,7 +7,7 @@ import { CloudWatchLogsClient, CreateLogGroupCommand } from "@aws-sdk/client-clo
 import { CreateClusterCommand, ECSClient } from "@aws-sdk/client-ecs";
 import { EC2Client } from "@aws-sdk/client-ec2";
 import { EcsComputeProvider } from "@edd/compute-ecs";
-import { dynamodbLocal } from "@edd/config";
+import { dynamodb } from "@edd/config";
 import { WorkspaceService } from "@edd/control-plane";
 import {
   baseImage,
@@ -39,7 +39,7 @@ import { runSshClientTask, signWorkspaceCert, waitForTask } from "./golden-ssh-h
  */
 
 configureAwsSimEnv();
-process.env.DYNAMODB_ENDPOINT ??= dynamodbLocal.endpoint;
+process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
 
 const RUN_ID = randomUUID().slice(0, 8);
 const TABLE = `edd-durability-${RUN_ID}`;

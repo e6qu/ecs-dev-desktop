@@ -26,7 +26,7 @@ import { join } from "node:path";
 
 import { EC2Client } from "@aws-sdk/client-ec2";
 import { EcsComputeProvider } from "@edd/compute-ecs";
-import { dynamodbLocal, DEFAULT_AWS_REGION } from "@edd/config";
+import { dynamodb, DEFAULT_AWS_REGION } from "@edd/config";
 import { WorkspaceService } from "@edd/control-plane";
 import { baseImage, ownerId, systemClock, workspaceId } from "@edd/core";
 import { createDynamoClient, dropTable, ensureTable, makeWorkspaceEntity } from "@edd/db";
@@ -56,7 +56,7 @@ import {
  */
 
 configureAwsSimEnv();
-process.env.DYNAMODB_ENDPOINT ??= dynamodbLocal.endpoint;
+process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
 
 // The reconciler image must be pre-built: `docker build -f services/reconciler/Dockerfile -t edd-reconciler:e2e .`
 const RECONCILER_IMAGE = process.env.RECONCILER_IMAGE ?? "edd-reconciler:e2e";
@@ -182,7 +182,8 @@ describe(
       );
       const driftRunningDeadline = Date.now() + 120_000;
       while ((await taskStatus(driftTaskArn)) !== "RUNNING") {
-        if (Date.now() > driftRunningDeadline) throw new Error("drift workspace task never RUNNING");
+        if (Date.now() > driftRunningDeadline)
+          throw new Error("drift workspace task never RUNNING");
         await sleep(2_000);
       }
       // Snapshot so the drift outcome is the recoverable "stopped" (not "error").

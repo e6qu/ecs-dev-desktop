@@ -7,19 +7,19 @@
 // helpers; this proves the Auth.js route wiring around them.
 //
 // Endpoint-only (§6.8): AUTH_GITHUB_URL/AUTH_GITHUB_API_URL point the standard
-// GHES options at bleephub; AUTH_MICROSOFT_ENTRA_ID_ISSUER points OIDC
+// GHES options at github; AUTH_MICROSOFT_ENTRA_ID_ISSUER points OIDC
 // discovery at the Azure sim. No sim-specific code paths.
-import { bleephub, entraSim, ENTRA_SIM_TENANT } from "@edd/config";
+import { github, entra, ENTRA_TENANT } from "@edd/config";
 import { beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { ADMIN_GROUPS_ENV, GITHUB_API_URL_ENV, GITHUB_URL_ENV } from "./constants";
 import {
-  bleephubApprove,
-  bleephubExchangeCode,
-  bleephubProvisionTeam,
-  bleephubSession,
-} from "./test-support/bleephub-oauth";
+  githubApprove,
+  githubExchangeCode,
+  githubProvisionTeam,
+  githubSession,
+} from "./test-support/github-oauth";
 import { acquireGraphToken, provisionEntraUserWithGroup } from "./test-support/entra-graph";
 
 const ORIGIN = "http://localhost:3000";
@@ -34,11 +34,11 @@ process.env.AUTH_SECRET = "edd-callback-e2e-secret";
 process.env.AUTH_TRUST_HOST = "1";
 process.env.AUTH_GITHUB_ID = OAUTH_APP.id;
 process.env.AUTH_GITHUB_SECRET = OAUTH_APP.secret;
-process.env[GITHUB_URL_ENV] = bleephub.url;
-process.env[GITHUB_API_URL_ENV] = bleephub.apiUrl;
+process.env[GITHUB_URL_ENV] = github.url;
+process.env[GITHUB_API_URL_ENV] = github.apiUrl;
 process.env.AUTH_MICROSOFT_ENTRA_ID_ID = ENTRA_APP.id;
 process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET = ENTRA_APP.secret;
-process.env.AUTH_MICROSOFT_ENTRA_ID_ISSUER = `${entraSim.authority}/v2.0`;
+process.env.AUTH_MICROSOFT_ENTRA_ID_ISSUER = `${entra.authority}/v2.0`;
 process.env[ADMIN_GROUPS_ENV] = `${ORG}/${TEAM}`;
 
 const csrfSchema = z.object({ csrfToken: z.string() });
@@ -131,10 +131,10 @@ describe("Auth.js callback routes against the live sims", { timeout: 60_000 }, (
   // target that real defense.
 
   it("rejects a callback missing the PKCE verifier cookie (CSRF defense)", async () => {
-    const cookie = await bleephubSession(USER);
+    const cookie = await githubSession(USER);
     const jar = new Map<string, string>();
     const authorizeUrl = await beginSignIn(jar, "github");
-    const callbackLocation = await bleephubApprove(cookie, authorizeUrl);
+    const callbackLocation = await githubApprove(cookie, authorizeUrl);
 
     // An attacker who captured the callback URL has the code but NOT the
     // victim's sealed pkce cookie — replay it from a fresh jar.
@@ -158,10 +158,10 @@ describe("Auth.js callback routes against the live sims", { timeout: 60_000 }, (
   });
 
   it("rejects a REPLAYED callback — a consumed authorization code is single-use", async () => {
-    const cookie = await bleephubSession(USER);
+    const cookie = await githubSession(USER);
     const jar = new Map<string, string>();
     const authorizeUrl = await beginSignIn(jar, "github");
-    const callbackLocation = await bleephubApprove(cookie, authorizeUrl);
+    const callbackLocation = await githubApprove(cookie, authorizeUrl);
 
     // First use succeeds and consumes the code at the IdP.
     const first = await GET(
@@ -181,12 +181,12 @@ describe("Auth.js callback routes against the live sims", { timeout: 60_000 }, (
     expect(replay.headers.get("location") ?? "").toContain("error");
   });
 
-  it("GitHub: signin → bleephub consent → callback → session carries the team-mapped role", async () => {
+  it("GitHub: signin → github consent → callback → session carries the team-mapped role", async () => {
     // Provision the admin team so the jwt() callback's team fetch maps admin.
-    const cookie = await bleephubSession(USER);
-    const provisioningLocation = await bleephubApprove(
+    const cookie = await githubSession(USER);
+    const provisioningLocation = await githubApprove(
       cookie,
-      `${bleephub.url}/login/oauth/authorize?${new URLSearchParams({
+      `${github.url}/login/oauth/authorize?${new URLSearchParams({
         client_id: OAUTH_APP.id,
         redirect_uri: `${ORIGIN}/api/auth/callback/github`,
         scope: "read:org",
@@ -195,19 +195,19 @@ describe("Auth.js callback routes against the live sims", { timeout: 60_000 }, (
     );
     const provisioningCode = new URL(provisioningLocation).searchParams.get("code");
     if (provisioningCode === null) throw new Error("no provisioning code");
-    const token = await bleephubExchangeCode(provisioningCode, OAUTH_APP.id, OAUTH_APP.secret);
-    await bleephubProvisionTeam(token, ORG, TEAM);
+    const token = await githubExchangeCode(provisioningCode, OAUTH_APP.id, OAUTH_APP.secret);
+    await githubProvisionTeam(token, ORG, TEAM);
 
     // The real Auth.js flow.
     const jar = new Map<string, string>();
     const authorizeUrl = await beginSignIn(jar, "github");
-    expect(authorizeUrl.startsWith(`${bleephub.url}/login/oauth/authorize`)).toBe(true);
+    expect(authorizeUrl.startsWith(`${github.url}/login/oauth/authorize`)).toBe(true);
 
-    const callbackLocation = await bleephubApprove(cookie, authorizeUrl);
+    const callbackLocation = await githubApprove(cookie, authorizeUrl);
     expect(callbackLocation.startsWith(`${ORIGIN}/api/auth/callback/github`)).toBe(true);
 
     const session = await finishSignIn(jar, callbackLocation);
-    // Role mapped from the user's real bleephub team via the jwt() callback.
+    // Role mapped from the user's real github team via the jwt() callback.
     expect(session.user.role).toBe("admin");
     expect(session.user.id.length).toBeGreaterThan(0);
   });
@@ -221,7 +221,7 @@ describe("Auth.js callback routes against the live sims", { timeout: 60_000 }, (
     async () => {
       const jar = new Map<string, string>();
       const authorizeUrl = await beginSignIn(jar, "microsoft-entra-id");
-      expect(authorizeUrl.startsWith(`${entraSim.endpoint}/${ENTRA_SIM_TENANT}`)).toBe(true);
+      expect(authorizeUrl.startsWith(`${entra.endpoint}/${ENTRA_TENANT}`)).toBe(true);
 
       // The sim issues the code immediately (no interactive page).
       const idpRes = await fetch(authorizeUrl, { redirect: "manual" });

@@ -32,6 +32,10 @@ live. Hence:
    issues in any other external project (e.g. Pomerium, AWS, etc.).
    If a third-party tool has a limitation, record it in `BUGS.md` and work
    around it or wait; do not file in their tracker.
+10. **Never more than one active PR at a time.** Only one open PR may exist at
+    once; finish and get it merged before starting the next. Keep delivering work
+    as commits, but **always ask the user before opening another PR** — never open
+    a second (including a stacked one) on your own.
 
 The engineering standards in §6 are also hard rules.
 

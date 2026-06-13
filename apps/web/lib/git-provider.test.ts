@@ -41,7 +41,7 @@ const repo = (fullName: string, priv = false) => {
   };
 };
 
-/** Stub the bleephub-shaped GitHub App endpoints the provider calls. */
+/** Stub the github-shaped GitHub App endpoints the provider calls. */
 function stubGitHubApp(): void {
   vi.stubGlobal("fetch", (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const u = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;

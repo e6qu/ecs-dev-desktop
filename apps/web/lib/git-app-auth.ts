@@ -10,7 +10,7 @@ import { z } from "zod";
  * standard GitHub App server-to-server flow; the resulting `ghs_…` installation
  * token is used as a bearer for REST and (wire-identical to a user token) for
  * git clone/push as `x-access-token`. Endpoint-only: `apiBase` points at GHES /
- * the bleephub sim or public GitHub. We use `jose` for the signature (no
+ * the github sim or public GitHub. We use `jose` for the signature (no
  * hand-rolled crypto) and Node's `createPrivateKey` so PKCS#1 *or* PKCS#8 PEMs
  * are accepted (real GitHub App keys are PKCS#1).
  */

@@ -11,13 +11,7 @@ import { EC2Client } from "@aws-sdk/client-ec2";
 import { EcsComputeProvider } from "@edd/compute-ecs";
 import { WorkspaceService } from "@edd/control-plane";
 import { baseImage, ownerId, systemClock, unwrap, workspaceId } from "@edd/core";
-import {
-  createDynamoClient,
-  dropTable,
-  dynamodbLocal,
-  ensureTable,
-  makeWorkspaceEntity,
-} from "@edd/db";
+import { createDynamoClient, dropTable, dynamodb, ensureTable, makeWorkspaceEntity } from "@edd/db";
 import { Ec2StorageProvider } from "@edd/storage-ec2";
 import { Reconciler } from "@edd/reconciler";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -42,7 +36,7 @@ import {
  */
 
 configureAwsSimEnv();
-process.env.DYNAMODB_ENDPOINT ??= dynamodbLocal.endpoint;
+process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
 
 const RUN_ID = randomUUID().slice(0, 8);
 const TABLE = `edd-drift-${RUN_ID}`;

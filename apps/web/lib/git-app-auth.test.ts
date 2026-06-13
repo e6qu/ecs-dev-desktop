@@ -11,7 +11,7 @@ import {
   type GitHubAppConfig,
 } from "./git-app-auth";
 
-// A throwaway RSA keypair (PKCS#1 PEM, like real GitHub App keys / bleephub).
+// A throwaway RSA keypair (PKCS#1 PEM, like real GitHub App keys / github).
 const { privateKey, publicKey } = generateKeyPairSync("rsa", {
   modulusLength: 2048,
   privateKeyEncoding: { type: "pkcs1", format: "pem" },

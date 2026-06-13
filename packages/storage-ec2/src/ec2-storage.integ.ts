@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { awsSim, DEFAULT_AWS_REGION } from "@edd/config";
+import { aws, DEFAULT_AWS_REGION } from "@edd/config";
 import { describe, expect, it } from "vitest";
 
 import { Ec2StorageProvider } from "./index";
 
 // Point the AWS SDK at the sockerless AWS simulator (Tier-2 harness, from source).
-process.env.AWS_ENDPOINT_URL ??= awsSim.endpoint;
+process.env.AWS_ENDPOINT_URL ??= aws.endpoint;
 process.env.AWS_REGION ??= DEFAULT_AWS_REGION;
 process.env.AWS_ACCESS_KEY_ID ??= "test";
 process.env.AWS_SECRET_ACCESS_KEY ??= "test";

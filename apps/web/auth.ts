@@ -17,7 +17,7 @@ import { fetchGithubTeamGroups } from "./lib/github-teams";
  * and carried in the JWT/session. GitHub teams aren't in the OAuth profile, so
  * they're fetched from `/user/teams` (the `read:org` scope below) at sign-in.
  *
- * AUTH_GITHUB_URL (GitHub Enterprise web base — or the bleephub sim) switches
+ * AUTH_GITHUB_URL (GitHub Enterprise web base — or the github sim) switches
  * the OAuth endpoints via the provider's standard `enterprise` option; unset
  * means github.com. Endpoint-only, never a behavioural branch (§6.8).
  */

@@ -12,7 +12,7 @@ import {
   StopTaskCommand,
 } from "@aws-sdk/client-ecs";
 import { EC2Client } from "@aws-sdk/client-ec2";
-import { awsSim, dynamodbLocal } from "@edd/config";
+import { aws, dynamodb } from "@edd/config";
 import { CatalogService } from "@edd/control-plane";
 import { baseImage, systemClock } from "@edd/core";
 import { createDynamoClient, dropTable, ensureTable, makeBaseImageEntity } from "@edd/db";
@@ -60,7 +60,7 @@ export async function startLiveEcsApp(opts: LiveEcsAppOptions): Promise<LiveEcsA
   const table = `edd-live-${opts.runId}`;
   const cluster = `edd-live-${opts.runId}`;
   const logGroup = `/edd/e2e/live-${opts.runId}`;
-  const dynamoEndpoint = process.env.DYNAMODB_ENDPOINT ?? dynamodbLocal.endpoint;
+  const dynamoEndpoint = process.env.DYNAMODB_ENDPOINT ?? dynamodb.endpoint;
 
   const dynamo = createDynamoClient();
   await dropTable(dynamo, table);
@@ -85,7 +85,7 @@ export async function startLiveEcsApp(opts: LiveEcsAppOptions): Promise<LiveEcsA
     DYNAMODB_ENDPOINT: dynamoEndpoint,
     DYNAMODB_TABLE: table,
     COMPUTE_PROVIDER: "ecs",
-    AWS_ENDPOINT_URL: awsSim.endpoint,
+    AWS_ENDPOINT_URL: aws.endpoint,
     AWS_REGION: sim.region,
     AWS_ACCESS_KEY_ID: sim.credentials.accessKeyId,
     AWS_SECRET_ACCESS_KEY: sim.credentials.secretAccessKey,

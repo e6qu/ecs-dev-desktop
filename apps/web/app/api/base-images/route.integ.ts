@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { baseImageEntry, listBaseImagesResponse } from "@edd/api-contracts";
-import { createDynamoClient, dropTable, dynamodbLocal, ensureTable } from "@edd/db";
+import { createDynamoClient, dropTable, dynamodb, ensureTable } from "@edd/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -15,7 +15,7 @@ import { GET, POST } from "./route";
 const TEST_TABLE = "ecs-dev-desktop-baseimg-integ";
 
 process.env[DEV_AUTH_ENV] = DEV_AUTH_ENABLED;
-process.env.DYNAMODB_ENDPOINT ??= dynamodbLocal.endpoint;
+process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
 process.env.DYNAMODB_TABLE = TEST_TABLE;
 
 const url = "http://localhost/api/base-images";

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 
 import { workspace, type WorkspaceDto } from "@edd/api-contracts";
-import { dynamodbLocal } from "@edd/config";
+import { dynamodb } from "@edd/config";
 import { CatalogService } from "@edd/control-plane";
 import { baseImage, systemClock, workspacePrincipal } from "@edd/core";
 import { createDynamoClient, dropTable, ensureTable, makeBaseImageEntity } from "@edd/db";
@@ -45,7 +45,7 @@ const USER_KEY = join(SSH_CA_DIR, "wake-chain-id");
 
 const CMD_TIMEOUT_MS = 30_000;
 
-process.env.DYNAMODB_ENDPOINT ??= dynamodbLocal.endpoint;
+process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
 
 function run(
   cmd: string,
@@ -94,7 +94,7 @@ describe("SSH wake-on-connect chain against the real control plane", { timeout: 
     }).create({ name: "Node 20", image: baseImage(NODE_IMAGE) });
 
     web = await startWebApp(() => ({
-      DYNAMODB_ENDPOINT: process.env.DYNAMODB_ENDPOINT ?? dynamodbLocal.endpoint,
+      DYNAMODB_ENDPOINT: process.env.DYNAMODB_ENDPOINT ?? dynamodb.endpoint,
       DYNAMODB_TABLE: TABLE,
       EDD_GATEWAY_SECRET: GATEWAY_SECRET,
       EDD_SSH_CA_KEY_PATH: CA_KEY,

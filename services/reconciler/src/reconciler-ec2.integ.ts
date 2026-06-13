@@ -1,21 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { awsSim, DEFAULT_AWS_REGION } from "@edd/config";
+import { aws, DEFAULT_AWS_REGION } from "@edd/config";
 import { WorkspaceService } from "@edd/control-plane";
 import { baseImage, FakeComputeProvider, ownerId, systemClock } from "@edd/core";
-import {
-  createDynamoClient,
-  dropTable,
-  dynamodbLocal,
-  ensureTable,
-  makeWorkspaceEntity,
-} from "@edd/db";
+import { createDynamoClient, dropTable, dynamodb, ensureTable, makeWorkspaceEntity } from "@edd/db";
 import { Ec2StorageProvider } from "@edd/storage-ec2";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { Reconciler } from "./index";
 
-process.env.DYNAMODB_ENDPOINT ??= dynamodbLocal.endpoint;
-process.env.AWS_ENDPOINT_URL ??= awsSim.endpoint;
+process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
+process.env.AWS_ENDPOINT_URL ??= aws.endpoint;
 process.env.AWS_REGION ??= DEFAULT_AWS_REGION;
 process.env.AWS_ACCESS_KEY_ID ??= "test";
 process.env.AWS_SECRET_ACCESS_KEY ??= "test";

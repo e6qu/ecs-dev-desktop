@@ -8,18 +8,12 @@ import {
   workspaceId,
   type Clock,
 } from "@edd/core";
-import {
-  createDynamoClient,
-  dropTable,
-  dynamodbLocal,
-  ensureTable,
-  makeWorkspaceEntity,
-} from "@edd/db";
+import { createDynamoClient, dropTable, dynamodb, ensureTable, makeWorkspaceEntity } from "@edd/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { Reconciler } from "./index";
 
-process.env.DYNAMODB_ENDPOINT ??= dynamodbLocal.endpoint;
+process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
 
 const TEST_TABLE = "ecs-dev-desktop-recon-integ";
 const THIRTY_MIN = 30 * 60 * 1000;

@@ -12,7 +12,7 @@ import {
 import {
   createDynamoClient,
   dropTable,
-  dynamodbLocal,
+  dynamodb,
   ensureTable,
   makeBaseImageEntity,
   makeWorkspaceEntity,
@@ -28,7 +28,7 @@ import {
   WorkspaceService,
 } from "./index";
 
-process.env.DYNAMODB_ENDPOINT ??= dynamodbLocal.endpoint;
+process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
 
 const TEST_TABLE = "ecs-dev-desktop-cp-integ";
 
