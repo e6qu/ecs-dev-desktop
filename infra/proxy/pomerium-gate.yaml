@@ -29,10 +29,22 @@ idp_client_secret: "pomerium-edd-secret"
 pass_identity_headers: true
 
 routes:
-  # Public health route — proves Pomerium reaches the gate at all.
+  # Public health route — proves Pomerium reaches the gate at all, and serves
+  # the public /.well-known/pomerium/jwks.json the control-plane PDP verifies
+  # assertions against (the web container fetches it via the health.devbox.localhost
+  # network alias over trusted-CA TLS).
   - from: "https://health.devbox.localhost"
     to: "http://workspace-upstream:80"
     allow_public_unauthenticated_access: true
+
+  # Auth probe: a DIRECT (non-gated) authenticated route to the echo upstream so
+  # the harness can learn the authenticated sim user's email — needed to seed an
+  # owned workspace before the test, since the gated wildcard route below denies
+  # every not-yet-owned host (the analogue of the in-process PDP e2e's probe).
+  - from: "https://auth-probe.devbox.localhost"
+    to: "http://workspace-upstream:80"
+    allow_any_authenticated_user: true
+    pass_identity_headers: true
 
   # Wildcard workspace routing THROUGH THE GATE: any `<ws-id>.devbox.localhost`
   # routes to the workspace gate, which enforces per-workspace ownership (PDP)

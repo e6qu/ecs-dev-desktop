@@ -1,0 +1,123 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Full per-workspace-authz e2e harness: the live PEP→PDP chain that the
+# in-process PDP e2e (apps/web/app/api/internal/authz/route.e2e.ts) cannot prove.
+# A real browser request flows: Chromium → Pomerium (real TLS, OIDC via azure-sim)
+# → the wildcard route → the workspace GATE container (PEP) → the control-plane
+# PDP (/api/internal/authz, verifying the Pomerium assertion against Pomerium's
+# JWKS + the DynamoDB ownership record) → the workspace upstream. Owner reaches
+# the upstream (200); a different authenticated user is denied at the gate (403).
+#
+# Separate from docker-compose.e2e.yml (which routes the wildcard DIRECT to the
+# upstream for the identity-only suites) because both publish Pomerium on :8443 —
+# this harness runs in its own CI job. Run scripts/gen-sim-tls-cert.sh BEFORE
+# bring-up so ./temp/sim-tls exists. Consumed endpoint-only (AGENTS.md §6.8).
+
+services:
+  dynamodb-local:
+    image: amazon/dynamodb-local:latest
+    command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
+    ports:
+      - "8000:8000"
+
+  # azure-sim: the sockerless Entra simulator — Pomerium's OIDC IdP. Process mode
+  # (the auth flow runs no workloads). Built from the pinned submodule.
+  azure-sim:
+    build:
+      context: ./third_party/sockerless/simulators
+      dockerfile: azure/Dockerfile
+    environment:
+      SIM_RUNTIME: process
+    ports:
+      - "4568:4568"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "-qO-",
+          "http://localhost:4568/common/v2.0/.well-known/openid-configuration",
+        ]
+      interval: 3s
+      timeout: 3s
+      retries: 30
+
+  # workspace-upstream: the stand-in workspace HTTP endpoint behind the gate
+  # (traefik/whoami echoes the request headers, so the test can confirm the
+  # gate forwarded the request WITH Pomerium's injected identity assertion).
+  workspace-upstream:
+    image: docker.io/traefik/whoami:v1.10.2
+    command: ["--port", "80"]
+
+  # web: the Next.js control-plane image — here it serves the PDP
+  # (/api/internal/authz). It verifies the Pomerium assertion against Pomerium's
+  # JWKS (fetched via the health.devbox.localhost alias over trusted-CA TLS) and
+  # decides ownership from the DynamoDB workspace record. COMPUTE_PROVIDER is
+  # left unset (the PDP only reads ownership; no compute needed).
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+    environment:
+      DYNAMODB_ENDPOINT: http://dynamodb-local:8000
+      DYNAMODB_TABLE: edd-gate-e2e
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: dummy
+      AWS_SECRET_ACCESS_KEY: dummy
+      EDD_WORKSPACE_BASE_DOMAIN: devbox.localhost
+      EDD_POMERIUM_JWKS_URL: https://health.devbox.localhost/.well-known/pomerium/jwks.json
+      NODE_EXTRA_CA_CERTS: /certs/ca.pem
+      AUTH_SECRET: gate-e2e-secret
+    volumes:
+      - ./temp/sim-tls:/certs:ro
+    depends_on:
+      dynamodb-local:
+        condition: service_started
+      pomerium:
+        condition: service_started
+    healthcheck:
+      # node:22 ships global fetch; the runtime image has no wget/curl.
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3700/api/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # workspace-gate: the PEP. STATIC mode — one fixed upstream — but it still calls
+  # the control-plane PDP for every request and forwards the Pomerium identity
+  # headers, so it exercises the real per-workspace authorization decision.
+  workspace-gate:
+    build:
+      context: .
+      dockerfile: services/workspace-gate/Dockerfile
+    environment:
+      EDD_WORKSPACE_UPSTREAM_URL: http://workspace-upstream:80
+      EDD_WORKSPACE_PDP_URL: http://web:3700/api/internal/authz
+      EDD_WORKSPACE_BASE_DOMAIN: devbox.localhost
+    depends_on:
+      web:
+        condition: service_healthy
+      workspace-upstream:
+        condition: service_started
+
+  # pomerium: the real identity-aware proxy, routing the wildcard THROUGH the gate
+  # (infra/proxy/pomerium-gate.yaml). The health.devbox.localhost network alias
+  # lets the web container fetch Pomerium's JWKS at a name its TLS cert covers.
+  pomerium:
+    image: docker.io/pomerium/pomerium:v0.32.2
+    volumes:
+      - ./infra/proxy/pomerium-gate.yaml:/pomerium/config.yaml:ro
+      - ./temp/sim-tls:/pomerium/tls:ro
+    ports:
+      - "8443:443"
+    networks:
+      default:
+        aliases:
+          - health.devbox.localhost
+    depends_on:
+      azure-sim:
+        condition: service_healthy

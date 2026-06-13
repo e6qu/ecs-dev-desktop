@@ -767,3 +767,22 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   Fixed `.gitignore`: `next-env.d.ts` is generated (and differs between
   `dev`/`build`, so a committed copy churns) and isn't needed for lint/tsc —
   untracked + ignored per Next convention.
+
+- **2026-06-14 — Live per-workspace authz: browser → Pomerium → gate (PEP) → PDP
+  (increment-2 / DO_NEXT #5).** Proved the proxy-authz decision _where it ships_,
+  not just in-process. Added a control-plane Docker image (`apps/web/Dockerfile`,
+  `next start` on :3700) so the PDP runs in-network, and `docker-compose.gate.yml`:
+  Pomerium routes the wildcard `*.devbox.localhost` through the **workspace-gate
+  container** (`infra/proxy/pomerium-gate.yaml`, `preserve_host_header`) → the PDP
+  container (assertion vs Pomerium's JWKS, fetched via a `health.devbox.localhost`
+  network alias over trusted-CA TLS + ownership from the DynamoDB record) → an echo
+  upstream. A real-browser suite (`workspace-gate.pwgate.ts`, `test:pw:gate`, CI
+  `e2e-gate`) asserts owner→200 (assertion injected) and same-user-non-owner→403.
+  Lessons: (1) a real PDP bug — the proxy preserves the original `Host` (the
+  harness's `:8443`; any non-443 proxy port in prod) but Pomerium binds the
+  assertion `aud`/`iss` to the bare hostname, so the PDP must authorize on the
+  port-stripped hostname (regression test added). (2) the gate `Dockerfile` never
+  copied `@edd/core` (imported by the dynamic upstream resolver) — undetected
+  because the gate image had never been built in CI; now built by `e2e-gate`.
+  Standardized the local app port off the crowded 3000 → 3700 (image + `pnpm dev`
+  - docs). Built per the user's fat-PR directive (one PR, held until CI green).

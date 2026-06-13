@@ -22,7 +22,9 @@ manual real-AWS on `main` · AGPL-3.0-or-later · Turborepo+pnpm · CASL · dep 
 1440 · admin observability = derive-now + CloudTrail/CloudWatch · OpenVSCode Server ·
 OpenSSH + our SSH CA · **per-workspace proxy authorization** (decision #5: chose
 external-authz → control plane; built the workspace gate PEP + `/api/internal/authz`
-PDP, ownership by owner email; see `BUGS.md` Resolved + `docs/simulator-live-coverage.md`).
+PDP, ownership by owner email; **now proven live end-to-end** — browser → Pomerium →
+gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI `e2e-gate`,
+`apps/web/e2e/workspace-gate.pwgate.ts`); see `BUGS.md` Resolved + `docs/simulator-live-coverage.md`).
 
 ---
 

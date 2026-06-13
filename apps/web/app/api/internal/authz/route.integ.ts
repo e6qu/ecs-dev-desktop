@@ -111,6 +111,15 @@ describe("workspace authorization PDP", () => {
     expect(res.status).toBe(204);
   });
 
+  it("authorizes when the forwarded host carries a non-default proxy port → 204", async () => {
+    // The proxy may preserve the original Host (e.g. the harness's :8443) while
+    // the assertion's aud/iss is the bare hostname — the PDP must authorize on the
+    // hostname, ignoring the transport port (regression: this was a 401 before).
+    const token = await mint(ownerHost, { email: "owner@edd.test" });
+    const res = await GET(authzRequest(`${ownerHost}:8443`, token));
+    expect(res.status).toBe(204);
+  });
+
   it("denies a different authenticated user → 403", async () => {
     const token = await mint(ownerHost, { email: "other@edd.test" });
     const res = await GET(authzRequest(ownerHost, token));

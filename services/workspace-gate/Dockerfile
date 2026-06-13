@@ -17,6 +17,7 @@ RUN corepack enable pnpm
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY packages/authz/package.json                       packages/authz/
 COPY packages/config/package.json                      packages/config/
+COPY packages/core/package.json                        packages/core/
 COPY services/workspace-gate/package.json              services/workspace-gate/
 
 RUN pnpm install --frozen-lockfile --filter @edd/workspace-gate...
@@ -25,6 +26,7 @@ RUN pnpm install --frozen-lockfile --filter @edd/workspace-gate...
 COPY tsconfig.base.json ./
 COPY packages/authz/src            packages/authz/src
 COPY packages/config/src           packages/config/src
+COPY packages/core/src             packages/core/src
 COPY services/workspace-gate/src   services/workspace-gate/src
 COPY services/workspace-gate/tsconfig.json services/workspace-gate/
 

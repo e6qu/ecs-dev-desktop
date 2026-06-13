@@ -2,11 +2,30 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-13 (github-app-provider branch)
+**Last updated:** 2026-06-14 (pomerium-gate-e2e branch)
 
 ## Current phase
 
-**In flight on `feat/github-app-provider`:** a **GitHub App** provider behind a new
+**On `feat/pomerium-gate-e2e`:** the **live per-workspace-authz chain** (increment-2 /
+DO_NEXT #5) — the PEP→PDP decision proven where it ships, in the real Pomerium routing
+path. A control-plane **Docker image** (`apps/web/Dockerfile`, `next start` on :3700)
+runs the **PDP** in-network; a new `docker-compose.gate.yml` stands up Pomerium routing
+the wildcard `*.devbox.localhost` **through the workspace-gate container** (PEP,
+`infra/proxy/pomerium-gate.yaml`) → the PDP container → an echo upstream. A real-browser
+Playwright suite (`apps/web/e2e/workspace-gate.pwgate.ts`, `test:pw:gate`, CI job
+`e2e-gate`) drives Pomerium OIDC and asserts the **owner reaches the upstream (200,
+assertion injected)** while the **same authenticated user is denied at a workspace they
+do not own (403)**. This closes the gap the in-process PDP e2e couldn't: the gate
+**process** enforcing live. Found+fixed a real PDP bug en route — the proxy preserves the
+original `Host` (the harness's `:8443`; any non-443 proxy port in prod) while Pomerium
+binds the assertion `aud`/`iss` to the bare hostname, so the PDP now authorizes on the
+port-stripped hostname (regression test added; `route.integ.ts` 10 tests). Also fixed the
+gate `Dockerfile` (it never copied `@edd/core`, which the dynamic upstream resolver
+imports — the image had never been built in CI). Local-verified end-to-end (both browser
+cases green; PDP integ + proxy-authz unit green). Standardized the local app port off
+3000 → **3700**. **Held as one PR until CI is green** (per the user's fat-PR directive).
+
+**Prior phase (merged):** a **GitHub App** provider behind a new
 `GitProvider` seam, plus a new architectural principle. `apps/web/lib/github.ts`'s
 token-parametrized functions become `UserOAuthGitProvider` (default), joined by an
 `InstallationGitProvider` that signs an RS256 app JWT (`jose`) → mints an

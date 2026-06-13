@@ -44,9 +44,15 @@ function toEmail(value: string | undefined): Email | undefined {
 }
 
 export async function GET(req: Request): Promise<NextResponse> {
-  const host = req.headers.get(WORKSPACE_HOST_HEADER);
+  const rawHost = req.headers.get(WORKSPACE_HOST_HEADER);
   const token = req.headers.get(POMERIUM_ASSERTION_HEADER);
-  if (host === null || token === null) return unauthorized();
+  if (rawHost === null || token === null) return unauthorized();
+
+  // The proxy forwards the original Host, which may carry a non-default port
+  // (e.g. the harness's :8443; production Pomerium is on :443 so none appears).
+  // Pomerium binds the assertion's aud/iss to the bare route hostname, and a
+  // workspace's identity is port-independent — so authorize on the hostname.
+  const host = rawHost.split(":")[0] ?? rawHost;
 
   const wsId = workspaceIdFromHost(host, WORKSPACE_BASE_DOMAIN);
   if (wsId === undefined) return deny();

@@ -79,6 +79,8 @@ suites drop+create their tables), so a previously-interrupted run won't block th
 pnpm test                # unit + contract — no Docker
 pnpm test:integ:local    # integration: tier-2 substrate (DynamoDB Local + AWS sim)
 pnpm test:e2e:local      # e2e: container-mode sim + SSH harness (HEAVY — builds the ~3 GB image)
+sh scripts/test-gate-e2e.sh  # live per-workspace authz: browser → Pomerium → gate (PEP)
+                             # → control-plane PDP → upstream (self-contained, self-reaping)
 pnpm reap                # tear everything down by hand
 ```
 
