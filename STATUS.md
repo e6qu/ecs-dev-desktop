@@ -6,6 +6,43 @@
 
 ## Current phase
 
+**In flight on `feat/vscode-workspace-proof` (PR #69, the single open PR — kept
+open by request, everything stacks on it):** the **core user loop** — control
+plane + users + admins + multiple sessions, one repo per session — on top of the
+polyglot golden image + real-VS-Code proof + ECS hardening that opened this
+branch. Built + tested (server side fully; UI shipped):
+
+- **Repo-per-session** (incr. 1): `repoUrl` threaded end-to-end; golden image
+  clones the repo on first boot (idempotent; skips on snapshot wake). Public
+  clone proven against the real image. `repoUrl` optional (blank sessions OK).
+- **Private clone + push** (incr. 1b): AES-256-GCM `token-crypto`, per-owner
+  `gitCredential` entity + `GitCredentialService`; GitHub token captured at
+  sign-in (encrypted, server-side); **agent-only broker**
+  `GET /api/workspaces/:id/git-credential` + an in-image git credential helper
+  fetch the token at use time — clone+push work with **nothing on the EBS
+  volume**. Token never in task metadata or the browser.
+- **Wake-on-connect gate** (incr. 2 core): the workspace gate resolves each
+  workspace's live address per request (ws-id from Host → `POST /connect` wake →
+  `GET /connect-info?protocol=http` via gateway HMAC) and proxies HTTP+WS — one
+  gate fronts every workspace (Pomerium's single static upstream), waking
+  scaled-to-zero sessions on reconnect (the "reopen → session intact" behavior;
+  session state persists on the EBS snapshot). OpenVSCode
+  `--without-connection-token` flag for the gated deployment.
+- **GitHub session launcher** (incr. 3): `GitProvider` (list repos, namespaces
+  with permission flags, create repo) + `/api/github/repos|namespaces` routes
+  (token server-side only) + the **`/sessions/new` UI** — search repos → start
+  session, or create a repo (default private; **grayed out with the reason** when
+  not permitted), or blank session.
+
+Decisions honored: clone via the user's GitHub OAuth token (encrypted, brokered);
+gate-is-the-auth (tokenless OpenVSCode behind it); many sessions per repo per
+user; cross-user isolation via proxy authz. Remaining: increment-2 deployment
+wiring (Pomerium→gate route + full browser e2e) and the first-class audit log +
+cost-visualization tracks. SAST hardening this round: pinned GCM auth tag length;
+test secrets generated at runtime.
+
+## Prior phase
+
 **PRs #56–#67 are merged to `main`** (test-gap closure, gateway machine-auth,
 sockerless #549/#550 consumption, live portal + Pomerium browser e2e over TLS,
 the lifecycle correctness-hardening pass, the authz/concurrency depth pass —

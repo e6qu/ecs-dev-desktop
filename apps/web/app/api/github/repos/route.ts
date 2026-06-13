@@ -5,6 +5,7 @@ import { defineAbilityFor } from "@edd/authz";
 import { z } from "zod";
 
 import { authenticate, badRequest, conflict, forbidden, isResponse } from "../../../../lib/api";
+import { auditActor, recordAudit } from "../../../../lib/audit";
 import { getGitCredentials, gitCredentialsEnabled } from "../../../../lib/git-credentials";
 import { createRepo, listRepos } from "../../../../lib/github";
 
@@ -62,5 +63,11 @@ export async function POST(req: Request) {
   if (token === null) return conflict("GitHub account not connected — sign in with GitHub");
 
   const repo = await createRepo(token, parsed.data);
+  await recordAudit({
+    actor: auditActor(principal),
+    action: "repo.create",
+    target: repo.fullName,
+    detail: parsed.data.private ? "private" : "public",
+  });
   return NextResponse.json({ repo }, { status: 201 });
 }

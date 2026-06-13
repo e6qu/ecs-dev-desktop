@@ -8,10 +8,12 @@ import {
   DerivedAuditSource,
   DerivedLogSource,
   HealthService,
+  StoredAuditSource,
   WorkspaceService,
 } from "@edd/control-plane";
 import {
   createDynamoClient,
+  makeAuditEventEntity,
   makeBaseImageEntity,
   makeWorkspaceEntity,
   pingTable,
@@ -27,6 +29,17 @@ import { Ec2StorageProvider } from "@edd/storage-ec2";
  */
 let instance: Promise<WorkspaceService> | undefined;
 let catalog: CatalogService | undefined;
+let auditLog: StoredAuditSource | undefined;
+
+/** The first-class, append-only audit log (actor-attributed control-plane
+ * actions). Distinct from the derived fleet feed + CloudTrail. */
+export function getAuditLog(): StoredAuditSource {
+  auditLog ??= new StoredAuditSource({
+    events: makeAuditEventEntity(createDynamoClient(), tableName()),
+    clock: systemClock,
+  });
+  return auditLog;
+}
 
 function tableName(): string {
   return process.env.DYNAMODB_TABLE ?? TABLE;

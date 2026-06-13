@@ -13,6 +13,7 @@ import {
   forbidden,
   isResponse,
 } from "../../../lib/api";
+import { auditActor, recordAudit } from "../../../lib/audit";
 import { getCatalog, getControlPlane } from "../../../lib/control-plane";
 import { workspaceLimit } from "../../../lib/quota";
 
@@ -71,6 +72,12 @@ export async function POST(req: Request) {
     ...(parsed.data.repoUrl === undefined ? {} : { repoUrl: parsed.data.repoUrl }),
     ...(parsed.data.repoRef === undefined ? {} : { repoRef: parsed.data.repoRef }),
     baseImage: image,
+  });
+  await recordAudit({
+    actor: auditActor(principal),
+    action: "session.create",
+    target: workspace.id,
+    detail: parsed.data.repoUrl ?? "blank session",
   });
   return NextResponse.json(workspace, { status: 201 });
 }

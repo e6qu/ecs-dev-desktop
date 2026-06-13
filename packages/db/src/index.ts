@@ -19,9 +19,11 @@ export { pingTable } from "./health";
 export { dropTable, ensureTable, tableDefinition } from "./table";
 export { waitForDynamo } from "./wait";
 export {
+  makeAuditEventEntity,
   makeBaseImageEntity,
   makeGitCredentialEntity,
   makeWorkspaceEntity,
+  type AuditEventEntity,
   type BaseImageEntity,
   type GitCredentialEntity,
   type WorkspaceEntity,

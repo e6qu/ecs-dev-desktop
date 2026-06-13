@@ -7,6 +7,7 @@ import {
   loadConnectableWorkspace,
   loadOwnedWorkspace,
 } from "../../../../lib/api";
+import { auditActor, recordAudit } from "../../../../lib/audit";
 
 interface Ctx {
   params: Promise<{ id: string }>;
@@ -28,5 +29,14 @@ export async function DELETE(req: Request, { params }: Ctx) {
   const ctx = await loadOwnedWorkspace(req, params, "delete");
   if (isResponse(ctx)) return ctx;
   const result = await ctx.cp.remove(ctx.id);
-  return result.ok ? new NextResponse(null, { status: 204 }) : domainErrorResponse(result.error);
+  if (!result.ok) return domainErrorResponse(result.error);
+  if (ctx.principal !== undefined) {
+    await recordAudit({
+      actor: auditActor(ctx.principal),
+      action: "session.delete",
+      target: ctx.id,
+      detail: "removed",
+    });
+  }
+  return new NextResponse(null, { status: 204 });
 }
