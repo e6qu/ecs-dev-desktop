@@ -39,16 +39,7 @@ active breakage):
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-- **sockerless#559 — bleephub can't seed a pre-registered GitHub App via config.**
-  Per the coordinate-only rule (`AGENTS.md` §6.9), the GitHub-App e2e treats bleephub
-  exactly like real GitHub: it takes the App's coordinates (base URL + app id +
-  private key + org/repo) from env and never touches a sim-internal endpoint. But
-  bleephub only mints an App via the operator `/internal/apps` (key generated
-  internally) or the interactive manifest flow — there is no standard, config-seeded
-  App with a caller-supplied key. So CI cannot supply sim App coordinates the
-  standard way, and `apps/web/lib/github-app.e2e.ts` **skips** until #559 lands (it
-  runs today against real GitHub when secrets are provided). The `InstallationGitProvider`
-  - app-JWT/token logic is unit-tested meanwhile.
+_(none currently known — the two gaps filed this cycle are fixed upstream; see Resolved.)_
 
 Latest full simulator pass (2026-06-12, submodule `9d43f3d` / PR #550) found no
 sockerless fidelity bugs across all live surfaces (real-CP wake chain, live
@@ -117,7 +108,22 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (sockerless — fixed upstream; full detail in `WHAT_WE_DID.md`)
 
-**Most-recent batch** (submodule `777ffd3`, PR #549):
+**Most-recent batch** (submodule bumped `9d43f3d` → `1ca1f717`, PRs #563/#564/#565;
+#565 is ACA/Actions-runner-only — no downstream impact on our consumed surfaces):
+
+- **sockerless#562 (fixed upstream)** — the AWS-sim ECS `ExecuteCommand` WebSocket
+  now consumes the SSM `OpenDataChannel` token handshake real clients (session-
+  manager-plugin) send before streaming, so a coordinate-pure ECS-Exec client works
+  identically against the sim and real AWS. (Filed by us this cycle.)
+- **sockerless#559 → PR #564 (fixed upstream)** — bleephub now seeds a pre-registered
+  GitHub App from operator config (`BLEEPHUB_SEED_APPS` / `_FILE`): caller-chosen app
+  id + slug, caller-supplied RSA private key, and pre-created installation(s) on
+  org(s). This lets CI bring bleephub up "with the App already registered" and hand
+  the consumer the same coordinate shape real GitHub gives, so
+  `apps/web/lib/github-app.e2e.ts` can run coordinate-purely against the sim (no
+  `/internal`). (Filed by us this cycle.)
+
+**Earlier batch** (submodule `777ffd3`, PR #549):
 
 - **sockerless#547 / PR #549 (BUG-1743)** — azure-sim `/authorize` now honours
   `login_hint` (UPN lookup, ROPC-style resolution), binds the resolved OID into
