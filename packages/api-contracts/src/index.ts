@@ -157,6 +157,58 @@ export const auditFeedResponse = z.object({
 });
 export type AuditFeedResponse = z.infer<typeof auditFeedResponse>;
 
+// --- Admin: cost report (prices the lifecycle audit ledger) ---
+
+export const costBreakdown = z.object({
+  computeUsd: z.number(),
+  volumeUsd: z.number(),
+  snapshotUsd: z.number(),
+  totalUsd: z.number(),
+  runningMs: z.number(),
+  stoppedMs: z.number(),
+});
+export type CostBreakdownDto = z.infer<typeof costBreakdown>;
+
+export const costPricing = z.object({
+  fargateVcpuHourUsd: z.number(),
+  fargateGbHourUsd: z.number(),
+  ebsGbMonthUsd: z.number(),
+  snapshotGbMonthUsd: z.number(),
+});
+export type CostPricingDto = z.infer<typeof costPricing>;
+
+export const costSizing = z.object({
+  vcpu: z.number(),
+  memoryGib: z.number(),
+  volumeGib: z.number(),
+});
+export type CostSizingDto = z.infer<typeof costSizing>;
+
+export const sessionCost = costBreakdown.extend({
+  workspaceId: z.string(),
+  owner: z.string(),
+  state: z.string(),
+  terminated: z.boolean(),
+});
+export type SessionCostDto = z.infer<typeof sessionCost>;
+
+export const userCost = costBreakdown.extend({
+  owner: z.string(),
+  sessions: z.number(),
+});
+export type UserCostDto = z.infer<typeof userCost>;
+
+export const costReport = z.object({
+  generatedAt: z.iso.datetime(),
+  windowStart: z.iso.datetime(),
+  pricing: costPricing,
+  sizing: costSizing,
+  total: costBreakdown,
+  byUser: z.array(userCost),
+  bySession: z.array(sessionCost),
+});
+export type CostReport = z.infer<typeof costReport>;
+
 // --- Admin: log streams (control-plane derived now; CloudWatch on AWS) ---
 
 export const logStream = z.enum(["control-plane", "reconciler", "container"]);

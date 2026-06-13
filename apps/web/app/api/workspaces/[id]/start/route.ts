@@ -2,25 +2,22 @@
 import { NextResponse } from "next/server";
 
 import { domainErrorResponse, isResponse, loadOwnedWorkspace } from "../../../../../lib/api";
-import { auditActor, recordAudit } from "../../../../../lib/audit";
+import { auditActor } from "../../../../../lib/audit";
 
 interface Ctx {
   params: Promise<{ id: string }>;
 }
 
-// POST /api/workspaces/:id/start — wake from snapshot (hydrate + run).
+// POST /api/workspaces/:id/start — wake from snapshot (hydrate + run). The
+// control plane records `session.start` on the wake transition (see
+// workspaces/route.ts) — attributed to the caller, or `system` if machine-auth.
 export async function POST(req: Request, { params }: Ctx) {
   const ctx = await loadOwnedWorkspace(req, params, "update");
   if (isResponse(ctx)) return ctx;
-  const result = await ctx.cp.start(ctx.id);
+  const result = await ctx.cp.start(
+    ctx.id,
+    ctx.principal === undefined ? undefined : auditActor(ctx.principal),
+  );
   if (!result.ok) return domainErrorResponse(result.error);
-  if (ctx.principal !== undefined) {
-    await recordAudit({
-      actor: auditActor(ctx.principal),
-      action: "session.start",
-      target: ctx.id,
-      detail: "woken from snapshot",
-    });
-  }
   return NextResponse.json(result.value);
 }

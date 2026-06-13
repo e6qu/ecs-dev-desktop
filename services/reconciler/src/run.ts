@@ -13,7 +13,7 @@
 import { EcsComputeProvider } from "@edd/compute-ecs";
 import { WorkspaceService } from "@edd/control-plane";
 import { systemClock } from "@edd/core";
-import { createDynamoClient, makeWorkspaceEntity } from "@edd/db";
+import { createDynamoClient, makeAuditEventEntity, makeWorkspaceEntity } from "@edd/db";
 import { Ec2StorageProvider } from "@edd/storage-ec2";
 
 import { Reconciler } from "./index.js";
@@ -44,6 +44,10 @@ const service = new WorkspaceService({
   storage,
   compute,
   clock: systemClock,
+  // Reconciler-driven scale-to-zero + drift stops are recorded to the same
+  // first-class ledger as user actions (atomically with the transition), so the
+  // cost model accounts for them.
+  audit: makeAuditEventEntity(dynamo, table),
 });
 const reconciler = new Reconciler({
   service,

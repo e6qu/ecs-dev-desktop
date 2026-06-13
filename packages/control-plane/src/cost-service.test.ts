@@ -1,0 +1,95 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+import type { WorkspaceDto } from "@edd/api-contracts";
+import { workspacePricing, workspaceSizing } from "@edd/config";
+import { isoTimestamp, type AuditEvent, type Clock } from "@edd/core";
+import { describe, expect, it } from "vitest";
+
+import { CostService } from "./cost-service";
+
+// The real @edd/config defaults (us-east-1 on-demand; 0.5 vCPU / 1 GiB / 8 GiB),
+// so the service test is pinned to the rates the app actually charges.
+const PRICING = workspacePricing();
+const SIZING = workspaceSizing();
+
+const hoursMs = (h: number) => h * 3_600_000;
+const epoch = Date.parse("2026-03-01T00:00:00.000Z");
+const at = (h: number) => isoTimestamp(new Date(epoch + hoursMs(h)).toISOString());
+const NOW = at(4);
+const clock: Clock = { now: () => NOW };
+
+const evt = (action: string, h: number, target: string, actor: string): AuditEvent => ({
+  action,
+  at: at(h),
+  actor,
+  target,
+  detail: "",
+});
+
+const dto = (id: string, ownerId: string, state: WorkspaceDto["state"]): WorkspaceDto => ({
+  id,
+  ownerId,
+  baseImage: "golden/node:20",
+  state,
+  createdAt: at(0),
+});
+
+function service(events: AuditEvent[], workspaces: WorkspaceDto[]): CostService {
+  return new CostService({
+    audit: { all: () => Promise.resolve(events) },
+    workspaces: { list: () => Promise.resolve(workspaces) },
+    clock,
+    pricing: PRICING,
+    sizing: SIZING,
+  });
+}
+
+describe("CostService.report", () => {
+  it("prices a workspace from its lifecycle ledger, attributing the creator's email", async () => {
+    const report = await service(
+      [evt("session.create", 0, "ws-1", "alice@example.com")],
+      [dto("ws-1", "alice", "running")],
+    ).report();
+
+    expect(report.bySession).toHaveLength(1);
+    const s = report.bySession[0];
+    expect(s?.workspaceId).toBe("ws-1");
+    // Owner comes from the session.create actor (the email), not the record id.
+    expect(s?.owner).toBe("alice@example.com");
+    expect(s?.state).toBe("running");
+    // Ran 4h (create → now); compute = 4 * (0.5*0.04048 + 1*0.004445).
+    expect(s?.computeUsd).toBeCloseTo(4 * 0.024685, 6);
+    expect(report.total.totalUsd).toBeCloseTo(s?.totalUsd ?? 0, 10);
+  });
+
+  it("excludes non-session actions (repo.create forms no cost line)", async () => {
+    const report = await service(
+      [
+        evt("session.create", 0, "ws-1", "alice@example.com"),
+        evt("repo.create", 1, "alice/myrepo", "alice@example.com"),
+      ],
+      [dto("ws-1", "alice", "running")],
+    ).report();
+    expect(report.bySession.map((s) => s.workspaceId)).toEqual(["ws-1"]);
+  });
+
+  it("includes a workspace that has a record but no ledger events (zero cost, owner from record)", async () => {
+    const report = await service([], [dto("ws-old", "bob", "idle")]).report();
+    expect(report.bySession).toHaveLength(1);
+    expect(report.bySession[0]?.owner).toBe("bob");
+    expect(report.bySession[0]?.totalUsd).toBe(0);
+  });
+
+  it("still prices a deleted workspace (record gone) from its retained ledger", async () => {
+    const report = await service(
+      [
+        evt("session.create", 0, "ws-gone", "carol@example.com"),
+        evt("session.delete", 2, "ws-gone", "carol@example.com"),
+      ],
+      [], // record already removed
+    ).report();
+    expect(report.bySession).toHaveLength(1);
+    expect(report.bySession[0]?.state).toBe("terminated");
+    expect(report.bySession[0]?.owner).toBe("carol@example.com");
+    expect(report.bySession[0]?.computeUsd).toBeGreaterThan(0);
+  });
+});

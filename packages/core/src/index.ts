@@ -140,6 +140,20 @@ export { tallyWorkspaceStates } from "./observability/stats";
 export type { AuditEvent, AuditSource, FleetAuditInput } from "./observability/audit";
 export { deriveFleetAudit } from "./observability/audit";
 
+// Observability — cost model (admin Costs; prices the lifecycle audit ledger).
+export type {
+  BillingIntervals,
+  CostBreakdown,
+  FleetCostReport,
+  Interval,
+  Pricing,
+  SessionCost,
+  UserCost,
+  WorkspaceCostInput,
+  WorkspaceSizing,
+} from "./observability/cost";
+export { computeFleetCost, deriveBillingIntervals, priceIntervals } from "./observability/cost";
+
 // Observability — log streams (admin Logs; CloudWatch on AWS).
 export type {
   LogLevel,

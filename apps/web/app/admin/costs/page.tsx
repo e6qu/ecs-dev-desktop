@@ -1,0 +1,127 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+import Link from "next/link";
+
+import { LiveRefresh } from "../../../components/LiveRefresh";
+import { StatTile } from "../../../components/StatTile";
+import { getCostService } from "../../../lib/control-plane";
+import { TESTID } from "../../../lib/testids";
+
+export const dynamic = "force-dynamic";
+
+const MS_PER_HOUR = 60 * 60 * 1000;
+/** How often the page re-computes live consumption (running workspaces accrue
+ * cost continuously; this keeps the figures current without a manual reload). */
+const LIVE_REFRESH_MS = 15_000;
+
+/** Display USD: cents for visible amounts, more precision for sub-cent figures
+ * (sim/short runs) so a real-but-tiny cost never reads as exactly $0.00. */
+function usd(value: number): string {
+  if (value === 0) return "$0.00";
+  return value >= 0.01 ? `$${value.toFixed(2)}` : `$${value.toFixed(4)}`;
+}
+
+/** Whole-ish hours, e.g. `12.3h`. */
+function hours(ms: number): string {
+  return `${(ms / MS_PER_HOUR).toFixed(1)}h`;
+}
+
+// Admin-only (the /admin layout gates it). Fleet spend, derived by pricing the
+// lifecycle audit ledger; rolled up per user and per session.
+export default async function AdminCostsPage() {
+  const report = await (await getCostService()).report();
+  const { total, byUser, bySession, pricing, sizing } = report;
+
+  const tiles = [
+    { kind: "total", label: "total", value: total.totalUsd, sub: "all components" },
+    { kind: "compute", label: "compute", value: total.computeUsd, sub: "Fargate vCPU + memory" },
+    { kind: "volume", label: "storage", value: total.volumeUsd, sub: "live EBS volumes" },
+    { kind: "snapshot", label: "snapshots", value: total.snapshotUsd, sub: "scaled-to-zero" },
+  ];
+
+  return (
+    <>
+      <LiveRefresh intervalMs={LIVE_REFRESH_MS} />
+      <div className="page-head">
+        <div>
+          <div className="kicker">admin</div>
+          <h1>Costs</h1>
+          <p>
+            Spend computed from the complete lifecycle <Link href="/admin/logs">ledger</Link> —
+            every workspace&apos;s running vs. scaled-to-zero time, priced at the rates below and
+            updated live as workspaces run. Rates: {usd(pricing.fargateVcpuHourUsd)}/vCPU-hr,{" "}
+            {usd(pricing.fargateGbHourUsd)}/GB-hr, {usd(pricing.ebsGbMonthUsd)}/GB-mo volume,{" "}
+            {usd(pricing.snapshotGbMonthUsd)}/GB-mo snapshot · per workspace: {sizing.vcpu} vCPU,{" "}
+            {sizing.memoryGib} GiB, {sizing.volumeGib} GiB disk.
+          </p>
+        </div>
+      </div>
+
+      <div className="stat-grid">
+        {tiles.map((t) => (
+          <StatTile
+            key={t.kind}
+            attrs={{ "data-testid": TESTID.costTile, "data-cost": t.kind, "data-usd": t.value }}
+            num={usd(t.value)}
+            label={t.label}
+            sub={t.sub}
+          />
+        ))}
+      </div>
+
+      <h2 style={{ fontSize: 16, margin: "18px 0 10px" }}>By user</h2>
+      {byUser.length === 0 ? (
+        <p className="mono" style={{ color: "var(--dim)" }}>
+          no spend recorded yet
+        </p>
+      ) : (
+        <div className="adm-rows">
+          {byUser.map((u) => (
+            <div
+              key={u.owner}
+              className="adm-row"
+              data-testid={TESTID.costUserRow}
+              data-owner={u.owner}
+              data-usd={u.totalUsd}
+            >
+              <span className="wid">{u.owner}</span>
+              <span className="detail">{usd(u.totalUsd)}</span>
+              <div className="meta">
+                <span>{u.sessions} session(s)</span>
+                <span>compute · {usd(u.computeUsd)}</span>
+                <span>storage · {usd(u.volumeUsd + u.snapshotUsd)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <h2 style={{ fontSize: 16, margin: "18px 0 10px" }}>By session</h2>
+      {bySession.length === 0 ? (
+        <p className="mono" style={{ color: "var(--dim)" }}>
+          no sessions yet
+        </p>
+      ) : (
+        <div className="adm-rows">
+          {bySession.map((s) => (
+            <div
+              key={s.workspaceId}
+              className="adm-row"
+              data-testid={TESTID.costSessionRow}
+              data-id={s.workspaceId}
+              data-owner={s.owner}
+              data-usd={s.totalUsd}
+            >
+              <span className="wid">{s.workspaceId}</span>
+              <span className="detail">{usd(s.totalUsd)}</span>
+              <div className="meta">
+                <span>owner · {s.owner}</span>
+                <span>state · {s.state}</span>
+                <span>ran {hours(s.runningMs)}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+}

@@ -135,6 +135,33 @@ test("admin quotas page shows per-role limits and usage", async ({ page, context
   await expect(page.locator(sel(TESTID.quotaRow, { "data-role": "member" }))).toBeVisible();
 });
 
+test("admin costs page prices fleet spend per session and per user", async ({
+  page,
+  context,
+  request,
+}) => {
+  // A member-owned workspace gives the cost report a priced session to render.
+  const res = await request.post("/api/workspaces", {
+    headers: { cookie: devCookieHeader("erin", "member") },
+    data: { baseImage: NODE_IMAGE },
+  });
+  expect(res.ok()).toBeTruthy();
+  const ws = (await res.json()) as { id: string };
+
+  await loginAs(context, "root", "admin");
+  await page.goto("/admin/costs");
+  await expect(page.getByRole("heading", { name: "Costs" })).toBeVisible();
+
+  // The fleet total tile renders.
+  await expect(page.locator(sel(TESTID.costTile, { "data-cost": "total" }))).toBeVisible();
+  // The just-created session is a cost line attributed to its owner.
+  const row = page.locator(sel(TESTID.costSessionRow, { "data-id": ws.id }));
+  await expect(row).toBeVisible();
+  await expect(row).toHaveAttribute("data-owner", "erin");
+  // …and erin is rolled up in the per-user view.
+  await expect(page.locator(sel(TESTID.costUserRow, { "data-owner": "erin" }))).toBeVisible();
+});
+
 test("admin logs page shows the derived audit feed and the CloudWatch streams", async ({
   page,
   context,

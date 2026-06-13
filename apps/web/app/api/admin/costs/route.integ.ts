@@ -1,0 +1,69 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+import { auditFeedResponse, costReport } from "@edd/api-contracts";
+import { describe, expect, it } from "vitest";
+
+import {
+  admin,
+  createWorkspaceFor,
+  postLifecycle,
+  useWorkspaceTable,
+} from "../../../../lib/test-support/workspace-route-harness";
+import { GET as auditFeed } from "../audit/route";
+import { POST as stopWorkspace } from "../../workspaces/[id]/stop/route";
+import { GET } from "./route";
+
+/**
+ * The admin cost report against DynamoDB Local. A workspace created then stopped
+ * through the real routes shows up as a priced session — exercising the full
+ * path: the control plane records `session.create`/`session.stop` to the ledger
+ * (the centralized lifecycle audit), and the cost service prices that ledger.
+ */
+useWorkspaceTable("edd-cost-report-integ");
+
+const costs = () =>
+  GET(new Request("http://localhost/api/admin/costs", { headers: admin("root") }));
+
+describe("admin cost report", () => {
+  it("prices a created-then-stopped session and rolls it up per user", async () => {
+    const id = await createWorkspaceFor("alice");
+    const stopRes = await postLifecycle(stopWorkspace, "stop", "alice", id);
+    expect(stopRes.status).toBe(200);
+
+    const res = await costs();
+    expect(res.status).toBe(200);
+    const report = costReport.parse(await res.json());
+
+    const session = report.bySession.find((s) => s.workspaceId === id);
+    expect(session, "the created workspace appears as a cost line").toBeDefined();
+    expect(session?.owner).toBe("alice"); // dev-auth: actor = id (no email)
+    expect(session?.state).toBe("stopped");
+    expect(session?.totalUsd).toBeGreaterThanOrEqual(0);
+
+    const user = report.byUser.find((u) => u.owner === "alice");
+    expect(user, "alice is rolled up in the per-user view").toBeDefined();
+    expect(report.total.totalUsd).toBeGreaterThanOrEqual(0);
+  });
+
+  it("records the stop on the ledger via the control plane (no route-level emit)", async () => {
+    const id = await createWorkspaceFor("bob");
+    await postLifecycle(stopWorkspace, "stop", "bob", id);
+
+    const res = await auditFeed(
+      new Request("http://localhost/api/admin/audit", { headers: admin("root") }),
+    );
+    const { events } = auditFeedResponse.parse(await res.json());
+    expect(events.some((e) => e.action === "session.create" && e.target === id)).toBe(true);
+    const stop = events.find((e) => e.action === "session.stop" && e.target === id);
+    expect(stop, "session.stop recorded by the control plane").toBeDefined();
+    expect(stop?.actor).toBe("bob");
+  });
+
+  it("denies non-admins", async () => {
+    const res = await GET(
+      new Request("http://localhost/api/admin/costs", {
+        headers: { "x-edd-user-id": "m", "x-edd-role": "member" },
+      }),
+    );
+    expect(res.status).toBe(403);
+  });
+});
