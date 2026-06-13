@@ -47,7 +47,7 @@ UI, and an admin control plane. Think self-hosted Coder / GitHub Codespaces.
 ```sh
 git submodule update --init --recursive   # the sims build from third_party/sockerless
 pnpm install
-pnpm dev                                   # app on http://localhost:3000 (fakes + DynamoDB Local + dev-auth)
+pnpm dev                                   # app on http://localhost:3700 (fakes + DynamoDB Local + dev-auth)
 ```
 
 `pnpm dev` reaps any prior local harness state, starts DynamoDB Local, seeds the

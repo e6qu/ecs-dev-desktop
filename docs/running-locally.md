@@ -28,7 +28,7 @@ pnpm dev
 
 One command: reaps prior state → starts DynamoDB Local → ensures the table + a
 base image (idempotent `dev-bootstrap`) → runs `next dev` on
-**http://localhost:3000**. Compute/storage are in-process **fakes** (workspaces
+**http://localhost:3700**. Compute/storage are in-process **fakes** (workspaces
 "launch" instantly, nothing real is provisioned); persistence is real DynamoDB
 Local; auth is **dev-auth**.
 
@@ -44,7 +44,7 @@ Cookies) to act as any user/role:
 For API calls (curl) the same identity is accepted as headers:
 
 ```sh
-curl -H 'x-edd-user-id: dev' -H 'x-edd-role: admin' http://localhost:3000/api/workspaces
+curl -H 'x-edd-user-id: dev' -H 'x-edd-role: admin' http://localhost:3700/api/workspaces
 ```
 
 ## Tiers — add real surfaces by coordinates

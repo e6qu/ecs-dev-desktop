@@ -26,6 +26,7 @@ docker compose -f docker-compose.dev.yml $profiles up -d --wait
 export DYNAMODB_ENDPOINT="${DYNAMODB_ENDPOINT:-http://127.0.0.1:8000}"
 export EDD_DEV_AUTH="${EDD_DEV_AUTH:-1}"
 
-# Ensure the table + a base image exist (idempotent), then run the dev server.
+# Ensure the table + a base image exist (idempotent), then run the dev server on
+# port 3700 (not 3000 — which collides with countless local dev servers).
 pnpm --filter @edd/web exec tsx scripts/dev-bootstrap.ts
-exec pnpm --filter @edd/web exec next dev
+exec pnpm --filter @edd/web exec next dev -p "${PORT:-3700}"

@@ -1,0 +1,15 @@
+# BuildKit uses this in place of the root .dockerignore for apps/web/Dockerfile,
+# keeping the control-plane image context lean (no submodule, golden images, etc).
+**/node_modules
+**/.next
+**/.turbo
+**/dist
+**/coverage
+**/*.tsbuildinfo
+.git
+third_party
+infra
+temp
+docs
+**/*.md
+**/.DS_Store
