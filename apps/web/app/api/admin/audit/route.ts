@@ -1,9 +1,23 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { DEFAULT_AUDIT_FEED_LIMIT } from "@edd/core";
+import { DEFAULT_AUDIT_FEED_LIMIT, type AuditEvent } from "@edd/core";
 import { NextResponse } from "next/server";
 
 import { authenticate, forbidden, isResponse } from "../../../../lib/api";
 import { getAuditLog, getAuditSource } from "../../../../lib/control-plane";
+
+/** One source's events, or [] if that source errors — so a single failing source
+ * degrades the feed rather than blanking it. The failure is logged (not silent). */
+async function safeRecent(
+  label: string,
+  source: { recent: () => Promise<AuditEvent[]> },
+): Promise<AuditEvent[]> {
+  try {
+    return await source.recent();
+  } catch (err) {
+    console.error(`edd: audit source ${label} failed`, err);
+    return [];
+  }
+}
 
 // GET /api/admin/audit — the audit feed, newest first (admin only). Merges the
 // first-class actor-attributed action log (who did what — `session.*`/`repo.*`)
@@ -14,7 +28,10 @@ export async function GET(req: Request) {
   if (isResponse(principal)) return principal;
   if (principal.role !== "admin") return forbidden();
 
-  const [stored, derived] = await Promise.all([getAuditLog().recent(), getAuditSource().recent()]);
+  const [stored, derived] = await Promise.all([
+    safeRecent("stored", getAuditLog()),
+    safeRecent("derived", getAuditSource()),
+  ]);
   const events = [...stored, ...derived]
     .sort((a, b) => b.at.localeCompare(a.at))
     .slice(0, DEFAULT_AUDIT_FEED_LIMIT);
