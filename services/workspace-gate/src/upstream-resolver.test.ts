@@ -1,9 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { randomBytes } from "node:crypto";
+
 import { describe, expect, it } from "vitest";
 
 import { gatewayToken, makeUpstreamResolver } from "./upstream-resolver";
 
-const SECRET = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+// Generated (not a literal) so secret-scanners don't flag a test fixture.
+const SECRET = randomBytes(32).toString("hex");
 const CP = "http://cp.internal:3000";
 const BASE = "devbox.localhost";
 
