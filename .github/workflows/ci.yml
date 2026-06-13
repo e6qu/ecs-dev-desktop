@@ -119,6 +119,10 @@ jobs:
       # Pomerium serves real TLS; the cert must exist before compose mounts it.
       - name: Generate the sim TLS cert (Pomerium harness)
         run: sh scripts/gen-sim-tls-cert.sh
+      # Seed a GitHub App into bleephub (coordinate-only App e2e): the seed file +
+      # key must exist before compose mounts ./temp/github-app into bleephub.
+      - name: Generate the GitHub App seed (bleephub)
+        run: sh scripts/gen-sim-github-app.sh
       # Retry harness bring-up: image pulls can transiently hit registry rate
       # limits (public.ecr.aws / Docker Hub) on shared runner IPs.
       - name: Build & start the e2e harness (container-mode sim + DynamoDB Local)
@@ -155,7 +159,10 @@ jobs:
             sleep "$((attempt * 20))"
           done
           exit 1
-      - run: pnpm test:e2e
+      # Source the generated GitHub App coordinates so the coordinate-only App e2e
+      # (github-app.e2e.ts) targets the seeded bleephub; turbo passes them through
+      # (declared in turbo.json test:e2e env). Absent, that test simply skips.
+      - run: . ./temp/github-app/coords.env && pnpm test:e2e
         env:
           RECONCILER_IMAGE: edd-reconciler:e2e
           PROXY_IMAGE: edd-ssh-proxy:e2e

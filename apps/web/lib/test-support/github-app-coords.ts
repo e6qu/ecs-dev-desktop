@@ -9,9 +9,9 @@
 //   AUTH_GITHUB_API_URL, EDD_GITHUB_APP_ID, EDD_GITHUB_APP_KEY (PEM or base64 PEM),
 //   EDD_GITHUB_TEST_ORG, EDD_GITHUB_TEST_REPO.
 // Absent them the e2e skips — there is intentionally no sim-internal shortcut
-// (github's `/internal/apps` is off-limits). github cannot yet be seeded with
-// a pre-registered App via standard config, so CI cannot supply sim coordinates;
-// that is filed upstream (BUGS.md → External blockers, e6qu/sockerless).
+// (the operator `/internal/apps` API is off-limits). The local harness brings the
+// target up "with the App already registered" (operator seed config) and exports
+// these coordinates, exactly as a real deployment would supply its App secret.
 import { DEFAULT_GITHUB_API_URL } from "@edd/config";
 
 import { GITHUB_API_URL_ENV, GITHUB_APP_ID_ENV, GITHUB_APP_KEY_ENV } from "../constants";

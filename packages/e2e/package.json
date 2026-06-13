@@ -13,11 +13,11 @@
     "test:e2e": "vitest run --config vitest.e2e.config.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-cloudtrail": "^3.1067.0",
-    "@aws-sdk/client-cloudwatch-logs": "^3.1067.0",
-    "@aws-sdk/client-ec2": "^3.1067.0",
-    "@aws-sdk/client-ecs": "^3.1067.0",
-    "@aws-sdk/client-scheduler": "^3.1067.0",
+    "@aws-sdk/client-cloudtrail": "^3.1068.0",
+    "@aws-sdk/client-cloudwatch-logs": "^3.1068.0",
+    "@aws-sdk/client-ec2": "^3.1068.0",
+    "@aws-sdk/client-ecs": "^3.1068.0",
+    "@aws-sdk/client-scheduler": "^3.1068.0",
     "@edd/api-contracts": "workspace:*",
     "@edd/cloudtrail-audit": "workspace:*",
     "@edd/compute-ecs": "workspace:*",

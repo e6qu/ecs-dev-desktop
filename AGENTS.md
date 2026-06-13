@@ -215,3 +215,20 @@ Non-negotiables:
   username-only web login) are the one carve-out: their bootstrap may be driven by
   the harness, but the **assertions stay coordinate-driven** and the test still
   never branches on target.
+
+**6.10 Tests own their time — no rollover flakes (HARD RULE).** A test must be
+explicit about the side effects it depends on — **especially time** — and its
+result must never change because the wall clock advanced (a day/week/month/year
+rollover, or "now" drifting past a hardcoded date). Rules:
+
+- **Control time in unit/pure tests.** Pass `now` in (the core takes it as a
+  parameter) or inject a `Clock` fake; pin any verifier's clock too (e.g. jose
+  `jwtVerify(..., { currentDate })`). The test is deterministic regardless of when
+  it runs.
+- **Compute relative to now when a live target validates real time.** A test that
+  hits something checking the real clock (e.g. a target validating a JWT's `exp`)
+  must derive its times from the current time — `Date.now()`, or `now ± delta` to
+  force "expired"/"valid" — **never** a hardcoded near-term date that silently goes
+  stale (that is exactly how a `nowSec = <fixed date>` JWT broke on a date rollover).
+- **Hardcoded timestamps are fine only as inert inputs** — fixed values fed to
+  pure logic or used as fixtures and **never compared against the real clock**.
