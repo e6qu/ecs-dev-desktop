@@ -9,6 +9,7 @@
         "e2e/**/*.pwlive.ts",
         "e2e/**/*.pwpom.ts",
         "e2e/live-cloud-setup.ts",
+        "scripts/dev-bootstrap.ts",
         "**/*.test.ts",
         "**/*.integ.ts"
       ]

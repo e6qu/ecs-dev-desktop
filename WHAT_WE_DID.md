@@ -752,3 +752,18 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   record a standard op, that's a coordinate-level divergence to file upstream
   (e6qu/sockerless), not work around. Remaining Track C probes (ECS Exec real
   session, EBS snapshot-chain edge cases) + Track A (live Pomerium→gate→ECS) remain.
+
+- **2026-06-14 — Local dev/test made simple + self-reaping; docs cross-linked.**
+  A developer can now `pnpm dev` (one command: reap prior state → DynamoDB Local →
+  idempotent table/catalog bootstrap → `next dev` with dev-auth, on :3000). Tiers
+  via `docker-compose.dev.yml` profiles + coordinate env: local fakes / `+github`
+  (bleephub OAuth) / `+aws` (sockerless AWS adapters) / `+entra`. Every local
+  command **reaps prior harness state first** (`scripts/reap-local.sh` →
+  `docker compose down --remove-orphans -v` across the project), so a stale or
+  half-created run never blocks the next: `pnpm dev`, `pnpm test:integ:local`,
+  `pnpm test:e2e:local`, `pnpm reap`. New `docs/running-locally.md` (tier matrix,
+  dev-auth, deployment pointer) + README **Running locally** + **Deploying**
+  sections, all cross-linked (README ↔ running-locally ↔ TESTING ↔ terraform).
+  Fixed `.gitignore`: `next-env.d.ts` is generated (and differs between
+  `dev`/`build`, so a committed copy churns) and isn't needed for lint/tsc —
+  untracked + ignored per Next convention.
