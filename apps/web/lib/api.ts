@@ -57,6 +57,8 @@ interface OwnedWorkspace {
   cp: WorkspaceService;
   id: WorkspaceId;
   ws: WorkspaceDto;
+  /** The acting principal for session auth; absent for machine-auth (gateway). */
+  principal?: Principal;
 }
 
 /**
@@ -78,7 +80,7 @@ export async function loadOwnedWorkspace(
   const ws = await cp.get(wsId);
   if (!ws) return notFound();
   if (!ownsOrAdmin(principal, ws.ownerId)) return forbidden();
-  return { cp, id: wsId, ws };
+  return { cp, id: wsId, ws, principal };
 }
 
 /**

@@ -129,3 +129,39 @@ export function makeGitCredentialEntity(client: DynamoDBClient, table = TABLE) {
 }
 
 export type GitCredentialEntity = ReturnType<typeof makeGitCredentialEntity>;
+
+/**
+ * ElectroDB append-only audit-event entity over the same single table: one
+ * record per control-plane action (actor + action + target + when). `byTime`
+ * lists newest-first from one static partition (mirrors the base-image catalog
+ * index) for the admin audit feed.
+ */
+export function makeAuditEventEntity(client: DynamoDBClient, table = TABLE) {
+  return new Entity(
+    {
+      model: { entity: "auditEvent", version: "1", service: "edd" },
+      attributes: {
+        id: { type: "string", required: true },
+        at: { type: "string", required: true },
+        actor: { type: "string", required: true },
+        action: { type: "string", required: true },
+        target: { type: "string", required: true },
+        detail: { type: "string", required: true },
+      },
+      indexes: {
+        primary: {
+          pk: { field: "PK", composite: ["id"] },
+          sk: { field: "SK", composite: [] },
+        },
+        byTime: {
+          index: "GSI1",
+          pk: { field: "GSI1PK", composite: [] },
+          sk: { field: "GSI1SK", composite: ["at", "id"] },
+        },
+      },
+    },
+    { client, table },
+  );
+}
+
+export type AuditEventEntity = ReturnType<typeof makeAuditEventEntity>;

@@ -12,5 +12,7 @@ export { HealthService } from "./health-service";
 export type { HealthServiceDeps } from "./health-service";
 export { DerivedAuditSource } from "./audit-source";
 export type { DerivedAuditSourceDeps } from "./audit-source";
+export { StoredAuditSource } from "./stored-audit-source";
+export type { AuditAction, StoredAuditSourceDeps } from "./stored-audit-source";
 export { DerivedLogSource } from "./log-source";
 export type { DerivedLogSourceDeps } from "./log-source";
