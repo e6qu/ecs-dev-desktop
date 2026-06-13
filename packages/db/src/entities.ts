@@ -99,3 +99,33 @@ export function makeBaseImageEntity(client: DynamoDBClient, table = TABLE) {
 }
 
 export type BaseImageEntity = ReturnType<typeof makeBaseImageEntity>;
+
+/**
+ * ElectroDB git-credential entity over the same single table: one record per
+ * owner holding their encrypted git token (AES-256-GCM ciphertext — never
+ * plaintext). The boot-time credential broker reads it to clone/push private
+ * repos; the GitHub API routes reuse it. Keyed by `ownerId` (+ provider).
+ */
+export function makeGitCredentialEntity(client: DynamoDBClient, table = TABLE) {
+  return new Entity(
+    {
+      model: { entity: "gitCredential", version: "1", service: "edd" },
+      attributes: {
+        ownerId: { type: "string", required: true },
+        provider: { type: "string", required: true },
+        // AES-256-GCM ciphertext (iv.tag.ct base64) of the git token.
+        ciphertext: { type: "string", required: true },
+        updatedAt: { type: "string", required: true },
+      },
+      indexes: {
+        primary: {
+          pk: { field: "PK", composite: ["ownerId"] },
+          sk: { field: "SK", composite: ["provider"] },
+        },
+      },
+    },
+    { client, table },
+  );
+}
+
+export type GitCredentialEntity = ReturnType<typeof makeGitCredentialEntity>;

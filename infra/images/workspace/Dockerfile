@@ -140,6 +140,12 @@ COPY sshd_config /etc/ssh/sshd_config
 COPY --chmod=0755 idle-agent.sh /usr/local/bin/edd-idle-agent
 COPY --chmod=0755 entrypoint.sh /usr/local/bin/edd-entrypoint
 
+# Git credential helper: clone/push private repos using the session owner's token
+# fetched from the control plane at use time (nothing stored on the EBS volume).
+# System-wide so it applies to the entrypoint clone and user git ops alike.
+COPY --chmod=0755 git-credential-helper.sh /usr/local/bin/edd-git-credential
+RUN git config --system credential.helper /usr/local/bin/edd-git-credential
+
 WORKDIR /home/workspace
 
 EXPOSE 22 3000
