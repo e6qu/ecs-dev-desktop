@@ -15,15 +15,17 @@ selects by config (`EDD_GITHUB_APP_ID` + `EDD_GITHUB_APP_KEY` → App mode, else
 user's stored OAuth token); the repos/namespaces routes + the clone/push broker go
 through it (the broker picks the installation by the repo's owner). The git
 credential is wire-identical (`x-access-token` + bearer), so the broker + UI are
-provider-agnostic. **New HARD RULE §6.8→§6.9 "Coordinates, not targets":** a test
-is parameterised by coordinates (endpoints, credentials, resource ids) and runs
-against the sim OR the real provider by changing coordinates alone, never knowing
-which; provider-only out-of-band setup (registering an App) lives in the harness,
-not the test. The App e2e (`github-app.e2e.ts`) is coordinate-driven — supply real
-GitHub App coordinates via env to target real GitHub; otherwise the bleephub
-harness (`test-support/github-app-coords.ts`) provisions an equivalent App.
-Verified: core/app-JWT/provider unit tests (12) + the bleephub App e2e (CI). Gates
-green (lint/knip/jscpd/build/unit).
+provider-agnostic. **New HARD RULE §6.9 "Coordinates, not targets — the simulators
+do not exist":** to the app + tests there is no sim-vs-real branch anywhere; only
+**coordinates** (endpoints, credentials, resource ids) point at a target, and the
+same code/test hits a sockerless sim or the real cloud by changing coordinates
+alone, through standard APIs only (never a sim's `/internal`). The App e2e
+(`github-app.e2e.ts`) is **purely coordinate-driven**: it reads the App's id + key +
+org/repo + base URL from env and **skips** when absent — it has no notion of
+bleephub. bleephub can't yet seed a pre-registered App via standard config, so CI
+can't supply sim App coordinates; filed upstream as **sockerless#559** (the e2e runs
+against real GitHub when secrets are supplied; the provider + app-JWT logic is
+unit-tested meanwhile — 12 tests). Gates green (lint/knip/jscpd/build/unit).
 
 **Prior phase (merged):** the **cost visualization** track (PR #71) —
 the last of "admins + costs + audit" (admins ✓, audit ✓ #70). An admin **Costs**

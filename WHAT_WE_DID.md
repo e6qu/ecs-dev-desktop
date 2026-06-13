@@ -707,15 +707,17 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   token cached to expiry). `getGitProvider` selects by config; the repos/namespaces
   routes + the clone/push broker use it (broker scopes the installation token by
   the repo's owner). The credential is wire-identical (`x-access-token`), so the
-  in-image helper is unchanged. The bleephub sim already implements full GitHub-App
-  auth, so the flow is testable end-to-end with no sim change. **New HARD RULE §6.9
-  "Coordinates, not targets"** (`AGENTS.md`): tests are parameterised by coordinates
-  (endpoints, credentials, resource ids) and target the sim OR the real provider by
-  changing coordinates alone — never branching on or knowing which. The App e2e is
-  coordinate-driven (`github-app.e2e.ts` + `test-support/github-app-coords.ts`):
-  real-GitHub coordinates via env target real GitHub; absent them, the bleephub
-  harness provisions an equivalent App (the only sim-aware code — real Apps are
-  registered out of band, so that bootstrap can't live in the test). Lesson: my
-  first cut embedded bleephub's `/internal/apps` setup IN the test, which both
-  broke real-GitHub targeting and made the test sim-aware — the fix was to move all
-  provider-only out-of-band setup into the harness and keep the test coordinate-only.
+  in-image helper is unchanged. **New HARD RULE §6.9 "Coordinates, not targets — the
+  simulators do not exist"** (`AGENTS.md`): to the app + tests there is no
+  sim-vs-real branch anywhere; only coordinates (endpoints, credentials, resource
+  ids) point at a target, reached through standard APIs only (never a sim's
+  `/internal`). The App e2e (`github-app.e2e.ts`) is purely coordinate-driven — it
+  reads the App id + key + org/repo + base URL from env and **skips** when absent;
+  it has no notion of bleephub. Lesson (the user drove this hard): my first cut
+  embedded bleephub's `/internal/apps` setup IN the test — that broke real-GitHub
+  targeting AND made the test sim-aware. The fix was NOT "move the `/internal` setup
+  to a harness" (still sim-internal) but to drop sim-internal use entirely: take
+  coordinates from env, skip without them, and **file the sim gap upstream** —
+  bleephub can't seed a pre-registered App with a caller-supplied key via standard
+  config (**sockerless#559**), so CI can't supply sim App coordinates yet; the e2e
+  runs against real GitHub when secrets are provided, unit tests cover the rest.
