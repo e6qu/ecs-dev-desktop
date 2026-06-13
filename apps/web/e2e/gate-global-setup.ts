@@ -20,6 +20,13 @@ import { getControlPlane } from "../lib/control-plane";
 const TABLE = process.env.DYNAMODB_TABLE ?? "edd-gate-e2e";
 const IMAGE = "golden/node:20";
 const HOSTS_FILE = join(import.meta.dirname, "../temp/gate-hosts.json");
+const READINESS_ATTEMPTS = 40;
+const READINESS_DELAY_MS = 1000;
+
+/** Resolve after `ms` — readiness polling (the test owns its own waiting). */
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 /** Shape persisted for the test (apps/web/e2e/workspace-gate.pwgate.ts). */
 export interface GateHosts {
@@ -67,6 +74,22 @@ export default async function globalSetup(): Promise<void> {
   };
   mkdirSync(dirname(HOSTS_FILE), { recursive: true });
   writeFileSync(HOSTS_FILE, JSON.stringify(hosts));
+
+  // Wait for the full chain (Pomerium → gate → PDP → upstream) to be ready: right
+  // after bring-up the gate's upstream can briefly report unavailable (503/502)
+  // until Pomerium sees the gate as healthy. Drive the owner path until it's 200
+  // so the browser test is deterministic (no readiness flake), esp. in CI.
+  let ready = 0;
+  for (let attempt = 0; attempt < READINESS_ATTEMPTS; attempt++) {
+    const { hop } = await authedGet(hosts.ownerHost);
+    ready = hop.status;
+    if (ready === 200) break;
+    await delay(READINESS_DELAY_MS);
+  }
+  if (ready !== 200) {
+    throw new Error(`gate chain not ready: owner host last returned ${String(ready)}`);
+  }
+
   process.stdout.write(
     `gate e2e seeded: owner ${hosts.ownerHost}, other ${hosts.otherHost} (user ${simEmail})\n`,
   );

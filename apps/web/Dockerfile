@@ -26,7 +26,12 @@ ENV NODE_ENV=production
 # Pre-activate pnpm at build time so `next start` doesn't stall on a corepack
 # download at container start.
 RUN corepack enable && corepack prepare pnpm@10.33.3 --activate
-COPY --from=builder /repo /repo
+# Own the tree at copy time (no extra layer) so the non-root user can read it and
+# `next start` can write its runtime cache under .next.
+COPY --from=builder --chown=node:node /repo /repo
+# Run as the image's built-in non-root user (security best practice; CI SAST +
+# Trivy require a non-root final USER).
+USER node
 WORKDIR /repo/apps/web
 # Port 3700 (not 3000 — which collides with countless local dev servers). Bind
 # 0.0.0.0 (not the default localhost) so the gate/Pomerium reach it in-network.
