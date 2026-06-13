@@ -8,6 +8,8 @@
         "e2e/**/*.pw.ts",
         "e2e/**/*.pwlive.ts",
         "e2e/**/*.pwpom.ts",
+        "e2e/**/*.pwgate.ts",
+        "e2e/gate-global-setup.ts",
         "e2e/live-cloud-setup.ts",
         "scripts/dev-bootstrap.ts",
         "**/*.test.ts",

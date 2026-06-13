@@ -28,7 +28,7 @@ pnpm dev
 
 One command: reaps prior state → starts DynamoDB Local → ensures the table + a
 base image (idempotent `dev-bootstrap`) → runs `next dev` on
-**http://localhost:3000**. Compute/storage are in-process **fakes** (workspaces
+**http://localhost:3700**. Compute/storage are in-process **fakes** (workspaces
 "launch" instantly, nothing real is provisioned); persistence is real DynamoDB
 Local; auth is **dev-auth**.
 
@@ -44,7 +44,7 @@ Cookies) to act as any user/role:
 For API calls (curl) the same identity is accepted as headers:
 
 ```sh
-curl -H 'x-edd-user-id: dev' -H 'x-edd-role: admin' http://localhost:3000/api/workspaces
+curl -H 'x-edd-user-id: dev' -H 'x-edd-role: admin' http://localhost:3700/api/workspaces
 ```
 
 ## Tiers — add real surfaces by coordinates
@@ -79,6 +79,8 @@ suites drop+create their tables), so a previously-interrupted run won't block th
 pnpm test                # unit + contract — no Docker
 pnpm test:integ:local    # integration: tier-2 substrate (DynamoDB Local + AWS sim)
 pnpm test:e2e:local      # e2e: container-mode sim + SSH harness (HEAVY — builds the ~3 GB image)
+sh scripts/test-gate-e2e.sh  # live per-workspace authz: browser → Pomerium → gate (PEP)
+                             # → control-plane PDP → upstream (self-contained, self-reaping)
 pnpm reap                # tear everything down by hand
 ```
 
