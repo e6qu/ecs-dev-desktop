@@ -642,3 +642,22 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   PATH needs an /etc/profile.d entry, not just ENV; (4) keep the image lean
   (headless-shell, not full Chromium) and prune the podman VM aggressively — the
   build OOM'd on a full disk from ~800 stale sim images. Image ~3 GB.
+
+- **2026-06-13 — Core user loop (sessions = control plane + users + admins +
+  multiple sessions, one repo per session).** On `feat/vscode-workspace-proof`
+  (PR #69). Repo-per-session: clone on first boot (public proven). Private
+  clone+push via AES-256-GCM token-crypto + per-owner gitCredential store +
+  GitHub token captured at sign-in + an agent-only broker
+  (`/api/workspaces/:id/git-credential`) + an in-image git credential helper —
+  token never on the EBS volume, in task metadata, or the browser. Wake-on-connect
+  gate: resolves each workspace's live ENI via `connect-info?protocol=http`
+  (gateway HMAC), wakes scaled-to-zero sessions, proxies HTTP+WS; one gate fronts
+  all workspaces (Pomerium static upstream); OpenVSCode `--without-connection-token`
+  for the gated deployment. GitHub launcher: GitProvider (repos / namespaces with
+  permission flags / create) + `/api/github/*` routes + the `/sessions/new` UI
+  (search → start; create repo default-private, grayed out with the reason when
+  not permitted; blank session). Decisions: OAuth-token clone behind a GitProvider
+  abstraction (GitHub App later); gate-is-the-auth. Lessons: Semgrep flags
+  hex-literal test secrets (use randomBytes) and GCM without authTagLength; see
+  [[sast-and-precommit-gotchas]]. Increment-2 deployment wiring (Pomerium→gate +
+  browser e2e) and audit-log + cost-viz tracks remain.
