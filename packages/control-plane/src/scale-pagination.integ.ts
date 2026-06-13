@@ -10,18 +10,12 @@ import {
   systemClock,
   workspaceId,
 } from "@edd/core";
-import {
-  createDynamoClient,
-  dropTable,
-  dynamodbLocal,
-  ensureTable,
-  makeWorkspaceEntity,
-} from "@edd/db";
+import { createDynamoClient, dropTable, dynamodb, ensureTable, makeWorkspaceEntity } from "@edd/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { WorkspaceService } from "./index";
 
-process.env.DYNAMODB_ENDPOINT ??= dynamodbLocal.endpoint;
+process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
 
 const TABLE = "ecs-dev-desktop-cp-scale-integ";
 // >1 MB of items forces multi-page reads (a single DynamoDB page caps at 1 MB).

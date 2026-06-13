@@ -88,7 +88,7 @@ describe("githubApiBaseUrl", () => {
     expect(githubApiBaseUrl()).toBe("https://api.github.com");
   });
 
-  it("honours the env override (e.g. the bleephub sim)", () => {
+  it("honours the env override (e.g. the github sim)", () => {
     vi.stubEnv(GITHUB_API_URL_ENV, "http://127.0.0.1:9000/api/v3");
     expect(githubApiBaseUrl()).toBe("http://127.0.0.1:9000/api/v3");
   });

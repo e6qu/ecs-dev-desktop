@@ -18,7 +18,7 @@ import { hostReachableTarget } from "@edd/e2e/docker-host";
 import { CatalogService } from "@edd/control-plane";
 import { baseImage, systemClock } from "@edd/core";
 import { createDynamoClient, dropTable, ensureTable, makeBaseImageEntity } from "@edd/db";
-import { awsSim, dynamodbLocal } from "@edd/config";
+import { aws, dynamodb } from "@edd/config";
 
 const PORT = 3220; // must match playwright.live.config.ts
 const RUN_ID = randomUUID().slice(0, 8);
@@ -31,9 +31,9 @@ const AGENT_SECRET = "d".repeat(64);
 const SSH_CA_PUB = join(import.meta.dirname, "../../../services/ssh-gateway/temp/ssh-ca/ca.pub");
 const ENV_FILE = join(import.meta.dirname, "../temp/live-pw.env");
 
-const dynamoEndpoint = process.env.DYNAMODB_ENDPOINT ?? dynamodbLocal.endpoint;
+const dynamoEndpoint = process.env.DYNAMODB_ENDPOINT ?? dynamodb.endpoint;
 process.env.DYNAMODB_ENDPOINT = dynamoEndpoint;
-process.env.AWS_ENDPOINT_URL ??= awsSim.endpoint;
+process.env.AWS_ENDPOINT_URL ??= aws.endpoint;
 process.env.AWS_REGION ??= awsSimClientConfig().region;
 process.env.AWS_ACCESS_KEY_ID ??= awsSimClientConfig().credentials.accessKeyId;
 process.env.AWS_SECRET_ACCESS_KEY ??= awsSimClientConfig().credentials.secretAccessKey;
@@ -71,7 +71,7 @@ const lines = [
   exportLine("DYNAMODB_ENDPOINT", dynamoEndpoint),
   exportLine("DYNAMODB_TABLE", TABLE),
   exportLine("COMPUTE_PROVIDER", "ecs"),
-  exportLine("AWS_ENDPOINT_URL", awsSim.endpoint),
+  exportLine("AWS_ENDPOINT_URL", aws.endpoint),
   exportLine("AWS_REGION", SIM.region),
   exportLine("AWS_ACCESS_KEY_ID", SIM.credentials.accessKeyId),
   exportLine("AWS_SECRET_ACCESS_KEY", SIM.credentials.secretAccessKey),

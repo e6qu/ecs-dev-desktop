@@ -6,20 +6,14 @@ import { CloudTrailAuditSource } from "@edd/cloudtrail-audit";
 import { EcsComputeProvider } from "@edd/compute-ecs";
 import { WorkspaceService } from "@edd/control-plane";
 import { baseImage, ownerId, systemClock, unwrap, workspaceId } from "@edd/core";
-import {
-  createDynamoClient,
-  dropTable,
-  dynamodbLocal,
-  ensureTable,
-  makeWorkspaceEntity,
-} from "@edd/db";
+import { createDynamoClient, dropTable, dynamodb, ensureTable, makeWorkspaceEntity } from "@edd/db";
 import { Ec2StorageProvider } from "@edd/storage-ec2";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { awsSimClientConfig, configureAwsSimEnv, required, sleep } from "./aws-sim";
 
 configureAwsSimEnv();
-process.env.DYNAMODB_ENDPOINT ??= dynamodbLocal.endpoint;
+process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
 
 const TABLE = "ecs-dev-desktop-e2e-lifecycle";
 const CLUSTER = "edd-workspaces";

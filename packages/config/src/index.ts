@@ -10,8 +10,8 @@ import { z } from "zod";
 export const DEFAULT_AWS_REGION = "us-east-1";
 export const DEFAULT_DYNAMODB_TABLE = "ecs-dev-desktop";
 
-/** GitHub REST API base. Override (env) points at GitHub Enterprise or the
- * bleephub simulator's `/api/v3`; default is public GitHub. */
+/** GitHub REST API base. Override (env, `AUTH_GITHUB_API_URL`) points at GitHub
+ * Enterprise or a local harness `/api/v3`; default is public GitHub. */
 export const DEFAULT_GITHUB_API_URL = "https://api.github.com";
 
 /** ECS Fargate workspace-runtime defaults (cluster / subnets / role are
@@ -29,68 +29,68 @@ export const DEFAULT_WORKSPACE_PORT = 3000;
  * every 5-minute reconciler window; 15× within the 30-minute idle threshold. */
 export const DEFAULT_HEARTBEAT_INTERVAL_S = 120;
 
-const DYNAMODB_LOCAL_HOST = "127.0.0.1";
-const DYNAMODB_LOCAL_PORT = 8000;
+const DYNAMODB_HOST = "127.0.0.1";
+const DYNAMODB_PORT = 8000;
 
-/** DynamoDB Local (Tier-2 harness) connection config. */
-export const dynamodbLocal = {
-  host: DYNAMODB_LOCAL_HOST,
-  port: DYNAMODB_LOCAL_PORT,
-  endpoint: `http://${DYNAMODB_LOCAL_HOST}:${DYNAMODB_LOCAL_PORT}`,
+/** DynamoDB endpoint coordinate. The default is the local harness; real cloud is
+ * reached by the SDK's standard endpoint resolution / `DYNAMODB_ENDPOINT`. */
+export const dynamodb = {
+  host: DYNAMODB_HOST,
+  port: DYNAMODB_PORT,
+  endpoint: `http://${DYNAMODB_HOST}:${DYNAMODB_PORT}`,
 } as const;
 
 /**
- * Scheme for the local sockerless simulators (AWS / bleephub / Entra). Defaults
- * to plain HTTP; set `EDD_SIM_SCHEME=https` to drive the sims over TLS — the HTTPS
- * e2e harness mounts a self-signed cert (`SIM_TLS_CERT`/`SIM_TLS_KEY`) and the
- * client trusts its CA via `NODE_EXTRA_CA_CERTS`. Endpoint-only switch (§6.8):
- * the *real-cloud* URLs are HTTPS regardless; this only flips the sim base URLs.
- * Unset → `http` (documented default); an invalid explicit value throws (loud).
+ * Scheme for the local harness endpoint defaults below. Defaults to plain HTTP;
+ * `EDD_SIM_SCHEME=https` drives the local harness over TLS (the HTTPS e2e harness
+ * mounts a self-signed cert and the client trusts its CA via `NODE_EXTRA_CA_CERTS`).
+ * Coordinate-only (§6.9): real-cloud URLs are HTTPS regardless; this only flips the
+ * local defaults. Unset → `http`; an invalid explicit value throws (loud).
  */
-const SIM_SCHEME: "http" | "https" =
+const LOCAL_SCHEME: "http" | "https" =
   process.env.EDD_SIM_SCHEME === undefined
     ? "http"
     : z.enum(["http", "https"]).parse(process.env.EDD_SIM_SCHEME);
 
-const AWS_SIM_HOST = "127.0.0.1";
-const AWS_SIM_PORT = 4566;
+const AWS_HOST = "127.0.0.1";
+const AWS_PORT = 4566;
 
 /**
- * Sockerless AWS simulator (Tier-2 harness, built from source). One endpoint
- * serves the AWS API surface (EC2/EBS, DynamoDB, ECS, …); SDK clients reach it
- * via `AWS_ENDPOINT_URL`. Endpoint-only consumption — see `AGENTS.md` §6.8.
+ * AWS API endpoint coordinate. The default is the local harness (one endpoint
+ * serving the AWS API surface — EC2/EBS, DynamoDB, ECS, …); real cloud is reached
+ * by the SDK's standard resolution / `AWS_ENDPOINT_URL`. Coordinate-only (§6.9).
  */
-export const awsSim = {
-  host: AWS_SIM_HOST,
-  port: AWS_SIM_PORT,
-  endpoint: `${SIM_SCHEME}://${AWS_SIM_HOST}:${AWS_SIM_PORT}`,
+export const aws = {
+  host: AWS_HOST,
+  port: AWS_PORT,
+  endpoint: `${LOCAL_SCHEME}://${AWS_HOST}:${AWS_PORT}`,
 } as const;
 
-const BLEEPHUB_HOST = "127.0.0.1";
-const BLEEPHUB_PORT = 5555;
+const GITHUB_HOST = "127.0.0.1";
+const GITHUB_PORT = 5555;
 
-/** bleephub — the sockerless GitHub server (e2e auth harness). `url` is the OAuth
- * root (`/login/oauth/*`); `apiUrl` is the REST base (`/api/v3`). */
-export const bleephub = {
-  url: `${SIM_SCHEME}://${BLEEPHUB_HOST}:${BLEEPHUB_PORT}`,
-  apiUrl: `${SIM_SCHEME}://${BLEEPHUB_HOST}:${BLEEPHUB_PORT}/api/v3`,
+/** GitHub endpoint coordinate: `url` is the OAuth web root (`/login/oauth/*`),
+ * `apiUrl` the REST base (`/api/v3`). The default is the local harness; real
+ * GitHub / GHES is reached via `AUTH_GITHUB_URL` / `AUTH_GITHUB_API_URL`. */
+export const github = {
+  url: `${LOCAL_SCHEME}://${GITHUB_HOST}:${GITHUB_PORT}`,
+  apiUrl: `${LOCAL_SCHEME}://${GITHUB_HOST}:${GITHUB_PORT}/api/v3`,
 } as const;
 
-const ENTRA_SIM_HOST = "127.0.0.1";
-const ENTRA_SIM_PORT = 4568;
-/** Tenant the e2e drives. Real Entra reads the tenant from the request path; the
- * sim does the same, so any stable value works (no behaviour depends on it). */
-export const ENTRA_SIM_TENANT = "edd-e2e-tenant";
+const ENTRA_HOST = "127.0.0.1";
+const ENTRA_PORT = 4568;
+/** Entra tenant the harness drives. Real Entra reads the tenant from the request
+ * path, so any stable value works (no behaviour depends on it). */
+export const ENTRA_TENANT = "edd-e2e-tenant";
 
-/** Sockerless Azure/Entra simulator (e2e auth harness). `authority` is the OIDC
- * issuer root (`/{tenant}/oauth2/v2.0/*`); `graphUrl` is the Microsoft Graph base
- * (standard user/group provisioning + `/me/memberOf`). Both are plain base URLs:
- * against real cloud the same code points them at `login.microsoftonline.com` /
- * `graph.microsoft.com` — endpoint-only, no sim-specific paths (`AGENTS.md` §6.8). */
-export const entraSim = {
-  endpoint: `${SIM_SCHEME}://${ENTRA_SIM_HOST}:${ENTRA_SIM_PORT}`,
-  authority: `${SIM_SCHEME}://${ENTRA_SIM_HOST}:${ENTRA_SIM_PORT}/${ENTRA_SIM_TENANT}`,
-  graphUrl: `${SIM_SCHEME}://${ENTRA_SIM_HOST}:${ENTRA_SIM_PORT}/v1.0`,
+/** Entra / OIDC endpoint coordinate. `authority` is the OIDC issuer root
+ * (`/{tenant}/oauth2/v2.0/*`); `graphUrl` the Microsoft Graph base. The default is
+ * the local harness; real cloud points at `login.microsoftonline.com` /
+ * `graph.microsoft.com` — same code, coordinate-only (§6.9). */
+export const entra = {
+  endpoint: `${LOCAL_SCHEME}://${ENTRA_HOST}:${ENTRA_PORT}`,
+  authority: `${LOCAL_SCHEME}://${ENTRA_HOST}:${ENTRA_PORT}/${ENTRA_TENANT}`,
+  graphUrl: `${LOCAL_SCHEME}://${ENTRA_HOST}:${ENTRA_PORT}/v1.0`,
 } as const;
 
 /**

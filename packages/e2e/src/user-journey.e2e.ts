@@ -8,7 +8,7 @@ import { CloudWatchLogsClient, CreateLogGroupCommand } from "@aws-sdk/client-clo
 import { CreateClusterCommand, DescribeTasksCommand, ECSClient } from "@aws-sdk/client-ecs";
 import { EC2Client } from "@aws-sdk/client-ec2";
 import { workspace, workspaceInspection, type WorkspaceDetailDto } from "@edd/api-contracts";
-import { awsSim, dynamodbLocal } from "@edd/config";
+import { aws, dynamodb } from "@edd/config";
 import { CatalogService } from "@edd/control-plane";
 import { baseImage, systemClock, workspacePrincipal } from "@edd/core";
 import { createDynamoClient, dropTable, ensureTable, makeBaseImageEntity } from "@edd/db";
@@ -40,7 +40,7 @@ import { devHeaders, startWebApp, type WebApp } from "./web-app";
  */
 
 configureAwsSimEnv();
-process.env.DYNAMODB_ENDPOINT ??= dynamodbLocal.endpoint;
+process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
 
 const RUN_ID = randomUUID().slice(0, 8);
 const TABLE = `edd-user-journey-${RUN_ID}`;
@@ -145,10 +145,10 @@ describe(
       // host.containers.internal natively — probe which applies here.
       const hostAlias = hostReachableTarget(WORKSPACE_IMAGE).host;
       web = await startWebApp((port) => ({
-        DYNAMODB_ENDPOINT: process.env.DYNAMODB_ENDPOINT ?? dynamodbLocal.endpoint,
+        DYNAMODB_ENDPOINT: process.env.DYNAMODB_ENDPOINT ?? dynamodb.endpoint,
         DYNAMODB_TABLE: TABLE,
         COMPUTE_PROVIDER: "ecs",
-        AWS_ENDPOINT_URL: awsSim.endpoint,
+        AWS_ENDPOINT_URL: aws.endpoint,
         AWS_REGION: SIM.region,
         AWS_ACCESS_KEY_ID: SIM.credentials.accessKeyId,
         AWS_SECRET_ACCESS_KEY: SIM.credentials.secretAccessKey,

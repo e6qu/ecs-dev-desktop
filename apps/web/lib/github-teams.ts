@@ -24,7 +24,7 @@ export function teamGroupId(team: Team): string {
   return `${team.organization.login}/${team.slug}`;
 }
 
-/** GitHub REST base — the bleephub sim / GitHub Enterprise via env, else public GitHub. */
+/** GitHub REST base — the github sim / GitHub Enterprise via env, else public GitHub. */
 export function githubApiBaseUrl(): string {
   return process.env[GITHUB_API_URL_ENV] ?? DEFAULT_GITHUB_API_URL;
 }

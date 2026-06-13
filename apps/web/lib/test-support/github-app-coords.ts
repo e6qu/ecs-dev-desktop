@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Coordinates for the GitHub-App e2e. Per AGENTS.md §6.9 the test targets real
-// GitHub, GHES, or the bleephub sim by COORDINATES ALONE and never knows which —
-// and uses NO sim-internal/private feature: bleephub is treated exactly like real
+// GitHub, GHES, or the github sim by COORDINATES ALONE and never knows which —
+// and uses NO sim-internal/private feature: github is treated exactly like real
 // GitHub, differing only by base URL + credentials.
 //
 // A GitHub App is registered out of band on every target (no standard API creates
@@ -9,7 +9,7 @@
 //   AUTH_GITHUB_API_URL, EDD_GITHUB_APP_ID, EDD_GITHUB_APP_KEY (PEM or base64 PEM),
 //   EDD_GITHUB_TEST_ORG, EDD_GITHUB_TEST_REPO.
 // Absent them the e2e skips — there is intentionally no sim-internal shortcut
-// (bleephub's `/internal/apps` is off-limits). bleephub cannot yet be seeded with
+// (github's `/internal/apps` is off-limits). github cannot yet be seeded with
 // a pre-registered App via standard config, so CI cannot supply sim coordinates;
 // that is filed upstream (BUGS.md → External blockers, e6qu/sockerless).
 import { DEFAULT_GITHUB_API_URL } from "@edd/config";

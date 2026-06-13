@@ -9,7 +9,7 @@ import {
 } from "@aws-sdk/client-cloudwatch-logs";
 import { CreateClusterCommand, ECSClient } from "@aws-sdk/client-ecs";
 import { auditFeedResponse, logStreamResult } from "@edd/api-contracts";
-import { awsSim, DEFAULT_AWS_REGION } from "@edd/config";
+import { aws, DEFAULT_AWS_REGION } from "@edd/config";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -21,7 +21,7 @@ import {
 import { GET as auditGet } from "./audit/route";
 import { GET as logsGet } from "./logs/route";
 
-process.env.AWS_ENDPOINT_URL ??= awsSim.endpoint;
+process.env.AWS_ENDPOINT_URL ??= aws.endpoint;
 process.env.AWS_REGION ??= DEFAULT_AWS_REGION;
 process.env.AWS_ACCESS_KEY_ID ??= "test";
 process.env.AWS_SECRET_ACCESS_KEY ??= "test";
@@ -40,7 +40,7 @@ const SEEDED_LOG = "info: live admin route read from CloudWatch";
 
 const SIM = {
   region: DEFAULT_AWS_REGION,
-  endpoint: awsSim.endpoint,
+  endpoint: aws.endpoint,
   credentials: { accessKeyId: "test", secretAccessKey: "test" },
 };
 

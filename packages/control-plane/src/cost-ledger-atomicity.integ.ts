@@ -17,7 +17,7 @@ import {
 import {
   createDynamoClient,
   dropTable,
-  dynamodbLocal,
+  dynamodb,
   ensureTable,
   makeAuditEventEntity,
   makeWorkspaceEntity,
@@ -26,7 +26,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { StoredAuditSource, WorkspaceService } from "./index";
 
-process.env.DYNAMODB_ENDPOINT ??= dynamodbLocal.endpoint;
+process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
 
 const TABLE = "ecs-dev-desktop-cp-ledger-atomicity-integ";
 

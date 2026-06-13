@@ -6,13 +6,13 @@
  * `table.ts`. No hand-rolled key strings (that duplicated ElectroDB).
  */
 
-import { DEFAULT_DYNAMODB_TABLE, dynamodbLocal } from "@edd/config";
+import { DEFAULT_DYNAMODB_TABLE, dynamodb } from "@edd/config";
 
 /** Default single-table name (from the typed config). */
 export const TABLE = DEFAULT_DYNAMODB_TABLE;
 
 /** DynamoDB Local connection config (Tier-2 harness / integration tests). */
-export { dynamodbLocal };
+export { dynamodb };
 
 export { createDynamoClient } from "./client";
 export { pingTable } from "./health";

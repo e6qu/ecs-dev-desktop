@@ -2,7 +2,7 @@
 import { randomUUID } from "node:crypto";
 
 import { mapClaimsToRole } from "@edd/auth";
-import { entraSim } from "@edd/config";
+import { entra } from "@edd/config";
 import { beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 
@@ -13,7 +13,7 @@ import { acquireGraphToken, provisionEntraUserWithGroup } from "./test-support/e
  * Mock-free Entra login → group → role e2e, driven entirely through STANDARD
  * Microsoft surfaces against the sockerless Azure sim: Microsoft Graph user/group
  * provisioning + membership, then the ROPC token grant for a non-interactive
- * id_token. Nothing here is sim-specific — only `entraSim.authority`/`graphUrl`
+ * id_token. Nothing here is sim-specific — only `entra.authority`/`graphUrl`
  * (base URLs) differ from real cloud (`login.microsoftonline.com` /
  * `graph.microsoft.com`), the allowed endpoint-only exception (`AGENTS.md` §6.8).
  * Provisioning helpers: `test-support/entra-graph.ts` (shared with the Auth.js
@@ -30,7 +30,7 @@ const USER_UPN = `alice-${RUN_ID}@edd-e2e.example.com`;
 // sim looks the user up by userPrincipalName. Sent on both create and login.
 const USER_PASSWORD = "Edd-e2e-Passw0rd!";
 
-const TOKEN_URL = `${entraSim.authority}/oauth2/v2.0/token`;
+const TOKEN_URL = `${entra.authority}/oauth2/v2.0/token`;
 const FORM_HEADERS = {
   "Content-Type": "application/x-www-form-urlencoded",
   Accept: "application/json",

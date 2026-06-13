@@ -5,7 +5,7 @@ import { join } from "node:path";
 
 import { ListTasksCommand } from "@aws-sdk/client-ecs";
 import { workspace, workspaceInspection } from "@edd/api-contracts";
-import { dynamodbLocal } from "@edd/config";
+import { dynamodb } from "@edd/config";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { configureAwsSimEnv, required, sleep } from "./aws-sim";
@@ -26,7 +26,7 @@ import { devHeaders } from "./web-app";
  */
 
 configureAwsSimEnv();
-process.env.DYNAMODB_ENDPOINT ??= dynamodbLocal.endpoint;
+process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
 
 const RUN_ID = randomUUID().slice(0, 8);
 const WORKSPACE_IMAGE = "edd-workspace:e2e";

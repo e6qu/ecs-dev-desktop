@@ -2,9 +2,9 @@
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
 import { describe, expect, it } from "vitest";
 
-import { createDynamoClient, dynamodbLocal, waitForDynamo } from "./index";
+import { createDynamoClient, dynamodb, waitForDynamo } from "./index";
 
-process.env.DYNAMODB_ENDPOINT ??= dynamodbLocal.endpoint;
+process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
 
 describe("waitForDynamo", () => {
   it("resolves once DynamoDB Local is answering", async () => {

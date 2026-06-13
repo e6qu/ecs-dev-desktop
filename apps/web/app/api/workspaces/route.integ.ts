@@ -2,13 +2,7 @@
 import { listWorkspacesResponse, workspace } from "@edd/api-contracts";
 import { CatalogService } from "@edd/control-plane";
 import { baseImage, systemClock } from "@edd/core";
-import {
-  createDynamoClient,
-  dropTable,
-  dynamodbLocal,
-  ensureTable,
-  makeBaseImageEntity,
-} from "@edd/db";
+import { createDynamoClient, dropTable, dynamodb, ensureTable, makeBaseImageEntity } from "@edd/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -22,7 +16,7 @@ import { GET, POST } from "./route";
 const TEST_TABLE = "ecs-dev-desktop-web-integ";
 
 process.env[DEV_AUTH_ENV] = DEV_AUTH_ENABLED;
-process.env.DYNAMODB_ENDPOINT ??= dynamodbLocal.endpoint;
+process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
 process.env.DYNAMODB_TABLE = TEST_TABLE;
 
 const url = "http://localhost/api/workspaces";

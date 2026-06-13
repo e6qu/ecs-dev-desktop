@@ -2,7 +2,7 @@
 // Shared Azure/Entra sim harness for the auth e2e suites: standard Microsoft
 // Graph provisioning (client_credentials token, user/group/membership). Only
 // the authority/Graph base URLs differ from real cloud (§6.8).
-import { entraSim } from "@edd/config";
+import { entra } from "@edd/config";
 import { z } from "zod";
 
 const FORM_HEADERS = {
@@ -16,7 +16,7 @@ const graphCreated = z.object({ id: z.string() });
 /** App-only token (client_credentials) — the admin credential Graph provisioning
  * requires on real cloud. Sent as Bearer on every Graph call below. */
 export async function acquireGraphToken(clientId: string, clientSecret: string): Promise<string> {
-  const res = await fetch(`${entraSim.authority}/oauth2/v2.0/token`, {
+  const res = await fetch(`${entra.authority}/oauth2/v2.0/token`, {
     method: "POST",
     headers: FORM_HEADERS,
     body: new URLSearchParams({
@@ -56,7 +56,7 @@ export async function provisionEntraUserWithGroup(
     Accept: "application/json",
   };
   const graph = (path: string, body: unknown): Promise<Response> =>
-    fetch(`${entraSim.graphUrl}${path}`, { method: "POST", headers, body: JSON.stringify(body) });
+    fetch(`${entra.graphUrl}${path}`, { method: "POST", headers, body: JSON.stringify(body) });
 
   const groupRes = await graph("/groups", {
     displayName: input.groupDisplayName,
@@ -78,7 +78,7 @@ export async function provisionEntraUserWithGroup(
   const userId = graphCreated.parse(await userRes.json()).id;
 
   const memberRes = await graph(`/groups/${groupId}/members/$ref`, {
-    "@odata.id": `${entraSim.graphUrl}/directoryObjects/${userId}`,
+    "@odata.id": `${entra.graphUrl}/directoryObjects/${userId}`,
   });
   if (!memberRes.ok) throw new Error(`add member failed: ${String(memberRes.status)}`);
 

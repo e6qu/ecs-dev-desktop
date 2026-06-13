@@ -12,7 +12,7 @@ export type { Namespace, RepoSummary } from "./github-types";
  * user can access, list the namespaces they may create repos in (with a
  * permission flag so the UI can gray out "Create" with a reason), and create a
  * repo. All calls use the user's token server-side — it never reaches the
- * browser. Endpoint-only: `AUTH_GITHUB_API_URL` points at GHES/bleephub, else
+ * browser. Endpoint-only: `AUTH_GITHUB_API_URL` points at GHES/github, else
  * public GitHub.
  */
 function apiBase(): string {

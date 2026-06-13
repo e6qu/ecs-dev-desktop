@@ -721,3 +721,20 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   bleephub can't seed a pre-registered App with a caller-supplied key via standard
   config (**sockerless#559**), so CI can't supply sim App coordinates yet; the e2e
   runs against real GitHub when secrets are provided, unit tests cover the rest.
+
+- **2026-06-13 — Coordinate purity: the simulators are nameless** (on
+  `feat/coordinate-purity`, stacked on the App PR). Enforcing §6.9 repo-wide: the
+  sim-named coordinate constants in `@edd/config` were renamed to generic role
+  coordinates — `awsSim→aws`, `bleephub→github`, `entraSim→entra`,
+  `dynamodbLocal→dynamodb`, `ENTRA_SIM_TENANT→ENTRA_TENANT` (pure rename; values +
+  shapes unchanged, defaults still the local harness, overridable by the standard
+  env coordinate). The interactive-login harness `test-support/bleephub-oauth.ts`
+  → `github-oauth.ts` with its `bleephub*`/`Bleephub*` helpers → `github*`/`Github*`.
+  ~44 files migrated; a pure symbol rename, so `tsc` build + type-aware lint across
+  the monorepo validate every reference (16/16 build, 17/17 lint, 29/29 unit, knip
+  clean, jscpd 0.96%). Result: no app or test symbol is named after a sim — only
+  coordinates remain. Audit confirmed product logic was already branch-free; the
+  only residue was these names. Minor follow-ups (harness-only, noted in DO_NEXT):
+  the `EDD_SIM_SCHEME` env knob and a couple of harness file names
+  (`packages/e2e/src/aws-sim.ts`, compose service names) still say "sim" — infra,
+  not app/test logic.
