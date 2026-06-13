@@ -58,18 +58,24 @@ if [ -n "${EDD_REPO_URL:-}" ]; then
   fi
 fi
 
-# CONNECTION_TOKEN comes from ECS secrets (Secrets Manager); default to a
-# random value if unset (acceptable in dev/CI where Pomerium isn't present).
-_token="${CONNECTION_TOKEN:-$(cat /proc/sys/kernel/random/uuid 2>/dev/null || od -An -N16 -tx1 /dev/urandom | tr -d ' \n')}"
-
-# --disable-workspace-trust: a per-user workspace contains the user's own files,
-# so the Workspace Trust prompt is pure friction (and a modal that blocks the UI
-# until dismissed); hosted dev environments disable it.
-exec gosu workspace openvscode-server \
-  --host 0.0.0.0 \
-  --port 3000 \
-  --connection-token "${_token}" \
-  --disable-workspace-trust \
+# Base server args. --disable-workspace-trust: a per-user workspace contains the
+# user's own files, so the Workspace Trust prompt is pure friction (a modal that
+# blocks the UI); hosted dev environments disable it.
+set -- --host 0.0.0.0 --port 3000 --disable-workspace-trust \
   --extensions-dir /home/workspace/.openvscode-server/extensions \
   --user-data-dir /home/workspace/.openvscode-server/data \
   --default-folder /home/workspace
+
+# Auth: behind the workspace gate (Pomerium identity + gate ownership +
+# network isolation) the OpenVSCode connection token is redundant, so a gated
+# deployment sets EDD_DISABLE_CONNECTION_TOKEN=1 for a tokenless browser URL.
+# Otherwise (standalone/dev) require a connection token — from ECS secrets, or a
+# random one if unset.
+if [ "${EDD_DISABLE_CONNECTION_TOKEN:-}" = "1" ]; then
+  set -- "$@" --without-connection-token
+else
+  _token="${CONNECTION_TOKEN:-$(cat /proc/sys/kernel/random/uuid 2>/dev/null || od -An -N16 -tx1 /dev/urandom | tr -d ' \n')}"
+  set -- "$@" --connection-token "${_token}"
+fi
+
+exec gosu workspace openvscode-server "$@"
