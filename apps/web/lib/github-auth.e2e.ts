@@ -8,10 +8,8 @@ import { GITHUB_API_URL_ENV } from "./constants";
 import { fetchGithubTeamGroups } from "./github-teams";
 import {
   bleephubApi,
-  bleephubApprove,
-  bleephubExchangeCode,
+  bleephubOAuthLogin,
   bleephubProvisionTeam,
-  bleephubSession,
   JSON_HEADERS,
 } from "./test-support/bleephub-oauth";
 
@@ -43,31 +41,14 @@ const OAUTH = {
   client_secret: "secret",
   redirect_uri: "http://localhost/callback",
   scope: "read:org",
-  state: "xyz",
 };
-
-/** The conformant GitHub OAuth web flow (session + CSRF), returning the access token
- * bound to `user`. Mirrors what a browser does against real GitHub. */
-async function login(user: string): Promise<string> {
-  const cookie = await bleephubSession(user);
-  const query = new URLSearchParams({
-    client_id: OAUTH.client_id,
-    redirect_uri: OAUTH.redirect_uri,
-    scope: OAUTH.scope,
-    state: OAUTH.state,
-  }).toString();
-  const location = await bleephubApprove(cookie, `${bleephub.url}/login/oauth/authorize?${query}`);
-  const code = new URL(location, bleephub.url).searchParams.get("code");
-  if (code === null) throw new Error(`approve redirect carried no code: ${location}`);
-  return bleephubExchangeCode(code, OAUTH.client_id, OAUTH.client_secret);
-}
 
 describe("GitHub login via bleephub → team → role (mock-free, conformant flow)", () => {
   let token: string;
   let profile: unknown;
 
   beforeAll(async () => {
-    token = await login(USER);
+    token = await bleephubOAuthLogin(USER, OAUTH);
     profile = await (
       await bleephubApi("/user", {
         headers: { ...JSON_HEADERS, Authorization: `Bearer ${token}` },

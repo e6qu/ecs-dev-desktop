@@ -6,28 +6,25 @@ import { z } from "zod";
 
 import { authenticate, badRequest, conflict, forbidden, isResponse } from "../../../../lib/api";
 import { auditActor, recordAudit } from "../../../../lib/audit";
-import { getGitCredentials, gitCredentialsEnabled } from "../../../../lib/git-credentials";
-import { createRepo, listRepos } from "../../../../lib/github";
+import { getGitProvider } from "../../../../lib/git-provider";
 
 /**
- * GitHub repo endpoints for the session launcher. The user's token is read from
- * the encrypted store server-side and never returned to the browser. A user with
- * no stored GitHub credential (e.g. signed in via Entra) gets 409.
+ * GitHub repo endpoints for the session launcher. Operations go through the
+ * active {@link getGitProvider} (user OAuth token, or a GitHub App installation
+ * token when the app is configured) — server-side only, never the browser. No
+ * available credential (e.g. signed in via Entra, no GitHub) → 409.
  */
-async function githubToken(ownerId: string): Promise<string | null> {
-  if (!gitCredentialsEnabled()) return null;
-  return getGitCredentials().fetch(ownerId);
-}
+const NOT_CONNECTED = "GitHub account not connected — sign in with GitHub";
 
-// GET /api/github/repos — repos the authenticated user can access.
+// GET /api/github/repos — repos the authenticated caller can access.
 export async function GET(req: Request) {
   const principal = await authenticate(req);
   if (isResponse(principal)) return principal;
 
-  const token = await githubToken(principal.id);
-  if (token === null) return conflict("GitHub account not connected — sign in with GitHub");
+  const provider = await getGitProvider(principal.id);
+  if (provider === null) return conflict(NOT_CONNECTED);
 
-  const repos = await listRepos(token);
+  const repos = await provider.listRepos();
   return NextResponse.json({ repos });
 }
 
@@ -59,10 +56,10 @@ export async function POST(req: Request) {
   const parsed = createRepoRequest.safeParse(raw);
   if (!parsed.success) return badRequest();
 
-  const token = await githubToken(principal.id);
-  if (token === null) return conflict("GitHub account not connected — sign in with GitHub");
+  const provider = await getGitProvider(principal.id);
+  if (provider === null) return conflict(NOT_CONNECTED);
 
-  const repo = await createRepo(token, parsed.data);
+  const repo = await provider.createRepo(parsed.data);
   await recordAudit({
     actor: auditActor(principal),
     action: "repo.create",

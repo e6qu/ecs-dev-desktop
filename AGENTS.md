@@ -174,3 +174,20 @@ behaviour against the sim differs from real cloud, that is a **simulator bug**:
 **file it upstream** (`e6qu/sockerless`) and reference it; do not work around it.
 Anything not expressible via standard cloud APIs (e.g. an EBS volume's file
 contents) is validated through the compute layer or the real-AWS tier.
+
+**6.9 Coordinates, not targets (HARD RULE).** A test (and product code) is
+parameterised by **coordinates** — the externally-supplied facts that point it at
+a concrete target: **endpoints/base URLs, credentials (keys, tokens, secrets),
+and resource identifiers (account/tenant/org/repo names, app/installation ids,
+ARNs)**. The same test runs against the **sim or the real provider by changing
+coordinates alone**, and **must not know or branch on which** it is hitting — no
+`if (sim)`, no hardcoded sim hosts, no sim-only assertions. Concretely: a test
+reads its coordinates from config/env (e.g. `AUTH_GITHUB_API_URL` +
+`EDD_GITHUB_APP_ID`/`EDD_GITHUB_APP_KEY` + a test org/repo); supplying real-provider
+coordinates targets the real provider with **zero test changes**. Anything the
+real provider only creates **out of band** (a registered GitHub App, a hosted
+zone, an IdP tenant) is **provisioned by the harness/setup, never the test
+body** — that setup may be sim-aware and produces the same coordinate shape the
+real provider is given. Interactive-only flows that have no non-interactive real
+equivalent (e.g. a username-only web login) are inherently sim-bound; keep their
+sim-specific bootstrap in the harness too, and keep the assertions coordinate-driven.

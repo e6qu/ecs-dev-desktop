@@ -28,6 +28,12 @@ export const GITHUB_API_URL_ENV = "AUTH_GITHUB_API_URL";
  * `enterprise.baseUrl` option. Endpoint-only (§6.8); unset = github.com. */
 export const GITHUB_URL_ENV = "AUTH_GITHUB_URL";
 
+/** GitHub App credentials. When BOTH are set, GitHub operations + the clone/push
+ * broker act as the App (installation tokens) instead of the user's OAuth token.
+ * `EDD_GITHUB_APP_KEY` is the RSA private key PEM (or base64-encoded PEM). */
+export const GITHUB_APP_ID_ENV = "EDD_GITHUB_APP_ID";
+export const GITHUB_APP_KEY_ENV = "EDD_GITHUB_APP_KEY";
+
 /**
  * Machine-auth for non-interactive callers (per-workspace HMAC bearer tokens,
  * see `machine-auth.ts`). Two trust domains, two secrets:

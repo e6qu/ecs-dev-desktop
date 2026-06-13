@@ -2,11 +2,30 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-13 (cost-visualization branch)
+**Last updated:** 2026-06-13 (github-app-provider branch)
 
 ## Current phase
 
-**In flight on `feat/cost-visualization`:** the **cost visualization** track —
+**In flight on `feat/github-app-provider`:** a **GitHub App** provider behind a new
+`GitProvider` seam, plus a new architectural principle. `apps/web/lib/github.ts`'s
+token-parametrized functions become `UserOAuthGitProvider` (default), joined by an
+`InstallationGitProvider` that signs an RS256 app JWT (`jose`) → mints an
+installation token (`ghs_…`) → installation-scoped REST. `getGitProvider(ownerId)`
+selects by config (`EDD_GITHUB_APP_ID` + `EDD_GITHUB_APP_KEY` → App mode, else the
+user's stored OAuth token); the repos/namespaces routes + the clone/push broker go
+through it (the broker picks the installation by the repo's owner). The git
+credential is wire-identical (`x-access-token` + bearer), so the broker + UI are
+provider-agnostic. **New HARD RULE §6.8→§6.9 "Coordinates, not targets":** a test
+is parameterised by coordinates (endpoints, credentials, resource ids) and runs
+against the sim OR the real provider by changing coordinates alone, never knowing
+which; provider-only out-of-band setup (registering an App) lives in the harness,
+not the test. The App e2e (`github-app.e2e.ts`) is coordinate-driven — supply real
+GitHub App coordinates via env to target real GitHub; otherwise the bleephub
+harness (`test-support/github-app-coords.ts`) provisions an equivalent App.
+Verified: core/app-JWT/provider unit tests (12) + the bleephub App e2e (CI). Gates
+green (lint/knip/jscpd/build/unit).
+
+**Prior phase (merged):** the **cost visualization** track (PR #71) —
 the last of "admins + costs + audit" (admins ✓, audit ✓ #70). An admin **Costs**
 console (`/admin/costs` + `/api/admin/costs`) prices each workspace's running vs.
 scaled-to-zero time and rolls it up per session, per user, and to a fleet total

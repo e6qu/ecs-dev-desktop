@@ -31,6 +31,9 @@ export const workspace = z.object({
   baseImage: z.string(),
   state: workspaceState,
   createdAt: z.iso.datetime(),
+  // The repo cloned into the session ("one repo per session"), when any. Lets
+  // the credential broker pick the right GitHub App installation by repo owner.
+  repoUrl: z.string().optional(),
 });
 export type WorkspaceDto = z.infer<typeof workspace>;
 
