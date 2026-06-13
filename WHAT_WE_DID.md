@@ -738,3 +738,17 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   the `EDD_SIM_SCHEME` env knob and a couple of harness file names
   (`packages/e2e/src/aws-sim.ts`, compose service names) still say "sim" — infra,
   not app/test logic.
+
+- **2026-06-13 — Sim-probe coverage + a §6.9 workaround removed** (on
+  `feat/sim-probe-coverage`). (1) `Ec2StorageProvider` dropped its client-side
+  `isManaged` re-filter — a target-specific workaround ("the sim ignores Filters")
+  that violated §6.8/§6.9; enumeration now relies solely on the server-side `tag:`
+  Filters, which real AWS honours and the sim honours too (verified in the sim
+  source: `ec2VolumeMatchesFilters`/`ec2SnapshotMatchesFilters` → `ec2TagFilterMatch`,
+  the #507 fix). (2) `observability-live.integ.ts` now exercises the real EBS
+  adapter (`createVolume`+`createSnapshot`, coordinate-only) and asserts the
+  CloudTrail-backed feed captures those actual `CreateVolume`/`CreateSnapshot` ops —
+  previously only a bare `CreateCluster` was asserted. If CI shows the sim doesn't
+  record a standard op, that's a coordinate-level divergence to file upstream
+  (e6qu/sockerless), not work around. Remaining Track C probes (ECS Exec real
+  session, EBS snapshot-chain edge cases) + Track A (live Pomerium→gate→ECS) remain.
