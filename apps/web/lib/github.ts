@@ -3,6 +3,9 @@ import { DEFAULT_GITHUB_API_URL } from "@edd/config";
 import { z } from "zod";
 
 import { GITHUB_API_URL_ENV } from "./constants";
+import type { Namespace, RepoSummary } from "./github-types";
+
+export type { Namespace, RepoSummary } from "./github-types";
 
 /**
  * Server-side GitHub repo operations for the session launcher: list the repos a
@@ -22,16 +25,6 @@ function ghHeaders(token: string): Record<string, string> {
     Accept: "application/vnd.github+json",
     "X-GitHub-Api-Version": "2022-11-28",
   };
-}
-
-export interface RepoSummary {
-  fullName: string;
-  owner: string;
-  name: string;
-  private: boolean;
-  defaultBranch: string;
-  cloneUrl: string;
-  htmlUrl: string;
 }
 
 const repoSchema = z.object({
@@ -71,15 +64,6 @@ export async function listRepos(
     .array(repoSchema)
     .parse(await res.json())
     .map(toRepoSummary);
-}
-
-/** A namespace a session can be created under (the user, or an org), with
- * whether the user may create a repo there and, if not, why (for the UI). */
-export interface Namespace {
-  login: string;
-  kind: "user" | "org";
-  canCreate: boolean;
-  reason?: string;
 }
 
 const NO_SCOPE_REASON = "the GitHub authorization is missing the 'repo' scope";

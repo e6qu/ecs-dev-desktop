@@ -59,7 +59,12 @@ export default async function WorkspacesPage({
 
       <div className="toolbar">
         {canCreate ? (
-          <CreateWorkspace images={options} />
+          <>
+            <Link className="btn primary" href="/sessions/new">
+              + new session
+            </Link>
+            <CreateWorkspace images={options} />
+          </>
         ) : (
           <span className="mono" style={{ color: "var(--dim)" }}>
             read-only access
