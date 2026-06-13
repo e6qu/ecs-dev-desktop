@@ -25,7 +25,17 @@
     "test:e2e": {
       "dependsOn": ["^build"],
       "cache": false,
-      "env": ["AWS_ENDPOINT_URL", "AWS_REGION", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]
+      "env": [
+        "AWS_ENDPOINT_URL",
+        "AWS_REGION",
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AUTH_GITHUB_API_URL",
+        "EDD_GITHUB_APP_ID",
+        "EDD_GITHUB_APP_KEY",
+        "EDD_GITHUB_TEST_ORG",
+        "EDD_GITHUB_TEST_REPO"
+      ]
     }
   }
 }

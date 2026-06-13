@@ -38,6 +38,12 @@ services:
       # Required since sockerless#501 / PR#506: bleephub log.Fatal on startup if unset.
       # Any non-PAT value; this is a test credential, not a real GitHub token.
       BLEEPHUB_ADMIN_TOKEN: edd-e2e-admin-token
+      # Bring bleephub up "with the GitHub App already registered" (sockerless #564):
+      # the seed file + key come from scripts/gen-sim-github-app.sh (run before
+      # bring-up). The App e2e then uses only coordinates — never a sim-internal API.
+      BLEEPHUB_SEED_APPS_FILE: /seed/seed.json
+    volumes:
+      - ./temp/github-app:/seed:ro
     ports:
       - "5555:5555"
     healthcheck:
