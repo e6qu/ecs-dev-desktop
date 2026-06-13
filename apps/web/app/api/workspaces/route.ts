@@ -68,6 +68,8 @@ export async function POST(req: Request) {
   const workspace = await cp.create({
     ownerId: ownerId(principal.id),
     ...(ownerEmail === undefined ? {} : { ownerEmail }),
+    ...(parsed.data.repoUrl === undefined ? {} : { repoUrl: parsed.data.repoUrl }),
+    ...(parsed.data.repoRef === undefined ? {} : { repoRef: parsed.data.repoRef }),
     baseImage: image,
   });
   return NextResponse.json(workspace, { status: 201 });

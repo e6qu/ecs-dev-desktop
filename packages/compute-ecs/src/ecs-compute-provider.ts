@@ -127,6 +127,7 @@ export function verifyAgentToken(secret: string, wsId: string, candidate: string
 export function workspaceEnvironment(
   config: EcsComputeConfig,
   workspaceId: string,
+  repo?: { url?: string; ref?: string },
 ): EnvironmentEntry[] {
   const env: EnvironmentEntry[] = [{ name: "EDD_WORKSPACE_ID", value: workspaceId }];
   if (config.controlPlaneUrl !== undefined)
@@ -140,6 +141,13 @@ export function workspaceEnvironment(
     env.push({ name: "EDD_SSH_CA_PUBLIC_KEY", value: config.sshCaPublicKey });
   if (config.heartbeatIntervalS !== undefined)
     env.push({ name: "EDD_HEARTBEAT_INTERVAL_S", value: String(config.heartbeatIntervalS) });
+  // Repo to clone at first boot ("one repo per session"). The git credential is
+  // fetched by the in-workspace agent over its authenticated channel, never
+  // injected here.
+  if (repo?.url !== undefined && repo.url.length > 0)
+    env.push({ name: "EDD_REPO_URL", value: repo.url });
+  if (repo?.ref !== undefined && repo.ref.length > 0)
+    env.push({ name: "EDD_REPO_REF", value: repo.ref });
   return env;
 }
 
@@ -246,7 +254,10 @@ export class EcsComputeProvider implements ComputeProvider {
   async runTask(input: RunTaskInput): Promise<ComputeTask> {
     const taskDef = await this.ensureTaskDef(input.baseImage);
 
-    const workspaceEnv = workspaceEnvironment(this.config, input.workspaceId);
+    const workspaceEnv = workspaceEnvironment(this.config, input.workspaceId, {
+      url: input.repoUrl,
+      ref: input.repoRef,
+    });
 
     const out = await this.client.send(
       new RunTaskCommand({

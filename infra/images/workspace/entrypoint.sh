@@ -36,6 +36,28 @@ ssh-keygen -A >/dev/null
 # Start idle-agent in the background.
 gosu workspace edd-idle-agent &
 
+# Clone the session repo on first boot ("one repo per session"). Idempotent: on
+# wake the snapshot already contains the clone, so skip when the dir exists. The
+# git credential for private repos is brokered by the idle-agent over its
+# authenticated channel (not injected here); public repos clone as-is. A clone
+# failure is non-fatal — the session still starts (the user can retry).
+if [ -n "${EDD_REPO_URL:-}" ]; then
+  _repo_name="$(basename "${EDD_REPO_URL%.git}")"
+  _repo_dest="/home/workspace/${_repo_name}"
+  if [ ! -e "${_repo_dest}" ]; then
+    echo "edd: cloning ${EDD_REPO_URL} into ${_repo_dest}" >&2
+    if [ -n "${EDD_REPO_REF:-}" ]; then
+      gosu workspace env HOME=/home/workspace GIT_TERMINAL_PROMPT=0 \
+        git clone --branch "${EDD_REPO_REF}" "${EDD_REPO_URL}" "${_repo_dest}" ||
+        echo "edd: repo clone failed (continuing)" >&2
+    else
+      gosu workspace env HOME=/home/workspace GIT_TERMINAL_PROMPT=0 \
+        git clone "${EDD_REPO_URL}" "${_repo_dest}" ||
+        echo "edd: repo clone failed (continuing)" >&2
+    fi
+  fi
+fi
+
 # CONNECTION_TOKEN comes from ECS secrets (Secrets Manager); default to a
 # random value if unset (acceptable in dev/CI where Pomerium isn't present).
 _token="${CONNECTION_TOKEN:-$(cat /proc/sys/kernel/random/uuid 2>/dev/null || od -An -N16 -tx1 /dev/urandom | tr -d ' \n')}"
