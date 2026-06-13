@@ -699,3 +699,25 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   (`LiveRefresh`, 15 s). Remaining (perf only, not accuracy): the report scans the
   whole ledger per request — a `byTime`-windowed query + rollups would flatten
   latency at large scale (`BUGS.md` → Open).
+
+- **2026-06-13 — GitHub App provider + the "Coordinates, not targets" principle**
+  (on `feat/github-app-provider`). Introduced a `GitProvider` seam: the existing
+  user-OAuth GitHub functions became `UserOAuthGitProvider`; added
+  `InstallationGitProvider` (RS256 app-JWT via `jose` → installation token → REST,
+  token cached to expiry). `getGitProvider` selects by config; the repos/namespaces
+  routes + the clone/push broker use it (broker scopes the installation token by
+  the repo's owner). The credential is wire-identical (`x-access-token`), so the
+  in-image helper is unchanged. **New HARD RULE §6.9 "Coordinates, not targets — the
+  simulators do not exist"** (`AGENTS.md`): to the app + tests there is no
+  sim-vs-real branch anywhere; only coordinates (endpoints, credentials, resource
+  ids) point at a target, reached through standard APIs only (never a sim's
+  `/internal`). The App e2e (`github-app.e2e.ts`) is purely coordinate-driven — it
+  reads the App id + key + org/repo + base URL from env and **skips** when absent;
+  it has no notion of bleephub. Lesson (the user drove this hard): my first cut
+  embedded bleephub's `/internal/apps` setup IN the test — that broke real-GitHub
+  targeting AND made the test sim-aware. The fix was NOT "move the `/internal` setup
+  to a harness" (still sim-internal) but to drop sim-internal use entirely: take
+  coordinates from env, skip without them, and **file the sim gap upstream** —
+  bleephub can't seed a pre-registered App with a caller-supplied key via standard
+  config (**sockerless#559**), so CI can't supply sim App coordinates yet; the e2e
+  runs against real GitHub when secrets are provided, unit tests cover the rest.

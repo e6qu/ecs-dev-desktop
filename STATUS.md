@@ -2,11 +2,32 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-13 (cost-visualization branch)
+**Last updated:** 2026-06-13 (github-app-provider branch)
 
 ## Current phase
 
-**In flight on `feat/cost-visualization`:** the **cost visualization** track —
+**In flight on `feat/github-app-provider`:** a **GitHub App** provider behind a new
+`GitProvider` seam, plus a new architectural principle. `apps/web/lib/github.ts`'s
+token-parametrized functions become `UserOAuthGitProvider` (default), joined by an
+`InstallationGitProvider` that signs an RS256 app JWT (`jose`) → mints an
+installation token (`ghs_…`) → installation-scoped REST. `getGitProvider(ownerId)`
+selects by config (`EDD_GITHUB_APP_ID` + `EDD_GITHUB_APP_KEY` → App mode, else the
+user's stored OAuth token); the repos/namespaces routes + the clone/push broker go
+through it (the broker picks the installation by the repo's owner). The git
+credential is wire-identical (`x-access-token` + bearer), so the broker + UI are
+provider-agnostic. **New HARD RULE §6.9 "Coordinates, not targets — the simulators
+do not exist":** to the app + tests there is no sim-vs-real branch anywhere; only
+**coordinates** (endpoints, credentials, resource ids) point at a target, and the
+same code/test hits a sockerless sim or the real cloud by changing coordinates
+alone, through standard APIs only (never a sim's `/internal`). The App e2e
+(`github-app.e2e.ts`) is **purely coordinate-driven**: it reads the App's id + key +
+org/repo + base URL from env and **skips** when absent — it has no notion of
+bleephub. bleephub can't yet seed a pre-registered App via standard config, so CI
+can't supply sim App coordinates; filed upstream as **sockerless#559** (the e2e runs
+against real GitHub when secrets are supplied; the provider + app-JWT logic is
+unit-tested meanwhile — 12 tests). Gates green (lint/knip/jscpd/build/unit).
+
+**Prior phase (merged):** the **cost visualization** track (PR #71) —
 the last of "admins + costs + audit" (admins ✓, audit ✓ #70). An admin **Costs**
 console (`/admin/costs` + `/api/admin/costs`) prices each workspace's running vs.
 scaled-to-zero time and rolls it up per session, per user, and to a fleet total

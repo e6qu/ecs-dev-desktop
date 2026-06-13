@@ -27,7 +27,7 @@ function ghHeaders(token: string): Record<string, string> {
   };
 }
 
-const repoSchema = z.object({
+export const repoSchema = z.object({
   full_name: z.string(),
   name: z.string(),
   owner: z.object({ login: z.string() }),
@@ -37,7 +37,7 @@ const repoSchema = z.object({
   html_url: z.string(),
 });
 
-function toRepoSummary(r: z.infer<typeof repoSchema>): RepoSummary {
+export function toRepoSummary(r: z.infer<typeof repoSchema>): RepoSummary {
   return {
     fullName: r.full_name,
     owner: r.owner.login,

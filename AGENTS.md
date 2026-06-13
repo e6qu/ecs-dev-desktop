@@ -174,3 +174,40 @@ behaviour against the sim differs from real cloud, that is a **simulator bug**:
 **file it upstream** (`e6qu/sockerless`) and reference it; do not work around it.
 Anything not expressible via standard cloud APIs (e.g. an EBS volume's file
 contents) is validated through the compute layer or the real-AWS tier.
+
+**6.9 Coordinates, not targets — the simulators do not exist (HARD RULE).** To the
+app **and its tests**, sockerless/bleephub/LocalStack **do not exist**: there is no
+notion of "sim vs. real" anywhere in app or test logic. The only thing that exists
+is **coordinates** — the externally-supplied facts that point at a concrete target:
+**endpoints/base URLs, credentials (keys, tokens, secrets), and resource
+identifiers (account/tenant/org/repo names, app/installation ids, ARNs)**. The same
+code and the same test hit a sockerless sim or the real cloud by **changing
+coordinates alone**.
+
+Non-negotiables:
+
+- **No branches, names, or special cases for a sim.** No `if (sim)`, no
+  `if (bleephub)`, no hardcoded sim hosts, no sim-only assertions, no helper or
+  symbol named after a sim in app/test logic. A test must not be able to tell, or
+  behave differently, by target.
+- **Standard APIs only.** Reach every target through the same standard
+  SDK/REST/web surface the real cloud exposes. **Never** use a sim's
+  private/internal/operator endpoint (e.g. bleephub `/internal/*`) from app or test
+  code — that is "the sim existing." If a target can only be set up through a
+  non-standard path, that is an **upstream gap**: file it on `e6qu/sockerless` and
+  **skip the test until coordinates can be supplied the standard way** — do not
+  reach into the sim.
+- **Coordinates in, from config/env.** Tests read coordinates from config/env
+  (e.g. `AUTH_GITHUB_API_URL` + `EDD_GITHUB_APP_ID`/`EDD_GITHUB_APP_KEY` + a test
+  org/repo; `AWS_ENDPOINT_URL`); supplying real-cloud coordinates targets the real
+  cloud with **zero changes**. When required coordinates are absent, **skip** — never
+  fall back to a sim shortcut.
+- **Out-of-band setup belongs to the deployment, not the code.** Anything the real
+  provider only creates out of band (a registered GitHub App, a hosted zone, an IdP
+  tenant) is provisioned by bringing the target up (CI/compose/operator), which then
+  hands the code the **same coordinate shape** the real cloud would — the app/test
+  just consumes coordinates.
+- **Interactive-only flows** with no non-interactive real equivalent (e.g. a
+  username-only web login) are the one carve-out: their bootstrap may be driven by
+  the harness, but the **assertions stay coordinate-driven** and the test still
+  never branches on target.

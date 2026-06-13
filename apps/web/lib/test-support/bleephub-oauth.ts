@@ -80,6 +80,30 @@ export async function bleephubExchangeCode(
   return tokenResponse.parse(await exchanged.json()).access_token;
 }
 
+/** OAuth client coordinates for the conformant web-login flow. */
+export interface BleephubOAuthApp {
+  client_id: string;
+  client_secret: string;
+  redirect_uri: string;
+  scope: string;
+}
+
+/** Run the full conformant OAuth web flow for `user` (session → consent →
+ * approve → code → token) and return the access token bound to that user.
+ * Mirrors what a browser does against real GitHub. */
+export async function bleephubOAuthLogin(user: string, app: BleephubOAuthApp): Promise<string> {
+  const cookie = await bleephubSession(user);
+  const query = new URLSearchParams({
+    client_id: app.client_id,
+    redirect_uri: app.redirect_uri,
+    scope: app.scope,
+  }).toString();
+  const location = await bleephubApprove(cookie, `${bleephub.url}/login/oauth/authorize?${query}`);
+  const code = new URL(location, bleephub.url).searchParams.get("code");
+  if (code === null) throw new Error(`approve redirect carried no code: ${location}`);
+  return bleephubExchangeCode(code, app.client_id, app.client_secret);
+}
+
 /** The authenticated user's login name. */
 async function bleephubLogin(token: string): Promise<string> {
   const auth = { ...JSON_HEADERS, Authorization: `Bearer ${token}` };

@@ -39,7 +39,16 @@ active breakage):
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-_(none currently known)_
+- **sockerless#559 — bleephub can't seed a pre-registered GitHub App via config.**
+  Per the coordinate-only rule (`AGENTS.md` §6.9), the GitHub-App e2e treats bleephub
+  exactly like real GitHub: it takes the App's coordinates (base URL + app id +
+  private key + org/repo) from env and never touches a sim-internal endpoint. But
+  bleephub only mints an App via the operator `/internal/apps` (key generated
+  internally) or the interactive manifest flow — there is no standard, config-seeded
+  App with a caller-supplied key. So CI cannot supply sim App coordinates the
+  standard way, and `apps/web/lib/github-app.e2e.ts` **skips** until #559 lands (it
+  runs today against real GitHub when secrets are provided). The `InstallationGitProvider`
+  - app-JWT/token logic is unit-tested meanwhile.
 
 Latest full simulator pass (2026-06-12, submodule `9d43f3d` / PR #550) found no
 sockerless fidelity bugs across all live surfaces (real-CP wake chain, live

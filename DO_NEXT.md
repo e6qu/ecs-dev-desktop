@@ -40,9 +40,19 @@ PDP, ownership by owner email; see `BUGS.md` Resolved + `docs/simulator-live-cov
   prices the lifecycle audit ledger (compute + live-volume + snapshot) per session
   / user / fleet; lifecycle audit centralized in `WorkspaceService` so the ledger
   is complete. Follow-up (time-windowing / rollups) tracked in `BUGS.md` → Open.
+- **GitHub App provider — built** (`feat/github-app-provider`): `GitProvider` seam
+  (user-OAuth + GitHub-App installation-token impls), selectable by config; the
+  repos/namespaces routes + clone/push broker go through it. New HARD RULE §6.9
+  "Coordinates, not targets" (`AGENTS.md`): the App e2e targets the sim or real
+  GitHub by coordinates alone. To run against real GitHub: register a GitHub App,
+  install it on a test org with a repo, and set `EDD_GITHUB_APP_ID` /
+  `EDD_GITHUB_APP_KEY` / `EDD_GITHUB_TEST_ORG` / `EDD_GITHUB_TEST_REPO` /
+  `AUTH_GITHUB_API_URL`.
 - **Remaining product tracks:** increment-2 deployment wiring (Pomerium
-  wildcard→gate route + full browser→Pomerium→gate→ECS live e2e) and the optional
-  GitHub-App swap behind `GitProvider`. Both heavier / partly AWS-gated.
+  wildcard→gate route + full browser→Pomerium→gate→ECS live e2e, harness chosen:
+  full app in compose + DYNAMIC gate) and a sim-probe/coverage pass (CloudTrail for
+  our EBS/ECS ops, ECS Exec real session, EBS snapshot edge cases) filing any
+  verified divergences upstream to `e6qu/sockerless` (bleephub gaps included).
 - Covered (see `docs/simulator-live-coverage.md`): the real VS Code workspace
   (OpenVSCode browser proof + polyglot toolchain compiles + OpenVSCode :3000 inside
   the sim ECS task), browser Pomerium OIDC login, portal browser lifecycle on real
