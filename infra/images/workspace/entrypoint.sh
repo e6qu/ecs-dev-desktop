@@ -40,10 +40,14 @@ gosu workspace edd-idle-agent &
 # random value if unset (acceptable in dev/CI where Pomerium isn't present).
 _token="${CONNECTION_TOKEN:-$(cat /proc/sys/kernel/random/uuid 2>/dev/null || od -An -N16 -tx1 /dev/urandom | tr -d ' \n')}"
 
+# --disable-workspace-trust: a per-user workspace contains the user's own files,
+# so the Workspace Trust prompt is pure friction (and a modal that blocks the UI
+# until dismissed); hosted dev environments disable it.
 exec gosu workspace openvscode-server \
   --host 0.0.0.0 \
   --port 3000 \
   --connection-token "${_token}" \
+  --disable-workspace-trust \
   --extensions-dir /home/workspace/.openvscode-server/extensions \
   --user-data-dir /home/workspace/.openvscode-server/data \
   --default-folder /home/workspace

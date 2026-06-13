@@ -620,3 +620,25 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   faithful realization is downstream JWT verification at a gate. Proven by core
   unit tests, the gate component test (HTTP + WS), the PDP integration test, and
   an e2e against a REAL Pomerium assertion + real JWKS. No sockerless bugs.
+
+- **2026-06-13 — Polyglot golden image + real VS Code proof + ECS hardening.**
+  Deep-audited the ECS compute service and proved the headline product works.
+  ECS gaps fixed: the task definition now declares `portMappings` (OpenVSCode
+  :3000 + sshd :22), supports `executionRoleArn`/`taskRoleArn` (required on real
+  Fargate for private-ECR pull + awslogs), and `fromEnv` reads task sizing +
+  roles (cpu/memory/volume were hardcoded to defaults in production); plus
+  `awslogs-region` via `DEFAULT_AWS_REGION` and a `stopTask` reason. Remaining
+  follow-ups (readiness gating, ECS `secrets` for `EDD_AGENT_TOKEN`/
+  `CONNECTION_TOKEN`, real `health()`) recorded in `BUGS.md`. The golden image
+  became a polyglot dev workspace out of the box — Node 22 (npm/yarn/pnpm/bun),
+  C/C++, Go, Java+Maven+Gradle, Rust, Python+uv, Playwright+headless-Chromium —
+  proven by a toolchain smoke test that compiles+runs each language. A Playwright
+  test (`test:pw:vscode`) drives the REAL OpenVSCode workbench in a browser:
+  loads it, types code in the integrated terminal, compiles, and verifies the
+  ELF artifact on disk (with screenshots). Lessons: (1) corepack shims defer
+  yarn/pnpm downloads to first use (break no-egress workspaces) and cache
+  per-user — install real global binaries instead; (2) pnpm latest needs Node 22
+  (`node:sqlite`); (3) login shells reset PATH via /etc/profile, so toolchain
+  PATH needs an /etc/profile.d entry, not just ENV; (4) keep the image lean
+  (headless-shell, not full Chromium) and prune the podman VM aggressively — the
+  build OOM'd on a full disk from ~800 stale sim images. Image ~3 GB.

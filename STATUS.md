@@ -13,8 +13,33 @@ delete-vs-wake leak fix, exhaustive CASL matrices, snapshot-vs-stop conflict fix
 — and data durability across a real scale-to-zero cycle + the reconciler
 container drift sweep).
 
-Current branch `feat/proxy-per-workspace-authz` closes the last open
-`DO_NEXT`/`BUGS` item — **per-workspace proxy authorization** (decision #5):
+**PR #68 is merged** (per-workspace proxy authorization — the gate PEP +
+`/api/internal/authz` PDP, ownership by owner email).
+
+Current branch `feat/vscode-workspace-proof` proves the headline product — a
+usable VS Code workspace — and hardens the ECS service:
+
+- **Polyglot golden image, out of the box.** `infra/images/workspace` now ships
+  Node 22 (npm/yarn/pnpm/bun), C/C++ (build-essential), Go, Java + Maven +
+  Gradle, Rust, Python + uv, and Playwright + headless Chromium. Tools install
+  system-wide with a `/etc/profile.d` entry so they're on PATH for the OpenVSCode
+  terminal and SSH. ~3 GB image (headless-shell, not full Chromium, to stay
+  lean). `packages/e2e/src/workspace-toolchain.e2e.ts` compiles+runs a
+  hello-world in every language (real artifacts) as the `workspace` user.
+- **Real VS Code, driven in a browser.** `apps/web/e2e/vscode-workspace.pwvscode.ts`
+  (`test:pw:vscode`) loads the OpenVSCode workbench, opens the integrated
+  terminal, types code, compiles it, and verifies the produced ELF binary on
+  disk — with screenshots. The headline promise, proven end to end.
+- **OpenVSCode :3000 inside the sim ECS task.** `golden-workspace-ssh.e2e.ts`
+  now also asserts the awsvpc task serves OpenVSCode on :3000 (its token gate),
+  not just sshd.
+- **ECS compute hardening** (gap audit): task def declares `portMappings`
+  (3000 + 22); `executionRoleArn`/`taskRoleArn` supported; `fromEnv` reads task
+  sizing + roles (were hardcoded in production); `awslogs-region` via config;
+  `stopTask` sends a reason. Remaining follow-ups in `BUGS.md` → Open (readiness
+  gating, ECS secrets, real `health()`).
+
+Earlier on this line:
 
 - **The gap:** the Pomerium wildcard route was `allow_any_authenticated_user`, so
   the proxy enforced no per-workspace ownership.

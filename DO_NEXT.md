@@ -28,13 +28,19 @@ PDP, ownership by owner email; see `BUGS.md` Resolved + `docs/simulator-live-cov
 
 ## Available now (decision-free — immediate)
 
-- **Live-coverage candidates are exhausted** except the optional ECS Exec
-  workspace probe (only if the product adopts ECS Exec for diagnostics) —
-  `docs/simulator-live-coverage.md`. Browser Pomerium OIDC login
-  (`test:pw:pomerium`, real TLS), portal browser lifecycle on real ECS compute
-  (`test:pw:live`), the live user journey, Auth.js callback routes (incl.
-  Entra `login_hint` group→role after sockerless #549), the real-CP wake
-  chain, idle-agent heartbeat, and reconciler scale-to-zero are all covered.
+- **ECS compute hardening follow-ups** (from the 2026-06-13 gap audit, tracked in
+  `BUGS.md` → Open): readiness gating in `runTask` (task-def healthCheck / port
+  wait); move `EDD_AGENT_TOKEN` to ECS `secrets` + have the provider inject
+  `CONNECTION_TOKEN` (ties into the proxy-authz token handoff); implement real
+  `EcsComputeProvider.health()`. None blocked; all decision-free.
+- **Optional:** ECS Exec workspace probe through the provider (the capability is
+  sim-proven via a standalone task, but production `runTask` doesn't set
+  `enableExecuteCommand`).
+- Covered (see `docs/simulator-live-coverage.md`): the real VS Code workspace
+  (OpenVSCode browser proof + polyglot toolchain compiles + OpenVSCode :3000 inside
+  the sim ECS task), browser Pomerium OIDC login, portal browser lifecycle on real
+  ECS compute, the live user journey, Auth.js callback routes, the real-CP wake
+  chain, idle-agent heartbeat, reconciler scale-to-zero, per-workspace proxy authz.
 
 ---
 
