@@ -12,7 +12,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@edd/config": "workspace:*"
+    "@edd/config": "workspace:*",
+    "@edd/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.9.3",

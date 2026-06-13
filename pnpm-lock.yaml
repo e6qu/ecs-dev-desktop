@@ -364,6 +364,9 @@ importers:
       '@edd/config':
         specifier: workspace:*
         version: link:../../packages/config
+      '@edd/core':
+        specifier: workspace:*
+        version: link:../../packages/core
     devDependencies:
       '@types/node':
         specifier: ^25.9.3

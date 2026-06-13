@@ -29,8 +29,15 @@ import { POMERIUM_ASSERTION_HEADER, WORKSPACE_HOST_HEADER } from "@edd/config";
 export interface GateOptions {
   /** PDP endpoint (the control-plane `/api/internal/authz` URL). */
   readonly pdpUrl: string;
-  /** Workspace HTTP/WS upstream (e.g. OpenVSCode Server) to forward allowed traffic to. */
-  readonly upstreamUrl: string;
+  /** Static workspace HTTP/WS upstream. Used when `resolveUpstream` is absent
+   * (single fixed workspace / tests). */
+  readonly upstreamUrl?: string;
+  /** Per-request dynamic upstream resolver, given the request Host. The
+   * production path uses this to wake the workspace and resolve its live ENI
+   * address via the control-plane connect-info — so one gate fronts every
+   * workspace (Pomerium's static upstream) and routes each by subdomain. Throws
+   * to fail closed (the gate returns 502). Takes precedence over `upstreamUrl`. */
+  readonly resolveUpstream?: (host: string) => Promise<string>;
   /** Injectable fetch (tests); defaults to the global fetch. */
   readonly fetchImpl?: typeof fetch;
 }
@@ -142,13 +149,21 @@ function proxyUpgrade(
   proxyReq.end();
 }
 
+/** Resolve the upstream for a request Host: the dynamic resolver (wake + live
+ * ENI via connect-info) when configured, else the static upstream. Throws if
+ * neither is configured or resolution fails (caller fails closed → 502). */
+async function resolveUpstream(opts: GateOptions, host: string | undefined): Promise<URL> {
+  if (opts.resolveUpstream !== undefined) return new URL(await opts.resolveUpstream(host ?? ""));
+  if (opts.upstreamUrl !== undefined) return new URL(opts.upstreamUrl);
+  throw new Error("workspace-gate: no upstream configured (set upstreamUrl or resolveUpstream)");
+}
+
 /**
  * Build the gate HTTP server. Call `.listen(port)` to start it. Each request
- * (and WebSocket upgrade) is authorized via the PDP before any upstream forward.
+ * (and WebSocket upgrade) is authorized via the PDP, then forwarded to the
+ * workspace upstream (resolved/woken per request when `resolveUpstream` is set).
  */
 export function createGate(opts: GateOptions): Server {
-  const upstream = new URL(opts.upstreamUrl);
-
   const server = createServer((req, res) => {
     void (async () => {
       const status = await authorize(
@@ -156,8 +171,18 @@ export function createGate(opts: GateOptions): Server {
         req.headers.host,
         headerValue(req, POMERIUM_ASSERTION_HEADER),
       );
-      if (isAllowed(status)) proxyHttp(upstream, req, res);
-      else refuse(res, denyStatus(status));
+      if (!isAllowed(status)) {
+        refuse(res, denyStatus(status));
+        return;
+      }
+      let upstream: URL;
+      try {
+        upstream = await resolveUpstream(opts, req.headers.host);
+      } catch {
+        refuse(res, 502);
+        return;
+      }
+      proxyHttp(upstream, req, res);
     })();
   });
 
@@ -168,14 +193,22 @@ export function createGate(opts: GateOptions): Server {
         req.headers.host,
         headerValue(req, POMERIUM_ASSERTION_HEADER),
       );
-      if (isAllowed(status)) {
-        proxyUpgrade(upstream, req, socket, head);
-      } else {
+      if (!isAllowed(status)) {
         socket.write(
           `HTTP/1.1 ${String(denyStatus(status))} Forbidden\r\nconnection: close\r\n\r\n`,
         );
         socket.destroy();
+        return;
       }
+      let upstream: URL;
+      try {
+        upstream = await resolveUpstream(opts, req.headers.host);
+      } catch {
+        socket.write("HTTP/1.1 502 Bad Gateway\r\nconnection: close\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+      proxyUpgrade(upstream, req, socket, head);
     })();
   });
 

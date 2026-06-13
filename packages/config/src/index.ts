@@ -123,16 +123,22 @@ export const POMERIUM_JWKS_URL_ENV = "EDD_POMERIUM_JWKS_URL";
 
 /**
  * Workspace authorization gate (PEP) wiring. `port` is where the thin gate
- * listens for proxied workspace traffic; `pdpUrl` is the control-plane decision
- * endpoint it consults; `upstreamUrl` is the workspace HTTP target it forwards
- * allowed requests to. All overridable via env so the same code runs in the
- * harness and real cloud.
+ * listens; `pdpUrl` is the control-plane decision endpoint it consults;
+ * `upstreamUrl` is a STATIC workspace target (single-workspace/tests);
+ * `controlPlaneUrl` is the control-plane base the gate calls to wake + resolve a
+ * workspace's live address (dynamic per-workspace routing). All overridable via
+ * env so the same code runs in the harness and real cloud.
  */
 export const workspaceGate = {
   port: WORKSPACE_GATE_PORT,
   pdpUrl: process.env.EDD_WORKSPACE_PDP_URL ?? `http://127.0.0.1:3000${WORKSPACE_AUTHZ_PATH}`,
   upstreamUrl: process.env.EDD_WORKSPACE_UPSTREAM_URL,
+  controlPlaneUrl: process.env.EDD_CONTROL_PLANE_URL,
 } as const;
+
+/** Env var holding the gate's machine-auth secret (hex) — used to derive the
+ * per-workspace HMAC token for the control-plane wake/connect-info calls. */
+export const GATEWAY_SECRET_ENV = "EDD_GATEWAY_SECRET";
 
 /**
  * Default per-role cap on the number of workspaces a user may own (`null` =
