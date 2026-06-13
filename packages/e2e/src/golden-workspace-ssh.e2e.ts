@@ -26,7 +26,7 @@ import {
   type Task,
 } from "@aws-sdk/client-ecs";
 import { EcsComputeProvider } from "@edd/compute-ecs";
-import { DEFAULT_AWS_REGION } from "@edd/config";
+import { DEFAULT_AWS_REGION, DEFAULT_WORKSPACE_PORT as WORKSPACE_PORT } from "@edd/config";
 import { baseImage, workspaceId, workspacePrincipal } from "@edd/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -167,7 +167,14 @@ describe(
         'printf "%s\\n" "$SSH_CERT" > /tmp/id-cert.pub',
         "chmod 600 /tmp/id /tmp/id-cert.pub",
         `for i in $(seq 1 ${SSH_ATTEMPTS}); do`,
-        `  ssh -i /tmp/id -o CertificateFile=/tmp/id-cert.pub -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=3 workspace@${host} whoami > /tmp/out 2>&1 && grep -q '^workspace$' /tmp/out && exit 0`,
+        `  if ssh -i /tmp/id -o CertificateFile=/tmp/id-cert.pub -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=3 workspace@${host} whoami > /tmp/out 2>&1 && grep -q '^workspace$' /tmp/out; then`,
+        // The same awsvpc task also serves OpenVSCode on :3000; without a
+        // connection token it answers 403 (its token gate) — proof the editor
+        // HTTP service is up inside the sim ECS task, not just sshd.
+        `    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://${host}:${String(WORKSPACE_PORT)}/ || echo 000)`,
+        `    echo "openvscode :${String(WORKSPACE_PORT)} gate => $code" >&2`,
+        `    [ "$code" = "403" ] && exit 0`,
+        "  fi",
         "  sleep 2",
         "done",
         "cat /tmp/out >&2",
@@ -211,7 +218,7 @@ describe(
       return (out.events ?? []).map((event) => event.message ?? "").join("\n");
     }
 
-    it("launches the managed-EBS golden image and accepts CA-signed SSH", async () => {
+    it("launches the managed-EBS golden image, accepts CA-signed SSH, and serves OpenVSCode on :3000", async () => {
       const { taskArn: workspaceTaskArn, sshHost } = await runWorkspaceTask();
       try {
         await waitForTask(ecs, workspaceTaskArn, "RUNNING");

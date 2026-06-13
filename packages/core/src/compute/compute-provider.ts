@@ -23,6 +23,11 @@ export interface RunTaskInput {
   baseImage: BaseImage;
   /** Hydrate the managed volume from this snapshot (wake); omit for a fresh volume. */
   fromSnapshot?: SnapshotId;
+  /** Git repo to clone into the session at first boot (fresh volume only); the
+   * git credential is fetched by the in-workspace agent, not passed here. */
+  repoUrl?: string;
+  /** Branch/tag/SHA to check out (with `repoUrl`). */
+  repoRef?: string;
 }
 
 /** Coarse liveness of a task as the compute platform sees it. A task that is

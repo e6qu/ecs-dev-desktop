@@ -20,7 +20,9 @@ export { dropTable, ensureTable, tableDefinition } from "./table";
 export { waitForDynamo } from "./wait";
 export {
   makeBaseImageEntity,
+  makeGitCredentialEntity,
   makeWorkspaceEntity,
   type BaseImageEntity,
+  type GitCredentialEntity,
   type WorkspaceEntity,
 } from "./entities";

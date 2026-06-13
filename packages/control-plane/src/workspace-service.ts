@@ -64,6 +64,7 @@ interface WorkspaceRecord {
   id: string;
   ownerId: string;
   ownerEmail?: string;
+  repoUrl?: string;
   baseImage: string;
   state: WorkspaceState;
   createdAt: string;
@@ -113,6 +114,7 @@ function toWorkspace(r: WorkspaceRecord): Workspace {
     id: workspaceId(r.id),
     ownerId: ownerId(r.ownerId),
     ownerEmail: r.ownerEmail === undefined ? undefined : email(r.ownerEmail),
+    repoUrl: r.repoUrl,
     baseImage: baseImage(r.baseImage),
     state: r.state,
     createdAt: isoTimestamp(r.createdAt),
@@ -138,15 +140,24 @@ export class WorkspaceService {
     ownerId: OwnerId;
     ownerEmail?: Email;
     baseImage: BaseImage;
+    repoUrl?: string;
+    repoRef?: string;
   }): Promise<WorkspaceDto> {
     const id = newWorkspaceId();
     const at = isoTimestamp(this.deps.clock.now());
-    // ECS creates the managed EBS volume at task launch and returns its id.
-    const task = await this.deps.compute.runTask({ workspaceId: id, baseImage: input.baseImage });
+    // ECS creates the managed EBS volume at task launch and returns its id. The
+    // repo (if any) is cloned into the session at first boot.
+    const task = await this.deps.compute.runTask({
+      workspaceId: id,
+      baseImage: input.baseImage,
+      ...(input.repoUrl === undefined ? {} : { repoUrl: input.repoUrl }),
+      ...(input.repoRef === undefined ? {} : { repoRef: input.repoRef }),
+    });
     const ws = provision({
       id,
       ownerId: input.ownerId,
       ownerEmail: input.ownerEmail,
+      repoUrl: input.repoUrl,
       baseImage: input.baseImage,
       volumeId: task.volumeId,
       taskId: task.id,

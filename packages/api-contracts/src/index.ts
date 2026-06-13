@@ -36,6 +36,11 @@ export type WorkspaceDto = z.infer<typeof workspace>;
 
 export const createWorkspaceRequest = z.object({
   baseImage: z.string().min(1),
+  /** Optional git repo to clone into the session at first boot ("one repo per
+   * session"). HTTPS URL; private repos use the owner's git credential. */
+  repoUrl: z.url().startsWith("https://").optional(),
+  /** Optional branch/tag/SHA to check out (defaults to the repo's default). */
+  repoRef: z.string().min(1).max(255).optional(),
 });
 export type CreateWorkspaceRequest = z.infer<typeof createWorkspaceRequest>;
 
@@ -52,6 +57,8 @@ export const workspaceDetail = z.object({
   /** Owner's email — the identity the proxy matches a caller against for
    * per-workspace access. Absent on records created without a session email. */
   ownerEmail: z.string().optional(),
+  /** Git repo cloned into the session, if any ("one repo per session"). */
+  repoUrl: z.string().optional(),
   baseImage: z.string(),
   state: workspaceState,
   createdAt: z.iso.datetime(),

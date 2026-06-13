@@ -15,6 +15,7 @@ import {
   DEFAULT_WORKSPACE_CPU,
   DEFAULT_WORKSPACE_MEMORY,
   DEFAULT_WORKSPACE_MOUNT_PATH,
+  DEFAULT_WORKSPACE_PORT,
   DEFAULT_WORKSPACE_VOLUME_GIB,
 } from "@edd/config";
 import {
@@ -35,6 +36,9 @@ interface EnvironmentEntry {
 
 /** Task-definition volume name; mounted at the configured path in the container. */
 const WORKSPACE_VOLUME = "workspace";
+/** SSH port the workspace sshd listens on (declared in the task def alongside
+ * the OpenVSCode HTTP port {@link DEFAULT_WORKSPACE_PORT}). */
+const WORKSPACE_SSH_PORT = 22;
 /** Max attempts (×2s) to observe the managed EBS volume id on the new task. */
 const VOLUME_ATTEMPTS = 30;
 
@@ -47,6 +51,11 @@ export interface EcsComputeConfig {
   securityGroups?: string[];
   /** IAM role ECS uses to manage the task's EBS volume (the EBS infrastructure role). */
   ebsRoleArn: string;
+  /** Task execution role — required on real Fargate to pull a private-ECR image
+   * and ship `awslogs`. Optional against the sim (it doesn't enforce IAM). */
+  executionRoleArn?: string;
+  /** Task role — the IAM identity the workspace container assumes at runtime. */
+  taskRoleArn?: string;
   /** Whether the task gets a public IP (to pull images from a public subnet). */
   assignPublicIp?: boolean;
   containerName?: string;
@@ -87,6 +96,16 @@ function required<T>(value: T | undefined | null, field: string): T {
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
+/** Parse an env var as a positive integer, or undefined if unset/empty. Throws
+ * loudly on a non-positive/non-numeric value rather than silently defaulting. */
+function positiveIntEnv(name: string): number | undefined {
+  const raw = process.env[name];
+  if (raw === undefined || raw.length === 0) return undefined;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) throw new Error(`${name} must be a positive number: ${raw}`);
+  return n;
+}
+
 /** A valid ECS task-definition family derived from a base-image reference
  * (ECS families allow letters, numbers, hyphens, underscores). */
 export function taskDefinitionFamily(image: BaseImage): string {
@@ -108,6 +127,7 @@ export function verifyAgentToken(secret: string, wsId: string, candidate: string
 export function workspaceEnvironment(
   config: EcsComputeConfig,
   workspaceId: string,
+  repo?: { url?: string; ref?: string },
 ): EnvironmentEntry[] {
   const env: EnvironmentEntry[] = [{ name: "EDD_WORKSPACE_ID", value: workspaceId }];
   if (config.controlPlaneUrl !== undefined)
@@ -121,6 +141,13 @@ export function workspaceEnvironment(
     env.push({ name: "EDD_SSH_CA_PUBLIC_KEY", value: config.sshCaPublicKey });
   if (config.heartbeatIntervalS !== undefined)
     env.push({ name: "EDD_HEARTBEAT_INTERVAL_S", value: String(config.heartbeatIntervalS) });
+  // Repo to clone at first boot ("one repo per session"). The git credential is
+  // fetched by the in-workspace agent over its authenticated channel, never
+  // injected here.
+  if (repo?.url !== undefined && repo.url.length > 0)
+    env.push({ name: "EDD_REPO_URL", value: repo.url });
+  if (repo?.ref !== undefined && repo.ref.length > 0)
+    env.push({ name: "EDD_REPO_REF", value: repo.ref });
   return env;
 }
 
@@ -178,11 +205,24 @@ export class EcsComputeProvider implements ComputeProvider {
         networkMode: "awsvpc",
         cpu: this.config.cpu ?? DEFAULT_WORKSPACE_CPU,
         memory: this.config.memory ?? DEFAULT_WORKSPACE_MEMORY,
+        // On real Fargate the execution role is required to pull a private-ECR
+        // image and ship awslogs; the task role is the container's runtime
+        // identity. Both optional against the sim (no IAM enforcement).
+        ...(this.config.executionRoleArn !== undefined
+          ? { executionRoleArn: this.config.executionRoleArn }
+          : {}),
+        ...(this.config.taskRoleArn !== undefined ? { taskRoleArn: this.config.taskRoleArn } : {}),
         containerDefinitions: [
           {
             name: this.config.containerName ?? DEFAULT_WORKSPACE_CONTAINER,
             image,
             essential: true,
+            // Declare the OpenVSCode HTTP port and sshd port (awsvpc shares the
+            // task ENI, so this documents the contract the proxy/gateway use).
+            portMappings: [
+              { containerPort: DEFAULT_WORKSPACE_PORT, protocol: "tcp" },
+              { containerPort: WORKSPACE_SSH_PORT, protocol: "tcp" },
+            ],
             mountPoints: [
               {
                 sourceVolume: WORKSPACE_VOLUME,
@@ -195,7 +235,7 @@ export class EcsComputeProvider implements ComputeProvider {
                     logDriver: "awslogs",
                     options: {
                       "awslogs-group": this.config.logGroupName,
-                      "awslogs-region": process.env.AWS_REGION ?? "us-east-1",
+                      "awslogs-region": process.env.AWS_REGION ?? DEFAULT_AWS_REGION,
                       "awslogs-stream-prefix": "workspace",
                     },
                   },
@@ -214,7 +254,10 @@ export class EcsComputeProvider implements ComputeProvider {
   async runTask(input: RunTaskInput): Promise<ComputeTask> {
     const taskDef = await this.ensureTaskDef(input.baseImage);
 
-    const workspaceEnv = workspaceEnvironment(this.config, input.workspaceId);
+    const workspaceEnv = workspaceEnvironment(this.config, input.workspaceId, {
+      url: input.repoUrl,
+      ref: input.repoRef,
+    });
 
     const out = await this.client.send(
       new RunTaskCommand({
@@ -275,7 +318,13 @@ export class EcsComputeProvider implements ComputeProvider {
   }
 
   async stopTask(id: TaskId): Promise<void> {
-    await this.client.send(new StopTaskCommand({ cluster: this.cluster(), task: id }));
+    await this.client.send(
+      new StopTaskCommand({
+        cluster: this.cluster(),
+        task: id,
+        reason: "edd: workspace lifecycle stop (scale-to-zero/delete)",
+      }),
+    );
   }
 
   /** Observed liveness via DescribeTasks. A missing/expired task (ECS prunes
@@ -307,7 +356,8 @@ export class EcsComputeProvider implements ComputeProvider {
   /**
    * Build a provider from the ambient AWS env and control-plane env vars.
    * Reads: AWS_REGION, AWS_ENDPOINT_URL, ECS_CLUSTER, ECS_SUBNETS (comma-separated),
-   * ECS_SECURITY_GROUPS (comma-separated), ECS_EBS_ROLE_ARN, CONTROL_PLANE_URL,
+   * ECS_SECURITY_GROUPS (comma-separated), ECS_EBS_ROLE_ARN, ECS_EXECUTION_ROLE_ARN,
+   * ECS_TASK_ROLE_ARN, ECS_TASK_CPU, ECS_TASK_MEMORY, ECS_VOLUME_GIB, CONTROL_PLANE_URL,
    * EDD_AGENT_SECRET, EDD_SSH_CA_PUBLIC_KEY. Throws loudly if required vars are absent.
    */
   static fromEnv(agentSecret?: string): EcsComputeProvider {
@@ -316,14 +366,8 @@ export class EcsComputeProvider implements ComputeProvider {
     const ebsRoleArn = process.env.ECS_EBS_ROLE_ARN;
     if (subnets.length === 0) throw new Error("COMPUTE_PROVIDER=ecs requires ECS_SUBNETS");
     if (!ebsRoleArn) throw new Error("COMPUTE_PROVIDER=ecs requires ECS_EBS_ROLE_ARN");
-    const heartbeatRaw = process.env.EDD_HEARTBEAT_INTERVAL_S;
-    let heartbeatIntervalS: number | undefined;
-    if (heartbeatRaw !== undefined && heartbeatRaw.length > 0) {
-      heartbeatIntervalS = Number(heartbeatRaw);
-      if (!Number.isFinite(heartbeatIntervalS) || heartbeatIntervalS <= 0) {
-        throw new Error(`EDD_HEARTBEAT_INTERVAL_S must be a positive number: ${heartbeatRaw}`);
-      }
-    }
+    const heartbeatIntervalS = positiveIntEnv("EDD_HEARTBEAT_INTERVAL_S");
+    const volumeSizeGiB = positiveIntEnv("ECS_VOLUME_GIB");
     return new EcsComputeProvider({
       client: EcsComputeProvider.client(),
       config: {
@@ -331,13 +375,21 @@ export class EcsComputeProvider implements ComputeProvider {
         subnets,
         securityGroups,
         ebsRoleArn,
+        executionRoleArn: process.env.ECS_EXECUTION_ROLE_ARN,
+        taskRoleArn: process.env.ECS_TASK_ROLE_ARN,
+        // Task sizing — optional overrides of the @edd/config defaults.
+        ...(process.env.ECS_TASK_CPU !== undefined ? { cpu: process.env.ECS_TASK_CPU } : {}),
+        ...(process.env.ECS_TASK_MEMORY !== undefined
+          ? { memory: process.env.ECS_TASK_MEMORY }
+          : {}),
+        ...(volumeSizeGiB !== undefined ? { volumeSizeGiB } : {}),
         // Public-subnet egress (image pulls; sim route-table model needs it too).
         assignPublicIp: process.env.ECS_ASSIGN_PUBLIC_IP === "1",
         controlPlaneUrl: process.env.CONTROL_PLANE_URL,
         agentSecret,
         sshCaPublicKey: process.env.EDD_SSH_CA_PUBLIC_KEY,
         logGroupName: process.env.ECS_LOG_GROUP_WORKSPACES,
-        heartbeatIntervalS,
+        ...(heartbeatIntervalS !== undefined ? { heartbeatIntervalS } : {}),
       },
     });
   }

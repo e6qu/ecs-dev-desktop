@@ -40,3 +40,7 @@ infra/terraform/examples/**/.terraform.lock.hcl
 
 # Local scratch (screenshots, manual artifacts) — never committed
 temp/
+
+# VS Code workspace proof outputs (screenshots + Playwright traces)
+apps/web/e2e/vscode-shots/
+apps/web/playwright-vscode-output/

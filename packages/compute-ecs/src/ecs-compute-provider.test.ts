@@ -102,4 +102,28 @@ describe("workspaceEnvironment", () => {
     );
     expect(env.map((e) => e.name)).not.toContain("EDD_HEARTBEAT_INTERVAL_S");
   });
+
+  it("injects the repo URL + ref for a repo-bound session, and the git token never appears", () => {
+    const env = workspaceEnvironment(
+      { subnets: ["subnet-1"], ebsRoleArn: "arn:aws:iam::123456789012:role/x" },
+      "ws-4",
+      { url: "https://github.com/acme/widgets.git", ref: "main" },
+    );
+    expect(env).toContainEqual({
+      name: "EDD_REPO_URL",
+      value: "https://github.com/acme/widgets.git",
+    });
+    expect(env).toContainEqual({ name: "EDD_REPO_REF", value: "main" });
+    // The clone credential is brokered at boot, never placed in task metadata.
+    expect(env.map((e) => e.name)).not.toContain("EDD_GIT_TOKEN");
+  });
+
+  it("omits repo vars for a blank/scratch session", () => {
+    const env = workspaceEnvironment(
+      { subnets: ["subnet-1"], ebsRoleArn: "arn:aws:iam::123456789012:role/x" },
+      "ws-5",
+    );
+    expect(env.map((e) => e.name)).not.toContain("EDD_REPO_URL");
+    expect(env.map((e) => e.name)).not.toContain("EDD_REPO_REF");
+  });
 });

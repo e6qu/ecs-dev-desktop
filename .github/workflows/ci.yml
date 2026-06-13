@@ -169,6 +169,10 @@ jobs:
       # Browser OIDC login through Pomerium (real TLS; SPKI-pinned trust).
       - name: Browser OIDC login through Pomerium
         run: pnpm --filter web test:pw:pomerium
+      # Real VS Code in the golden image: load the workbench, compile from the
+      # integrated terminal, verify the build artifact (uses edd-workspace:e2e).
+      - name: VS Code workspace browser proof
+        run: pnpm --filter web test:pw:vscode
       - if: always()
         name: Dump Pomerium logs on failure
         run: docker logs ecs-dev-desktop-pomerium-1 2>&1 || true

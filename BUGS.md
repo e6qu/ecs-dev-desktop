@@ -4,7 +4,28 @@
 
 ## Open
 
-_(none currently known)_
+ECS compute hardening follow-ups (from the 2026-06-13 gap audit; the impactful
+ones were fixed — see Resolved — these remain as deliberate follow-ups, not
+active breakage):
+
+- **No readiness gating in `runTask`.** `EcsComputeProvider.runTask` returns as
+  soon as the managed-EBS volume id appears (during PROVISIONING/PENDING), before
+  the container is RUNNING and before sshd/OpenVSCode listen. `WorkspaceService`
+  then reports `running` and hands out `sshHost`/connect-info that may not yet
+  accept connections; every caller compensates with its own retry loop. Needs a
+  task-def container `healthCheck` and/or a port-readiness wait before returning.
+  Not a sim-maskable correctness bug (real Fargate has the same race), so it is
+  validated by the clients' retries today.
+- **Per-workspace agent secret injected as plaintext env, not ECS `secrets`.**
+  `EDD_AGENT_TOKEN` (HMAC machine-auth) is passed via `containerOverrides.environment`,
+  so it shows in `DescribeTasks`/console/CloudTrail. Should move to ECS `secrets`
+  (Secrets Manager/SSM). Also `CONNECTION_TOKEN` (OpenVSCode) is not yet injected
+  by the provider at all — a random per-boot token today; the control plane should
+  set it (Secrets Manager) so it can hand the token to the authenticated user via
+  the proxy. Both interact with the per-workspace proxy-authz handoff.
+- **Real `EcsComputeProvider` does not implement `health()`** (the port declares
+  it optional); the admin Health board therefore reports compute `unknown` even on
+  AWS. The in-memory fake implements it — the contract is effectively inverted.
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
@@ -18,6 +39,18 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **ECS compute hardening + polyglot golden image (2026-06-13)** — gap audit of
+  `EcsComputeProvider` fixed the impactful items: the task definition now declares
+  `portMappings` for the OpenVSCode HTTP port (3000) and sshd (22); supports
+  `executionRoleArn`/`taskRoleArn` (required on real Fargate to pull a private-ECR
+  image + ship `awslogs`); `fromEnv` now reads task sizing (`ECS_TASK_CPU`/
+  `ECS_TASK_MEMORY`/`ECS_VOLUME_GIB`) and the roles (previously hardcoded to the
+  defaults in production); `awslogs-region` falls back to `DEFAULT_AWS_REGION` (not
+  a literal); `stopTask` sends a reason. The golden image gained a polyglot
+  toolchain out of the box (Node 22 + npm/yarn/pnpm/bun, C/C++ via build-essential,
+  Go, Java + Maven + Gradle, Rust, Python + uv, Playwright + headless Chromium),
+  proven by `packages/e2e/src/workspace-toolchain.e2e.ts` (compiles+runs each
+  language) and the OpenVSCode browser proof (below).
 - **Per-workspace proxy authorization (2026-06-12)** — the Pomerium wildcard
   route was `allow_any_authenticated_user`, so the proxy enforced no
   per-workspace ownership (only the OpenVSCode connection-token / SSH cert gated

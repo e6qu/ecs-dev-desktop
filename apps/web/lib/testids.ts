@@ -29,6 +29,14 @@ export const TESTID = {
   quotaRow: "quota-row",
   /** The "admins only" gate shown to non-admins. */
   adminDenied: "admin-denied",
+  /** A repo row in the New-session repo browser. Attrs: `data-repo`, `data-private`. */
+  sessionRepoRow: "session-repo-row",
+  /** "Start session" button on a repo row / panel. */
+  startSession: "start-session",
+  /** The create-repository panel on New session. Attr: `data-enabled`. */
+  createRepoPanel: "create-repo-panel",
+  /** Start a blank/scratch session (no repo). */
+  blankSession: "blank-session",
 } as const;
 
 export type TestId = (typeof TESTID)[keyof typeof TESTID];

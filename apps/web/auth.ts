@@ -7,6 +7,7 @@ import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
 import { roleMappingConfig } from "./lib/auth-config";
 import { normalizeClaims } from "./lib/claims";
 import { GITHUB_URL_ENV } from "./lib/constants";
+import { getGitCredentials, gitCredentialsEnabled } from "./lib/git-credentials";
 import { fetchGithubTeamGroups } from "./lib/github-teams";
 
 /**
@@ -57,6 +58,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             : claims.groups;
         token.uid = claims.subject;
         token.role = mapClaimsToRole({ ...claims, groups }, roleMappingConfig());
+        // Capture the GitHub token (encrypted at rest) so a session can later
+        // clone/push private repos via the boot-time credential broker. Stored
+        // server-side keyed by the user id; never exposed to the browser. Sign-in
+        // must not fail if storage is unavailable.
+        if (
+          account.provider === "github" &&
+          typeof account.access_token === "string" &&
+          account.access_token.length > 0 &&
+          gitCredentialsEnabled()
+        ) {
+          try {
+            await getGitCredentials().store(claims.subject, account.access_token);
+          } catch (err) {
+            console.error("edd: failed to store git credential at sign-in", err);
+          }
+        }
       }
       return token;
     },

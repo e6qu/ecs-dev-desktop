@@ -28,6 +28,9 @@ export interface Workspace {
    * field, or by paths without a session email, have none (proxy fails closed
    * for non-admins). */
   readonly ownerEmail?: Email;
+  /** Git repo cloned into the session at first boot ("one repo per session").
+   * Absent for an empty workspace. */
+  readonly repoUrl?: string;
   readonly baseImage: BaseImage;
   readonly state: WorkspaceState;
   readonly createdAt: IsoTimestamp;
@@ -45,6 +48,7 @@ export interface ProvisionParams {
   id: WorkspaceId;
   ownerId: OwnerId;
   ownerEmail?: Email;
+  repoUrl?: string;
   baseImage: BaseImage;
   volumeId: VolumeId;
   taskId: TaskId;
@@ -58,6 +62,7 @@ export function provision(params: ProvisionParams): Workspace {
     id: params.id,
     ownerId: params.ownerId,
     ownerEmail: params.ownerEmail,
+    repoUrl: params.repoUrl,
     baseImage: params.baseImage,
     state: "running",
     createdAt: params.at,
