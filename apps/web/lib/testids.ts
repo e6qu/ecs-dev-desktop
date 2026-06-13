@@ -37,6 +37,12 @@ export const TESTID = {
   createRepoPanel: "create-repo-panel",
   /** Start a blank/scratch session (no repo). */
   blankSession: "blank-session",
+  /** A fleet-total cost tile on the admin Costs page. Attrs: `data-cost` (kind), `data-usd`. */
+  costTile: "cost-tile",
+  /** A per-user cost row on the admin Costs page. Attrs: `data-owner`, `data-usd`. */
+  costUserRow: "cost-user-row",
+  /** A per-session cost row on the admin Costs page. Attrs: `data-id`, `data-owner`, `data-usd`. */
+  costSessionRow: "cost-session-row",
 } as const;
 
 export type TestId = (typeof TESTID)[keyof typeof TESTID];

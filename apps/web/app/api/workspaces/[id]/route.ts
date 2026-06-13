@@ -7,7 +7,7 @@ import {
   loadConnectableWorkspace,
   loadOwnedWorkspace,
 } from "../../../../lib/api";
-import { auditActor, recordAudit } from "../../../../lib/audit";
+import { auditActor } from "../../../../lib/audit";
 
 interface Ctx {
   params: Promise<{ id: string }>;
@@ -28,15 +28,12 @@ export async function GET(req: Request, { params }: Ctx) {
 export async function DELETE(req: Request, { params }: Ctx) {
   const ctx = await loadOwnedWorkspace(req, params, "delete");
   if (isResponse(ctx)) return ctx;
-  const result = await ctx.cp.remove(ctx.id);
+  // The control plane records `session.delete` (attributed to the caller, or to
+  // `system` for a machine-auth delete) — see workspaces/route.ts.
+  const result = await ctx.cp.remove(
+    ctx.id,
+    ctx.principal === undefined ? undefined : auditActor(ctx.principal),
+  );
   if (!result.ok) return domainErrorResponse(result.error);
-  if (ctx.principal !== undefined) {
-    await recordAudit({
-      actor: auditActor(ctx.principal),
-      action: "session.delete",
-      target: ctx.id,
-      detail: "removed",
-    });
-  }
   return new NextResponse(null, { status: 204 });
 }

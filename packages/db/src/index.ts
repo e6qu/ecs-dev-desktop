@@ -16,6 +16,10 @@ export { dynamodbLocal };
 
 export { createDynamoClient } from "./client";
 export { pingTable } from "./health";
+/** ElectroDB cross-entity write transaction (single-table → atomic). Used to
+ * commit a lifecycle state transition and its audit event together, so a
+ * billable event can never be lost relative to the transition it records. */
+export { createWriteTransaction as writeTransaction } from "electrodb";
 export { dropTable, ensureTable, tableDefinition } from "./table";
 export { waitForDynamo } from "./wait";
 export {

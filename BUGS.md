@@ -26,6 +26,16 @@ active breakage):
 - **Real `EcsComputeProvider` does not implement `health()`** (the port declares
   it optional); the admin Health board therefore reports compute `unknown` even on
   AWS. The in-memory fake implements it — the contract is effectively inverted.
+- **Cost report scans the full ledger per request (scale optimization, NOT an
+  accuracy compromise).** Cost is computed exactly: every billable transition is
+  recorded in the SAME DynamoDB transaction as the transition (so the ledger can
+  never drop or double-count an event — proven by `cost-ledger-atomicity.integ.ts`),
+  and a running workspace's open interval is priced to `now` on each fetch (live).
+  `CostService.report` reads the whole append-only ledger + current records each
+  request and prices the complete history. Exact, but O(history); for a large
+  long-lived fleet it should move to a time-windowed `byTime` query with periodic
+  rollups (e.g. a daily per-workspace cost snapshot) to keep latency flat. This is
+  a performance follow-up only — it does not change the figures.
 
 ## External blockers (upstream — `e6qu/sockerless`)
 

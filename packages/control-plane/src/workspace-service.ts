@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { randomUUID } from "node:crypto";
+
 import type { WorkspaceDto, WorkspaceInspectionDto } from "@edd/api-contracts";
 import {
   assertNever,
@@ -42,15 +44,45 @@ import {
   type WorkspaceId,
   type WorkspaceState,
 } from "@edd/core";
-import type { WorkspaceEntity } from "@edd/db";
+import { writeTransaction, type AuditEventEntity, type WorkspaceEntity } from "@edd/db";
 
 import { toWorkspaceDetail, toWorkspaceDto } from "./dto";
+
+/** Actor attributed to transitions with no human principal (reconciler sweeps,
+ * gate-wakes without a forwarded identity). */
+const SYSTEM_ACTOR = "system";
+
+/** A lifecycle event to record atomically with its state transition. */
+interface LifecycleAudit {
+  action: string;
+  target: WorkspaceId;
+  actor: string;
+  detail: string;
+}
 
 export interface WorkspaceServiceDeps {
   workspaces: WorkspaceEntity;
   storage: StorageProvider;
   compute: ComputeProvider;
   clock: Clock;
+  /**
+   * Optional first-class lifecycle audit ledger (the `auditEvent` entity over the
+   * same single table). When present, `WorkspaceService` records one event per
+   * *actual* state transition (create/start/stop/delete) **in the same DynamoDB
+   * transaction as the transition** — so a billable event can never be lost or
+   * double-written relative to the transition it records. This makes the ledger
+   * the authoritative, exact timeline the cost model prices and the admin feed
+   * shows; every caller (routes, reconciler, gate-wake) accrues exactly once.
+   */
+  audit?: AuditEventEntity;
+}
+
+/** A synthetic version-conflict error so a canceled transaction flows through the
+ * SAME conflict handling as a rejected conditional write (see `isVersionConflict`). */
+function transactionCanceledAsConflict(): Error {
+  const e = new Error("conditional request failed (transaction canceled)");
+  e.name = "ConditionalCheckFailedException";
+  return e;
 }
 
 /** Projection of an active workspace used by the reconciler. */
@@ -165,7 +197,12 @@ export class WorkspaceService {
       sshHost: task.sshHost,
     });
     try {
-      await this.persistNew(ws);
+      await this.persistNew(ws, {
+        action: "session.create",
+        target: id,
+        actor: input.ownerEmail ?? input.ownerId,
+        detail: input.repoUrl === undefined ? "blank session" : `repo ${input.repoUrl}`,
+      });
     } catch (err) {
       // Crash-consistency: the task launched but the record never landed —
       // stop the task so nothing real leaks, then surface the original error.
@@ -277,7 +314,10 @@ export class WorkspaceService {
 
   /** Scale to zero: snapshot the managed volume, then stop the task (which
    * releases the volume). Snapshot first — stopping the task tears the volume down. */
-  async stop(id: WorkspaceId): Promise<Result<WorkspaceDto, DomainError>> {
+  async stop(
+    id: WorkspaceId,
+    actor: string = SYSTEM_ACTOR,
+  ): Promise<Result<WorkspaceDto, DomainError>> {
     const found = await this.require(id);
     if (!found.ok) return found;
     const { ws, version } = found.value;
@@ -294,7 +334,12 @@ export class WorkspaceService {
     const next = markStopped(ws, freshSnapshot, at);
     if (!next.ok) return next;
     try {
-      await this.persistTransition(next.value, version);
+      await this.persistTransition(next.value, version, {
+        action: "session.stop",
+        target: id,
+        actor,
+        detail: "scaled to zero",
+      });
     } catch (e) {
       if (!isVersionConflict(e)) throw e;
       // A concurrent writer advanced the record. If it also reached "stopped"
@@ -310,7 +355,10 @@ export class WorkspaceService {
   }
 
   /** Wake from a snapshot: launch a task whose managed volume is hydrated from it. */
-  async start(id: WorkspaceId): Promise<Result<WorkspaceDto, DomainError>> {
+  async start(
+    id: WorkspaceId,
+    actor: string = SYSTEM_ACTOR,
+  ): Promise<Result<WorkspaceDto, DomainError>> {
     const found = await this.require(id);
     if (!found.ok) return found;
     const { ws, version } = found.value;
@@ -331,7 +379,12 @@ export class WorkspaceService {
     const next = markStarted(ws, task.volumeId, task.id, at, task.sshHost);
     if (!next.ok) return next;
     try {
-      await this.persistTransition(next.value, version);
+      await this.persistTransition(next.value, version, {
+        action: "session.start",
+        target: id,
+        actor,
+        detail: "woken from snapshot",
+      });
     } catch (e) {
       if (isVersionConflict(e)) {
         // Lost the wake race: another writer (a concurrent connect/start) won.
@@ -358,7 +411,10 @@ export class WorkspaceService {
    * (e.g. SSH via the gateway). Idempotent — a running/idle workspace is returned
    * as-is, a scaled-to-zero one is woken from its snapshot, an in-flight wake is
    * returned for the caller to poll, and a terminal one is rejected. */
-  async connect(id: WorkspaceId): Promise<Result<WorkspaceDto, DomainError>> {
+  async connect(
+    id: WorkspaceId,
+    actor: string = SYSTEM_ACTOR,
+  ): Promise<Result<WorkspaceDto, DomainError>> {
     const found = await this.require(id);
     if (!found.ok) return found;
     const { ws } = found.value;
@@ -368,7 +424,9 @@ export class WorkspaceService {
       case "pending":
         return ok(toWorkspaceDto(ws));
       case "wake":
-        return this.start(id);
+        // A real wake transition; start() records session.start (a no-op wake on
+        // an already-running workspace returns above, so no event is logged).
+        return this.start(id, actor);
       case "unavailable":
         return err(conflictError(`cannot connect to ${id}: workspace is ${ws.state}`));
       default:
@@ -439,7 +497,15 @@ export class WorkspaceService {
     const next = markTaskLost(ws, isoTimestamp(this.deps.clock.now()));
     if (!next.ok) return next;
     try {
-      await this.persistTransition(next.value, version);
+      // The task was lost out-of-band; the record left a running interval open.
+      // Record a stop atomically so the cost ledger closes it (attributed to the
+      // drift sweep).
+      await this.persistTransition(next.value, version, {
+        action: "session.stop",
+        target: id,
+        actor: "system:drift",
+        detail: `task lost; reconciled to ${next.value.state}`,
+      });
     } catch (e) {
       if (!isVersionConflict(e)) throw e;
       // A concurrent writer (user action) advanced the record — defer to it;
@@ -450,7 +516,7 @@ export class WorkspaceService {
   }
 
   /** Permanently delete the workspace and its runtime resources. */
-  async remove(id: WorkspaceId): Promise<Result<void, DomainError>> {
+  async remove(id: WorkspaceId, actor: string = SYSTEM_ACTOR): Promise<Result<void, DomainError>> {
     const found = await this.require(id);
     if (!found.ok) return found;
     const { ws, version } = found.value;
@@ -459,12 +525,35 @@ export class WorkspaceService {
     // Version-conditioned, like every other transition: a delete racing a wake
     // must NOT remove the record out from under the task the wake just launched
     // (an unconditional delete left that task orphaned). Claim the deletion FIRST
-    // via the conditional write; only the winner then tears down resources.
+    // via the conditional write; only the winner then tears down resources. The
+    // session.delete event is written in the SAME transaction so the cost ledger
+    // retains the workspace's final cost after its record is gone (events are
+    // append-only — they outlive the deleted record).
+    const auditItem = this.auditItem({
+      action: "session.delete",
+      target: id,
+      actor,
+      detail: "terminated",
+    });
     try {
-      await this.deps.workspaces
-        .delete({ id })
-        .where(({ version: v }, { eq }) => eq(v, version))
-        .go();
+      if (auditItem === undefined) {
+        await this.deps.workspaces
+          .delete({ id })
+          .where(({ version: v }, { eq }) => eq(v, version))
+          .go();
+      } else {
+        const result = await writeTransaction(
+          { ws: this.deps.workspaces, ev: auditItem.entity },
+          ({ ws: wsE, ev }) => [
+            wsE
+              .delete({ id })
+              .where(({ version: v }, { eq }) => eq(v, version))
+              .commit(),
+            ev.put(auditItem.attrs).commit(),
+          ],
+        ).go();
+        if (result.canceled) throw transactionCanceledAsConflict();
+      }
     } catch (e) {
       if (!isVersionConflict(e)) throw e;
       return err(conflictError(`delete of ${id} lost a concurrent update`));
@@ -488,17 +577,64 @@ export class WorkspaceService {
     return loaded === null ? err(notFoundError("workspace", id)) : ok(loaded);
   }
 
-  /** Insert a brand-new workspace record (fails if the id already exists). */
-  private async persistNew(ws: Workspace): Promise<void> {
-    await this.deps.workspaces.create({ ...toWorkspaceDetail(ws), version: 0 }).go();
+  /** The audit-event entity + the item to write atomically with a transition, or
+   * undefined when no audit ledger is configured (writes take the plain path). */
+  private auditItem(a: LifecycleAudit):
+    | {
+        entity: AuditEventEntity;
+        attrs: {
+          id: string;
+          at: string;
+          actor: string;
+          action: string;
+          target: string;
+          detail: string;
+        };
+      }
+    | undefined {
+    const entity = this.deps.audit;
+    if (entity === undefined) return undefined;
+    return {
+      entity,
+      attrs: {
+        id: `evt-${randomUUID()}`,
+        at: this.deps.clock.now(),
+        actor: a.actor,
+        action: a.action,
+        target: a.target,
+        detail: a.detail,
+      },
+    };
+  }
+
+  /** Insert a brand-new workspace record (fails if the id already exists),
+   * recording its `session.create` event in the same transaction. */
+  private async persistNew(ws: Workspace, audit: LifecycleAudit): Promise<void> {
+    const item = { ...toWorkspaceDetail(ws), version: 0 };
+    const auditItem = this.auditItem(audit);
+    if (auditItem === undefined) {
+      await this.deps.workspaces.create(item).go();
+      return;
+    }
+    const result = await writeTransaction(
+      { ws: this.deps.workspaces, ev: auditItem.entity },
+      ({ ws: wsE, ev }) => [wsE.create(item).commit(), ev.put(auditItem.attrs).commit()],
+    ).go();
+    if (result.canceled) throw transactionCanceledAsConflict();
   }
 
   /** Persist a lifecycle transition, conditioned on the version the caller's
    * read observed: a concurrent writer makes this throw a version conflict
    * instead of silently overwriting (and possibly leaking a real task).
    * Cleared optional bindings (volume/task on stop) are removed explicitly —
-   * an update, unlike PutItem, keeps attributes it isn't told about. */
-  private async persistTransition(ws: Workspace, observedVersion: number): Promise<void> {
+   * an update, unlike PutItem, keeps attributes it isn't told about. When an
+   * `audit` event is given, it is written in the SAME transaction as the patch,
+   * so a billable event can never be lost relative to its transition. */
+  private async persistTransition(
+    ws: Workspace,
+    observedVersion: number,
+    audit?: LifecycleAudit,
+  ): Promise<void> {
     const detail = toWorkspaceDetail(ws);
     const clearable = [
       "volumeId",
@@ -509,10 +645,26 @@ export class WorkspaceService {
     ] as const;
     const cleared = clearable.filter((field) => detail[field] === undefined);
     const { id, ...fields } = detail;
-    let mutation = this.deps.workspaces
-      .patch({ id })
-      .set({ ...fields, version: observedVersion + 1 });
-    if (cleared.length > 0) mutation = mutation.remove([...cleared]);
-    await mutation.where(({ version }, { eq }) => eq(version, observedVersion)).go();
+    const next = { ...fields, version: observedVersion + 1 };
+
+    const auditItem = audit === undefined ? undefined : this.auditItem(audit);
+    if (auditItem === undefined) {
+      const m = this.deps.workspaces.patch({ id }).set(next);
+      const op = cleared.length > 0 ? m.remove([...cleared]) : m;
+      await op.where(({ version }, { eq }) => eq(version, observedVersion)).go();
+      return;
+    }
+    const result = await writeTransaction(
+      { ws: this.deps.workspaces, ev: auditItem.entity },
+      ({ ws: wsE, ev }) => {
+        const m = wsE.patch({ id }).set(next);
+        const op = cleared.length > 0 ? m.remove([...cleared]) : m;
+        return [
+          op.where(({ version }, { eq }) => eq(version, observedVersion)).commit(),
+          ev.put(auditItem.attrs).commit(),
+        ];
+      },
+    ).go();
+    if (result.canceled) throw transactionCanceledAsConflict();
   }
 }

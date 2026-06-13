@@ -141,6 +141,65 @@ export const workspaceGate = {
 export const GATEWAY_SECRET_ENV = "EDD_GATEWAY_SECRET";
 
 /**
+ * Cost model rates (USD), as published for **us-east-1 on-demand** at the time
+ * of writing — each overridable via the matching `EDD_PRICE_*` env var so a
+ * deployment can match its own region / account pricing without a code change.
+ * Sources: AWS Fargate pricing (per-vCPU-hour, per-GB-hour) and AWS EBS pricing
+ * (gp3 storage, snapshot storage), all us-east-1.
+ */
+export const DEFAULT_FARGATE_VCPU_HOUR_USD = 0.04048;
+export const DEFAULT_FARGATE_GB_HOUR_USD = 0.004445;
+export const DEFAULT_EBS_GB_MONTH_USD = 0.08;
+export const DEFAULT_EBS_SNAPSHOT_GB_MONTH_USD = 0.05;
+
+/** A non-negative USD rate from `name`, or `fallback` when unset. Invalid
+ * (non-numeric / negative) values fail loudly rather than silently mispricing. */
+function priceEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw.length === 0) return fallback;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`${name} must be a non-negative USD rate: ${raw}`);
+  }
+  return value;
+}
+
+/** The cost-model rates in effect (defaults above, each `EDD_PRICE_*`-overridable). */
+export function workspacePricing(): {
+  fargateVcpuHourUsd: number;
+  fargateGbHourUsd: number;
+  ebsGbMonthUsd: number;
+  snapshotGbMonthUsd: number;
+} {
+  return {
+    fargateVcpuHourUsd: priceEnv("EDD_PRICE_FARGATE_VCPU_HOUR", DEFAULT_FARGATE_VCPU_HOUR_USD),
+    fargateGbHourUsd: priceEnv("EDD_PRICE_FARGATE_GB_HOUR", DEFAULT_FARGATE_GB_HOUR_USD),
+    ebsGbMonthUsd: priceEnv("EDD_PRICE_EBS_GB_MONTH", DEFAULT_EBS_GB_MONTH_USD),
+    snapshotGbMonthUsd: priceEnv("EDD_PRICE_SNAPSHOT_GB_MONTH", DEFAULT_EBS_SNAPSHOT_GB_MONTH_USD),
+  };
+}
+
+/** ECS CPU units that make up one vCPU (1024 = 1 vCPU; AWS task-size convention). */
+const CPU_UNITS_PER_VCPU = 1024;
+/** MiB per GiB (memory is configured in MiB; the cost model bills per GiB). */
+const MIB_PER_GIB = 1024;
+
+/** The per-workspace sizing the cost model multiplies by run-time. Reads the
+ * SAME env overrides the ECS compute provider provisions from (`ECS_TASK_CPU` /
+ * `ECS_TASK_MEMORY` / `ECS_VOLUME_GIB`), so billed sizing tracks real sizing. */
+export function workspaceSizing(): { vcpu: number; memoryGib: number; volumeGib: number } {
+  const cpuUnits = Number(process.env.ECS_TASK_CPU ?? DEFAULT_WORKSPACE_CPU);
+  const memoryMib = Number(process.env.ECS_TASK_MEMORY ?? DEFAULT_WORKSPACE_MEMORY);
+  const volumeGib = Number(process.env.ECS_VOLUME_GIB ?? DEFAULT_WORKSPACE_VOLUME_GIB);
+  if (![cpuUnits, memoryMib, volumeGib].every((n) => Number.isFinite(n) && n > 0)) {
+    throw new Error(
+      "workspace sizing (ECS_TASK_CPU/ECS_TASK_MEMORY/ECS_VOLUME_GIB) must be positive",
+    );
+  }
+  return { vcpu: cpuUnits / CPU_UNITS_PER_VCPU, memoryGib: memoryMib / MIB_PER_GIB, volumeGib };
+}
+
+/**
  * Default per-role cap on the number of workspaces a user may own (`null` =
  * unlimited). Overridable per role via `EDD_QUOTA_<ROLE>` (e.g. `EDD_QUOTA_MEMBER=10`).
  * Keyed by `Role` (not `string`): every role must have a quota, and a typo'd or

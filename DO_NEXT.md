@@ -36,6 +36,13 @@ PDP, ownership by owner email; see `BUGS.md` Resolved + `docs/simulator-live-cov
 - **Optional:** ECS Exec workspace probe through the provider (the capability is
   sim-proven via a standalone task, but production `runTask` doesn't set
   `enableExecuteCommand`).
+- **Cost visualization — built** (`feat/cost-visualization`): admin `/admin/costs`
+  prices the lifecycle audit ledger (compute + live-volume + snapshot) per session
+  / user / fleet; lifecycle audit centralized in `WorkspaceService` so the ledger
+  is complete. Follow-up (time-windowing / rollups) tracked in `BUGS.md` → Open.
+- **Remaining product tracks:** increment-2 deployment wiring (Pomerium
+  wildcard→gate route + full browser→Pomerium→gate→ECS live e2e) and the optional
+  GitHub-App swap behind `GitProvider`. Both heavier / partly AWS-gated.
 - Covered (see `docs/simulator-live-coverage.md`): the real VS Code workspace
   (OpenVSCode browser proof + polyglot toolchain compiles + OpenVSCode :3000 inside
   the sim ECS task), browser Pomerium OIDC login, portal browser lifecycle on real

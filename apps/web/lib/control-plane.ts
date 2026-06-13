@@ -3,8 +3,10 @@ import { CloudTrailAuditSource } from "@edd/cloudtrail-audit";
 import { CloudWatchLogSource } from "@edd/cloudwatch-logs";
 import { EcsComputeProvider } from "@edd/compute-ecs";
 import { FakeComputeProvider, FakeStorageProvider, systemClock } from "@edd/core";
+import { workspacePricing, workspaceSizing } from "@edd/config";
 import {
   CatalogService,
+  CostService,
   DerivedAuditSource,
   DerivedLogSource,
   HealthService,
@@ -30,14 +32,20 @@ import { Ec2StorageProvider } from "@edd/storage-ec2";
 let instance: Promise<WorkspaceService> | undefined;
 let catalog: CatalogService | undefined;
 let auditLog: StoredAuditSource | undefined;
+let auditEvents: ReturnType<typeof makeAuditEventEntity> | undefined;
+
+/** The shared `auditEvent` entity over the single table. `WorkspaceService`
+ * writes lifecycle events to it atomically with each transition; the audit log
+ * + cost service read from it. */
+function getAuditEntity(): ReturnType<typeof makeAuditEventEntity> {
+  auditEvents ??= makeAuditEventEntity(createDynamoClient(), tableName());
+  return auditEvents;
+}
 
 /** The first-class, append-only audit log (actor-attributed control-plane
  * actions). Distinct from the derived fleet feed + CloudTrail. */
 export function getAuditLog(): StoredAuditSource {
-  auditLog ??= new StoredAuditSource({
-    events: makeAuditEventEntity(createDynamoClient(), tableName()),
-    clock: systemClock,
-  });
+  auditLog ??= new StoredAuditSource({ events: getAuditEntity(), clock: systemClock });
   return auditLog;
 }
 
@@ -48,6 +56,18 @@ function tableName(): string {
 export function getControlPlane(): Promise<WorkspaceService> {
   instance ??= build();
   return instance;
+}
+
+/** Admin Costs service: prices the lifecycle audit ledger at the configured
+ * (us-east-1 on-demand default, env-overridable) rates + workspace sizing. */
+export async function getCostService(): Promise<CostService> {
+  return new CostService({
+    audit: getAuditLog(),
+    workspaces: await getControlPlane(),
+    clock: systemClock,
+    pricing: workspacePricing(),
+    sizing: workspaceSizing(),
+  });
 }
 
 /** The admin base-image catalog over the same single table (sync — no fakes). */
@@ -117,6 +137,7 @@ async function build(): Promise<WorkspaceService> {
       storage,
       compute,
       clock: systemClock,
+      audit: getAuditEntity(),
     });
   }
   const storage = await FakeStorageProvider.create();
@@ -132,5 +153,6 @@ async function build(): Promise<WorkspaceService> {
       fakeSshHost !== undefined && fakeSshHost.length > 0 ? { sshHost: fakeSshHost } : {},
     ),
     clock: systemClock,
+    audit: getAuditEntity(),
   });
 }

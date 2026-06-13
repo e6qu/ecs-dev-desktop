@@ -50,12 +50,23 @@ export class StoredAuditSource implements AuditSource {
 
   async recent(limit: number = DEFAULT_AUDIT_FEED_LIMIT): Promise<AuditEvent[]> {
     const { data } = await this.deps.events.query.byTime({}).go({ order: "desc", limit });
-    return data.map((r: AuditRecord) => ({
-      at: isoTimestamp(r.at),
-      actor: r.actor,
-      action: r.action,
-      target: r.target,
-      detail: r.detail,
-    }));
+    return data.map(toEvent);
   }
+
+  /** The entire ledger (fully paginated). The cost model reads this to price the
+   * complete lifecycle history; order is unspecified (the consumer sorts). */
+  async all(): Promise<AuditEvent[]> {
+    const { data } = await this.deps.events.query.byTime({}).go({ pages: "all" });
+    return data.map(toEvent);
+  }
+}
+
+function toEvent(r: AuditRecord): AuditEvent {
+  return {
+    at: isoTimestamp(r.at),
+    actor: r.actor,
+    action: r.action,
+    target: r.target,
+    detail: r.detail,
+  };
 }

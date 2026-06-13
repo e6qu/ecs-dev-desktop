@@ -14,5 +14,7 @@ export { DerivedAuditSource } from "./audit-source";
 export type { DerivedAuditSourceDeps } from "./audit-source";
 export { StoredAuditSource } from "./stored-audit-source";
 export type { AuditAction, StoredAuditSourceDeps } from "./stored-audit-source";
+export { CostService } from "./cost-service";
+export type { CostServiceDeps } from "./cost-service";
 export { DerivedLogSource } from "./log-source";
 export type { DerivedLogSourceDeps } from "./log-source";

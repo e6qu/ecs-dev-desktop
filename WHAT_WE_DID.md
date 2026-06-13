@@ -661,3 +661,41 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   hex-literal test secrets (use randomBytes) and GCM without authTagLength; see
   [[sast-and-precommit-gotchas]]. Increment-2 deployment wiring (Pomerium→gate +
   browser e2e) and audit-log + cost-viz tracks remain.
+
+- **2026-06-13 — First-class audit log (PR #70, merged).** Append-only,
+  actor-attributed `auditEvent` entity + `StoredAuditSource`; the admin feed
+  merged the stored log with the derived fleet feed, each source degrading to `[]`
+  on error (logged) so one failing source never blanks the feed.
+
+- **2026-06-13 — Cost visualization** (on `feat/cost-visualization`). The
+  remaining item of "admins + costs + audit". Decisions (asked): run-time is
+  **derived from the audit ledger** (over an accumulator); pricing defaults to
+  **us-east-1 on-demand, env-overridable**. Because an audit-derived cost model
+  needs a _complete_ ledger, lifecycle audit was **centralized in
+  `WorkspaceService`** — it now records `session.create/start/stop/delete` on the
+  _actual_ state transition (so gate-wakes via `connect()` and reconciler-driven
+  scale-to-zero/drift stops are captured exactly once, with no flood on idempotent
+  reconnects); the route-level emits were removed and the actor threaded through
+  (`system` for machine/reconciler). The audit sink was wired into both
+  composition roots (web `getControlPlane` + reconciler `run.ts`). Cost is a pure
+  `@edd/core` model (`deriveBillingIntervals` → `priceIntervals` →
+  `computeFleetCost`): compute = Fargate vCPU+memory while running; volume = live
+  EBS gp3 while running; snapshot = EBS snapshot while scaled-to-zero (730-h
+  month). Rates/sizing live in `@edd/config` (`workspacePricing`/`workspaceSizing`,
+  the latter tracking the same `ECS_*` provisioning env). `CostService` joins the
+  ledger with current records (owner from the `session.create` actor, so deleted
+  workspaces still price), behind `/api/admin/costs` + an `/admin/costs` page
+  (fleet tiles + per-user + per-session). Lesson: the gate calls `POST /connect`
+  per request, so emitting on transitions (not per-call) is what avoids a flood.
+  **Accuracy + live (user follow-up: "must be accurate, not an MVP compromise;
+  visible asap, near real time").** Emission was made **atomic** with the
+  transition — each lifecycle event is written in the SAME DynamoDB transaction
+  as its state change (`@edd/db` `writeTransaction` → ElectroDB
+  `createWriteTransaction`; a canceled transaction maps to the existing
+  version-conflict handling), so a billable event can never be dropped or
+  double-written (proven by `cost-ledger-atomicity.integ.ts`); deleted workspaces
+  still price because the ledger is append-only. **Live**: a running session's
+  open interval is priced to `now` on each fetch and the page auto-refreshes
+  (`LiveRefresh`, 15 s). Remaining (perf only, not accuracy): the report scans the
+  whole ledger per request — a `byTime`-windowed query + rollups would flatten
+  latency at large scale (`BUGS.md` → Open).

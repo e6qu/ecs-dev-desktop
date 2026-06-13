@@ -2,15 +2,38 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-12 (correctness-hardening branch)
+**Last updated:** 2026-06-13 (cost-visualization branch)
 
 ## Current phase
 
-**In flight on `feat/vscode-workspace-proof` (PR #69, the single open PR — kept
-open by request, everything stacks on it):** the **core user loop** — control
-plane + users + admins + multiple sessions, one repo per session — on top of the
-polyglot golden image + real-VS-Code proof + ECS hardening that opened this
-branch. Built + tested (server side fully; UI shipped):
+**In flight on `feat/cost-visualization`:** the **cost visualization** track —
+the last of "admins + costs + audit" (admins ✓, audit ✓ #70). An admin **Costs**
+console (`/admin/costs` + `/api/admin/costs`) prices each workspace's running vs.
+scaled-to-zero time and rolls it up per session, per user, and to a fleet total
+(compute = Fargate vCPU+memory while running; storage = live EBS while running;
+snapshot = EBS snapshot while scaled-to-zero). Run-time is **derived from the
+lifecycle audit ledger** (user decision), and pricing defaults to **us-east-1
+on-demand, env-overridable** (`@edd/config`). Making the ledger authoritative
+required **centralizing lifecycle audit in `WorkspaceService`**: it now records
+`session.create/start/stop/delete` on the _actual_ state transition — so
+gate-wakes (`connect()`) and reconciler scale-to-zero/drift stops are captured
+exactly once (route-level emits removed; actor threaded, `system` for
+machine/reconciler). **Accuracy is not an MVP compromise:** each event is written
+in the SAME DynamoDB transaction as its transition (`createWriteTransaction`), so
+the ledger can never drop or double-count a billable event — proven by
+`cost-ledger-atomicity.integ.ts`; deleted workspaces still price (events are
+append-only). **Live:** a running workspace's open interval is priced to `now` on
+every fetch, and the page auto-refreshes (`LiveRefresh`, 15 s) so consumption is
+visible in near real time. The pure cost model is in `@edd/core`
+(`deriveBillingIntervals`/`priceIntervals`/`computeFleetCost`); `CostService`
+joins the ledger with current records. Gates green (lint/knip/jscpd/unit/integ/
+web build/Playwright 9/9).
+
+**Prior (merged to `main`):** PR #68 (per-workspace proxy authz — gate PEP +
+PDP), PR #69 (core user loop — repo-per-session + private clone/push broker +
+wake-on-connect gate + GitHub launcher UI; polyglot golden image + real-VS-Code
+proof + ECS hardening), PR #70 (first-class audit log). The core-user-loop detail
+below describes the now-merged #69 work:
 
 - **Repo-per-session** (incr. 1): `repoUrl` threaded end-to-end; golden image
   clones the repo on first boot (idempotent; skips on snapshot wake). Public
