@@ -13,8 +13,15 @@ import {
   ownerId,
   systemClock,
   workspaceId,
-  type Result,
   type DomainError,
+  type Result,
+  type Snapshot,
+  type SnapshotId,
+  type SnapshotRef,
+  type StorageProvider,
+  type Volume,
+  type VolumeId,
+  type VolumeRef,
 } from "@edd/core";
 import { createDynamoClient, dropTable, dynamodb, ensureTable, makeWorkspaceEntity } from "@edd/db";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -24,6 +31,57 @@ import { WorkspaceService } from "./index";
 process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
 
 const TABLE = "ecs-dev-desktop-cp-concurrency-integ";
+
+/**
+ * Delegates to an inner provider but holds every `createSnapshot` at a barrier
+ * until `parties` of them have arrived. `snapshot()` reads the workspace version
+ * BEFORE calling `createSnapshot`, so gating there forces both concurrent calls to
+ * read the same version before either persists — exercising the optimistic-version
+ * CAS deterministically instead of relying on `Promise.all` scheduling luck.
+ */
+class BarrierSnapshotStorage implements StorageProvider {
+  private arrived = 0;
+  private resolveGate!: () => void;
+  private readonly gate: Promise<void>;
+
+  constructor(
+    private readonly inner: StorageProvider,
+    private readonly parties: number,
+  ) {
+    this.gate = new Promise<void>((resolve) => {
+      this.resolveGate = resolve;
+    });
+  }
+
+  async createSnapshot(volumeId: VolumeId): Promise<Snapshot> {
+    this.arrived += 1;
+    if (this.arrived >= this.parties) this.resolveGate();
+    await this.gate;
+    return this.inner.createSnapshot(volumeId);
+  }
+
+  createVolume(opts?: { fromSnapshot?: SnapshotId }): Promise<Volume> {
+    return this.inner.createVolume(opts);
+  }
+  readFile(volumeId: VolumeId, path: string): Promise<Buffer | null> {
+    return this.inner.readFile(volumeId, path);
+  }
+  writeFile(volumeId: VolumeId, path: string, data: Buffer): Promise<void> {
+    return this.inner.writeFile(volumeId, path, data);
+  }
+  deleteVolume(volumeId: VolumeId): Promise<void> {
+    return this.inner.deleteVolume(volumeId);
+  }
+  deleteSnapshot(snapshotId: SnapshotId): Promise<void> {
+    return this.inner.deleteSnapshot(snapshotId);
+  }
+  listVolumes(): Promise<readonly VolumeRef[]> {
+    return this.inner.listVolumes();
+  }
+  listSnapshots(): Promise<readonly SnapshotRef[]> {
+    return this.inner.listSnapshots();
+  }
+}
 
 /** Count of ok / conflict across a set of settled transition results. */
 function tally(results: Result<unknown, DomainError>[]): { ok: number; conflict: number } {
@@ -96,9 +154,19 @@ describe("concurrent transition pairs are version-safe (DynamoDB Local + fakes)"
 
   it("two concurrent snapshots: one wins, one conflicts (no lost update)", async () => {
     const id = await runningWorkspace("pair-c");
+    // A barrier on createSnapshot forces both calls to read the version before
+    // either persists, so the version CAS is genuinely raced (not left to
+    // Promise.all scheduling, which can serialize them and let both succeed).
+    const barrier = new BarrierSnapshotStorage(storage, 2);
+    const racingService = new WorkspaceService({
+      workspaces: makeWorkspaceEntity(client, TABLE),
+      storage: barrier,
+      compute,
+      clock: systemClock,
+    });
     const results = await Promise.all([
-      service.snapshot(workspaceId(id)),
-      service.snapshot(workspaceId(id)),
+      racingService.snapshot(workspaceId(id)),
+      racingService.snapshot(workspaceId(id)),
     ]);
     expect(tally(results)).toEqual({ ok: 1, conflict: 1 });
   });

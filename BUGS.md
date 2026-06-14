@@ -47,6 +47,13 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **Flaky "two concurrent snapshots" concurrency test (2026-06-14)** — the test
+  raced two `snapshot()` calls via `Promise.all` and asserted exactly one conflicts,
+  but the calls could serialize (CI scheduling) and both legitimately succeed
+  (`{ok:2}`), failing intermittently. Made the overlap deterministic: a
+  `BarrierSnapshotStorage` holds both `createSnapshot`s until both have arrived, so
+  both read the same version before either persists and the version CAS is genuinely
+  raced. No production code changed; the strict one-conflict assertion stays.
 - **`pnpm reap` left profile-scoped sim containers running (2026-06-14)** —
   `reap-local.sh` ran `docker compose down` on the dev file without the active
   `--profile`, so profile-gated services (the sockerless sim, bleephub, entra sim)
