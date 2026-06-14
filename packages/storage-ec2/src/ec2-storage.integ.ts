@@ -36,6 +36,42 @@ describe("Ec2StorageProvider against the sockerless AWS sim", () => {
     expect(afterVols).not.toContain(restored.id);
   });
 
+  it("runs a multi-generation snapshot chain (repeated scale-to-zero persistence)", async () => {
+    // Scale-to-zero persists a workspace as an EBS snapshot, then hydrates a fresh
+    // volume from it on wake — over and over. Each cycle snapshots a volume that
+    // was ITSELF hydrated from the previous generation's snapshot. This probes that
+    // the cloud tracks snapshot→source lineage across generations (not collapsing
+    // back to the original volume) and that restoring from a snapshot whose source
+    // was a restored volume works — the real persistence loop over many idle cycles.
+    const gen0 = await sp.createVolume();
+    const snap0 = await sp.createSnapshot(gen0.id);
+    expect(snap0.sourceVolumeId).toBe(gen0.id);
+
+    // Wake 1: hydrate gen1 from gen0's snapshot, then stop → snapshot gen1.
+    const gen1 = await sp.createVolume({ fromSnapshot: snap0.id });
+    expect(gen1.hydratedFrom).toBe(snap0.id);
+    const snap1 = await sp.createSnapshot(gen1.id);
+    expect(snap1.id).not.toBe(snap0.id);
+    // Lineage tracks the RESTORED volume, not the original.
+    expect(snap1.sourceVolumeId).toBe(gen1.id);
+
+    // Wake 2: hydrate gen2 from gen1's snapshot — i.e. restore from a snapshot
+    // whose source was itself a restored volume.
+    const gen2 = await sp.createVolume({ fromSnapshot: snap1.id });
+    expect(gen2.hydratedFrom).toBe(snap1.id);
+
+    // Enumeration reflects both snapshots with their correct per-generation source.
+    const sources = new Map((await sp.listSnapshots()).map((s) => [s.id, s.sourceVolumeId]));
+    expect(sources.get(snap0.id)).toBe(gen0.id);
+    expect(sources.get(snap1.id)).toBe(gen1.id);
+
+    await sp.deleteSnapshot(snap0.id);
+    await sp.deleteSnapshot(snap1.id);
+    await sp.deleteVolume(gen0.id);
+    await sp.deleteVolume(gen1.id);
+    await sp.deleteVolume(gen2.id);
+  });
+
   it("scopes enumeration to its own managed resources (GC safety)", async () => {
     const a = Ec2StorageProvider.fromEnv({ scope: "edd-itest-scope-a" });
     const b = Ec2StorageProvider.fromEnv({ scope: "edd-itest-scope-b" });

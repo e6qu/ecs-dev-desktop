@@ -786,3 +786,15 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   because the gate image had never been built in CI; now built by `e2e-gate`.
   Standardized the local app port off the crowded 3000 → 3700 (image + `pnpm dev`
   - docs). Built per the user's fat-PR directive (one PR, held until CI green).
+
+- **2026-06-14 — Sim-probe coverage: multi-generation EBS snapshot chain.** Added a
+  probe (`packages/storage-ec2/src/ec2-storage.integ.ts`) for the repeated
+  scale-to-zero persistence loop: snapshot a volume that was itself hydrated from the
+  previous generation's snapshot, twice, asserting per-generation snapshot→source
+  lineage (not collapsing to the original) and restore-from-a-restored-snapshot. The
+  sim handles it correctly (green) → no upstream gap to file. Confirmed the §6.9
+  storage-filter comment is current (the stale client-side-refilter workaround was
+  already removed in #74), so nothing stale to fix. Decision-free ECS hardening
+  (runTask readiness gating; agent secret → ECS `secrets`; real `health()`) remains
+  in `BUGS.md` → Open as the next follow-ups — deliberately not bundled here (a
+  behavior change, not a probe).

@@ -50,11 +50,13 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
   install it on a test org with a repo, and set `EDD_GITHUB_APP_ID` /
   `EDD_GITHUB_APP_KEY` / `EDD_GITHUB_TEST_ORG` / `EDD_GITHUB_TEST_REPO` /
   `AUTH_GITHUB_API_URL`.
-- **Remaining product tracks:** increment-2 deployment wiring (Pomerium
-  wildcard→gate route + full browser→Pomerium→gate→ECS live e2e, harness chosen:
-  full app in compose + DYNAMIC gate) and a sim-probe/coverage pass (CloudTrail for
-  our EBS/ECS ops, ECS Exec real session, EBS snapshot edge cases) filing any
-  verified divergences upstream to `e6qu/sockerless` (bleephub gaps included).
+- **Remaining product tracks:** increment-2 deployment wiring is **done** (#77 merged:
+  Pomerium wildcard→gate route + live browser→Pomerium→gate→PDP authz; the DYNAMIC
+  full-ECS-wake gate variant remains a future extension). Sim-probe/coverage pass is
+  largely landed — CloudTrail for our EBS/ECS ops (#74) and the multi-generation EBS
+  snapshot chain (this branch; sim handles it, none filed). Remaining probe candidate:
+  ECS Exec real session through the provider — file any verified divergence upstream
+  to `e6qu/sockerless`.
 - Covered (see `docs/simulator-live-coverage.md`): the real VS Code workspace
   (OpenVSCode browser proof + polyglot toolchain compiles + OpenVSCode :3000 inside
   the sim ECS task), browser Pomerium OIDC login, portal browser lifecycle on real
