@@ -30,15 +30,16 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
 
 ## Available now (decision-free — immediate)
 
-- **ECS compute hardening follow-ups** (from the 2026-06-13 gap audit, tracked in
-  `BUGS.md` → Open): readiness gating in `runTask` is **done** (`taskReady` —
-  RUNNING + volume + ENI; see `BUGS.md` → Resolved). Remaining: move
-  `EDD_AGENT_TOKEN` to ECS `secrets` + have the provider inject `CONNECTION_TOKEN`
-  (ties into the proxy-authz token handoff); implement real
-  `EcsComputeProvider.health()`. None blocked; all decision-free.
-- **Optional:** ECS Exec workspace probe through the provider (the capability is
-  sim-proven via a standalone task, but production `runTask` doesn't set
-  `enableExecuteCommand`).
+- **ECS compute hardening follow-ups** (from the 2026-06-13 gap audit) — mostly
+  **done** (see `BUGS.md` → Resolved): `runTask` readiness gating; `EDD_AGENT_TOKEN`
+  → Secrets Manager (no plaintext); real `EcsComputeProvider.health()`; ECS Exec on
+  the launch path. Remaining: `CONNECTION_TOKEN` injection (lands with the future
+  DYNAMIC wake-on-connect gate) and the cost-report rollup (perf-only — below).
+- **Cost-report rollups (perf-only follow-up, NOT a bug).** `CostService.report`
+  prices the full ledger each request — exact but O(history). For a large
+  long-lived fleet, move to a time-windowed `byTime` query + periodic rollups (a
+  correct mid-session-boundary rollup must not change figures, so it is a sizable
+  subsystem deliberately deferred). See `BUGS.md` → Open.
 - **Cost visualization — built** (`feat/cost-visualization`): admin `/admin/costs`
   prices the lifecycle audit ledger (compute + live-volume + snapshot) per session
   / user / fleet; lifecycle audit centralized in `WorkspaceService` so the ledger

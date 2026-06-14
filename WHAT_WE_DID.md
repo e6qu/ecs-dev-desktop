@@ -811,3 +811,22 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   unit-tested the predicate; timeout raised to 180s for real Fargate cold start.
   Endpoint-only. Remaining ECS follow-ups (agent secret → ECS `secrets`; real
   `health()`) stay in `BUGS.md` → Open.
+
+- **2026-06-14 — ECS hardening sweep (health, exec, agent-token secrets).** Cleared
+  the remaining Open compute items from the 2026-06-13 audit:
+  - **Agent token → Secrets Manager (security).** `runTask` now stores the
+    per-workspace HMAC agent token in a Secrets Manager secret and references it
+    from a per-workspace task def's container `secrets`, instead of plaintext
+    `environment` (visible in DescribeTasks/CloudTrail). ECS resolves it into the
+    container env at launch — transparent to the in-workspace agent. Active when an
+    agent secret + Secrets Manager client are configured (`fromEnv` wires both);
+    plaintext path kept only for local/fakes. Proven against the container-mode sim
+    (`agent-secret.e2e.ts`) + the user-journey heartbeat (functional).
+  - **Real `EcsComputeProvider.health()`** via DescribeClusters (process-mode integ).
+  - **ECS Exec on the launch path** (`enableExecuteCommand: true`).
+  - Found + filed **sockerless#569**: process-mode RunTask with managed EBS panics
+    the sim (nil Docker client) — so the runTask/secret path is validated in
+    container mode, not the process-mode `integration` job.
+    Deferred: cost-report rollups (explicitly perf-only, must not change figures — a
+    sizable subsystem left as a follow-up) and `CONNECTION_TOKEN` injection (lands
+    with the future DYNAMIC wake-on-connect gate it's tied to).

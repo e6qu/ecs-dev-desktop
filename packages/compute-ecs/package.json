@@ -9,10 +9,12 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:integ": "vitest run --config vitest.integ.config.ts"
   },
   "dependencies": {
     "@aws-sdk/client-ecs": "^3.1068.0",
+    "@aws-sdk/client-secrets-manager": "^3.1068.0",
     "@edd/config": "workspace:*",
     "@edd/core": "workspace:*"
   },
