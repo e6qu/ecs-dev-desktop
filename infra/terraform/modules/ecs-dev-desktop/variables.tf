@@ -222,3 +222,23 @@ variable "log_retention_days" {
   type        = number
   default     = 30
 }
+
+# ---- Observability alarms (on the control-plane/reconciler EMF metrics) ----
+
+variable "enable_metric_alarms" {
+  description = "Create CloudWatch alarms on the control-plane/reconciler EMF metrics. Disable where CloudWatch metrics are unavailable (e.g. the simulator, which has no metrics endpoint)."
+  type        = bool
+  default     = true
+}
+
+variable "alarm_sns_topic_arns" {
+  description = "SNS topic ARNs notified on alarm/OK transitions. Empty = alarms still evaluate and show in the console, but send no notifications."
+  type        = list(string)
+  default     = []
+}
+
+variable "wake_latency_alarm_ms" {
+  description = "Threshold (ms) for the wake-on-connect cold-start latency p99 alarm."
+  type        = number
+  default     = 120000
+}

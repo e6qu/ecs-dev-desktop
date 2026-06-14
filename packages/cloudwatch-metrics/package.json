@@ -1,0 +1,20 @@
+{
+  "name": "@edd/cloudwatch-metrics",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@edd/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3"
+  }
+}

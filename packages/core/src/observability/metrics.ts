@@ -1,0 +1,85 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+/**
+ * Metric emission port. The functional core stays pure; the imperative shell
+ * (control plane, reconciler) emits operational metrics through this sink. Real
+ * deployments wire a CloudWatch adapter (`@edd/cloudwatch-metrics`, EMF over
+ * stdout); locally/in tests the no-op or in-memory sink is used. Like every other
+ * port, the producer code is identical against the sim or real cloud (§6.8).
+ */
+export type MetricDimensions = Readonly<Record<string, string>>;
+
+export interface MetricSink {
+  /** A counter increment (default 1). */
+  count(name: string, value?: number, dimensions?: MetricDimensions): void;
+  /** A point-in-time value (e.g. a fleet size). */
+  gauge(name: string, value: number, dimensions?: MetricDimensions): void;
+  /** A duration in milliseconds (e.g. wake latency). */
+  timing(name: string, milliseconds: number, dimensions?: MetricDimensions): void;
+}
+
+/** CloudWatch namespace for emitted metrics. */
+export const EDD_METRIC_NAMESPACE = "edd/control-plane";
+
+// Metric names — named constants so call sites carry no magic strings (§6.2).
+/** Wake-on-connect / start cold-start latency (RunTask → routable), in ms. */
+export const METRIC_WORKSPACE_WAKE_LATENCY_MS = "workspace.wake.latency_ms";
+/** One reconciler maintenance sweep ran to completion. */
+export const METRIC_RECONCILER_SWEEP = "reconciler.sweep.count";
+/** A reconciler sweep threw before completing. */
+export const METRIC_RECONCILER_FAILED = "reconciler.sweep.failed";
+/** Idle workspaces scaled to zero in a sweep. */
+export const METRIC_RECONCILER_STOPPED = "reconciler.idle.stopped";
+/** Scheduled snapshots taken in a sweep. */
+export const METRIC_RECONCILER_SNAPSHOTTED = "reconciler.snapshots.taken";
+/** Drifted records (task gone out-of-band) reconciled in a sweep. */
+export const METRIC_RECONCILER_DRIFT_LOST = "reconciler.drift.lost";
+/** Orphan volumes + snapshots garbage-collected in a sweep. */
+export const METRIC_RECONCILER_GC_DELETED = "reconciler.gc.deleted";
+/** Actions skipped because a concurrent update won the race (not failures). */
+export const METRIC_RECONCILER_SKIPPED = "reconciler.skipped";
+
+/** Sink that drops every metric — the default when no real sink is wired. */
+export class NoopMetricSink implements MetricSink {
+  count(): void {
+    /* no-op */
+  }
+  gauge(): void {
+    /* no-op */
+  }
+  timing(): void {
+    /* no-op */
+  }
+}
+
+/** One metric recorded by `InMemoryMetricSink`. */
+export interface RecordedMetric {
+  readonly kind: "count" | "gauge" | "timing";
+  readonly name: string;
+  readonly value: number;
+  readonly dimensions?: MetricDimensions;
+}
+
+/** Records metrics in memory for assertions in tests. */
+export class InMemoryMetricSink implements MetricSink {
+  readonly recorded: RecordedMetric[] = [];
+
+  count(name: string, value = 1, dimensions?: MetricDimensions): void {
+    this.push("count", name, value, dimensions);
+  }
+  gauge(name: string, value: number, dimensions?: MetricDimensions): void {
+    this.push("gauge", name, value, dimensions);
+  }
+  timing(name: string, milliseconds: number, dimensions?: MetricDimensions): void {
+    this.push("timing", name, milliseconds, dimensions);
+  }
+
+  private push(
+    kind: RecordedMetric["kind"],
+    name: string,
+    value: number,
+    dimensions?: MetricDimensions,
+  ): void {
+    this.recorded.push({ kind, name, value, ...(dimensions === undefined ? {} : { dimensions }) });
+  }
+}

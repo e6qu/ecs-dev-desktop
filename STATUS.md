@@ -15,9 +15,15 @@ incl. `EDD_SSH_CA_KEY_PATH`, `EDD_ADMIN_GROUPS` admin bootstrap, remote state, E
 login, two-phase apply, base-image seeding, Pomerium/gate); made the
 `docs/running-locally.md` tier commands actually runnable (`+ AWS` needs
 `ECS_SUBNETS`/`ECS_EBS_ROLE_ARN`; OIDC tiers need the Auth.js secrets). Inventoried
-the logs/health/status/metrics/testing gaps in `docs/observability-gaps.md`. Fixed
-one gap found in the audit: storage now does a live Health-board check
-(`Ec2StorageProvider.health()`) — it previously reported `unknown` even on AWS.
+the logs/health/status/metrics/testing gaps in `docs/observability-gaps.md`, then
+**closed the headline ones**: a real `/api/readyz` readiness probe (DynamoDB ping,
+ALB-wired) split from `/api/healthz` liveness; a storage Health-board check
+(`Ec2StorageProvider.health()`, previously `unknown` even on AWS); structured JSON
+logging (`@edd/core` `createLogger`) across the control plane + reconciler; a
+metrics layer (`MetricSink` + the `@edd/cloudwatch-metrics` EMF adapter) emitting
+wake-on-connect latency + reconciler action/failure counts, with CloudWatch alarms
+(`alarms.tf`); and CloudTrail audit pagination. All coordinate-driven (EMF on AWS,
+no-op locally). Remaining gaps tracked in `docs/observability-gaps.md`.
 
 ## Prior phase (merged, #83)
 

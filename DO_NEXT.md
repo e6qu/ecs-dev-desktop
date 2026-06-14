@@ -30,13 +30,15 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
 
 ## Available now (decision-free — immediate)
 
-- **Launch-readiness / observability gaps** — inventoried and prioritized in
-  [`docs/observability-gaps.md`](./docs/observability-gaps.md). Top items: a real
-  `/api/healthz` readiness check (DB + critical deps); structured logging in the
-  control plane + reconciler; a metrics layer (cold-start/wake latency, reconciler
-  action+failure counts, API error rate) + CloudWatch alarms; CloudTrail audit
-  pagination. The storage Health-board inverted contract is **done** (`BUGS.md` →
-  Resolved). The metrics layer is a design decision — agree the port shape first.
+- **Launch-readiness / observability** — the audit's headline gaps are now **done**
+  (`BUGS.md` → Resolved): `/api/readyz` readiness probe, storage Health-board check,
+  structured logging (control plane + reconciler), a metrics layer (`MetricSink` +
+  `@edd/cloudwatch-metrics` EMF; wake latency + reconciler counts) with CloudWatch
+  alarms, and CloudTrail audit pagination. **Remaining** (see
+  [`docs/observability-gaps.md`](./docs/observability-gaps.md)): API
+  request-latency/error-rate metrics + access logging (needs central middleware);
+  fleet/cost gauges; per-workspace log view; `EDD_SSH_CA_KEY_PATH` Terraform
+  provisioning; and running `e2e-aws` once the AWS account lands.
 - **Docs** — `README` doc index, [`docs/running-locally.md`](./docs/running-locally.md)
   (runnable tier commands), and the AWS [`docs/deploying.md`](./docs/deploying.md)
   runbook are current and cross-linked. Remaining deploy wiring gap:

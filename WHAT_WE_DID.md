@@ -898,3 +898,21 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   `Ec2StorageProvider.health()` (`DescribeAvailabilityZones`), verified against the
   sim — storage previously reported `unknown` on the Health board even on AWS (the
   same inverted contract just closed for compute).
+
+- **2026-06-14 — Observability layer (readiness, logging, metrics, alarms,
+  audit pagination).** Acting on the gap audit (and the user's "go big" choice),
+  closed the headline launch-readiness gaps in one pass: (1) `/api/readyz`, a real
+  DynamoDB-backed readiness probe wired to the ALB target group, split from
+  `/api/healthz` liveness (the ECS container restart probe) — an unhealthy task is
+  pulled from the LB rather than killed; (2) a structured JSON logger in `@edd/core`
+  (`createLogger`/`formatLogLine`, writer injected so the core stays pure) used by
+  the control plane (replacing ad-hoc `console.*`) and the reconciler (per-sweep +
+  error lines); (3) a metrics port `MetricSink` (+ `NoopMetricSink`/
+  `InMemoryMetricSink`) with a CloudWatch EMF-over-stdout adapter
+  (`@edd/cloudwatch-metrics`), emitting wake-on-connect cold-start latency
+  (`WorkspaceService.start`) and reconciler action/failure counts, plus CloudWatch
+  alarms (`alarms.tf`, gated `enable_metric_alarms` — off for the sim, which has no
+  metrics endpoint); (4) CloudTrail audit pagination (`NextToken` to the limit, was
+  first-page-only). Everything is coordinate-driven (EMF/alarms on real AWS, no-op
+  locally — §6.8) and unit/integ-tested; remaining gaps tracked in
+  `docs/observability-gaps.md`.

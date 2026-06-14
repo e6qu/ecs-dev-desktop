@@ -140,6 +140,22 @@ export { tallyWorkspaceStates } from "./observability/stats";
 export type { AuditEvent, AuditSource, FleetAuditInput } from "./observability/audit";
 export { deriveFleetAudit } from "./observability/audit";
 
+// Observability — metric emission port (CloudWatch EMF on AWS; no-op locally).
+export type { MetricSink, MetricDimensions, RecordedMetric } from "./observability/metrics";
+export {
+  NoopMetricSink,
+  InMemoryMetricSink,
+  EDD_METRIC_NAMESPACE,
+  METRIC_WORKSPACE_WAKE_LATENCY_MS,
+  METRIC_RECONCILER_SWEEP,
+  METRIC_RECONCILER_FAILED,
+  METRIC_RECONCILER_STOPPED,
+  METRIC_RECONCILER_SNAPSHOTTED,
+  METRIC_RECONCILER_DRIFT_LOST,
+  METRIC_RECONCILER_GC_DELETED,
+  METRIC_RECONCILER_SKIPPED,
+} from "./observability/metrics";
+
 // Observability — cost model (admin Costs; prices the lifecycle audit ledger).
 export type {
   BillingIntervals,
@@ -172,6 +188,15 @@ export type {
   LogStreamResult,
 } from "./observability/logs";
 export { auditToLogLines } from "./observability/logs";
+
+// Observability — structured (JSON) logging for the imperative shell.
+export type {
+  LogFields,
+  LogFieldValue,
+  LoggerDeps,
+  StructuredLogger,
+} from "./observability/logger";
+export { createLogger, formatLogLine } from "./observability/logger";
 
 // SSH: workspace principal derivation.
 export { workspacePrincipal } from "./domain/ssh";

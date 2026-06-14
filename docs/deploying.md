@@ -128,6 +128,19 @@ DynamoDB. Production starts empty — until you add an entry pointing at your go
 ECR image, users cannot create workspaces. Add base images via the admin catalog
 API/UI (the local `scripts/dev.sh` seeds one for dev; production has no auto-seed).
 
+## Observability
+
+- **Health:** the ALB target group health-checks `/api/readyz` (DynamoDB-backed
+  readiness — a task that can't reach its data store leaves the LB) while the ECS
+  container healthcheck uses `/api/healthz` (liveness). The admin Health board
+  (`/admin/health`) shows live compute/storage/DynamoDB status.
+- **Logs:** the control plane and reconciler emit structured JSON lines to
+  CloudWatch (`LOG_PROVIDER=cloudwatch`, injected by the module).
+- **Metrics + alarms:** wake-on-connect latency and reconciler action/failure
+  counts are emitted as CloudWatch EMF. The module creates alarms
+  (reconciler-failed, wake-latency-p99); set `alarm_sns_topic_arns` to be notified,
+  `wake_latency_alarm_ms` to tune the SLO, or `enable_metric_alarms = false` to skip.
+
 ## What is still un-exercised against real AWS
 
 The `e2e-aws` tier (real account/region/IdP) has not run — it is gated on the AWS

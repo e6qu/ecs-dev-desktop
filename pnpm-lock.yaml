@@ -62,6 +62,9 @@ importers:
       '@edd/cloudwatch-logs':
         specifier: workspace:*
         version: link:../../packages/cloudwatch-logs
+      '@edd/cloudwatch-metrics':
+        specifier: workspace:*
+        version: link:../../packages/cloudwatch-metrics
       '@edd/compute-ecs':
         specifier: workspace:*
         version: link:../../packages/compute-ecs
@@ -181,6 +184,16 @@ importers:
       '@edd/config':
         specifier: workspace:*
         version: link:../config
+      '@edd/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^25.9.3
+        version: 25.9.3
+
+  packages/cloudwatch-metrics:
+    dependencies:
       '@edd/core':
         specifier: workspace:*
         version: link:../core
@@ -335,6 +348,9 @@ importers:
 
   services/reconciler:
     dependencies:
+      '@edd/cloudwatch-metrics':
+        specifier: workspace:*
+        version: link:../../packages/cloudwatch-metrics
       '@edd/compute-ecs':
         specifier: workspace:*
         version: link:../../packages/compute-ecs

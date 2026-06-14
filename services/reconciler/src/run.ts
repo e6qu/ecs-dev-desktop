@@ -10,9 +10,20 @@
  * Optional tuning (DO_NEXT decision #4 knobs; defaults in @edd/core):
  * EDD_IDLE_THRESHOLD_MS, EDD_SNAPSHOT_INTERVAL_MS, EDD_GC_GRACE_MS.
  */
+import { metricSinkFromEnv } from "@edd/cloudwatch-metrics";
 import { EcsComputeProvider } from "@edd/compute-ecs";
 import { WorkspaceService } from "@edd/control-plane";
-import { systemClock } from "@edd/core";
+import {
+  createLogger,
+  METRIC_RECONCILER_DRIFT_LOST,
+  METRIC_RECONCILER_FAILED,
+  METRIC_RECONCILER_GC_DELETED,
+  METRIC_RECONCILER_SKIPPED,
+  METRIC_RECONCILER_SNAPSHOTTED,
+  METRIC_RECONCILER_STOPPED,
+  METRIC_RECONCILER_SWEEP,
+  systemClock,
+} from "@edd/core";
 import { createDynamoClient, makeAuditEventEntity, makeWorkspaceEntity } from "@edd/db";
 import { Ec2StorageProvider } from "@edd/storage-ec2";
 
@@ -58,5 +69,45 @@ const reconciler = new Reconciler({
   ...(gcGraceMs === undefined ? {} : { gcGraceMs }),
 });
 
-const result = await reconciler.runMaintenance();
-process.stdout.write(JSON.stringify(result) + "\n");
+const log = createLogger({
+  service: "reconciler",
+  clock: systemClock,
+  write: (line) => void process.stdout.write(`${line}\n`),
+});
+const metrics = metricSinkFromEnv();
+
+try {
+  const result = await reconciler.runMaintenance();
+
+  // Per-action metrics (CloudWatch EMF on AWS) — the sweep's effect over time.
+  metrics.count(METRIC_RECONCILER_SWEEP);
+  metrics.count(METRIC_RECONCILER_DRIFT_LOST, result.drift.lost);
+  metrics.count(METRIC_RECONCILER_STOPPED, result.idle.stopped);
+  metrics.count(METRIC_RECONCILER_SNAPSHOTTED, result.snapshots.snapshotted);
+  metrics.count(
+    METRIC_RECONCILER_GC_DELETED,
+    result.gc.volumesDeleted + result.gc.snapshotsDeleted,
+  );
+  metrics.count(
+    METRIC_RECONCILER_SKIPPED,
+    result.drift.skipped + result.idle.skipped + result.snapshots.skipped,
+  );
+
+  // Structured, queryable per-sweep log (was a single untyped JSON line).
+  log.info("maintenance sweep complete", {
+    driftScanned: result.drift.scanned,
+    driftLost: result.drift.lost,
+    idleScanned: result.idle.scanned,
+    stopped: result.idle.stopped,
+    snapshotted: result.snapshots.snapshotted,
+    volumesDeleted: result.gc.volumesDeleted,
+    snapshotsDeleted: result.gc.snapshotsDeleted,
+    skipped: result.drift.skipped + result.idle.skipped + result.snapshots.skipped,
+  });
+} catch (err) {
+  metrics.count(METRIC_RECONCILER_FAILED);
+  log.error("maintenance sweep failed", {
+    error: err instanceof Error ? err.message : String(err),
+  });
+  process.exitCode = 1;
+}

@@ -22,8 +22,11 @@ resource "aws_lb_target_group" "control_plane" {
   vpc_id      = aws_vpc.this.id
   target_type = "ip"
 
+  # Readiness (not liveness): a task whose DynamoDB is unreachable is pulled from
+  # the LB but left running for the ECS container healthcheck (/api/healthz) to
+  # decide whether to restart it. /api/readyz returns 503 when not ready.
   health_check {
-    path                = "/api/healthz"
+    path                = "/api/readyz"
     matcher             = "200"
     healthy_threshold   = 2
     unhealthy_threshold = 3

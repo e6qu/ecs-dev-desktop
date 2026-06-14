@@ -6,15 +6,15 @@
 
 **Launch-readiness gaps (logs / health / status / metrics / testing)** are
 inventoried, prioritized, and cross-referenced in
-[`docs/observability-gaps.md`](./docs/observability-gaps.md). The headline open
-items: `/api/healthz` is a static literal, not a real readiness check (an
-unhealthy task stays in the ALB); the control plane + reconciler have **no
-structured logging**; there are **no metrics at all** (no cold-start/wake latency,
-reconciler action counts, or API error rate) and no CloudWatch alarms;
-`CloudTrailAuditSource.recent` lacks pagination (truncates at volume); and
-`EDD_SSH_CA_KEY_PATH` (the CA private key) is required for SSH-cert issuance but
-not provisioned by the Terraform module (see [`docs/deploying.md`](./docs/deploying.md)
-Step 4). The storage Health-board inverted contract is **fixed** (see Resolved).
+[`docs/observability-gaps.md`](./docs/observability-gaps.md). Most headline items
+are now **fixed** (see Resolved): real `/api/readyz` readiness probe, storage
+Health-board check, structured logging (control plane + reconciler), a metrics
+layer (wake latency + reconciler counts) with CloudWatch alarms, and CloudTrail
+audit pagination. Still open: `EDD_SSH_CA_KEY_PATH` (the CA private key) is required
+for SSH-cert issuance but not provisioned by the Terraform module (see
+[`docs/deploying.md`](./docs/deploying.md) Step 4); `e2e-aws` (the entire real-cloud
+tier) remains unrun pending the AWS-account decision; API request-latency/error-rate
+metrics + access logging are not yet emitted (no central request middleware).
 
 ECS compute hardening follow-ups (from the 2026-06-13 gap audit; the impactful
 ones were fixed — see Resolved — these remain as deliberate follow-ups, not
@@ -45,6 +45,19 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **Observability layer: readiness, structured logging, metrics, audit pagination
+  (2026-06-14)** — closed the launch-readiness gaps found in the audit:
+  (1) `/api/readyz` is a real readiness probe (DynamoDB ping → 200/503) wired to the
+  ALB target group, while `/api/healthz` stays liveness — an unhealthy task is now
+  pulled from the LB instead of staying routable; (2) a structured JSON logger
+  (`createLogger`/`formatLogLine` in `@edd/core`) replaces ad-hoc `console.*` in the
+  control plane and adds per-sweep/error logging in the reconciler; (3) a metrics
+  port (`MetricSink` + `@edd/cloudwatch-metrics` EMF adapter) emits wake-on-connect
+  cold-start latency and reconciler action/failure counts, with CloudWatch alarms
+  (`alarms.tf`, gated `enable_metric_alarms`); (4) `CloudTrailAuditSource.recent`
+  paginates via `NextToken` instead of truncating to the first 50. All EMF/metrics
+  are coordinate-driven (EMF on AWS, no-op locally — §6.8). Remaining items tracked
+  in [`docs/observability-gaps.md`](./docs/observability-gaps.md).
 - **Storage Health board reported `unknown` even on AWS (2026-06-14)** — the admin
   Health board calls each provider's optional `health()`; compute had one but
   `Ec2StorageProvider` did not, so the storage row fell through to `unknown` on real

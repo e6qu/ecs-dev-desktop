@@ -1,11 +1,19 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { CloudTrailClient, LookupEventsCommand, type Event } from "@aws-sdk/client-cloudtrail";
+import {
+  CloudTrailClient,
+  LookupEventsCommand,
+  type Event,
+  type LookupEventsCommandOutput,
+} from "@aws-sdk/client-cloudtrail";
 import {
   DEFAULT_AUDIT_FEED_LIMIT,
   isoTimestamp,
   type AuditEvent,
   type AuditSource,
 } from "@edd/core";
+
+/** CloudTrail `LookupEvents` caps a single page at 50 results. */
+const CLOUDTRAIL_PAGE_MAX = 50;
 
 /**
  * `AuditSource` backed by CloudTrail `LookupEvents`. On AWS this surfaces the
@@ -21,12 +29,26 @@ export class CloudTrailAuditSource implements AuditSource {
 
   async recent(limit?: number): Promise<AuditEvent[]> {
     const max = limit ?? DEFAULT_AUDIT_FEED_LIMIT;
-    const out = await this.client.send(new LookupEventsCommand({ MaxResults: max }));
     const events: AuditEvent[] = [];
-    for (const e of out.Events ?? []) {
-      const mapped = mapEvent(e);
-      if (mapped !== null) events.push(mapped);
-    }
+    // LookupEvents returns at most 50 events per page; follow NextToken until we
+    // have `max` mapped events (or run out). Without this the feed silently
+    // truncated to the first page at volume — the same class as the resolved
+    // DynamoDB quota-pagination bug.
+    let nextToken: string | undefined;
+    do {
+      const out: LookupEventsCommandOutput = await this.client.send(
+        new LookupEventsCommand({
+          MaxResults: Math.min(max - events.length, CLOUDTRAIL_PAGE_MAX),
+          ...(nextToken === undefined ? {} : { NextToken: nextToken }),
+        }),
+      );
+      for (const e of out.Events ?? []) {
+        const mapped = mapEvent(e);
+        if (mapped !== null) events.push(mapped);
+        if (events.length >= max) return events;
+      }
+      nextToken = out.NextToken;
+    } while (nextToken !== undefined && events.length < max);
     return events;
   }
 }

@@ -5,9 +5,12 @@ import {
   FakeComputeProvider,
   FakeStorageProvider,
   fixedClock,
+  InMemoryMetricSink,
+  METRIC_WORKSPACE_WAKE_LATENCY_MS,
   ownerId,
   unwrap,
   workspaceId,
+  type Clock,
 } from "@edd/core";
 import {
   createDynamoClient,
@@ -81,6 +84,41 @@ describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
 
     const started = unwrap(await service.start(workspaceId(ws.id)));
     expect(started.state).toBe("running");
+  });
+
+  it("emits a wake cold-start latency metric on start()", async () => {
+    // A deterministic clock that advances a fixed step per read, so the wake
+    // latency (clock reads spanning the start path) is a stable positive number.
+    let tMs = Date.parse("2026-06-01T00:00:00.000Z");
+    const advancing: Clock = {
+      now: () => {
+        const iso = new Date(tMs).toISOString();
+        tMs += 1000;
+        return iso;
+      },
+    };
+    const metrics = new InMemoryMetricSink();
+    const storage = await FakeStorageProvider.create();
+    const svc = new WorkspaceService({
+      workspaces: makeWorkspaceEntity(client, TEST_TABLE),
+      storage,
+      compute: new FakeComputeProvider(storage),
+      clock: advancing,
+      metrics,
+    });
+
+    const ws = await svc.create({
+      ownerId: ownerId("wake-metric"),
+      baseImage: baseImage("golden/node:20"),
+    });
+    unwrap(await svc.stop(workspaceId(ws.id)));
+    metrics.recorded.length = 0; // only assert on the wake below
+    unwrap(await svc.start(workspaceId(ws.id)));
+
+    const wake = metrics.recorded.find((m) => m.name === METRIC_WORKSPACE_WAKE_LATENCY_MS);
+    expect(wake?.kind).toBe("timing");
+    expect(wake?.value).toBeGreaterThan(0);
+    expect(wake?.dimensions).toMatchObject({ baseImage: "golden/node:20" });
   });
 
   it("connect wakes a scaled-to-zero workspace and is a no-op when already running", async () => {
