@@ -2,9 +2,20 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-14 (cost-rollups branch)
+**Last updated:** 2026-06-14 (aws-price-list branch)
 
 ## Current phase
+
+**On `feat/aws-price-list`:** accurate costing now sources rates from the **AWS
+pricing model directly** — live from the AWS Price List API (`pricing:GetProducts`)
+for the deployment's region (`apps/web/lib/aws-pricing.ts`), opt-in via
+`EDD_AWS_PRICING=1`, best-effort with per-rate fallback to the configured
+`@edd/config` rate (so a missing/denied API never mis-prices). The pure parser is
+unit-tested against a recorded GetProducts shape; the live fetch has no simulator
+(no Pricing API) so it's exercised against real AWS (`e2e-aws`), CI uses the
+fallback. Formula unchanged (Fargate vCPU/GB-hr + EBS/snapshot GB-mo).
+
+## Prior phase
 
 **On `feat/cost-rollups`:** the cost report moves from O(history) to O(recent)
 without changing the figures. New pure core (`deriveBillingState`/`resumeBilling`,
@@ -18,7 +29,7 @@ Pricing uses the AWS on-demand **model** (Fargate vCPU/GB-hr + EBS/snapshot GB-m
 us-east-1 rates, `EDD_PRICE_*`-overridable); live region-accurate rate sourcing via
 the AWS Price List API is the next (real-AWS-validated) follow-up — `BUGS.md` → Open.
 
-## Prior phase
+## Earlier (merged, #80)
 
 **On `feat/ecs-secrets-health-cost-exec`:** an ECS hardening sweep clearing the
 remaining Open compute items:

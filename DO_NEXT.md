@@ -35,10 +35,10 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
   → Secrets Manager (no plaintext); real `EcsComputeProvider.health()`; ECS Exec on
   the launch path. Remaining: `CONNECTION_TOKEN` injection (lands with the future
   DYNAMIC wake-on-connect gate).
-- **Cost-report rollups — done** (figure-exact checkpoint + resume; `BUGS.md` →
-  Resolved). Remaining cost item: **live region-accurate rate sourcing** via the AWS
-  Price List API (the model + us-east-1 rates are in place + env-overridable; live
-  sourcing is real-AWS-only to validate — its own PR). See `BUGS.md` → Open.
+- **Cost — done.** Figure-exact rollups (O(recent) report) + live AWS Price List
+  rate sourcing (`EDD_AWS_PRICING=1`, region-accurate, config fallback); both in
+  `BUGS.md` → Resolved. The live-rate fetch is real-AWS-validated (`e2e-aws`); CI
+  uses the fallback (the sim has no Pricing API).
 - **Cost visualization — built** (`feat/cost-visualization`): admin `/admin/costs`
   prices the lifecycle audit ledger (compute + live-volume + snapshot) per session
   / user / fleet; lifecycle audit centralized in `WorkspaceService` so the ledger
