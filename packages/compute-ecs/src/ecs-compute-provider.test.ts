@@ -6,8 +6,18 @@ import {
   agentToken,
   taskDefinitionFamily,
   taskPrivateIp,
+  taskReady,
   workspaceEnvironment,
 } from "./ecs-compute-provider";
+
+const eni = {
+  type: "ElasticNetworkInterface",
+  details: [{ name: "privateIPv4Address", value: "10.0.1.42" }],
+};
+const ebs = {
+  type: "AmazonElasticBlockStorage",
+  details: [{ name: "volumeId", value: "vol-abc123" }],
+};
 
 describe("taskDefinitionFamily", () => {
   it("derives a valid ECS family from a base-image reference", () => {
@@ -58,6 +68,32 @@ describe("taskPrivateIp", () => {
         ],
       }),
     ).toBeUndefined();
+  });
+});
+
+describe("taskReady", () => {
+  it("is ready when RUNNING with the volume attached and an ENI IP", () => {
+    expect(taskReady({ lastStatus: "RUNNING", attachments: [eni, ebs] })).toEqual({
+      volumeId: "vol-abc123",
+      sshHost: "10.0.1.42",
+    });
+  });
+
+  it("is NOT ready while PROVISIONING/PENDING even with the volume + IP present", () => {
+    expect(taskReady({ lastStatus: "PROVISIONING", attachments: [eni, ebs] })).toBeUndefined();
+    expect(taskReady({ lastStatus: "PENDING", attachments: [eni, ebs] })).toBeUndefined();
+  });
+
+  it("is NOT ready when RUNNING but the ENI IP is not yet assigned", () => {
+    expect(taskReady({ lastStatus: "RUNNING", attachments: [ebs] })).toBeUndefined();
+  });
+
+  it("is NOT ready when RUNNING but the managed volume is not yet attached", () => {
+    expect(taskReady({ lastStatus: "RUNNING", attachments: [eni] })).toBeUndefined();
+  });
+
+  it("is NOT ready for a missing task", () => {
+    expect(taskReady(undefined)).toBeUndefined();
   });
 });
 

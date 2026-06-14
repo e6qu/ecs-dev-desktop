@@ -39,8 +39,9 @@ const WORKSPACE_VOLUME = "workspace";
 /** SSH port the workspace sshd listens on (declared in the task def alongside
  * the OpenVSCode HTTP port {@link DEFAULT_WORKSPACE_PORT}). */
 const WORKSPACE_SSH_PORT = 22;
-/** Max attempts (×2s) to observe the managed EBS volume id on the new task. */
-const VOLUME_ATTEMPTS = 30;
+/** Max attempts (×2s) to observe the new task become READY (RUNNING + volume +
+ * ENI). 90 × 2s = 180s — covers a real Fargate cold start; the sim is sub-second. */
+const READY_ATTEMPTS = 90;
 
 export interface EcsComputeConfig {
   /** ECS cluster the tasks run in. */
@@ -175,6 +176,25 @@ export function taskPrivateIp(task: Task | undefined): string | undefined {
 }
 
 /**
+ * Whether a task is ready to serve, and its serving coordinates if so. A task is
+ * ready once ECS reports it RUNNING with its managed EBS volume attached AND its
+ * ENI private IP assigned — i.e. the container is actually up and routable, not
+ * merely PROVISIONING/PENDING. `runTask` gates on this so the control plane never
+ * reports a workspace `running` (or hands out `sshHost`/connect-info) before it
+ * can accept connections — the readiness gap every caller used to paper over with
+ * its own retry loop. Returns undefined until all three hold.
+ */
+export function taskReady(
+  task: Task | undefined,
+): { volumeId: string; sshHost: string } | undefined {
+  if (task?.lastStatus !== "RUNNING") return undefined;
+  const vol = ebsVolumeId(task);
+  const sshHost = taskPrivateIp(task);
+  if (vol === undefined || sshHost === undefined) return undefined;
+  return { volumeId: vol, sshHost };
+}
+
+/**
  * Real Fargate ComputeProvider. `runTask` registers a task definition for the
  * base image (cached), launches it with an ECS-**managed** EBS volume (created
  * fresh, or hydrated from a snapshot on wake), and returns the task + the volume
@@ -294,27 +314,32 @@ export class EcsComputeProvider implements ComputeProvider {
       }),
     );
     const arn = required(out.tasks?.[0]?.taskArn, "taskArn");
-    const task = await this.awaitVolumeId(arn);
-    return { id: taskId(arn), volumeId: volumeId(task.volumeId), sshHost: task.sshHost };
+    const ready = await this.awaitTaskReady(arn);
+    return { id: taskId(arn), volumeId: volumeId(ready.volumeId), sshHost: ready.sshHost };
   }
 
-  /** Poll DescribeTasks until ECS reports the managed EBS volume id. Also reads the ENI IP. */
-  private async awaitVolumeId(taskArn: string): Promise<{ volumeId: string; sshHost?: string }> {
-    for (let i = 0; i < VOLUME_ATTEMPTS; i++) {
+  /**
+   * Poll DescribeTasks until the task is READY — RUNNING with its managed EBS
+   * volume attached and its ENI private IP assigned (see `taskReady`) — so the
+   * caller doesn't get a `running` task that can't yet accept connections. Throws
+   * if the task stops first, or on timeout.
+   */
+  private async awaitTaskReady(taskArn: string): Promise<{ volumeId: string; sshHost: string }> {
+    for (let i = 0; i < READY_ATTEMPTS; i++) {
       const out = await this.client.send(
         new DescribeTasksCommand({ cluster: this.cluster(), tasks: [taskArn] }),
       );
       const task = out.tasks?.[0];
-      const vol = ebsVolumeId(task);
-      if (vol !== undefined) return { volumeId: vol, sshHost: taskPrivateIp(task) };
+      const ready = taskReady(task);
+      if (ready !== undefined) return ready;
       if (task?.lastStatus === "STOPPED") {
         throw new Error(
-          `task ${taskArn} stopped before attaching a volume: ${task.stoppedReason ?? "unknown"}`,
+          `task ${taskArn} stopped before becoming ready: ${task.stoppedReason ?? "unknown"}`,
         );
       }
       await sleep(2000);
     }
-    throw new Error(`timed out awaiting the managed EBS volume for task ${taskArn}`);
+    throw new Error(`timed out awaiting task ${taskArn} to become ready (RUNNING + volume + ENI)`);
   }
 
   async stopTask(id: TaskId): Promise<void> {

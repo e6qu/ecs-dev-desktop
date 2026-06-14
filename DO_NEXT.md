@@ -31,9 +31,10 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
 ## Available now (decision-free — immediate)
 
 - **ECS compute hardening follow-ups** (from the 2026-06-13 gap audit, tracked in
-  `BUGS.md` → Open): readiness gating in `runTask` (task-def healthCheck / port
-  wait); move `EDD_AGENT_TOKEN` to ECS `secrets` + have the provider inject
-  `CONNECTION_TOKEN` (ties into the proxy-authz token handoff); implement real
+  `BUGS.md` → Open): readiness gating in `runTask` is **done** (`taskReady` —
+  RUNNING + volume + ENI; see `BUGS.md` → Resolved). Remaining: move
+  `EDD_AGENT_TOKEN` to ECS `secrets` + have the provider inject `CONNECTION_TOKEN`
+  (ties into the proxy-authz token handoff); implement real
   `EcsComputeProvider.health()`. None blocked; all decision-free.
 - **Optional:** ECS Exec workspace probe through the provider (the capability is
   sim-proven via a standalone task, but production `runTask` doesn't set

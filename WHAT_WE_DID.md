@@ -798,3 +798,16 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   (runTask readiness gating; agent secret → ECS `secrets`; real `health()`) remains
   in `BUGS.md` → Open as the next follow-ups — deliberately not bundled here (a
   behavior change, not a probe).
+
+- **2026-06-14 — ECS `runTask` readiness gating.** Closed the impactful reliability
+  gap from the 2026-06-13 audit: `EcsComputeProvider.runTask` now returns only once
+  the task is READY — a pure `taskReady(task)` predicate (`lastStatus` RUNNING +
+  managed-EBS volume attached + ENI private IP assigned) — instead of returning at
+  PROVISIONING/PENDING as soon as the volume id appeared. `WorkspaceService` thus no
+  longer reports `running` / hands out `sshHost`+connect-info for a task that can't
+  yet accept connections (the race callers used to absorb with retries). Verified the
+  sim's transition from source (PROVISIONING→PENDING→RUNNING with attachments
+  ATTACHED) before gating on RUNNING so the heavy container-mode e2e wouldn't hang;
+  unit-tested the predicate; timeout raised to 180s for real Fargate cold start.
+  Endpoint-only. Remaining ECS follow-ups (agent secret → ECS `secrets`; real
+  `health()`) stay in `BUGS.md` → Open.
