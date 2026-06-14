@@ -72,6 +72,13 @@ describe("Ec2StorageProvider against the sockerless AWS sim", () => {
     await sp.deleteVolume(gen2.id);
   });
 
+  it("reports ok when the EC2 control plane is reachable (live health check)", async () => {
+    const health = await sp.health();
+    expect(health.component).toBe("storage");
+    expect(health.status).toBe("ok");
+    expect(health.detail).toContain("AZ");
+  });
+
   it("scopes enumeration to its own managed resources (GC safety)", async () => {
     const a = Ec2StorageProvider.fromEnv({ scope: "edd-itest-scope-a" });
     const b = Ec2StorageProvider.fromEnv({ scope: "edd-itest-scope-b" });

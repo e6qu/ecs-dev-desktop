@@ -80,6 +80,10 @@ module "edd" {
 
   nat_mode = var.nat_mode
 
+  # The simulator exposes no CloudWatch metrics/alarms endpoint (the EMF metrics
+  # resolve only against real AWS), so the alarm resources are off for the sim apply.
+  enable_metric_alarms = false
+
   # TLS + workspace-wildcard routing (ACM cert, DNS validation, HTTPS listener).
   domain_name     = var.enable_dns ? "edd-sim.example.com" : ""
   route53_zone_id = var.enable_dns ? aws_route53_zone.test[0].zone_id : ""

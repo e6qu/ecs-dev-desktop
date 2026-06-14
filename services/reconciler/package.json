@@ -13,6 +13,7 @@
     "test:integ": "vitest run --config vitest.integ.config.ts"
   },
   "dependencies": {
+    "@edd/cloudwatch-metrics": "workspace:*",
     "@edd/compute-ecs": "workspace:*",
     "@edd/config": "workspace:*",
     "@edd/control-plane": "workspace:*",

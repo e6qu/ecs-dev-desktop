@@ -9,6 +9,7 @@ import { normalizeClaims } from "./lib/claims";
 import { GITHUB_URL_ENV } from "./lib/constants";
 import { getGitCredentials, gitCredentialsEnabled } from "./lib/git-credentials";
 import { fetchGithubTeamGroups } from "./lib/github-teams";
+import { errorField, log } from "./lib/logger";
 
 /**
  * Auth.js (NextAuth v5) — GitHub OAuth + Azure Entra ID, JWT sessions. Provider
@@ -71,7 +72,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           try {
             await getGitCredentials().store(claims.subject, account.access_token);
           } catch (err) {
-            console.error("edd: failed to store git credential at sign-in", err);
+            log.error("failed to store git credential at sign-in", { error: errorField(err) });
           }
         }
       }

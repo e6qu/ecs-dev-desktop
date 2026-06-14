@@ -1,5 +1,5 @@
 {
-  "name": "@edd/db",
+  "name": "@edd/cloudwatch-metrics",
   "version": "0.0.0",
   "private": true,
   "type": "module",
@@ -9,14 +9,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "lint": "eslint .",
-    "test": "vitest run",
-    "test:integ": "vitest run --config vitest.integ.config.ts"
+    "test": "vitest run"
   },
   "dependencies": {
-    "@aws-sdk/client-dynamodb": "^3.1068.0",
-    "@edd/config": "workspace:*",
-    "@edd/core": "workspace:*",
-    "electrodb": "^3.9.1"
+    "@edd/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.9.3"

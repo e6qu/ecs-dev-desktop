@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { CloudTrailAuditSource } from "@edd/cloudtrail-audit";
 import { CloudWatchLogSource } from "@edd/cloudwatch-logs";
+import { metricSinkFromEnv } from "@edd/cloudwatch-metrics";
 import { EcsComputeProvider } from "@edd/compute-ecs";
-import { FakeComputeProvider, FakeStorageProvider, systemClock } from "@edd/core";
+import {
+  FakeComputeProvider,
+  FakeStorageProvider,
+  systemClock,
+  type ComponentHealth,
+} from "@edd/core";
 import { workspaceSizing } from "@edd/config";
 
 import { resolveWorkspacePricing } from "./aws-pricing";
@@ -111,6 +117,17 @@ export async function getHealthService(): Promise<HealthService> {
   });
 }
 
+/**
+ * Readiness probe for the ALB target group: the control plane can serve traffic
+ * only if its single DynamoDB table is reachable and ACTIVE. This is distinct from
+ * `/api/healthz` liveness (process-is-up, drives the ECS container restart): a task
+ * that can't reach its data store should be pulled from the load balancer, not
+ * killed. Returns the table's `ComponentHealth` for the route to map to 200/503.
+ */
+export async function checkReadiness(): Promise<ComponentHealth> {
+  return pingTable(createDynamoClient(), tableName());
+}
+
 /** Admin audit feed: CloudTrail on AWS; derived from state locally. */
 export function getAuditSource(): CloudTrailAuditSource | DerivedAuditSource {
   if (process.env.AUDIT_PROVIDER === "cloudtrail") {
@@ -148,6 +165,8 @@ async function build(): Promise<WorkspaceService> {
       compute,
       clock: systemClock,
       audit: getAuditEntity(),
+      // Wake cold-start latency → CloudWatch EMF when LOG_PROVIDER=cloudwatch.
+      metrics: metricSinkFromEnv(),
     });
   }
   const storage = await FakeStorageProvider.create();

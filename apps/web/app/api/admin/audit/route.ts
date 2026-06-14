@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 
 import { authenticate, forbidden, isResponse } from "../../../../lib/api";
 import { getAuditLog, getAuditSource } from "../../../../lib/control-plane";
+import { errorField, log } from "../../../../lib/logger";
 
 /** One source's events, or [] if that source errors — so a single failing source
  * degrades the feed rather than blanking it. The failure is logged (not silent). */
@@ -14,7 +15,7 @@ async function safeRecent(
   try {
     return await source.recent();
   } catch (err) {
-    console.error(`edd: audit source ${label} failed`, err);
+    log.error("audit source failed", { source: label, error: errorField(err) });
     return [];
   }
 }

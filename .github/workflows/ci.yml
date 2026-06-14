@@ -829,7 +829,8 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" elbv2 describe-target-groups \
               --query "TargetGroups[?starts_with(TargetGroupName,'eddsim')].Port|[0]" \
               --output text)"
-          assert_eq "ALB target group health check path" "/api/healthz" \
+          # Readiness (DynamoDB-backed), not liveness — see apps/web/app/api/readyz.
+          assert_eq "ALB target group health check path" "/api/readyz" \
             "$(aws --endpoint-url "${ENDPT}" elbv2 describe-target-groups \
               --query "TargetGroups[?starts_with(TargetGroupName,'eddsim')].HealthCheckPath|[0]" \
               --output text)"

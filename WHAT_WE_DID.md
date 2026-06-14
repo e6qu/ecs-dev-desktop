@@ -879,3 +879,40 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   sim workaround (§6.8): ECS, Secrets Manager, and EC2 clients now use
   `retryMode: "adaptive"` + `maxAttempts: 6` (named in `@edd/config`). The race
   test stays strict — no assertion was weakened.
+
+- **2026-06-14 — Docs review + launch-readiness audit.** Reviewed every doc for
+  accuracy and cross-linking via a parallel audit (local-run, deployment,
+  observability, cross-links). Made the docs navigable and correct: surfaced the
+  orphaned `admin-ui-design` / `infra/images` / `infra/proxy` /
+  `services/ssh-gateway` READMEs in the README index; wrote a full AWS deployment
+  runbook (`docs/deploying.md`) correcting the prior gaps (the two real images —
+  control-plane app image + golden, not a phantom reconciler/ssh-proxy image; every
+  operator-supplied secret incl. the missing `EDD_SSH_CA_KEY_PATH` and the
+  `EDD_ADMIN_GROUPS` admin-bootstrap footgun; remote state, ECR login, two-phase
+  apply, base-image seeding, Pomerium/gate); and made the `running-locally` tier
+  commands actually runnable (`+ AWS` requires `ECS_SUBNETS`/`ECS_EBS_ROLE_ARN`;
+  OIDC tiers require the Auth.js secrets). Inventoried the
+  logs/health/status/metrics/testing gaps in `docs/observability-gaps.md`
+  (top: real `/api/healthz` readiness, structured logging, a metrics layer,
+  CloudTrail pagination). Fixed one gap inline: added a live
+  `Ec2StorageProvider.health()` (`DescribeAvailabilityZones`), verified against the
+  sim — storage previously reported `unknown` on the Health board even on AWS (the
+  same inverted contract just closed for compute).
+
+- **2026-06-14 — Observability layer (readiness, logging, metrics, alarms,
+  audit pagination).** Acting on the gap audit (and the user's "go big" choice),
+  closed the headline launch-readiness gaps in one pass: (1) `/api/readyz`, a real
+  DynamoDB-backed readiness probe wired to the ALB target group, split from
+  `/api/healthz` liveness (the ECS container restart probe) — an unhealthy task is
+  pulled from the LB rather than killed; (2) a structured JSON logger in `@edd/core`
+  (`createLogger`/`formatLogLine`, writer injected so the core stays pure) used by
+  the control plane (replacing ad-hoc `console.*`) and the reconciler (per-sweep +
+  error lines); (3) a metrics port `MetricSink` (+ `NoopMetricSink`/
+  `InMemoryMetricSink`) with a CloudWatch EMF-over-stdout adapter
+  (`@edd/cloudwatch-metrics`), emitting wake-on-connect cold-start latency
+  (`WorkspaceService.start`) and reconciler action/failure counts, plus CloudWatch
+  alarms (`alarms.tf`, gated `enable_metric_alarms` — off for the sim, which has no
+  metrics endpoint); (4) CloudTrail audit pagination (`NextToken` to the limit, was
+  first-page-only). Everything is coordinate-driven (EMF/alarms on real AWS, no-op
+  locally — §6.8) and unit/integ-tested; remaining gaps tracked in
+  `docs/observability-gaps.md`.

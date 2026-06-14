@@ -21,6 +21,7 @@ COPY packages/auth/package.json                        packages/auth/
 COPY packages/authz/package.json                       packages/authz/
 COPY packages/cloudtrail-audit/package.json            packages/cloudtrail-audit/
 COPY packages/cloudwatch-logs/package.json             packages/cloudwatch-logs/
+COPY packages/cloudwatch-metrics/package.json          packages/cloudwatch-metrics/
 COPY packages/compute-ecs/package.json                 packages/compute-ecs/
 COPY packages/config/package.json                      packages/config/
 COPY packages/control-plane/package.json               packages/control-plane/
@@ -39,6 +40,7 @@ COPY packages/api-contracts/src   packages/api-contracts/src
 COPY packages/authz/src            packages/authz/src
 COPY packages/config/src           packages/config/src
 COPY packages/core/src             packages/core/src
+COPY packages/cloudwatch-metrics/src packages/cloudwatch-metrics/src
 COPY packages/compute-ecs/src      packages/compute-ecs/src
 COPY packages/control-plane/src    packages/control-plane/src
 COPY packages/db/src               packages/db/src

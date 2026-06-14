@@ -15,11 +15,22 @@ UI, and an admin control plane. Think self-hosted Coder / GitHub Codespaces.
   rules of engagement for contributors/agents. (`CLAUDE.md` is a symlink to it.)
 - [`docs/running-locally.md`](./docs/running-locally.md) — run/develop/test the app
   locally: `pnpm dev` and the tiered options (fakes → bleephub → sockerless AWS).
+- [`docs/deploying.md`](./docs/deploying.md) — the AWS deployment runbook
+  (Terraform → images → env/secrets → SSH CA → DNS/proxy → seed) — see
+  [Deploying](#deploying).
 - [`PLAN.md`](./PLAN.md) — phased roadmap with per-phase deliverables + testing.
 - [`TESTING.md`](./TESTING.md) — unit, integration, e2e, HTTPS, Terraform, and
   real-AWS test tiers.
+- [`docs/observability-gaps.md`](./docs/observability-gaps.md) — logs/health/status/
+  metrics + testing gaps and the pre-launch priority list.
+- [`docs/admin-ui-design.md`](./docs/admin-ui-design.md) — the admin console design
+  (overview, health, logs, costs, quotas).
 - [`infra/terraform/README.md`](./infra/terraform/README.md) — the AWS Terraform
   module (inputs, outputs, prerequisites, deploy flow) — see [Deploying](#deploying).
+- **Component docs:**
+  [`infra/images/README.md`](./infra/images/README.md) (golden workspace image) ·
+  [`infra/proxy/README.md`](./infra/proxy/README.md) (Pomerium identity-aware proxy) ·
+  [`services/ssh-gateway/README.md`](./services/ssh-gateway/README.md) (OpenSSH + SSH CA).
 - [`docs/simulator-live-coverage.md`](./docs/simulator-live-coverage.md) — live
   coverage and next test candidates against the sockerless AWS/Azure simulators.
 - **Continuity files** (kept in sync every task, past tense at PR close):
@@ -62,25 +73,31 @@ dev-auth sign-in, and the self-reaping local test commands
 
 Nothing is provisioned on AWS yet — the Terraform module is built and
 **simulator-apply-proven** every PR, with real `apply` gated on an AWS account +
-domain (see [`DO_NEXT.md`](./DO_NEXT.md) open decisions). To deploy a real
-environment:
+domain (see [`DO_NEXT.md`](./DO_NEXT.md) open decisions). The full runbook —
+Terraform backend, the module, the **two** images, every required env var/secret,
+the SSH CA, DNS/TLS + proxy, and seeding — is in
+**[`docs/deploying.md`](./docs/deploying.md)**. In short:
 
-1. **Provision infra** with the Terraform module —
-   [`infra/terraform/README.md`](./infra/terraform/README.md) and
-   [`infra/terraform/modules/ecs-dev-desktop/README.md`](./infra/terraform/modules/ecs-dev-desktop/README.md)
-   (VPC, DynamoDB, ECR, KMS, IAM, ECS control-plane service, ALB + ACM/Route53,
-   reconciler schedule, CloudWatch logs) — inputs, outputs, prerequisites, and the
-   deploy flow are there. A runnable example is in `infra/terraform/examples/complete`.
-2. **Publish images** to the created ECR (the golden workspace image
-   `infra/images/workspace`, the reconciler, the SSH proxy).
-3. **Configure the control plane** with the production coordinates/secrets:
-   `COMPUTE_PROVIDER=ecs`, `AUDIT_PROVIDER=cloudtrail`, `LOG_PROVIDER=cloudwatch`,
-   the ECS cluster/subnets/roles, `EDD_TOKEN_ENC_KEY`, `EDD_GATEWAY_SECRET`,
-   `EDD_AGENT_SECRET`, and the Auth.js + IdP creds (GitHub OAuth/App + Entra). The
-   same code path the local tiers exercise targets real cloud by these coordinates
-   alone (`AGENTS.md` §6.8/§6.9).
+1. **Provision infra** with the Terraform module
+   ([`infra/terraform/README.md`](./infra/terraform/README.md),
+   [module README](./infra/terraform/modules/ecs-dev-desktop/README.md);
+   example in `infra/terraform/examples/complete`) — VPC, DynamoDB, ECR, KMS, IAM,
+   ECS control-plane service, ALB + ACM/Route 53, reconciler schedule, CloudWatch
+   logs. Bootstrap a remote state backend first.
+2. **Publish two images** to the created ECR: the **control-plane app image**
+   (`apps/web` — the control-plane service _and_ the reconciler run it, via a
+   command override) and the **golden workspace image** (`infra/images/workspace`,
+   which also bakes `sshd` + the SSH CA — there is no separate proxy image).
+3. **Configure secrets** the module does not inject — Auth.js (`AUTH_SECRET`,
+   `AUTH_URL`/`AUTH_TRUST_HOST`) + IdP creds, RBAC groups (`EDD_ADMIN_GROUPS` — set
+   this or no one is an admin), crypto (`EDD_TOKEN_ENC_KEY`, `EDD_GATEWAY_SECRET`,
+   `EDD_AGENT_SECRET`), and the SSH CA private key (`EDD_SSH_CA_KEY_PATH`). The
+   infra coordinates (`COMPUTE_PROVIDER`, `AUDIT_PROVIDER`, `LOG_PROVIDER`, cluster/
+   subnets/roles, …) are injected by the module. Same code, real cloud by
+   coordinates alone (`AGENTS.md` §6.8/§6.9).
 4. **Wire DNS/TLS + the identity-aware proxy** (`*.devbox.<domain>` via Pomerium →
-   the workspace gate → workspaces; ACM cert + Route 53).
+   the workspace gate → workspaces; ACM cert + Route 53), then **seed the
+   base-image catalog** so workspaces can launch.
 
 ## Contributing
 

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { LookupEventsCommandOutput } from "@aws-sdk/client-cloudtrail";
+import type { LookupEventsCommand, LookupEventsCommandOutput } from "@aws-sdk/client-cloudtrail";
 import { CloudTrailClient } from "@aws-sdk/client-cloudtrail";
 import { describe, expect, it, vi } from "vitest";
 
@@ -101,5 +101,38 @@ describe("CloudTrailAuditSource", () => {
     const source = new CloudTrailAuditSource({ send: mockSend } as unknown as CloudTrailClient);
     await source.recent(7);
     expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ input: { MaxResults: 7 } }));
+  });
+
+  const evt = (name: string): NonNullable<LookupEventsCommandOutput["Events"]>[number] => ({
+    EventTime: new Date("2026-06-06T12:00:00.000Z"),
+    EventName: name,
+  });
+
+  it("follows NextToken across pages until the limit is collected", async () => {
+    const mockSend = vi
+      .fn()
+      .mockResolvedValueOnce({ Events: [evt("A"), evt("B")], NextToken: "t1" })
+      .mockResolvedValueOnce({ Events: [evt("C")] });
+    const src = new CloudTrailAuditSource({ send: mockSend } as unknown as CloudTrailClient);
+
+    const events = await src.recent(10);
+
+    expect(mockSend).toHaveBeenCalledTimes(2);
+    expect(events.map((e) => e.action)).toEqual(["A", "B", "C"]);
+    // The second page request carried the first page's NextToken.
+    const secondCall = mockSend.mock.calls[1] as [LookupEventsCommand];
+    expect(secondCall[0].input).toMatchObject({ NextToken: "t1" });
+  });
+
+  it("stops at the limit without fetching further pages", async () => {
+    // Every page is full and offers another NextToken; once `limit` is reached we
+    // must not keep paging.
+    const mockSend = vi.fn().mockResolvedValue({ Events: [evt("A"), evt("B")], NextToken: "more" });
+    const src = new CloudTrailAuditSource({ send: mockSend } as unknown as CloudTrailClient);
+
+    const events = await src.recent(2);
+
+    expect(events).toHaveLength(2);
+    expect(mockSend).toHaveBeenCalledTimes(1);
   });
 });

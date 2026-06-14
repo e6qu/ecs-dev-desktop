@@ -62,6 +62,9 @@ importers:
       '@edd/cloudwatch-logs':
         specifier: workspace:*
         version: link:../../packages/cloudwatch-logs
+      '@edd/cloudwatch-metrics':
+        specifier: workspace:*
+        version: link:../../packages/cloudwatch-metrics
       '@edd/compute-ecs':
         specifier: workspace:*
         version: link:../../packages/compute-ecs
@@ -189,6 +192,16 @@ importers:
         specifier: ^25.9.3
         version: 25.9.3
 
+  packages/cloudwatch-metrics:
+    dependencies:
+      '@edd/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^25.9.3
+        version: 25.9.3
+
   packages/compute-ecs:
     dependencies:
       '@aws-sdk/client-ecs':
@@ -258,8 +271,8 @@ importers:
         specifier: workspace:*
         version: link:../core
       electrodb:
-        specifier: ^3.9.0
-        version: 3.9.0(@aws-sdk/client-dynamodb@3.1068.0)
+        specifier: ^3.9.1
+        version: 3.9.1(@aws-sdk/client-dynamodb@3.1068.0)
     devDependencies:
       '@types/node':
         specifier: ^25.9.3
@@ -335,6 +348,9 @@ importers:
 
   services/reconciler:
     dependencies:
+      '@edd/cloudwatch-metrics':
+        specifier: workspace:*
+        version: link:../../packages/cloudwatch-metrics
       '@edd/compute-ecs':
         specifier: workspace:*
         version: link:../../packages/compute-ecs
@@ -1634,8 +1650,8 @@ packages:
     resolution: {integrity: sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ==}
     engines: {node: '>=8'}
 
-  electrodb@3.9.0:
-    resolution: {integrity: sha512-uqMGlvU5mzLSAc4EqC7rI2MXxoNzPFoPHybtxoCCBYfOqq5I5ZRMK02cbBnSdx9rM/mfwDcYKT7AKjlfliq6WQ==}
+  electrodb@3.9.1:
+    resolution: {integrity: sha512-Z1y19yQWuZq0pI7kmDfzMbSzTAImCHLqjmTCML1kYHuSSvK+yZZYY2RyDAefpe2xJ0RkGTmFjuH4y/AWL1nJPQ==}
 
   es-module-lexer@2.1.0:
     resolution: {integrity: sha512-n27zTYMjYu1aj4MjCWzSP7G9r75utsaoc8m61weK+W8JMBGGQybd43GstCXZ3WNmSFtGT9wi59qQTW6mhTR5LQ==}
@@ -3419,7 +3435,7 @@ snapshots:
 
   detect-libc@2.1.2: {}
 
-  electrodb@3.9.0(@aws-sdk/client-dynamodb@3.1068.0):
+  electrodb@3.9.1(@aws-sdk/client-dynamodb@3.1068.0):
     dependencies:
       '@aws-sdk/lib-dynamodb': 3.1068.0(@aws-sdk/client-dynamodb@3.1068.0)
       '@aws-sdk/util-dynamodb': 3.996.4(@aws-sdk/client-dynamodb@3.1068.0)

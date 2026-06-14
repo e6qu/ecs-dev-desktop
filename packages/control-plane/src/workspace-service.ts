@@ -15,6 +15,7 @@ import {
   markStarted,
   markStopped,
   markTaskLost,
+  METRIC_WORKSPACE_WAKE_LATENCY_MS,
   newWorkspaceId,
   notFoundError,
   ok,
@@ -33,6 +34,7 @@ import {
   type DomainError,
   type Email,
   type IsoTimestamp,
+  type MetricSink,
   type OwnerId,
   type ReferencedStorage,
   type Result,
@@ -75,6 +77,9 @@ export interface WorkspaceServiceDeps {
    * shows; every caller (routes, reconciler, gate-wake) accrues exactly once.
    */
   audit?: AuditEventEntity;
+  /** Optional metric sink (CloudWatch EMF on AWS; no-op otherwise). Used to time
+   * wake-on-connect cold starts — a core SLO. Absent → no metrics emitted. */
+  metrics?: MetricSink;
 }
 
 /** A synthetic version-conflict error so a canceled transaction flows through the
@@ -404,6 +409,12 @@ export class WorkspaceService {
       await this.deps.compute.stopTask(task.id);
       throw e;
     }
+    // Wake cold-start latency (RunTask → routable + committed) — a core SLO.
+    this.deps.metrics?.timing(
+      METRIC_WORKSPACE_WAKE_LATENCY_MS,
+      Date.parse(this.deps.clock.now()) - Date.parse(at),
+      { baseImage: ws.baseImage },
+    );
     return ok(toWorkspaceDto(next.value));
   }
 

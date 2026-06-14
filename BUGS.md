@@ -4,6 +4,18 @@
 
 ## Open
 
+**Launch-readiness gaps (logs / health / status / metrics / testing)** are
+inventoried, prioritized, and cross-referenced in
+[`docs/observability-gaps.md`](./docs/observability-gaps.md). Most headline items
+are now **fixed** (see Resolved): real `/api/readyz` readiness probe, storage
+Health-board check, structured logging (control plane + reconciler), a metrics
+layer (wake latency + reconciler counts) with CloudWatch alarms, and CloudTrail
+audit pagination. Still open: `EDD_SSH_CA_KEY_PATH` (the CA private key) is required
+for SSH-cert issuance but not provisioned by the Terraform module (see
+[`docs/deploying.md`](./docs/deploying.md) Step 4); `e2e-aws` (the entire real-cloud
+tier) remains unrun pending the AWS-account decision; API request-latency/error-rate
+metrics + access logging are not yet emitted (no central request middleware).
+
 ECS compute hardening follow-ups (from the 2026-06-13 gap audit; the impactful
 ones were fixed — see Resolved — these remain as deliberate follow-ups, not
 active breakage):
@@ -33,6 +45,26 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **Observability layer: readiness, structured logging, metrics, audit pagination
+  (2026-06-14)** — closed the launch-readiness gaps found in the audit:
+  (1) `/api/readyz` is a real readiness probe (DynamoDB ping → 200/503) wired to the
+  ALB target group, while `/api/healthz` stays liveness — an unhealthy task is now
+  pulled from the LB instead of staying routable; (2) a structured JSON logger
+  (`createLogger`/`formatLogLine` in `@edd/core`) replaces ad-hoc `console.*` in the
+  control plane and adds per-sweep/error logging in the reconciler; (3) a metrics
+  port (`MetricSink` + `@edd/cloudwatch-metrics` EMF adapter) emits wake-on-connect
+  cold-start latency and reconciler action/failure counts, with CloudWatch alarms
+  (`alarms.tf`, gated `enable_metric_alarms`); (4) `CloudTrailAuditSource.recent`
+  paginates via `NextToken` instead of truncating to the first 50. All EMF/metrics
+  are coordinate-driven (EMF on AWS, no-op locally — §6.8). Remaining items tracked
+  in [`docs/observability-gaps.md`](./docs/observability-gaps.md).
+- **Storage Health board reported `unknown` even on AWS (2026-06-14)** — the admin
+  Health board calls each provider's optional `health()`; compute had one but
+  `Ec2StorageProvider` did not, so the storage row fell through to `unknown` on real
+  AWS while the fake reported a status — the same inverted contract just closed for
+  compute. Added `Ec2StorageProvider.health()` (a read-only `DescribeAvailabilityZones`
+  probe: reachable AZs → ok, API error → down), verified live against the sockerless
+  AWS sim (`ec2-storage.integ.ts`). EBS/EC2 control-plane degradation is now visible.
 - **Concurrent wake-on-connect transient 5xx — AWS SDK retry hardening (2026-06-14)**
   — the `concurrent-connect` e2e fires N simultaneous `/connect` on a stopped
   workspace; each racer's wake calls `RunTask`, so the wake path issues several

@@ -3,6 +3,7 @@ import type { Principal } from "@edd/authz";
 import type { AuditAction } from "@edd/control-plane";
 
 import { getAuditLog } from "./control-plane";
+import { errorField, log } from "./logger";
 
 /** The actor string recorded for a principal — email when known (stable across
  * IdPs), else the user id. */
@@ -19,6 +20,6 @@ export async function recordAudit(event: AuditAction): Promise<void> {
   try {
     await getAuditLog().record(event);
   } catch (err) {
-    console.error(`edd: failed to record audit event ${event.action}`, err);
+    log.error("failed to record audit event", { action: event.action, error: errorField(err) });
   }
 }
