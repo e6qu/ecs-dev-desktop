@@ -14,14 +14,6 @@ active breakage):
   to the authenticated user via the proxy. Tied to the per-workspace proxy-authz
   handoff (the DYNAMIC wake-on-connect gate, itself a future extension), so it
   lands with that. The agent-token plaintext exposure is **fixed** (see Resolved).
-- **Live region-accurate rate sourcing (AWS Price List API).** Costing uses the
-  AWS on-demand pricing _model_ (Fargate vCPU-hr + GB-hr, EBS gp3 GB-mo, snapshot
-  GB-mo) with us-east-1 published rates, each `EDD_PRICE_*`-overridable per
-  deployment/region. For zero-config region accuracy the rates should be sourced
-  live from the AWS Price List API (`pricing:GetProducts`). The sim has **no**
-  Pricing API, so this is real-AWS-only to validate (`e2e-aws`) — its own carefully
-  validated PR, with the config rates as the safe fallback. Does not change the
-  pricing formula.
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
@@ -41,6 +33,16 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **AWS pricing model — live region-accurate rate sourcing (2026-06-14)** — costing
+  can now source rates LIVE from the AWS Price List API (`pricing:GetProducts`) for
+  the deployment's region (`apps/web/lib/aws-pricing.ts`): opt-in via
+  `EDD_AWS_PRICING=1`, best-effort, with each rate falling back to the configured
+  `@edd/config` value (us-east-1 default, `EDD_PRICE_*`-overridable) so a
+  missing/denied API or unexpected product shape never mis-prices. The pure parser
+  (`parseOnDemandUsd`/`parseUsageType`) is unit-tested against a recorded
+  GetProducts shape; the live fetch has no simulator (no Pricing API) so it is
+  exercised against real AWS (`e2e-aws`) — CI uses the safe fallback. The pricing
+  _formula_ is unchanged (Fargate vCPU/GB-hr + EBS/snapshot GB-mo).
 - **Cost report O(history) → O(recent) via figure-exact rollups (2026-06-14)** —
   `CostService.report` priced the whole audit ledger each request. Now an optional
   cost-checkpoint path (`costRollup` entity, reuses GSI1 — no table change) prices

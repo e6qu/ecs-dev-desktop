@@ -111,6 +111,9 @@ importers:
       '@aws-sdk/client-ecs':
         specifier: ^3.1068.0
         version: 3.1068.0
+      '@aws-sdk/client-pricing':
+        specifier: ^3.1068.0
+        version: 3.1068.0
       '@edd/e2e':
         specifier: workspace:*
         version: link:../../packages/e2e
@@ -435,6 +438,10 @@ packages:
 
   '@aws-sdk/client-ecs@3.1068.0':
     resolution: {integrity: sha512-uNkVIYP5R/H290wE+S6JCFSHdo1hBg3LKGYIvxixevzHxplAUxvMK8B9BE+Xucsq2vYZCTgfTn7MaCOx8vzA3Q==}
+    engines: {node: '>=20.0.0'}
+
+  '@aws-sdk/client-pricing@3.1068.0':
+    resolution: {integrity: sha512-VwsglO2DJLwyp50A2RFt3ovoWdRMmX/VFm8SdGFsnJ69uwLlSVDZzkdMoK5V+mW6CIbozxvSlZgeoVbRBMNWaw==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/client-scheduler@3.1068.0':
@@ -2391,6 +2398,19 @@ snapshots:
       tslib: 2.8.1
 
   '@aws-sdk/client-ecs@3.1068.0':
+    dependencies:
+      '@aws-crypto/sha256-browser': 5.2.0
+      '@aws-crypto/sha256-js': 5.2.0
+      '@aws-sdk/core': 3.974.20
+      '@aws-sdk/credential-provider-node': 3.972.55
+      '@aws-sdk/types': 3.973.12
+      '@smithy/core': 3.24.7
+      '@smithy/fetch-http-handler': 5.4.7
+      '@smithy/node-http-handler': 4.7.8
+      '@smithy/types': 4.14.4
+      tslib: 2.8.1
+
+  '@aws-sdk/client-pricing@3.1068.0':
     dependencies:
       '@aws-crypto/sha256-browser': 5.2.0
       '@aws-crypto/sha256-js': 5.2.0

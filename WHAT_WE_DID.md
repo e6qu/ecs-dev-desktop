@@ -847,3 +847,16 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   terminate after it, a terminate before it, and a workspace born after it.
   Pricing remains the AWS on-demand model (us-east-1 rates, env-overridable); live
   Price List API rate sourcing (real-AWS-only to validate) is the next follow-up.
+
+- **2026-06-14 — AWS pricing model: live region-accurate rates (Price List API).**
+  Accurate costing now sources rates directly from AWS's published prices:
+  `apps/web/lib/aws-pricing.ts` queries the AWS Price List API
+  (`pricing:GetProducts`) for the deployment's region (Fargate vCPU/GB-hr, EBS gp3
+  GB-mo, snapshot GB-mo), classifying rows by `usagetype`. Opt-in (`EDD_AWS_PRICING=1`)
+  and best-effort: each rate falls back per-rate to the configured `@edd/config`
+  value (us-east-1 default, `EDD_PRICE_*`-overridable), so a missing/denied API or
+  unexpected product shape never mis-prices — it degrades to the documented rate.
+  The pure parser (`parseOnDemandUsd`/`parseUsageType`) is unit-tested against a
+  recorded GetProducts shape; the live fetch has no simulator (no Pricing API), so
+  it is validated against real AWS (`e2e-aws`) while CI uses the safe fallback. The
+  pricing formula is unchanged.
