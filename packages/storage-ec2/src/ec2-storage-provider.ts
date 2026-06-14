@@ -12,7 +12,7 @@ import {
   type Filter,
   type Tag,
 } from "@aws-sdk/client-ec2";
-import { DEFAULT_AWS_REGION } from "@edd/config";
+import { AWS_SDK_MAX_ATTEMPTS, AWS_SDK_RETRY_MODE, DEFAULT_AWS_REGION } from "@edd/config";
 import {
   isoTimestamp,
   snapshotId,
@@ -86,6 +86,8 @@ export class Ec2StorageProvider implements StorageProvider {
     const endpoint = process.env.AWS_ENDPOINT_URL;
     const client = new EC2Client({
       region,
+      maxAttempts: AWS_SDK_MAX_ATTEMPTS,
+      retryMode: AWS_SDK_RETRY_MODE,
       ...(endpoint
         ? { endpoint, credentials: { accessKeyId: "local", secretAccessKey: "local" } }
         : {}),

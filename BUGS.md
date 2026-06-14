@@ -33,6 +33,25 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **Concurrent wake-on-connect transient 5xx — AWS SDK retry hardening (2026-06-14)**
+  — the `concurrent-connect` e2e fires N simultaneous `/connect` on a stopped
+  workspace; each racer's wake calls `RunTask`, so the wake path issues several
+  concurrent `RunTask`s. The control-plane AWS clients used the SDK default retry
+  (`standard`, 3 attempts), so a transient `RunTask` 5xx/throttle under that burst
+  exhausted retries and propagated as an uncaught route 500 (empty body) — failing
+  the strict "every racer gets an idempotent 200" assertion. `RunTask` is
+  throttle-prone in real AWS too, so the fix is real-cloud-correct, not a sim
+  workaround (§6.8): the ECS, Secrets Manager, and EC2 clients now use
+  `retryMode: "adaptive"` (client-side rate limiter) with `maxAttempts: 6`
+  (`AWS_SDK_MAX_ATTEMPTS`/`AWS_SDK_RETRY_MODE` in `@edd/config`). Endpoint-agnostic;
+  the race assertion stays strict (no test weakened).
+- **ECS Exec data-channel command proof (2026-06-14)** — the prior e2e stopped at
+  asserting `ExecuteCommand` session metadata. It now opens the returned SSM
+  WebSocket, sends the standard token-bearing `OpenDataChannel` handshake, runs a
+  unique marker command in the task, and asserts the marker arrives in the streamed
+  AgentMessage frames. This exercised the real command path through standard AWS
+  coordinates only; the container-mode simulator matched it, so no upstream issue
+  was filed.
 - **AWS pricing model — live region-accurate rate sourcing (2026-06-14)** — costing
   can now source rates LIVE from the AWS Price List API (`pricing:GetProducts`) for
   the deployment's region (`apps/web/lib/aws-pricing.ts`): opt-in via
