@@ -8,16 +8,12 @@ ECS compute hardening follow-ups (from the 2026-06-13 gap audit; the impactful
 ones were fixed — see Resolved — these remain as deliberate follow-ups, not
 active breakage):
 
-- **Per-workspace agent secret injected as plaintext env, not ECS `secrets`.**
-  `EDD_AGENT_TOKEN` (HMAC machine-auth) is passed via `containerOverrides.environment`,
-  so it shows in `DescribeTasks`/console/CloudTrail. Should move to ECS `secrets`
-  (Secrets Manager/SSM). Also `CONNECTION_TOKEN` (OpenVSCode) is not yet injected
-  by the provider at all — a random per-boot token today; the control plane should
-  set it (Secrets Manager) so it can hand the token to the authenticated user via
-  the proxy. Both interact with the per-workspace proxy-authz handoff.
-- **Real `EcsComputeProvider` does not implement `health()`** (the port declares
-  it optional); the admin Health board therefore reports compute `unknown` even on
-  AWS. The in-memory fake implements it — the contract is effectively inverted.
+- **`CONNECTION_TOKEN` (OpenVSCode) not yet injected by the provider** — a random
+  per-boot token today. The control plane should generate + persist it (Secrets
+  Manager, alongside the now-secret-injected agent token) so it can hand the token
+  to the authenticated user via the proxy. Tied to the per-workspace proxy-authz
+  handoff (the DYNAMIC wake-on-connect gate, itself a future extension), so it
+  lands with that. The agent-token plaintext exposure is **fixed** (see Resolved).
 - **Cost report scans the full ledger per request (scale optimization, NOT an
   accuracy compromise).** Cost is computed exactly: every billable transition is
   recorded in the SAME DynamoDB transaction as the transition (so the ledger can
@@ -31,7 +27,13 @@ active breakage):
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-_(none currently known — the two gaps filed this cycle are fixed upstream; see Resolved.)_
+- **sockerless#569 (open)** — process-mode (`SIM_RUNTIME=process`) `ecs:RunTask`
+  with a managed-EBS volume **panics** the sim (nil Docker client in the async
+  transition: `ec2.go:3800` ← `ecs.go:1027`). Container mode is unaffected. So the
+  real `EcsComputeProvider.runTask` managed-EBS path (incl. the agent-token secret
+  injection) is exercised in **container mode** (`packages/e2e/src/agent-secret.e2e.ts`
+  - the user-journey/golden e2e), not the lightweight process-mode `integration`
+    job. `health()` (DescribeClusters, no RunTask) does run in process mode.
 
 Latest full simulator pass (2026-06-12, submodule `9d43f3d` / PR #550) found no
 sockerless fidelity bugs across all live surfaces (real-CP wake chain, live
@@ -41,6 +43,25 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **Agent token → ECS `secrets` (Secrets Manager), no plaintext (2026-06-14)** —
+  `EcsComputeProvider.runTask` now stashes the per-workspace HMAC agent token in a
+  Secrets Manager secret (`edd/workspace/<id>/agent`) and references it from a
+  per-workspace task definition's container `secrets`, instead of injecting it as
+  plaintext `containerOverrides.environment` (where it surfaced in DescribeTasks/
+  CloudTrail). ECS resolves it into the container env at launch (transparent to the
+  agent). Active whenever an agent secret + Secrets Manager client are configured
+  (`fromEnv` wires both); the plaintext path remains only for local/fakes without
+  a secrets client. Proven against the container-mode sim
+  (`packages/e2e/src/agent-secret.e2e.ts`: secret holds the HMAC; task def
+  references it; no plaintext env) + the user-journey heartbeat e2e (functional).
+- **Real `EcsComputeProvider.health()` (2026-06-14)** — implemented via
+  DescribeClusters (ACTIVE → ok; other → degraded; API error → down), closing the
+  inverted contract where the admin Health board showed compute `unknown` on AWS
+  while the fake reported `ok`. Real integ: `packages/compute-ecs/src/ecs-compute.integ.ts`.
+- **ECS Exec enabled on the launch path (2026-06-14)** — `runTask` now sets
+  `enableExecuteCommand: true`, so `aws ecs execute-command` works into a live
+  workspace (debug/break-glass). The capability was already sim-proven on a
+  standalone task; this puts it on the production path.
 - **`runTask` readiness gating (2026-06-14)** — `EcsComputeProvider.runTask` now
   waits for the task to be **READY** (a pure `taskReady` predicate: `lastStatus`
   RUNNING + managed-EBS volume attached + ENI private IP assigned) before

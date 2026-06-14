@@ -2,23 +2,37 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-14 (ecs-runtask-readiness branch)
+**Last updated:** 2026-06-14 (ecs-secrets-health-cost-exec branch)
 
 ## Current phase
 
-**On `feat/ecs-runtask-readiness`:** closed the impactful ECS reliability gap —
-`EcsComputeProvider.runTask` now waits for the task to be **READY** before
-returning (a pure `taskReady` predicate: `lastStatus` RUNNING + managed-EBS volume
-attached + ENI private IP assigned), instead of returning at PROVISIONING/PENDING
-as soon as the volume id appeared. So `WorkspaceService` no longer reports a
-workspace `running` (or hands out `sshHost`/connect-info) before it can accept
-connections — the race every caller used to paper over with its own retry loop.
-Pure predicate is unit-tested; the container-mode e2e (golden SSH / data-fidelity /
-user-journey) drive `runTask` end-to-end. Endpoint-only (sim reaches RUNNING+
-attached in <1s; real Fargate within the 180s budget). Remaining decision-free ECS
-items in `BUGS.md` → Open: agent secret → ECS `secrets`; real `health()`.
+**On `feat/ecs-secrets-health-cost-exec`:** an ECS hardening sweep clearing the
+remaining Open compute items:
+
+- **Agent token → Secrets Manager (security).** `runTask` stores the per-workspace
+  HMAC agent token in a Secrets Manager secret and references it from a
+  per-workspace task def's container `secrets`, instead of plaintext
+  `environment` (which surfaced in DescribeTasks/CloudTrail). ECS resolves it into
+  the container env at launch. Container-mode e2e (`agent-secret.e2e.ts`) +
+  user-journey heartbeat prove it.
+- **Real `health()`.** DescribeClusters-backed compute health (ACTIVE→ok), closing
+  the inverted contract (board showed `unknown` on AWS). Process-mode integ.
+- **ECS Exec on the launch path.** `runTask` sets `enableExecuteCommand: true`.
+- Found + filed a sim bug (**sockerless#569**): process-mode RunTask with managed
+  EBS panics (nil Docker client), so the secret/runTask path is validated in
+  container mode (not the process-mode `integration` job).
+
+Deferred (the one explicitly perf-only item, not a bug): cost-report time-windowing
+
+- rollups (`BUGS.md` → Open) — a correct mid-session-boundary rollup is a sizable
+  subsystem and must not change figures, so it stays a follow-up. `CONNECTION_TOKEN`
+  injection lands with the future DYNAMIC wake-on-connect gate it's tied to.
 
 ## Prior phase
+
+**`runTask` readiness gating (#79, merged):** `runTask` waits for the task to be
+READY (`taskReady`: RUNNING + managed-EBS volume + ENI) before returning, so the
+control plane never advertises a workspace that can't yet accept connections.
 
 **On `feat/sim-probe-coverage`:** a sim-probe coverage pass — added a
 **multi-generation EBS snapshot-chain** probe to `packages/storage-ec2/src/ec2-storage.integ.ts`:

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { createHmac, timingSafeEqual } from "node:crypto";
 import {
+  DescribeClustersCommand,
   DescribeTasksCommand,
   ECSClient,
   RegisterTaskDefinitionCommand,
@@ -8,6 +9,11 @@ import {
   StopTaskCommand,
   type Task,
 } from "@aws-sdk/client-ecs";
+import {
+  CreateSecretCommand,
+  PutSecretValueCommand,
+  SecretsManagerClient,
+} from "@aws-sdk/client-secrets-manager";
 import {
   DEFAULT_AWS_REGION,
   DEFAULT_ECS_CLUSTER,
@@ -22,6 +28,7 @@ import {
   taskId,
   volumeId,
   type BaseImage,
+  type ComponentHealth,
   type ComputeProvider,
   type ComputeTask,
   type TaskLiveness,
@@ -88,6 +95,11 @@ export interface EcsComputeConfig {
 export interface EcsComputeProviderDeps {
   client: ECSClient;
   config: EcsComputeConfig;
+  /** Secrets Manager client. When present (and `config.agentSecret` is set), the
+   * per-workspace agent token is injected via ECS `secrets` (Secrets Manager)
+   * instead of plaintext `environment`, so it never appears in DescribeTasks /
+   * console / CloudTrail. Absent → the legacy plaintext-env path (local/fakes). */
+  secretsClient?: SecretsManagerClient;
 }
 
 function required<T>(value: T | undefined | null, field: string): T {
@@ -129,11 +141,14 @@ export function workspaceEnvironment(
   config: EcsComputeConfig,
   workspaceId: string,
   repo?: { url?: string; ref?: string },
+  opts?: { omitAgentToken?: boolean },
 ): EnvironmentEntry[] {
   const env: EnvironmentEntry[] = [{ name: "EDD_WORKSPACE_ID", value: workspaceId }];
   if (config.controlPlaneUrl !== undefined)
     env.push({ name: "EDD_CONTROL_PLANE_URL", value: config.controlPlaneUrl });
-  if (config.agentSecret !== undefined)
+  // The agent token is omitted here when it is delivered via ECS `secrets`
+  // (Secrets Manager) instead — see EcsComputeProvider.runTask.
+  if (config.agentSecret !== undefined && opts?.omitAgentToken !== true)
     env.push({
       name: "EDD_AGENT_TOKEN",
       value: agentToken(config.agentSecret, workspaceId),
@@ -205,18 +220,32 @@ export class EcsComputeProvider implements ComputeProvider {
   private readonly registered = new Map<string, string>();
   private readonly client: ECSClient;
   private readonly config: EcsComputeConfig;
+  private readonly secrets?: SecretsManagerClient;
 
   constructor(deps: EcsComputeProviderDeps) {
     this.client = deps.client;
     this.config = deps.config;
+    this.secrets = deps.secretsClient;
+  }
+
+  /** Whether the per-workspace agent token is delivered via Secrets Manager
+   * (rather than plaintext env): a secrets client + an agent secret are present. */
+  private get usesSecretInjection(): boolean {
+    return this.secrets !== undefined && this.config.agentSecret !== undefined;
   }
 
   private cluster(): string {
     return this.config.cluster ?? DEFAULT_ECS_CLUSTER;
   }
 
-  private async ensureTaskDef(image: BaseImage): Promise<string> {
-    const cached = this.registered.get(image);
+  private async ensureTaskDef(
+    image: BaseImage,
+    agentSecret?: { arn: string; wsId: string },
+  ): Promise<string> {
+    // A secret ARN is per-workspace, so the task def referencing it must be too;
+    // cache by (image, workspace). The plaintext-env path stays cached per image.
+    const cacheKey = agentSecret !== undefined ? `${image}::${agentSecret.wsId}` : image;
+    const cached = this.registered.get(cacheKey);
     if (cached !== undefined) return cached;
     const out = await this.client.send(
       new RegisterTaskDefinitionCommand({
@@ -249,6 +278,12 @@ export class EcsComputeProvider implements ComputeProvider {
                 containerPath: this.config.mountPath ?? DEFAULT_WORKSPACE_MOUNT_PATH,
               },
             ],
+            // Deliver the agent token via ECS `secrets` (Secrets Manager) — ECS
+            // resolves it into the container env at launch, never exposing it in
+            // DescribeTasks/CloudTrail the way plaintext `environment` would.
+            ...(agentSecret !== undefined
+              ? { secrets: [{ name: "EDD_AGENT_TOKEN", valueFrom: agentSecret.arn }] }
+              : {}),
             ...(this.config.logGroupName !== undefined
               ? {
                   logConfiguration: {
@@ -267,23 +302,60 @@ export class EcsComputeProvider implements ComputeProvider {
       }),
     );
     const arn = required(out.taskDefinition?.taskDefinitionArn, "taskDefinitionArn");
-    this.registered.set(image, arn);
+    this.registered.set(cacheKey, arn);
     return arn;
   }
 
-  async runTask(input: RunTaskInput): Promise<ComputeTask> {
-    const taskDef = await this.ensureTaskDef(input.baseImage);
+  /**
+   * Ensure a per-workspace Secrets Manager secret holds the agent token, and
+   * return its ARN. The token is deterministic (HMAC(agentSecret, wsId)) so the
+   * value is stable across wakes; create it once, update idempotently otherwise.
+   */
+  private async ensureAgentSecret(client: SecretsManagerClient, wsId: string): Promise<string> {
+    const token = agentToken(required(this.config.agentSecret, "agentSecret"), wsId);
+    const name = `edd/workspace/${wsId}/agent`;
+    try {
+      const out = await client.send(new CreateSecretCommand({ Name: name, SecretString: token }));
+      return required(out.ARN, "secret ARN");
+    } catch (err) {
+      if (err instanceof Error && err.name === "ResourceExistsException") {
+        const put = await client.send(
+          new PutSecretValueCommand({ SecretId: name, SecretString: token }),
+        );
+        return required(put.ARN, "secret ARN");
+      }
+      throw err;
+    }
+  }
 
-    const workspaceEnv = workspaceEnvironment(this.config, input.workspaceId, {
-      url: input.repoUrl,
-      ref: input.repoRef,
-    });
+  async runTask(input: RunTaskInput): Promise<ComputeTask> {
+    // Secure path: stash the agent token in Secrets Manager and reference it from
+    // a per-workspace task def, so it is never injected as plaintext env.
+    let agentSecret: { arn: string; wsId: string } | undefined;
+    if (this.usesSecretInjection && this.secrets !== undefined) {
+      agentSecret = {
+        arn: await this.ensureAgentSecret(this.secrets, input.workspaceId),
+        wsId: input.workspaceId,
+      };
+    }
+    const taskDef = await this.ensureTaskDef(input.baseImage, agentSecret);
+
+    const workspaceEnv = workspaceEnvironment(
+      this.config,
+      input.workspaceId,
+      { url: input.repoUrl, ref: input.repoRef },
+      { omitAgentToken: agentSecret !== undefined },
+    );
 
     const out = await this.client.send(
       new RunTaskCommand({
         cluster: this.cluster(),
         taskDefinition: taskDef,
         launchType: "FARGATE",
+        // Inject the SSM exec agent so admins/automation can `aws ecs execute-command`
+        // into a live workspace (debugging, break-glass) — the capability was
+        // sim-proven on a standalone task; the production launch path enables it too.
+        enableExecuteCommand: true,
         networkConfiguration: {
           awsvpcConfiguration: {
             subnets: this.config.subnets,
@@ -367,10 +439,50 @@ export class EcsComputeProvider implements ComputeProvider {
       : "running";
   }
 
+  /**
+   * Live compute-plane health for the admin Health board: DescribeClusters on the
+   * configured ECS cluster. ACTIVE → ok; any other status → degraded; an API error
+   * (unreachable/denied) → down. The fake reported `ok` while the real adapter
+   * reported nothing (the port made `health` optional), so the board showed compute
+   * `unknown` even on AWS — this closes that inverted contract.
+   */
+  async health(): Promise<ComponentHealth> {
+    const name = this.cluster();
+    try {
+      const out = await this.client.send(new DescribeClustersCommand({ clusters: [name] }));
+      const status = out.clusters?.[0]?.status;
+      if (status === "ACTIVE") {
+        return { component: "compute", status: "ok", detail: `ECS cluster ${name} ACTIVE` };
+      }
+      return {
+        component: "compute",
+        status: "degraded",
+        detail: `ECS cluster ${name} status ${status ?? "not found"}`,
+      };
+    } catch (err) {
+      return {
+        component: "compute",
+        status: "down",
+        detail: `ECS DescribeClusters failed: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
+  }
+
   /** Build an ECS client from the ambient AWS env (`AWS_ENDPOINT_URL` → the sim). */
   static client(): ECSClient {
     const endpoint = process.env.AWS_ENDPOINT_URL;
     return new ECSClient({
+      region: process.env.AWS_REGION ?? DEFAULT_AWS_REGION,
+      ...(endpoint
+        ? { endpoint, credentials: { accessKeyId: "local", secretAccessKey: "local" } }
+        : {}),
+    });
+  }
+
+  /** Build a Secrets Manager client from the ambient AWS env (endpoint → the sim). */
+  static secretsClient(): SecretsManagerClient {
+    const endpoint = process.env.AWS_ENDPOINT_URL;
+    return new SecretsManagerClient({
       region: process.env.AWS_REGION ?? DEFAULT_AWS_REGION,
       ...(endpoint
         ? { endpoint, credentials: { accessKeyId: "local", secretAccessKey: "local" } }
@@ -395,6 +507,9 @@ export class EcsComputeProvider implements ComputeProvider {
     const volumeSizeGiB = positiveIntEnv("ECS_VOLUME_GIB");
     return new EcsComputeProvider({
       client: EcsComputeProvider.client(),
+      // The agent token goes into Secrets Manager (not plaintext env) whenever an
+      // agent secret is configured — the production/e2e path always does.
+      ...(agentSecret !== undefined ? { secretsClient: EcsComputeProvider.secretsClient() } : {}),
       config: {
         cluster: process.env.ECS_CLUSTER,
         subnets,
