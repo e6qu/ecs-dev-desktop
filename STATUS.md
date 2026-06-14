@@ -2,18 +2,33 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-14 (ecs-exec-datachannel-proof branch)
+**Last updated:** 2026-06-14 (docs + launch-readiness audit branch)
 
 ## Current phase
 
-**On `feat/ecs-exec-datachannel-proof`:** the container-mode ECS Exec coverage now
-proves the command path, not just the `ExecuteCommand` response shape. The e2e opens
-the returned SSM WebSocket, sends the standard token-bearing `OpenDataChannel`
-handshake, runs a unique marker command inside the task, and asserts that marker is
-present in the streamed AgentMessage frames. The same coordinate-only path is usable
-against the simulator or real AWS; no private simulator endpoint is used.
+**Docs review + launch-readiness audit.** Reviewed all docs and made them
+navigable and accurate: surfaced previously-orphaned docs (`admin-ui-design`,
+`infra/images`, `infra/proxy`, `services/ssh-gateway` READMEs) in the README index;
+added a full AWS deployment runbook (`docs/deploying.md`) that fixes the prior
+gaps (the two real images — control-plane app + golden — every required secret
+incl. `EDD_SSH_CA_KEY_PATH`, `EDD_ADMIN_GROUPS` admin bootstrap, remote state, ECR
+login, two-phase apply, base-image seeding, Pomerium/gate); made the
+`docs/running-locally.md` tier commands actually runnable (`+ AWS` needs
+`ECS_SUBNETS`/`ECS_EBS_ROLE_ARN`; OIDC tiers need the Auth.js secrets). Inventoried
+the logs/health/status/metrics/testing gaps in `docs/observability-gaps.md`. Fixed
+one gap found in the audit: storage now does a live Health-board check
+(`Ec2StorageProvider.health()`) — it previously reported `unknown` even on AWS.
 
-## Prior phase (merged, #82)
+## Prior phase (merged, #83)
+
+**On `feat/ecs-exec-datachannel-proof`:** the container-mode ECS Exec coverage now
+proves the command path, not just the `ExecuteCommand` response shape — opens the
+returned SSM WebSocket, sends the standard `OpenDataChannel` handshake, runs a
+marker command, and asserts it in the streamed AgentMessage frames. Also hardened
+the control-plane AWS clients (ECS/Secrets/EC2) to adaptive retry (`maxAttempts=6`)
+so concurrent wake-on-connect bursts don't surface a transient `RunTask` 5xx.
+
+## Earlier (merged, #82)
 
 **On `feat/aws-price-list`:** accurate costing now sources rates from the **AWS
 pricing model directly** — live from the AWS Price List API (`pricing:GetProducts`)
@@ -24,7 +39,7 @@ unit-tested against a recorded GetProducts shape; the live fetch has no simulato
 (no Pricing API) so it's exercised against real AWS (`e2e-aws`), CI uses the
 fallback. Formula unchanged (Fargate vCPU/GB-hr + EBS/snapshot GB-mo).
 
-## Earlier
+## Earlier (merged, #81)
 
 **On `feat/cost-rollups`:** the cost report moves from O(history) to O(recent)
 without changing the figures. New pure core (`deriveBillingState`/`resumeBilling`,

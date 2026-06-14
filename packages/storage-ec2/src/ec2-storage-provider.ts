@@ -4,6 +4,7 @@ import {
   CreateVolumeCommand,
   DeleteSnapshotCommand,
   DeleteVolumeCommand,
+  DescribeAvailabilityZonesCommand,
   EC2Client,
   paginateDescribeSnapshots,
   paginateDescribeVolumes,
@@ -17,6 +18,7 @@ import {
   isoTimestamp,
   snapshotId,
   volumeId,
+  type ComponentHealth,
   type Snapshot,
   type SnapshotId,
   type SnapshotRef,
@@ -181,6 +183,37 @@ export class Ec2StorageProvider implements StorageProvider {
       }
     }
     return refs;
+  }
+
+  /**
+   * Live storage-plane health for the admin Health board: a lightweight read-only
+   * `DescribeAvailabilityZones` confirms the EC2 control plane is reachable and the
+   * credentials are valid (the EBS volume/snapshot APIs live on the same surface).
+   * Reachable AZs → ok; an API error (unreachable/denied) → down. Without this the
+   * board reported storage `unknown` even on AWS (the same inverted contract that
+   * was closed for compute) — an EBS/EC2 outage would have been invisible.
+   */
+  async health(): Promise<ComponentHealth> {
+    try {
+      const out = await this.client.send(new DescribeAvailabilityZonesCommand({}));
+      const available = (out.AvailabilityZones ?? []).filter(
+        (az) => az.State === "available",
+      ).length;
+      if (available > 0) {
+        return { component: "storage", status: "ok", detail: `EC2 reachable (${available} AZ)` };
+      }
+      return {
+        component: "storage",
+        status: "degraded",
+        detail: "EC2 reachable but no AZ reports available",
+      };
+    } catch (err) {
+      return {
+        component: "storage",
+        status: "down",
+        detail: `EC2 DescribeAvailabilityZones failed: ${err instanceof Error ? err.message : String(err)}`,
+      };
+    }
   }
 
   readFile(): Promise<Buffer | null> {

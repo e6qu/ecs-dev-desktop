@@ -53,22 +53,45 @@ Bring up extra local services with compose **profiles** (`EDD_DEV_PROFILES`) and
 point the app at them with the standard coordinate env vars. Everything else is
 unchanged — the app never knows it's a sim.
 
-| Tier         | Command                                                                                                                                  | What's real                                                  |
-| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------ |
-| **local**    | `pnpm dev`                                                                                                                               | nothing (fakes) — fastest                                    |
-| **+ GitHub** | `EDD_DEV_PROFILES=github EDD_DEV_AUTH=0 AUTH_GITHUB_API_URL=http://127.0.0.1:5555/api/v3 AUTH_GITHUB_URL=http://127.0.0.1:5555 pnpm dev` | real GitHub OAuth login (via `bleephub`)                     |
-| **+ AWS**    | `EDD_DEV_PROFILES=aws COMPUTE_PROVIDER=ecs AWS_ENDPOINT_URL=http://127.0.0.1:4566 pnpm dev`                                              | real EBS/ECS adapters (workspaces provision against the sim) |
-| **+ both**   | `EDD_DEV_PROFILES="github aws" COMPUTE_PROVIDER=ecs AWS_ENDPOINT_URL=http://127.0.0.1:4566 … pnpm dev`                                   | OAuth + real compute                                         |
-| **+ Entra**  | add `entra` to `EDD_DEV_PROFILES` (Azure/Entra OIDC sim on `:4568`)                                                                      | real Entra OIDC login                                        |
+| Tier         | What's real                                                | Profile(s)     |
+| ------------ | ---------------------------------------------------------- | -------------- |
+| **local**    | nothing (fakes) — fastest                                  | _(none)_       |
+| **+ GitHub** | real GitHub OAuth login (via `bleephub`, `:5555`)          | `github`       |
+| **+ AWS**    | real EBS/ECS adapters against the sockerless sim (`:4566`) | `aws`          |
+| **+ Entra**  | real Entra/Azure OIDC login (`:4568`)                      | `entra`        |
+| **+ both**   | OAuth + real compute                                       | `"github aws"` |
+
+`EDD_DEV_PROFILES` is a space-separated list; each token brings up one compose
+profile in `docker-compose.dev.yml`. Copy-pasteable commands:
+
+```sh
+# + GitHub (real OIDC login via bleephub). Real OIDC ⇒ EDD_DEV_AUTH=0 + Auth.js secrets.
+EDD_DEV_PROFILES=github EDD_DEV_AUTH=0 \
+  AUTH_SECRET=dev-secret AUTH_GITHUB_ID=<id> AUTH_GITHUB_SECRET=<secret> \
+  AUTH_GITHUB_API_URL=http://127.0.0.1:5555/api/v3 AUTH_GITHUB_URL=http://127.0.0.1:5555 \
+  pnpm dev
+
+# + AWS (real EBS/ECS adapters). ECS_SUBNETS + ECS_EBS_ROLE_ARN are REQUIRED
+# (the provider fails loudly without them); any sim subnet id / role ARN works.
+EDD_DEV_PROFILES=aws COMPUTE_PROVIDER=ecs AWS_ENDPOINT_URL=http://127.0.0.1:4566 \
+  ECS_SUBNETS=subnet-local ECS_EBS_ROLE_ARN=arn:aws:iam::123456789012:role/ecsInfrastructureRole \
+  pnpm dev
+
+# + both = the union of the two env sets above with EDD_DEV_PROFILES="github aws".
+```
 
 Notes:
 
-- The **+ GitHub / + Entra** tiers exercise the real OIDC login, so set
-  `EDD_DEV_AUTH=0` and provide the Auth.js secrets (`AUTH_SECRET`, the GitHub
-  OAuth `AUTH_GITHUB_ID`/`AUTH_GITHUB_SECRET`, etc.). To target **real** GitHub or
-  Entra instead of the sims, just change those same coordinates — no code change.
-- The **+ AWS** tier needs a deployment cluster/subnets; use it for adapter call
-  shapes. The full container-mode workspace loop lives in the e2e tier below.
+- **Real OIDC tiers (+ GitHub / + Entra)** set `EDD_DEV_AUTH=0` and need the
+  Auth.js secrets shown above (`AUTH_SECRET`, the provider id/secret). To target
+  **real** GitHub or Entra instead of the sims, change those same coordinates only
+  — no code change.
+- The **+ AWS** tier is for exercising the real adapter call shapes; the full
+  container-mode workspace loop (real task containers, snapshot/restore) lives in
+  the e2e tier below (`pnpm test:e2e:local`).
+- The `github` profile (bleephub) builds from `infra/sim/`, not the submodule —
+  the `git submodule update` prerequisite is strictly needed only for the `aws` /
+  `entra` profiles.
 
 ## Running tests locally
 
@@ -89,5 +112,6 @@ HTTPS, Pomerium, and manual real-AWS tiers) and the GitHub App e2e coordinates.
 
 ## Deploying
 
-See **[Deploying](../README.md#deploying)** in the README and the Terraform module
-([`infra/terraform/README.md`](../infra/terraform/README.md)).
+To run against **real AWS**, the same code targets the cloud by changing
+coordinates alone. See the deployment runbook **[`docs/deploying.md`](./deploying.md)**
+(and the [Deploying](../README.md#deploying) summary in the README).

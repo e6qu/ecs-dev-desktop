@@ -4,6 +4,18 @@
 
 ## Open
 
+**Launch-readiness gaps (logs / health / status / metrics / testing)** are
+inventoried, prioritized, and cross-referenced in
+[`docs/observability-gaps.md`](./docs/observability-gaps.md). The headline open
+items: `/api/healthz` is a static literal, not a real readiness check (an
+unhealthy task stays in the ALB); the control plane + reconciler have **no
+structured logging**; there are **no metrics at all** (no cold-start/wake latency,
+reconciler action counts, or API error rate) and no CloudWatch alarms;
+`CloudTrailAuditSource.recent` lacks pagination (truncates at volume); and
+`EDD_SSH_CA_KEY_PATH` (the CA private key) is required for SSH-cert issuance but
+not provisioned by the Terraform module (see [`docs/deploying.md`](./docs/deploying.md)
+Step 4). The storage Health-board inverted contract is **fixed** (see Resolved).
+
 ECS compute hardening follow-ups (from the 2026-06-13 gap audit; the impactful
 ones were fixed — see Resolved — these remain as deliberate follow-ups, not
 active breakage):
@@ -33,6 +45,13 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **Storage Health board reported `unknown` even on AWS (2026-06-14)** — the admin
+  Health board calls each provider's optional `health()`; compute had one but
+  `Ec2StorageProvider` did not, so the storage row fell through to `unknown` on real
+  AWS while the fake reported a status — the same inverted contract just closed for
+  compute. Added `Ec2StorageProvider.health()` (a read-only `DescribeAvailabilityZones`
+  probe: reachable AZs → ok, API error → down), verified live against the sockerless
+  AWS sim (`ec2-storage.integ.ts`). EBS/EC2 control-plane degradation is now visible.
 - **Concurrent wake-on-connect transient 5xx — AWS SDK retry hardening (2026-06-14)**
   — the `concurrent-connect` e2e fires N simultaneous `/connect` on a stopped
   workspace; each racer's wake calls `RunTask`, so the wake path issues several
