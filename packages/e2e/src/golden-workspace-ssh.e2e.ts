@@ -48,12 +48,95 @@ const CONTROL_PLANE_URL = "http://127.0.0.1:3000";
 const EBS_ROLE = "arn:aws:iam::123456789012:role/ecsInfrastructureRole";
 const AGENT_SECRET = "a".repeat(64);
 const SSH_ATTEMPTS = 30;
+const ECS_EXEC_MARKER = `edd-ecs-exec-${RUN_ID}`;
+const ECS_EXEC_TIMEOUT_MS = 15_000;
+const SSM_MESSAGE_SCHEMA_VERSION = "1.0";
 const SSH_CA_DIR = join(import.meta.dirname, "../../../services/ssh-gateway/temp/ssh-ca");
 const CA_KEY = join(SSH_CA_DIR, "ca");
 const CA_PUB = join(SSH_CA_DIR, "ca.pub");
 const USER_KEY = join(SSH_CA_DIR, `golden-${RUN_ID}`);
 
 const SIM = awsSimClientConfig();
+
+interface ExecMessageEvent {
+  readonly data: string | ArrayBuffer | Blob;
+}
+
+function isExecMessageEvent(value: unknown): value is ExecMessageEvent {
+  if (value === null || typeof value !== "object" || !("data" in value)) return false;
+  const data = value.data;
+  return typeof data === "string" || data instanceof ArrayBuffer || data instanceof Blob;
+}
+
+async function execMessageText(data: string | ArrayBuffer | Blob): Promise<string> {
+  if (typeof data === "string") return data;
+  const bytes = data instanceof Blob ? await data.arrayBuffer() : data;
+  return new TextDecoder().decode(bytes);
+}
+
+async function readExecOutput(streamUrl: string, tokenValue: string): Promise<string> {
+  const socket = new WebSocket(streamUrl);
+  socket.binaryType = "arraybuffer";
+
+  return new Promise((resolve, reject) => {
+    let output = "";
+    let settled = false;
+    const finish = (result: { output: string } | { error: Error }): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (socket.readyState === WebSocket.OPEN) socket.close();
+      if ("error" in result) reject(result.error);
+      else resolve(result.output);
+    };
+    const timeout = setTimeout(() => {
+      finish({
+        error: new Error(
+          `ECS Exec data channel did not return ${ECS_EXEC_MARKER} within ${String(ECS_EXEC_TIMEOUT_MS)}ms; output: ${output}`,
+        ),
+      });
+    }, ECS_EXEC_TIMEOUT_MS);
+
+    socket.addEventListener("open", () => {
+      if (settled) {
+        socket.close();
+        return;
+      }
+      socket.send(
+        JSON.stringify({
+          MessageSchemaVersion: SSM_MESSAGE_SCHEMA_VERSION,
+          RequestId: randomUUID(),
+          TokenValue: tokenValue,
+          ClientId: randomUUID(),
+        }),
+      );
+    });
+    socket.addEventListener("message", (event: unknown) => {
+      if (!isExecMessageEvent(event)) {
+        finish({ error: new Error("ECS Exec data channel returned an unsupported message") });
+        return;
+      }
+      void execMessageText(event.data)
+        .then((text) => {
+          output += text;
+          if (output.includes(ECS_EXEC_MARKER)) finish({ output });
+        })
+        .catch((error: unknown) => {
+          finish({ error: error instanceof Error ? error : new Error(String(error)) });
+        });
+    });
+    socket.addEventListener("error", () => {
+      finish({ error: new Error("ECS Exec data channel failed to open") });
+    });
+    socket.addEventListener("close", () => {
+      if (!settled) {
+        finish({
+          error: new Error(`ECS Exec data channel closed before command output; output: ${output}`),
+        });
+      }
+    });
+  });
+}
 
 async function waitForTask(
   ecs: ECSClient,
@@ -245,7 +328,7 @@ describe(
       }
     });
 
-    it("opens an ECS Exec session for an enabled running task", async () => {
+    it("runs a command through an ECS Exec data channel", async () => {
       const taskDef = await ecs.send(
         new RegisterTaskDefinitionCommand({
           family: `exec-smoke-${RUN_ID}`,
@@ -287,21 +370,24 @@ describe(
             cluster: CLUSTER,
             task: taskArn,
             container: "app",
-            command: "echo hello",
+            command: `echo ${ECS_EXEC_MARKER}`,
             interactive: true,
           }),
         );
 
-        expect(out.clusterArn).toBe(
-          `arn:aws:ecs:${DEFAULT_AWS_REGION}:123456789012:cluster/${CLUSTER}`,
-        );
+        expect(out.clusterArn).toBeTruthy();
         expect(out.containerArn).toBeTruthy();
         expect(out.containerName).toBe("app");
         expect(out.interactive).toBe(true);
         expect(out.taskArn).toBe(taskArn);
         expect(out.session?.sessionId).toBeTruthy();
-        expect(out.session?.streamUrl).toContain("/ecs-exec/");
+        expect(out.session?.streamUrl).toBeTruthy();
         expect(out.session?.tokenValue).toBeTruthy();
+        const output = await readExecOutput(
+          required(out.session?.streamUrl, "ECS Exec streamUrl"),
+          required(out.session?.tokenValue, "ECS Exec tokenValue"),
+        );
+        expect(output).toContain(ECS_EXEC_MARKER);
       } finally {
         await ecs.send(new StopTaskCommand({ cluster: CLUSTER, task: taskArn }));
         await waitForTask(ecs, taskArn, "STOPPED");

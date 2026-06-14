@@ -33,6 +33,13 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **ECS Exec data-channel command proof (2026-06-14)** — the prior e2e stopped at
+  asserting `ExecuteCommand` session metadata. It now opens the returned SSM
+  WebSocket, sends the standard token-bearing `OpenDataChannel` handshake, runs a
+  unique marker command in the task, and asserts the marker arrives in the streamed
+  AgentMessage frames. This exercised the real command path through standard AWS
+  coordinates only; the container-mode simulator matched it, so no upstream issue
+  was filed.
 - **AWS pricing model — live region-accurate rate sourcing (2026-06-14)** — costing
   can now source rates LIVE from the AWS Price List API (`pricing:GetProducts`) for
   the deployment's region (`apps/web/lib/aws-pricing.ts`): opt-in via

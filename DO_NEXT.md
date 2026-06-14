@@ -55,9 +55,9 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
   Pomerium wildcard→gate route + live browser→Pomerium→gate→PDP authz; the DYNAMIC
   full-ECS-wake gate variant remains a future extension). Sim-probe/coverage pass is
   largely landed — CloudTrail for our EBS/ECS ops (#74) and the multi-generation EBS
-  snapshot chain (this branch; sim handles it, none filed). Remaining probe candidate:
-  ECS Exec real session through the provider — file any verified divergence upstream
-  to `e6qu/sockerless`.
+  snapshot chain (sim handles it, none filed). ECS Exec now has a real data-channel
+  proof: standard `OpenDataChannel` handshake → command output streamed from the task;
+  no divergence was found.
 - Covered (see `docs/simulator-live-coverage.md`): the real VS Code workspace
   (OpenVSCode browser proof + polyglot toolchain compiles + OpenVSCode :3000 inside
   the sim ECS task), browser Pomerium OIDC login, portal browser lifecycle on real

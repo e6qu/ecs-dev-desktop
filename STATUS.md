@@ -2,9 +2,18 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-14 (aws-price-list branch)
+**Last updated:** 2026-06-14 (ecs-exec-datachannel-proof branch)
 
 ## Current phase
+
+**On `feat/ecs-exec-datachannel-proof`:** the container-mode ECS Exec coverage now
+proves the command path, not just the `ExecuteCommand` response shape. The e2e opens
+the returned SSM WebSocket, sends the standard token-bearing `OpenDataChannel`
+handshake, runs a unique marker command inside the task, and asserts that marker is
+present in the streamed AgentMessage frames. The same coordinate-only path is usable
+against the simulator or real AWS; no private simulator endpoint is used.
+
+## Prior phase (merged, #82)
 
 **On `feat/aws-price-list`:** accurate costing now sources rates from the **AWS
 pricing model directly** — live from the AWS Price List API (`pricing:GetProducts`)
@@ -15,7 +24,7 @@ unit-tested against a recorded GetProducts shape; the live fetch has no simulato
 (no Pricing API) so it's exercised against real AWS (`e2e-aws`), CI uses the
 fallback. Formula unchanged (Fargate vCPU/GB-hr + EBS/snapshot GB-mo).
 
-## Prior phase
+## Earlier
 
 **On `feat/cost-rollups`:** the cost report moves from O(history) to O(recent)
 without changing the figures. New pure core (`deriveBillingState`/`resumeBilling`,

@@ -860,3 +860,11 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   recorded GetProducts shape; the live fetch has no simulator (no Pricing API), so
   it is validated against real AWS (`e2e-aws`) while CI uses the safe fallback. The
   pricing formula is unchanged.
+
+- **2026-06-14 — ECS Exec data-channel command proof.** Upgraded the container-mode
+  ECS Exec e2e from a response-shape smoke test to an executed-command proof. The
+  test opened the `ExecuteCommand` session's SSM WebSocket, sent the standard
+  token-bearing `OpenDataChannel` handshake, and asserted a unique marker command's
+  output arrived in the streamed AgentMessage frames. The test consumed only AWS
+  response coordinates and standard wire behavior, so it remained target-agnostic;
+  the simulator matched the real client path and no upstream gap was found.
