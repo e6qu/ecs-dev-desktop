@@ -27,10 +27,13 @@ export {
   makeBaseImageEntity,
   makeCostRollupEntity,
   makeGitCredentialEntity,
+  makeReconcilerHeartbeatEntity,
   makeWorkspaceEntity,
+  RECONCILER_HEARTBEAT_ID,
   type AuditEventEntity,
   type BaseImageEntity,
   type CostRollupEntity,
   type GitCredentialEntity,
+  type ReconcilerHeartbeatEntity,
   type WorkspaceEntity,
 } from "./entities";

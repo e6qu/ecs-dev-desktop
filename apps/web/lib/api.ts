@@ -4,7 +4,13 @@ import { NextResponse } from "next/server";
 import type { WorkspaceDto } from "@edd/api-contracts";
 import { defineAbilityFor, type Action, type Principal } from "@edd/authz";
 import type { WorkspaceService } from "@edd/control-plane";
-import { domainErrorMessage, workspaceId, type DomainError, type WorkspaceId } from "@edd/core";
+import {
+  domainErrorMessage,
+  workspaceId,
+  type DomainError,
+  type Result,
+  type WorkspaceId,
+} from "@edd/core";
 
 import { getControlPlane } from "./control-plane";
 import { checkGatewayAuth } from "./machine-auth";
@@ -44,6 +50,15 @@ export async function authenticate(req: Request): Promise<Principal | NextRespon
   return (await getPrincipal(req)) ?? unauthorized();
 }
 
+/** Resolve an **admin** principal, or a 401/403 response to short-circuit the
+ * handler. The single guard the admin-only routes share. */
+export async function requireAdmin(req: Request): Promise<Principal | NextResponse> {
+  const principal = await authenticate(req);
+  if (isResponse(principal)) return principal;
+  if (principal.role !== "admin") return forbidden();
+  return principal;
+}
+
 export function isResponse(x: unknown): x is NextResponse {
   return x instanceof NextResponse;
 }
@@ -81,6 +96,23 @@ export async function loadOwnedWorkspace(
   if (!ws) return notFound();
   if (!ownsOrAdmin(principal, ws.ownerId)) return forbidden();
   return { cp, id: wsId, ws, principal };
+}
+
+/**
+ * Load an owned workspace (`update` ability) and run a `Result`-returning
+ * control-plane action against it, mapping the outcome to a JSON response or the
+ * domain error's HTTP status. The shared shape of the start/stop/snapshot
+ * lifecycle routes — the `run` callback supplies the specific action (and actor).
+ */
+export async function ownedLifecycleAction(
+  req: Request,
+  params: Promise<{ id: string }>,
+  run: (ctx: OwnedWorkspace) => Promise<Result<WorkspaceDto, DomainError>>,
+): Promise<NextResponse> {
+  const ctx = await loadOwnedWorkspace(req, params, "update");
+  if (isResponse(ctx)) return ctx;
+  const result = await run(ctx);
+  return result.ok ? NextResponse.json(result.value) : domainErrorResponse(result.error);
 }
 
 /**

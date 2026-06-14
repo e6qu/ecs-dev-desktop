@@ -204,3 +204,34 @@ export function makeCostRollupEntity(client: DynamoDBClient, table = TABLE) {
 }
 
 export type CostRollupEntity = ReturnType<typeof makeCostRollupEntity>;
+
+/**
+ * ElectroDB reconciler-heartbeat entity over the same single table: a single
+ * record the reconciler stamps with the time of its last successful sweep, so the
+ * admin Health board can report the reconciler `degraded` when the scale-to-zero/
+ * snapshot/GC loop has stalled (no recent sweep). One fixed-id record — a plain
+ * get/put, no secondary index.
+ */
+export function makeReconcilerHeartbeatEntity(client: DynamoDBClient, table = TABLE) {
+  return new Entity(
+    {
+      model: { entity: "reconcilerHeartbeat", version: "1", service: "edd" },
+      attributes: {
+        id: { type: "string", required: true },
+        lastRunAt: { type: "string", required: true },
+      },
+      indexes: {
+        primary: {
+          pk: { field: "PK", composite: ["id"] },
+          sk: { field: "SK", composite: [] },
+        },
+      },
+    },
+    { client, table },
+  );
+}
+
+export type ReconcilerHeartbeatEntity = ReturnType<typeof makeReconcilerHeartbeatEntity>;
+
+/** The fixed primary-key id of the singleton reconciler-heartbeat record. */
+export const RECONCILER_HEARTBEAT_ID = "reconciler";

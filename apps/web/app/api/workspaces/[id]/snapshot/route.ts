@@ -1,16 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { NextResponse } from "next/server";
-
-import { domainErrorResponse, isResponse, loadOwnedWorkspace } from "../../../../../lib/api";
+import { ownedLifecycleAction } from "../../../../../lib/api";
+import { withObservability } from "../../../../../lib/observability";
 
 interface Ctx {
   params: Promise<{ id: string }>;
 }
 
 // POST /api/workspaces/:id/snapshot — point-in-time snapshot.
-export async function POST(req: Request, { params }: Ctx) {
-  const ctx = await loadOwnedWorkspace(req, params, "update");
-  if (isResponse(ctx)) return ctx;
-  const result = await ctx.cp.snapshot(ctx.id);
-  return result.ok ? NextResponse.json(result.value) : domainErrorResponse(result.error);
+async function handlePOST(req: Request, { params }: Ctx) {
+  return ownedLifecycleAction(req, params, (ctx) => ctx.cp.snapshot(ctx.id));
 }
+
+export const POST = withObservability("workspaces.snapshot", handlePOST);

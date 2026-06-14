@@ -7,6 +7,7 @@ import { notFound } from "../../../../../lib/api";
 import { getControlPlane } from "../../../../../lib/control-plane";
 import { getGitProvider } from "../../../../../lib/git-provider";
 import { checkAgentAuth } from "../../../../../lib/machine-auth";
+import { withObservability } from "../../../../../lib/observability";
 
 interface Ctx {
   params: Promise<{ id: string }>;
@@ -33,7 +34,7 @@ function repoOwner(repoUrl: string | undefined): string | undefined {
  * provider — the session owner's OAuth token, or a GitHub App installation token
  * scoped to the repo's owner when the app is configured.
  */
-export async function GET(req: Request, { params }: Ctx) {
+async function handleGET(req: Request, { params }: Ctx) {
   const { id } = await params;
   if (checkAgentAuth(req, id) !== "valid") {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -49,3 +50,5 @@ export async function GET(req: Request, { params }: Ctx) {
   }
   return NextResponse.json(credential);
 }
+
+export const GET = withObservability("workspaces.gitCredential", handleGET);

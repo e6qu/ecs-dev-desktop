@@ -27,8 +27,10 @@ import {
   makeAuditEventEntity,
   makeBaseImageEntity,
   makeCostRollupEntity,
+  makeReconcilerHeartbeatEntity,
   makeWorkspaceEntity,
   pingTable,
+  RECONCILER_HEARTBEAT_ID,
   TABLE,
 } from "@edd/db";
 import { Ec2StorageProvider } from "@edd/storage-ec2";
@@ -96,15 +98,30 @@ export function getCatalog(): CatalogService {
 }
 
 /** Admin Health board service: real DynamoDB ping + the active providers. */
+/** Reads the reconciler's last-sweep heartbeat for the Health board (null if no
+ * sweep has run yet). Same record the reconciler stamps each sweep. */
+function reconcilerHeartbeatReader(
+  client: ReturnType<typeof createDynamoClient>,
+  table: string,
+): () => Promise<{ lastRunAt: string } | null> {
+  const entity = makeReconcilerHeartbeatEntity(client, table);
+  return async () => {
+    const r = await entity.get({ id: RECONCILER_HEARTBEAT_ID }).go();
+    return r.data === null ? null : { lastRunAt: r.data.lastRunAt };
+  };
+}
+
 export async function getHealthService(): Promise<HealthService> {
   const client = createDynamoClient();
   const table = tableName();
+  const reconcilerHeartbeat = reconcilerHeartbeatReader(client, table);
   if (process.env.COMPUTE_PROVIDER === "ecs") {
     const { storage, compute } = buildRealProviders();
     return new HealthService({
       storage,
       compute,
       pingDatabase: () => pingTable(client, table),
+      reconcilerHeartbeat,
       clock: systemClock,
     });
   }
@@ -113,6 +130,7 @@ export async function getHealthService(): Promise<HealthService> {
     storage,
     compute: new FakeComputeProvider(storage),
     pingDatabase: () => pingTable(client, table),
+    reconcilerHeartbeat,
     clock: systemClock,
   });
 }

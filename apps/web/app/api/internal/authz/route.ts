@@ -11,6 +11,7 @@ import { decideWorkspaceAccess, email, workspaceIdFromHost, type Email } from "@
 
 import { roleMappingConfig } from "../../../../lib/auth-config";
 import { getControlPlane } from "../../../../lib/control-plane";
+import { withObservability } from "../../../../lib/observability";
 import { verifyAssertion } from "../../../../lib/pomerium-assertion";
 
 /**
@@ -43,7 +44,7 @@ function toEmail(value: string | undefined): Email | undefined {
   }
 }
 
-export async function GET(req: Request): Promise<NextResponse> {
+async function handleGET(req: Request): Promise<NextResponse> {
   const rawHost = req.headers.get(WORKSPACE_HOST_HEADER);
   const token = req.headers.get(POMERIUM_ASSERTION_HEADER);
   if (rawHost === null || token === null) return unauthorized();
@@ -82,3 +83,5 @@ export async function GET(req: Request): Promise<NextResponse> {
   });
   return granted ? allow() : deny();
 }
+
+export const GET = withObservability("internal.authz", handleGET);

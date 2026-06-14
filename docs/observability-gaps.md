@@ -24,12 +24,15 @@ and the reconciler emits a structured per-sweep line plus a structured error lin
 on failure. CloudWatch Logs Insights can now query by field (level, service,
 action, …).
 
+**Done (later 2026-06-14).** Per-workspace log view: the `LogSource.read` port
+takes an optional `{ taskId }` filter; the CloudWatch adapter narrows the shared
+workspaces group to the workspace's task stream (`workspace/<container>/<taskId>`),
+and the admin Logs route + UI accept `?workspaceId=`. Access logging: every
+business API route is wrapped with `withObservability`, which emits a structured
+`api request` line (method/route/status/duration) per request.
+
 **Gaps.**
 
-- **No per-workspace log view** — the `container` stream is one shared group; the
-  admin UI can't filter to a single workspace. _Medium._
-- **No request/response (access) logging** on the API routes (request id,
-  method, path, status, latency) — only error-path logging exists so far. _Medium._
 - `parseLevel` infers level by substring-matching the raw message (brittle) — a
   symptom of the no-structured-levels gap on the read side. _Low._
 
@@ -49,16 +52,17 @@ checks it, while `/api/healthz` stays liveness (static, drives the ECS container
 restart). A task that can't reach its data store is pulled from the load balancer
 without being killed.
 
+**Done (later 2026-06-14).** Reconciler health is now real: the reconciler stamps a
+heartbeat (last-successful-sweep time) each sweep, and the board reports it
+`ok`/`degraded` via `reconcilerHealthFromHeartbeat` (stale after
+`DEFAULT_RECONCILER_STALE_MS` = 15 min), or `unknown` until the first sweep. The
+`HealthService` reconciler branch now has a dedicated unit test.
+
 **Gaps.**
 
 - **`control-plane` component health is hardcoded `ok`** — can never self-report
-  degraded. _Medium._
-- **`reconciler` health is hardcoded `unknown`** — no last-run/staleness signal,
-  so a wedged reconciler (snapshots/scale-to-zero not running) is invisible on the
-  board. _Medium._
-- The assembled `HealthService.report` (mixed multi-component statuses; a provider
-  `health()` throwing) is only exercised incidentally — no dedicated roll-up test.
-  _Low._
+  degraded (it is, by construction, the process answering the request — lower
+  value to change). _Low._
 
 ## Status
 
@@ -87,13 +91,20 @@ when `LOG_PROVIDER=cloudwatch`, else no-op; no `PutMetricData` calls). Wired:
   with optional `alarm_sns_topic_arns` (gated by `enable_metric_alarms`; off for the
   sim, which exposes no metrics endpoint).
 
+**Done (later 2026-06-14).**
+
+- **API request latency + error rate** — `withObservability` emits
+  `api.request.latency_ms` (timing), `api.request` (count, dimensioned by route +
+  status class), and `api.request.error` (5xx) for every business route.
+- **Fleet gauges** — the reconciler emits `fleet.workspaces.{total,running,stopped,
+active}` and a priced `fleet.cost.usd` once per sweep.
+
 **Gaps.**
 
-- **API request latency + error rate** for the ALB-fronted control plane — not yet
-  emitted (no central request middleware). _Medium._
-- **Fleet gauges** (running/stopped/total, active users, quota utilization) and a
-  **cost/spend gauge** — the data exists for the overview but isn't emitted as a
-  time series. _Medium._
+- Per-user quota-utilization gauges are not yet emitted. _Low._
+- Real-AWS verification that EMF stdout lands as CloudWatch metrics + alarms fire
+  (only the JSON shape is unit-tested; the sim has no metrics endpoint). _Tracked
+  under `e2e-aws`._
 
 ## Audit
 
@@ -130,14 +141,17 @@ truncation at volume.
 
 Done (2026-06-14): readiness probe (`/api/readyz`), storage Health-board check,
 structured logging (control plane + reconciler), a metrics layer (wake latency +
-reconciler counts) with CloudWatch alarms, and CloudTrail audit pagination.
+reconciler counts) with CloudWatch alarms, CloudTrail audit pagination, **API
+request latency/error metrics + access logging, fleet + cost gauges, reconciler
+health (heartbeat staleness), per-workspace log view, and SSH CA key-material
+support** (`EDD_SSH_CA_KEY` via Secrets Manager — no CA key in Terraform state).
 
 Remaining:
 
-1. Unblock and run `e2e-aws` once the AWS account decision lands (the entire
-   real-cloud tier is still unverified).
-2. API request-latency + error-rate metrics and access logging (needs central
-   request middleware), plus fleet/cost gauges.
-3. Per-workspace log view; reconciler/self health signals on the board.
-4. `EDD_SSH_CA_KEY_PATH` (CA private key) Terraform provisioning (see
-   [`deploying.md`](./deploying.md) Step 4).
+1. **Unblock and run `e2e-aws`** once the AWS account decision lands (open decision
+   #1, the top blocker). This is the one substantial item left and is **external** —
+   the entire real-cloud tier is unverified, and it's also where the EMF→CloudWatch
+   metrics, alarms firing, and live SSH-cert issuance get their first real check.
+2. Minor follow-ups (all _Low_): per-user quota-utilization gauges; `parseLevel`
+   heuristic on the log read side; control-plane self-health; cached fleet status
+   for 200+ scale.

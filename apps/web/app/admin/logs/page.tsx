@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { LogStream } from "@edd/core";
+import { taskId as toTaskId, workspaceId, type LogReadFilter, type LogStream } from "@edd/core";
 
-import { getAuditSource, getLogSource } from "../../../lib/control-plane";
+import { getAuditSource, getControlPlane, getLogSource } from "../../../lib/control-plane";
 import { TESTID } from "../../../lib/testids";
 
 export const dynamic = "force-dynamic";
@@ -10,11 +10,26 @@ export const dynamic = "force-dynamic";
 const LOG_STREAMS: LogStream[] = ["control-plane", "reconciler", "container"];
 
 // Admin-only (the /admin layout gates it). Derived audit feed + log streams.
-export default async function AdminLogsPage() {
+// `?workspaceId=ws-…` narrows the container stream to one workspace's task logs.
+export default async function AdminLogsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ workspaceId?: string }>;
+}) {
+  const { workspaceId: wsId } = await searchParams;
   const logSource = getLogSource();
+
+  // Resolve the workspace's task to a per-workspace container-log filter.
+  let filter: LogReadFilter | undefined;
+  if (wsId !== undefined && wsId.length > 0) {
+    const detail = await (await getControlPlane()).inspect(workspaceId(wsId));
+    const wsTaskId = detail?.workspace.taskId;
+    if (wsTaskId !== undefined) filter = { taskId: toTaskId(wsTaskId) };
+  }
+
   const [events, streams] = await Promise.all([
     getAuditSource().recent(),
-    Promise.all(LOG_STREAMS.map((s) => logSource.read(s))),
+    Promise.all(LOG_STREAMS.map((s) => logSource.read(s, s === "container" ? filter : undefined))),
   ]);
 
   return (
@@ -27,6 +42,12 @@ export default async function AdminLogsPage() {
             Audit is <strong>derived from current state</strong> now and comes from CloudTrail on
             AWS; container, app, and reconciler logs stream from CloudWatch once deployed.
           </p>
+          {wsId !== undefined && wsId.length > 0 && (
+            <p className="mono" style={{ color: "var(--dim)", fontSize: 11 }}>
+              container stream filtered to workspace <strong>{wsId}</strong>
+              {filter === undefined ? " (no running task — showing none)" : ""}
+            </p>
+          )}
         </div>
       </div>
 

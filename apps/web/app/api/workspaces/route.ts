@@ -14,10 +14,11 @@ import {
   isResponse,
 } from "../../../lib/api";
 import { getCatalog, getControlPlane } from "../../../lib/control-plane";
+import { withObservability } from "../../../lib/observability";
 import { workspaceLimit } from "../../../lib/quota";
 
 // GET /api/workspaces — admins see all; everyone else sees their own.
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const principal = await authenticate(req);
   if (isResponse(principal)) return principal;
 
@@ -30,7 +31,7 @@ export async function GET(req: Request) {
 }
 
 // POST /api/workspaces — create a workspace owned by the caller.
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   const principal = await authenticate(req);
   if (isResponse(principal)) return principal;
   if (!defineAbilityFor(principal).can("create", "Workspace")) return forbidden();
@@ -77,3 +78,6 @@ export async function POST(req: Request) {
   // emit. Same for start/stop/delete on their routes.
   return NextResponse.json(workspace, { status: 201 });
 }
+
+export const GET = withObservability("workspaces.list", handleGET);
+export const POST = withObservability("workspaces.create", handlePOST);

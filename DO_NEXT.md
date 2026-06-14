@@ -30,15 +30,14 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
 
 ## Available now (decision-free — immediate)
 
-- **Launch-readiness / observability** — the audit's headline gaps are now **done**
-  (`BUGS.md` → Resolved): `/api/readyz` readiness probe, storage Health-board check,
-  structured logging (control plane + reconciler), a metrics layer (`MetricSink` +
-  `@edd/cloudwatch-metrics` EMF; wake latency + reconciler counts) with CloudWatch
-  alarms, and CloudTrail audit pagination. **Remaining** (see
-  [`docs/observability-gaps.md`](./docs/observability-gaps.md)): API
-  request-latency/error-rate metrics + access logging (needs central middleware);
-  fleet/cost gauges; per-workspace log view; `EDD_SSH_CA_KEY_PATH` Terraform
-  provisioning; and running `e2e-aws` once the AWS account lands.
+- **Launch-readiness / observability — essentially complete** (`BUGS.md` →
+  Resolved): readiness probe, storage health, structured logging, metrics + alarms,
+  CloudTrail pagination, API request latency/error metrics + access logging, fleet +
+  cost gauges, reconciler health (heartbeat), per-workspace log view, and SSH CA
+  key-material support (`EDD_SSH_CA_KEY`). The one substantial item left is **`e2e-aws`**
+  (blocked on the AWS account decision below) — it's where the EMF→CloudWatch
+  metrics, alarms, and live SSH-cert issuance get their first real check. Only _Low_
+  follow-ups otherwise; see [`docs/observability-gaps.md`](./docs/observability-gaps.md).
 - **Docs** — `README` doc index, [`docs/running-locally.md`](./docs/running-locally.md)
   (runnable tier commands), and the AWS [`docs/deploying.md`](./docs/deploying.md)
   runbook are current and cross-linked. Remaining deploy wiring gap:

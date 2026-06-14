@@ -209,9 +209,11 @@ export class ApiClient {
     return auditFeedResponse.parse(await res.json());
   }
 
-  /** Read one admin log stream; CloudWatch-backed on AWS. */
-  async adminLogs(stream: LogStreamDto): Promise<LogStreamResultDto> {
-    const res = await this.send(`/api/admin/logs?stream=${stream}`);
+  /** Read one admin log stream; CloudWatch-backed on AWS. An optional
+   * `workspaceId` narrows the `container` stream to that workspace's task. */
+  async adminLogs(stream: LogStreamDto, workspaceId?: string): Promise<LogStreamResultDto> {
+    const qs = workspaceId === undefined ? "" : `&workspaceId=${encodeURIComponent(workspaceId)}`;
+    const res = await this.send(`/api/admin/logs?stream=${stream}${qs}`);
     return logStreamResult.parse(await res.json());
   }
 }

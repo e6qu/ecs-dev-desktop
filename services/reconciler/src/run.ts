@@ -12,9 +12,22 @@
  */
 import { metricSinkFromEnv } from "@edd/cloudwatch-metrics";
 import { EcsComputeProvider } from "@edd/compute-ecs";
-import { WorkspaceService } from "@edd/control-plane";
+import {
+  CostService,
+  StoredAuditSource,
+  StoredCostRollupStore,
+  WorkspaceService,
+} from "@edd/control-plane";
+import { workspacePricing, workspaceSizing } from "@edd/config";
 import {
   createLogger,
+  isoTimestamp,
+  tallyWorkspaceStates,
+  METRIC_FLEET_ACTIVE,
+  METRIC_FLEET_COST_USD,
+  METRIC_FLEET_RUNNING,
+  METRIC_FLEET_STOPPED,
+  METRIC_FLEET_TOTAL,
   METRIC_RECONCILER_DRIFT_LOST,
   METRIC_RECONCILER_FAILED,
   METRIC_RECONCILER_GC_DELETED,
@@ -24,7 +37,14 @@ import {
   METRIC_RECONCILER_SWEEP,
   systemClock,
 } from "@edd/core";
-import { createDynamoClient, makeAuditEventEntity, makeWorkspaceEntity } from "@edd/db";
+import {
+  createDynamoClient,
+  makeAuditEventEntity,
+  makeCostRollupEntity,
+  makeReconcilerHeartbeatEntity,
+  makeWorkspaceEntity,
+  RECONCILER_HEARTBEAT_ID,
+} from "@edd/db";
 import { Ec2StorageProvider } from "@edd/storage-ec2";
 
 import { Reconciler } from "./index.js";
@@ -50,6 +70,7 @@ const gcGraceMs = tuningMs("EDD_GC_GRACE_MS");
 const dynamo = createDynamoClient();
 const storage = Ec2StorageProvider.fromEnv();
 const compute = EcsComputeProvider.fromEnv();
+const auditEntity = makeAuditEventEntity(dynamo, table);
 const service = new WorkspaceService({
   workspaces: makeWorkspaceEntity(dynamo, table),
   storage,
@@ -58,7 +79,18 @@ const service = new WorkspaceService({
   // Reconciler-driven scale-to-zero + drift stops are recorded to the same
   // first-class ledger as user actions (atomically with the transition), so the
   // cost model accounts for them.
-  audit: makeAuditEventEntity(dynamo, table),
+  audit: auditEntity,
+});
+const heartbeat = makeReconcilerHeartbeatEntity(dynamo, table);
+// Cost at config-default rates (live AWS pricing is a web-app opt-in) — enough to
+// emit a fleet spend gauge from the sweep.
+const cost = new CostService({
+  audit: new StoredAuditSource({ events: auditEntity, clock: systemClock }),
+  workspaces: service,
+  clock: systemClock,
+  pricing: workspacePricing(),
+  sizing: workspaceSizing(),
+  rollups: new StoredCostRollupStore(makeCostRollupEntity(dynamo, table)),
 });
 const reconciler = new Reconciler({
   service,
@@ -104,6 +136,25 @@ try {
     snapshotsDeleted: result.gc.snapshotsDeleted,
     skipped: result.drift.skipped + result.idle.skipped + result.snapshots.skipped,
   });
+
+  // Post-sweep observability (best-effort — a gauge/heartbeat hiccup must not turn
+  // a good sweep into a failure): fleet gauges, a priced spend gauge, and the
+  // heartbeat the Health board reads for reconciler staleness.
+  try {
+    const stats = tallyWorkspaceStates((await service.list()).map((w) => w.state));
+    metrics.gauge(METRIC_FLEET_TOTAL, stats.total);
+    metrics.gauge(METRIC_FLEET_RUNNING, stats.byState.running);
+    metrics.gauge(METRIC_FLEET_STOPPED, stats.byState.stopped);
+    metrics.gauge(METRIC_FLEET_ACTIVE, stats.active);
+    metrics.gauge(METRIC_FLEET_COST_USD, (await cost.report()).total.totalUsd);
+    await heartbeat
+      .put({ id: RECONCILER_HEARTBEAT_ID, lastRunAt: isoTimestamp(systemClock.now()) })
+      .go();
+  } catch (err) {
+    log.warn("post-sweep observability step failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
 } catch (err) {
   metrics.count(METRIC_RECONCILER_FAILED);
   log.error("maintenance sweep failed", {

@@ -19,6 +19,7 @@ import {
   AWS_SDK_RETRY_MODE,
   DEFAULT_AWS_REGION,
   DEFAULT_ECS_CLUSTER,
+  DEFAULT_WORKSPACE_LOG_STREAM_PREFIX,
   DEFAULT_WORKSPACE_CONTAINER,
   DEFAULT_WORKSPACE_CPU,
   DEFAULT_WORKSPACE_MEMORY,
@@ -293,7 +294,7 @@ export class EcsComputeProvider implements ComputeProvider {
                     options: {
                       "awslogs-group": this.config.logGroupName,
                       "awslogs-region": process.env.AWS_REGION ?? DEFAULT_AWS_REGION,
-                      "awslogs-stream-prefix": "workspace",
+                      "awslogs-stream-prefix": DEFAULT_WORKSPACE_LOG_STREAM_PREFIX,
                     },
                   },
                 }

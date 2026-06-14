@@ -5,15 +5,28 @@ import {
   ResourceNotFoundException,
   type FilteredLogEvent,
 } from "@aws-sdk/client-cloudwatch-logs";
+import { DEFAULT_WORKSPACE_CONTAINER, DEFAULT_WORKSPACE_LOG_STREAM_PREFIX } from "@edd/config";
 import {
   assertNever,
   isoTimestamp,
   type LogLevel,
   type LogLine,
+  type LogReadFilter,
   type LogSource,
   type LogStream,
   type LogStreamResult,
 } from "@edd/core";
+
+/**
+ * The CloudWatch log-stream name prefix for one workspace's ECS task. The awslogs
+ * driver names each task's stream `<prefix>/<container>/<taskId>`, where taskId is
+ * the last segment of the task ARN — so this narrows the shared workspaces log
+ * group to a single workspace.
+ */
+export function workspaceStreamPrefix(taskArn: string): string {
+  const taskId = taskArn.split("/").pop() ?? taskArn;
+  return `${DEFAULT_WORKSPACE_LOG_STREAM_PREFIX}/${DEFAULT_WORKSPACE_CONTAINER}/${taskId}`;
+}
 
 export function logGroup(stream: LogStream, appName: string): string {
   switch (stream) {
@@ -50,11 +63,23 @@ export class CloudWatchLogSource implements LogSource {
     return new CloudWatchLogSource(new CloudWatchLogsClient({}), appName);
   }
 
-  async read(stream: LogStream): Promise<LogStreamResult> {
+  async read(stream: LogStream, filter?: LogReadFilter): Promise<LogStreamResult> {
     const logGroupName = logGroup(stream, this.appName);
     const note = STREAM_NOTE[stream];
+    // Only the container stream is per-workspace; narrow it to the workspace's
+    // task log stream when a taskId filter is supplied.
+    const logStreamNamePrefix =
+      stream === "container" && filter?.taskId !== undefined
+        ? workspaceStreamPrefix(filter.taskId)
+        : undefined;
     try {
-      const out = await this.client.send(new FilterLogEventsCommand({ logGroupName, limit: 200 }));
+      const out = await this.client.send(
+        new FilterLogEventsCommand({
+          logGroupName,
+          limit: 200,
+          ...(logStreamNamePrefix === undefined ? {} : { logStreamNamePrefix }),
+        }),
+      );
       const lines = (out.events ?? []).map((e: FilteredLogEvent) => toLogLine(e, stream));
       return { stream, available: true, note, lines };
     } catch (err) {

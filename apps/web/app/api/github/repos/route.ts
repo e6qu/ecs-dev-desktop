@@ -7,6 +7,7 @@ import { z } from "zod";
 import { authenticate, badRequest, conflict, forbidden, isResponse } from "../../../../lib/api";
 import { auditActor, recordAudit } from "../../../../lib/audit";
 import { getGitProvider } from "../../../../lib/git-provider";
+import { withObservability } from "../../../../lib/observability";
 
 /**
  * GitHub repo endpoints for the session launcher. Operations go through the
@@ -17,7 +18,7 @@ import { getGitProvider } from "../../../../lib/git-provider";
 const NOT_CONNECTED = "GitHub account not connected — sign in with GitHub";
 
 // GET /api/github/repos — repos the authenticated caller can access.
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const principal = await authenticate(req);
   if (isResponse(principal)) return principal;
 
@@ -41,7 +42,7 @@ const createRepoRequest = z.object({
 });
 
 // POST /api/github/repos — create a repo the user will start a session in.
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   const principal = await authenticate(req);
   if (isResponse(principal)) return principal;
   // Creating a repo is a member+ action (same gate as creating a workspace).
@@ -68,3 +69,6 @@ export async function POST(req: Request) {
   });
   return NextResponse.json({ repo }, { status: 201 });
 }
+
+export const GET = withObservability("github.repos.get", handleGET);
+export const POST = withObservability("github.repos.post", handlePOST);

@@ -3,8 +3,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { signCert } from "./ssh-cert";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { caKeyPath, signCert } from "./ssh-cert";
 
 describe("signCert", () => {
   let caDir: string;
@@ -46,5 +46,45 @@ describe("signCert", () => {
 
   it("throws when the CA key path is invalid", () => {
     expect(() => signCert("/no/such/key", "ssh-ed25519 AAAA", "dev-x", "id")).toThrow();
+  });
+});
+
+describe("caKeyPath", () => {
+  const env = process.env;
+  let savedPath: string | undefined;
+  let savedKey: string | undefined;
+
+  beforeEach(() => {
+    savedPath = env.EDD_SSH_CA_KEY_PATH;
+    savedKey = env.EDD_SSH_CA_KEY;
+    delete env.EDD_SSH_CA_KEY_PATH;
+    delete env.EDD_SSH_CA_KEY;
+  });
+  afterEach(() => {
+    if (savedPath === undefined) delete env.EDD_SSH_CA_KEY_PATH;
+    else env.EDD_SSH_CA_KEY_PATH = savedPath;
+    if (savedKey === undefined) delete env.EDD_SSH_CA_KEY;
+    else env.EDD_SSH_CA_KEY = savedKey;
+  });
+
+  it("returns EDD_SSH_CA_KEY_PATH verbatim, and it wins over key material", () => {
+    env.EDD_SSH_CA_KEY_PATH = "/etc/edd/ca";
+    env.EDD_SSH_CA_KEY = "ignored-material";
+    expect(caKeyPath()).toBe("/etc/edd/ca");
+  });
+
+  it("materializes EDD_SSH_CA_KEY to a file, ensuring a trailing newline", () => {
+    const material = "-----BEGIN OPENSSH PRIVATE KEY-----\nabc\n-----END OPENSSH PRIVATE KEY-----";
+    env.EDD_SSH_CA_KEY = material;
+    expect(readFileSync(caKeyPath(), "utf8")).toBe(`${material}\n`);
+  });
+
+  it("preserves an existing trailing newline in the material", () => {
+    env.EDD_SSH_CA_KEY = "key-with-newline\n";
+    expect(readFileSync(caKeyPath(), "utf8")).toBe("key-with-newline\n");
+  });
+
+  it("throws loudly when neither coordinate is set", () => {
+    expect(() => caKeyPath()).toThrow(/EDD_SSH_CA_KEY_PATH .* or EDD_SSH_CA_KEY/);
   });
 });

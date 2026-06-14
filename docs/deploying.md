@@ -81,18 +81,18 @@ The module **already injects** the infra coordinates into the task definition:
 What **you must supply** via the module's `secret_environment` (backed by Secrets
 Manager) — these are not injected and the app fails loudly without them:
 
-| Group        | Variable                                                                                         | Purpose                                                   |
-| ------------ | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------- |
-| Auth.js      | `AUTH_SECRET`                                                                                    | session/JWT signing                                       |
-| Auth.js      | `AUTH_URL` or `AUTH_TRUST_HOST=true`                                                             | correct callback/redirect behind the ALB                  |
-| IdP (GitHub) | `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`                                                           | GitHub OAuth/App                                          |
-| IdP (Entra)  | `AUTH_MICROSOFT_ENTRA_ID_ID`, `AUTH_MICROSOFT_ENTRA_ID_SECRET`, `AUTH_MICROSOFT_ENTRA_ID_ISSUER` | Azure Entra OIDC                                          |
-| RBAC         | `EDD_ADMIN_GROUPS`, `EDD_MEMBER_GROUPS`                                                          | IdP group → role mapping (**see admin bootstrap below**)  |
-| Crypto       | `EDD_TOKEN_ENC_KEY`                                                                              | 32-byte hex AES key — gates git-credential storage        |
-| Crypto       | `EDD_GATEWAY_SECRET`                                                                             | gateway↔control-plane machine-auth HMAC (connect/wake)    |
-| Crypto       | `EDD_AGENT_SECRET`                                                                               | idle-agent heartbeat HMAC                                 |
-| SSH          | `EDD_SSH_CA_KEY_PATH`                                                                            | path to the CA **private** key for cert issuance (Step 4) |
-| Proxy        | `EDD_WORKSPACE_BASE_DOMAIN`, `EDD_POMERIUM_JWKS_URL`                                             | workspace routing + proxy JWT verification                |
+| Group        | Variable                                                                                         | Purpose                                                    |
+| ------------ | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
+| Auth.js      | `AUTH_SECRET`                                                                                    | session/JWT signing                                        |
+| Auth.js      | `AUTH_URL` or `AUTH_TRUST_HOST=true`                                                             | correct callback/redirect behind the ALB                   |
+| IdP (GitHub) | `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`                                                           | GitHub OAuth/App                                           |
+| IdP (Entra)  | `AUTH_MICROSOFT_ENTRA_ID_ID`, `AUTH_MICROSOFT_ENTRA_ID_SECRET`, `AUTH_MICROSOFT_ENTRA_ID_ISSUER` | Azure Entra OIDC                                           |
+| RBAC         | `EDD_ADMIN_GROUPS`, `EDD_MEMBER_GROUPS`                                                          | IdP group → role mapping (**see admin bootstrap below**)   |
+| Crypto       | `EDD_TOKEN_ENC_KEY`                                                                              | 32-byte hex AES key — gates git-credential storage         |
+| Crypto       | `EDD_GATEWAY_SECRET`                                                                             | gateway↔control-plane machine-auth HMAC (connect/wake)     |
+| Crypto       | `EDD_AGENT_SECRET`                                                                               | idle-agent heartbeat HMAC                                  |
+| SSH          | `EDD_SSH_CA_KEY`                                                                                 | the CA **private** key material for cert issuance (Step 4) |
+| Proxy        | `EDD_WORKSPACE_BASE_DOMAIN`, `EDD_POMERIUM_JWKS_URL`                                             | workspace routing + proxy JWT verification                 |
 
 > **Admin bootstrap (important).** RBAC is purely IdP-group-driven: the default
 > role is `viewer`, and an account is an admin **only** if its IdP groups intersect
@@ -106,9 +106,13 @@ Workspace SSH uses short-lived OpenSSH **certificates** signed by your CA.
 1. Generate the CA keypair (`scripts/gen-ssh-ca.sh` produces `ca` + `ca.pub`).
 2. Pass the **public** key to Terraform as `ssh_ca_public_key` — the module injects
    it into workspace tasks so `sshd` trusts certs signed by your CA.
-3. Store the **private** key as a secret and point the control plane at it via
-   `EDD_SSH_CA_KEY_PATH` (it is read at cert-issuance time). Without this, the SSH
-   cert route throws — keep the private key out of the image and mount/inject it.
+3. Store the **private** key in Secrets Manager and pass its ARN to the control
+   plane via `secret_environment` under the key **`EDD_SSH_CA_KEY`** — exactly how
+   `AUTH_SECRET`/`EDD_AGENT_SECRET` are handled. The control plane materializes it
+   to a `0600` temp file at cert-issuance time (`apps/web/lib/ssh-cert.ts`). This is
+   the recommended path: the CA private key never lands in Terraform state.
+   (`EDD_SSH_CA_KEY_PATH` is still honored if you instead mount the key as a file;
+   it wins when both are set. Without either, the SSH-cert route throws.)
 
 ## Step 5 — DNS/TLS + identity-aware proxy
 

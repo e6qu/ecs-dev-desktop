@@ -46,6 +46,7 @@ export {
   DEFAULT_AUDIT_FEED_LIMIT,
   DEFAULT_GC_GRACE_MS,
   DEFAULT_IDLE_THRESHOLD_MS,
+  DEFAULT_RECONCILER_STALE_MS,
   DEFAULT_SNAPSHOT_INTERVAL_MS,
   ID_PREFIX,
 } from "./domain/constants";
@@ -126,7 +127,7 @@ export { fixedClock, systemClock } from "./clock";
 
 // Observability — health roll-up (admin Health board).
 export type { ComponentHealth, HealthReport, HealthStatus } from "./observability/health";
-export { summarizeHealth } from "./observability/health";
+export { summarizeHealth, reconcilerHealthFromHeartbeat } from "./observability/health";
 
 // Observability — derived workspace lifecycle timeline (admin Inspect).
 export type { TimelineEvent, WorkspaceTimelineInput } from "./observability/timeline";
@@ -154,6 +155,14 @@ export {
   METRIC_RECONCILER_DRIFT_LOST,
   METRIC_RECONCILER_GC_DELETED,
   METRIC_RECONCILER_SKIPPED,
+  METRIC_API_REQUEST,
+  METRIC_API_LATENCY_MS,
+  METRIC_API_ERROR,
+  METRIC_FLEET_TOTAL,
+  METRIC_FLEET_RUNNING,
+  METRIC_FLEET_STOPPED,
+  METRIC_FLEET_ACTIVE,
+  METRIC_FLEET_COST_USD,
 } from "./observability/metrics";
 
 // Observability — cost model (admin Costs; prices the lifecycle audit ledger).
@@ -183,6 +192,7 @@ export {
 export type {
   LogLevel,
   LogLine,
+  LogReadFilter,
   LogSource,
   LogStream,
   LogStreamResult,

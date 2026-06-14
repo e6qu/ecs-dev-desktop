@@ -14,9 +14,10 @@ import {
   isResponse,
 } from "../../../lib/api";
 import { getCatalog } from "../../../lib/control-plane";
+import { withObservability } from "../../../lib/observability";
 
 // GET /api/base-images — list the catalog (any authenticated user can browse it).
-export async function GET(req: Request) {
+async function handleGET(req: Request) {
   const principal = await authenticate(req);
   if (isResponse(principal)) return principal;
   if (!defineAbilityFor(principal).can("read", "BaseImage")) return forbidden();
@@ -24,7 +25,7 @@ export async function GET(req: Request) {
 }
 
 // POST /api/base-images — add a catalog entry (admins only).
-export async function POST(req: Request) {
+async function handlePOST(req: Request) {
   const principal = await authenticate(req);
   if (isResponse(principal)) return principal;
   if (!defineAbilityFor(principal).can("create", "BaseImage")) return forbidden();
@@ -50,3 +51,6 @@ export async function POST(req: Request) {
     return conflict(errorMessage(err));
   }
 }
+
+export const GET = withObservability("baseImages.list", handleGET);
+export const POST = withObservability("baseImages.create", handlePOST);

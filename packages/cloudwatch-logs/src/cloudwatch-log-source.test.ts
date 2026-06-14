@@ -2,11 +2,19 @@
 import {
   CloudWatchLogsClient,
   ResourceNotFoundException,
+  type FilterLogEventsCommand,
   type FilterLogEventsCommandOutput,
 } from "@aws-sdk/client-cloudwatch-logs";
+import { taskId } from "@edd/core";
 import { describe, expect, it, vi } from "vitest";
 
-import { CloudWatchLogSource, logGroup, parseLevel, toLogLine } from "./cloudwatch-log-source";
+import {
+  CloudWatchLogSource,
+  logGroup,
+  parseLevel,
+  toLogLine,
+  workspaceStreamPrefix,
+} from "./cloudwatch-log-source";
 
 // ── logGroup (pure) ──────────────────────────────────────────────────────────
 
@@ -113,5 +121,37 @@ describe("CloudWatchLogSource", () => {
   it("rethrows unexpected errors", async () => {
     const src = makeSource(new Error("network failure"));
     await expect(src.read("control-plane")).rejects.toThrow("network failure");
+  });
+
+  it("narrows the container stream to a workspace's task when a taskId filter is given", async () => {
+    const mockSend = vi.fn().mockResolvedValue({ events: [], $metadata: {} });
+    const src = new CloudWatchLogSource(
+      { send: mockSend } as unknown as CloudWatchLogsClient,
+      "edd-test",
+    );
+
+    await src.read("container", { taskId: taskId("arn:aws:ecs:us-east-1:1:task/edd/uuid-1") });
+    const containerCall = mockSend.mock.calls[0] as [FilterLogEventsCommand];
+    expect(containerCall[0].input).toMatchObject({
+      logStreamNamePrefix: "workspace/workspace/uuid-1",
+    });
+
+    // The filter is ignored for non-container streams (no per-workspace dimension).
+    mockSend.mockClear();
+    await src.read("control-plane", { taskId: taskId("arn:aws:ecs:us-east-1:1:task/edd/uuid-1") });
+    const cpCall = mockSend.mock.calls[0] as [FilterLogEventsCommand];
+    expect(cpCall[0].input.logStreamNamePrefix).toBeUndefined();
+  });
+});
+
+describe("workspaceStreamPrefix", () => {
+  it("builds <prefix>/<container>/<taskId> from a task ARN", () => {
+    expect(workspaceStreamPrefix("arn:aws:ecs:us-east-1:123:task/edd/abc123")).toBe(
+      "workspace/workspace/abc123",
+    );
+  });
+
+  it("falls back to the raw value when there is no slash", () => {
+    expect(workspaceStreamPrefix("plainid")).toBe("workspace/workspace/plainid");
   });
 });
