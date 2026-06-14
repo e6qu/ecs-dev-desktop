@@ -10,6 +10,18 @@ import { z } from "zod";
 export const DEFAULT_AWS_REGION = "us-east-1";
 export const DEFAULT_DYNAMODB_TABLE = "ecs-dev-desktop";
 
+/**
+ * AWS SDK retry tuning for the control-plane clients. ECS mutating calls
+ * (notably `RunTask`) are throttle-prone in real AWS, and concurrent
+ * wake-on-connect bursts fire several `RunTask`s at once. The SDK default
+ * (`standard`, 3 attempts) can exhaust under that burst and surface a transient
+ * 5xx/throttle as a hard failure. `adaptive` mode adds a client-side rate
+ * limiter (it backs off the whole client when throttled) and a higher attempt
+ * ceiling absorbs the burst. Endpoint-agnostic — correct against real AWS, not a
+ * simulator workaround (§6.8). */
+export const AWS_SDK_MAX_ATTEMPTS = 6;
+export const AWS_SDK_RETRY_MODE = "adaptive" as const;
+
 /** GitHub REST API base. Override (env, `AUTH_GITHUB_API_URL`) points at GitHub
  * Enterprise or a local harness `/api/v3`; default is public GitHub. */
 export const DEFAULT_GITHUB_API_URL = "https://api.github.com";

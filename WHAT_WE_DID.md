@@ -868,3 +868,14 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   output arrived in the streamed AgentMessage frames. The test consumed only AWS
   response coordinates and standard wire behavior, so it remained target-agnostic;
   the simulator matched the real client path and no upstream gap was found.
+
+- **2026-06-14 — AWS SDK retry hardening (concurrent wake-on-connect).** The
+  `concurrent-connect` e2e issues N simultaneous `/connect`s, each waking via
+  `RunTask`, so several concurrent `RunTask`s hit the platform at once. The
+  control-plane AWS clients ran on the SDK default retry (`standard`, 3 attempts),
+  so a transient `RunTask` 5xx/throttle under that burst could exhaust retries and
+  surface as an uncaught 500 — failing the strict idempotent-200 assertion. Since
+  `RunTask` throttles in real AWS too, the fix is real-cloud-correct rather than a
+  sim workaround (§6.8): ECS, Secrets Manager, and EC2 clients now use
+  `retryMode: "adaptive"` + `maxAttempts: 6` (named in `@edd/config`). The race
+  test stays strict — no assertion was weakened.

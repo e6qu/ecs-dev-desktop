@@ -15,6 +15,8 @@ import {
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
 import {
+  AWS_SDK_MAX_ATTEMPTS,
+  AWS_SDK_RETRY_MODE,
   DEFAULT_AWS_REGION,
   DEFAULT_ECS_CLUSTER,
   DEFAULT_WORKSPACE_CONTAINER,
@@ -473,6 +475,8 @@ export class EcsComputeProvider implements ComputeProvider {
     const endpoint = process.env.AWS_ENDPOINT_URL;
     return new ECSClient({
       region: process.env.AWS_REGION ?? DEFAULT_AWS_REGION,
+      maxAttempts: AWS_SDK_MAX_ATTEMPTS,
+      retryMode: AWS_SDK_RETRY_MODE,
       ...(endpoint
         ? { endpoint, credentials: { accessKeyId: "local", secretAccessKey: "local" } }
         : {}),
@@ -484,6 +488,8 @@ export class EcsComputeProvider implements ComputeProvider {
     const endpoint = process.env.AWS_ENDPOINT_URL;
     return new SecretsManagerClient({
       region: process.env.AWS_REGION ?? DEFAULT_AWS_REGION,
+      maxAttempts: AWS_SDK_MAX_ATTEMPTS,
+      retryMode: AWS_SDK_RETRY_MODE,
       ...(endpoint
         ? { endpoint, credentials: { accessKeyId: "local", secretAccessKey: "local" } }
         : {}),
