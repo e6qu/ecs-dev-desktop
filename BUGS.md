@@ -8,14 +8,6 @@ ECS compute hardening follow-ups (from the 2026-06-13 gap audit; the impactful
 ones were fixed — see Resolved — these remain as deliberate follow-ups, not
 active breakage):
 
-- **No readiness gating in `runTask`.** `EcsComputeProvider.runTask` returns as
-  soon as the managed-EBS volume id appears (during PROVISIONING/PENDING), before
-  the container is RUNNING and before sshd/OpenVSCode listen. `WorkspaceService`
-  then reports `running` and hands out `sshHost`/connect-info that may not yet
-  accept connections; every caller compensates with its own retry loop. Needs a
-  task-def container `healthCheck` and/or a port-readiness wait before returning.
-  Not a sim-maskable correctness bug (real Fargate has the same race), so it is
-  validated by the clients' retries today.
 - **Per-workspace agent secret injected as plaintext env, not ECS `secrets`.**
   `EDD_AGENT_TOKEN` (HMAC machine-auth) is passed via `containerOverrides.environment`,
   so it shows in `DescribeTasks`/console/CloudTrail. Should move to ECS `secrets`
@@ -49,6 +41,16 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **`runTask` readiness gating (2026-06-14)** — `EcsComputeProvider.runTask` now
+  waits for the task to be **READY** (a pure `taskReady` predicate: `lastStatus`
+  RUNNING + managed-EBS volume attached + ENI private IP assigned) before
+  returning, instead of returning as soon as the volume id appeared during
+  PROVISIONING/PENDING. So `WorkspaceService` no longer reports `running` (or hands
+  out `sshHost`/connect-info) for a task that can't yet accept connections — the
+  race callers used to paper over with their own retries. Endpoint-only; the sim
+  reaches RUNNING+attached in <1s, real Fargate within the 180s budget. Verified by
+  the `taskReady` unit tests + the container-mode e2e (golden SSH / data-fidelity /
+  user-journey) which drive `runTask`.
 - **ECS compute hardening + polyglot golden image (2026-06-13)** — gap audit of
   `EcsComputeProvider` fixed the impactful items: the task definition now declares
   `portMappings` for the OpenVSCode HTTP port (3000) and sshd (22); supports

@@ -2,9 +2,23 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-14 (sim-probe-coverage branch)
+**Last updated:** 2026-06-14 (ecs-runtask-readiness branch)
 
 ## Current phase
+
+**On `feat/ecs-runtask-readiness`:** closed the impactful ECS reliability gap —
+`EcsComputeProvider.runTask` now waits for the task to be **READY** before
+returning (a pure `taskReady` predicate: `lastStatus` RUNNING + managed-EBS volume
+attached + ENI private IP assigned), instead of returning at PROVISIONING/PENDING
+as soon as the volume id appeared. So `WorkspaceService` no longer reports a
+workspace `running` (or hands out `sshHost`/connect-info) before it can accept
+connections — the race every caller used to paper over with its own retry loop.
+Pure predicate is unit-tested; the container-mode e2e (golden SSH / data-fidelity /
+user-journey) drive `runTask` end-to-end. Endpoint-only (sim reaches RUNNING+
+attached in <1s; real Fargate within the 180s budget). Remaining decision-free ECS
+items in `BUGS.md` → Open: agent secret → ECS `secrets`; real `health()`.
+
+## Prior phase
 
 **On `feat/sim-probe-coverage`:** a sim-probe coverage pass — added a
 **multi-generation EBS snapshot-chain** probe to `packages/storage-ec2/src/ec2-storage.integ.ts`:
@@ -13,8 +27,6 @@ twice, asserting per-generation snapshot→source lineage and restore-from-a-res
 snapshot. This is the scale-to-zero persistence loop over repeated idle cycles at the
 EC2-API layer. The sim handles it correctly (probe green) → no upstream gap to file.
 The §6.9 storage filter comment is current (the stale workaround was removed in #74).
-Decision-free ECS hardening (runTask readiness gating; agent secret → ECS `secrets`;
-real `health()`) remains tracked in `BUGS.md` → Open as the next follow-ups.
 
 **Prior phase (merged, #77):** the **live per-workspace-authz chain** (increment-2 /
 DO_NEXT #5) — the PEP→PDP decision proven in the real Pomerium routing path.
