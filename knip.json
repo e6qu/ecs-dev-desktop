@@ -12,6 +12,7 @@
         "e2e/gate-global-setup.ts",
         "e2e/live-cloud-setup.ts",
         "scripts/dev-bootstrap.ts",
+        "scripts/screenshot-ui.ts",
         "**/*.test.ts",
         "**/*.integ.ts"
       ]

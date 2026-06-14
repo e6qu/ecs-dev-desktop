@@ -27,24 +27,31 @@ pnpm dev
 ```
 
 One command: reaps prior state → starts DynamoDB Local → ensures the table + a
-base image (idempotent `dev-bootstrap`) → runs `next dev` on
-**http://localhost:3700**. Compute/storage are in-process **fakes** (workspaces
-"launch" instantly, nothing real is provisioned); persistence is real DynamoDB
-Local; auth is **dev-auth**.
+base image (idempotent `dev-bootstrap`) → runs `next dev`. Open it at
+**http://edd.localhost:3700** — the `edd.localhost` subdomain keeps the dev-auth
+cookies isolated from other apps on plain `localhost` (browsers resolve
+`*.localhost` → 127.0.0.1 automatically; no hosts-file edit). Compute/storage are
+in-process **fakes** (workspaces "launch" instantly, nothing real is provisioned);
+persistence is real DynamoDB Local; auth is **dev-auth**.
 
 **Signing in (dev-auth).** With `EDD_DEV_AUTH=1` (the default for `pnpm dev`) the
-app trusts two cookies — set them in the browser (DevTools → Application →
-Cookies) to act as any user/role:
+`/login` page shows a **dev sign-in form** with seeded accounts — pick one and
+enter the dev password:
 
-| Cookie         | Value                           |
-| -------------- | ------------------------------- |
-| `edd-dev-user` | any id, e.g. `dev`              |
-| `edd-dev-role` | `admin` \| `member` \| `viewer` |
+| Username | Role     | Password                           |
+| -------- | -------- | ---------------------------------- |
+| `admin`  | `admin`  | `EDD_DEV_PASSWORD` (default `dev`) |
+| `member` | `member` | …                                  |
+| `viewer` | `viewer` | …                                  |
 
-For API calls (curl) the same identity is accepted as headers:
+The accounts are **configuration, not app code**: override the whole set with
+`EDD_DEV_USERS` (a JSON array of `{username, role, email, password?}`) and/or the
+shared `EDD_DEV_PASSWORD` (both in `@edd/config`). Sign-out clears the cookies.
+
+For API calls (curl) the same identity is accepted as headers (no form needed):
 
 ```sh
-curl -H 'x-edd-user-id: dev' -H 'x-edd-role: admin' http://localhost:3700/api/workspaces
+curl -H 'x-edd-user-id: admin' -H 'x-edd-role: admin' http://edd.localhost:3700/api/workspaces
 ```
 
 ## Tiers — add real surfaces by coordinates

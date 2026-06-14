@@ -47,6 +47,12 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **`pnpm reap` left profile-scoped sim containers running (2026-06-14)** —
+  `reap-local.sh` ran `docker compose down` on the dev file without the active
+  `--profile`, so profile-gated services (the sockerless sim, bleephub, entra sim)
+  survived a "reap" (the sockerless container was found still `Up` after `pnpm reap`).
+  Fixed: the reaper now downs each dev/test compose file with the dev profiles
+  (aws/github/entra) enabled — verified it removes the sockerless container.
 - **Observability completion: API request metrics, fleet/cost gauges, reconciler
   health, per-workspace logs, SSH CA key material (2026-06-14)** — closed the
   remaining launch-readiness gaps in one pass: (1) a `withObservability` route

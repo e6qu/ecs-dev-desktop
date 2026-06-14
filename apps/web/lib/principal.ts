@@ -15,7 +15,8 @@ function isRole(value: string): value is Role {
   return value === "viewer" || value === "member" || value === "admin";
 }
 
-function devAuthEnabled(): boolean {
+/** Whether the dev-auth shim is active (`EDD_DEV_AUTH=1`) — never in production. */
+export function devAuthEnabled(): boolean {
   return process.env[DEV_AUTH_ENV] === DEV_AUTH_ENABLED;
 }
 

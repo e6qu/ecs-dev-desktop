@@ -6,6 +6,23 @@
 
 ## Current phase
 
+**Local dev login UI (seeded users) + `edd.localhost` cookie isolation.** Replaced
+the hand-edit-cookies dev-auth flow with a real `/login` form (gated on
+`EDD_DEV_AUTH=1`): pick a seeded account + password. The accounts are
+**configuration, not app code** — `@edd/config` `devUsers()` parses `EDD_DEV_USERS`
+(JSON) with a built-in default set (admin/member/viewer), and `devPassword()`
+(`EDD_DEV_PASSWORD`, default `dev`); a per-account `password` overrides it. Server
+actions set host-only `edd-dev-*` cookies (scoped to `edd.localhost`, so other
+localhost apps' cookies aren't disturbed) and a dev-aware sign-out clears them.
+Playwright tests (`e2e/login.pw.ts`) sign in via the form as each role and assert
+role-appropriate access (admin reaches the console; member/viewer denied;
+wrong-password rejected; sign-out clears). Also: `pnpm reap` now actually tears
+down profile-scoped sim containers (it was skipping `--profile` services), and a
+reusable `pnpm --filter @edd/web screenshot` captures the dev UI. Verified live
+against the sockerless tier (`pnpm dev` + `EDD_DEV_PROFILES=aws`).
+
+## Prior phase (merged, #85)
+
 **Observability completion — the remaining launch-readiness gaps, in one PR.**
 Building on the #84 audit, closed everything actionable left in
 `docs/observability-gaps.md`: (1) a `withObservability` route wrapper emits
@@ -20,7 +37,7 @@ Manager ARN — the secure default, never in Terraform state). All coordinate-dr
 and unit/integ-tested. The one substantial item left is **`e2e-aws`**, external —
 blocked on the AWS account decision (open decision #1).
 
-## Prior phase (merged, #84)
+## Earlier (merged, #84)
 
 **Docs review + launch-readiness audit.** Reviewed all docs and made them
 navigable and accurate: surfaced previously-orphaned docs (`admin-ui-design`,

@@ -16,7 +16,8 @@
     "test:pw:live:provision": "tsx e2e/live-cloud-setup.ts",
     "test:pw:pomerium": "playwright test --config playwright.pomerium.config.ts",
     "test:pw:gate": "playwright test --config playwright.gate.config.ts",
-    "test:pw:vscode": "playwright test --config playwright.vscode.config.ts"
+    "test:pw:vscode": "playwright test --config playwright.vscode.config.ts",
+    "screenshot": "tsx scripts/screenshot-ui.ts"
   },
   "dependencies": {
     "@edd/api-client": "workspace:*",

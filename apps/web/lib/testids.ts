@@ -43,6 +43,11 @@ export const TESTID = {
   costUserRow: "cost-user-row",
   /** A per-session cost row on the admin Costs page. Attrs: `data-id`, `data-owner`, `data-usd`. */
   costSessionRow: "cost-session-row",
+  /** Dev-login form (EDD_DEV_AUTH=1) controls + error. */
+  loginUser: "login-user",
+  loginPassword: "login-password",
+  loginSubmit: "login-submit",
+  loginError: "login-error",
 } as const;
 
 export type TestId = (typeof TESTID)[keyof typeof TESTID];
