@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { IsoTimestamp } from "../domain/ids";
+import type { IsoTimestamp, TaskId } from "../domain/ids";
 
 import type { AuditEvent } from "./audit";
 
@@ -32,9 +32,19 @@ export interface LogStreamResult {
   readonly lines: readonly LogLine[];
 }
 
+/**
+ * Narrows a `read` to a single workspace. Only the `container` stream has a
+ * per-workspace dimension (its CloudWatch stream is keyed by the workspace's ECS
+ * task); other streams ignore it. The branded `TaskId` (the task ARN) is carried
+ * so the adapter — not the caller — knows how to turn it into a log-stream filter.
+ */
+export interface LogReadFilter {
+  readonly taskId?: TaskId;
+}
+
 /** Reads a single log stream. Derived/CloudWatch by adapter; same interface. */
 export interface LogSource {
-  read(stream: LogStream): Promise<LogStreamResult>;
+  read(stream: LogStream, filter?: LogReadFilter): Promise<LogStreamResult>;
 }
 
 /**

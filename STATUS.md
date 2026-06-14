@@ -6,26 +6,33 @@
 
 ## Current phase
 
+**Observability completion — the remaining launch-readiness gaps, in one PR.**
+Building on the #84 audit, closed everything actionable left in
+`docs/observability-gaps.md`: (1) a `withObservability` route wrapper emits
+per-request latency/status/error metrics + a structured access log across all
+business API routes; (2) the reconciler emits fleet gauges (total/running/stopped/
+active) + a priced `fleet.cost.usd` each sweep; (3) reconciler health is real — a
+heartbeat record + `reconcilerHealthFromHeartbeat` staleness check replace the
+hardcoded `unknown` on the board; (4) the admin Logs view filters the container
+stream to one workspace (`?workspaceId=` → task log-stream prefix); (5) SSH-cert
+issuance accepts the CA private key as material via `EDD_SSH_CA_KEY` (Secrets
+Manager ARN — the secure default, never in Terraform state). All coordinate-driven
+and unit/integ-tested. The one substantial item left is **`e2e-aws`**, external —
+blocked on the AWS account decision (open decision #1).
+
+## Prior phase (merged, #84)
+
 **Docs review + launch-readiness audit.** Reviewed all docs and made them
 navigable and accurate: surfaced previously-orphaned docs (`admin-ui-design`,
 `infra/images`, `infra/proxy`, `services/ssh-gateway` READMEs) in the README index;
-added a full AWS deployment runbook (`docs/deploying.md`) that fixes the prior
-gaps (the two real images — control-plane app + golden — every required secret
-incl. `EDD_SSH_CA_KEY_PATH`, `EDD_ADMIN_GROUPS` admin bootstrap, remote state, ECR
-login, two-phase apply, base-image seeding, Pomerium/gate); made the
-`docs/running-locally.md` tier commands actually runnable (`+ AWS` needs
-`ECS_SUBNETS`/`ECS_EBS_ROLE_ARN`; OIDC tiers need the Auth.js secrets). Inventoried
-the logs/health/status/metrics/testing gaps in `docs/observability-gaps.md`, then
-**closed the headline ones**: a real `/api/readyz` readiness probe (DynamoDB ping,
-ALB-wired) split from `/api/healthz` liveness; a storage Health-board check
-(`Ec2StorageProvider.health()`, previously `unknown` even on AWS); structured JSON
-logging (`@edd/core` `createLogger`) across the control plane + reconciler; a
-metrics layer (`MetricSink` + the `@edd/cloudwatch-metrics` EMF adapter) emitting
-wake-on-connect latency + reconciler action/failure counts, with CloudWatch alarms
-(`alarms.tf`); and CloudTrail audit pagination. All coordinate-driven (EMF on AWS,
-no-op locally). Remaining gaps tracked in `docs/observability-gaps.md`.
+added a full AWS deployment runbook (`docs/deploying.md`); made the
+`docs/running-locally.md` tier commands runnable; inventoried the
+logs/health/status/metrics/testing gaps in `docs/observability-gaps.md` and closed
+the headline ones — `/api/readyz` readiness probe, storage Health-board check,
+structured logging, a metrics layer (`@edd/cloudwatch-metrics` EMF) with CloudWatch
+alarms, and CloudTrail audit pagination.
 
-## Prior phase (merged, #83)
+## Earlier (merged, #83)
 
 **On `feat/ecs-exec-datachannel-proof`:** the container-mode ECS Exec coverage now
 proves the command path, not just the `ExecuteCommand` response shape — opens the

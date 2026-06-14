@@ -8,6 +8,7 @@ import {
   loadOwnedWorkspace,
 } from "../../../../lib/api";
 import { auditActor } from "../../../../lib/audit";
+import { withObservability } from "../../../../lib/observability";
 
 interface Ctx {
   params: Promise<{ id: string }>;
@@ -16,7 +17,7 @@ interface Ctx {
 // GET /api/workspaces/:id — the caller's own workspace (admins, any). Also
 // accepts the SSH gateway's machine-auth token: the gateway polls this route
 // for `state` while waking a workspace on connect.
-export async function GET(req: Request, { params }: Ctx) {
+async function handleGET(req: Request, { params }: Ctx) {
   const ctx = await loadConnectableWorkspace(req, params, "read");
   if (isResponse(ctx)) return ctx;
   return NextResponse.json(ctx.ws);
@@ -25,7 +26,7 @@ export async function GET(req: Request, { params }: Ctx) {
 // DELETE /api/workspaces/:id — remove() returns a typed Result; the central mapper
 // turns a domain failure into its status (a concurrent double-delete → not_found →
 // 404), so a racy delete can never escape as a 500.
-export async function DELETE(req: Request, { params }: Ctx) {
+async function handleDELETE(req: Request, { params }: Ctx) {
   const ctx = await loadOwnedWorkspace(req, params, "delete");
   if (isResponse(ctx)) return ctx;
   // The control plane records `session.delete` (attributed to the caller, or to
@@ -37,3 +38,6 @@ export async function DELETE(req: Request, { params }: Ctx) {
   if (!result.ok) return domainErrorResponse(result.error);
   return new NextResponse(null, { status: 204 });
 }
+
+export const GET = withObservability("workspaces.get", handleGET);
+export const DELETE = withObservability("workspaces.delete", handleDELETE);

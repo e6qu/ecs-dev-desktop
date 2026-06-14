@@ -4,6 +4,7 @@ import { sshCertRequest } from "@edd/api-contracts";
 import { workspacePrincipal } from "@edd/core";
 
 import { badRequest, isResponse, loadOwnedWorkspace } from "../../../../../lib/api";
+import { withObservability } from "../../../../../lib/observability";
 import { caKeyPath, signCert } from "../../../../../lib/ssh-cert";
 
 interface Ctx {
@@ -14,7 +15,7 @@ interface Ctx {
 // SSH CA and return a short-lived certificate granting the workspace principal.
 // The cert TTL is 1 hour; the caller writes it alongside their private key
 // (<key>-cert.pub) and the SSH client picks it up automatically.
-export async function POST(req: Request, { params }: Ctx) {
+async function handlePOST(req: Request, { params }: Ctx) {
   const ctx = await loadOwnedWorkspace(req, params, "read");
   if (isResponse(ctx)) return ctx;
 
@@ -34,3 +35,5 @@ export async function POST(req: Request, { params }: Ctx) {
 
   return NextResponse.json({ cert });
 }
+
+export const POST = withObservability("workspaces.sshCert", handlePOST);

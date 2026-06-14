@@ -30,6 +30,10 @@ export const DEFAULT_GITHUB_API_URL = "https://api.github.com";
  * deployment-specific and supplied by config, not defaulted). */
 export const DEFAULT_ECS_CLUSTER = "edd-workspaces";
 export const DEFAULT_WORKSPACE_CONTAINER = "workspace";
+/** `awslogs-stream-prefix` for workspace tasks. The ECS awslogs driver names each
+ * task's CloudWatch stream `<prefix>/<containerName>/<taskId>`; the admin Logs view
+ * uses this to filter the shared workspaces log group to one workspace. */
+export const DEFAULT_WORKSPACE_LOG_STREAM_PREFIX = "workspace";
 /** EBS volume mount path inside the workspace container (= workspace user home). */
 export const DEFAULT_WORKSPACE_MOUNT_PATH = "/home/workspace";
 export const DEFAULT_WORKSPACE_VOLUME_GIB = 8;

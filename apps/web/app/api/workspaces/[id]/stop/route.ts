@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { NextResponse } from "next/server";
-
-import { domainErrorResponse, isResponse, loadOwnedWorkspace } from "../../../../../lib/api";
+import { ownedLifecycleAction } from "../../../../../lib/api";
 import { auditActor } from "../../../../../lib/audit";
+import { withObservability } from "../../../../../lib/observability";
 
 interface Ctx {
   params: Promise<{ id: string }>;
@@ -11,13 +10,10 @@ interface Ctx {
 // POST /api/workspaces/:id/stop — scale to zero (snapshot + tear down). The
 // control plane records `session.stop` on the transition (see
 // workspaces/route.ts) — attributed to the caller, or `system` if machine-auth.
-export async function POST(req: Request, { params }: Ctx) {
-  const ctx = await loadOwnedWorkspace(req, params, "update");
-  if (isResponse(ctx)) return ctx;
-  const result = await ctx.cp.stop(
-    ctx.id,
-    ctx.principal === undefined ? undefined : auditActor(ctx.principal),
+async function handlePOST(req: Request, { params }: Ctx) {
+  return ownedLifecycleAction(req, params, (ctx) =>
+    ctx.cp.stop(ctx.id, ctx.principal === undefined ? undefined : auditActor(ctx.principal)),
   );
-  if (!result.ok) return domainErrorResponse(result.error);
-  return NextResponse.json(result.value);
 }
+
+export const POST = withObservability("workspaces.stop", handlePOST);

@@ -6,15 +6,17 @@
 
 **Launch-readiness gaps (logs / health / status / metrics / testing)** are
 inventoried, prioritized, and cross-referenced in
-[`docs/observability-gaps.md`](./docs/observability-gaps.md). Most headline items
-are now **fixed** (see Resolved): real `/api/readyz` readiness probe, storage
-Health-board check, structured logging (control plane + reconciler), a metrics
-layer (wake latency + reconciler counts) with CloudWatch alarms, and CloudTrail
-audit pagination. Still open: `EDD_SSH_CA_KEY_PATH` (the CA private key) is required
-for SSH-cert issuance but not provisioned by the Terraform module (see
-[`docs/deploying.md`](./docs/deploying.md) Step 4); `e2e-aws` (the entire real-cloud
-tier) remains unrun pending the AWS-account decision; API request-latency/error-rate
-metrics + access logging are not yet emitted (no central request middleware).
+[`docs/observability-gaps.md`](./docs/observability-gaps.md). Nearly all are now
+**fixed** (see Resolved): readiness probe, storage Health-board check, structured
+logging, metrics + alarms, CloudTrail pagination, API request latency/error
+metrics + access logging, fleet + cost gauges, reconciler health (heartbeat), the
+per-workspace log view, and SSH CA key-material support (`EDD_SSH_CA_KEY` via
+Secrets Manager — no key in Terraform state). The **one substantial item left is
+external**: `e2e-aws` (the whole real-cloud tier — EBS durability, real Fargate
+cold-start, IAM, ACM/DNS, EMF→CloudWatch metrics + alarms, live SSH-cert issuance)
+is unrun, blocked on the AWS account/region decision (`DO_NEXT.md` #1). Only _Low_
+follow-ups otherwise (per-user quota gauges, `parseLevel`, control-plane
+self-health, cached fleet status).
 
 ECS compute hardening follow-ups (from the 2026-06-13 gap audit; the impactful
 ones were fixed — see Resolved — these remain as deliberate follow-ups, not
@@ -45,6 +47,19 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **Observability completion: API request metrics, fleet/cost gauges, reconciler
+  health, per-workspace logs, SSH CA key material (2026-06-14)** — closed the
+  remaining launch-readiness gaps in one pass: (1) a `withObservability` route
+  wrapper emits per-request latency/status/error metrics + a structured access log
+  across all business API routes; (2) the reconciler emits fleet gauges
+  (`fleet.workspaces.{total,running,stopped,active}`) and a priced `fleet.cost.usd`
+  each sweep; (3) the reconciler stamps a heartbeat and the Health board reports it
+  `ok`/`degraded`/`unknown` via `reconcilerHealthFromHeartbeat` (replacing the
+  hardcoded `unknown`); (4) the admin Logs view filters the container stream to one
+  workspace (`?workspaceId=` → task log-stream prefix); (5) SSH-cert issuance accepts
+  the CA private key as material via `EDD_SSH_CA_KEY` (Secrets Manager ARN, the
+  secure default — never in Terraform state), materialized to a 0600 temp file, with
+  `EDD_SSH_CA_KEY_PATH` still honored. All coordinate-driven and unit/integ-tested.
 - **Observability layer: readiness, structured logging, metrics, audit pagination
   (2026-06-14)** — closed the launch-readiness gaps found in the audit:
   (1) `/api/readyz` is a real readiness probe (DynamoDB ping → 200/503) wired to the

@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
   isoTimestamp,
+  reconcilerHealthFromHeartbeat,
   summarizeHealth,
   type Clock,
   type ComponentHealth,
   type ComputeProvider,
   type HealthReport,
+  type IsoTimestamp,
   type StorageProvider,
 } from "@edd/core";
 
@@ -14,6 +16,9 @@ export interface HealthServiceDeps {
   compute: ComputeProvider;
   /** DynamoDB ping (e.g. `@edd/db` `pingTable`) — the one real dependency locally. */
   pingDatabase: () => Promise<ComponentHealth>;
+  /** Reads the reconciler's last-successful-sweep timestamp, or null if none yet.
+   * Absent → the board reports the reconciler `unknown` (no source wired). */
+  reconcilerHeartbeat?: () => Promise<{ lastRunAt: string } | null>;
   clock: Clock;
 }
 
@@ -37,17 +42,25 @@ export class HealthService {
   constructor(private readonly deps: HealthServiceDeps) {}
 
   async report(): Promise<HealthReport> {
+    const now = isoTimestamp(this.deps.clock.now());
     const components: ComponentHealth[] = [
       { component: "control-plane", status: "ok", detail: "API responding" },
       await this.deps.pingDatabase(),
       await providerHealth("compute", this.deps.compute),
       await providerHealth("storage", this.deps.storage),
-      {
-        component: "reconciler",
-        status: "unknown",
-        detail: "no local run history (CloudWatch on AWS)",
-      },
+      await this.reconcilerHealth(now),
     ];
-    return summarizeHealth(components, isoTimestamp(this.deps.clock.now()));
+    return summarizeHealth(components, now);
+  }
+
+  /** Reconciler health from its heartbeat (staleness), or `unknown` if no reader
+   * is wired or no sweep has run yet. */
+  private async reconcilerHealth(now: IsoTimestamp): Promise<ComponentHealth> {
+    if (this.deps.reconcilerHeartbeat === undefined) {
+      return { component: "reconciler", status: "unknown", detail: "no heartbeat source wired" };
+    }
+    const beat = await this.deps.reconcilerHeartbeat();
+    const lastRunAt = beat === null ? undefined : isoTimestamp(beat.lastRunAt);
+    return reconcilerHealthFromHeartbeat(lastRunAt, now);
   }
 }

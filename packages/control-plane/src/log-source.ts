@@ -2,6 +2,7 @@
 import {
   auditToLogLines,
   type AuditSource,
+  type LogReadFilter,
   type LogSource,
   type LogStream,
   type LogStreamResult,
@@ -29,7 +30,10 @@ const STREAM_NOTE: Record<LogStream, string> = {
 export class DerivedLogSource implements LogSource {
   constructor(private readonly deps: DerivedLogSourceDeps) {}
 
-  async read(stream: LogStream): Promise<LogStreamResult> {
+  // The optional per-workspace filter is honored only by the CloudWatch adapter
+  // (the container stream). Locally there is no per-workspace source, so it's
+  // accepted for interface parity and ignored.
+  async read(stream: LogStream, _filter?: LogReadFilter): Promise<LogStreamResult> {
     const note = STREAM_NOTE[stream];
     if (stream !== "control-plane") {
       return { stream, available: false, note, lines: [] };

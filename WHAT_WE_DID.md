@@ -916,3 +916,25 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
   first-page-only). Everything is coordinate-driven (EMF/alarms on real AWS, no-op
   locally — §6.8) and unit/integ-tested; remaining gaps tracked in
   `docs/observability-gaps.md`.
+
+- **2026-06-14 — Observability completion (the rest of the gaps, one PR).** Closed
+  every actionable item left in `docs/observability-gaps.md`: (1) **API request
+  metrics + access logging** — a `withObservability` HOF (latency/status/error +
+  structured access log via the `MetricSink` + logger; injectable deps, unit-tested)
+  wrapped across all ~22 business API routes (probes/auth excluded); (2) **fleet +
+  cost gauges** — the reconciler emits `fleet.workspaces.{total,running,stopped,
+active}` (via `tallyWorkspaceStates` over the full list) and a priced
+  `fleet.cost.usd` (a config-rate `CostService`) each sweep, best-effort;
+  (3) **reconciler health** — a `makeReconcilerHeartbeatEntity` singleton the
+  reconciler stamps per sweep, read by `HealthService` via the pure
+  `reconcilerHealthFromHeartbeat` (stale > `DEFAULT_RECONCILER_STALE_MS` → degraded;
+  no record → unknown), replacing the hardcoded `unknown`; (4) **per-workspace log
+  view** — `LogSource.read(stream, {taskId})` threads through the CloudWatch adapter
+  (narrows the shared workspaces group to `workspace/<container>/<taskId>`), the
+  admin Logs route + UI (`?workspaceId=`), and the api-client; the awslogs
+  stream-prefix is now a named `@edd/config` constant shared with the compute
+  provider; (5) **SSH CA key material** — `caKeyPath()` accepts `EDD_SSH_CA_KEY`
+  (materialized to a 0600 temp file) as well as `EDD_SSH_CA_KEY_PATH`, so the CA
+  private key is delivered via Secrets Manager (the secure default, never in
+  Terraform state); `docs/deploying.md` Step 4 updated. The only substantial item
+  left is `e2e-aws` — external, blocked on the AWS-account decision.

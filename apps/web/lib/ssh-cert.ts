@@ -1,8 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+
+/** Where `EDD_SSH_CA_KEY` material is materialized for `ssh-keygen -s` (which needs
+ * a file path). A fixed location, rewritten per call (the file is small and cert
+ * issuance is infrequent) so there is no module state and nothing leaks. */
+const MATERIALIZED_CA_DIR = join(tmpdir(), "edd-ssh-ca");
+const MATERIALIZED_CA_PATH = join(MATERIALIZED_CA_DIR, "ca");
 
 /**
  * Sign a user's SSH public key with the workspace SSH CA.
@@ -43,9 +49,31 @@ export function signCert(
   }
 }
 
-/** Read the SSH CA key path from env; throw loudly if absent (config error, not user error). */
+/**
+ * Resolve the SSH CA private key to a file path for `ssh-keygen -s`.
+ *
+ * Two supported coordinates (config error if neither, not a user error):
+ * - `EDD_SSH_CA_KEY_PATH` — a path to the CA private key already on disk.
+ * - `EDD_SSH_CA_KEY` — the key *material* (e.g. injected from Secrets Manager,
+ *   the same way `AUTH_SECRET`/`EDD_AGENT_SECRET` are), materialized to a 0600
+ *   file here. This is the deployment default (the CA private key never lands in
+ *   Terraform state — the operator stores it in Secrets Manager and passes the
+ *   ARN via `secret_environment`; see docs/deploying.md).
+ *
+ * The explicit path wins when both are set.
+ */
 export function caKeyPath(): string {
-  const p = process.env.EDD_SSH_CA_KEY_PATH;
-  if (!p) throw new Error("EDD_SSH_CA_KEY_PATH is required for SSH cert issuance");
-  return p;
+  const explicit = process.env.EDD_SSH_CA_KEY_PATH;
+  if (explicit) return explicit;
+  const material = process.env.EDD_SSH_CA_KEY;
+  if (material) {
+    mkdirSync(MATERIALIZED_CA_DIR, { recursive: true, mode: 0o700 });
+    // OpenSSH private keys must end with a newline; secret stores often strip it.
+    const pem = material.endsWith("\n") ? material : `${material}\n`;
+    writeFileSync(MATERIALIZED_CA_PATH, pem, { mode: 0o600 });
+    return MATERIALIZED_CA_PATH;
+  }
+  throw new Error(
+    "SSH cert issuance requires EDD_SSH_CA_KEY_PATH (file) or EDD_SSH_CA_KEY (key material)",
+  );
 }

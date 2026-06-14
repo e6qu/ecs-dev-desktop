@@ -39,6 +39,23 @@ export const METRIC_RECONCILER_GC_DELETED = "reconciler.gc.deleted";
 /** Actions skipped because a concurrent update won the race (not failures). */
 export const METRIC_RECONCILER_SKIPPED = "reconciler.skipped";
 
+// API request metrics (emitted by the route observability wrapper).
+/** One handled API request (dimensioned by route + status class). */
+export const METRIC_API_REQUEST = "api.request";
+/** API request handler latency, in ms. */
+export const METRIC_API_LATENCY_MS = "api.request.latency_ms";
+/** An API request that produced a 5xx (or threw). */
+export const METRIC_API_ERROR = "api.request.error";
+
+// Fleet gauges (emitted once per reconciler sweep).
+export const METRIC_FLEET_TOTAL = "fleet.workspaces.total";
+export const METRIC_FLEET_RUNNING = "fleet.workspaces.running";
+export const METRIC_FLEET_STOPPED = "fleet.workspaces.stopped";
+/** Running + idle (i.e. consuming compute right now). */
+export const METRIC_FLEET_ACTIVE = "fleet.workspaces.active";
+/** Priced fleet total (USD) at sweep time. */
+export const METRIC_FLEET_COST_USD = "fleet.cost.usd";
+
 /** Sink that drops every metric — the default when no real sink is wired. */
 export class NoopMetricSink implements MetricSink {
   count(): void {

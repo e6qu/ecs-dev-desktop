@@ -14,6 +14,7 @@ import {
   notFound,
 } from "../../../../lib/api";
 import { getCatalog } from "../../../../lib/control-plane";
+import { withObservability } from "../../../../lib/observability";
 
 interface Ctx {
   params: Promise<{ id: string }>;
@@ -28,7 +29,7 @@ async function authorize(req: Request, action: Action): Promise<NextResponse | n
 }
 
 // GET /api/base-images/:id — read a single catalog entry.
-export async function GET(req: Request, { params }: Ctx) {
+async function handleGET(req: Request, { params }: Ctx) {
   const denied = await authorize(req, "read");
   if (denied) return denied;
   const entry = await getCatalog().get(baseImageId((await params).id));
@@ -36,7 +37,7 @@ export async function GET(req: Request, { params }: Ctx) {
 }
 
 // PATCH /api/base-images/:id — update name/description/enabled (admins only).
-export async function PATCH(req: Request, { params }: Ctx) {
+async function handlePATCH(req: Request, { params }: Ctx) {
   const denied = await authorize(req, "update");
   if (denied) return denied;
 
@@ -54,9 +55,13 @@ export async function PATCH(req: Request, { params }: Ctx) {
 }
 
 // DELETE /api/base-images/:id — remove a catalog entry (admins only).
-export async function DELETE(req: Request, { params }: Ctx) {
+async function handleDELETE(req: Request, { params }: Ctx) {
   const denied = await authorize(req, "delete");
   if (denied) return denied;
   const result = await getCatalog().remove(baseImageId((await params).id));
   return result.ok ? new NextResponse(null, { status: 204 }) : domainErrorResponse(result.error);
 }
+
+export const GET = withObservability("baseImages.get", handleGET);
+export const PATCH = withObservability("baseImages.update", handlePATCH);
+export const DELETE = withObservability("baseImages.delete", handleDELETE);

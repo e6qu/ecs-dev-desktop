@@ -10,6 +10,7 @@ import {
   loadConnectableWorkspace,
   notFound,
 } from "../../../../../lib/api";
+import { withObservability } from "../../../../../lib/observability";
 
 interface Ctx {
   params: Promise<{ id: string }>;
@@ -24,7 +25,7 @@ const SSH_PORT = 22;
 // workspace must be running or idle; call POST /connect to wake it first. The
 // host is the task ENI's private IPv4, routable within the VPC. Accepts the
 // gateway's machine-auth token as well as a user session.
-export async function GET(req: Request, { params }: Ctx) {
+async function handleGET(req: Request, { params }: Ctx) {
   const protocol = new URL(req.url).searchParams.get("protocol") ?? "ssh";
   if (protocol !== "ssh" && protocol !== "http") return badRequest("protocol must be ssh or http");
 
@@ -45,3 +46,5 @@ export async function GET(req: Request, { params }: Ctx) {
   const port = protocol === "http" ? DEFAULT_WORKSPACE_PORT : SSH_PORT;
   return NextResponse.json({ host: sshHost, port });
 }
+
+export const GET = withObservability("workspaces.connectInfo", handleGET);
