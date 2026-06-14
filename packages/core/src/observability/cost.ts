@@ -187,8 +187,21 @@ export function priceIntervals(
   pricing: Pricing,
   sizing: WorkspaceSizing,
 ): CostBreakdown {
-  const runningMs = totalMs(intervals.running);
-  const stoppedMs = totalMs(intervals.stopped);
+  return priceDurations(totalMs(intervals.running), totalMs(intervals.stopped), pricing, sizing);
+}
+
+/**
+ * Pure: price total running/stopped durations directly (the cost is linear in the
+ * totals — interval boundaries don't matter). Lets the cost rollup price from a
+ * resumed {@link BillingState} without rebuilding interval arrays, identically to
+ * {@link priceIntervals}.
+ */
+export function priceDurations(
+  runningMs: number,
+  stoppedMs: number,
+  pricing: Pricing,
+  sizing: WorkspaceSizing,
+): CostBreakdown {
   const runningHours = runningMs / MS_PER_HOUR;
   const computeUsd =
     runningHours *
@@ -203,6 +216,135 @@ export function priceIntervals(
     runningMs,
     stoppedMs,
   };
+}
+
+/**
+ * A workspace's accumulated billing state at a checkpoint instant: the running /
+ * stopped durations through `checkpointAt` (any interval open at the checkpoint is
+ * folded in, closed at the checkpoint) plus the open phase there. A cost rollup
+ * persists this so a later report can **resume** pricing from the checkpoint —
+ * replaying only the events since it — instead of re-deriving the whole ledger.
+ */
+export interface BillingState {
+  readonly runningMs: number;
+  readonly stoppedMs: number;
+  readonly phase: "running" | "stopped" | "none" | "terminated";
+}
+
+/** The lifecycle transition walk, shared by the checkpoint helpers so they price
+ * identically to {@link deriveBillingIntervals}. Accumulates closed running/stopped
+ * durations from an initial `phase`/`openSince`, over events in `(after, through]`,
+ * and returns the carry state. Does not close the final open interval — the caller
+ * decides where to close it (at the checkpoint, or at `now`). */
+function walkBilling(
+  events: readonly AuditEvent[],
+  afterMs: number,
+  throughMs: number,
+  init: {
+    phase: "running" | "stopped" | "none";
+    openSince: number;
+    runningMs: number;
+    stoppedMs: number;
+  },
+): {
+  phase: "running" | "stopped" | "none";
+  openSince: number;
+  runningMs: number;
+  stoppedMs: number;
+  terminated: boolean;
+} {
+  let { phase, openSince, runningMs, stoppedMs } = init;
+  let terminated = false;
+  const add = (toMs: number): void => {
+    const d = Math.max(0, toMs - openSince);
+    if (phase === "running") runningMs += d;
+    else if (phase === "stopped") stoppedMs += d;
+  };
+  const sorted = [...events]
+    .filter((e) => {
+      const m = Date.parse(e.at);
+      return !Number.isNaN(m) && m > afterMs && m <= throughMs;
+    })
+    .sort((a, b) => a.at.localeCompare(b.at));
+  for (const event of sorted) {
+    if (terminated) break;
+    const atMs = Date.parse(event.at);
+    if (RUNNING_START_ACTIONS.has(event.action)) {
+      if (phase !== "running") {
+        add(atMs);
+        phase = "running";
+        openSince = atMs;
+      }
+    } else if (event.action === STOP_ACTION) {
+      if (phase === "running") {
+        add(atMs);
+        phase = "stopped";
+        openSince = atMs;
+      }
+    } else if (event.action === TERMINATE_ACTION) {
+      add(atMs);
+      terminated = true;
+      phase = "none";
+    }
+  }
+  return { phase, openSince, runningMs, stoppedMs, terminated };
+}
+
+/**
+ * Pure: a workspace's {@link BillingState} as of `checkpointAt` — the same
+ * transition semantics as {@link deriveBillingIntervals}, but the interval open at
+ * the checkpoint is closed there and folded into the totals, and the open phase is
+ * reported so {@link resumeBilling} can continue it. Events after `checkpointAt`
+ * are ignored (they belong to the resume).
+ */
+export function deriveBillingState(
+  events: readonly AuditEvent[],
+  checkpointAt: IsoTimestamp,
+): BillingState {
+  const cutMs = Date.parse(checkpointAt);
+  const w = walkBilling(events, Number.NEGATIVE_INFINITY, cutMs, {
+    phase: "none",
+    openSince: 0,
+    runningMs: 0,
+    stoppedMs: 0,
+  });
+  // Close the still-open interval at the checkpoint (fold through-checkpoint time
+  // in); the phase is retained so the resume re-opens from here.
+  let { runningMs, stoppedMs } = w;
+  if (!w.terminated && w.phase === "running") runningMs += Math.max(0, cutMs - w.openSince);
+  else if (!w.terminated && w.phase === "stopped") stoppedMs += Math.max(0, cutMs - w.openSince);
+  return { runningMs, stoppedMs, phase: w.terminated ? "terminated" : w.phase };
+}
+
+/**
+ * Pure: resume pricing from a checkpoint {@link BillingState} — replay only the
+ * events after `checkpointAt`, re-opening the checkpoint's phase from there, and
+ * close the final open interval at `now` (unless terminated). Returns the TOTAL
+ * running/stopped ms (checkpoint + since). Combined with `deriveBillingState`, this
+ * is exactly what `deriveBillingIntervals` would compute over the whole ledger —
+ * the invariant the rollup relies on (and the figure-equivalence test asserts).
+ */
+export function resumeBilling(
+  state: BillingState,
+  checkpointAt: IsoTimestamp,
+  eventsAfter: readonly AuditEvent[],
+  now: IsoTimestamp,
+): { runningMs: number; stoppedMs: number; terminated: boolean } {
+  if (state.phase === "terminated") {
+    return { runningMs: state.runningMs, stoppedMs: state.stoppedMs, terminated: true };
+  }
+  const cutMs = Date.parse(checkpointAt);
+  const nowMs = Date.parse(now);
+  const w = walkBilling(eventsAfter, cutMs, nowMs, {
+    phase: state.phase,
+    openSince: cutMs,
+    runningMs: state.runningMs,
+    stoppedMs: state.stoppedMs,
+  });
+  let { runningMs, stoppedMs } = w;
+  if (!w.terminated && w.phase === "running") runningMs += Math.max(0, nowMs - w.openSince);
+  else if (!w.terminated && w.phase === "stopped") stoppedMs += Math.max(0, nowMs - w.openSince);
+  return { runningMs, stoppedMs, terminated: w.terminated };
 }
 
 function addBreakdowns(a: CostBreakdown, b: CostBreakdown): CostBreakdown {
@@ -250,8 +392,29 @@ export function computeFleetCost(
     };
   });
 
+  return aggregateFleetCost(bySession, pricing, sizing, now, earliestEventAt(inputs, now));
+}
+
+/**
+ * Pure: roll a per-session cost list up into the fleet report (per-user totals,
+ * fleet total, both most-expensive first). Shared by the full-ledger
+ * {@link computeFleetCost} and the cost-rollup report path so the two produce
+ * byte-identical figures — the invariant the figure-equivalence test guards.
+ */
+export function aggregateFleetCost(
+  bySession: readonly SessionCost[],
+  pricing: Pricing,
+  sizing: WorkspaceSizing,
+  generatedAt: IsoTimestamp,
+  windowStart: IsoTimestamp,
+): FleetCostReport {
+  // Sum in a canonical (workspaceId) order first: float addition is not
+  // associative, so the full-scan and rollup paths — which build the session list
+  // in different orders — must fold in the same order to produce byte-identical
+  // totals. Display order (most-expensive first) is applied afterwards.
+  const canonical = [...bySession].sort((a, b) => a.workspaceId.localeCompare(b.workspaceId));
   const byUserMap = new Map<string, { cost: CostBreakdown; sessions: number }>();
-  for (const s of bySession) {
+  for (const s of canonical) {
     const entry = byUserMap.get(s.owner) ?? { cost: ZERO_COST, sessions: 0 };
     byUserMap.set(s.owner, { cost: addBreakdowns(entry.cost, s), sessions: entry.sessions + 1 });
   }
@@ -260,13 +423,18 @@ export function computeFleetCost(
     sessions,
     ...cost,
   }));
-
-  const total = bySession.reduce<CostBreakdown>((sum, s) => addBreakdowns(sum, s), ZERO_COST);
-  const windowStart = earliestEventAt(inputs, now);
-  bySession.sort((a, b) => b.totalUsd - a.totalUsd);
+  const total = canonical.reduce<CostBreakdown>((sum, s) => addBreakdowns(sum, s), ZERO_COST);
+  const sortedSessions = canonical.sort((a, b) => b.totalUsd - a.totalUsd);
   byUser.sort((a, b) => b.totalUsd - a.totalUsd);
-
-  return { generatedAt: now, windowStart, pricing, sizing, total, byUser, bySession };
+  return {
+    generatedAt,
+    windowStart,
+    pricing,
+    sizing,
+    total,
+    byUser,
+    bySession: sortedSessions,
+  };
 }
 
 /** The earliest audit-event timestamp across all workspaces (the ledger start),

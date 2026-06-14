@@ -59,6 +59,17 @@ export class StoredAuditSource implements AuditSource {
     const { data } = await this.deps.events.query.byTime({}).go({ pages: "all" });
     return data.map(toEvent);
   }
+
+  /** Events after `fromExclusive` (the byTime tail). The cost rollup replays only
+   * this slice on top of the checkpoint instead of re-reading the whole ledger.
+   * Order is unspecified (the consumer sorts). */
+  async since(fromExclusive: string): Promise<AuditEvent[]> {
+    const { data } = await this.deps.events.query
+      .byTime({})
+      .gt({ at: fromExclusive })
+      .go({ pages: "all" });
+    return data.map(toEvent);
+  }
 }
 
 function toEvent(r: AuditRecord): AuditEvent {

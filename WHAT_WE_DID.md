@@ -830,3 +830,20 @@ complete! 55 destroyed`, endpoint-only (§6.8), no module branches. Getting ther
     Deferred: cost-report rollups (explicitly perf-only, must not change figures — a
     sizable subsystem left as a follow-up) and `CONNECTION_TOKEN` injection (lands
     with the future DYNAMIC wake-on-connect gate it's tied to).
+
+- **2026-06-14 — Cost report O(history) → O(recent) via figure-exact rollups.**
+  The admin Costs report priced the whole audit ledger each request. Added pure
+  checkpoint primitives (`deriveBillingState`/`resumeBilling`): price a workspace by
+  resuming a persisted billing checkpoint and replaying only the events since it.
+  Their combination equals the full `deriveBillingIntervals` for ANY checkpoint (46
+  equivalence cases); `priceIntervals`→`priceDurations` and a shared canonical-order
+  `aggregateFleetCost` make the full-scan and rollup paths sum to identical floats.
+  Plumbing: a `costRollup` entity (reuses GSI1 — no table change) +
+  `StoredCostRollupStore`; `CostService.rollup()` regenerates checkpoints (admin
+  trigger `POST /api/admin/costs/rollup`); `report()` uses them when present, else
+  the exact full scan; `StoredAuditSource.since()` is the byTime tail. Proven
+  byte-identical to the full scan against DynamoDB Local
+  (`cost-rollup-equivalence.integ.ts`) across a checkpoint mid-open-interval, a
+  terminate after it, a terminate before it, and a workspace born after it.
+  Pricing remains the AWS on-demand model (us-east-1 rates, env-overridable); live
+  Price List API rate sourcing (real-AWS-only to validate) is the next follow-up.

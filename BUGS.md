@@ -14,16 +14,14 @@ active breakage):
   to the authenticated user via the proxy. Tied to the per-workspace proxy-authz
   handoff (the DYNAMIC wake-on-connect gate, itself a future extension), so it
   lands with that. The agent-token plaintext exposure is **fixed** (see Resolved).
-- **Cost report scans the full ledger per request (scale optimization, NOT an
-  accuracy compromise).** Cost is computed exactly: every billable transition is
-  recorded in the SAME DynamoDB transaction as the transition (so the ledger can
-  never drop or double-count an event — proven by `cost-ledger-atomicity.integ.ts`),
-  and a running workspace's open interval is priced to `now` on each fetch (live).
-  `CostService.report` reads the whole append-only ledger + current records each
-  request and prices the complete history. Exact, but O(history); for a large
-  long-lived fleet it should move to a time-windowed `byTime` query with periodic
-  rollups (e.g. a daily per-workspace cost snapshot) to keep latency flat. This is
-  a performance follow-up only — it does not change the figures.
+- **Live region-accurate rate sourcing (AWS Price List API).** Costing uses the
+  AWS on-demand pricing _model_ (Fargate vCPU-hr + GB-hr, EBS gp3 GB-mo, snapshot
+  GB-mo) with us-east-1 published rates, each `EDD_PRICE_*`-overridable per
+  deployment/region. For zero-config region accuracy the rates should be sourced
+  live from the AWS Price List API (`pricing:GetProducts`). The sim has **no**
+  Pricing API, so this is real-AWS-only to validate (`e2e-aws`) — its own carefully
+  validated PR, with the config rates as the safe fallback. Does not change the
+  pricing formula.
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
@@ -43,6 +41,16 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **Cost report O(history) → O(recent) via figure-exact rollups (2026-06-14)** —
+  `CostService.report` priced the whole audit ledger each request. Now an optional
+  cost-checkpoint path (`costRollup` entity, reuses GSI1 — no table change) prices
+  each workspace by resuming its persisted `BillingState` and replaying only the
+  events since the checkpoint (`StoredAuditSource.since`, byTime tail).
+  `CostService.rollup()` regenerates checkpoints (a periodic job; admin trigger
+  `POST /api/admin/costs/rollup`); `report` uses them when present, else the exact
+  full scan. **Figures are unchanged** — pure `deriveBillingState`/`resumeBilling`
+  (46 equivalence cases) + a shared canonical-order `aggregateFleetCost` (float
+  sums match), proven against DynamoDB Local (`cost-rollup-equivalence.integ.ts`).
 - **Agent token → ECS `secrets` (Secrets Manager), no plaintext (2026-06-14)** —
   `EcsComputeProvider.runTask` now stashes the per-workspace HMAC agent token in a
   Secrets Manager secret (`edd/workspace/<id>/agent`) and references it from a

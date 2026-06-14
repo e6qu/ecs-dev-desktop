@@ -165,3 +165,42 @@ export function makeAuditEventEntity(client: DynamoDBClient, table = TABLE) {
 }
 
 export type AuditEventEntity = ReturnType<typeof makeAuditEventEntity>;
+
+/**
+ * ElectroDB cost-rollup entity over the same single table: one record per
+ * workspace holding its accumulated billing state at a checkpoint (running/stopped
+ * ms + open phase), so the admin Costs report can resume pricing from the
+ * checkpoint — replaying only the events since it — instead of re-deriving the
+ * whole audit ledger each request. `byAll` lists every rollup (one checkpoint
+ * generation at a time). Figures are unchanged — see the figure-equivalence integ.
+ */
+export function makeCostRollupEntity(client: DynamoDBClient, table = TABLE) {
+  return new Entity(
+    {
+      model: { entity: "costRollup", version: "1", service: "edd" },
+      attributes: {
+        workspaceId: { type: "string", required: true },
+        owner: { type: "string", required: true },
+        checkpointAt: { type: "string", required: true },
+        windowStart: { type: "string", required: true },
+        runningMs: { type: "number", required: true },
+        stoppedMs: { type: "number", required: true },
+        phase: { type: "string", required: true },
+      },
+      indexes: {
+        primary: {
+          pk: { field: "PK", composite: ["workspaceId"] },
+          sk: { field: "SK", composite: [] },
+        },
+        byAll: {
+          index: "GSI1",
+          pk: { field: "GSI1PK", composite: [] },
+          sk: { field: "GSI1SK", composite: ["workspaceId"] },
+        },
+      },
+    },
+    { client, table },
+  );
+}
+
+export type CostRollupEntity = ReturnType<typeof makeCostRollupEntity>;
