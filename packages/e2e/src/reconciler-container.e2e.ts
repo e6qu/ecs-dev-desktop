@@ -355,7 +355,7 @@ describe(
       );
     });
 
-    it("reconciler task emits a JSON maintenance-result line to CloudWatch Logs", async () => {
+    it("reconciler task emits a structured maintenance-sweep log line to CloudWatch Logs", async () => {
       const deadline = Date.now() + 30_000;
       let logLine: string | undefined;
 
@@ -377,8 +377,8 @@ describe(
             const events = await cwLogs.send(
               new GetLogEventsCommand({ logGroupName: LOG_GROUP, logStreamName: stream }),
             );
-            const found = events.events?.find(
-              (e) => e.message?.includes('"idle"') && e.message.includes('"gc"'),
+            const found = events.events?.find((e) =>
+              e.message?.includes('"msg":"maintenance sweep complete"'),
             );
             if (found) {
               logLine = found.message;
@@ -389,11 +389,13 @@ describe(
         await sleep(1_500);
       }
 
-      expect(logLine, "reconciler JSON output not found in CloudWatch Logs").toBeDefined();
+      expect(logLine, "reconciler structured log line not found in CloudWatch Logs").toBeDefined();
       const result = JSON.parse(logLine ?? "{}") as Record<string, unknown>;
-      expect(result).toHaveProperty("idle");
-      expect(result).toHaveProperty("snapshots");
-      expect(result).toHaveProperty("gc");
+      // The reconciler now emits a structured (JSON-per-line) log; assert its shape.
+      expect(result.service).toBe("reconciler");
+      expect(result.level).toBe("info");
+      expect(result).toHaveProperty("snapshotted");
+      expect(result).toHaveProperty("volumesDeleted");
       // The sweep really scaled the seeded stale workspace to zero.
       expect(logLine).toContain('"stopped":1');
     });
