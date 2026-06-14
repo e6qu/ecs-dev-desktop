@@ -2,9 +2,23 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-14 (ecs-secrets-health-cost-exec branch)
+**Last updated:** 2026-06-14 (cost-rollups branch)
 
 ## Current phase
+
+**On `feat/cost-rollups`:** the cost report moves from O(history) to O(recent)
+without changing the figures. New pure core (`deriveBillingState`/`resumeBilling`,
+46 figure-equivalence cases) lets the report price each workspace by resuming a
+persisted checkpoint + replaying only the events since it; a `costRollup` DynamoDB
+entity (reuses GSI1, no table change) + `StoredCostRollupStore` + `CostService.rollup()`
+(admin trigger `POST /api/admin/costs/rollup`) persist/regenerate the checkpoints;
+`report()` uses them when present, else the exact full scan. Proven byte-identical
+to the full scan against DynamoDB Local (`cost-rollup-equivalence.integ.ts`).
+Pricing uses the AWS on-demand **model** (Fargate vCPU/GB-hr + EBS/snapshot GB-mo,
+us-east-1 rates, `EDD_PRICE_*`-overridable); live region-accurate rate sourcing via
+the AWS Price List API is the next (real-AWS-validated) follow-up — `BUGS.md` → Open.
+
+## Prior phase
 
 **On `feat/ecs-secrets-health-cost-exec`:** an ECS hardening sweep clearing the
 remaining Open compute items:
@@ -28,11 +42,11 @@ Deferred (the one explicitly perf-only item, not a bug): cost-report time-window
   subsystem and must not change figures, so it stays a follow-up. `CONNECTION_TOKEN`
   injection lands with the future DYNAMIC wake-on-connect gate it's tied to.
 
-## Prior phase
+## Earlier (merged)
 
-**`runTask` readiness gating (#79, merged):** `runTask` waits for the task to be
-READY (`taskReady`: RUNNING + managed-EBS volume + ENI) before returning, so the
-control plane never advertises a workspace that can't yet accept connections.
+**`runTask` readiness gating (#79):** `runTask` waits for the task to be READY
+(`taskReady`: RUNNING + managed-EBS volume + ENI) before returning, so the control
+plane never advertises a workspace that can't yet accept connections.
 
 **On `feat/sim-probe-coverage`:** a sim-probe coverage pass — added a
 **multi-generation EBS snapshot-chain** probe to `packages/storage-ec2/src/ec2-storage.integ.ts`:

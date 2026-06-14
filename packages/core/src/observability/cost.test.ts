@@ -9,7 +9,15 @@ import {
   atHours as at,
   costEvent as evt,
 } from "./cost-fixtures";
-import { computeFleetCost, deriveBillingIntervals, priceIntervals } from "./cost";
+import {
+  computeFleetCost,
+  deriveBillingIntervals,
+  deriveBillingState,
+  priceIntervals,
+  resumeBilling,
+} from "./cost";
+
+import type { AuditEvent } from "./audit";
 
 describe("deriveBillingIntervals", () => {
   it("treats create as the start of a running interval, open to `now`", () => {
@@ -167,4 +175,54 @@ describe("computeFleetCost", () => {
     expect(report.bySession[0]?.state).toBe("terminated");
     expect(report.bySession[0]?.terminated).toBe(true);
   });
+});
+
+describe("deriveBillingState + resumeBilling (rollup figure-equivalence)", () => {
+  const sumMs = (ints: readonly { fromMs: number; toMs: number }[]): number =>
+    ints.reduce((s, i) => s + (i.toMs - i.fromMs), 0);
+
+  const scenarios: { name: string; events: AuditEvent[]; nowH: number }[] = [
+    { name: "running open", events: [evt("session.create", 0)], nowH: 5 },
+    { name: "create-stop", events: [evt("session.create", 0), evt("session.stop", 2)], nowH: 6 },
+    {
+      name: "full cycle",
+      events: [
+        evt("session.create", 0),
+        evt("session.stop", 1),
+        evt("session.start", 2),
+        evt("session.stop", 3),
+      ],
+      nowH: 5,
+    },
+    {
+      name: "wake open",
+      events: [evt("session.create", 0), evt("session.stop", 1), evt("session.start", 2)],
+      nowH: 7,
+    },
+    {
+      name: "terminated",
+      events: [evt("session.create", 0), evt("session.stop", 1), evt("session.delete", 2)],
+      nowH: 9,
+    },
+    {
+      name: "idempotent start ignored",
+      events: [evt("session.create", 0), evt("session.start", 1), evt("session.stop", 3)],
+      nowH: 4,
+    },
+  ];
+
+  // A rollup checkpointed at ANY instant, then resumed with the remaining events,
+  // must price identically to deriving the whole ledger at `now` — the invariant
+  // the cost rollup relies on so figures never change.
+  for (const sc of scenarios) {
+    for (const cpH of [0, 0.5, 1, 1.5, 2, 2.5, 3, 4]) {
+      it(`${sc.name}: checkpoint h=${String(cpH)} == full-scan h=${String(sc.nowH)}`, () => {
+        const full = deriveBillingIntervals(sc.events, at(sc.nowH));
+        const state = deriveBillingState(sc.events, at(cpH));
+        const resumed = resumeBilling(state, at(cpH), sc.events, at(sc.nowH));
+        expect(resumed.runningMs).toBe(sumMs(full.running));
+        expect(resumed.stoppedMs).toBe(sumMs(full.stopped));
+      });
+    }
+  }
 });

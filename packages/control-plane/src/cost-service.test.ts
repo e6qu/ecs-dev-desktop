@@ -35,7 +35,10 @@ const dto = (id: string, ownerId: string, state: WorkspaceDto["state"]): Workspa
 
 function service(events: AuditEvent[], workspaces: WorkspaceDto[]): CostService {
   return new CostService({
-    audit: { all: () => Promise.resolve(events) },
+    audit: {
+      all: () => Promise.resolve(events),
+      since: (from: string) => Promise.resolve(events.filter((e) => e.at.localeCompare(from) > 0)),
+    },
     workspaces: { list: () => Promise.resolve(workspaces) },
     clock,
     pricing: PRICING,

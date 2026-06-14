@@ -34,12 +34,11 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
   **done** (see `BUGS.md` → Resolved): `runTask` readiness gating; `EDD_AGENT_TOKEN`
   → Secrets Manager (no plaintext); real `EcsComputeProvider.health()`; ECS Exec on
   the launch path. Remaining: `CONNECTION_TOKEN` injection (lands with the future
-  DYNAMIC wake-on-connect gate) and the cost-report rollup (perf-only — below).
-- **Cost-report rollups (perf-only follow-up, NOT a bug).** `CostService.report`
-  prices the full ledger each request — exact but O(history). For a large
-  long-lived fleet, move to a time-windowed `byTime` query + periodic rollups (a
-  correct mid-session-boundary rollup must not change figures, so it is a sizable
-  subsystem deliberately deferred). See `BUGS.md` → Open.
+  DYNAMIC wake-on-connect gate).
+- **Cost-report rollups — done** (figure-exact checkpoint + resume; `BUGS.md` →
+  Resolved). Remaining cost item: **live region-accurate rate sourcing** via the AWS
+  Price List API (the model + us-east-1 rates are in place + env-overridable; live
+  sourcing is real-AWS-only to validate — its own PR). See `BUGS.md` → Open.
 - **Cost visualization — built** (`feat/cost-visualization`): admin `/admin/costs`
   prices the lifecycle audit ledger (compute + live-volume + snapshot) per session
   / user / fleet; lifecycle audit centralized in `WorkspaceService` so the ledger

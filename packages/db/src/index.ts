@@ -25,10 +25,12 @@ export { waitForDynamo } from "./wait";
 export {
   makeAuditEventEntity,
   makeBaseImageEntity,
+  makeCostRollupEntity,
   makeGitCredentialEntity,
   makeWorkspaceEntity,
   type AuditEventEntity,
   type BaseImageEntity,
+  type CostRollupEntity,
   type GitCredentialEntity,
   type WorkspaceEntity,
 } from "./entities";

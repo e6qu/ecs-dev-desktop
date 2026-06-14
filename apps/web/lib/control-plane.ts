@@ -11,12 +11,14 @@ import {
   DerivedLogSource,
   HealthService,
   StoredAuditSource,
+  StoredCostRollupStore,
   WorkspaceService,
 } from "@edd/control-plane";
 import {
   createDynamoClient,
   makeAuditEventEntity,
   makeBaseImageEntity,
+  makeCostRollupEntity,
   makeWorkspaceEntity,
   pingTable,
   TABLE,
@@ -67,6 +69,10 @@ export async function getCostService(): Promise<CostService> {
     clock: systemClock,
     pricing: workspacePricing(),
     sizing: workspaceSizing(),
+    // Price from persisted checkpoints + the tail since them (O(recent)); falls
+    // back to the exact full-ledger scan until `rollup()` first runs. Same GSI1 the
+    // audit feed already uses — no table change.
+    rollups: new StoredCostRollupStore(makeCostRollupEntity(createDynamoClient(), tableName())),
   });
 }
 
