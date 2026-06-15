@@ -17,3 +17,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Python project manager: uv (+ uvx) into /usr/local/bin (on the base PATH).
 RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh \
     && uv --version
+
+# Python dev tooling (lint/format, type-check, dead-code, SAST) as standalone CLIs.
+# `uv tool install` defaults to ~/.local (the EBS mount, shadowed) — pin the tool +
+# bin dirs to system paths so they survive and stay on the base PATH (/usr/local/bin).
+RUN export UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin \
+    && uv tool install ruff \
+    && uv tool install ty \
+    && uv tool install vulture \
+    && uv tool install bandit \
+    && uv tool install semgrep \
+    && for t in ruff ty vulture bandit semgrep; do command -v "$t" || exit 1; done
+
+# Python VS Code extensions into the built-in extensions dir (alongside the
+# base/agent extensions).
+RUN for ext in ms-python.python detachhead.basedpyright charliermarsh.ruff astral-sh.ty semgrep.semgrep; do \
+      openvscode-server --install-extension "$ext" --extensions-dir /opt/openvscode-server/extensions ; \
+    done \
+    && chmod -R a+rX /opt/openvscode-server/extensions

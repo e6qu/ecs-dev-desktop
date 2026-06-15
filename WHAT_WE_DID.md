@@ -1094,3 +1094,30 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
   variant builds don't burden the always-on `e2e` job. Gotcha: in zsh the brace-less
   `"edd-ws-$v:e2e"` tag mangled to `edd-ws-2e` — use `${v}`. Follow-up: PR D layers the
   agent extensions (#93) into base + curated tooling (#95) per image.
+
+- **2026-06-15 — Golden-image collection: AI agents + curated dev tooling (PR D; #93 + #95).**
+  Completed the collection. `base` now bakes the AI coding agents (Claude Code + Codex
+  VS Code extensions + the `claude` CLI) and the cross-cutting JS/TS tooling matching CI
+  (prettier/eslint/knip/jscpd + the prettier/eslint/GitHub extensions). Each variant adds
+  its language tooling + extensions — python (ruff/ty/vulture/bandit/semgrep + Python/Ruff/
+  ty/basedpyright/Semgrep exts), go (golangci-lint + golang.go), java (redhat.java), rust
+  (clippy/rustfmt + rust-analyzer); omnibus carries all. Mechanism: VS Code extensions
+  can't be baked into the EBS-shadowed home extensions dir, so they're installed into
+  OpenVSCode's **built-in** extensions dir (`/opt/openvscode-server/extensions`) at build —
+  loaded read-only with **no runtime copy** and surviving the mount; users still install
+  their own into the volume dir. (First tried a first-boot copy from a system cache, but
+  copying ~1 GB of agent extensions slowed task startup and caused live-sim timing failures
+  in `live-ide-flow` (token race) + `user-journey` (concurrent-update races) — the built-in
+  dir avoids the copy entirely; the IDE bridge also now retries token extraction since a
+  task is ECS-RUNNING before OpenVSCode execs.) Dev-tool CLIs install to system paths (`uv`
+  UV_TOOL_BIN_DIR=/usr/local/bin; `go install` GOBIN=/usr/local/bin) so they survive the
+  mount; the go module/build cache is cleaned to avoid ~2 GB bloat.
+  Lessons: (1) OpenVSCode Server defaults to **Open VSX** — `--install-extension <id>` works
+  with no gallery config (the README's claim was true only by luck; now relied on). (2) The
+  base sets a home `NPM_CONFIG_PREFIX`, so base's OWN system `npm i -g` must run BEFORE that
+  ENV (lands in /usr/local). (3) `semgrep --version` SIGILLs (exit 132) on some arm64 hosts
+  but runs on amd64 — build + tests verify semgrep via `command -v` (no native run). Verified:
+  all 7 images build; `image-variants.e2e.ts` 5/5, `workspace-toolchain.e2e.ts` 12/12. Size
+  cost: the baked agents (~1 GB native) live in base → every variant carries them (ts ~2 GB
+  … omnibus ~5.7 GB) — flagged for a possible opt-in/omnibus-only move. Closes the
+  golden-image collection plan (PRs A–D).

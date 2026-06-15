@@ -15,10 +15,12 @@ import { afterEach, describe, expect, it } from "vitest";
 interface Variant {
   readonly name: string;
   readonly image: string;
-  /** Commands that must succeed (the variant's toolchain is present). */
+  /** Commands that must succeed (the variant's toolchain + dev tooling is present). */
   readonly present: readonly string[];
   /** Executables that must be ABSENT (proves the variant is slim, not omnibus). */
   readonly absent: readonly string[];
+  /** VS Code extension ids that must be seeded on first boot (beyond the base/agent set). */
+  readonly extensions: readonly string[];
 }
 
 const VARIANTS: readonly Variant[] = [
@@ -27,30 +29,37 @@ const VARIANTS: readonly Variant[] = [
     image: process.env.IMG_TYPESCRIPT ?? "edd-ws-typescript:e2e",
     present: ["tsc --version", "yarn --version", "pnpm --version", "bun --version"],
     absent: ["go", "cargo", "javac"],
+    extensions: [], // base already seeds prettier + eslint
   },
   {
     name: "python",
     image: process.env.IMG_PYTHON ?? "edd-ws-python:e2e",
-    present: ["python3 --version", "uv --version"],
+    // `command -v semgrep` rather than `semgrep --version`: semgrep-core SIGILLs on
+    // some arm64 hosts (it runs fine on CI amd64); this still proves it's installed.
+    present: ["python3 --version", "uv --version", "ruff --version", "command -v semgrep"],
     absent: ["go", "cargo", "javac"],
+    extensions: ["ms-python.python", "charliermarsh.ruff"],
   },
   {
     name: "go",
     image: process.env.IMG_GO ?? "edd-ws-go:e2e",
-    present: ["go version"],
+    present: ["go version", "golangci-lint --version"],
     absent: ["cargo", "javac", "uv"],
+    extensions: ["golang.go"],
   },
   {
     name: "java",
     image: process.env.IMG_JAVA ?? "edd-ws-java:e2e",
     present: ["java -version", "mvn -v", "gradle --version"],
     absent: ["go", "cargo", "uv"],
+    extensions: ["redhat.java"],
   },
   {
     name: "rust",
     image: process.env.IMG_RUST ?? "edd-ws-rust:e2e",
-    present: ["cargo --version", "rustc --version"],
+    present: ["cargo --version", "rustc --version", "cargo clippy --version"],
     absent: ["go", "javac", "uv"],
+    extensions: ["rust-lang.rust-analyzer"],
   },
 ];
 
@@ -141,6 +150,17 @@ describe.skipIf(!HAVE_VARIANT_IMAGES)(
             `command -v ${bin} >/dev/null 2>&1 && echo PRESENT || echo ABSENT`,
           ).trim();
           expect(probe, `${v.name}: expected \`${bin}\` to be absent`).toBe("ABSENT");
+        }
+
+        // Agent + extensions: the Claude Code CLI (#93) and the agent + cross-cutting
+        // extensions baked into OpenVSCode's built-in extensions dir, plus this
+        // variant's own language extensions (#93/#95).
+        expect(sh("command -v claude")).toContain("claude");
+        const builtin = sh("ls /opt/openvscode-server/extensions 2>&1");
+        expect(builtin).toContain("anthropic.claude-code");
+        expect(builtin).toContain("esbenp.prettier-vscode");
+        for (const ext of v.extensions) {
+          expect(builtin, `${v.name}: extension ${ext} not baked in`).toContain(ext);
         }
 
         // Shared base behaviour: Node (base), user-writable npm global prefix (#90),

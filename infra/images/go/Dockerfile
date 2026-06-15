@@ -24,6 +24,17 @@ RUN arch="$(dpkg --print-architecture)" \
     && rm /tmp/go.tgz \
     && /usr/local/go/bin/go version
 
+# Go dev tooling: golangci-lint (a meta-linter that bundles gosec, staticcheck,
+# etc.). Install to /usr/local/bin via GOBIN (the default GOPATH/bin is on the EBS
+# mount, shadowed) so it's on the base PATH and survives.
+RUN GOBIN=/usr/local/bin /usr/local/go/bin/go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest \
+    && golangci-lint --version \
+    && /usr/local/go/bin/go clean -cache -modcache
+
+# Go VS Code extension into the built-in extensions dir (baked at build).
+RUN openvscode-server --install-extension golang.go --extensions-dir /opt/openvscode-server/extensions \
+    && chmod -R a+rX /opt/openvscode-server/extensions
+
 # Go dirs aren't on the base PATH — overwrite the PATH drop-ins so login shells and
 # the ssh-exec channel both find `go` (the base only covers user-CLI + system dirs).
 RUN printf '%s\n' \

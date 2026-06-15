@@ -167,3 +167,27 @@ describe("golden workspace user-CLI + defaults", { timeout: 60_000 }, () => {
     expect(settings).toContain("Default Dark Modern");
   });
 });
+
+// #93/#95 — the omnibus ships the AI coding agents (CLI + seeded extensions) and a
+// curated cross-language dev-tooling set out of the box.
+describe("golden omnibus: AI agents + dev tooling", { timeout: 60_000 }, () => {
+  it("ships the Claude Code agent CLI and bakes in the agent extensions [#93]", () => {
+    expect(sh("command -v claude")).toContain("claude");
+    const builtin = sh("ls /opt/openvscode-server/extensions");
+    expect(builtin).toContain("anthropic.claude-code");
+    expect(builtin).toContain("openai.chatgpt");
+  });
+
+  it("ships curated linters/formatters/SAST across languages [#95]", () => {
+    // Cross-cutting (Node, from base) + per-language (omnibus carries all).
+    expect(sh("prettier --version 2>&1")).toMatch(/\d+\./);
+    expect(sh("eslint --version 2>&1")).toMatch(/\d+\./);
+    expect(sh("knip --version 2>&1")).toMatch(/\d+\./);
+    expect(sh("ruff --version 2>&1")).toMatch(/ruff \d+\./);
+    // `command -v` (not `semgrep --version`): semgrep-core SIGILLs on some arm64
+    // hosts but runs on CI amd64; this proves it's installed + on PATH.
+    expect(sh("command -v semgrep")).toContain("semgrep");
+    expect(sh("golangci-lint --version 2>&1")).toContain("golangci-lint");
+    expect(sh("cargo clippy --version 2>&1")).toContain("clippy");
+  });
+});

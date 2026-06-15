@@ -119,23 +119,28 @@ function findTaskContainer(workspaceId: string, image: string): string {
 }
 
 /** Extract the OpenVSCode `--connection-token` from the task's process args, or
- * undefined if the server runs `--without-connection-token`. */
+ * undefined if the server runs `--without-connection-token`. The task reaches ECS
+ * RUNNING (and the bridge is opened) before the entrypoint execs OpenVSCode, so
+ * retry until the server process appears rather than racing it. */
 function extractToken(container: string): string | undefined {
-  const cmdlines = execFileSync(
-    "docker",
-    [
-      "exec",
-      container,
-      "sh",
-      "-lc",
-      'for p in /proc/[0-9]*/cmdline; do tr "\\0" " " < "$p" 2>/dev/null; echo; done',
-    ],
-    { encoding: "utf8" },
-  );
-  if (cmdlines.includes("--without-connection-token")) return undefined;
-  const m = /connection-token ([^\s]+)/.exec(cmdlines);
-  if (m === null) throw new Error(`no connection token found in task ${container}`);
-  return m[1];
+  for (let attempt = 0; attempt < 60; attempt++) {
+    const cmdlines = execFileSync(
+      "docker",
+      [
+        "exec",
+        container,
+        "sh",
+        "-lc",
+        'for p in /proc/[0-9]*/cmdline; do tr "\\0" " " < "$p" 2>/dev/null; echo; done',
+      ],
+      { encoding: "utf8" },
+    );
+    if (cmdlines.includes("--without-connection-token")) return undefined;
+    const m = /connection-token ([^\s]+)/.exec(cmdlines);
+    if (m !== null) return m[1];
+    execFileSync("sleep", ["1"]);
+  }
+  throw new Error(`OpenVSCode connection token never appeared in task ${container} (60s)`);
 }
 
 /**

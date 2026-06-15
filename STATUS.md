@@ -2,24 +2,38 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-15 (golden-image collection: slim per-language variants)
+**Last updated:** 2026-06-15 (golden-image collection: AI agents + curated tooling)
 
 ## Current phase
 
-**Golden-image collection — slim per-language variants (PR C).** On
-`feat/golden-image-language-variants`: added five lean variants `FROM base` —
-**typescript** (yarn/pnpm/bun + tsc), **python** (python3 + uv), **go**, **java**
-(JDK + Maven + Gradle), **rust** — each carrying only its toolchain (build-essential
-only where needed). Real size wins: ~0.95–1.4 GB vs omnibus 3.04 GB (base 605 MB).
-PATH drop-ins (`/etc/profile.d/edd-path.sh` + the sshd `SetEnv` drop-in) are
-overwritten only by variants whose tools land off the base PATH (go/java/rust).
-`dev-bootstrap` now seeds the whole collection (omnibus + 5 variants) into the
-catalog. New `image-variants.e2e.ts` proves each variant: its toolchain present,
-the shared base behaviour intact (#90/#91/#94 + Node), and **slim** (other languages
-absent) — 5/5 green locally. A **path-gated `golden-images` CI workflow** (runs only
-when `infra/images/**` or the variant test changes) builds base + variants and runs
-the smoke test, keeping the always-on `e2e` job's cost flat. Next: **PR D** — agent
-extensions (#93) in base + curated dev tooling (#95) per image.
+**Golden-image collection — AI agents + curated dev tooling (PR D; #93 + #95).** On
+`feat/golden-image-agents-and-tooling`: completed the collection. **base** now bakes
+the **AI coding agents** (Claude Code + Codex extensions + the `claude` CLI) and the
+cross-cutting JS/TS tooling that matches our CI (prettier/eslint/knip/jscpd + their
+extensions). Each **variant** adds its language tooling + extensions: python
+(ruff/ty/vulture/bandit/semgrep + Python/Ruff/ty/basedpyright/Semgrep exts), go
+(golangci-lint + golang.go), java (redhat.java), rust (clippy/rustfmt +
+rust-analyzer); **omnibus** carries them all. Key mechanism: extensions can't be
+baked into the EBS-shadowed home extensions dir, so they're installed into
+OpenVSCode's **built-in** extensions dir (`/opt/openvscode-server/extensions`) at
+build — loaded read-only with **no runtime copy** (a ~1 GB first-boot copy slowed
+task startup and caused live-sim timing races) and surviving the mount; users still
+install their own into the volume dir. Dev-tool CLIs go to system paths
+(`uv` → `/usr/local/bin`, `go install` → `GOBIN=/usr/local/bin`) to survive the
+mount; the IDE bridge retries token extraction (a task is ECS-RUNNING before
+OpenVSCode execs). OpenVSCode Server defaults to **Open VSX**, so `--install-extension`
+works with no gallery config. Verified: all 7 images build; `image-variants.e2e.ts`
+5/5 + `workspace-toolchain.e2e.ts` 12/12 + `live-ide-flow`/`user-journey` re-green.
+Size note: the
+baked agents (~1 GB native) live in base → every variant carries them (typescript ~2
+GB … omnibus ~5.7 GB); flagged for a possible opt-in later. **Golden-image collection
+plan complete** (PRs A–D).
+
+## Prior phase (merged, #102)
+
+**Golden-image collection — slim per-language variants.** Five lean variants `FROM
+base` (typescript/python/go/java/rust), `dev-bootstrap` seeds the collection, the
+`image-variants.e2e.ts` smoke test, and a path-gated `golden-images` CI workflow.
 
 ## Prior phase (merged, #101)
 

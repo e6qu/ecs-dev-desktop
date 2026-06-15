@@ -84,6 +84,30 @@ RUN export NPM_CONFIG_PREFIX=/usr/local \
     && npx playwright install --with-deps chromium-headless-shell \
     && rm -rf /var/lib/apt/lists/*
 
+# Per-language dev tooling (the omnibus carries every language's, to system paths so
+# they survive the EBS mount): Python (uv tools → /usr/local/bin), Go (golangci-lint
+# → /usr/local/bin via GOBIN), Rust (clippy + rustfmt components). The Node lint/
+# format/dead-code/CPD tools + the Claude CLI come from base.
+RUN export UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin \
+    && uv tool install ruff && uv tool install ty && uv tool install vulture \
+    && uv tool install bandit && uv tool install semgrep \
+    && for t in ruff ty vulture bandit semgrep; do command -v "$t" || exit 1; done
+RUN GOBIN=/usr/local/bin /usr/local/go/bin/go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest \
+    && golangci-lint --version \
+    && /usr/local/go/bin/go clean -cache -modcache
+RUN /opt/rust/cargo/bin/rustup component add clippy rustfmt \
+    && chmod -R a+rwX /opt/rust \
+    && /opt/rust/cargo/bin/cargo clippy --version && /opt/rust/cargo/bin/cargo fmt --version
+
+# All language VS Code extensions into the built-in extensions dir (base already baked the
+# agent + cross-cutting ones; these are seeded together on first boot).
+RUN for ext in \
+      ms-python.python detachhead.basedpyright charliermarsh.ruff astral-sh.ty semgrep.semgrep \
+      golang.go redhat.java rust-lang.rust-analyzer ms-playwright.playwright ; do \
+      openvscode-server --install-extension "$ext" --extensions-dir /opt/openvscode-server/extensions ; \
+    done \
+    && chmod -R a+rX /opt/openvscode-server/extensions
+
 # Belt-and-suspenders: ensure no root-owned build cruft remains under the home dir
 # (it's shadowed by the EBS volume at runtime, but keep the image clean so the
 # workspace user can create its own ~/.npm-global etc.).
