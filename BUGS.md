@@ -39,6 +39,15 @@ active breakage):
   - the user-journey/golden e2e), not the lightweight process-mode `integration`
     job. `health()` (DescribeClusters, no RunTask) does run in process mode.
 
+- **sockerless#583 (open)** — the ECS sim advertises a task's `Limits`
+  (`CPU`/`Memory`) in task metadata but launches the container with **no cgroup
+  limits**, so the sim doesn't enforce the declared Fargate sizing (our workspace
+  used ~1214 MiB against an advertised 1024 MB with no OOM). Code pointer:
+  `simulators/aws/ecs.go` builds metadata `Limits` (~L1718) but the launched
+  `ContainerConfig` (~L1573) sets no `Memory`/`NanoCPU`. Local tracker: this repo's
+  issue #92. **Before adopting the enforced-limits fix, bump `DEFAULT_WORKSPACE_MEMORY`**
+  or the golden workspace will OOM at the current 1024 MB sizing.
+
 Latest full simulator pass (2026-06-12, submodule `9d43f3d` / PR #550) found no
 sockerless fidelity bugs across all live surfaces (real-CP wake chain, live
 user journey, reconciler scale-to-zero + drift, Auth.js callback routes,

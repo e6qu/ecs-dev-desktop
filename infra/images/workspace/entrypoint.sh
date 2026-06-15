@@ -58,6 +58,22 @@ if [ -n "${EDD_REPO_URL:-}" ]; then
   fi
 fi
 
+# Seed default editor settings (Dark mode) on first boot. The user-data-dir lives
+# on the EBS home volume, so we seed at runtime (not build, where it'd be shadowed
+# by the volume mount) and only when absent — so user overrides persist across
+# restarts. It stays a *default* the user can change.
+settings_dir=/home/workspace/.openvscode-server/data/User
+if [ ! -e "${settings_dir}/settings.json" ]; then
+  install -d -o workspace -g workspace -m 0755 "${settings_dir}"
+  cat >"${settings_dir}/settings.json" <<'JSON'
+{
+  "workbench.colorTheme": "Default Dark Modern"
+}
+JSON
+  chown workspace:workspace "${settings_dir}/settings.json"
+  chmod 0644 "${settings_dir}/settings.json"
+fi
+
 # Base server args. --disable-workspace-trust: a per-user workspace contains the
 # user's own files, so the Workspace Trust prompt is pure friction (a modal that
 # blocks the UI); hosted dev environments disable it.

@@ -1038,3 +1038,22 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
   `DYNAMODB_ENDPOINT` writes the table to the sim while the app reads DynamoDB-Local
   (empty → 503); (2) sim task containers are reaped after a few idle minutes —
   irrelevant to the fast e2e, flagged for the focused sim-fidelity pass.
+
+- **2026-06-15 — Golden-image workspace UX: user-installable CLIs + Dark mode (#90/#91/#94).**
+  Hands-on workspace testing surfaced that a fresh workspace was hard to use from the
+  in-browser terminal. Fixed in `infra/images/workspace`: (1) npm's global prefix now
+  points at a HOME dir (`NPM_CONFIG_PREFIX=/home/workspace/.npm-global`, set after the
+  system `npm i -g`s so yarn/pnpm/playwright stay in `/usr/local`), so the non-root
+  `workspace` user can `npm install -g` without the old `/usr/local` EACCES (#90);
+  (2) the user-CLI bin dirs (`~/.npm-global/bin`, `~/.local/bin`) are on PATH across
+  the whole shell matrix — image `ENV` (non-login `bash -c` / agent subprocesses),
+  `/etc/profile.d` (login terminal), and sshd `SetEnv PATH` (the `ssh host '<cmd>'`
+  exec channel that sources no profile) (#91); (3) the editor defaults to Dark mode,
+  seeded write-if-absent **in the entrypoint on first boot** — build-time seeding is
+  shadowed because the EBS home volume mounts over `/home/workspace` (#94). Key nuance
+  recorded: anything under `$HOME` baked at image build is shadowed by the volume mount,
+  so home-resident defaults must be seeded at first boot (entrypoint) or live in a
+  system path. New `workspace-toolchain.e2e.ts` assertions (npm prefix writable; PATH on
+  login + non-login + sshd config; dark settings) — 10/10 green; workbench still serves.
+  Decided the **golden-image collection** direction (base/omnibus + per-language slims);
+  these fixes move into the shared `base` in the follow-up split (see `DO_NEXT.md`).

@@ -2,9 +2,25 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-15 (live IDE flow + Linux/macOS CI branch)
+**Last updated:** 2026-06-15 (golden-image workspace UX: user CLIs + dark mode)
 
 ## Current phase
+
+**Golden-image workspace UX fixes (#90/#91/#94).** On
+`feat/workspace-user-clis-and-dark-mode`: made a fresh workspace usable out of the
+box from the in-browser terminal. (1) The non-root `workspace` user can now
+`npm install -g` — npm's global prefix points at a HOME dir via `NPM_CONFIG_PREFIX`
+(was the root-owned `/usr/local`, which EACCES'd) (#90). (2) User-installed CLIs
+are on PATH across the shell matrix: image `ENV` (agent subprocesses / `bash -c`),
+`/etc/profile.d` (login/interactive terminal), and sshd `SetEnv PATH` (the
+`ssh host '<cmd>'` exec channel) (#91). (3) The editor defaults to Dark mode,
+seeded write-if-absent in the entrypoint on first boot (build-time seeding is
+shadowed by the EBS home-volume mount) (#94). Covered by new assertions in
+`workspace-toolchain.e2e.ts` (10/10 green); workbench still serves with the
+modified entrypoint. Next: split the image into a **golden-image collection**
+(see `DO_NEXT.md`) — these fixes move into the shared `base`.
+
+## Prior phase (merged, #89)
 
 **End-to-end live IDE flow, tested in CI on Linux and macOS.** On
 `feat/live-ide-flow-ci`: brought the whole stack up against the container-mode sim

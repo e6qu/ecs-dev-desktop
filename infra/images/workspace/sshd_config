@@ -23,3 +23,11 @@ X11Forwarding no
 AllowAgentForwarding no
 PrintMotd no
 PrintLastLog no
+
+# PATH for the `ssh <host> '<cmd>'` exec channel: that runs a NON-login,
+# NON-interactive shell, which sources neither /etc/profile (toolchain) nor
+# ~/.bashrc, so it would otherwise get only sshd's bare default PATH. Set the full
+# PATH here so SSH-exec sees user-installed CLIs (npm global + ~/.local/bin) AND
+# the baked toolchain — matching what the integrated terminal/login shell get.
+# (Home is fixed at /home/workspace, so a literal path is correct.)
+SetEnv PATH=/home/workspace/.npm-global/bin:/home/workspace/.local/bin:/usr/local/go/bin:/home/workspace/go/bin:/opt/rust/cargo/bin:/opt/gradle/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
