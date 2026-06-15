@@ -197,5 +197,7 @@ describe("golden omnibus: AI agents + dev tooling", { timeout: 60_000 }, () => {
     // Rust: clippy (lint) + cargo-audit (SCA/security, #95).
     expect(sh("cargo clippy --version 2>&1")).toContain("clippy");
     expect(sh("cargo audit --version 2>&1")).toMatch(/audit \d+\./);
+    // Java: google-java-format (the formatter — #95 follow-up).
+    expect(sh("google-java-format --version 2>&1")).toMatch(/\d+\./);
   });
 });

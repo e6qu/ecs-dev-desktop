@@ -42,12 +42,13 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
   path-gated `golden-images` CI (#102); **PR D** = #93 agents (Claude Code + Codex +
   `claude` CLI) baked into `base` + curated #95 tooling per image, extensions installed
   into OpenVSCode's **built-in** dir (no first-boot copy → no startup race) (#103).
-  **In progress (`feat/golden-image-fuller-tooling`, #95 follow-ons):** rounding out
-  the curated dev tooling — Trivy security scanner in base (cross-cutting, matches CI);
-  Go staticcheck/deadcode/dupl (go+omnibus); cargo-audit (rust+omnibus). **Follow-ups:**
-  (a) **Java** has no standalone formatter/linter CLI yet (e.g. google-java-format) —
-  the one language still thin; (b) make the ~1 GB baked AI agents opt-in / omnibus-only
-  (undecided) — they inflate every variant.
+  **Done (#104, #95 follow-ons):** rounded out the curated dev tooling — Trivy security
+  scanner in base (cross-cutting, matches CI); Go staticcheck/deadcode/dupl (go+omnibus);
+  cargo-audit (rust+omnibus). **Follow-ups (in progress, `feat/golden-image-followups`):**
+  (a) **Java formatter** — `google-java-format` added to java+omnibus (every variant now
+  has a format CLI); (b) **agents omnibus-only** — moved Claude Code + Codex + the `claude`
+  CLI out of base into omnibus, slimming every variant ~1 GB (slim-variant users install
+  agents at runtime via #90/#91). Both flagged follow-ups now addressed.
 - **Launch-readiness / observability — essentially complete** (`BUGS.md` →
   Resolved): readiness probe, storage health, structured logging, metrics + alarms,
   CloudTrail pagination, API request latency/error metrics + access logging, fleet +

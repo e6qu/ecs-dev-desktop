@@ -59,7 +59,8 @@ const VARIANTS: readonly Variant[] = [
   {
     name: "java",
     image: process.env.IMG_JAVA ?? "edd-ws-java:e2e",
-    present: ["java -version", "mvn -v", "gradle --version"],
+    // JDK + Maven + Gradle + google-java-format (the formatter — #95 follow-up).
+    present: ["java -version", "mvn -v", "gradle --version", "google-java-format --version"],
     absent: ["go", "cargo", "uv"],
     extensions: ["redhat.java"],
   },
@@ -167,16 +168,24 @@ describe.skipIf(!HAVE_VARIANT_IMAGES)(
           expect(probe, `${v.name}: expected \`${bin}\` to be absent`).toBe("ABSENT");
         }
 
-        // Agent + extensions: the Claude Code CLI (#93) and the agent + cross-cutting
-        // extensions baked into OpenVSCode's built-in extensions dir, plus this
-        // variant's own language extensions (#93/#95).
-        expect(sh("command -v claude")).toContain("claude");
+        // Extensions: the cross-cutting dev extensions from base (e.g. prettier) plus
+        // this variant's own language extensions (#95), in OpenVSCode's built-in dir.
         const builtin = sh("ls /opt/openvscode-server/extensions 2>&1");
-        expect(builtin).toContain("anthropic.claude-code");
         expect(builtin).toContain("esbenp.prettier-vscode");
         for (const ext of v.extensions) {
           expect(builtin, `${v.name}: extension ${ext} not baked in`).toContain(ext);
         }
+
+        // Agents are OMNIBUS-only (~1 GB native) — a slim variant must NOT carry the
+        // Claude Code CLI or the agent extensions (a slim-variant user installs them
+        // at runtime if wanted, #90/#91). This keeps the variants lean.
+        const claude = sh(
+          "command -v claude >/dev/null 2>&1 && echo PRESENT || echo ABSENT",
+        ).trim();
+        expect(claude, `${v.name}: agent CLI should be omnibus-only`).toBe("ABSENT");
+        expect(builtin, `${v.name}: agent extension should be omnibus-only`).not.toContain(
+          "anthropic.claude-code",
+        );
 
         // Shared base behaviour: Node (base), the cross-cutting Trivy security
         // scanner (#95, from base — every variant inherits it), a user-writable npm

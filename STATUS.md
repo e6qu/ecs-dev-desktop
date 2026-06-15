@@ -2,24 +2,44 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-16 (golden-image fuller per-language tooling — #95 follow-ons)
+**Last updated:** 2026-06-16 (golden-image follow-ups: Java formatter + agents omnibus-only)
 
 ## Current phase
 
-**Golden-image fuller per-language dev tooling (#95 follow-ons).** On
-`feat/golden-image-fuller-tooling`: rounding out the curated dev-tooling set so a
-workspace matches CI out of the box. Added the cross-cutting **Trivy** security
-scanner to **base** (the repo CI's own gate tool — every variant inherits it; single
-binary to `/usr/local/bin`, vuln DB fetched lazily); the **Go** dead-code/CPD/static
-set to **go**+**omnibus** (`staticcheck`, `deadcode`, `dupl` alongside golangci-lint,
-all `go install` → `GOBIN=/usr/local/bin`); and **cargo-audit** (Rust SCA/security) to
-**rust**+**omnibus**. Tests extended: `image-variants.e2e.ts` (go asserts the trio,
-rust asserts cargo-audit, every variant asserts trivy) + `workspace-toolchain.e2e.ts`
-(omnibus asserts all). Also **re-pinned the sockerless submodule** `1ca1f71 → c69cd27`
-(picks up #569's process-mode managed-EBS panic fix + later cells). Known remaining
-gap: **Java** has the JDK/Maven/Gradle + `redhat.java` extension but no standalone
-formatter/linter CLI (e.g. google-java-format) — flagged as a follow-up. The earlier
-agents-opt-in/omnibus-only idea remains undecided.
+**Golden-image follow-ups (the two flagged after #104).** On
+`feat/golden-image-followups`: (a) **Java formatter** — added `google-java-format`
+(the de-facto Java formatter; JAR + `/usr/local/bin` wrapper) to **java**+**omnibus**,
+so every language variant now has a format CLI; version resolved via the github.com
+`releases/latest` redirect (not the rate-limited api.github.com). (b) **Agents
+omnibus-only** — moved the AI agents (Claude Code + Codex extensions + the `claude`
+CLI, ~1 GB native) OUT of **base** and into **omnibus only**, so the slim variants
+drop ~1 GB each (base ~1.8→~0.9 GB; typescript ~2.2→~1.3, python ~3.6→~2.7, go ~1.4,
+java ~1.7, rust ~1.8); a slim-variant user installs the agents at runtime via the
+user-CLI path (#90/#91). Tests updated: `image-variants.e2e.ts` asserts agents ABSENT
+in slim variants + java has google-java-format; `workspace-toolchain.e2e.ts` keeps the
+omnibus agent assertions (now genuinely omnibus-sourced) + adds google-java-format.
+Larger unstarted backlog (see `DO_NEXT.md`): resource utilization / snapshot UX /
+auto-snapshot (#98–100), and the focused sockerless-fidelity exploratory pass.
+
+## Prior phase (merged, #104)
+
+**Golden-image fuller per-language dev tooling (#95 follow-ons).** Rounded out the
+curated dev-tooling set so a workspace matches CI out of the box. Added the
+
+## Prior phase (merged, #104)
+
+**Golden-image fuller per-language dev tooling (#95 follow-ons).** Rounded out the
+curated dev-tooling set so a workspace matches CI out of the box. Added the
+cross-cutting **Trivy** security scanner to **base** (the repo CI's own gate tool —
+every variant inherits it; single binary to `/usr/local/bin`, vuln DB fetched lazily);
+the **Go** dead-code/CPD/static set to **go**+**omnibus** (`staticcheck`, `deadcode`,
+`dupl` alongside golangci-lint, all `go install` → `GOBIN=/usr/local/bin`); and
+**cargo-audit** (Rust SCA/security) to **rust**+**omnibus**. Tests extended:
+`image-variants.e2e.ts` (go asserts the trio, rust asserts cargo-audit, every variant
+asserts trivy) + `workspace-toolchain.e2e.ts` (omnibus asserts all). Also **re-pinned
+the sockerless submodule** `1ca1f71 → c69cd27` (picks up #569's process-mode managed-EBS
+panic fix + later cells). Known remaining gap: **Java** has the JDK/Maven/Gradle +
+`redhat.java` extension but no standalone formatter/linter CLI — flagged.
 
 ## Prior phase (merged, #103)
 
