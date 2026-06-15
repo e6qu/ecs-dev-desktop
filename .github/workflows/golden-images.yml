@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Golden image collection: build the shared base + the slim per-language variants
+# and smoke-test each (its toolchain present + the shared base behaviour + slimness).
+# Path-gated so it runs only when the images (or their test) change — the heavy
+# variant builds don't burden every PR's always-on `e2e` job.
+name: golden-images
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "infra/images/**"
+      - "packages/e2e/src/image-variants.e2e.ts"
+      - ".github/workflows/golden-images.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: golden-images-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  golden-images:
+    name: golden-images
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: pnpm/action-setup@v6.0.8
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Build the shared base once, then every variant FROM it (base layer cached).
+      - name: Build base + language variants
+        run: |
+          docker build -t edd-base:e2e infra/images/base
+          for v in typescript python go java rust; do
+            docker build --build-arg BASE=edd-base:e2e -t "edd-ws-${v}:e2e" "infra/images/${v}"
+          done
+          docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' | grep -E 'edd-base|edd-ws-'
+      # Each variant: its toolchain present, the shared base behaviour intact, and slim.
+      - name: Variant smoke tests
+        run: pnpm --filter @edd/e2e exec vitest run --config vitest.e2e.config.ts src/image-variants.e2e.ts

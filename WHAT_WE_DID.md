@@ -1076,3 +1076,21 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
   Verified: base + omnibus build; `workspace-toolchain.e2e.ts` 10/10; live-IDE-flow e2e
   green against the split. Per-language slim variants (typescript/python/go/java/rust)
   and layered #93/#95 tooling are the follow-ups (`DO_NEXT.md`).
+
+- **2026-06-15 — Golden-image collection: slim per-language variants (PR C).** Added five
+  lean variants `FROM base` — `infra/images/{typescript,python,go,java,rust}` — each with
+  only its toolchain (build-essential only where needed: ts native addons, python wheels,
+  go cgo, rust linker). Sizes ~0.95–1.4 GB vs omnibus 3.04 GB (base 605 MB). Each variant
+  overwrites the PATH drop-ins (`/etc/profile.d/edd-path.sh` + the sshd `SetEnv` drop-in)
+  ONLY when its tools land off the base PATH (go → /usr/local/go + GOPATH/bin; java →
+  /opt/gradle; rust → /opt/rust/cargo) — typescript/python tools live in /usr/local/bin
+  or /usr/bin, already on the base PATH. `dev-bootstrap` now seeds the whole collection
+  (omnibus + 5 variants) into the catalog. New `packages/e2e/src/image-variants.e2e.ts`
+  (parametrised over the variants) proves each: its toolchain present, the shared base
+  behaviour intact (#90 npm prefix writable, #91 user-CLI PATH, #94 dark mode, Node), and
+  it is **slim** (the other languages are absent) — 5/5 green. A path-gated
+  `.github/workflows/golden-images.yml` (triggers only on `infra/images/**` /
+  the variant test) builds base + all variants and runs the smoke test, so the heavy
+  variant builds don't burden the always-on `e2e` job. Gotcha: in zsh the brace-less
+  `"edd-ws-$v:e2e"` tag mangled to `edd-ws-2e` — use `${v}`. Follow-up: PR D layers the
+  agent extensions (#93) into base + curated tooling (#95) per image.
