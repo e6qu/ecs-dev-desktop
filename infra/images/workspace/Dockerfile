@@ -115,9 +115,22 @@ RUN npm install -g playwright @playwright/test \
     && npx playwright install --with-deps chromium-headless-shell \
     && rm -rf /var/lib/apt/lists/*
 
+# Let the non-root `workspace` user install their own CLIs at runtime (the
+# AI-agent / plugin use case) without root: the system npm prefix is /usr/local
+# (root-owned), so `npm install -g` would EACCES. Point npm's global prefix at a
+# HOME dir (persists on the EBS home volume) and put it — plus a conventional
+# ~/.local/bin — on PATH. Set AFTER the system `npm install -g` above so yarn/
+# pnpm/playwright stay in /usr/local. NB: home (/home/workspace) is the EBS mount,
+# so the dirs are created at first install, not baked here. PATH coverage across
+# the shell matrix is completed by /etc/profile.d (login) + sshd SetEnv (ssh-exec).
+ENV NPM_CONFIG_PREFIX="/home/workspace/.npm-global"
+ENV PATH="/home/workspace/.npm-global/bin:/home/workspace/.local/bin:${PATH}"
+
 # Make the toolchain PATH + env available to LOGIN/interactive shells too (the
 # OpenVSCode integrated terminal and SSH source /etc/profile, which resets PATH
 # and would otherwise drop the /opt and /usr/local/go additions from ENV above).
+# Also re-add the user-CLI bin dirs (npm global + ~/.local/bin) so a login shell
+# finds runtime-installed CLIs as well.
 RUN printf '%s\n' \
       'export GOPATH="/home/workspace/go"' \
       'export RUSTUP_HOME="/opt/rust/rustup"' \
@@ -125,7 +138,7 @@ RUN printf '%s\n' \
       'export GRADLE_HOME="/opt/gradle"' \
       'export JAVA_HOME="/usr/lib/jvm/default-java"' \
       'export PLAYWRIGHT_BROWSERS_PATH="/ms-playwright"' \
-      'export PATH="/usr/local/go/bin:/home/workspace/go/bin:/opt/rust/cargo/bin:/opt/gradle/bin:${PATH}"' \
+      'export PATH="/home/workspace/.npm-global/bin:/home/workspace/.local/bin:/usr/local/go/bin:/home/workspace/go/bin:/opt/rust/cargo/bin:/opt/gradle/bin:${PATH}"' \
       > /etc/profile.d/edd-toolchain.sh \
     && chmod 0644 /etc/profile.d/edd-toolchain.sh
 

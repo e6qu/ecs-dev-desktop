@@ -30,6 +30,19 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
 
 ## Available now (decision-free — immediate)
 
+- **Golden-image collection (planned sequence; decided 2026-06-15).** Split the
+  single workspace image into a shared **`base`** (OpenVSCode, sshd + CA,
+  idle-agent, entrypoint, git-credential helper, workspace user, Node, and the
+  cross-cutting workspace-UX fixes #90/#91/#94 + agent extensions #93) plus thin
+  variants `FROM base`: **omnibus** (today's all-toolchains image, renamed),
+  **typescript**, **python**, **go**, **java**, **rust** (build-essential only in
+  variants that need it, not base). It's just more catalog entries (the base-image
+  allow-list) — no data-model change; `dev-bootstrap` seeds them; the picker already
+  lets users choose. Sequence: **PR A** = #90/#91/#94 on the current image (done on
+  `feat/workspace-user-clis-and-dark-mode`); **PR B** = base/omnibus split (the PR-A
+  fixes move into `base`); **PR C+** = slim variants; **PR D+** = layer #93 (agent
+  ext in base) + curated #95 tooling per image. CI: build `base` once → variants
+  `FROM` it; the e2e/live flow defaults to omnibus.
 - **Launch-readiness / observability — essentially complete** (`BUGS.md` →
   Resolved): readiness probe, storage health, structured logging, metrics + alarms,
   CloudTrail pagination, API request latency/error metrics + access logging, fleet +

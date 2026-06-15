@@ -13,6 +13,14 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 const IMAGE = process.env.WORKSPACE_IMAGE ?? "edd-workspace:e2e";
 const CONTAINER = "edd-toolchain-smoke";
 
+/** Run a NON-login, NON-interactive command as `workspace` (the `bash -c` /
+ * agent-subprocess shell — the one that historically missed user-CLI PATH). */
+function shc(cmd: string): string {
+  return execFileSync("docker", ["exec", "-u", "workspace", CONTAINER, "bash", "-c", cmd], {
+    encoding: "utf8",
+  });
+}
+
 /** Run a login-shell command in the workspace container as `workspace`. */
 function sh(cmd: string): string {
   return execFileSync("docker", ["exec", "-u", "workspace", CONTAINER, "bash", "-lc", cmd], {
@@ -116,5 +124,45 @@ describe("golden workspace polyglot toolchain (out of the box)", { timeout: 180_
     const out = sh("echo pw=$(playwright --version) && ls /ms-playwright | grep -ci chromium");
     expect(out).toMatch(/pw=Version \d+\./);
     expect(out.trim().split("\n").pop()).not.toBe("0"); // ≥1 chromium dir present
+  });
+});
+
+// #90/#91/#94 — the non-root workspace user can install their own CLIs, those land
+// on PATH across the shell matrix, and the editor defaults to Dark mode.
+describe("golden workspace user-CLI + defaults", { timeout: 60_000 }, () => {
+  it("points npm's global prefix at a user-writable HOME dir (so `npm install -g` won't EACCES) [#90]", () => {
+    // Root cause of the EACCES was the root-owned /usr/local prefix. Prove the
+    // prefix is now a HOME dir AND that the user can actually write under it
+    // (deterministic, no network) — i.e. a global install would succeed.
+    const out = sh(
+      'p="$(npm config get prefix)"; echo "prefix=$p"; ' +
+        'mkdir -p "$p/lib/node_modules" "$p/bin" && touch "$p/bin/.probe" && echo WRITABLE',
+    );
+    expect(out).toContain("prefix=/home/workspace/.npm-global");
+    expect(out).toContain("WRITABLE");
+  });
+
+  it("puts user-CLI bin dirs on PATH for login AND non-login/non-interactive shells [#91]", () => {
+    // Login shell (integrated terminal / interactive SSH) via /etc/profile.d:
+    const login = sh('echo "$PATH"');
+    expect(login).toContain("/home/workspace/.npm-global/bin");
+    expect(login).toContain("/home/workspace/.local/bin");
+    // Non-login, non-interactive (`bash -c`: agent subprocesses, tasks) via image ENV:
+    const nonlogin = shc('echo "$PATH"');
+    expect(nonlogin).toContain("/home/workspace/.npm-global/bin");
+    expect(nonlogin).toContain("/home/workspace/.local/bin");
+    // The SSH-exec channel (`ssh host '<cmd>'`) is covered by sshd `SetEnv PATH`
+    // (verified in the ssh-gateway tier); assert the config carries it.
+    const sshdCfg = execFileSync(
+      "docker",
+      ["exec", CONTAINER, "grep", "-c", "/home/workspace/.npm-global/bin", "/etc/ssh/sshd_config"],
+      { encoding: "utf8" },
+    );
+    expect(sshdCfg.trim()).not.toBe("0");
+  });
+
+  it("defaults the editor to Dark mode, seeded write-if-absent on first boot [#94]", () => {
+    const settings = sh("cat ~/.openvscode-server/data/User/settings.json");
+    expect(settings).toContain("Default Dark Modern");
   });
 });
