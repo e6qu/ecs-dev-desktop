@@ -139,7 +139,10 @@ pnpm test:integ
 # `pnpm build` covers it; the harness builds apps/web on demand if .next is missing)
 pnpm build
 docker build -f services/reconciler/Dockerfile -t edd-reconciler:e2e .
-docker build -t edd-workspace:e2e infra/images/workspace
+# Golden image collection: shared base, then the omnibus variant FROM it
+# (tagged edd-workspace:e2e — the default image the e2e/live suites launch).
+docker build -t edd-base:e2e infra/images/base
+docker build --build-arg BASE=edd-base:e2e -t edd-workspace:e2e infra/images/omnibus
 docker build -f services/ssh-gateway/Dockerfile.proxy -t edd-ssh-proxy:e2e .
 sh scripts/gen-sim-tls-cert.sh   # Pomerium serves real TLS; cert mounted by compose
 docker compose -f docker-compose.e2e.yml up -d --build --wait

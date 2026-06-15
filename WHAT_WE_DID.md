@@ -1057,3 +1057,22 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
   login + non-login + sshd config; dark settings) — 10/10 green; workbench still serves.
   Decided the **golden-image collection** direction (base/omnibus + per-language slims);
   these fixes move into the shared `base` in the follow-up split (see `DO_NEXT.md`).
+
+- **2026-06-15 — Golden-image collection: base/omnibus split (PR B).** Refactored the
+  single workspace image into a shared `infra/images/base` (OpenVSCode Server, sshd +
+  SSH CA, idle-agent, entrypoint, git-credential broker, `workspace` user, Node 22,
+  and the #90/#91/#94 user-CLI + dark-mode fixes — deliberately NO compilers/language
+  toolchains) plus `infra/images/omnibus` (`FROM base` + the full polyglot toolchain),
+  which reproduces the previous image and stays tagged `edd-workspace:e2e` so every
+  suite keeps working. Variants build `FROM base` via a `BASE` build-arg. PATH is made
+  composable through per-image drop-ins each variant overwrites: `/etc/profile.d/edd-path.sh`
+  (login shells) and an sshd `SetEnv` drop-in under `/etc/ssh/sshd_config.d/` (the
+  ssh-exec channel; base sshd_config now `Include`s the dir). Lesson: the base sets a
+  HOME npm prefix via `NPM_CONFIG_PREFIX`, which omnibus INHERITS — so build-time system
+  `npm install -g` (yarn/pnpm/playwright, incl. `npx`) must `export NPM_CONFIG_PREFIX=/usr/local`
+  for those steps, or they install under `$HOME` (and a home-cleanup step then deletes
+  them). Updated the build everywhere (CI `e2e` + `macos-images` jobs, `scripts/test-e2e.sh`,
+  `TESTING.md`), the Trivy DS-0002 paths, and `infra/images/README.md` (collection doc).
+  Verified: base + omnibus build; `workspace-toolchain.e2e.ts` 10/10; live-IDE-flow e2e
+  green against the split. Per-language slim variants (typescript/python/go/java/rust)
+  and layered #93/#95 tooling are the follow-ups (`DO_NEXT.md`).

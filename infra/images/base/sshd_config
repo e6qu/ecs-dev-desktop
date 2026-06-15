@@ -4,6 +4,13 @@
 # injected at runtime as /etc/ssh/workspace-ca.pub. The workspace ID maps to an
 # OpenSSH certificate principal in /etc/ssh/principals/workspace.
 
+# Per-image drop-ins live here so variants can override them — notably the
+# `SetEnv PATH` for the `ssh <host> '<cmd>'` exec channel (a non-login,
+# non-interactive shell that sources neither /etc/profile nor ~/.bashrc, so it
+# needs PATH set here). Base ships the user-CLI PATH; variants overwrite the
+# drop-in with a toolchain-inclusive PATH. Included early so a drop-in's value wins.
+Include /etc/ssh/sshd_config.d/*.conf
+
 Port 22
 AddressFamily any
 ListenAddress 0.0.0.0
@@ -23,11 +30,3 @@ X11Forwarding no
 AllowAgentForwarding no
 PrintMotd no
 PrintLastLog no
-
-# PATH for the `ssh <host> '<cmd>'` exec channel: that runs a NON-login,
-# NON-interactive shell, which sources neither /etc/profile (toolchain) nor
-# ~/.bashrc, so it would otherwise get only sshd's bare default PATH. Set the full
-# PATH here so SSH-exec sees user-installed CLIs (npm global + ~/.local/bin) AND
-# the baked toolchain — matching what the integrated terminal/login shell get.
-# (Home is fixed at /home/workspace, so a literal path is correct.)
-SetEnv PATH=/home/workspace/.npm-global/bin:/home/workspace/.local/bin:/usr/local/go/bin:/home/workspace/go/bin:/opt/rust/cargo/bin:/opt/gradle/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin

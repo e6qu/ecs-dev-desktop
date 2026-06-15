@@ -101,8 +101,9 @@ the SSH CA, DNS/TLS + proxy, and seeding — is in
    logs. Bootstrap a remote state backend first.
 2. **Publish two images** to the created ECR: the **control-plane app image**
    (`apps/web` — the control-plane service _and_ the reconciler run it, via a
-   command override) and the **golden workspace image** (`infra/images/workspace`,
-   which also bakes `sshd` + the SSH CA — there is no separate proxy image).
+   command override) and a **golden workspace image** (the
+   [`infra/images`](infra/images/README.md) collection — a shared `base` plus
+   `omnibus`/per-language variants; all bake `sshd` + the SSH CA, no separate proxy image).
 3. **Configure secrets** the module does not inject — Auth.js (`AUTH_SECRET`,
    `AUTH_URL`/`AUTH_TRUST_HOST`) + IdP creds, RBAC groups (`EDD_ADMIN_GROUPS` — set
    this or no one is an admin), crypto (`EDD_TOKEN_ENC_KEY`, `EDD_GATEWAY_SECRET`,

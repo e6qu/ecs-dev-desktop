@@ -152,13 +152,14 @@ describe("golden workspace user-CLI + defaults", { timeout: 60_000 }, () => {
     expect(nonlogin).toContain("/home/workspace/.npm-global/bin");
     expect(nonlogin).toContain("/home/workspace/.local/bin");
     // The SSH-exec channel (`ssh host '<cmd>'`) is covered by sshd `SetEnv PATH`
-    // (verified in the ssh-gateway tier); assert the config carries it.
+    // (verified in the ssh-gateway tier); assert sshd's EFFECTIVE config carries it
+    // (it lives in a per-image drop-in under /etc/ssh/sshd_config.d/).
     const sshdCfg = execFileSync(
       "docker",
-      ["exec", CONTAINER, "grep", "-c", "/home/workspace/.npm-global/bin", "/etc/ssh/sshd_config"],
+      ["exec", CONTAINER, "sh", "-c", "sshd -T 2>/dev/null | grep -i '^setenv '"],
       { encoding: "utf8" },
     );
-    expect(sshdCfg.trim()).not.toBe("0");
+    expect(sshdCfg).toContain("/home/workspace/.npm-global/bin");
   });
 
   it("defaults the editor to Dark mode, seeded write-if-absent on first boot [#94]", () => {

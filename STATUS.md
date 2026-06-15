@@ -2,23 +2,34 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-15 (golden-image workspace UX: user CLIs + dark mode)
+**Last updated:** 2026-06-15 (golden-image collection: base + omnibus split)
 
 ## Current phase
 
-**Golden-image workspace UX fixes (#90/#91/#94).** On
-`feat/workspace-user-clis-and-dark-mode`: made a fresh workspace usable out of the
-box from the in-browser terminal. (1) The non-root `workspace` user can now
-`npm install -g` — npm's global prefix points at a HOME dir via `NPM_CONFIG_PREFIX`
-(was the root-owned `/usr/local`, which EACCES'd) (#90). (2) User-installed CLIs
-are on PATH across the shell matrix: image `ENV` (agent subprocesses / `bash -c`),
-`/etc/profile.d` (login/interactive terminal), and sshd `SetEnv PATH` (the
-`ssh host '<cmd>'` exec channel) (#91). (3) The editor defaults to Dark mode,
-seeded write-if-absent in the entrypoint on first boot (build-time seeding is
-shadowed by the EBS home-volume mount) (#94). Covered by new assertions in
-`workspace-toolchain.e2e.ts` (10/10 green); workbench still serves with the
-modified entrypoint. Next: split the image into a **golden-image collection**
-(see `DO_NEXT.md`) — these fixes move into the shared `base`.
+**Golden-image collection — base/omnibus split (PR B).** On
+`feat/golden-image-base-omnibus`: refactored the single workspace image into a
+shared **`infra/images/base`** (OpenVSCode, sshd + CA, idle-agent, entrypoint,
+git-credential helper, `workspace` user, Node 22, and the #90/#91/#94 user-CLI +
+dark-mode fixes — no compilers/toolchains) plus **`infra/images/omnibus`** (`FROM
+base` + the full polyglot toolchain == the previous image). No functional change to
+the omnibus; it's tagged `edd-workspace:e2e` so all suites keep working. PATH is
+composable via drop-ins each image overwrites: `/etc/profile.d/edd-path.sh` (login)
+and an sshd `SetEnv` drop-in under `/etc/ssh/sshd_config.d/` (ssh-exec). Build is
+base → variant (`--build-arg BASE=…`); CI + `test-e2e.sh` + docs updated. Gotcha
+fixed: the inherited home `NPM_CONFIG_PREFIX` made build-time system `npm i -g`
+land under `$HOME` (then a cleanup deleted them) — variants now export
+`NPM_CONFIG_PREFIX=/usr/local` for those steps. Verified: base+omnibus build,
+`workspace-toolchain.e2e.ts` 10/10, and the live-IDE-flow e2e green against the
+split. Next (PR C+): slim per-language variants; then layer #93/#95 tooling.
+
+## Prior phase (merged, #97)
+
+**Golden-image workspace UX fixes (#90/#91/#94).** A fresh workspace is usable from
+the in-browser terminal: non-root `npm install -g` works (npm prefix → HOME dir),
+user CLIs on PATH across the shell matrix (image ENV + profile.d + sshd `SetEnv`),
+and the editor defaults to Dark mode (entrypoint first-boot seed). These now live
+in the shared `base` (PR B). Key nuance: anything under `$HOME` baked at build is
+shadowed by the EBS volume mount → seed at first boot or use a system path.
 
 ## Prior phase (merged, #89)
 

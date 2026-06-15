@@ -14,7 +14,10 @@ sh "$here/reap-local.sh"
 pnpm build
 docker build -f services/reconciler/Dockerfile -t edd-reconciler:e2e .
 docker build -f services/ssh-gateway/Dockerfile.proxy -t edd-ssh-proxy:e2e .
-docker build -t edd-workspace:e2e infra/images/workspace
+# Golden image collection: build the shared base, then the omnibus variant FROM it
+# (tagged edd-workspace:e2e — the default image the e2e/live suites launch).
+docker build -t edd-base:e2e infra/images/base
+docker build --build-arg BASE=edd-base:e2e -t edd-workspace:e2e infra/images/omnibus
 sh "$here/gen-sim-tls-cert.sh"
 sh "$here/gen-sim-github-app.sh"
 docker compose -f docker-compose.e2e.yml up -d --build --wait
