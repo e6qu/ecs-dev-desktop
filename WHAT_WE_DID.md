@@ -955,3 +955,20 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
   `pnpm --filter @edd/web screenshot` dev aid. Verified live against the sockerless
   `+AWS` tier (login form → admin console; storage/compute/reconciler health real;
   structured access logs streaming).
+
+- **2026-06-15 — Wake-on-connect: claim-before-launch (kills the thundering herd).**
+  Root-cause fix for the recurring `concurrent-connect` e2e flake (surfaced again on
+  this PR's CI). The wake path now persists the `stopped → provisioning` claim with
+  the optimistic-version CAS BEFORE launching, so a burst of connects starts exactly
+  ONE task (the claim winner); losers `awaitWoken` until it reaches running.
+  Two-phase domain core: `markWaking` (stopped→provisioning) + `markProvisioned`
+  (provisioning→running), replacing the single `markStarted`; a new
+  `provisioning → stopped` transition lets a failed launch roll the claim back
+  (workspace stays wake-able). `start()` stays a strict transition (start-while-
+  running is still a conflict); `connect()` owns the idempotent race handling
+  (re-dispatch + wait-out in-flight provisioning). Crash-consistency reworked: a
+  write failure on the claim leaks nothing (no task yet); a failure on the
+  post-launch commit stops the task and rolls back. Deterministically proven in the
+  integ tier (N concurrent wakes → one launch, all running — 10/10) plus the
+  rewritten crash + state-machine/domain unit tests; the container `concurrent-connect`
+  e2e exercises it for real in CI.

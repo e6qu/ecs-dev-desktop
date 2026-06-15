@@ -12,9 +12,10 @@ import {
   err,
   isoTimestamp,
   markActivity,
-  markStarted,
+  markProvisioned,
   markStopped,
   markTaskLost,
+  markWaking,
   METRIC_WORKSPACE_WAKE_LATENCY_MS,
   newWorkspaceId,
   notFoundError,
@@ -31,6 +32,7 @@ import {
   type BaseImage,
   type Clock,
   type ComputeProvider,
+  type ComputeTask,
   type DomainError,
   type Email,
   type IsoTimestamp,
@@ -53,6 +55,15 @@ import { toWorkspaceDetail, toWorkspaceDto } from "./dto";
 /** Actor attributed to transitions with no human principal (reconciler sweeps,
  * gate-wakes without a forwarded identity). */
 const SYSTEM_ACTOR = "system";
+
+/** A concurrent waker that lost the claim waits up to this long for the winner's
+ * wake to reach running (cold start = RunTask + readiness, tens of seconds),
+ * polling at this interval. It blocks for the same window the old
+ * launch-then-compensate path did — but without launching a second task. */
+const WAKE_WAIT_TIMEOUT_MS = 180_000;
+const WAKE_POLL_INTERVAL_MS = 250;
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /** A lifecycle event to record atomically with its state transition. */
 interface LifecycleAudit {
@@ -359,7 +370,15 @@ export class WorkspaceService {
     return ok(toWorkspaceDto(next.value));
   }
 
-  /** Wake from a snapshot: launch a task whose managed volume is hydrated from it. */
+  /**
+   * Wake from a snapshot, **claim-before-launch**: persist the
+   * `stopped → provisioning` claim with the optimistic-version CAS FIRST, and only
+   * the winner launches a task. Concurrent wakers (a burst of connects) lose the
+   * claim and wait for the winner to reach running — so exactly one RunTask is ever
+   * issued, instead of N tasks launched-then-compensated (a thundering herd that
+   * also intermittently overran the sim). On launch failure the claim is rolled
+   * back to stopped so the workspace stays wake-able.
+   */
   async start(
     id: WorkspaceId,
     actor: string = SYSTEM_ACTOR,
@@ -367,49 +386,76 @@ export class WorkspaceService {
     const found = await this.require(id);
     if (!found.ok) return found;
     const { ws, version } = found.value;
-    // validate-first (wake → provisioned), before any I/O.
-    const woken = transition(ws.state, "wake");
-    if (!woken.ok) return woken;
-    const provisioned = transition(woken.value, "provisioned");
-    if (!provisioned.ok) return provisioned;
+    // Strict wake transition (stopped → provisioning): any non-stopped state is a
+    // conflict here. The idempotent "already running / already waking" handling
+    // for concurrent callers lives in connect(), which re-dispatches on conflict.
+    const claim = markWaking(ws, isoTimestamp(this.deps.clock.now()));
+    if (!claim.ok) return claim;
     if (ws.latestSnapshotId === undefined) {
       return err(conflictError(`cannot start ${id}: no snapshot to hydrate from`));
     }
-    const at = isoTimestamp(this.deps.clock.now());
-    const task = await this.deps.compute.runTask({
-      workspaceId: ws.id,
-      baseImage: ws.baseImage,
-      fromSnapshot: ws.latestSnapshotId,
-    });
-    const next = markStarted(ws, task.volumeId, task.id, at, task.sshHost);
-    if (!next.ok) return next;
+
+    // PHASE 1 — claim the wake (stopped → provisioning), version-conditioned. No
+    // task launched yet, so a failure here can never leak one.
     try {
-      await this.persistTransition(next.value, version, {
+      await this.persistTransition(claim.value, version);
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+      // Another waker won the claim (or a stop/delete raced) — wait for the
+      // winner's wake to finish rather than launching a second task.
+      return this.awaitWoken(id);
+    }
+
+    // PHASE 2 — we are the sole launcher: run the task, then commit
+    // provisioning → running.
+    const at = isoTimestamp(this.deps.clock.now());
+    let task: ComputeTask;
+    try {
+      task = await this.deps.compute.runTask({
+        workspaceId: ws.id,
+        baseImage: ws.baseImage,
+        fromSnapshot: ws.latestSnapshotId,
+      });
+    } catch (e) {
+      // Launch failed; roll the claim back to stopped (snapshot untouched) so the
+      // workspace stays wake-able, then surface the error.
+      await this.rollbackWake(id);
+      throw e;
+    }
+
+    const claimed = await this.find(id);
+    if (claimed === null) {
+      // Deleted out from under us mid-launch — stop the orphan, report gone.
+      await this.deps.compute.stopTask(task.id);
+      return err(notFoundError("workspace", id));
+    }
+    const next = markProvisioned(claimed.ws, task.volumeId, task.id, at, task.sshHost);
+    if (!next.ok) {
+      await this.deps.compute.stopTask(task.id);
+      return next;
+    }
+    try {
+      await this.persistTransition(next.value, claimed.version, {
         action: "session.start",
         target: id,
         actor,
         detail: "woken from snapshot",
       });
     } catch (e) {
-      if (isVersionConflict(e)) {
-        // Lost the wake race: another writer (a concurrent connect/start) won.
-        // Stop OUR freshly launched task so it cannot leak, then return the
-        // winner's state if it serves the caller's intent (idempotent wake).
-        await this.deps.compute.stopTask(task.id);
-        const current = await this.find(id);
-        if (current === null) return err(notFoundError("workspace", id));
-        const { state } = current.ws;
-        if (state === "running" || state === "idle" || state === "provisioning") {
-          return ok(toWorkspaceDto(current.ws));
-        }
-        return err(conflictError(`wake of ${id} lost a concurrent update (now ${state})`));
-      }
-      // Crash-consistency: persistence failed outright — the task launched but
-      // no record references it. Stop it, then surface the original error.
+      // A concurrent stop/delete changed the record while we launched. Stop our
+      // task so it cannot leak; roll the provisioning claim back if it survived.
       await this.deps.compute.stopTask(task.id);
-      throw e;
+      if (!isVersionConflict(e)) {
+        await this.rollbackWake(id);
+        throw e;
+      }
+      const current = await this.find(id);
+      if (current === null) return err(notFoundError("workspace", id));
+      const { state } = current.ws;
+      if (state === "running" || state === "idle") return ok(toWorkspaceDto(current.ws));
+      return err(conflictError(`wake of ${id} lost a concurrent update (now ${state})`));
     }
-    // Wake cold-start latency (RunTask → routable + committed) — a core SLO.
+    // Wake cold-start latency (claim → RunTask → routable + committed) — a core SLO.
     this.deps.metrics?.timing(
       METRIC_WORKSPACE_WAKE_LATENCY_MS,
       Date.parse(this.deps.clock.now()) - Date.parse(at),
@@ -418,10 +464,47 @@ export class WorkspaceService {
     return ok(toWorkspaceDto(next.value));
   }
 
+  /** Wait for an in-flight wake (claimed by another caller) to reach running/idle,
+   * so a concurrent connect still returns a ready workspace without launching its
+   * own task. Returns the winner's state, or a conflict if the wake failed/timed out. */
+  private async awaitWoken(id: WorkspaceId): Promise<Result<WorkspaceDto, DomainError>> {
+    const deadline = Date.now() + WAKE_WAIT_TIMEOUT_MS;
+    for (;;) {
+      const loaded = await this.find(id);
+      if (loaded === null) return err(notFoundError("workspace", id));
+      const { state } = loaded.ws;
+      if (state === "running" || state === "idle") return ok(toWorkspaceDto(loaded.ws));
+      if (state !== "provisioning") {
+        // The winner's wake did not complete (rolled back / failed / deleted).
+        return err(conflictError(`wake of ${id} did not complete (now ${state})`));
+      }
+      if (Date.now() >= deadline) {
+        return err(conflictError(`timed out waiting for ${id} to wake`));
+      }
+      await sleep(WAKE_POLL_INTERVAL_MS);
+    }
+  }
+
+  /** Best-effort: revert a provisioning claim back to stopped after a failed
+   * launch, so the workspace is wake-able again (the snapshot is untouched). A lost
+   * race here is benign — whoever advanced the record owns it now. */
+  private async rollbackWake(id: WorkspaceId): Promise<void> {
+    const loaded = await this.find(id);
+    if (loaded?.ws.state !== "provisioning") return;
+    const reverted = markStopped(loaded.ws, undefined, isoTimestamp(this.deps.clock.now()));
+    if (!reverted.ok) return;
+    try {
+      await this.persistTransition(reverted.value, loaded.version);
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+    }
+  }
+
   /** Wake-on-connect: ensure the workspace is reachable for an incoming connection
    * (e.g. SSH via the gateway). Idempotent — a running/idle workspace is returned
    * as-is, a scaled-to-zero one is woken from its snapshot, an in-flight wake is
-   * returned for the caller to poll, and a terminal one is rejected. */
+   * waited on until it reaches running (so the caller always gets a ready
+   * workspace, not a half-woken one to poll), and a terminal one is rejected. */
   async connect(
     id: WorkspaceId,
     actor: string = SYSTEM_ACTOR,
@@ -432,12 +515,25 @@ export class WorkspaceService {
     const action = planConnect(ws.state);
     switch (action) {
       case "ready":
-      case "pending":
         return ok(toWorkspaceDto(ws));
-      case "wake":
-        // A real wake transition; start() records session.start (a no-op wake on
-        // an already-running workspace returns above, so no event is logged).
-        return this.start(id, actor);
+      case "pending":
+        // A wake is already in flight (another connect claimed it) — wait for it to
+        // reach running rather than handing back a provisioning workspace.
+        return this.awaitWoken(id);
+      case "wake": {
+        // Claim + launch the wake. start() is strict, so if the state advanced
+        // between our read and start's (another caller woke it concurrently),
+        // re-evaluate and converge: running/idle → ready, provisioning → wait.
+        const started = await this.start(id, actor);
+        if (started.ok) return started;
+        const reloaded = await this.find(id);
+        if (reloaded === null) return started;
+        if (reloaded.ws.state === "running" || reloaded.ws.state === "idle") {
+          return ok(toWorkspaceDto(reloaded.ws));
+        }
+        if (reloaded.ws.state === "provisioning") return this.awaitWoken(id);
+        return started;
+      }
       case "unavailable":
         return err(conflictError(`cannot connect to ${id}: workspace is ${ws.state}`));
       default:

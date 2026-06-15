@@ -24,7 +24,9 @@ export type WorkspaceEvent =
   | "fail"; // unrecoverable error
 
 const TRANSITIONS: Record<WorkspaceState, Partial<Record<WorkspaceEvent, WorkspaceState>>> = {
-  provisioning: { provisioned: "running", fail: "error", terminate: "terminated" },
+  // `stop` cancels an in-flight wake (claim made, launch failed/aborted) back to
+  // scaled-to-zero — the snapshot is untouched, so the workspace stays wake-able.
+  provisioning: { provisioned: "running", stop: "stopped", fail: "error", terminate: "terminated" },
   running: { idleTimeout: "idle", stop: "stopped", fail: "error", terminate: "terminated" },
   idle: { activity: "running", stop: "stopped", fail: "error", terminate: "terminated" },
   stopped: { wake: "provisioning", terminate: "terminated", fail: "error" },

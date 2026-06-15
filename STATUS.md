@@ -21,6 +21,15 @@ down profile-scoped sim containers (it was skipping `--profile` services), and a
 reusable `pnpm --filter @edd/web screenshot` captures the dev UI. Verified live
 against the sockerless tier (`pnpm dev` + `EDD_DEV_PROFILES=aws`).
 
+Also folded into this PR (CI surfaced the recurring flake): **wake-on-connect
+claim-before-launch** — the wake path persists the `stopped → provisioning` claim
+(version CAS) before launching, so a burst of concurrent connects starts exactly
+one task and the rest wait for it, instead of N launched-then-compensated tasks (a
+thundering herd that intermittently overran the sim). Two-phase domain
+(`markWaking`/`markProvisioned`), a `provisioning → stopped` rollback transition,
+strict `start()` + idempotent `connect()` re-dispatch. Proven deterministically in
+the integ tier (N concurrent wakes → one launch, all running).
+
 ## Prior phase (merged, #85)
 
 **Observability completion — the remaining launch-readiness gaps, in one PR.**

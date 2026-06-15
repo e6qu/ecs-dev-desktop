@@ -30,6 +30,7 @@ const EVENTS: WorkspaceEvent[] = [
 // to the transition table is caught by the exhaustive test below.
 const PERMITTED = new Set<string>([
   "provisioning:provisioned",
+  "provisioning:stop",
   "provisioning:fail",
   "provisioning:terminate",
   "running:idleTimeout",
@@ -56,6 +57,10 @@ describe("workspace state machine", () => {
 
   it("wakes from idle on activity", () => {
     expect(transition("idle", "activity")).toEqual(ok("running"));
+  });
+
+  it("cancels an in-flight wake back to stopped", () => {
+    expect(transition("provisioning", "stop")).toEqual(ok("stopped"));
   });
 
   it("is terminal once terminated", () => {

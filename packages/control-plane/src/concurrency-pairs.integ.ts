@@ -13,12 +13,17 @@ import {
   ownerId,
   systemClock,
   workspaceId,
+  type ComputeProvider,
+  type ComputeTask,
   type DomainError,
   type Result,
+  type RunTaskInput,
   type Snapshot,
   type SnapshotId,
   type SnapshotRef,
   type StorageProvider,
+  type TaskId,
+  type TaskLiveness,
   type Volume,
   type VolumeId,
   type VolumeRef,
@@ -80,6 +85,22 @@ class BarrierSnapshotStorage implements StorageProvider {
   }
   listSnapshots(): Promise<readonly SnapshotRef[]> {
     return this.inner.listSnapshots();
+  }
+}
+
+/** Counts `runTask` launches while delegating to the inner provider. */
+class CountingCompute implements ComputeProvider {
+  launches = 0;
+  constructor(private readonly inner: ComputeProvider) {}
+  runTask(input: RunTaskInput): Promise<ComputeTask> {
+    this.launches += 1;
+    return this.inner.runTask(input);
+  }
+  stopTask(taskId: TaskId): Promise<void> {
+    return this.inner.stopTask(taskId);
+  }
+  taskState(taskId: TaskId): Promise<TaskLiveness> {
+    return this.inner.taskState(taskId);
   }
 }
 
@@ -169,6 +190,30 @@ describe("concurrent transition pairs are version-safe (DynamoDB Local + fakes)"
       racingService.snapshot(workspaceId(id)),
     ]);
     expect(tally(results)).toEqual({ ok: 1, conflict: 1 });
+  });
+
+  it("N concurrent wakes launch exactly one task; every caller gets running", async () => {
+    const id = await runningWorkspace("pair-e");
+    expect((await service.stop(workspaceId(id))).ok).toBe(true);
+
+    // Claim-before-launch: a burst of connects must start exactly ONE task (the
+    // winner of the version-CAS claim); the rest wait for it and return running.
+    const counting = new CountingCompute(compute);
+    const racingService = new WorkspaceService({
+      workspaces: makeWorkspaceEntity(client, TABLE),
+      storage,
+      compute: counting,
+      clock: systemClock,
+    });
+    const results = await Promise.all(
+      Array.from({ length: 5 }, () => racingService.connect(workspaceId(id))),
+    );
+
+    expect(counting.launches).toBe(1);
+    for (const r of results) {
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.value.state).toBe("running");
+    }
   });
 
   it("delete vs wake: never orphans the woken task, never double-succeeds", async () => {

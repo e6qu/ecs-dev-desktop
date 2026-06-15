@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Crash-consistency: create()/start() perform the compute side effect BEFORE
-// persisting. If the persistence write fails, the freshly launched task must
-// be stopped (compensation) — otherwise a real ECS task leaks with no record
-// referencing it. The outage is injected through the AWS SDK's public
-// middleware stack (writes fail, reads pass), so the whole real persistence
-// path up to DynamoDB is exercised.
+// Crash-consistency under DynamoDB write outages, injected through the AWS SDK's
+// public middleware stack (writes fail, reads pass) so the whole real persistence
+// path up to DynamoDB is exercised:
+//   • create() launches then persists — a persist failure must stop the task.
+//   • start() is CLAIM-BEFORE-LAUNCH: the provisioning claim is persisted FIRST,
+//     so a write failure there leaks nothing (no task launched yet); a failure on
+//     the post-launch COMMIT must stop the task AND roll the claim back to stopped.
 import {
   baseImage,
   FakeComputeProvider,
@@ -24,15 +25,19 @@ process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
 const TABLE = "ecs-dev-desktop-cp-crash-integ";
 const OUTAGE_MESSAGE = "injected DynamoDB write outage";
 
-/** Records every launched/stopped task id while delegating to the fake. */
+/** Records every launched/stopped task id while delegating to the fake. An
+ * optional `afterLaunch` hook lets a test arm an outage AFTER the task launches
+ * (to fail the post-launch commit write specifically). */
 class TrackingCompute implements ComputeProvider {
   readonly launched: TaskId[] = [];
   readonly stopped: TaskId[] = [];
+  afterLaunch?: () => void;
   constructor(private readonly inner: FakeComputeProvider) {}
 
   async runTask(input: RunTaskInput): Promise<ComputeTask> {
     const task = await this.inner.runTask(input);
     this.launched.push(task.id);
+    this.afterLaunch?.();
     return task;
   }
 
@@ -47,7 +52,9 @@ class TrackingCompute implements ComputeProvider {
 }
 
 describe("crash-consistency: persist failure compensates the launched task", () => {
-  const outage = { failWrites: false };
+  // `failWrites` fails every write while armed; `failNextWrites` fails the next N
+  // writes then disarms (to fail a specific write, e.g. the post-launch commit).
+  const outage = { failWrites: false, failNextWrites: 0 };
   let client: ReturnType<typeof createDynamoClient>;
   let service: WorkspaceService;
   let compute: TrackingCompute;
@@ -58,10 +65,10 @@ describe("crash-consistency: persist failure compensates the launched task", () 
     // middleware stack is the AWS SDK's supported extension point.
     client.middlewareStack.add(
       (next, context) => (args) => {
-        if (
-          outage.failWrites &&
-          (context.commandName === "PutItemCommand" || context.commandName === "UpdateItemCommand")
-        ) {
+        const isWrite =
+          context.commandName === "PutItemCommand" || context.commandName === "UpdateItemCommand";
+        if (isWrite && (outage.failWrites || outage.failNextWrites > 0)) {
+          if (outage.failNextWrites > 0) outage.failNextWrites -= 1;
           return Promise.reject(new Error(OUTAGE_MESSAGE));
         }
         return next(args);
@@ -74,6 +81,7 @@ describe("crash-consistency: persist failure compensates the launched task", () 
 
   beforeEach(async () => {
     outage.failWrites = false;
+    outage.failNextWrites = 0;
     const storage = await FakeStorageProvider.create();
     compute = new TrackingCompute(new FakeComputeProvider(storage));
     service = new WorkspaceService({
@@ -86,6 +94,7 @@ describe("crash-consistency: persist failure compensates the launched task", () 
 
   afterAll(async () => {
     outage.failWrites = false;
+    outage.failNextWrites = 0;
     await dropTable(client, TABLE);
   });
 
@@ -103,25 +112,52 @@ describe("crash-consistency: persist failure compensates the launched task", () 
     expect(await service.list({ ownerId: ownerId("crash-a") })).toHaveLength(0);
   });
 
-  it("start(): persist failure stops the just-launched task; the record stays stopped", async () => {
+  it("start(): a write outage on the claim launches NO task and keeps the record stopped", async () => {
     const ws = await service.create({
       ownerId: ownerId("crash-b"),
       baseImage: baseImage("golden/node:20"),
     });
-    const stopRes = await service.stop(workspaceId(ws.id));
-    expect(stopRes.ok).toBe(true);
+    expect((await service.stop(workspaceId(ws.id))).ok).toBe(true);
     const launchedBefore = compute.launched.length;
 
     outage.failWrites = true;
     await expect(service.start(workspaceId(ws.id))).rejects.toThrow(OUTAGE_MESSAGE);
     outage.failWrites = false;
 
+    // Claim-before-launch: the provisioning claim write failed BEFORE any launch,
+    // so nothing was started and nothing leaked.
+    expect(compute.launched).toHaveLength(launchedBefore);
+
+    // The record still says stopped (untouched), so a retry can succeed.
+    const after = await service.get(workspaceId(ws.id));
+    expect(after?.state).toBe("stopped");
+    const retried = await service.start(workspaceId(ws.id));
+    expect(retried.ok).toBe(true);
+    if (retried.ok) expect(retried.value.state).toBe("running");
+  });
+
+  it("start(): a write outage on the post-launch commit stops the task and rolls back to stopped", async () => {
+    const ws = await service.create({
+      ownerId: ownerId("crash-c"),
+      baseImage: baseImage("golden/node:20"),
+    });
+    expect((await service.stop(workspaceId(ws.id))).ok).toBe(true);
+    const launchedBefore = compute.launched.length;
+
+    // Claim write succeeds; the task launches; then arm a one-shot outage so the
+    // commit (provisioning → running) write fails. The rollback write then succeeds.
+    compute.afterLaunch = () => {
+      outage.failNextWrites = 1;
+    };
+    await expect(service.start(workspaceId(ws.id))).rejects.toThrow(OUTAGE_MESSAGE);
+    compute.afterLaunch = undefined;
+
     // Exactly one wake task launched, and it was compensated away.
     expect(compute.launched).toHaveLength(launchedBefore + 1);
     const wakeTask = compute.launched[launchedBefore];
     expect(compute.stopped).toContain(wakeTask);
 
-    // The record still says stopped (untouched), so a retry can succeed.
+    // The claim was rolled back, so the workspace is wake-able again.
     const after = await service.get(workspaceId(ws.id));
     expect(after?.state).toBe("stopped");
     const retried = await service.start(workspaceId(ws.id));

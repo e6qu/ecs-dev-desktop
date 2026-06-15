@@ -95,17 +95,29 @@ export function markStopped(
   }));
 }
 
-/** Compute the running workspace after waking from a snapshot. Err if invalid. */
-export function markStarted(
+/**
+ * Phase 1 of waking: claim the wake by moving stopped → provisioning, BEFORE any
+ * task is launched. Persisting this conditionally (optimistic version) lets exactly
+ * one concurrent waker proceed to launch — the rest lose the claim and wait — so a
+ * burst of connects never starts a herd of tasks. No bindings yet (the volume/task
+ * arrive in phase 2). Err if the workspace is not wakeable.
+ */
+export function markWaking(ws: Workspace, at: IsoTimestamp): Result<Workspace, DomainError> {
+  return map(transition(ws.state, "wake"), (state) => ({ ...ws, state, lastActivity: at }));
+}
+
+/**
+ * Phase 2 of waking: commit provisioning → running once the task is up, recording
+ * its volume/task/host. Err if the workspace is not provisioning.
+ */
+export function markProvisioned(
   ws: Workspace,
   volumeId: VolumeId,
   taskId: TaskId,
   at: IsoTimestamp,
   sshHost?: string,
 ): Result<Workspace, DomainError> {
-  const woken = transition(ws.state, "wake");
-  if (!woken.ok) return woken;
-  return map(transition(woken.value, "provisioned"), (state) => ({
+  return map(transition(ws.state, "provisioned"), (state) => ({
     ...ws,
     state,
     lastActivity: at,
