@@ -93,6 +93,16 @@ Notes:
   Auth.js secrets shown above (`AUTH_SECRET`, the provider id/secret). To target
   **real** GitHub or Entra instead of the sims, change those same coordinates only
   — no code change.
+- **+ Entra** additionally needs the Entra provider coordinates:
+  ```sh
+  EDD_DEV_PROFILES=entra EDD_DEV_AUTH=0 AUTH_SECRET=dev-secret \
+    AUTH_MICROSOFT_ENTRA_ID_ID=<id> AUTH_MICROSOFT_ENTRA_ID_SECRET=<secret> \
+    AUTH_MICROSOFT_ENTRA_ID_ISSUER=http://127.0.0.1:4568/edd-e2e-tenant/v2.0 \
+    pnpm dev
+  ```
+  Caveat: Auth.js re-discovers the Entra issuer over **HTTPS** (no insecure
+  fallback), so the full Entra callback round-trip is validated in the HTTPS
+  harness (the `e2e-https` tier), not plain-HTTP `pnpm dev`.
 - The **+ AWS** tier is for exercising the real adapter call shapes; the full
   container-mode workspace loop (real task containers, snapshot/restore) lives in
   the e2e tier below (`pnpm test:e2e:local`).

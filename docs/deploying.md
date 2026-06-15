@@ -38,9 +38,10 @@ a runnable composition is in [`infra/terraform/examples/complete`](../infra/terr
    instance), task sizing, and `secret_environment` (see Step 3).
 3. `terraform apply`. This creates: VPC/subnets/NAT, DynamoDB single-table
    (PK/SK + GSI1 + GSI2, on-demand), ECR repos (control-plane + golden), KMS,
-   IAM roles, the ECS cluster + control-plane service (autoscaled, FARGATE_SPOT
-   capacity, Container Insights, ECS Exec/KMS), the ALB + ACM cert + Route 53
-   records, the reconciler EventBridge schedule, and CloudWatch log groups.
+   IAM roles, the ECS cluster + control-plane service (autoscaled, on-demand
+   FARGATE — the cluster also registers a FARGATE_SPOT capacity provider —
+   Container Insights, ECS Exec/KMS), the ALB + ACM cert + Route 53 records, the
+   reconciler EventBridge schedule, CloudWatch log groups, and the metric alarms.
 
 > **Two-phase apply.** The control-plane image tag defaults to `:latest`, which
 > does not exist until Step 2. Either push images first, or expect the first
@@ -48,8 +49,8 @@ a runnable composition is in [`infra/terraform/examples/complete`](../infra/terr
 > Step 2.
 
 Module **outputs** feed the rest: `control_plane_repository_url`,
-`golden_repository_url`, the cluster/subnet/role ids, the ALB DNS name, and the
-CloudWatch log groups.
+`golden_repository_urls` (a map, one ECR URL per golden image), the cluster/subnet/
+role ids, the ALB DNS name, and the CloudWatch log groups.
 
 ## Step 2 — Build & publish images
 
@@ -60,9 +61,9 @@ Two images go to the ECR repos the module created:
    reconciler run this image (the reconciler is the same image with a command
    override — there is no separate reconciler image).
 2. **The golden workspace image** ([`infra/images/workspace`](../infra/images/README.md))
-   → `golden_repository_url`. This bakes OpenVSCode Server, the toolchains, and
-   `sshd` + the SSH CA wiring (there is no separate "SSH proxy" image — SSH is
-   served from the workspace task).
+   → the matching entry in `golden_repository_urls`. This bakes OpenVSCode Server,
+   the toolchains, and `sshd` + the SSH CA wiring (there is no separate "SSH proxy"
+   image — SSH is served from the workspace task).
 
 ```sh
 aws ecr get-login-password --region <region> \
@@ -78,21 +79,31 @@ The module **already injects** the infra coordinates into the task definition:
 `ECS_SECURITY_GROUPS`, `ECS_EBS_ROLE_ARN`, `EDD_KMS_KEY_ARN`, `CONTROL_PLANE_URL`,
 `EDD_APP_NAME`, and `ECS_LOG_GROUP_WORKSPACES`. You do **not** set these by hand.
 
-What **you must supply** via the module's `secret_environment` (backed by Secrets
-Manager) — these are not injected and the app fails loudly without them:
+What **you must supply** (the module injects none of these; the app fails loudly
+without the required ones). Two channels: **`secret_environment`** — a map of
+name → Secrets Manager / SSM ARN, for secrets — and **`extra_environment`** — plain
+name → value, for non-secret config.
 
-| Group        | Variable                                                                                         | Purpose                                                    |
-| ------------ | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------- |
-| Auth.js      | `AUTH_SECRET`                                                                                    | session/JWT signing                                        |
-| Auth.js      | `AUTH_URL` or `AUTH_TRUST_HOST=true`                                                             | correct callback/redirect behind the ALB                   |
-| IdP (GitHub) | `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`                                                           | GitHub OAuth/App                                           |
-| IdP (Entra)  | `AUTH_MICROSOFT_ENTRA_ID_ID`, `AUTH_MICROSOFT_ENTRA_ID_SECRET`, `AUTH_MICROSOFT_ENTRA_ID_ISSUER` | Azure Entra OIDC                                           |
-| RBAC         | `EDD_ADMIN_GROUPS`, `EDD_MEMBER_GROUPS`                                                          | IdP group → role mapping (**see admin bootstrap below**)   |
-| Crypto       | `EDD_TOKEN_ENC_KEY`                                                                              | 32-byte hex AES key — gates git-credential storage         |
-| Crypto       | `EDD_GATEWAY_SECRET`                                                                             | gateway↔control-plane machine-auth HMAC (connect/wake)     |
-| Crypto       | `EDD_AGENT_SECRET`                                                                               | idle-agent heartbeat HMAC                                  |
-| SSH          | `EDD_SSH_CA_KEY`                                                                                 | the CA **private** key material for cert issuance (Step 4) |
-| Proxy        | `EDD_WORKSPACE_BASE_DOMAIN`, `EDD_POMERIUM_JWKS_URL`                                             | workspace routing + proxy JWT verification                 |
+Secrets (`secret_environment`):
+
+| Group        | Variable                                                       | Purpose                                                    |
+| ------------ | -------------------------------------------------------------- | ---------------------------------------------------------- |
+| Auth.js      | `AUTH_SECRET`                                                  | session/JWT signing                                        |
+| IdP (GitHub) | `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`                         | GitHub OAuth/App                                           |
+| IdP (Entra)  | `AUTH_MICROSOFT_ENTRA_ID_ID`, `AUTH_MICROSOFT_ENTRA_ID_SECRET` | Azure Entra OIDC client                                    |
+| Crypto       | `EDD_TOKEN_ENC_KEY`                                            | 32-byte hex AES key — gates git-credential storage         |
+| Crypto       | `EDD_GATEWAY_SECRET`                                           | gateway↔control-plane machine-auth HMAC (connect/wake)     |
+| Crypto       | `EDD_AGENT_SECRET`                                             | idle-agent heartbeat HMAC                                  |
+| SSH          | `EDD_SSH_CA_KEY`                                               | the CA **private** key material for cert issuance (Step 4) |
+
+Non-secret config (`extra_environment`):
+
+| Group       | Variable                                             | Purpose                                            |
+| ----------- | ---------------------------------------------------- | -------------------------------------------------- |
+| Auth.js     | `AUTH_URL` or `AUTH_TRUST_HOST=true`                 | correct callback/redirect behind the ALB           |
+| IdP (Entra) | `AUTH_MICROSOFT_ENTRA_ID_ISSUER`                     | Entra OIDC issuer URL                              |
+| RBAC        | `EDD_ADMIN_GROUPS`, `EDD_MEMBER_GROUPS`              | IdP group → role mapping (**see admin bootstrap**) |
+| Proxy       | `EDD_WORKSPACE_BASE_DOMAIN`, `EDD_POMERIUM_JWKS_URL` | workspace routing + proxy JWT verification         |
 
 > **Admin bootstrap (important).** RBAC is purely IdP-group-driven: the default
 > role is `viewer`, and an account is an admin **only** if its IdP groups intersect
