@@ -41,6 +41,33 @@ RUN arch="$(dpkg --print-architecture)" \
     && rm /tmp/openvscode-server.tar.gz \
     && ln -s /opt/openvscode-server/bin/openvscode-server /usr/local/bin/openvscode-server
 
+# Default VS Code extensions (from Open VSX — OpenVSCode Server's default gallery):
+# the AI coding agents (Claude Code + Codex) and cross-cutting dev extensions.
+# Installed into OpenVSCode's BUILT-IN extensions dir (/opt/openvscode-server/
+# extensions) — NOT the user extensions dir, which is under /home/workspace and
+# shadowed by the EBS volume at runtime. Built-in extensions load read-only with no
+# runtime copy (a ~1 GB first-boot copy would slow every workspace start); the user
+# still installs their own into the volume's extensions dir. Variants add their
+# language extensions to the same built-in dir.
+RUN for ext in \
+      anthropic.claude-code \
+      openai.chatgpt \
+      esbenp.prettier-vscode \
+      dbaeumer.vscode-eslint \
+      github.vscode-pull-request-github \
+      github.vscode-github-actions ; do \
+      openvscode-server --install-extension "$ext" --extensions-dir /opt/openvscode-server/extensions ; \
+    done \
+    && chmod -R a+rX /opt/openvscode-server/extensions
+
+# Cross-cutting CLIs (installed system-wide to /usr/local BEFORE the home npm prefix
+# is set below, so they land in /usr/local — on PATH for every shell): the Claude
+# Code agent CLI (pairs with the extension) and the JS/TS lint/format/dead-code/CPD
+# tools that match this repo's own CI (prettier, eslint, knip, jscpd).
+RUN npm install -g @anthropic-ai/claude-code prettier eslint knip jscpd \
+    && command -v claude && prettier --version && eslint --version \
+    && knip --version && jscpd --version
+
 # User-installable CLIs without root: the system npm prefix is /usr/local (root-
 # owned), so `npm install -g` would EACCES for the non-root `workspace` user. Point
 # npm's global prefix at a HOME dir (persists on the EBS home volume) and put it —

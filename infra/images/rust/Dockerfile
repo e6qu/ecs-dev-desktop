@@ -15,10 +15,17 @@ ENV PATH="/opt/rust/cargo/bin:${PATH}"
 RUN apt-get update && apt-get install -y --no-install-recommends build-essential \
     && rm -rf /var/lib/apt/lists/*
 
-# Rust — system-wide rustup/cargo (world-writable caches so `workspace` builds).
+# Rust — system-wide rustup/cargo (world-writable caches so `workspace` builds) +
+# the clippy (linter) and rustfmt (formatter) components.
 RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal \
+    && /opt/rust/cargo/bin/rustup component add clippy rustfmt \
     && chmod -R a+rwX /opt/rust \
-    && /opt/rust/cargo/bin/cargo --version
+    && /opt/rust/cargo/bin/cargo --version \
+    && /opt/rust/cargo/bin/cargo clippy --version && /opt/rust/cargo/bin/cargo fmt --version
+
+# Rust VS Code language support into the built-in extensions dir (baked at build).
+RUN openvscode-server --install-extension rust-lang.rust-analyzer --extensions-dir /opt/openvscode-server/extensions \
+    && chmod -R a+rX /opt/openvscode-server/extensions
 
 # /opt/rust/cargo/bin isn't on the base PATH — overwrite the PATH drop-ins so login
 # shells and the ssh-exec channel both find `cargo` (+ export RUSTUP_HOME/CARGO_HOME).

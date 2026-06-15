@@ -25,6 +25,10 @@ RUN gradle_ver="$(curl -fsSL https://services.gradle.org/versions/current | sed 
     && rm /tmp/gradle.zip \
     && /opt/gradle/bin/gradle --version | grep -i version
 
+# Java VS Code language support into the built-in extensions dir (baked at build).
+RUN openvscode-server --install-extension redhat.java --extensions-dir /opt/openvscode-server/extensions \
+    && chmod -R a+rX /opt/openvscode-server/extensions
+
 # /opt/gradle/bin isn't on the base PATH — overwrite the PATH drop-ins so login
 # shells and the ssh-exec channel both find `gradle` (+ export JAVA_HOME/GRADLE_HOME).
 RUN printf '%s\n' \

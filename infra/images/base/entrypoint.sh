@@ -74,6 +74,10 @@ JSON
   chmod 0644 "${settings_dir}/settings.json"
 fi
 
+# (Default extensions — the AI agents + dev extensions — are baked into OpenVSCode's
+# built-in extensions dir at image build, so they load with no runtime copy. The
+# user's own extensions still install into the volume's extensions dir below.)
+
 # Base server args. --disable-workspace-trust: a per-user workspace contains the
 # user's own files, so the Workspace Trust prompt is pure friction (a modal that
 # blocks the UI); hosted dev environments disable it.

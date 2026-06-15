@@ -10,19 +10,26 @@ the MS marketplace).
 
 ## A collection built on a shared base
 
-| Image          | Dir                           | Contents                                                                                                                                                                                                                                                                                                                       |
-| -------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **base**       | [`base/`](./base)             | Common runtime: OpenVSCode Server, `sshd` + CA, idle-agent, entrypoint, git-credential helper, `workspace` user, **Node 22**, the user-CLI setup (npm global prefix in `$HOME` + PATH across the shell matrix), and the Dark-mode default. **No compilers / language toolchains.** Every variant builds `FROM` this. (~600 MB) |
-| **omnibus**    | [`omnibus/`](./omnibus)       | base **+ the full polyglot toolchain** — C/C++, Go, Java (JDK + Maven + Gradle), Rust, Python 3 (+ uv), Node package managers (yarn/pnpm/bun), Playwright (+ headless Chromium). The "everything" image. (~3 GB)                                                                                                               |
-| **typescript** | [`typescript/`](./typescript) | base + yarn/pnpm/bun + global `tsc` + build-essential. (~1 GB)                                                                                                                                                                                                                                                                 |
-| **python**     | [`python/`](./python)         | base + Python 3 (pip/venv) + `uv` + build-essential. (~0.95 GB)                                                                                                                                                                                                                                                                |
-| **go**         | [`go/`](./go)                 | base + the Go toolchain + build-essential (cgo). (~1.1 GB)                                                                                                                                                                                                                                                                     |
-| **java**       | [`java/`](./java)             | base + JDK + Maven + Gradle. (~1.1 GB)                                                                                                                                                                                                                                                                                         |
-| **rust**       | [`rust/`](./rust)             | base + rustup/cargo + build-essential (linker). (~1.4 GB)                                                                                                                                                                                                                                                                      |
+| Image          | Dir                           | Contents                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | Size    |
+| -------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------- |
+| **base**       | [`base/`](./base)             | Common runtime: OpenVSCode Server, `sshd` + CA, idle-agent, entrypoint, git-credential helper, `workspace` user, **Node 22**; the user-CLI setup (npm global prefix in `$HOME` + PATH across the shell matrix) + Dark-mode default; the **AI coding agents** (Claude Code + Codex extensions, the `claude` CLI); and cross-cutting JS/TS tooling matching CI (prettier, eslint, knip, jscpd + the prettier/eslint/GitHub extensions). **No language compilers/toolchains.** Every variant builds `FROM` this. | ~1.6 GB |
+| **omnibus**    | [`omnibus/`](./omnibus)       | base **+ every language toolchain** (C/C++, Go, Java JDK+Maven+Gradle, Rust, Python 3 + uv, yarn/pnpm/bun, Playwright) **+ every language's linters/SAST** (ruff/ty/vulture/bandit/semgrep, golangci-lint, clippy/rustfmt) + all the language extensions.                                                                                                                                                                                                                                                     | ~5.7 GB |
+| **typescript** | [`typescript/`](./typescript) | base + yarn/pnpm/bun + `tsc` + build-essential.                                                                                                                                                                                                                                                                                                                                                                                                                                                               | ~2 GB   |
+| **python**     | [`python/`](./python)         | base + Python 3 + uv + ruff/ty/vulture/bandit/semgrep + Python/Ruff/ty/basedpyright/Semgrep extensions.                                                                                                                                                                                                                                                                                                                                                                                                       | ~3.4 GB |
+| **go**         | [`go/`](./go)                 | base + Go + golangci-lint + the Go extension.                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | ~2.2 GB |
+| **java**       | [`java/`](./java)             | base + JDK + Maven + Gradle + the Java extension.                                                                                                                                                                                                                                                                                                                                                                                                                                                             | ~2.4 GB |
+| **rust**       | [`rust/`](./rust)             | base + rustup/cargo + clippy/rustfmt + rust-analyzer.                                                                                                                                                                                                                                                                                                                                                                                                                                                         | ~2.5 GB |
 
-The slim variants are smoke-tested by `packages/e2e/src/image-variants.e2e.ts` (each
-ships its toolchain + the shared base behaviour and carries no other language),
-built and run by the path-gated `golden-images` CI workflow.
+> Size note: the baked AI-agent extensions (Claude Code + Codex bundle native
+> binaries, ~1 GB) live in **base**, so every variant carries them — that's the
+> cost of "agents everywhere." If image size becomes a concern, the agents could be
+> moved to omnibus-only or made an opt-in build arg.
+
+The variants are smoke-tested by `packages/e2e/src/image-variants.e2e.ts` (each
+ships its toolchain + dev tooling + the shared base behaviour + seeded agent
+extensions, and carries no other language); the omnibus by
+`workspace-toolchain.e2e.ts`. Built and run by the path-gated `golden-images` CI
+workflow (variants) / the `e2e` job (omnibus).
 
 Build the base first, then a variant `FROM` it via the `BASE` build-arg:
 
@@ -39,6 +46,11 @@ At startup the entrypoint writes the injected workspace SSH CA public key and th
 `dev-<workspaceId>` principal file, starts `sshd`, seeds default editor settings
 (Dark mode, write-if-absent on the EBS home volume), then runs the idle-agent and
 OpenVSCode Server as the non-root `workspace` user (via `gosu`).
+
+The default extensions (AI agents + dev extensions) are installed into OpenVSCode's
+**built-in** extensions dir at image build (`/opt/openvscode-server/extensions`), so
+they load read-only with no runtime copy and survive the volume mount; the user's own
+extensions still install into the volume's extensions dir and persist across restarts.
 
 Cross-cutting notes:
 
