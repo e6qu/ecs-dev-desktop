@@ -21,7 +21,7 @@
       "entry": ["**/*.test.ts", "**/*.integ.ts"]
     },
     "packages/e2e": {
-      "entry": ["**/*.e2e.ts"]
+      "entry": ["**/*.e2e.ts", "src/live-sim-run.ts"]
     },
     "services/*": {
       "entry": ["**/*.test.ts", "**/*.integ.ts", "**/*.e2e.ts"]

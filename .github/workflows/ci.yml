@@ -4,6 +4,13 @@ name: CI
 on:
   pull_request:
     branches: [main]
+    # `labeled` is included so adding the `ci:macos` label to a PR triggers a run
+    # in which the gated macOS full-IDE-flow job (e2e-flow-macos) executes.
+    types: [opened, synchronize, reopened, labeled]
+  # Manual trigger — runs the expensive macOS/colima full-IDE-flow job
+  # (e2e-flow-macos) on demand without paying its cost on every push. The same job
+  # also runs on a PR carrying the `ci:macos` label (see its `if:`).
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -187,6 +194,155 @@ jobs:
         run: docker compose -f docker-compose.e2e.yml down
       - if: always()
         run: docker compose -f docker-compose.ssh.yml down
+
+  # Build BOTH images the macOS job needs ONCE on Linux (native BuildKit, fast) and
+  # publish them to GHCR, so the macOS job pulls instead of building under colima —
+  # which is very slow over the VM's disk I/O (the sim build alone took ~55 min) and,
+  # for the golden image, fails outright (colima's legacy builder can't do the
+  # Dockerfile's `COPY --chmod`, which needs BuildKit). Gated like the macOS job.
+  #
+  # These are EPHEMERAL CI FIXTURES, NOT RELEASE ARTIFACTS:
+  #   * package names are `edd-ci-*` (not the product image names) so they read as
+  #     test fixtures, never something to pull/deploy;
+  #   * the tag is run-scoped (`ci-<run_id>`), never `latest`/a version, and is
+  #     rebuilt from the PR's code every run (no cross-run reuse → never stale);
+  #   * each carries an OCI "NOT a release — do not deploy" description label.
+  # There is no release pipeline in this repo; nothing consumes these after the run.
+  macos-images:
+    name: macos-images
+    runs-on: ubuntu-latest
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'ci:macos')
+    permissions:
+      contents: read
+      packages: write
+    env:
+      GOLDEN: ghcr.io/${{ github.repository_owner }}/edd-ci-workspace
+      SIM: ghcr.io/${{ github.repository_owner }}/edd-ci-sim-aws-exec
+      NOT_A_RELEASE: "Ephemeral CI fixture for the e2e-flow-macos job. NOT a release image — do not pull or deploy; rebuilt from PR code every run."
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          submodules: recursive # third_party/sockerless — the sim image is built from source
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Build & push the golden workspace image (CI fixture)
+        run: |
+          docker build \
+            --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
+            --label "org.opencontainers.image.description=${NOT_A_RELEASE}" \
+            -t "${GOLDEN}:ci-${{ github.run_id }}" infra/images/workspace
+          docker push "${GOLDEN}:ci-${{ github.run_id }}"
+      - name: Build & push the container-mode AWS sim image (CI fixture)
+        run: |
+          docker build -f infra/sim/sockerless-aws-exec.Dockerfile \
+            --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
+            --label "org.opencontainers.image.description=${NOT_A_RELEASE}" \
+            -t "${SIM}:ci-${{ github.run_id }}" third_party/sockerless/simulators
+          docker push "${SIM}:ci-${{ github.run_id }}"
+
+  # The SAME full live IDE flow (create a workspace → real ECS task on the
+  # container-mode sim → reach the actual OpenVSCode workbench through the bridge),
+  # but on a macOS runner. GitHub-hosted macOS has no native Docker, so a Linux
+  # container engine is provided by colima; the sim + task containers run in that
+  # VM exactly as on Linux (endpoint/coordinate-only — §6.8). macOS minutes are
+  # expensive, so this is gated: it runs on `workflow_dispatch` or on a PR labelled
+  # `ci:macos` (the Linux `e2e` job runs the same test on every PR via test:e2e).
+  #
+  # Runner MUST be Intel (macos-15-intel): GitHub's Apple-silicon runners
+  # (macos-14/15) do NOT support the nested virtualization colima needs — its `vz`
+  # VM driver fails to boot there ("error starting vm"). The Intel runner uses
+  # QEMU+HVF and runs an x86_64 Linux VM natively (no emulation). Both container
+  # images are pulled from GHCR (built by `macos-images`), never built here.
+  e2e-flow-macos:
+    name: e2e-flow-macos
+    runs-on: macos-15-intel
+    needs: macos-images
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'ci:macos')
+    permissions:
+      contents: read
+      packages: read
+    env:
+      GOLDEN: ghcr.io/${{ github.repository_owner }}/edd-ci-workspace
+      SIM: ghcr.io/${{ github.repository_owner }}/edd-ci-sim-aws-exec
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          submodules: recursive # third_party/sockerless — compose references its build context
+      - uses: pnpm/action-setup@v6.0.8
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      # Provide a Docker engine on macOS via colima (a lightweight x86_64 Linux VM
+      # via QEMU+HVF on the Intel runner). `brew install docker` ships only the CLI,
+      # not the Compose v2 plugin, so install docker-compose too and link it as a CLI
+      # plugin — otherwise `docker compose` errors with "unknown shorthand flag: 'f'".
+      # Generous RAM: the golden workspace container is heavy and must stay running.
+      - name: Start Docker engine (colima)
+        run: |
+          brew install docker docker-compose colima
+          mkdir -p ~/.docker/cli-plugins
+          ln -sfn "$(brew --prefix)/opt/docker-compose/bin/docker-compose" ~/.docker/cli-plugins/docker-compose
+          colima start --cpu 4 --memory 10 --disk 30
+          docker context use colima
+          docker info
+          docker compose version
+      # Pull both Linux-built images (no build in colima) and tag them to the local
+      # refs the catalog/test/bridge and compose default to.
+      - name: Pull prebuilt images from GHCR
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          docker pull "${GOLDEN}:ci-${{ github.run_id }}"
+          docker tag "${GOLDEN}:ci-${{ github.run_id }}" edd-workspace:e2e
+          docker pull "${SIM}:ci-${{ github.run_id }}"
+          docker tag "${SIM}:ci-${{ github.run_id }}" edd-sim-aws-exec:e2e
+      # Only the two services the IDE flow needs: DynamoDB Local + the container-mode
+      # AWS sim (no Pomerium/bleephub/azure). `--no-build` uses the pulled sim image.
+      - name: Start container-mode sim + DynamoDB Local (prebuilt)
+        run: |
+          for attempt in 1 2 3; do
+            if docker compose -f docker-compose.e2e.yml up -d --no-build --wait dynamodb-local sockerless-aws-exec; then
+              exit 0
+            fi
+            echo "::warning::sim bring-up failed (attempt ${attempt}); retrying"
+            docker compose -f docker-compose.e2e.yml down -v || true
+            sleep "$((attempt * 20))"
+          done
+          exit 1
+      # colima establishes host→VM port forwards asynchronously after `up`, so the
+      # published ports can lag the containers being "started". Confirm both are
+      # actually reachable from the host before the test (which otherwise fails with
+      # a DynamoDB "socket hang up" if its 30s wait starts too early).
+      - name: Wait until the sim + DynamoDB are reachable from the host
+        run: |
+          for ep in http://127.0.0.1:4566/ http://127.0.0.1:8000/; do
+            ok=0
+            for _ in $(seq 1 90); do
+              if curl -s -o /dev/null --max-time 3 "$ep"; then echo "$ep reachable"; ok=1; break; fi
+              sleep 2
+            done
+            if [ "$ok" != 1 ]; then echo "::error::$ep not reachable after wait"; docker ps -a; exit 1; fi
+          done
+      - name: Full IDE flow e2e (create workspace → real OpenVSCode through the bridge)
+        run: pnpm --filter @edd/e2e exec vitest run --config vitest.e2e.config.ts src/live-ide-flow.e2e.ts
+      # If the flow fails (e.g. the task container didn't stay up), capture why.
+      - if: failure()
+        name: Diagnostics (containers + sim logs)
+        run: |
+          echo "== docker ps -a =="; docker ps -a
+          echo "== sim logs =="; docker compose -f docker-compose.e2e.yml logs --tail 120 sockerless-aws-exec || true
+          echo "== workspace task logs =="
+          for c in $(docker ps -aq --filter ancestor=edd-workspace:e2e); do
+            echo "--- $c ---"; docker logs --tail 80 "$c" 2>&1 || true
+          done
+      - if: always()
+        run: docker compose -f docker-compose.e2e.yml down -v || true
 
   # The same auth + SSH paths, but with the simulators served over TLS (the way
   # real cloud always is). Proves the stack is correct end-to-end over HTTPS with

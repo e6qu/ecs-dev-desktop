@@ -14,6 +14,10 @@ services:
       - "8000:8000"
 
   sockerless-aws-exec:
+    # Named so it can be run prebuilt (`up --no-build`) from a pulled image — the
+    # macOS CI job pulls this from GHCR instead of building it under colima (slow).
+    # The Linux path still `up --build`s and tags it with this same name.
+    image: edd-sim-aws-exec:e2e
     build:
       context: ./third_party/sockerless/simulators
       dockerfile: ../../../infra/sim/sockerless-aws-exec.Dockerfile

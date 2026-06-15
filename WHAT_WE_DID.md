@@ -1014,3 +1014,27 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
   core topology + fake-cluster unit tests, `InfrastructureService` unit tests,
   contracts parse test, compute-ecs `clusterInfo` integ vs the live sockerless sim,
   and Playwright (admin sees cluster + topology with live status; non-admin denied).
+
+- **2026-06-15 — End-to-end live IDE flow proven + tested in CI on Linux and macOS.**
+  Stood up the full stack on the container-mode sim with a real ECS cluster and
+  proved "create a workspace and open its IDE": the control plane runs a real ECS
+  task (managed EBS + awsvpc ENI; container mode is unaffected by sockerless#569),
+  and the **actual OpenVSCode workbench** is reachable in a browser through a new
+  IDE bridge (`packages/e2e/src/ide-bridge.ts`). The sim isolates each task's awsvpc
+  netns (not attached to any host-reachable Docker network — peer tasks reach it
+  in-network), so the bridge tunnels host → `docker exec` → the task netns →
+  `127.0.0.1:3000` and extracts the per-boot `--connection-token`; it is the
+  local/sim realisation of the production identity-aware-proxy reach (the
+  CONNECTION_TOKEN handoff remains the future product extension). New
+  `live-ide-flow.e2e.ts` asserts the whole path (create → 403 token gate → 200
+  workbench with `vscode-workbench-web-configuration` + the bridge as
+  `remoteAuthority`); `live-sim-run.ts` became a one-command interactive harness
+  (auto-create + bridge, prints web + IDE URLs). CI: the e2e runs every PR in the
+  Linux `e2e` job; a gated **`e2e-flow-macos`** job (macos-14 + colima Docker;
+  `workflow_dispatch` or the `ci:macos` PR label, to bound expensive macOS minutes)
+  runs the identical flow on macOS. Lessons: (1) the harness and the web app must
+  share ONE DynamoDB endpoint — `configureAwsSimEnv` sets `AWS_ENDPOINT_URL` (the
+  sim's own DynamoDB) but not `DYNAMODB_ENDPOINT`, so a harness that doesn't pin
+  `DYNAMODB_ENDPOINT` writes the table to the sim while the app reads DynamoDB-Local
+  (empty → 503); (2) sim task containers are reaped after a few idle minutes —
+  irrelevant to the fast e2e, flagged for the focused sim-fidelity pass.

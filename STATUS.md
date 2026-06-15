@@ -2,37 +2,52 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-15 (admin Infrastructure view + provisioning-503 fix branch)
+**Last updated:** 2026-06-15 (live IDE flow + Linux/macOS CI branch)
 
 ## Current phase
 
-**Admin Infrastructure view + provisioning failure as a handled 503.** Two pieces
-on `fix/provisioning-503-and-infra-view` (not yet PR'd):
+**End-to-end live IDE flow, tested in CI on Linux and macOS.** On
+`feat/live-ide-flow-ci`: brought the whole stack up against the container-mode sim
+with a real ECS cluster and proved "create a workspace and open its IDE" — the
+control plane launches a workspace as a real ECS task (managed EBS + awsvpc ENI;
+container mode is unaffected by sockerless#569), and the **actual OpenVSCode
+workbench** opens through a new IDE bridge (`packages/e2e/src/ide-bridge.ts`): the
+sim isolates each task's awsvpc netns (not attached to any host-reachable Docker
+network), so the bridge tunnels host → `docker exec` → the task netns → `:3000` and
+extracts the per-boot connection-token. It is the local/sim realisation of the
+production identity-aware-proxy reach (the CONNECTION_TOKEN handoff stays the future
+product extension). New `live-ide-flow.e2e.ts` asserts create → 403 token gate →
+200 workbench; `live-sim-run.ts` is a one-command interactive harness that
+auto-creates a workspace, bridges it, and prints the web and IDE URLs. CI: the e2e
+runs every PR in the Linux `e2e` job; a gated `e2e-flow-macos` job
+(`macos-15-intel` + colima — Intel is required, Apple-silicon runners can't boot
+colima's VM; `workflow_dispatch` or the `ci:macos` PR label, to bound expensive
+macOS minutes) runs the identical flow on macOS. Both container images (the 3 GB
+golden workspace + the from-source AWS sim) are built once natively on Linux and
+pushed to GHCR (a `macos-images` job); the macOS job pulls and runs them with
+`--no-build` — building under colima is far too slow (the sim build alone took
+~55 min) and the golden image needs BuildKit the legacy builder lacks. The GHCR
+packages are **ephemeral CI fixtures, not releases**: named `edd-ci-*`, tagged
+run-scoped (`ci-<run_id>`, rebuilt from PR code every run, never reused/stale),
+and labelled "NOT a release". (There is no release pipeline in the repo.) Verified locally (3 green runs; task
+container observed live). Known quirk: sim task containers are reaped after a few
+idle minutes — irrelevant to the fast e2e, flagged for the focused sim-fidelity pass.
 
-1. _Provisioning failure is now handled, never an on-purpose 500._ Creating a
-   workspace against a backend with no ECS cluster used to throw "Cluster not
-   found" → framework 500 (empty body) → the browser died on "Unexpected end of
-   JSON input". Now a compute-launch failure is a **handled** condition: `create()`
-   throws a typed `ComputeUnavailableError` (route → 503) and `start()` returns the
-   new `unavailable` domain error (→ 503), both with a clear message;
-   `withObservability` observes-and-re-raises (only genuinely-unexpected errors are
-   500); and the api-client tolerates an empty/non-JSON error body. `dev-bootstrap`
-   seeds the full golden catalog (node-20/go-1.22/python-3.12). _(Note: full create
-   against the process-mode sim still can't complete — sockerless#569 managed-EBS;
-   the `+AWS` tier is for adapter call-shapes. Use tier-0 fakes or container-mode
-   e2e to create interactively.)_
+## Prior phase (merged, #88)
 
-2. _New admin Infrastructure view (`/admin/infrastructure`)._ A single aggregate —
-   dependency status checks (Health board), the live ECS cluster (`clusterInfo()` via
-   DescribeClusters; the fake reports its in-memory equivalent), fleet metrics, and
-   the **component topology** (the locked architecture as a node/edge graph in
-   `@edd/core` with live health overlaid on each node — boundary/dynamic nodes show
-   `unknown`, never a fabricated `ok`). New `ClusterInfo` port method (Ecs + fake),
-   `InfrastructureService` shell, contracts + api-client method, route, page, nav
-   entry, and Playwright coverage (admin sees cluster + topology; non-admin denied).
-   Shared the live-view polling into a `usePoll` hook + `HealthRows`/`HealthHead`
-   components (DRY; jscpd back under threshold). Gate green: build/lint/test, knip,
-   jscpd 0.88%, 16 Playwright, compute-ecs integ (clusterInfo) vs the live sim.
+**Admin Infrastructure view + provisioning failure as a handled 503.** (1) A
+compute-launch failure is now a **handled** condition: `create()` throws a typed
+`ComputeUnavailableError` (route → 503) and `start()` returns the new `unavailable`
+domain error (→ 503); `withObservability` observes-and-re-raises (only genuinely
+unexpected errors are 500); the api-client tolerates an empty/non-JSON error body;
+`dev-bootstrap` seeds the full golden catalog. (2) New `/admin/infrastructure`
+aggregate — dependency status checks, the live ECS cluster (`clusterInfo()` via
+DescribeClusters; the fake reports its in-memory equivalent), fleet metrics, and
+the **component topology** (`SYSTEM_TOPOLOGY` pure graph in `@edd/core` with live
+health overlaid; boundary/dynamic nodes `unknown`, never a fabricated `ok`). New
+`InfrastructureService` shell, contracts + api-client method, route/page/nav, and
+Playwright coverage; live-view polling shared into a `usePoll` hook + `HealthRows`/
+`HealthHead`.
 
 ## Prior phase (merged, #87)
 
