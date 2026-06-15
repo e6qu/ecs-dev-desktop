@@ -47,6 +47,19 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **Workspace create against the sim returned a cryptic client error + an on-purpose
+  500 (2026-06-15)** — creating a workspace in the `+AWS` dev tier failed because the
+  sockerless sim has no ECS cluster; `runTask` threw "Cluster not found", the route
+  let it propagate to a framework 500 with an empty body, and the browser then died
+  with "Unexpected end of JSON input". Fixes: (1) a compute-launch failure is now a
+  **handled** condition — `create()` throws a typed `ComputeUnavailableError` (route → 503) and `start()` returns the new `unavailable` domain error (→ 503), both with a
+  clear message; never a 500. (2) `withObservability` no longer catches-and-500s — it
+  observes and re-raises, so only genuinely unexpected errors are 500s. (3) the
+  api-client tolerates an empty/non-JSON error body (clean `ApiError` with the status,
+  no "Unexpected end of JSON input"). (4) `dev-bootstrap` seeds the full golden catalog
+  (node-20/go-1.22/python-3.12), not just Node 20. Note: full workspace create against
+  the process-mode sim still can't complete (sockerless#569 managed-EBS) — the `+AWS`
+  tier is for adapter call shapes; use tier-0 fakes or container-mode e2e to create.
 - **Concurrent wake-on-connect thundering herd → flaky `concurrent-connect` e2e
   (2026-06-15)** — N simultaneous `/connect` on a stopped workspace each launched
   their own `RunTask` (read→launch→persist; losers compensated), so a burst fired N

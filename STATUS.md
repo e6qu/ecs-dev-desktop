@@ -2,9 +2,39 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-14 (docs + launch-readiness audit branch)
+**Last updated:** 2026-06-15 (admin Infrastructure view + provisioning-503 fix branch)
 
 ## Current phase
+
+**Admin Infrastructure view + provisioning failure as a handled 503.** Two pieces
+on `fix/provisioning-503-and-infra-view` (not yet PR'd):
+
+1. _Provisioning failure is now handled, never an on-purpose 500._ Creating a
+   workspace against a backend with no ECS cluster used to throw "Cluster not
+   found" → framework 500 (empty body) → the browser died on "Unexpected end of
+   JSON input". Now a compute-launch failure is a **handled** condition: `create()`
+   throws a typed `ComputeUnavailableError` (route → 503) and `start()` returns the
+   new `unavailable` domain error (→ 503), both with a clear message;
+   `withObservability` observes-and-re-raises (only genuinely-unexpected errors are
+   500); and the api-client tolerates an empty/non-JSON error body. `dev-bootstrap`
+   seeds the full golden catalog (node-20/go-1.22/python-3.12). _(Note: full create
+   against the process-mode sim still can't complete — sockerless#569 managed-EBS;
+   the `+AWS` tier is for adapter call-shapes. Use tier-0 fakes or container-mode
+   e2e to create interactively.)_
+
+2. _New admin Infrastructure view (`/admin/infrastructure`)._ A single aggregate —
+   dependency status checks (Health board), the live ECS cluster (`clusterInfo()` via
+   DescribeClusters; the fake reports its in-memory equivalent), fleet metrics, and
+   the **component topology** (the locked architecture as a node/edge graph in
+   `@edd/core` with live health overlaid on each node — boundary/dynamic nodes show
+   `unknown`, never a fabricated `ok`). New `ClusterInfo` port method (Ecs + fake),
+   `InfrastructureService` shell, contracts + api-client method, route, page, nav
+   entry, and Playwright coverage (admin sees cluster + topology; non-admin denied).
+   Shared the live-view polling into a `usePoll` hook + `HealthRows`/`HealthHead`
+   components (DRY; jscpd back under threshold). Gate green: build/lint/test, knip,
+   jscpd 0.88%, 16 Playwright, compute-ecs integ (clusterInfo) vs the live sim.
+
+## Prior phase (merged, #87)
 
 **Docs accuracy pass — run-everywhere story.** Reviewed all docs against current
 code and fixed drift: the README now frames the run spectrum (local fakes → local

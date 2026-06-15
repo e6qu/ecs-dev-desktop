@@ -3,7 +3,8 @@ import { NextResponse } from "next/server";
 
 import { createWorkspaceRequest } from "@edd/api-contracts";
 import { defineAbilityFor } from "@edd/authz";
-import { baseImage, email, ownerId, withinWorkspaceQuota } from "@edd/core";
+import { ComputeUnavailableError } from "@edd/control-plane";
+import { baseImage, email, ownerId, unavailableError, withinWorkspaceQuota } from "@edd/core";
 
 import {
   authenticate,
@@ -66,13 +67,23 @@ async function handlePOST(req: Request) {
   } catch {
     ownerEmail = undefined;
   }
-  const workspace = await cp.create({
-    ownerId: ownerId(principal.id),
-    ...(ownerEmail === undefined ? {} : { ownerEmail }),
-    ...(parsed.data.repoUrl === undefined ? {} : { repoUrl: parsed.data.repoUrl }),
-    ...(parsed.data.repoRef === undefined ? {} : { repoRef: parsed.data.repoRef }),
-    baseImage: image,
-  });
+  let workspace;
+  try {
+    workspace = await cp.create({
+      ownerId: ownerId(principal.id),
+      ...(ownerEmail === undefined ? {} : { ownerEmail }),
+      ...(parsed.data.repoUrl === undefined ? {} : { repoUrl: parsed.data.repoUrl }),
+      ...(parsed.data.repoRef === undefined ? {} : { repoRef: parsed.data.repoRef }),
+      baseImage: image,
+    });
+  } catch (e) {
+    // The compute backend couldn't launch the task — a handled, retryable failure
+    // (→ 503), not an unexpected 500. Anything else is genuinely unexpected: rethrow.
+    if (e instanceof ComputeUnavailableError) {
+      return domainErrorResponse(unavailableError(e.message));
+    }
+    throw e;
+  }
   // The control plane records `session.create` to the audit ledger (attributed
   // to the owner), so the cost model and admin feed see it without a route-level
   // emit. Same for start/stop/delete on their routes.

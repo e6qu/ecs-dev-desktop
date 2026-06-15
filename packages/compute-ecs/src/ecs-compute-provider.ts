@@ -31,6 +31,7 @@ import {
   taskId,
   volumeId,
   type BaseImage,
+  type ClusterInfo,
   type ComponentHealth,
   type ComputeProvider,
   type ComputeTask,
@@ -469,6 +470,27 @@ export class EcsComputeProvider implements ComputeProvider {
         detail: `ECS DescribeClusters failed: ${err instanceof Error ? err.message : String(err)}`,
       };
     }
+  }
+
+  /**
+   * Live cluster state for the admin Infrastructure view (ECS DescribeClusters).
+   * Returns the cluster's task/service/instance counts. A not-found cluster still
+   * returns a row (status reflects what ECS reports) rather than throwing, so the
+   * UI can show "the cluster is missing" instead of an error. Endpoint-only: the
+   * same call hits the sim or real ECS by coordinates alone.
+   */
+  async clusterInfo(): Promise<ClusterInfo> {
+    const name = this.cluster();
+    const out = await this.client.send(new DescribeClustersCommand({ clusters: [name] }));
+    const cluster = out.clusters?.[0];
+    return {
+      name,
+      status: cluster?.status ?? "not found",
+      runningTasks: cluster?.runningTasksCount ?? 0,
+      pendingTasks: cluster?.pendingTasksCount ?? 0,
+      activeServices: cluster?.activeServicesCount ?? 0,
+      registeredContainerInstances: cluster?.registeredContainerInstancesCount ?? 0,
+    };
   }
 
   /** Build an ECS client from the ambient AWS env (`AWS_ENDPOINT_URL` → the sim). */

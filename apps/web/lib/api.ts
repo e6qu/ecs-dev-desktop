@@ -35,6 +35,7 @@ const DOMAIN_ERROR_STATUS: Record<DomainError["kind"], number> = {
   not_found: 404,
   conflict: 409,
   invalid: 400,
+  unavailable: 503,
 };
 
 /** Map a `DomainError` (the typed failure channel) to its HTTP response. */

@@ -43,4 +43,19 @@ describe("EcsComputeProvider.health against the sockerless AWS sim", () => {
     expect(health.component).toBe("compute");
     expect(health.status).toBe("degraded");
   });
+
+  it("reports cluster info with live counts (DescribeClusters)", async () => {
+    const info = await providerFor(CLUSTER).clusterInfo();
+    expect(info.name).toBe(CLUSTER);
+    expect(info.status).toBe("ACTIVE");
+    // No workspaces launched in this suite — Fargate has no container instances.
+    expect(info.runningTasks).toBe(0);
+    expect(info.registeredContainerInstances).toBe(0);
+  });
+
+  it("reports a 'not found' cluster info without throwing", async () => {
+    const info = await providerFor("edd-no-such-cluster-itest").clusterInfo();
+    expect(info.name).toBe("edd-no-such-cluster-itest");
+    expect(info.status).toBe("not found");
+  });
 });

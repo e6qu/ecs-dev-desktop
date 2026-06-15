@@ -67,6 +67,10 @@ export function withObservability<A extends unknown[]>(
       record(deps, route, method, res.status, deps.now() - startedMs);
       return res;
     } catch (err) {
+      // Observe and re-throw: a thrown error here is by definition UNEXPECTED (a
+      // genuine 500). Handled/expected failures are returned as the appropriate
+      // status by the route/service (e.g. a compute-launch failure → 503), never
+      // raised. The wrapper only records + re-raises.
       record(deps, route, method, 500, deps.now() - startedMs);
       deps.log.error("api request threw", { route, method, error: errorField(err) });
       throw err;

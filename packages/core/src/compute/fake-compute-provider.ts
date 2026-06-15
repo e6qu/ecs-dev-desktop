@@ -2,7 +2,13 @@
 import { newTaskId, type TaskId, type VolumeId } from "../domain/ids";
 import type { ComponentHealth } from "../observability/health";
 import type { StorageProvider } from "../storage/storage-provider";
-import type { ComputeProvider, ComputeTask, RunTaskInput, TaskLiveness } from "./compute-provider";
+import type {
+  ClusterInfo,
+  ComputeProvider,
+  ComputeTask,
+  RunTaskInput,
+  TaskLiveness,
+} from "./compute-provider";
 
 /**
  * In-memory ComputeProvider for tests. Models ECS-managed EBS: `runTask` creates
@@ -53,6 +59,20 @@ export class FakeComputeProvider implements ComputeProvider {
       component: "compute",
       status: "ok",
       detail: "in-memory fake (local)",
+    });
+  }
+
+  /** Cluster state for the admin Infrastructure view: the in-memory equivalent of
+   * a real ECS cluster — running tasks = currently-attached managed volumes. No
+   * fabricated cloud metrics; just what this provider actually holds. */
+  clusterInfo(): Promise<ClusterInfo> {
+    return Promise.resolve({
+      name: "local",
+      status: "local",
+      runningTasks: this.volumes.size,
+      pendingTasks: 0,
+      activeServices: 0,
+      registeredContainerInstances: 0,
     });
   }
 

@@ -11,6 +11,11 @@ import {
   unwrap,
   workspaceId,
   type Clock,
+  type ComputeProvider,
+  type ComputeTask,
+  type RunTaskInput,
+  type TaskId,
+  type TaskLiveness,
 } from "@edd/core";
 import {
   createDynamoClient,
@@ -25,6 +30,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import {
   CatalogService,
+  ComputeUnavailableError,
   DerivedAuditSource,
   DerivedLogSource,
   HealthService,
@@ -32,6 +38,20 @@ import {
 } from "./index";
 
 process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
+
+/** A compute provider whose launch always fails — to exercise the
+ * compute-unavailable (503/handled) path without an unexpected throw. */
+class FailingCompute implements ComputeProvider {
+  runTask(_input: RunTaskInput): Promise<ComputeTask> {
+    return Promise.reject(new Error("Cluster not found: edd-workspaces"));
+  }
+  stopTask(_taskId: TaskId): Promise<void> {
+    return Promise.resolve();
+  }
+  taskState(_taskId: TaskId): Promise<TaskLiveness> {
+    return Promise.resolve("stopped");
+  }
+}
 
 const TEST_TABLE = "ecs-dev-desktop-cp-integ";
 
@@ -119,6 +139,34 @@ describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
     expect(wake?.kind).toBe("timing");
     expect(wake?.value).toBeGreaterThan(0);
     expect(wake?.dimensions).toMatchObject({ baseImage: "golden/node:20" });
+  });
+
+  it("surfaces a compute-launch failure as handled unavailable, never an unexpected throw", async () => {
+    const failing = new WorkspaceService({
+      workspaces: makeWorkspaceEntity(client, TEST_TABLE),
+      storage: await FakeStorageProvider.create(),
+      compute: new FailingCompute(),
+      clock: fixedClock(),
+    });
+
+    // create(): a launch failure is thrown as a typed ComputeUnavailableError (the
+    // route maps it to 503), not a raw error — and no record is left behind.
+    await expect(
+      failing.create({ ownerId: ownerId("noecs"), baseImage: baseImage("golden/node:20") }),
+    ).rejects.toBeInstanceOf(ComputeUnavailableError);
+    expect(await failing.list({ ownerId: ownerId("noecs") })).toHaveLength(0);
+
+    // start(): a launch failure returns a typed `unavailable` Result (→ 503) and
+    // rolls the claim back to stopped, so the workspace stays wake-able.
+    const ws = await service.create({
+      ownerId: ownerId("noecs2"),
+      baseImage: baseImage("golden/node:20"),
+    });
+    unwrap(await service.stop(workspaceId(ws.id)));
+    const failed = await failing.start(workspaceId(ws.id));
+    expect(failed.ok).toBe(false);
+    if (!failed.ok) expect(failed.error.kind).toBe("unavailable");
+    expect((await service.get(workspaceId(ws.id)))?.state).toBe("stopped");
   });
 
   it("connect wakes a scaled-to-zero workspace and is a no-op when already running", async () => {
