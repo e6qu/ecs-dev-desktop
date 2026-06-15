@@ -71,6 +71,14 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
   snapshot chain (sim handles it, none filed). ECS Exec now has a real data-channel
   proof: standard `OpenDataChannel` handshake → command output streamed from the task;
   no divergence was found.
+- **Planned (later, not now): focused sockerless fidelity exploratory pass.** A
+  deliberate sweep that drives more ECS/EBS/Secrets-Manager/CloudWatch call shapes
+  against the sim and diffs each against documented AWS behaviour, filing any
+  genuine, reproducible gap upstream in `e6qu/sockerless` (only there — §0.9). Scope
+  it as adversarial probing (unexpected params, pagination, error shapes, idempotency)
+  rather than re-running the green suites. Nothing to file from the Infrastructure
+  work — `DescribeClusters`/`clusterInfo` conformed exactly. (Requested 2026-06-15;
+  do after the current live-test/IDE thread.)
 - Covered (see `docs/simulator-live-coverage.md`): the real VS Code workspace
   (OpenVSCode browser proof + polyglot toolchain compiles + OpenVSCode :3000 inside
   the sim ECS task), browser Pomerium OIDC login, portal browser lifecycle on real
