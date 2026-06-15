@@ -27,6 +27,7 @@ import {
   snapshotId,
   taskId,
   transition,
+  unavailableError,
   volumeId,
   workspaceId,
   type BaseImage,
@@ -64,6 +65,21 @@ const WAKE_WAIT_TIMEOUT_MS = 180_000;
 const WAKE_POLL_INTERVAL_MS = 250;
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+const asMessage = (e: unknown): string => (e instanceof Error ? e.message : String(e));
+
+/**
+ * The compute backend could not launch a task (e.g. cluster missing, throttled).
+ * Thrown by `create()` (which returns a DTO, not a Result) so the route maps it to
+ * a 503 — a handled, retryable failure, never an unexpected 500. `start()` returns
+ * the equivalent `unavailableError` through its Result instead.
+ */
+export class ComputeUnavailableError extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = "ComputeUnavailableError";
+  }
+}
 
 /** A lifecycle event to record atomically with its state transition. */
 interface LifecycleAudit {
@@ -194,13 +210,19 @@ export class WorkspaceService {
     const id = newWorkspaceId();
     const at = isoTimestamp(this.deps.clock.now());
     // ECS creates the managed EBS volume at task launch and returns its id. The
-    // repo (if any) is cloned into the session at first boot.
-    const task = await this.deps.compute.runTask({
-      workspaceId: id,
-      baseImage: input.baseImage,
-      ...(input.repoUrl === undefined ? {} : { repoUrl: input.repoUrl }),
-      ...(input.repoRef === undefined ? {} : { repoRef: input.repoRef }),
-    });
+    // repo (if any) is cloned into the session at first boot. A launch failure is a
+    // handled, retryable condition (→ 503 at the route), not an unexpected 500.
+    let task;
+    try {
+      task = await this.deps.compute.runTask({
+        workspaceId: id,
+        baseImage: input.baseImage,
+        ...(input.repoUrl === undefined ? {} : { repoUrl: input.repoUrl }),
+        ...(input.repoRef === undefined ? {} : { repoRef: input.repoRef }),
+      });
+    } catch (e) {
+      throw new ComputeUnavailableError(`could not launch workspace task: ${asMessage(e)}`);
+    }
     const ws = provision({
       id,
       ownerId: input.ownerId,
@@ -418,9 +440,9 @@ export class WorkspaceService {
       });
     } catch (e) {
       // Launch failed; roll the claim back to stopped (snapshot untouched) so the
-      // workspace stays wake-able, then surface the error.
+      // workspace stays wake-able, then surface a handled 503 (not an uncaught 500).
       await this.rollbackWake(id);
-      throw e;
+      return err(unavailableError(`could not launch workspace task: ${asMessage(e)}`));
     }
 
     const claimed = await this.find(id);

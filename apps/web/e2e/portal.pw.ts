@@ -96,6 +96,40 @@ test("non-admins are denied the admin console", async ({ page, context }) => {
   await expect(page.getByRole("heading", { name: "System health" })).toHaveCount(0);
 });
 
+test("admin sees the infrastructure view: cluster, fleet, and topology", async ({
+  page,
+  context,
+}) => {
+  await loginAs(context, "root", "admin");
+  await page.goto("/admin/infrastructure");
+
+  await expect(page.getByRole("heading", { name: "Infrastructure", exact: true })).toBeVisible();
+
+  // Cluster metric tiles render (local fake cluster reports zero tasks here).
+  await expect(page.locator(sel(TESTID.clusterStat)).first()).toBeVisible();
+  await expect(
+    page.locator(sel(TESTID.clusterStat, { "data-metric": "running tasks" })),
+  ).toBeVisible();
+
+  // Topology lights up the core components with live health overlaid: the
+  // DynamoDB node is ok (live ping), compute is present, and a known edge exists.
+  await expect(page.locator(sel(TESTID.topologyNode, { "data-node": "dynamodb" }))).toHaveAttribute(
+    "data-h",
+    "ok",
+  );
+  await expect(page.locator(sel(TESTID.topologyNode, { "data-node": "compute" }))).toBeVisible();
+  await expect(
+    page.locator(sel(TESTID.topologyEdge, { "data-from": "compute", "data-to": "storage" })),
+  ).toBeVisible();
+});
+
+test("non-admins are denied the infrastructure view", async ({ page, context }) => {
+  await loginAs(context, "alice", "member");
+  await page.goto("/admin/infrastructure");
+  await expect(page.getByTestId(TESTID.adminDenied)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Infrastructure", exact: true })).toHaveCount(0);
+});
+
 test("admin inspects a workspace's detail and timeline", async ({ page, context, request }) => {
   // A member-owned workspace to inspect (left in place for the admin to open).
   const res = await request.post("/api/workspaces", {

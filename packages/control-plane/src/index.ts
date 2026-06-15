@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-export { WorkspaceService } from "./workspace-service";
+export { WorkspaceService, ComputeUnavailableError } from "./workspace-service";
 export type { ActiveWorkspace, WorkspaceServiceDeps } from "./workspace-service";
 export { toWorkspaceDetail, toWorkspaceDto } from "./dto";
 export { CatalogService } from "./catalog-service";
@@ -10,6 +10,12 @@ export { encryptToken, decryptToken } from "./token-crypto";
 export { toBaseImageDto } from "./base-image-dto";
 export { HealthService } from "./health-service";
 export type { HealthServiceDeps } from "./health-service";
+export { InfrastructureService } from "./infrastructure-service";
+export type {
+  InfrastructureReport,
+  InfrastructureServiceDeps,
+  TopologyView,
+} from "./infrastructure-service";
 export { DerivedAuditSource } from "./audit-source";
 export type { DerivedAuditSourceDeps } from "./audit-source";
 export { StoredAuditSource } from "./stored-audit-source";

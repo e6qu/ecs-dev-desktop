@@ -18,6 +18,7 @@ import {
   DerivedAuditSource,
   DerivedLogSource,
   HealthService,
+  InfrastructureService,
   StoredAuditSource,
   StoredCostRollupStore,
   WorkspaceService,
@@ -111,27 +112,49 @@ function reconcilerHeartbeatReader(
   };
 }
 
+/** The active storage + compute providers: the real EBS/ECS adapters under
+ * COMPUTE_PROVIDER=ecs, else the in-process fakes (dev/integration). Shared by the
+ * Health board and the Infrastructure view so both see the same backend. */
+async function activeProviders(): Promise<{
+  storage: Ec2StorageProvider | FakeStorageProvider;
+  compute: EcsComputeProvider | FakeComputeProvider;
+}> {
+  if (process.env.COMPUTE_PROVIDER === "ecs") return buildRealProviders();
+  const storage = await FakeStorageProvider.create();
+  return { storage, compute: new FakeComputeProvider(storage) };
+}
+
 export async function getHealthService(): Promise<HealthService> {
   const client = createDynamoClient();
   const table = tableName();
-  const reconcilerHeartbeat = reconcilerHeartbeatReader(client, table);
-  if (process.env.COMPUTE_PROVIDER === "ecs") {
-    const { storage, compute } = buildRealProviders();
-    return new HealthService({
-      storage,
-      compute,
-      pingDatabase: () => pingTable(client, table),
-      reconcilerHeartbeat,
-      clock: systemClock,
-    });
-  }
-  const storage = await FakeStorageProvider.create();
+  const { storage, compute } = await activeProviders();
   return new HealthService({
     storage,
-    compute: new FakeComputeProvider(storage),
+    compute,
     pingDatabase: () => pingTable(client, table),
-    reconcilerHeartbeat,
+    reconcilerHeartbeat: reconcilerHeartbeatReader(client, table),
     clock: systemClock,
+  });
+}
+
+/** Admin Infrastructure view: the Health board + live ECS cluster state + fleet
+ * metrics + the component topology, sharing one compute backend. */
+export async function getInfrastructureService(): Promise<InfrastructureService> {
+  const client = createDynamoClient();
+  const table = tableName();
+  const { storage, compute } = await activeProviders();
+  const health = new HealthService({
+    storage,
+    compute,
+    pingDatabase: () => pingTable(client, table),
+    reconcilerHeartbeat: reconcilerHeartbeatReader(client, table),
+    clock: systemClock,
+  });
+  const cp = await getControlPlane();
+  return new InfrastructureService({
+    health,
+    compute,
+    listWorkspaceStates: async () => (await cp.list()).map((w) => w.state),
   });
 }
 

@@ -8,6 +8,7 @@ import { usePathname } from "next/navigation";
 const ITEMS: { label: string; href: string | null }[] = [
   { label: "Overview", href: "/admin/overview" },
   { label: "Health", href: "/admin/health" },
+  { label: "Infrastructure", href: "/admin/infrastructure" },
   { label: "Workspaces", href: "/admin/workspaces" },
   { label: "Costs", href: "/admin/costs" },
   { label: "Logs", href: "/admin/logs" },

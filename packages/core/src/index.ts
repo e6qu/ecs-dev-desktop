@@ -39,7 +39,13 @@ export { assertNever } from "./assert-never";
 export type { Err, Ok, Result } from "./result";
 export { andThen, err, isErr, isOk, map, mapErr, ok, unwrap } from "./result";
 export type { DomainError, DomainErrorKind } from "./domain/errors";
-export { conflictError, domainErrorMessage, invalidError, notFoundError } from "./domain/errors";
+export {
+  conflictError,
+  domainErrorMessage,
+  invalidError,
+  notFoundError,
+  unavailableError,
+} from "./domain/errors";
 
 // Domain constants.
 export {
@@ -114,6 +120,7 @@ export {
 
 // Compute port + fake.
 export type {
+  ClusterInfo,
   ComputeProvider,
   ComputeTask,
   RunTaskInput,
@@ -129,6 +136,16 @@ export { fixedClock, systemClock } from "./clock";
 // Observability — health roll-up (admin Health board).
 export type { ComponentHealth, HealthReport, HealthStatus } from "./observability/health";
 export { summarizeHealth, reconcilerHealthFromHeartbeat } from "./observability/health";
+
+// Observability — system topology (admin Infrastructure view).
+export type {
+  Topology,
+  TopologyEdge,
+  TopologyKind,
+  TopologyNode,
+  TopologyNodeStatus,
+} from "./observability/topology";
+export { SYSTEM_TOPOLOGY, overlayTopologyHealth } from "./observability/topology";
 
 // Observability — derived workspace lifecycle timeline (admin Inspect).
 export type { TimelineEvent, WorkspaceTimelineInput } from "./observability/timeline";

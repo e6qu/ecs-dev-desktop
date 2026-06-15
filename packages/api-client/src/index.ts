@@ -6,6 +6,7 @@ import {
   createWorkspaceRequest,
   errorResponse,
   healthReport,
+  infrastructureReport,
   listBaseImagesResponse,
   listWorkspacesResponse,
   logStreamResult,
@@ -20,6 +21,7 @@ import {
   type CreateBaseImageRequest,
   type CreateWorkspaceRequest,
   type HealthReportDto,
+  type InfrastructureReportDto,
   type ListBaseImagesResponse,
   type ListWorkspacesResponse,
   type LogStreamDto,
@@ -73,10 +75,16 @@ export class ApiClient {
     const res = await this.fetchImpl(`${this.baseUrl}${path}`, init);
     if (!res.ok) {
       // Every API error response carries `{ error }` (the helpers + domainErrorResponse).
-      // Parse strictly — a response that violates the contract is a bug, so let the
-      // parse throw rather than smooth it into a synthesized message.
-      const body = errorResponse.parse(await res.json());
-      throw new ApiError(res.status, body.error);
+      // Fall back to a status-based message if the body is empty/non-JSON (e.g. a
+      // framework 500) so callers get a clean ApiError, never an opaque
+      // "Unexpected end of JSON input" from `res.json()`.
+      let message = `request failed (HTTP ${res.status.toString()})`;
+      try {
+        message = errorResponse.parse(await res.json()).error;
+      } catch {
+        // keep the status-based fallback
+      }
+      throw new ApiError(res.status, message);
     }
     return res;
   }
@@ -191,6 +199,13 @@ export class ApiClient {
   async adminHealth(): Promise<HealthReportDto> {
     const res = await this.send("/api/admin/health");
     return healthReport.parse(await res.json());
+  }
+
+  /** Aggregate Infrastructure view: dependency status, ECS cluster state, fleet
+   * metrics, and the component topology (with live status). */
+  async adminInfrastructure(): Promise<InfrastructureReportDto> {
+    const res = await this.send("/api/admin/infrastructure");
+    return infrastructureReport.parse(await res.json());
   }
 
   async adminWorkspaces(): Promise<ListWorkspacesResponse> {

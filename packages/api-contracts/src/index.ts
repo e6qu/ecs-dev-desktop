@@ -144,6 +144,53 @@ export const healthReport = z.object({
 });
 export type HealthReportDto = z.infer<typeof healthReport>;
 
+// --- Admin: infrastructure view (cluster + topology + fleet) ---
+
+export const clusterInfo = z.object({
+  name: z.string(),
+  status: z.string(),
+  runningTasks: z.number().int().nonnegative(),
+  pendingTasks: z.number().int().nonnegative(),
+  activeServices: z.number().int().nonnegative(),
+  registeredContainerInstances: z.number().int().nonnegative(),
+});
+export type ClusterInfoDto = z.infer<typeof clusterInfo>;
+
+export const fleetStats = z.object({
+  total: z.number().int().nonnegative(),
+  active: z.number().int().nonnegative(),
+  byState: z.record(workspaceState, z.number().int().nonnegative()),
+});
+export type FleetStatsDto = z.infer<typeof fleetStats>;
+
+export const topologyNode = z.object({
+  id: z.string(),
+  label: z.string(),
+  kind: z.enum(["client", "edge", "compute", "data", "storage", "worker"]),
+  description: z.string(),
+  status: healthStatus,
+  detail: z.string().optional(),
+});
+export type TopologyNodeDto = z.infer<typeof topologyNode>;
+
+export const topologyEdge = z.object({
+  from: z.string(),
+  to: z.string(),
+  label: z.string(),
+});
+export type TopologyEdgeDto = z.infer<typeof topologyEdge>;
+
+export const infrastructureReport = z.object({
+  health: healthReport,
+  cluster: clusterInfo,
+  fleet: fleetStats,
+  topology: z.object({
+    nodes: z.array(topologyNode),
+    edges: z.array(topologyEdge),
+  }),
+});
+export type InfrastructureReportDto = z.infer<typeof infrastructureReport>;
+
 // --- Admin: audit feed (derived now; CloudTrail on AWS) ---
 
 export const auditEvent = z.object({

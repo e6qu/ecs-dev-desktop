@@ -35,6 +35,27 @@ export interface RunTaskInput {
  * wake in progress); one that is stopping, stopped, or unknown is "stopped". */
 export type TaskLiveness = "running" | "stopped";
 
+/**
+ * Live state of the compute cluster the workspace tasks run in (ECS
+ * DescribeClusters on AWS). Surfaced on the admin Infrastructure view so an
+ * operator can see fleet capacity and cluster health at a glance. The fake
+ * reports its in-memory equivalent (local), never a fabricated cloud cluster.
+ */
+export interface ClusterInfo {
+  /** Cluster name/identifier (the configured ECS cluster, or "local" for the fake). */
+  readonly name: string;
+  /** Cluster status — `ACTIVE` on a healthy ECS cluster; `local` for the fake. */
+  readonly status: string;
+  /** Tasks the platform reports as RUNNING. */
+  readonly runningTasks: number;
+  /** Tasks still PENDING/PROVISIONING. */
+  readonly pendingTasks: number;
+  /** ECS services registered on the cluster (0 for our task-only Fargate use). */
+  readonly activeServices: number;
+  /** Registered container instances (0 on Fargate — no EC2 capacity to register). */
+  readonly registeredContainerInstances: number;
+}
+
 export interface ComputeProvider {
   /** Launch a task with a fresh or snapshot-hydrated managed EBS volume. */
   runTask(input: RunTaskInput): Promise<ComputeTask>;
@@ -50,4 +71,9 @@ export interface ComputeProvider {
   /** Dependency health (admin Health board). Real adapters do a live check; absent
    * ⇒ reported as `unknown` (real check available on AWS). */
   health?(): Promise<ComponentHealth>;
+
+  /** Live cluster capacity/state for the admin Infrastructure view. Real adapters
+   * query the platform (ECS DescribeClusters); the fake reports its in-memory
+   * equivalent. */
+  clusterInfo?(): Promise<ClusterInfo>;
 }

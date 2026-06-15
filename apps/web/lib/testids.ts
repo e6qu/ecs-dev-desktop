@@ -43,6 +43,12 @@ export const TESTID = {
   costUserRow: "cost-user-row",
   /** A per-session cost row on the admin Costs page. Attrs: `data-id`, `data-owner`, `data-usd`. */
   costSessionRow: "cost-session-row",
+  /** A cluster-metric tile on the Infrastructure view. Attrs: `data-metric`, `data-value`. */
+  clusterStat: "cluster-stat",
+  /** A node in the Infrastructure topology graph. Attrs: `data-node`, `data-kind`, `data-h` (status). */
+  topologyNode: "topology-node",
+  /** An edge row in the Infrastructure topology. Attrs: `data-from`, `data-to`. */
+  topologyEdge: "topology-edge",
   /** Dev-login form (EDD_DEV_AUTH=1) controls + error. */
   loginUser: "login-user",
   loginPassword: "login-password",

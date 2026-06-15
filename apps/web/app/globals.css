@@ -570,6 +570,82 @@ main {
   flex: 1;
 }
 
+/* ---- infrastructure view (topology + cluster) ---- */
+.infra-h {
+  font-size: 16px;
+  margin: 28px 0 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.topo-nodes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 10px;
+}
+
+.topo-node {
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  padding: 14px 16px;
+}
+
+.topo-node-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.topo-node-head .name {
+  font-family: var(--font-mono), monospace;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.topo-kind {
+  margin-left: auto;
+  font-family: var(--font-mono), monospace;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+
+.topo-node .detail {
+  font-family: var(--font-mono), monospace;
+  font-size: 12px;
+  color: var(--dim);
+}
+
+.topo-edges {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.topo-edge {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--panel);
+}
+
+.topo-edge .topo-arrow {
+  color: var(--accent);
+}
+
+.topo-edge-label {
+  font-family: var(--font-mono), monospace;
+  color: var(--dim);
+}
+
 /* health status → colour (reuse the status palette) */
 [data-h="ok"] {
   --status: var(--st-running);

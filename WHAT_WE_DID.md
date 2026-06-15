@@ -986,3 +986,31 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
   description now lists the full secret set; and `examples/complete` now wires
   `extra_environment` (so `EDD_ADMIN_GROUPS` — required for any admin — is settable)
   with a fuller `terraform.tfvars.example`. `terraform fmt`/`validate` clean.
+
+- **2026-06-15 — Provisioning failure is a handled 503, not an on-purpose 500.**
+  A workspace create against a backend with no ECS cluster threw "Cluster not found"
+  → framework 500 (empty body) → browser "Unexpected end of JSON input". Reframed as
+  a handled condition end-to-end: a new `unavailable` domain error (→ 503) + a typed
+  `ComputeUnavailableError` thrown by `WorkspaceService.create()` (route maps to 503);
+  `start()` returns `unavailable` and rolls the wake claim back; `withObservability`
+  observes-and-re-raises so only genuinely-unexpected errors are 500s; the api-client
+  tolerates an empty/non-JSON error body. `dev-bootstrap` seeds the full golden
+  catalog. Principle recorded: **a handled error is by definition not a 500.** (Full
+  create against the process-mode sim still blocks on sockerless#569 — managed-EBS;
+  the `+AWS` dev tier is for adapter call-shapes, not end-to-end create.)
+
+- **2026-06-15 — Admin Infrastructure view (cluster + status + metrics + topology).**
+  New `/admin/infrastructure` aggregating, in one round trip: dependency status
+  checks (reusing the Health board), the live ECS cluster (new `ClusterInfo` port
+  method — `EcsComputeProvider.clusterInfo()` over DescribeClusters; the fake reports
+  its in-memory equivalent, no fabricated cloud metrics), fleet metrics, and the
+  **component/network topology**. The topology is the locked architecture as a pure
+  node/edge graph in `@edd/core` (`SYSTEM_TOPOLOGY` + `overlayTopologyHealth`): a
+  static deployment fact with live health overlaid on each node — boundary/dynamic
+  nodes report `unknown`, never a fabricated `ok`. Shell = `InfrastructureService`;
+  contracts + `adminInfrastructure()` client method; route, page, nav entry, testids.
+  Refactored the live-view polling into a shared `usePoll` hook + `HealthRows`/
+  `HealthHead` components (DRY — kept jscpd under threshold). Tested at every layer:
+  core topology + fake-cluster unit tests, `InfrastructureService` unit tests,
+  contracts parse test, compute-ecs `clusterInfo` integ vs the live sockerless sim,
+  and Playwright (admin sees cluster + topology with live status; non-admin denied).

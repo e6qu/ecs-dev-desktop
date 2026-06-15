@@ -6,12 +6,13 @@
  * the HTTP-status mapping lives in the web shell, keyed on `kind`, so adding a
  * kind here forces every mapper to handle it (a compile error otherwise).
  */
-export type DomainErrorKind = "not_found" | "conflict" | "invalid";
+export type DomainErrorKind = "not_found" | "conflict" | "invalid" | "unavailable";
 
 export type DomainError =
   | { readonly kind: "not_found"; readonly resource: string; readonly id: string }
   | { readonly kind: "conflict"; readonly reason: string }
-  | { readonly kind: "invalid"; readonly reason: string };
+  | { readonly kind: "invalid"; readonly reason: string }
+  | { readonly kind: "unavailable"; readonly reason: string };
 
 /** A resource (by id) does not exist → 404 at the HTTP boundary. */
 export const notFoundError = (resource: string, id: string): DomainError => ({
@@ -26,6 +27,10 @@ export const conflictError = (reason: string): DomainError => ({ kind: "conflict
 /** The request is well-formed but not valid for the domain → 400. */
 export const invalidError = (reason: string): DomainError => ({ kind: "invalid", reason });
 
+/** A dependency the operation needs is unavailable (e.g. the compute backend could
+ * not launch a task) — a handled, transient failure → 503 (retryable), never a 500. */
+export const unavailableError = (reason: string): DomainError => ({ kind: "unavailable", reason });
+
 /** A human-readable message for a domain error (for API bodies, logs). */
 export function domainErrorMessage(error: DomainError): string {
   switch (error.kind) {
@@ -33,6 +38,7 @@ export function domainErrorMessage(error: DomainError): string {
       return `${error.resource} not found: ${error.id}`;
     case "conflict":
     case "invalid":
+    case "unavailable":
       return error.reason;
   }
 }
