@@ -38,11 +38,12 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
   **typescript**, **python**, **go**, **java**, **rust** (build-essential only in
   variants that need it, not base). It's just more catalog entries (the base-image
   allow-list) — no data-model change; `dev-bootstrap` seeds them; the picker already
-  lets users choose. Sequence: **PR A** = #90/#91/#94 on the current image (done on
-  `feat/workspace-user-clis-and-dark-mode`); **PR B** = base/omnibus split (the PR-A
-  fixes move into `base`); **PR C+** = slim variants; **PR D+** = layer #93 (agent
-  ext in base) + curated #95 tooling per image. CI: build `base` once → variants
-  `FROM` it; the e2e/live flow defaults to omnibus.
+  lets users choose. Sequence: **PR A** = #90/#91/#94 (merged #97); **PR B** =
+  base/omnibus split (merged #101); **PR C** = slim variants typescript/python/go/
+  java/rust + `dev-bootstrap` collection + `image-variants.e2e.ts` + path-gated
+  `golden-images` CI workflow (**done**, `feat/golden-image-language-variants`);
+  **PR D (next)** = layer #93 (agent extensions in `base`) + curated #95 tooling per
+  image. CI: build `base` once → variants `FROM` it; the e2e/live flow defaults to omnibus.
 - **Launch-readiness / observability — essentially complete** (`BUGS.md` →
   Resolved): readiness probe, storage health, structured logging, metrics + alarms,
   CloudTrail pagination, API request latency/error metrics + access logging, fleet +

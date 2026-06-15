@@ -2,25 +2,32 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-15 (golden-image collection: base + omnibus split)
+**Last updated:** 2026-06-15 (golden-image collection: slim per-language variants)
 
 ## Current phase
 
-**Golden-image collection — base/omnibus split (PR B).** On
-`feat/golden-image-base-omnibus`: refactored the single workspace image into a
-shared **`infra/images/base`** (OpenVSCode, sshd + CA, idle-agent, entrypoint,
-git-credential helper, `workspace` user, Node 22, and the #90/#91/#94 user-CLI +
-dark-mode fixes — no compilers/toolchains) plus **`infra/images/omnibus`** (`FROM
-base` + the full polyglot toolchain == the previous image). No functional change to
-the omnibus; it's tagged `edd-workspace:e2e` so all suites keep working. PATH is
-composable via drop-ins each image overwrites: `/etc/profile.d/edd-path.sh` (login)
-and an sshd `SetEnv` drop-in under `/etc/ssh/sshd_config.d/` (ssh-exec). Build is
-base → variant (`--build-arg BASE=…`); CI + `test-e2e.sh` + docs updated. Gotcha
-fixed: the inherited home `NPM_CONFIG_PREFIX` made build-time system `npm i -g`
-land under `$HOME` (then a cleanup deleted them) — variants now export
-`NPM_CONFIG_PREFIX=/usr/local` for those steps. Verified: base+omnibus build,
-`workspace-toolchain.e2e.ts` 10/10, and the live-IDE-flow e2e green against the
-split. Next (PR C+): slim per-language variants; then layer #93/#95 tooling.
+**Golden-image collection — slim per-language variants (PR C).** On
+`feat/golden-image-language-variants`: added five lean variants `FROM base` —
+**typescript** (yarn/pnpm/bun + tsc), **python** (python3 + uv), **go**, **java**
+(JDK + Maven + Gradle), **rust** — each carrying only its toolchain (build-essential
+only where needed). Real size wins: ~0.95–1.4 GB vs omnibus 3.04 GB (base 605 MB).
+PATH drop-ins (`/etc/profile.d/edd-path.sh` + the sshd `SetEnv` drop-in) are
+overwritten only by variants whose tools land off the base PATH (go/java/rust).
+`dev-bootstrap` now seeds the whole collection (omnibus + 5 variants) into the
+catalog. New `image-variants.e2e.ts` proves each variant: its toolchain present,
+the shared base behaviour intact (#90/#91/#94 + Node), and **slim** (other languages
+absent) — 5/5 green locally. A **path-gated `golden-images` CI workflow** (runs only
+when `infra/images/**` or the variant test changes) builds base + variants and runs
+the smoke test, keeping the always-on `e2e` job's cost flat. Next: **PR D** — agent
+extensions (#93) in base + curated dev tooling (#95) per image.
+
+## Prior phase (merged, #101)
+
+**Golden-image collection — base/omnibus split.** Refactored the single image into a
+shared `infra/images/base` (runtime + the #90/#91/#94 fixes, no toolchains) + `omnibus`
+(`FROM base` + full toolchain, == the previous image, tagged `edd-workspace:e2e`).
+Composable PATH drop-ins; build-time system `npm i -g` forced to `/usr/local` (the
+home `NPM_CONFIG_PREFIX` is inherited). Verified via toolchain + live-IDE-flow e2e.
 
 ## Prior phase (merged, #97)
 

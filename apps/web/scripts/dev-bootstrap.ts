@@ -7,13 +7,16 @@ import { CatalogService } from "@edd/control-plane";
 import { baseImage, systemClock } from "@edd/core";
 import { createDynamoClient, ensureTable, makeBaseImageEntity, TABLE } from "@edd/db";
 
-// The default golden catalog (mirrors `golden_image_repos` in the Terraform
-// example). Locally these are catalog entries the fakes launch from; in the cloud
-// they point at the golden ECR repos.
+// The default golden catalog = the image collection (a shared base + omnibus and
+// slim per-language variants; see infra/images). Locally these are catalog entries
+// the fakes launch from; in the cloud they point at the golden ECR repos.
 const DEV_IMAGES: readonly { name: string; image: string }[] = [
-  { name: "Node 20", image: "golden/node:20" },
-  { name: "Go 1.22", image: "golden/go:1.22" },
-  { name: "Python 3.12", image: "golden/python:3.12" },
+  { name: "Omnibus (all languages)", image: "golden/omnibus" },
+  { name: "TypeScript / Node", image: "golden/typescript" },
+  { name: "Python", image: "golden/python" },
+  { name: "Go", image: "golden/go" },
+  { name: "Java", image: "golden/java" },
+  { name: "Rust", image: "golden/rust" },
 ];
 
 const table = process.env.DYNAMODB_TABLE ?? TABLE;

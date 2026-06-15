@@ -8,6 +8,11 @@ misconfigurations:
     paths:
       - infra/images/base/Dockerfile
       - infra/images/omnibus/Dockerfile
+      - infra/images/typescript/Dockerfile
+      - infra/images/python/Dockerfile
+      - infra/images/go/Dockerfile
+      - infra/images/java/Dockerfile
+      - infra/images/rust/Dockerfile
       - services/ssh-gateway/Dockerfile.node
       - services/ssh-gateway/Dockerfile.proxy
     statement: "sshd must start as root for OpenSSH privilege separation and host-key setup; the workspace images drop OpenVSCode and idle-agent to the non-root workspace user with gosu"
