@@ -5,9 +5,10 @@ import { unwrap } from "../result";
 import { baseImage, isoTimestamp, ownerId, snapshotId, taskId, volumeId, workspaceId } from "./ids";
 import {
   markActivity,
-  markStarted,
+  markProvisioned,
   markStopped,
   markTaskLost,
+  markWaking,
   provision,
   recordSnapshot,
 } from "./workspace";
@@ -46,11 +47,25 @@ describe("workspace domain (functional core)", () => {
     expect(stopped.latestSnapshotAt).toBe(t0);
   });
 
-  it("start re-binds volume and task", () => {
+  it("wakes in two phases: claim (provisioning) then commit (running) re-binds volume + task", () => {
     const stopped = unwrap(markStopped(base, { id: snapshotId("snap-1"), at: t1 }, t1));
-    const started = unwrap(markStarted(stopped, volumeId("vol-2"), taskId("task-2"), t1));
+    // Phase 1 — claim: stopped → provisioning, no bindings yet.
+    const waking = unwrap(markWaking(stopped, t1));
+    expect(waking.state).toBe("provisioning");
+    expect(waking.volumeId).toBeUndefined();
+    expect(waking.taskId).toBeUndefined();
+    // Phase 2 — commit: provisioning → running, binds the launched task.
+    const started = unwrap(markProvisioned(waking, volumeId("vol-2"), taskId("task-2"), t1));
     expect(started.state).toBe("running");
     expect(started.volumeId).toBe("vol-2");
+  });
+
+  it("cancels an in-flight wake back to stopped (rollback), keeping the snapshot", () => {
+    const stopped = unwrap(markStopped(base, { id: snapshotId("snap-1"), at: t1 }, t1));
+    const waking = unwrap(markWaking(stopped, t1));
+    const rolledBack = unwrap(markStopped(waking, undefined, t1));
+    expect(rolledBack.state).toBe("stopped");
+    expect(rolledBack.latestSnapshotId).toBe("snap-1");
   });
 
   it("rejects an illegal transition (stop while stopped) with a conflict", () => {

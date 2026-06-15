@@ -29,4 +29,7 @@ export EDD_DEV_AUTH="${EDD_DEV_AUTH:-1}"
 # Ensure the table + a base image exist (idempotent), then run the dev server on
 # port 3700 (not 3000 — which collides with countless local dev servers).
 pnpm --filter @edd/web exec tsx scripts/dev-bootstrap.ts
+# Use the edd.localhost subdomain so dev-auth cookies stay isolated from other
+# localhost apps (browsers resolve *.localhost -> 127.0.0.1 automatically).
+echo "-> open http://edd.localhost:${PORT:-3700}  (dev login: seeded users, default password 'dev')"
 exec pnpm --filter @edd/web exec next dev -p "${PORT:-3700}"

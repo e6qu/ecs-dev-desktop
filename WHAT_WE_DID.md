@@ -938,3 +938,37 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
   private key is delivered via Secrets Manager (the secure default, never in
   Terraform state); `docs/deploying.md` Step 4 updated. The only substantial item
   left is `e2e-aws` — external, blocked on the AWS-account decision.
+
+- **2026-06-14 — Local dev login UI (seeded users, config-driven) + `edd.localhost`.**
+  Replaced the hand-edit-cookies dev-auth flow with a real `/login` form (gated on
+  `EDD_DEV_AUTH=1`): pick a seeded account + password, a server action sets host-only
+  `edd-dev-*` cookies + redirects (admin → /admin/overview, else /workspaces), and a
+  dev-aware sign-out clears them (Auth.js `signOut` would not). The accounts are
+  **configuration, not app code**: `@edd/config` `devUsers()` parses `EDD_DEV_USERS`
+  (JSON, zod-validated) with a built-in default set, and `devPassword()`
+  (`EDD_DEV_PASSWORD`, default `dev`; per-account `password` overrides). Served via
+  `edd.localhost:3700` (browsers resolve `*.localhost` → 127.0.0.1) with host-only
+  cookies so other localhost apps are unaffected. Playwright `e2e/login.pw.ts` signs
+  in via the form as admin/member/viewer and asserts role-appropriate access,
+  wrong-password rejection, and sign-out. Fixed `pnpm reap` (it left profile-scoped
+  sim containers running — `down` without `--profile`); added a reusable
+  `pnpm --filter @edd/web screenshot` dev aid. Verified live against the sockerless
+  `+AWS` tier (login form → admin console; storage/compute/reconciler health real;
+  structured access logs streaming).
+
+- **2026-06-15 — Wake-on-connect: claim-before-launch (kills the thundering herd).**
+  Root-cause fix for the recurring `concurrent-connect` e2e flake (surfaced again on
+  this PR's CI). The wake path now persists the `stopped → provisioning` claim with
+  the optimistic-version CAS BEFORE launching, so a burst of connects starts exactly
+  ONE task (the claim winner); losers `awaitWoken` until it reaches running.
+  Two-phase domain core: `markWaking` (stopped→provisioning) + `markProvisioned`
+  (provisioning→running), replacing the single `markStarted`; a new
+  `provisioning → stopped` transition lets a failed launch roll the claim back
+  (workspace stays wake-able). `start()` stays a strict transition (start-while-
+  running is still a conflict); `connect()` owns the idempotent race handling
+  (re-dispatch + wait-out in-flight provisioning). Crash-consistency reworked: a
+  write failure on the claim leaks nothing (no task yet); a failure on the
+  post-launch commit stops the task and rolls back. Deterministically proven in the
+  integ tier (N concurrent wakes → one launch, all running — 10/10) plus the
+  rewritten crash + state-machine/domain unit tests; the container `concurrent-connect`
+  e2e exercises it for real in CI.

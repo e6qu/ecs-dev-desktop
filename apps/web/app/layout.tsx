@@ -4,8 +4,8 @@ import { Chakra_Petch, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-import { signOut } from "../auth";
 import { getPagePrincipal } from "../lib/principal";
+import { signOutAction } from "./login/actions";
 import "./globals.css";
 
 const display = Chakra_Petch({
@@ -53,12 +53,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             <span className="who">
               <span className="mono">{principal.id}</span>
               <span className="badge accent">{principal.role}</span>
-              <form
-                action={async () => {
-                  "use server";
-                  await signOut({ redirectTo: "/login" });
-                }}
-              >
+              <form action={signOutAction}>
                 <button className="btn" type="submit">
                   sign out
                 </button>

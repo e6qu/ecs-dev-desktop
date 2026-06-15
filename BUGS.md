@@ -47,6 +47,35 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **Concurrent wake-on-connect thundering herd → flaky `concurrent-connect` e2e
+  (2026-06-15)** — N simultaneous `/connect` on a stopped workspace each launched
+  their own `RunTask` (read→launch→persist; losers compensated), so a burst fired N
+  real-container launches at once and intermittently overran the sim, surfacing a
+  transient `RunTask` 5xx as an uncaught route 500 ("expected 500 to be 200"). The
+  adaptive-retry hardening (#84) only reduced it. Real root-cause fix:
+  **claim-before-launch** — `start()` persists the `stopped → provisioning` claim
+  with the version CAS FIRST, so exactly ONE waker launches a task; the rest lose
+  the claim and `awaitWoken` (wait for the winner to reach running). `connect()`
+  re-dispatches on a raced wake and waits out an in-flight `provisioning` instead of
+  returning a half-woken workspace. On launch failure the claim rolls back to
+  stopped (new `provisioning → stopped` transition), keeping the workspace
+  wake-able. Eliminates the herd (and the wasted N-1 task launches) in production
+  too. Proven deterministically in the integ tier (N concurrent wakes → exactly one
+  launch, every caller running — 10/10 runs); crash-consistency updated for the new
+  two-phase wake.
+- **Flaky "two concurrent snapshots" concurrency test (2026-06-14)** — the test
+  raced two `snapshot()` calls via `Promise.all` and asserted exactly one conflicts,
+  but the calls could serialize (CI scheduling) and both legitimately succeed
+  (`{ok:2}`), failing intermittently. Made the overlap deterministic: a
+  `BarrierSnapshotStorage` holds both `createSnapshot`s until both have arrived, so
+  both read the same version before either persists and the version CAS is genuinely
+  raced. No production code changed; the strict one-conflict assertion stays.
+- **`pnpm reap` left profile-scoped sim containers running (2026-06-14)** —
+  `reap-local.sh` ran `docker compose down` on the dev file without the active
+  `--profile`, so profile-gated services (the sockerless sim, bleephub, entra sim)
+  survived a "reap" (the sockerless container was found still `Up` after `pnpm reap`).
+  Fixed: the reaper now downs each dev/test compose file with the dev profiles
+  (aws/github/entra) enabled — verified it removes the sockerless container.
 - **Observability completion: API request metrics, fleet/cost gauges, reconciler
   health, per-workspace logs, SSH CA key material (2026-06-14)** — closed the
   remaining launch-readiness gaps in one pass: (1) a `withObservability` route
