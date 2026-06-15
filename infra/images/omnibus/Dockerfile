@@ -86,18 +86,26 @@ RUN export NPM_CONFIG_PREFIX=/usr/local \
 
 # Per-language dev tooling (the omnibus carries every language's, to system paths so
 # they survive the EBS mount): Python (uv tools → /usr/local/bin), Go (golangci-lint
-# → /usr/local/bin via GOBIN), Rust (clippy + rustfmt components). The Node lint/
-# format/dead-code/CPD tools + the Claude CLI come from base.
+# + staticcheck/deadcode/dupl → /usr/local/bin via GOBIN), Rust (clippy + rustfmt
+# components + cargo-audit). The Node lint/format/dead-code/CPD tools, the Claude
+# CLI, and the cross-cutting Trivy scanner all come from base.
 RUN export UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin \
     && uv tool install ruff && uv tool install ty && uv tool install vulture \
     && uv tool install bandit && uv tool install semgrep \
     && for t in ruff ty vulture bandit semgrep; do command -v "$t" || exit 1; done
 RUN GOBIN=/usr/local/bin /usr/local/go/bin/go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest \
-    && golangci-lint --version \
+    && GOBIN=/usr/local/bin /usr/local/go/bin/go install honnef.co/go/tools/cmd/staticcheck@latest \
+    && GOBIN=/usr/local/bin /usr/local/go/bin/go install golang.org/x/tools/cmd/deadcode@latest \
+    && GOBIN=/usr/local/bin /usr/local/go/bin/go install github.com/mibk/dupl@latest \
+    && golangci-lint --version && staticcheck --version \
+    && command -v deadcode && command -v dupl \
     && /usr/local/go/bin/go clean -cache -modcache
 RUN /opt/rust/cargo/bin/rustup component add clippy rustfmt \
+    && /opt/rust/cargo/bin/cargo install cargo-audit --locked \
+    && rm -rf /opt/rust/cargo/registry \
     && chmod -R a+rwX /opt/rust \
-    && /opt/rust/cargo/bin/cargo clippy --version && /opt/rust/cargo/bin/cargo fmt --version
+    && /opt/rust/cargo/bin/cargo clippy --version && /opt/rust/cargo/bin/cargo fmt --version \
+    && /opt/rust/cargo/bin/cargo audit --version
 
 # All language VS Code extensions into the built-in extensions dir (base already baked the
 # agent + cross-cutting ones; these are seeded together on first boot).

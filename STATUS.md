@@ -2,12 +2,29 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-15 (golden-image collection: AI agents + curated tooling)
+**Last updated:** 2026-06-16 (golden-image fuller per-language tooling — #95 follow-ons)
 
 ## Current phase
 
-**Golden-image collection — AI agents + curated dev tooling (PR D; #93 + #95).** On
-`feat/golden-image-agents-and-tooling`: completed the collection. **base** now bakes
+**Golden-image fuller per-language dev tooling (#95 follow-ons).** On
+`feat/golden-image-fuller-tooling`: rounding out the curated dev-tooling set so a
+workspace matches CI out of the box. Added the cross-cutting **Trivy** security
+scanner to **base** (the repo CI's own gate tool — every variant inherits it; single
+binary to `/usr/local/bin`, vuln DB fetched lazily); the **Go** dead-code/CPD/static
+set to **go**+**omnibus** (`staticcheck`, `deadcode`, `dupl` alongside golangci-lint,
+all `go install` → `GOBIN=/usr/local/bin`); and **cargo-audit** (Rust SCA/security) to
+**rust**+**omnibus**. Tests extended: `image-variants.e2e.ts` (go asserts the trio,
+rust asserts cargo-audit, every variant asserts trivy) + `workspace-toolchain.e2e.ts`
+(omnibus asserts all). Also **re-pinned the sockerless submodule** `1ca1f71 → c69cd27`
+(picks up #569's process-mode managed-EBS panic fix + later cells). Known remaining
+gap: **Java** has the JDK/Maven/Gradle + `redhat.java` extension but no standalone
+formatter/linter CLI (e.g. google-java-format) — flagged as a follow-up. The earlier
+agents-opt-in/omnibus-only idea remains undecided.
+
+## Prior phase (merged, #103)
+
+**Golden-image collection — AI agents + curated dev tooling (PR D; #93 + #95).**
+Completed the collection. **base** now bakes
 the **AI coding agents** (Claude Code + Codex extensions + the `claude` CLI) and the
 cross-cutting JS/TS tooling that matches our CI (prettier/eslint/knip/jscpd + their
 extensions). Each **variant** adds its language tooling + extensions: python

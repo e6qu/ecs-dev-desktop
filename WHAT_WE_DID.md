@@ -1095,7 +1095,7 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
   `"edd-ws-$v:e2e"` tag mangled to `edd-ws-2e` — use `${v}`. Follow-up: PR D layers the
   agent extensions (#93) into base + curated tooling (#95) per image.
 
-- **2026-06-15 — Golden-image collection: AI agents + curated dev tooling (PR D; #93 + #95).**
+- **2026-06-16 — Golden-image collection: AI agents + curated dev tooling (PR D; #93 + #95; merged #103).**
   Completed the collection. `base` now bakes the AI coding agents (Claude Code + Codex
   VS Code extensions + the `claude` CLI) and the cross-cutting JS/TS tooling matching CI
   (prettier/eslint/knip/jscpd + the prettier/eslint/GitHub extensions). Each variant adds
@@ -1121,3 +1121,21 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
   cost: the baked agents (~1 GB native) live in base → every variant carries them (ts ~2 GB
   … omnibus ~5.7 GB) — flagged for a possible opt-in/omnibus-only move. Closes the
   golden-image collection plan (PRs A–D).
+- **2026-06-16 — Golden-image fuller per-language dev tooling (#95 follow-ons).** Rounded
+  out the curated dev-tooling set so a workspace matches CI out of the box. Added: the
+  cross-cutting **Trivy** security scanner to **base** (the repo's own CI gate tool, so a
+  workspace scans its deps/IaC/secrets exactly as CI does — single static binary to
+  /usr/local/bin, vuln DB fetched lazily at first scan; language-agnostic → base, every
+  variant inherits it); the Go dead-code/CPD/static-analysis set \*\*staticcheck + deadcode
+  - dupl** alongside golangci-lint in **go**+**omnibus** (`go install` → GOBIN=/usr/local/bin,
+    one cache clean after); and **cargo-audit** (Rust SCA against the RustSec advisory DB)
+    in **rust**+**omnibus** (`cargo install --locked`, registry dropped after). Tests:
+    `image-variants.e2e.ts` (go asserts staticcheck/deadcode/dupl via `command -v` for the
+    ones with no `--version`; rust asserts cargo-audit; the shared base-behaviour block
+    asserts trivy on every variant) + `workspace-toolchain.e2e.ts` (omnibus asserts all).
+    Lessons: `deadcode`/`dupl` have no `--version` (no-arg form exits non-zero) → verify with
+    `command -v`; `cargo audit --version` prints `cargo-audit-audit <ver>` → match `/audit \d/`.
+    Remaining gap flagged: **Java** still has no standalone formatter/linter CLI (JDK/Maven/
+    Gradle + redhat.java only) — a follow-up (e.g. google-java-format). Also **re-pinned the
+    sockerless submodule\*\* `1ca1f71 → c69cd27`, picking up #569 (process-mode managed-EBS
+    RunTask panic fix) + later Azure/GCP/GitLab cells (no AWS-surface impact).

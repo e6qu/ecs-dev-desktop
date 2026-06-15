@@ -26,9 +26,18 @@ RUN arch="$(dpkg --print-architecture)" \
 
 # Go dev tooling: golangci-lint (a meta-linter that bundles gosec, staticcheck,
 # etc.). Install to /usr/local/bin via GOBIN (the default GOPATH/bin is on the EBS
-# mount, shadowed) so it's on the base PATH and survives.
+# mount, shadowed) so it's on the base PATH and survives. Alongside golangci-lint
+# (a meta-linter that already bundles staticcheck + gosec): the standalone
+# `staticcheck` CLI, `deadcode` (the official x/tools dead-code finder), and `dupl`
+# (Go copy-paste detector) — the per-language dead-code/CPD/static-analysis set from
+# #95. One `go clean` after all installs (the module/build cache is ~GBs, shadowed by
+# the EBS mount anyway).
 RUN GOBIN=/usr/local/bin /usr/local/go/bin/go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest \
-    && golangci-lint --version \
+    && GOBIN=/usr/local/bin /usr/local/go/bin/go install honnef.co/go/tools/cmd/staticcheck@latest \
+    && GOBIN=/usr/local/bin /usr/local/go/bin/go install golang.org/x/tools/cmd/deadcode@latest \
+    && GOBIN=/usr/local/bin /usr/local/go/bin/go install github.com/mibk/dupl@latest \
+    && golangci-lint --version && staticcheck --version \
+    && command -v deadcode && command -v dupl \
     && /usr/local/go/bin/go clean -cache -modcache
 
 # Go VS Code extension into the built-in extensions dir (baked at build).

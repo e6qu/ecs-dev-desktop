@@ -23,6 +23,16 @@ RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile min
     && /opt/rust/cargo/bin/cargo --version \
     && /opt/rust/cargo/bin/cargo clippy --version && /opt/rust/cargo/bin/cargo fmt --version
 
+# Rust security/SCA: cargo-audit scans Cargo.lock against the RustSec advisory DB —
+# the Rust analog of bandit/trivy's dependency audit (the per-language SCA from #95).
+# `cargo install` lands it in $CARGO_HOME/bin (/opt/rust/cargo/bin, already on PATH);
+# `--locked` pins its own build deps. Drop the downloaded crate registry afterward to
+# keep the image lean (the advisory DB itself is fetched lazily at first `cargo audit`).
+RUN /opt/rust/cargo/bin/cargo install cargo-audit --locked \
+    && rm -rf /opt/rust/cargo/registry \
+    && chmod -R a+rwX /opt/rust \
+    && /opt/rust/cargo/bin/cargo audit --version
+
 # Rust VS Code language support into the built-in extensions dir (baked at build).
 RUN openvscode-server --install-extension rust-lang.rust-analyzer --extensions-dir /opt/openvscode-server/extensions \
     && chmod -R a+rX /opt/openvscode-server/extensions

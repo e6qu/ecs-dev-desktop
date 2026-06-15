@@ -68,6 +68,16 @@ RUN npm install -g @anthropic-ai/claude-code prettier eslint knip jscpd \
     && command -v claude && prettier --version && eslint --version \
     && knip --version && jscpd --version
 
+# Cross-cutting security scanner: Trivy (vuln/secret/misconfig/IaC), the same tool
+# this repo's CI security gate uses (`.trivyignore.yaml`) — so a workspace can scan
+# its own deps/IaC/secrets exactly as CI does, for ANY language. Single static
+# binary into /usr/local/bin (on PATH for every shell); its vuln DB is fetched lazily
+# at first scan, not baked. Language-agnostic, so it lives in base (every variant
+# inherits it); per-language SCA (e.g. cargo-audit) is added by the variants.
+RUN curl -fsSL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+      | sh -s -- -b /usr/local/bin \
+    && trivy --version
+
 # User-installable CLIs without root: the system npm prefix is /usr/local (root-
 # owned), so `npm install -g` would EACCES for the non-root `workspace` user. Point
 # npm's global prefix at a HOME dir (persists on the EBS home volume) and put it —
