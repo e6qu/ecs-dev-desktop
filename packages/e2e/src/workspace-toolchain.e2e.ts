@@ -179,7 +179,7 @@ describe("golden omnibus: AI agents + dev tooling", { timeout: 60_000 }, () => {
   });
 
   it("ships curated linters/formatters/SAST across languages [#95]", () => {
-    // Cross-cutting (Node, from base) + per-language (omnibus carries all).
+    // Cross-cutting (Node + security, from base) + per-language (omnibus carries all).
     expect(sh("prettier --version 2>&1")).toMatch(/\d+\./);
     expect(sh("eslint --version 2>&1")).toMatch(/\d+\./);
     expect(sh("knip --version 2>&1")).toMatch(/\d+\./);
@@ -187,7 +187,15 @@ describe("golden omnibus: AI agents + dev tooling", { timeout: 60_000 }, () => {
     // `command -v` (not `semgrep --version`): semgrep-core SIGILLs on some arm64
     // hosts but runs on CI amd64; this proves it's installed + on PATH.
     expect(sh("command -v semgrep")).toContain("semgrep");
+    // Cross-cutting security scanner from base (matches this repo's CI gate).
+    expect(sh("trivy --version 2>&1")).toMatch(/Version: \d+\./);
+    // Go: golangci-lint (meta-linter) + staticcheck + deadcode + dupl (#95).
     expect(sh("golangci-lint --version 2>&1")).toContain("golangci-lint");
+    expect(sh("staticcheck --version 2>&1")).toContain("staticcheck");
+    expect(sh("command -v deadcode")).toContain("deadcode");
+    expect(sh("command -v dupl")).toContain("dupl");
+    // Rust: clippy (lint) + cargo-audit (SCA/security, #95).
     expect(sh("cargo clippy --version 2>&1")).toContain("clippy");
+    expect(sh("cargo audit --version 2>&1")).toMatch(/audit \d+\./);
   });
 });

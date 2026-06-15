@@ -30,22 +30,24 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
 
 ## Available now (decision-free — immediate)
 
-- **Golden-image collection (planned sequence; decided 2026-06-15).** Split the
-  single workspace image into a shared **`base`** (OpenVSCode, sshd + CA,
-  idle-agent, entrypoint, git-credential helper, workspace user, Node, and the
-  cross-cutting workspace-UX fixes #90/#91/#94 + agent extensions #93) plus thin
-  variants `FROM base`: **omnibus** (today's all-toolchains image, renamed),
-  **typescript**, **python**, **go**, **java**, **rust** (build-essential only in
-  variants that need it, not base). It's just more catalog entries (the base-image
-  allow-list) — no data-model change; `dev-bootstrap` seeds them; the picker already
-  lets users choose. Sequence (**all done**): **PR A** = #90/#91/#94 (merged #97);
-  **PR B** = base/omnibus split (merged #101); **PR C** = slim variants
-  typescript/python/go/java/rust + `dev-bootstrap` collection + `image-variants.e2e.ts`
-  - path-gated `golden-images` CI (merged #102); **PR D** = #93 agents (Claude Code +
-    Codex + `claude` CLI) baked into `base` via a first-boot extension-seed mechanism +
-    curated #95 tooling per image (`feat/golden-image-agents-and-tooling`). **Collection
-    complete.** Possible follow-up: make the baked agents opt-in / omnibus-only (they add
-    ~1 GB to every variant).
+- **Golden-image collection — DONE (all PRs merged).** Split the single workspace
+  image into a shared **`base`** (OpenVSCode, sshd + CA, idle-agent, entrypoint,
+  git-credential helper, workspace user, Node, the workspace-UX fixes #90/#91/#94,
+  the AI agents #93, and cross-cutting JS/TS tooling) plus thin variants `FROM base`:
+  **omnibus** (all toolchains), **typescript**, **python**, **go**, **java**,
+  **rust**. Just more catalog entries (the base-image allow-list) — no data-model
+  change; `dev-bootstrap` seeds them; the picker already lets users choose. Sequence
+  (**all merged**): **PR A** = #90/#91/#94 (#97); **PR B** = base/omnibus split (#101);
+  **PR C** = slim variants + `dev-bootstrap` collection + `image-variants.e2e.ts` +
+  path-gated `golden-images` CI (#102); **PR D** = #93 agents (Claude Code + Codex +
+  `claude` CLI) baked into `base` + curated #95 tooling per image, extensions installed
+  into OpenVSCode's **built-in** dir (no first-boot copy → no startup race) (#103).
+  **In progress (`feat/golden-image-fuller-tooling`, #95 follow-ons):** rounding out
+  the curated dev tooling — Trivy security scanner in base (cross-cutting, matches CI);
+  Go staticcheck/deadcode/dupl (go+omnibus); cargo-audit (rust+omnibus). **Follow-ups:**
+  (a) **Java** has no standalone formatter/linter CLI yet (e.g. google-java-format) —
+  the one language still thin; (b) make the ~1 GB baked AI agents opt-in / omnibus-only
+  (undecided) — they inflate every variant.
 - **Launch-readiness / observability — essentially complete** (`BUGS.md` →
   Resolved): readiness probe, storage health, structured logging, metrics + alarms,
   CloudTrail pagination, API request latency/error metrics + access logging, fleet +
@@ -94,7 +96,7 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
   it as adversarial probing (unexpected params, pagination, error shapes, idempotency)
   rather than re-running the green suites. Nothing to file from the Infrastructure
   work — `DescribeClusters`/`clusterInfo` conformed exactly. (Requested 2026-06-15;
-  do after the current live-test/IDE thread.)
+  the live-test/IDE + golden-image threads are now done, so this is unblocked.)
 - Covered (see `docs/simulator-live-coverage.md`): the real VS Code workspace
   (OpenVSCode browser proof + polyglot toolchain compiles + OpenVSCode :3000 inside
   the sim ECS task), browser Pomerium OIDC login, portal browser lifecycle on real
@@ -152,6 +154,10 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
 - **sockerless #524/#529/#531/#532:** pinned at `638f65a` (PR #59); ECS
   `ExecuteCommand` and managed-EBS golden SSH have live coverage in
   `packages/e2e/src/golden-workspace-ssh.e2e.ts`.
+- **sockerless submodule re-pinned `1ca1f71 → c69cd27` (2026-06-16):** picks up
+  **#569** (process-mode managed-EBS `RunTask` panic fix — see `BUGS.md`) plus later
+  Azure/GCP/GitLab simulator cells (none touch our AWS ECS/EBS surfaces). Follow-up:
+  re-enable a process-mode managed-EBS `RunTask` in the `integration` job to confirm #569.
 - **Gateway machine-auth:** the SSH gateway authenticates to the control plane
   with per-workspace HMAC bearer tokens derived from `EDD_GATEWAY_SECRET`
   (`apps/web/lib/machine-auth.ts`, `wake-and-forward.sh` via `openssl dgst

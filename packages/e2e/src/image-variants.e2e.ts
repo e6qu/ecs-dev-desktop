@@ -43,7 +43,16 @@ const VARIANTS: readonly Variant[] = [
   {
     name: "go",
     image: process.env.IMG_GO ?? "edd-ws-go:e2e",
-    present: ["go version", "golangci-lint --version"],
+    // golangci-lint (meta-linter) + staticcheck (static analysis) + deadcode +
+    // dupl (CPD) — #95's Go dev-tooling set. deadcode/dupl have no `--version`
+    // (their no-arg form exits non-zero), so prove them via `command -v`.
+    present: [
+      "go version",
+      "golangci-lint --version",
+      "staticcheck --version",
+      "command -v deadcode",
+      "command -v dupl",
+    ],
     absent: ["cargo", "javac", "uv"],
     extensions: ["golang.go"],
   },
@@ -57,7 +66,13 @@ const VARIANTS: readonly Variant[] = [
   {
     name: "rust",
     image: process.env.IMG_RUST ?? "edd-ws-rust:e2e",
-    present: ["cargo --version", "rustc --version", "cargo clippy --version"],
+    // clippy (lint) + rustfmt (via the component) + cargo-audit (SCA/security, #95).
+    present: [
+      "cargo --version",
+      "rustc --version",
+      "cargo clippy --version",
+      "cargo audit --version",
+    ],
     absent: ["go", "javac", "uv"],
     extensions: ["rust-lang.rust-analyzer"],
   },
@@ -163,9 +178,11 @@ describe.skipIf(!HAVE_VARIANT_IMAGES)(
           expect(builtin, `${v.name}: extension ${ext} not baked in`).toContain(ext);
         }
 
-        // Shared base behaviour: Node (base), user-writable npm global prefix (#90),
-        // user-CLI dirs on PATH (#91), and the Dark-mode default (#94).
+        // Shared base behaviour: Node (base), the cross-cutting Trivy security
+        // scanner (#95, from base — every variant inherits it), a user-writable npm
+        // global prefix (#90), user-CLI dirs on PATH (#91), and Dark mode (#94).
         expect(sh("node --version 2>&1")).toMatch(/v\d+\./);
+        expect(sh("trivy --version 2>&1")).toMatch(/Version: \d+\./);
         const prefix = sh(
           'p="$(npm config get prefix)"; mkdir -p "$p/bin" && touch "$p/bin/.probe" && echo "$p"',
         ).trim();

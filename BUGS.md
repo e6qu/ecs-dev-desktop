@@ -31,13 +31,16 @@ active breakage):
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-- **sockerless#569 (open)** — process-mode (`SIM_RUNTIME=process`) `ecs:RunTask`
-  with a managed-EBS volume **panics** the sim (nil Docker client in the async
-  transition: `ec2.go:3800` ← `ecs.go:1027`). Container mode is unaffected. So the
-  real `EcsComputeProvider.runTask` managed-EBS path (incl. the agent-token secret
-  injection) is exercised in **container mode** (`packages/e2e/src/agent-secret.e2e.ts`
-  - the user-journey/golden e2e), not the lightweight process-mode `integration`
-    job. `health()` (DescribeClusters, no RunTask) does run in process mode.
+- **sockerless#569 (fixed upstream — now in the pinned ref)** — process-mode
+  (`SIM_RUNTIME=process`) `ecs:RunTask` with a managed-EBS volume used to **panic**
+  the sim (nil Docker client in the async transition: `ec2.go:3800` ← `ecs.go:1027`).
+  **Fixed by sockerless #569** (`05217316`), included in the submodule re-pin to
+  `c69cd278` (2026-06-16). Until verified downstream, the real
+  `EcsComputeProvider.runTask` managed-EBS path (incl. the agent-token secret
+  injection) is still exercised in **container mode**
+  (`packages/e2e/src/agent-secret.e2e.ts` + the user-journey/golden e2e).
+  **Follow-up:** re-enable a process-mode managed-EBS `RunTask` in the lightweight
+  `integration` job to confirm the fix and broaden cheap coverage.
 
 - **sockerless#583 (open)** — the ECS sim advertises a task's `Limits`
   (`CPU`/`Memory`) in task metadata but launches the container with **no cgroup
