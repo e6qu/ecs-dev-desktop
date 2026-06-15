@@ -972,3 +972,17 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
   integ tier (N concurrent wakes → one launch, all running — 10/10) plus the
   rewritten crash + state-machine/domain unit tests; the container `concurrent-connect`
   e2e exercises it for real in CI.
+
+- **2026-06-15 — Docs accuracy pass (run-everywhere: local options + cloud module).**
+  A read-only audit (local-run + Terraform-deploy) drove targeted fixes so the docs
+  show how to run the app across the spectrum: README now has a run-options table
+  (local fakes → local sims → cloud Terraform) and uses `edd.localhost`;
+  `running-locally.md` gained the missing `+ Entra` command + its HTTPS-callback
+  caveat; `deploying.md` split the env into `secret_environment` (auth/crypto/SSH-CA)
+  vs `extra_environment` (RBAC groups, AUTH_TRUST_HOST, base domain, JWKS), corrected
+  the FARGATE-Spot wording and `golden_repository_urls` output name, and kept the
+  `EDD_SSH_CA_KEY` material default; the module README inputs/outputs tables gained
+  the three alarm vars + five missing outputs; `variables.tf`'s `secret_environment`
+  description now lists the full secret set; and `examples/complete` now wires
+  `extra_environment` (so `EDD_ADMIN_GROUPS` — required for any admin — is settable)
+  with a fuller `terraform.tfvars.example`. `terraform fmt`/`validate` clean.

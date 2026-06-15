@@ -31,7 +31,13 @@ variable "route53_zone_id" {
 }
 
 variable "auth_secret_arns" {
-  description = "Map of env-var name → Secrets Manager ARN for auth secrets."
+  description = "Map of env-var name → Secrets Manager ARN for ALL secret env vars (auth + crypto + SSH CA), e.g. AUTH_SECRET, AUTH_GITHUB_*, EDD_TOKEN_ENC_KEY, EDD_GATEWAY_SECRET, EDD_AGENT_SECRET, EDD_SSH_CA_KEY."
+  type        = map(string)
+  default     = {}
+}
+
+variable "extra_environment" {
+  description = "Plain (non-secret) control-plane env vars — RBAC groups (EDD_ADMIN_GROUPS/EDD_MEMBER_GROUPS), AUTH_TRUST_HOST/AUTH_URL, EDD_WORKSPACE_BASE_DOMAIN, EDD_POMERIUM_JWKS_URL, AUTH_MICROSOFT_ENTRA_ID_ISSUER."
   type        = map(string)
   default     = {}
 }

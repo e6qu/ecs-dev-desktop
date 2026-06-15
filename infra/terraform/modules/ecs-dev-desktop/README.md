@@ -125,46 +125,51 @@ sim (AGENTS.md §6.8).
 
 ## Inputs
 
-| Name                                                  | Type         | Default           | Description                                                  |
-| ----------------------------------------------------- | ------------ | ----------------- | ------------------------------------------------------------ |
-| `name`                                                | string       | —                 | Resource name prefix (lowercase, hyphenated).                |
-| `availability_zones`                                  | list(string) | —                 | AZs (≥2) to spread subnets across.                           |
-| `tags`                                                | map(string)  | `{}`              | Extra tags on every resource.                                |
-| `vpc_cidr`                                            | string       | `10.42.0.0/16`    | VPC CIDR.                                                    |
-| `nat_mode`                                            | string       | `gateway`         | Private egress: `gateway` (managed) or `instance` (fck-nat). |
-| `single_nat_gateway`                                  | bool         | `true`            | (gateway) One shared NAT vs one per AZ.                      |
-| `nat_instance_type`                                   | string       | `t4g.nano`        | (instance) fck-nat EC2 type.                                 |
-| `nat_instance_ha`                                     | bool         | `false`           | (instance) fck-nat HA (ASG + floating ENI).                  |
-| `nat_instance_use_spot`                               | bool         | `false`           | (instance) Use a spot instance.                              |
-| `dynamodb_table_name`                                 | string       | `ecs-dev-desktop` | Single-table name (match `@edd/config`).                     |
-| `dynamodb_point_in_time_recovery`                     | bool         | `true`            | Enable PITR.                                                 |
-| `deletion_protection`                                 | bool         | `true`            | Protect DynamoDB + ALB from destroy.                         |
-| `control_plane_image`                                 | string       | `""`              | App image ref; defaults to this stack's ECR `:latest`.       |
-| `control_plane_cpu` / `control_plane_memory`          | number       | `512` / `1024`    | Fargate sizing.                                              |
-| `control_plane_desired_count`                         | number       | `2`               | Task count (before autoscaling).                             |
-| `control_plane_port`                                  | number       | `3000`            | App listen port.                                             |
-| `control_plane_min_count` / `control_plane_max_count` | number       | `2` / `10`        | Autoscaling bounds.                                          |
-| `extra_environment`                                   | map(string)  | `{}`              | Extra plain env vars.                                        |
-| `secret_environment`                                  | map(string)  | `{}`              | Env var → Secrets Manager ARN.                               |
-| `ssh_ca_public_key`                                   | string       | `""`              | OpenSSH CA public key for golden workspace SSH.              |
-| `domain_name`                                         | string       | `""`              | Base domain (empty = HTTP-only dev).                         |
-| `route53_zone_id`                                     | string       | `""`              | Zone id (required with `domain_name`).                       |
-| `workspaces_subdomain`                                | string       | `devbox`          | `*.<this>.<domain>` routing.                                 |
-| `golden_image_repos`                                  | list(string) | `[]`              | Golden base-image ECR repos to create.                       |
-| `image_retention_count`                               | number       | `20`              | Images kept per ECR repo.                                    |
-| `reconciler_schedule`                                 | string       | `rate(5 minutes)` | Reconciler cadence.                                          |
-| `reconciler_command`                                  | list(string) | `["node", …]`     | Reconciler container command.                                |
-| `log_retention_days`                                  | number       | `30`              | CloudWatch Logs retention.                                   |
+| Name                                                  | Type         | Default           | Description                                                                          |
+| ----------------------------------------------------- | ------------ | ----------------- | ------------------------------------------------------------------------------------ |
+| `name`                                                | string       | —                 | Resource name prefix (lowercase, hyphenated).                                        |
+| `availability_zones`                                  | list(string) | —                 | AZs (≥2) to spread subnets across.                                                   |
+| `tags`                                                | map(string)  | `{}`              | Extra tags on every resource.                                                        |
+| `vpc_cidr`                                            | string       | `10.42.0.0/16`    | VPC CIDR.                                                                            |
+| `nat_mode`                                            | string       | `gateway`         | Private egress: `gateway` (managed) or `instance` (fck-nat).                         |
+| `single_nat_gateway`                                  | bool         | `true`            | (gateway) One shared NAT vs one per AZ.                                              |
+| `nat_instance_type`                                   | string       | `t4g.nano`        | (instance) fck-nat EC2 type.                                                         |
+| `nat_instance_ha`                                     | bool         | `false`           | (instance) fck-nat HA (ASG + floating ENI).                                          |
+| `nat_instance_use_spot`                               | bool         | `false`           | (instance) Use a spot instance.                                                      |
+| `dynamodb_table_name`                                 | string       | `ecs-dev-desktop` | Single-table name (match `@edd/config`).                                             |
+| `dynamodb_point_in_time_recovery`                     | bool         | `true`            | Enable PITR.                                                                         |
+| `deletion_protection`                                 | bool         | `true`            | Protect DynamoDB + ALB from destroy.                                                 |
+| `control_plane_image`                                 | string       | `""`              | App image ref; defaults to this stack's ECR `:latest`.                               |
+| `control_plane_cpu` / `control_plane_memory`          | number       | `512` / `1024`    | Fargate sizing.                                                                      |
+| `control_plane_desired_count`                         | number       | `2`               | Task count (before autoscaling).                                                     |
+| `control_plane_port`                                  | number       | `3000`            | App listen port.                                                                     |
+| `control_plane_min_count` / `control_plane_max_count` | number       | `2` / `10`        | Autoscaling bounds.                                                                  |
+| `extra_environment`                                   | map(string)  | `{}`              | Extra plain env vars.                                                                |
+| `secret_environment`                                  | map(string)  | `{}`              | Env var → Secrets Manager ARN.                                                       |
+| `ssh_ca_public_key`                                   | string       | `""`              | OpenSSH CA public key for golden workspace SSH.                                      |
+| `domain_name`                                         | string       | `""`              | Base domain (empty = HTTP-only dev).                                                 |
+| `route53_zone_id`                                     | string       | `""`              | Zone id (required with `domain_name`).                                               |
+| `workspaces_subdomain`                                | string       | `devbox`          | `*.<this>.<domain>` routing.                                                         |
+| `golden_image_repos`                                  | list(string) | `[]`              | Golden base-image ECR repos to create.                                               |
+| `image_retention_count`                               | number       | `20`              | Images kept per ECR repo.                                                            |
+| `reconciler_schedule`                                 | string       | `rate(5 minutes)` | Reconciler cadence.                                                                  |
+| `reconciler_command`                                  | list(string) | `["node", …]`     | Reconciler container command.                                                        |
+| `log_retention_days`                                  | number       | `30`              | CloudWatch Logs retention.                                                           |
+| `enable_metric_alarms`                                | bool         | `true`            | Create CloudWatch alarms on the EMF metrics (off for the sim — no metrics endpoint). |
+| `alarm_sns_topic_arns`                                | list(string) | `[]`              | SNS topics notified on alarm/OK (empty = alarms still evaluate, just don't notify).  |
+| `wake_latency_alarm_ms`                               | number       | `120000`          | Threshold (ms) for the wake-on-connect p99 latency alarm.                            |
 
 ## Outputs
 
-| Name                                                                                    | Description            |
-| --------------------------------------------------------------------------------------- | ---------------------- |
-| `vpc_id`, `private_subnet_ids`, `public_subnet_ids`                                     | Networking.            |
-| `dynamodb_table_name`, `dynamodb_table_arn`                                             | Single-table store.    |
-| `kms_key_arn`                                                                           | Platform KMS key.      |
-| `ecs_cluster_name`, `ecs_cluster_arn`                                                   | ECS cluster.           |
-| `control_plane_repository_url`, `golden_repository_urls`                                | ECR push targets.      |
-| `alb_dns_name`, `control_plane_url`                                                     | Front door.            |
-| `control_plane_task_role_arn`, `ecs_infrastructure_role_arn`, `task_execution_role_arn` | IAM.                   |
-| `log_group_names`                                                                       | CloudWatch log groups. |
+| Name                                                                                                                | Description                        |
+| ------------------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| `vpc_id`, `private_subnet_ids`, `public_subnet_ids`                                                                 | Networking.                        |
+| `alb_security_group_id`, `tasks_security_group_id`                                                                  | Security groups (ALB / ECS tasks). |
+| `nat_mode`, `nat_instance_eni_id`                                                                                   | NAT egress mode + fck-nat ENI.     |
+| `dynamodb_table_name`, `dynamodb_table_arn`                                                                         | Single-table store.                |
+| `kms_key_arn`                                                                                                       | Platform KMS key.                  |
+| `ecs_cluster_name`, `ecs_cluster_arn`                                                                               | ECS cluster.                       |
+| `control_plane_repository_url`, `golden_repository_urls`                                                            | ECR push targets.                  |
+| `alb_dns_name`, `control_plane_url`                                                                                 | Front door.                        |
+| `control_plane_task_role_arn`, `reconciler_task_role_arn`, `ecs_infrastructure_role_arn`, `task_execution_role_arn` | IAM.                               |
+| `log_group_names`                                                                                                   | CloudWatch log groups.             |

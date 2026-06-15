@@ -40,9 +40,12 @@ module "ecs_dev_desktop" {
   domain_name     = var.domain_name
   route53_zone_id = var.route53_zone_id
 
-  # Auth secrets live in Secrets Manager; the module grants the task read access
-  # and injects them as env vars. Create the secrets out-of-band (see README).
+  # Secrets (auth + crypto + SSH CA) live in Secrets Manager; the module grants the
+  # task read access and injects them as env vars. Create the secrets out-of-band
+  # (see docs/deploying.md). Non-secret config (RBAC groups, AUTH_TRUST_HOST,
+  # workspace base domain, Pomerium JWKS) goes through extra_environment.
   secret_environment = var.auth_secret_arns
+  extra_environment  = var.extra_environment
 
   tags = {
     "edd:env"   = var.environment

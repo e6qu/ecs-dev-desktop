@@ -6,6 +6,19 @@
 
 ## Current phase
 
+**Docs accuracy pass — run-everywhere story.** Reviewed all docs against current
+code and fixed drift: the README now frames the run spectrum (local fakes → local
+sims → cloud via the Terraform module) and uses `edd.localhost`;
+`docs/running-locally.md` gained the missing `+ Entra` command (with the HTTPS
+caveat); `docs/deploying.md` split env into `secret_environment` vs
+`extra_environment`, fixed the FARGATE/`golden_repository_urls` nits, and the SSH CA
+material default; the module README inputs/outputs tables gained the alarm vars + 5
+missing outputs; and the `examples/complete` composition now wires
+`extra_environment` (so `EDD_ADMIN_GROUPS` is settable) with a fuller tfvars
+example. `terraform fmt`/`validate` clean.
+
+## Prior phase (merged, #86)
+
 **Local dev login UI (seeded users) + `edd.localhost` cookie isolation.** Replaced
 the hand-edit-cookies dev-auth flow with a real `/login` form (gated on
 `EDD_DEV_AUTH=1`): pick a seeded account + password. The accounts are
@@ -30,7 +43,7 @@ thundering herd that intermittently overran the sim). Two-phase domain
 strict `start()` + idempotent `connect()` re-dispatch. Proven deterministically in
 the integ tier (N concurrent wakes → one launch, all running).
 
-## Prior phase (merged, #85)
+## Earlier (merged, #85)
 
 **Observability completion — the remaining launch-readiness gaps, in one PR.**
 Building on the #84 audit, closed everything actionable left in
