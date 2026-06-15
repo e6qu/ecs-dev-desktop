@@ -8,7 +8,8 @@ import { defineConfig, devices } from "@playwright/test";
  * toolchain, and verify the build artifact. `globalSetup` launches the golden
  * image with its HTTP port published; `globalTeardown` removes it.
  *
- * Prerequisite: `edd-workspace:e2e` built (docker build infra/images/workspace).
+ * Prerequisite: `edd-workspace:e2e` built (the omnibus variant — build
+ * `infra/images/base` then `infra/images/omnibus --build-arg BASE=…`).
  */
 const IS_CI = process.env.CI === "true" || process.env.CI === "1";
 

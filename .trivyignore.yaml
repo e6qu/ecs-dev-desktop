@@ -6,10 +6,11 @@
 misconfigurations:
   - id: DS-0002
     paths:
-      - infra/images/workspace/Dockerfile
+      - infra/images/base/Dockerfile
+      - infra/images/omnibus/Dockerfile
       - services/ssh-gateway/Dockerfile.node
       - services/ssh-gateway/Dockerfile.proxy
-    statement: "sshd must start as root for OpenSSH privilege separation and host-key setup; the workspace image drops OpenVSCode and idle-agent to the non-root workspace user with gosu"
+    statement: "sshd must start as root for OpenSSH privilege separation and host-key setup; the workspace images drop OpenVSCode and idle-agent to the non-root workspace user with gosu"
   - id: DS-0002
     paths:
       - infra/sim/sockerless-aws-exec.Dockerfile

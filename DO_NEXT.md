@@ -170,7 +170,7 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
   honours `login_hint` (code bound to the resolved user; unknown hint →
   `error=login_required`) and the token endpoint accepts `client_secret_basic`.
   The Entra callback leg asserts group→admin interactively via `login_hint`.
-- **Golden image SSH:** `infra/images/workspace` includes `sshd`/CA/principal wiring
-  and is covered through the AWS container-mode simulator with `EcsComputeProvider`
-  managed EBS. Real deploy remains AWS-account gated.
+- **Golden image SSH:** the `infra/images` collection (shared `base`) includes
+  `sshd`/CA/principal wiring and is covered through the AWS container-mode simulator
+  with `EcsComputeProvider` managed EBS. Real deploy remains AWS-account gated.
 - **Pinned versions:** Pomerium `0.32.2`, `@playwright/test` ^1.60.

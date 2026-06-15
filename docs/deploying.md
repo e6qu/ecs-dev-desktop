@@ -60,10 +60,11 @@ Two images go to the ECR repos the module created:
    This is the primary push: **both** the control-plane service **and** the
    reconciler run this image (the reconciler is the same image with a command
    override — there is no separate reconciler image).
-2. **The golden workspace image** ([`infra/images/workspace`](../infra/images/README.md))
-   → the matching entry in `golden_repository_urls`. This bakes OpenVSCode Server,
-   the toolchains, and `sshd` + the SSH CA wiring (there is no separate "SSH proxy"
-   image — SSH is served from the workspace task).
+2. **A golden workspace image** (the [`infra/images`](../infra/images/README.md)
+   collection — a shared `base` plus the `omnibus`/per-language variants; build a
+   variant `FROM base`) → the matching entry in `golden_repository_urls`. These bake
+   OpenVSCode Server, the toolchains, and `sshd` + the SSH CA wiring (there is no
+   separate "SSH proxy" image — SSH is served from the workspace task).
 
 ```sh
 aws ecr get-login-password --region <region> \
