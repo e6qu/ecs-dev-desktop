@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# SSH gateway proxy: authenticates users with certificate auth, then runs
-# wake-and-forward.sh (ForceCommand) to wake the workspace via the control plane
-# API and proxy the TCP session to the workspace container's sshd.
+# SSH gateway proxy: authenticates users by their registered SSH key
+# (AuthorizedKeysCommand → control plane), then runs wake-and-forward.sh
+# (ForceCommand) to wake the workspace via the control plane API and proxy the TCP
+# session to the workspace container's sshd.
 #
 # Required at runtime (Docker / ECS env vars):
 #   EDD_CONTROL_PLANE_URL  — base URL of the control plane API
-#   EDD_GATEWAY_SECRET     — hex machine-auth secret; wake-and-forward.sh derives
-#                            a per-workspace HMAC bearer token from it
-#
-# The CA public key must be mounted at /etc/ssh/workspace-ca.pub.
+#   EDD_GATEWAY_SECRET     — hex machine-auth secret; authorized-keys.sh and
+#                            wake-and-forward.sh derive a per-workspace HMAC token
+#                            from it (key-authz and wake, respectively)
 #
 # OS user note: each dev-* login username must exist as an OS user on this
 # container because sshd runs the ForceCommand as that user. In this image
@@ -26,8 +26,10 @@ RUN apt-get update \
   && ssh-keygen -A \
   && mkdir -p /run/sshd
 COPY services/ssh-gateway/sshd_config.proxy /etc/ssh/sshd_config
+COPY services/ssh-gateway/authorized-keys.sh /usr/local/bin/authorized-keys.sh
 COPY services/ssh-gateway/wake-and-forward.sh /usr/local/bin/wake-and-forward.sh
 COPY services/ssh-gateway/proxy-entrypoint.sh /usr/local/bin/proxy-entrypoint.sh
-RUN chmod +x /usr/local/bin/wake-and-forward.sh /usr/local/bin/proxy-entrypoint.sh
+RUN chmod +x /usr/local/bin/authorized-keys.sh /usr/local/bin/wake-and-forward.sh \
+  /usr/local/bin/proxy-entrypoint.sh
 EXPOSE 22
 ENTRYPOINT ["/usr/local/bin/proxy-entrypoint.sh"]
