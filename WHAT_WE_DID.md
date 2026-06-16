@@ -1191,3 +1191,13 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
   Playwright suite green **13/13** after installing the matching Chromium `v1228` browser
   payload locally. The recurring `NO_COLOR` vs `FORCE_COLOR` warnings still came from the
   Node/Playwright launcher stack rather than repo code.
+- **2026-06-16 — Live portal Playwright spec updated for the merged session launcher.**
+  The container-mode CI e2e `apps/web/e2e/portal-live.pwlive.ts` was still automating the
+  removed `/workspaces` inline creator (`select.select` + `+ new workspace`), so the job
+  timed out waiting for a control that no longer existed after the catalog/admin UX merge.
+  Updated the spec to use the current `/sessions/new` flow: pick the catalog card by
+  `TESTID.catalogPickerOption`, launch via `blank session`, then assert the redirect back
+  to `/workspaces` before continuing the real ECS stop/wake/delete lifecycle checks.
+  Local verification: `pnpm --filter @edd/web exec tsc -p tsconfig.json --noEmit` green and
+  the standard portal Playwright suite green **13/13**. The full live harness remained
+  CI-only in this shell, but the failure mode was a stale selector, not a compute-path bug.

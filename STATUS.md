@@ -2,7 +2,7 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-16 (dependency freshness follow-up after catalog/admin UX pass)
+**Last updated:** 2026-06-16 (live portal e2e selector follow-up after session-launch UX change)
 
 ## Current phase
 
@@ -44,6 +44,13 @@ were refreshed (`vitest 4.1.8 → 4.1.9`, `@playwright/test 1.60.0 → 1.61.0`),
 pnpm lockfile was updated, `pnpm check-deps` returned clean again, and local
 verification re-confirmed a representative Vitest target plus the full portal
 Playwright suite green **13/13** on the newer browser stack.
+
+One more CI follow-up surfaced after that: the **live** portal Playwright spec
+still automated the removed `/workspaces` inline `<select>` creator. The live test
+now drives the current `/sessions/new` launcher instead (catalog picker card +
+`blank session`), matching the merged UX. Local verification for the fix covered
+type-checking plus the standard portal Playwright suite green **13/13**; the full
+container-mode live harness remained a CI-only repro in this shell.
 
 ## Prior phase (merged, #105)
 

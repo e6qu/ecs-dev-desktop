@@ -45,13 +45,17 @@ test("member lifecycle in the browser acts on real ECS tasks (create → stop �
   request,
 }) => {
   await loginAs(context, "live-member", "member");
-  await page.goto("/workspaces");
-  await expect(page.getByRole("heading", { name: "Your workspaces" })).toBeVisible();
+  await page.goto("/sessions/new");
+  await expect(page.getByRole("heading", { name: "Start a session" })).toBeVisible();
 
   // Launch from the catalog picker — blocks until the sim task's managed EBS
   // volume is attached, so the card appears with a real running task behind it.
-  await page.locator("select.select").selectOption(WORKSPACE_IMAGE);
-  await page.getByRole("button", { name: "+ new workspace" }).click();
+  await page
+    .locator(sel(TESTID.catalogPickerOption, { "data-image": WORKSPACE_IMAGE }))
+    .first()
+    .click();
+  await page.getByRole("button", { name: "blank session" }).click();
+  await expect(page).toHaveURL(`${BASE_URL}/workspaces`);
 
   const card = page.locator(sel(TESTID.workspaceCard, { "data-image": WORKSPACE_IMAGE })).first();
   await expect(card).toBeVisible();

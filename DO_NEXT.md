@@ -44,6 +44,11 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
   `@playwright/test` moved `1.60.0 → 1.61.0`. The manifests + `pnpm-lock.yaml` were
   refreshed, `pnpm check-deps` is green again, and the newer Playwright/browser stack
   re-ran the full portal suite cleanly (`13/13`).
+- **Live portal e2e selector follow-up — DONE.** The container-mode live Playwright spec
+  was still trying to use the removed `/workspaces` inline creator (`select.select` +
+  `+ new workspace`). It now uses the current `/sessions/new` catalog picker flow, so
+  the live ECS lifecycle test matches the merged UX instead of timing out on a missing
+  control.
 - **Golden-image collection — DONE (all PRs merged).** Split the single workspace
   image into a shared **`base`** (OpenVSCode, sshd + CA, idle-agent, entrypoint,
   git-credential helper, workspace user, Node, the workspace-UX fixes #90/#91/#94,
