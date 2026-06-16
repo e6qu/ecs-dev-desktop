@@ -1239,3 +1239,47 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
   - an input string) on an always-created resource, so it always evaluates; the sim fixture and
     `examples/complete` set neither var and stay unaffected. A full misconfigured-plan repro
     against the sim was not run (disproportionate setup); the logic + safety were proven as above.
+- **2026-06-16 — User-registered SSH keys + per-workspace subdomain: Slice 1 foundation.**
+  Began the feature where a user inputs their SSH key once and SSHes into each running
+  workspace at its own subdomain. Investigated the existing SSH design first (cert-principal
+  routing via the gateway; CA-signed short-lived certs; `*.devbox` is HTTP-only; SSH has no
+  SNI) and surfaced the design tradeoffs to the user. **Confirmed decision** (refines
+  AGENTS.md §1's "short-lived user certs"): authenticate the human→gateway hop by the
+  **registered public key** (Codespaces/Coder-style) + authorize the workspace by **ownership
+  at connect time**, keep the **CA for the internal gateway↔workspace hop**, and route via
+  wildcard DNS → one public gateway (stock OpenSSH; workspace id rides in the
+  subdomain/username). Landed Slice 1 (foundation, no AWS): `@edd/core` branded
+  `SshKeyId`/`SshPublicKey`/`SshKeyFingerprint` + pure `fingerprintPublicKey` (verified to
+  match `ssh-keygen -lf` SHA256), `sshKeyType`, `workspaceSshHost(id, baseDomain)`;
+  `@edd/api-contracts` register/list/delete schemas reusing the existing public-key boundary
+  validation (extracted a shared `sshPublicKeyField`); `@edd/db` `makeSshKeyEntity`
+  (PK=ownerId/SK=keyId + `byFingerprint` GSI1 over the already-provisioned GSI1 — no new
+  physical index) for the gateway lookup and global key uniqueness; `@edd/control-plane`
+  `SshKeyService` (register with fingerprint dedup + typed `SshKeyConflictError`, list
+  newest-first, ownership-scoped delete, `ownerForKey` gateway lookup). Verified: core +
+  contracts unit green (173 total), `SshKeyService`+entity integ green on DynamoDB Local
+  (8/8 — register, default/explicit label, dedup same-owner + cross-owner uniqueness,
+  ownerForKey, ownership-scoped delete, fingerprint freed after delete), all four packages
+  typecheck + eslint clean. Slices 2 (`/api/ssh-keys` routes + Settings page + gateway
+  `AuthorizedKeysCommand` + ownership authz + subdomain resolution) and 3 (public SSH NLB +
+  Route53 `*.ssh`, AWS-gated by decision #1) are queued in `PLAN.md` §4b.
+- **2026-06-16 — User-registered SSH keys: Slice 2 (API + portal + authorize seam).**
+  Built the API and UX on the Slice-1 foundation. Routes: `/api/ssh-keys` GET (list) +
+  POST (register, 409 on conflict) and `/api/ssh-keys/[id]` DELETE (ownership-scoped, 404
+  otherwise); plus `POST /api/workspaces/[id]/ssh-authorize` — the gateway's connect-time
+  decision (gateway machine-auth only; authorize iff the presented key is registered to the
+  workspace owner; returns the workspace principal) — the seam the gateway will consume.
+  Added `sshAuthorizeRequest/Response` contracts, api-client `register/list/deleteSshKey`,
+  the `getSshKeyService()` web accessor, the Settings → SSH keys page + `SshKeys` client
+  component (register/list/remove, surfaces the real server error), the per-workspace `ssh`
+  command on the workspace card (shown when `EDD_SSH_BASE_DOMAIN` is set), the `SSH_BASE_DOMAIN`
+  config, and `isWorkspaceLabel` in core (dedupes the label regex). Verified: route integ
+  green on DynamoDB Local — ssh-keys CRUD/conflict/per-user-isolation (7) and ssh-authorize
+  owner/mismatch/unregistered/no-token (4); web typecheck + eslint + offline build green;
+  core 173 green. **Found while wiring:** the SSH proxy is a transparent `nc`/`-W` tunnel, so
+  the user's SSH authenticates **end-to-end with the workspace node** (both hops check the CA
+  cert today) — so registered-key auth at the gateway also needs the workspace node to trust
+  the key. Reclassified the gateway sshd wiring as **Slice 2c** with an explicit sub-decision
+  (dual-trust both sshds [recommended] vs a terminating bastion) rather than rushing a
+  security-sensitive proxy-auth change into this PR; it also needs the golden-image rebuild +
+  `docker-compose.ssh.yml` e2e. Captured in `PLAN.md` §4b.

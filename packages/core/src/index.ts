@@ -11,6 +11,9 @@ export type {
   IsoTimestamp,
   OwnerId,
   SnapshotId,
+  SshKeyFingerprint,
+  SshKeyId,
+  SshPublicKey,
   TaskId,
   VolumeId,
   WorkspaceId,
@@ -22,11 +25,15 @@ export {
   isoTimestamp,
   newBaseImageId,
   newSnapshotId,
+  newSshKeyId,
   newTaskId,
   newVolumeId,
   newWorkspaceId,
   ownerId,
   snapshotId,
+  sshKeyFingerprint,
+  sshKeyId,
+  sshPublicKey,
   taskId,
   volumeId,
   workspaceId,
@@ -227,4 +234,10 @@ export type {
 export { createLogger, formatLogLine } from "./observability/logger";
 
 // SSH: workspace principal derivation.
-export { workspacePrincipal } from "./domain/ssh";
+export {
+  fingerprintPublicKey,
+  isWorkspaceLabel,
+  sshKeyType,
+  workspacePrincipal,
+  workspaceSshHost,
+} from "./domain/ssh";

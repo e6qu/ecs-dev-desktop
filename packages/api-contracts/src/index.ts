@@ -319,18 +319,74 @@ const SSH_PUBLIC_KEY_RE = new RegExp(
  * and rejects absurd payloads. */
 const SSH_PUBLIC_KEY_MAX = 16 * 1024;
 
+/** A single-line OpenSSH public key, validated at the boundary: one line, known
+ * key type, base64 blob, no newlines (so it can't smuggle a second key) and
+ * length-capped. Shared by the cert-signing and key-registration contracts so
+ * the 400-not-500 guarantee is identical on every path that takes a public key. */
+const sshPublicKeyField = z
+  .string()
+  .min(1)
+  .max(SSH_PUBLIC_KEY_MAX, "publicKey is too large")
+  .refine((s) => SSH_PUBLIC_KEY_RE.test(s.trim()), "publicKey is not a valid OpenSSH public key");
+
 /** POST /api/workspaces/:id/ssh-cert — request body. */
 export const sshCertRequest = z.object({
-  /** User's SSH public key in OpenSSH authorized_keys format (e.g. "ssh-ed25519 AAAA... comment").
-   * One line, known key type, base64 blob — no newlines (so it can't smuggle a
-   * second key) and length-capped. */
-  publicKey: z
-    .string()
-    .min(1)
-    .max(SSH_PUBLIC_KEY_MAX, "publicKey is too large")
-    .refine((s) => SSH_PUBLIC_KEY_RE.test(s.trim()), "publicKey is not a valid OpenSSH public key"),
+  /** User's SSH public key in OpenSSH authorized_keys format (e.g. "ssh-ed25519 AAAA... comment"). */
+  publicKey: sshPublicKeyField,
 });
 export type SshCertRequest = z.infer<typeof sshCertRequest>;
+
+/** POST /api/ssh-keys — register an account-level SSH public key. The key is
+ * validated identically to the cert path; `label` is an optional human name
+ * (e.g. "laptop"), trimmed and length-capped. */
+export const registerSshKeyRequest = z.object({
+  publicKey: sshPublicKeyField,
+  label: z.string().trim().max(100, "label is too long").optional(),
+});
+export type RegisterSshKeyRequest = z.infer<typeof registerSshKeyRequest>;
+
+/** A registered SSH key as returned to its owner. The private key never reaches
+ * the server; the full public key is echoed back for display/diffing. */
+export const sshKeyDto = z.object({
+  id: z.string(),
+  /** Human label (defaults to the key comment or type+fingerprint). */
+  label: z.string(),
+  /** Algorithm field, e.g. "ssh-ed25519". */
+  keyType: z.string(),
+  /** OpenSSH SHA256 fingerprint, e.g. "SHA256:…". */
+  fingerprint: z.string(),
+  publicKey: z.string(),
+  createdAt: z.iso.datetime(),
+});
+export type SshKeyDto = z.infer<typeof sshKeyDto>;
+
+/** POST /api/ssh-keys — response body (the created key). */
+export const registerSshKeyResponse = z.object({ key: sshKeyDto });
+export type RegisterSshKeyResponse = z.infer<typeof registerSshKeyResponse>;
+
+/** GET /api/ssh-keys — response body (the caller's keys). */
+export const listSshKeysResponse = z.object({ keys: z.array(sshKeyDto) });
+export type ListSshKeysResponse = z.infer<typeof listSshKeysResponse>;
+
+/** DELETE /api/ssh-keys/:id — response body. */
+export const deleteSshKeyResponse = z.object({ ok: z.literal(true) });
+export type DeleteSshKeyResponse = z.infer<typeof deleteSshKeyResponse>;
+
+/** POST /api/workspaces/:id/ssh-authorize — the SSH gateway's connect-time
+ * decision: does the presented public key belong to a user who owns this
+ * workspace? Gateway machine-auth only (no session). The gateway's
+ * `AuthorizedKeysCommand` calls this with the key the connecting client offered. */
+export const sshAuthorizeRequest = z.object({ publicKey: sshPublicKeyField });
+export type SshAuthorizeRequest = z.infer<typeof sshAuthorizeRequest>;
+
+/** POST /api/workspaces/:id/ssh-authorize — response body. `authorized` gates the
+ * connection; `principal` (present only when authorized) is the OS principal the
+ * gateway connects as. */
+export const sshAuthorizeResponse = z.object({
+  authorized: z.boolean(),
+  principal: z.string().optional(),
+});
+export type SshAuthorizeResponse = z.infer<typeof sshAuthorizeResponse>;
 
 /** POST /api/workspaces/:id/ssh-cert — response body. */
 export const sshCertResponse = z.object({

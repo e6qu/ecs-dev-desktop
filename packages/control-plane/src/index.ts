@@ -6,6 +6,8 @@ export { CatalogService } from "./catalog-service";
 export type { CatalogServiceDeps } from "./catalog-service";
 export { GitCredentialService } from "./git-credential-service";
 export type { GitCredentialServiceDeps } from "./git-credential-service";
+export { SshKeyService, SshKeyConflictError } from "./ssh-key-service";
+export type { SshKeyServiceDeps } from "./ssh-key-service";
 export { encryptToken, decryptToken } from "./token-crypto";
 export { toBaseImageDto } from "./base-image-dto";
 export { HealthService } from "./health-service";

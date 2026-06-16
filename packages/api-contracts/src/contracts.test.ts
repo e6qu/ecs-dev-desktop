@@ -1,7 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { describe, expect, it } from "vitest";
 
-import { createWorkspaceRequest, infrastructureReport, workspace } from "./index";
+import {
+  createWorkspaceRequest,
+  infrastructureReport,
+  registerSshKeyRequest,
+  sshKeyDto,
+  workspace,
+} from "./index";
+
+const VALID_PUBKEY =
+  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN4ZbjzMeOtIzbUqhfKMeKGhK/v/L86UOuNmnczpU42p vec@edd";
 
 describe("api-contracts", () => {
   it("accepts a valid workspace", () => {
@@ -46,5 +55,37 @@ describe("api-contracts", () => {
     });
     expect(parsed.cluster.runningTasks).toBe(2);
     expect(parsed.topology.nodes[0]?.id).toBe("compute");
+  });
+
+  it("accepts a valid SSH key registration (with optional label)", () => {
+    const parsed = registerSshKeyRequest.parse({ publicKey: VALID_PUBKEY, label: "laptop" });
+    expect(parsed.label).toBe("laptop");
+  });
+
+  it("accepts registration without a label", () => {
+    const parsed = registerSshKeyRequest.parse({ publicKey: VALID_PUBKEY });
+    expect(parsed.label).toBeUndefined();
+  });
+
+  it("rejects a malformed public key at the boundary (400, not a 500 downstream)", () => {
+    expect(() => registerSshKeyRequest.parse({ publicKey: "not-a-key" })).toThrow();
+  });
+
+  it("rejects a multi-line public key (no smuggling a second key)", () => {
+    expect(() =>
+      registerSshKeyRequest.parse({ publicKey: `${VALID_PUBKEY}\nssh-rsa AAAAB3 evil` }),
+    ).toThrow();
+  });
+
+  it("accepts a well-formed SSH key DTO", () => {
+    const parsed = sshKeyDto.parse({
+      id: "sshk-1",
+      label: "laptop",
+      keyType: "ssh-ed25519",
+      fingerprint: "SHA256:ZKsoxDkZEePudjxqp2aESf7WzZPoeDa7Mx4Dtddjjoo",
+      publicKey: VALID_PUBKEY,
+      createdAt: "2026-06-01T00:00:00.000Z",
+    });
+    expect(parsed.keyType).toBe("ssh-ed25519");
   });
 });

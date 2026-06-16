@@ -30,6 +30,18 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
 
 ## Available now (decision-free — immediate)
 
+- **User-registered SSH keys + per-workspace subdomain — IN PROGRESS (Phase 4b).**
+  Design confirmed with the user (registered-key human auth + ownership authz at connect
+  time; wildcard-DNS routing). **Slices 1+2 landed** on `feat/ssh-key-registration`:
+  foundation (core helpers + contracts + `sshKey` entity + `SshKeyService`), `/api/ssh-keys`
+  CRUD, the gateway `ssh-authorize` decision endpoint, api-client, Settings page, and the
+  per-workspace `ssh` command — unit + route integ green; web typecheck/lint/build green.
+  **Next: Slice 2c (no AWS, needs a sub-decision)** — wire the gateway sshd to authenticate
+  by registered key via `AuthorizedKeysCommand` → `ssh-authorize`. The proxy is a transparent
+  tunnel, so the user authenticates end-to-end with the workspace node: pick **dual-trust**
+  (both sshds verify the key; recommended) or a **terminating bastion**, then update both
+  sshd_configs + scripts + the `docker-compose.ssh.yml` e2e (golden-image rebuild).
+  **Slice 3** = public SSH NLB + Route53 `*.ssh` (AWS-gated, #1). Full plan in `PLAN.md` §4b.
 - **Catalog metadata picker + admin UX cleanup — DONE.** Mainline now carries the
   catalog metadata picker **and** the broader admin/navigation cleanup:
   `/admin/catalog`, legacy `/base-images` redirect, top-nav active state, unified

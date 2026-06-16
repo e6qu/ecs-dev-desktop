@@ -19,6 +19,7 @@ import {
   DerivedLogSource,
   HealthService,
   InfrastructureService,
+  SshKeyService,
   StoredAuditSource,
   StoredCostRollupStore,
   WorkspaceService,
@@ -29,6 +30,7 @@ import {
   makeBaseImageEntity,
   makeCostRollupEntity,
   makeReconcilerHeartbeatEntity,
+  makeSshKeyEntity,
   makeWorkspaceEntity,
   pingTable,
   RECONCILER_HEARTBEAT_ID,
@@ -44,6 +46,7 @@ import { Ec2StorageProvider } from "@edd/storage-ec2";
  */
 let instance: Promise<WorkspaceService> | undefined;
 let catalog: CatalogService | undefined;
+let sshKeys: SshKeyService | undefined;
 let auditLog: StoredAuditSource | undefined;
 let auditEvents: ReturnType<typeof makeAuditEventEntity> | undefined;
 
@@ -96,6 +99,16 @@ export function getCatalog(): CatalogService {
     clock: systemClock,
   });
   return catalog;
+}
+
+/** Account-level SSH public keys over the same single table. Backs the
+ * `/api/ssh-keys` routes and the gateway's connect-time authorize decision. */
+export function getSshKeyService(): SshKeyService {
+  sshKeys ??= new SshKeyService({
+    keys: makeSshKeyEntity(createDynamoClient(), tableName()),
+    clock: systemClock,
+  });
+  return sshKeys;
 }
 
 /** Admin Health board service: real DynamoDB ping + the active providers. */

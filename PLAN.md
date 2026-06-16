@@ -75,6 +75,54 @@ wake-on-connect against a real ECS workspace task on the container-mode sim.
   connect-time wake (real CP + real sim task) ✅; session recording ⬜;
   e2e-aws SSH-wakes-stopped ⬜.
 
+### 4b — User-registered SSH keys + per-workspace subdomain — 🟡 (API + portal landed; gateway pending)
+
+**Goal:** a user registers their SSH **public** key once (account settings), then
+SSHes to each running workspace at its **own subdomain** (`<workspaceId>.<sshzone>`).
+Decision (confirmed with the user; refines §1's "short-lived user certs"):
+authenticate the human by the **registered key** (Codespaces/Coder-style) and
+authorize the specific workspace **by ownership at connect time**. Routing is
+wildcard-DNS → single public gateway (stock OpenSSH; SSH has no SNI, so the
+workspace id rides in the subdomain/username — not a TLS-SNI tunnel, not a direct
+public endpoint). **Open sub-decision (Slice 2c):** the proxy is a transparent
+tunnel, so the user authenticates end-to-end with the workspace node — registered-key
+auth means either dual-trust (both sshds verify the key) or a terminating bastion;
+the earlier "keep the CA for the internal hop" framing assumed a terminating bastion.
+
+- ✅ **Slice 1 — foundation (no AWS):** branded `SshKeyId`/`SshPublicKey`/
+  `SshKeyFingerprint`, pure `fingerprintPublicKey` (matches `ssh-keygen -lf`),
+  `sshKeyType`, `workspaceSshHost(id, baseDomain)` (`@edd/core`); register/list/delete
+  Zod contracts reusing the boundary key validation (`@edd/api-contracts`); the
+  `sshKey` ElectroDB entity — PK=ownerId/SK=keyId + `byFingerprint` GSI1 for the
+  gateway lookup and **global key uniqueness** (`@edd/db`); `SshKeyService`
+  (register w/ dedup + `SshKeyConflictError`, list, ownership-scoped delete,
+  `ownerForKey` lookup) (`@edd/control-plane`). Unit/contract green; service+entity
+  integ green on DynamoDB Local.
+- ✅ **Slice 2 — API + portal + authorize seam (no AWS):** `/api/ssh-keys`
+  (register/list/delete, 409 on conflict, ownership-scoped delete); the gateway's
+  connect-time decision endpoint `POST /api/workspaces/:id/ssh-authorize`
+  (gateway machine-auth; authorize iff the presented key is registered to the
+  workspace owner; returns the principal) — the integration seam the gateway
+  consumes; api-client methods; Settings → SSH keys page + per-workspace `ssh …`
+  command on the workspace card (shown when `EDD_SSH_BASE_DOMAIN` is set); config
+  `SSH_BASE_DOMAIN`. Route integ green on DynamoDB Local; web typecheck/lint/build
+  green.
+- ⬜ **Slice 2c — gateway sshd wiring (no AWS; needs a design call + heavy e2e).**
+  The proxy is a transparent `nc`/`-W` tunnel, so the user's SSH authenticates
+  **end-to-end with the workspace node** (both hops currently check the CA cert).
+  Registered-key auth therefore needs a decision: **(a) dual-trust** — both the
+  gateway and the golden-image workspace sshd use `AuthorizedKeysCommand` →
+  `ssh-authorize` (gateway token / agent token), dropping the cert on the user
+  path (simplest; CA no longer on the human path); **(b) terminating bastion** —
+  the gateway terminates the user's SSH and re-originates a CA-cert SSH to the
+  workspace (bigger re-arch). Then update both sshd_configs + scripts and the
+  `docker-compose.ssh.yml` e2e (golden-image rebuild). Recommendation: (a).
+- ⬜ **Slice 3 — ingress (AWS-gated, decision #1):** public SSH NLB + listener;
+  Route53 `*.<sshzone>` wildcard wired to the gateway.
+- **Gate:** register/list/delete ✅ (unit+integ); ssh-authorize decision ✅ (integ);
+  Settings page + per-workspace command ✅ (typecheck/build); gateway sshd registered-key
+  auth ⬜; subdomain routing ⬜; e2e key→subdomain→shell ⬜; e2e-aws public SSH ingress ⬜.
+
 ## Phase 5 — Scale-to-zero + snapshot automation — 🟡
 
 ✅ Reconciler: idle stop+snapshot, scheduled snapshots, orphan GC (pure selectors +
