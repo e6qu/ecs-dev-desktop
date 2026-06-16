@@ -95,6 +95,8 @@ export const baseImageEntry = z.object({
   name: z.string(),
   image: z.string(),
   description: z.string(),
+  tags: z.array(z.string()),
+  tools: z.array(z.string()),
   enabled: z.boolean(),
   createdAt: z.iso.datetime(),
 });
@@ -104,6 +106,8 @@ export const createBaseImageRequest = z.object({
   name: z.string().min(1),
   image: z.string().min(1),
   description: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  tools: z.array(z.string()).optional(),
   enabled: z.boolean().optional(),
 });
 export type CreateBaseImageRequest = z.infer<typeof createBaseImageRequest>;
@@ -113,11 +117,21 @@ export const updateBaseImageRequest = z
   .object({
     name: z.string().min(1).optional(),
     description: z.string().optional(),
+    tags: z.array(z.string()).optional(),
+    tools: z.array(z.string()).optional(),
     enabled: z.boolean().optional(),
   })
-  .refine((p) => p.name !== undefined || p.description !== undefined || p.enabled !== undefined, {
-    message: "at least one field is required",
-  });
+  .refine(
+    (p) =>
+      p.name !== undefined ||
+      p.description !== undefined ||
+      p.tags !== undefined ||
+      p.tools !== undefined ||
+      p.enabled !== undefined,
+    {
+      message: "at least one field is required",
+    },
+  );
 export type UpdateBaseImageRequest = z.infer<typeof updateBaseImageRequest>;
 
 export const listBaseImagesResponse = z.object({

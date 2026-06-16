@@ -35,6 +35,8 @@ interface BaseImageRecord {
   name: string;
   image: string;
   description: string;
+  tags?: string[];
+  tools?: string[];
   enabled: boolean;
   createdAt: string;
 }
@@ -45,6 +47,8 @@ function toEntry(r: BaseImageRecord): BaseImageEntry {
     name: r.name,
     image: baseImage(r.image),
     description: r.description,
+    tags: r.tags ?? [],
+    tools: r.tools ?? [],
     enabled: r.enabled,
     createdAt: isoTimestamp(r.createdAt),
   };
@@ -71,6 +75,8 @@ export class CatalogService {
     name: string;
     image: BaseImage;
     description?: string;
+    tags?: readonly string[];
+    tools?: readonly string[];
     enabled?: boolean;
   }): Promise<BaseImageEntryDto> {
     const entry = provisionBaseImage({
@@ -78,6 +84,8 @@ export class CatalogService {
       name: input.name,
       image: input.image,
       description: input.description,
+      tags: input.tags,
+      tools: input.tools,
       enabled: input.enabled,
       at: isoTimestamp(this.deps.clock.now()),
     });
@@ -133,6 +141,8 @@ export class CatalogService {
         name: entry.name,
         image: entry.image,
         description: entry.description,
+        tags: [...entry.tags],
+        tools: [...entry.tools],
         enabled: entry.enabled,
         createdAt: entry.createdAt,
       })

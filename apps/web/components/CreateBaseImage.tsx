@@ -12,8 +12,18 @@ export function CreateBaseImage() {
   const [name, setName] = useState("");
   const [image, setImage] = useState("");
   const [description, setDescription] = useState("");
+  const [tags, setTags] = useState("");
+  const [tools, setTools] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function parseLabels(value: string): string[] | undefined {
+    const labels = value
+      .split(",")
+      .map((label) => label.trim())
+      .filter((label) => label !== "");
+    return labels.length === 0 ? undefined : labels;
+  }
 
   async function add(): Promise<void> {
     setBusy(true);
@@ -23,10 +33,14 @@ export function CreateBaseImage() {
         name,
         image,
         description: description === "" ? undefined : description,
+        tags: parseLabels(tags),
+        tools: parseLabels(tools),
       });
       setName("");
       setImage("");
       setDescription("");
+      setTags("");
+      setTools("");
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "create failed");
@@ -39,31 +53,66 @@ export function CreateBaseImage() {
 
   return (
     <div className="panel">
-      <div className="field">
-        <input
-          className="input"
-          placeholder="display name — e.g. Node 20 (Debian)"
-          value={name}
-          onChange={(e) => {
-            setName(e.target.value);
-          }}
-        />
-        <input
-          className="input"
-          placeholder="image ref — e.g. golden/node:20"
-          value={image}
-          onChange={(e) => {
-            setImage(e.target.value);
-          }}
-        />
-        <input
-          className="input"
-          placeholder="description (optional)"
-          value={description}
-          onChange={(e) => {
-            setDescription(e.target.value);
-          }}
-        />
+      <div className="form-grid">
+        <label className="field-stack">
+          <span className="field-label">Display name</span>
+          <input
+            className="input"
+            placeholder="Node 20 (Debian)"
+            value={name}
+            onChange={(e) => {
+              setName(e.target.value);
+            }}
+          />
+        </label>
+        <label className="field-stack">
+          <span className="field-label">Image ref</span>
+          <input
+            className="input"
+            placeholder="golden/node:20"
+            value={image}
+            onChange={(e) => {
+              setImage(e.target.value);
+            }}
+          />
+        </label>
+        <label className="field-stack field-span-2">
+          <span className="field-label">Description</span>
+          <input
+            className="input"
+            placeholder="Short operator-facing summary of the workspace environment"
+            value={description}
+            onChange={(e) => {
+              setDescription(e.target.value);
+            }}
+          />
+        </label>
+        <label className="field-stack">
+          <span className="field-label">Tags</span>
+          <input
+            className="input"
+            placeholder="typescript, slim, lts"
+            value={tags}
+            onChange={(e) => {
+              setTags(e.target.value);
+            }}
+          />
+          <span className="field-hint">Comma-separated facets shown in the picker.</span>
+        </label>
+        <label className="field-stack">
+          <span className="field-label">Tools</span>
+          <input
+            className="input"
+            placeholder="pnpm, eslint, trivy"
+            value={tools}
+            onChange={(e) => {
+              setTools(e.target.value);
+            }}
+          />
+          <span className="field-hint">Key CLIs surfaced to users before launch.</span>
+        </label>
+      </div>
+      <div className="field" style={{ marginTop: 16 }}>
         <button
           type="button"
           className="btn primary"

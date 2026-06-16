@@ -79,6 +79,8 @@ export function makeBaseImageEntity(client: DynamoDBClient, table = TABLE) {
         name: { type: "string", required: true },
         image: { type: "string", required: true },
         description: { type: "string", required: true },
+        tags: { type: "list", items: { type: "string" }, required: false },
+        tools: { type: "list", items: { type: "string" }, required: false },
         enabled: { type: "boolean", required: true },
         createdAt: { type: "string", required: true },
       },

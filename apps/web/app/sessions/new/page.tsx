@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import Link from "next/link";
-
 import { NewSession } from "../../../components/NewSession";
+import { StateBlock } from "../../../components/StateBlock";
 import { getCatalog } from "../../../lib/control-plane";
 import { getPagePrincipal } from "../../../lib/principal";
 
@@ -17,21 +16,23 @@ export default async function NewSessionPage() {
   const principal = await getPagePrincipal();
   if (principal === null) {
     return (
-      <div className="empty">
-        <div className="big">Not signed in</div>
-        <p>Sign in to start a session.</p>
-        <p style={{ marginTop: 18 }}>
-          <Link className="btn primary" href="/login">
-            sign in
-          </Link>
-        </p>
-      </div>
+      <StateBlock
+        title="Not signed in"
+        detail="Sign in to start a session."
+        action={{ href: "/login", label: "sign in" }}
+      />
     );
   }
 
   const images = (await getCatalog().list())
     .filter((entry) => entry.enabled)
-    .map((entry) => ({ name: entry.name, image: entry.image }));
+    .map((entry) => ({
+      name: entry.name,
+      image: entry.image,
+      description: entry.description,
+      tags: entry.tags,
+      tools: entry.tools,
+    }));
 
   return (
     <>

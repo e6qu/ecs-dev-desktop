@@ -30,6 +30,15 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
 
 ## Available now (decision-free — immediate)
 
+- **Catalog metadata picker + admin UX cleanup — DONE.** Mainline now carries the
+  catalog metadata picker **and** the broader admin/navigation cleanup:
+  `/admin/catalog`, legacy `/base-images` redirect, top-nav active state, unified
+  session-creation entry point, stronger workspace naming/context, labeled catalog form,
+  and responsive admin/data-view improvements. Verification for that pass is already
+  complete: targeted web/control-plane integ green against real DynamoDB Local, full
+  portal Playwright green 13/13, offline `@edd/web build` green. No additional
+  implementation work is queued on that slice beyond normal post-merge follow-up if
+  review turns up something concrete.
 - **Golden-image collection — DONE (all PRs merged).** Split the single workspace
   image into a shared **`base`** (OpenVSCode, sshd + CA, idle-agent, entrypoint,
   git-credential helper, workspace user, Node, the workspace-UX fixes #90/#91/#94,
@@ -44,11 +53,11 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
   into OpenVSCode's **built-in** dir (no first-boot copy → no startup race) (#103).
   **Done (#104, #95 follow-ons):** rounded out the curated dev tooling — Trivy security
   scanner in base (cross-cutting, matches CI); Go staticcheck/deadcode/dupl (go+omnibus);
-  cargo-audit (rust+omnibus). **Follow-ups (in progress, `feat/golden-image-followups`):**
-  (a) **Java formatter** — `google-java-format` added to java+omnibus (every variant now
-  has a format CLI); (b) **agents omnibus-only** — moved Claude Code + Codex + the `claude`
-  CLI out of base into omnibus, slimming every variant ~1 GB (slim-variant users install
-  agents at runtime via #90/#91). Both flagged follow-ups now addressed.
+  cargo-audit (rust+omnibus). **Follow-ups done (#105):** (a) **Java formatter** —
+  `google-java-format` added to java+omnibus (every variant now has a format CLI);
+  (b) **agents omnibus-only** — moved Claude Code + Codex + the `claude` CLI out of base
+  into omnibus, slimming every variant ~1 GB (slim-variant users install agents at runtime
+  via #90/#91). **The golden-image collection is complete** (#97/#101/#102/#103/#104/#105).
 - **Launch-readiness / observability — essentially complete** (`BUGS.md` →
   Resolved): readiness probe, storage health, structured logging, metrics + alarms,
   CloudTrail pagination, API request latency/error metrics + access logging, fleet +

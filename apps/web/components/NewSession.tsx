@@ -13,12 +13,16 @@ import {
   type RepoSummary,
 } from "../lib/github-types";
 import { TESTID } from "../lib/testids";
+import { StateBlock } from "./StateBlock";
 
 const api = new ApiClient({ baseUrl: "" });
 
 interface CatalogOption {
   name: string;
   image: string;
+  description: string;
+  tags: readonly string[];
+  tools: readonly string[];
 }
 
 /**
@@ -118,29 +122,62 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
   }
 
   if (images.length === 0) {
-    return <p className="mono">No base images in the catalog yet — ask an admin to add one.</p>;
+    return (
+      <StateBlock
+        title="No base images in the catalog"
+        detail="Ask an administrator to add one before starting a session."
+      />
+    );
   }
 
   return (
     <div className="stack" style={{ gap: 24 }}>
-      <div className="field">
-        <label className="mono" htmlFor="session-image">
+      <section className="stack" style={{ gap: 12 }}>
+        <div className="mono" style={{ color: "var(--dim)", fontSize: 12 }}>
           environment
-        </label>
-        <select
-          id="session-image"
-          className="select"
-          value={image}
-          onChange={(e) => {
-            setImage(e.target.value);
-          }}
-        >
-          {images.map((opt) => (
-            <option key={opt.image} value={opt.image}>
-              {opt.name}
-            </option>
-          ))}
-        </select>
+        </div>
+        <div className="picker-grid">
+          {images.map((opt) => {
+            const selected = opt.image === image;
+            return (
+              <button
+                key={opt.image}
+                type="button"
+                className={`picker-card${selected ? " on" : ""}`}
+                data-testid={TESTID.catalogPickerOption}
+                data-image={opt.image}
+                data-selected={String(selected)}
+                data-tags={opt.tags.join(",")}
+                data-tools={opt.tools.join(",")}
+                onClick={() => {
+                  setImage(opt.image);
+                }}
+              >
+                <div className="picker-head">
+                  <span className="picker-title">{opt.name}</span>
+                  <span className="badge accent">{selected ? "selected" : "available"}</span>
+                </div>
+                <div className="picker-sub">{opt.image}</div>
+                {opt.description !== "" && <p className="picker-copy">{opt.description}</p>}
+                {opt.tags.length > 0 && (
+                  <div className="pill-row">
+                    {opt.tags.map((tag) => (
+                      <span key={tag} className="pill">
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
+                {opt.tools.length > 0 && (
+                  <div className="meta-line">
+                    <span className="meta-label">tools</span>
+                    <span className="meta-value">{opt.tools.join(" · ")}</span>
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
         <button
           type="button"
           className="btn"
@@ -150,7 +187,7 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
         >
           blank session
         </button>
-      </div>
+      </section>
 
       {!ghConnected ? (
         <p className="mono" style={{ color: "var(--dim)" }}>
@@ -169,7 +206,7 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
               }}
             />
             {repos === null ? (
-              <p className="mono">loading…</p>
+              <p className="state-note">loading repositories…</p>
             ) : (
               <ul className="list">
                 {filtered.map((repo) => (

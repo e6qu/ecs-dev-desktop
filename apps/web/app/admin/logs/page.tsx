@@ -56,9 +56,7 @@ export default async function AdminLogsPage({
         derived from workspace records — durable, actor-attributed history via CloudTrail on AWS
       </p>
       {events.length === 0 ? (
-        <p className="mono" style={{ color: "var(--dim)" }}>
-          no audit events yet
-        </p>
+        <p className="state-note">no audit events yet</p>
       ) : (
         <div className="audit-feed" style={{ marginBottom: 28 }}>
           {events.map((e, i) => (

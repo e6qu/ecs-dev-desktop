@@ -14,6 +14,10 @@ export interface BaseImageEntry {
   /** The container image reference in ECR/registry. */
   readonly image: BaseImage;
   readonly description: string;
+  /** Short facets shown in the picker, e.g. "typescript" or "small". */
+  readonly tags: readonly string[];
+  /** Tooling highlights shown in the picker, e.g. "pnpm" or "ruff". */
+  readonly tools: readonly string[];
   /** Disabled entries stay in the catalog (history) but can't launch new work. */
   readonly enabled: boolean;
   readonly createdAt: IsoTimestamp;
@@ -24,6 +28,8 @@ export interface ProvisionBaseImageParams {
   name: string;
   image: BaseImage;
   description?: string;
+  tags?: readonly string[];
+  tools?: readonly string[];
   enabled?: boolean;
   at: IsoTimestamp;
 }
@@ -32,7 +38,21 @@ export interface ProvisionBaseImageParams {
 export interface BaseImagePatch {
   name?: string;
   description?: string;
+  tags?: readonly string[];
+  tools?: readonly string[];
   enabled?: boolean;
+}
+
+function normalizeLabels(labels: readonly string[] | undefined): readonly string[] {
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const label of labels ?? []) {
+    const trimmed = label.trim();
+    if (trimmed === "" || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    normalized.push(trimmed);
+  }
+  return normalized;
 }
 
 /** Construct a new catalog entry. Fails loudly on an empty name or image ref. */
@@ -44,6 +64,8 @@ export function provisionBaseImage(params: ProvisionBaseImageParams): BaseImageE
     name: params.name,
     image: params.image,
     description: params.description ?? "",
+    tags: normalizeLabels(params.tags),
+    tools: normalizeLabels(params.tools),
     enabled: params.enabled ?? true,
     createdAt: params.at,
   };
@@ -58,6 +80,8 @@ export function applyBaseImagePatch(entry: BaseImageEntry, patch: BaseImagePatch
     ...entry,
     name: patch.name ?? entry.name,
     description: patch.description ?? entry.description,
+    tags: patch.tags === undefined ? entry.tags : normalizeLabels(patch.tags),
+    tools: patch.tools === undefined ? entry.tools : normalizeLabels(patch.tools),
     enabled: patch.enabled ?? entry.enabled,
   };
 }

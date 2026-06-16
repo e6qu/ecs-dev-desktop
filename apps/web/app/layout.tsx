@@ -1,28 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { Metadata } from "next";
-import { Chakra_Petch, IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { TopNav } from "../components/TopNav";
 import { getPagePrincipal } from "../lib/principal";
 import { signOutAction } from "./login/actions";
 import "./globals.css";
-
-const display = Chakra_Petch({
-  subsets: ["latin"],
-  weight: ["500", "600", "700"],
-  variable: "--font-display",
-});
-const body = IBM_Plex_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-body",
-});
-const mono = IBM_Plex_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500"],
-  variable: "--font-mono",
-});
 
 export const metadata: Metadata = {
   title: "ecs-dev-desktop — control plane",
@@ -33,7 +17,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   const principal = await getPagePrincipal();
 
   return (
-    <html lang="en" className={`${display.variable} ${body.variable} ${mono.variable}`}>
+    <html lang="en">
       <body>
         <header className="topbar">
           <Link href="/" className="brand">
@@ -41,13 +25,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             ecs-dev-desktop
             <small>control plane</small>
           </Link>
-          {principal && (
-            <nav className="tabs" style={{ marginLeft: 6 }}>
-              <Link href="/workspaces">workspaces</Link>
-              {principal.role === "admin" && <Link href="/base-images">catalog</Link>}
-              {principal.role === "admin" && <Link href="/admin">admin</Link>}
-            </nav>
-          )}
+          {principal && <TopNav isAdmin={principal.role === "admin"} />}
           <span className="spacer" />
           {principal ? (
             <span className="who">

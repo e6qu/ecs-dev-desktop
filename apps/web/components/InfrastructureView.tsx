@@ -7,6 +7,7 @@ import type { InfrastructureReportDto } from "@edd/api-contracts";
 import { TESTID } from "../lib/testids";
 import { usePoll } from "../lib/usePoll";
 import { HealthHead, HealthRows } from "./HealthRows";
+import { StateBlock } from "./StateBlock";
 import { StatTile } from "./StatTile";
 
 const api = new ApiClient({ baseUrl: "" });
@@ -19,9 +20,10 @@ export function InfrastructureView() {
   if (error !== null) return <div className="notice">infrastructure check failed: {error}</div>;
   if (report === null)
     return (
-      <div className="empty">
-        <div className="big">loading…</div>
-      </div>
+      <StateBlock
+        title="Loading infrastructure"
+        detail="Fetching live cluster, health, and topology data."
+      />
     );
 
   const { health, cluster, fleet, topology } = report;

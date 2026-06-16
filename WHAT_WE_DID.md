@@ -1139,7 +1139,7 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
     Gradle + redhat.java only) — a follow-up (e.g. google-java-format). Also **re-pinned the
     sockerless submodule\*\* `1ca1f71 → c69cd27`, picking up #569 (process-mode managed-EBS
     RunTask panic fix) + later Azure/GCP/GitLab cells (no AWS-surface impact).
-- **2026-06-16 — Golden-image follow-ups: Java formatter + agents omnibus-only.** Closed the
+- **2026-06-16 — Golden-image follow-ups: Java formatter + agents omnibus-only (merged #105).** Closed the
   two follow-ups flagged after #104. (1) **Java formatter** — added `google-java-format` (the
   de-facto Java formatter) to **java**+**omnibus** as a JAR under `/opt` + a `/usr/local/bin`
   wrapper (`java -jar`), so every language variant now ships a format CLI. Version resolved via
@@ -1157,3 +1157,28 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
     the base content changes (CI is unaffected: fresh runner, base built once, variants layer on it).
     Verified locally: base agentless (0.89 GB, no `claude`); all 5 variants 5/5 (agents absent,
     java google-java-format 1.35.0).
+- **2026-06-16 — Catalog metadata picker + admin UX cleanup landed.** Base-image catalog
+  entries now carry structured `tags` + `tools` metadata end to end (core domain, API
+  contracts, Dynamo entity/service, admin form, dev-bootstrap defaults), and the
+  new-session launcher now renders a card-based environment picker that surfaces the
+  metadata instead of a bare select. The same pass also cleaned up the broader portal IA:
+  catalog management moved under the admin shell at **`/admin/catalog`** and `/base-images`
+  now redirects there; top-level navigation gained active-state location awareness; the
+  competing inline workspace creator was removed from `/workspaces` so session creation is
+  unified around `/sessions/new`; workspace/admin lists and inspect views now show catalog
+  display names + richer environment context instead of mostly opaque ids/image refs; the
+  catalog-management form was labeled/grouped like an operator surface; and responsive CSS
+  improved the admin shell, timeline, audit feed, and data-row behavior on narrower widths.
+  Two unrelated but live defects were fixed proactively in the same change set: (1)
+  `apps/web` no longer depends on `next/font/google`, so `pnpm --filter @edd/web build`
+  succeeds without outbound network access and now uses local/fallback font-family CSS
+  variables; (2) `waitForDynamo()` now fails before Vitest's hook timeout with an explicit
+  endpoint-bearing error, so an absent local DynamoDB no longer surfaces as opaque
+  `Hook timed out in 30000ms` noise. Verification: `@edd/core` catalog unit tests green;
+  `@edd/{api-contracts,db,core,control-plane}` builds green;
+  `@edd/{db,core,control-plane,web}` lint green; `@edd/web` type-check and production build
+  green; targeted `@edd/web` base-image integ green against real local DynamoDB; targeted
+  control-plane integ green; full portal Playwright suite green **13/13** (including the
+  admin-catalog route and legacy redirect). Notes: Playwright still emitted external
+  Node/tooling warnings about `module.register()` deprecation and `NO_COLOR` vs
+  `FORCE_COLOR`; they were traced to the toolchain, not repo code.

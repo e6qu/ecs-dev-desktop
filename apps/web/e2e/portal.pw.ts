@@ -17,31 +17,60 @@ test.beforeAll(async ({ request }) => {
   // Seed one enabled catalog entry so the member can launch a workspace.
   const res = await request.post("/api/base-images", {
     headers: { cookie: adminCookieHeader },
-    data: { name: "Node 20", image: NODE_IMAGE },
+    data: {
+      name: "Node 20",
+      image: NODE_IMAGE,
+      tags: ["typescript", "node"],
+      tools: ["pnpm", "eslint"],
+    },
   });
   expect(res.ok(), `seed catalog: ${res.status().toString()}`).toBeTruthy();
 });
 
 test("admin manages the base-image catalog", async ({ page, context }) => {
   await loginAs(context, "root", "admin");
-  await page.goto("/base-images");
+  await page.goto("/admin/catalog");
 
   await expect(page.getByRole("heading", { name: "Base images" })).toBeVisible();
   // The seeded entry is listed (located by image, not by matching its text).
   await expect(page.locator(sel(TESTID.catalogCard, { "data-image": NODE_IMAGE }))).toBeVisible();
 
   // Add a new entry through the form.
-  await page.getByPlaceholder(/display name/).fill("Go 1.22");
-  await page.getByPlaceholder(/image ref/).fill(GO_IMAGE);
+  await page.getByLabel(/display name/i).fill("Go 1.22");
+  await page.getByLabel(/image ref/i).fill(GO_IMAGE);
+  await page.getByLabel(/tags/i).fill("go, backend");
+  await page.getByLabel(/tools/i).fill("go, golangci-lint");
   await page.getByRole("button", { name: "+ add base image" }).click();
 
-  const goCard = page.locator(sel(TESTID.catalogCard, { "data-image": GO_IMAGE }));
+  const goCard = page.locator(sel(TESTID.catalogCard, { "data-image": GO_IMAGE })).last();
   await expect(goCard).toBeVisible();
   await expect(goCard).toHaveAttribute("data-enabled", "true");
+  await expect(goCard).toHaveAttribute("data-tags", "go,backend");
+  await expect(goCard).toHaveAttribute("data-tools", "go,golangci-lint");
 
   // Disable it.
   await goCard.getByRole("button", { name: "disable" }).click();
   await expect(goCard).toHaveAttribute("data-enabled", "false");
+});
+
+test("legacy catalog route redirects into the admin console", async ({ page, context }) => {
+  await loginAs(context, "root", "admin");
+  await page.goto("/base-images");
+  await expect(page).toHaveURL(`${BASE_URL}/admin/catalog`);
+  await expect(page.getByRole("heading", { name: "Base images" })).toBeVisible();
+});
+
+test("member chooses a session environment from the metadata picker", async ({ page, context }) => {
+  await loginAs(context, "alice", "member");
+  await page.goto("/sessions/new");
+
+  const option = page
+    .locator(sel(TESTID.catalogPickerOption, { "data-image": NODE_IMAGE }))
+    .first();
+  await expect(option).toBeVisible();
+  await expect(option).toHaveAttribute("data-selected", "true");
+  await expect(option).toHaveAttribute("data-tags", "typescript,node");
+  await expect(option).toHaveAttribute("data-tools", "pnpm,eslint");
 });
 
 test("member creates, stops, and deletes a workspace from the catalog", async ({
@@ -52,13 +81,18 @@ test("member creates, stops, and deletes a workspace from the catalog", async ({
   context: BrowserContext;
 }) => {
   await loginAs(context, "alice", "member");
-  await page.goto("/workspaces");
+  await page.goto("/sessions/new");
 
-  await expect(page.getByRole("heading", { name: "Your workspaces" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Start a session" })).toBeVisible();
 
   // Launch from the catalog picker.
-  await page.locator("select.select").selectOption(NODE_IMAGE);
-  await page.getByRole("button", { name: "+ new workspace" }).click();
+  await page
+    .locator(sel(TESTID.catalogPickerOption, { "data-image": NODE_IMAGE }))
+    .first()
+    .click();
+  await page.getByRole("button", { name: "blank session" }).click();
+
+  await expect(page).toHaveURL(`${BASE_URL}/workspaces`);
 
   const card = page.locator(sel(TESTID.workspaceCard, { "data-image": NODE_IMAGE })).first();
   await expect(card).toBeVisible();

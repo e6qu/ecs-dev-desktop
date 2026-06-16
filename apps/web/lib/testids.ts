@@ -15,6 +15,8 @@ export const TESTID = {
   workspaceRow: "workspace-row",
   /** Base-image card in the catalog. Attrs: `data-image`, `data-enabled`. */
   catalogCard: "catalog-card",
+  /** Session environment option in the catalog picker. Attrs: `data-image`, `data-selected`, `data-tags`, `data-tools`. */
+  catalogPickerOption: "catalog-picker-option",
   /** Dependency row in the Health board. Attrs: `data-component`, `data-h` (status). */
   healthRow: "health-row",
   /** Stat tile on the admin Overview. Attrs: `data-stat`, `data-value`. */

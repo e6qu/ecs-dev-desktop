@@ -2,7 +2,7 @@
 import { type DynamoDBClient, ListTablesCommand } from "@aws-sdk/client-dynamodb";
 
 /** How long to wait for DynamoDB to start answering before giving up. */
-const DEFAULT_READY_TIMEOUT_MS = 30_000;
+const DEFAULT_READY_TIMEOUT_MS = 10_000;
 /** Delay between readiness probes. */
 const READY_POLL_INTERVAL_MS = 250;
 
@@ -21,15 +21,19 @@ export async function waitForDynamo(
   timeoutMs = DEFAULT_READY_TIMEOUT_MS,
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
+  const target = process.env.DYNAMODB_ENDPOINT ?? "AWS DynamoDB endpoint resolution";
   for (;;) {
     try {
       await client.send(new ListTablesCommand({}));
       return;
     } catch (err) {
       if (Date.now() >= deadline) {
-        throw new Error(`DynamoDB did not become ready within ${timeoutMs.toString()}ms`, {
-          cause: err,
-        });
+        throw new Error(
+          `DynamoDB at ${target} did not become ready within ${timeoutMs.toString()}ms`,
+          {
+            cause: err,
+          },
+        );
       }
       await delay(READY_POLL_INTERVAL_MS);
     }
