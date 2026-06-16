@@ -29,10 +29,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           <span className="spacer" />
           {principal ? (
             <span className="who">
-              <Link href="/settings/ssh-keys" className="mono" title="account settings">
-                {principal.id}
-              </Link>
+              <span className="mono">{principal.id}</span>
               <span className="badge accent">{principal.role}</span>
+              <Link href="/settings/ssh-keys" className="btn">
+                ssh keys
+              </Link>
               <form action={signOutAction}>
                 <button className="btn" type="submit">
                   sign out
