@@ -87,8 +87,8 @@ RUN export NPM_CONFIG_PREFIX=/usr/local \
 # Per-language dev tooling (the omnibus carries every language's, to system paths so
 # they survive the EBS mount): Python (uv tools → /usr/local/bin), Go (golangci-lint
 # + staticcheck/deadcode/dupl → /usr/local/bin via GOBIN), Rust (clippy + rustfmt
-# components + cargo-audit). The Node lint/format/dead-code/CPD tools, the Claude
-# CLI, and the cross-cutting Trivy scanner all come from base.
+# components + cargo-audit), Java (google-java-format, below). The Node lint/format/
+# dead-code/CPD tools and the cross-cutting Trivy scanner come from base.
 RUN export UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin \
     && uv tool install ruff && uv tool install ty && uv tool install vulture \
     && uv tool install bandit && uv tool install semgrep \
@@ -107,9 +107,34 @@ RUN /opt/rust/cargo/bin/rustup component add clippy rustfmt \
     && /opt/rust/cargo/bin/cargo clippy --version && /opt/rust/cargo/bin/cargo fmt --version \
     && /opt/rust/cargo/bin/cargo audit --version
 
-# All language VS Code extensions into the built-in extensions dir (base already baked the
-# agent + cross-cutting ones; these are seeded together on first boot).
+# Java formatter: google-java-format (the de-facto Java formatter — parity with
+# prettier/ruff/rustfmt; Java's only standalone format/lint CLI). Distributed as an
+# all-deps JAR; install it under /opt with a wrapper on PATH (the JDK from apt above
+# provides `java`). Resolve the latest version via the github.com `releases/latest`
+# redirect (the release-page URL carries the tag) — NOT the api.github.com JSON API,
+# which has a low unauthenticated rate limit that flakes in CI.
+RUN gjf_ver="$(curl -fsS -o /dev/null -w '%{url_effective}' -L \
+      https://github.com/google/google-java-format/releases/latest | sed -E 's#.*/tag/v?##')" \
+    && test -n "${gjf_ver}" \
+    && curl -fsSL "https://github.com/google/google-java-format/releases/download/v${gjf_ver}/google-java-format-${gjf_ver}-all-deps.jar" \
+      -o /opt/google-java-format.jar \
+    && printf '#!/bin/sh\nexec java -jar /opt/google-java-format.jar "$@"\n' > /usr/local/bin/google-java-format \
+    && chmod 0755 /usr/local/bin/google-java-format \
+    && google-java-format --version
+
+# AI coding agents (OMNIBUS only — kept out of base/slim variants since they bundle
+# ~1 GB of native binaries): the Claude Code agent CLI (system-wide to /usr/local,
+# overriding the inherited home npm prefix) + the agent VS Code extensions into the
+# built-in dir (alongside the language extensions seeded below).
+RUN export NPM_CONFIG_PREFIX=/usr/local \
+    && npm install -g @anthropic-ai/claude-code \
+    && command -v claude
+
+# VS Code extensions into the built-in extensions dir: the AI agents (omnibus-only,
+# moved out of base) + every language's (base already baked the cross-cutting
+# formatter/linter/GitHub ones).
 RUN for ext in \
+      anthropic.claude-code openai.chatgpt \
       ms-python.python detachhead.basedpyright charliermarsh.ruff astral-sh.ty semgrep.semgrep \
       golang.go redhat.java rust-lang.rust-analyzer ms-playwright.playwright ; do \
       openvscode-server --install-extension "$ext" --extensions-dir /opt/openvscode-server/extensions ; \

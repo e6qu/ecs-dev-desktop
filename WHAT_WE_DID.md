@@ -1121,7 +1121,7 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
   cost: the baked agents (~1 GB native) live in base → every variant carries them (ts ~2 GB
   … omnibus ~5.7 GB) — flagged for a possible opt-in/omnibus-only move. Closes the
   golden-image collection plan (PRs A–D).
-- **2026-06-16 — Golden-image fuller per-language dev tooling (#95 follow-ons).** Rounded
+- **2026-06-16 — Golden-image fuller per-language dev tooling (#95 follow-ons; merged #104).** Rounded
   out the curated dev-tooling set so a workspace matches CI out of the box. Added: the
   cross-cutting **Trivy** security scanner to **base** (the repo's own CI gate tool, so a
   workspace scans its deps/IaC/secrets exactly as CI does — single static binary to
@@ -1139,3 +1139,21 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
     Gradle + redhat.java only) — a follow-up (e.g. google-java-format). Also **re-pinned the
     sockerless submodule\*\* `1ca1f71 → c69cd27`, picking up #569 (process-mode managed-EBS
     RunTask panic fix) + later Azure/GCP/GitLab cells (no AWS-surface impact).
+- **2026-06-16 — Golden-image follow-ups: Java formatter + agents omnibus-only.** Closed the
+  two follow-ups flagged after #104. (1) **Java formatter** — added `google-java-format` (the
+  de-facto Java formatter) to **java**+**omnibus** as a JAR under `/opt` + a `/usr/local/bin`
+  wrapper (`java -jar`), so every language variant now ships a format CLI. Version resolved via
+  the github.com `releases/latest` **redirect** (the release-page URL carries the tag), NOT
+  api.github.com — the JSON API's low unauthenticated rate limit 403'd mid-build (flaky in CI
+  too). (2) **Agents omnibus-only** — moved the AI agents (Claude Code + Codex extensions + the
+  `claude` CLI, ~1 GB native binaries) OUT of **base** into **omnibus only**. Slim variants now
+  drop ~1 GB each (base ~1.8→0.9 GB, typescript →1.3, go →1.5, java →1.7, rust →1.8, python
+  →2.7); a slim-variant user who wants the agents installs them at runtime via the user-CLI
+  path (#90/#91 — npm global prefix in HOME + PATH). Tests: `image-variants.e2e.ts` now asserts
+  agents are ABSENT from every slim variant (omnibus-only) + java carries google-java-format;
+  `workspace-toolchain.e2e.ts` keeps the omnibus agent assertions (now genuinely omnibus-sourced)
+  - adds google-java-format. Lesson reaffirmed: the local podman legacy-build cache reuses layers
+    built on a prior base even after the base changes — variants must be rebuilt `--no-cache` when
+    the base content changes (CI is unaffected: fresh runner, base built once, variants layer on it).
+    Verified locally: base agentless (0.89 GB, no `claude`); all 5 variants 5/5 (agents absent,
+    java google-java-format 1.35.0).

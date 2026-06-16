@@ -42,16 +42,17 @@ RUN arch="$(dpkg --print-architecture)" \
     && ln -s /opt/openvscode-server/bin/openvscode-server /usr/local/bin/openvscode-server
 
 # Default VS Code extensions (from Open VSX — OpenVSCode Server's default gallery):
-# the AI coding agents (Claude Code + Codex) and cross-cutting dev extensions.
-# Installed into OpenVSCode's BUILT-IN extensions dir (/opt/openvscode-server/
-# extensions) — NOT the user extensions dir, which is under /home/workspace and
-# shadowed by the EBS volume at runtime. Built-in extensions load read-only with no
-# runtime copy (a ~1 GB first-boot copy would slow every workspace start); the user
+# the cross-cutting dev extensions (formatter/linter/GitHub). The AI coding agents
+# (Claude Code + Codex) are NOT here — they bundle ~1 GB of native binaries and now
+# live in OMNIBUS only, so the slim per-language variants stay lean (a slim-variant
+# user can still install the agent CLI/extension at runtime via the user-CLI path,
+# #90/#91). Installed into OpenVSCode's BUILT-IN extensions dir (/opt/openvscode-
+# server/extensions) — NOT the user extensions dir, which is under /home/workspace
+# and shadowed by the EBS volume at runtime. Built-in extensions load read-only with
+# no runtime copy (a first-boot copy would slow every workspace start); the user
 # still installs their own into the volume's extensions dir. Variants add their
-# language extensions to the same built-in dir.
+# language extensions (and omnibus the agents) to the same built-in dir.
 RUN for ext in \
-      anthropic.claude-code \
-      openai.chatgpt \
       esbenp.prettier-vscode \
       dbaeumer.vscode-eslint \
       github.vscode-pull-request-github \
@@ -61,11 +62,11 @@ RUN for ext in \
     && chmod -R a+rX /opt/openvscode-server/extensions
 
 # Cross-cutting CLIs (installed system-wide to /usr/local BEFORE the home npm prefix
-# is set below, so they land in /usr/local — on PATH for every shell): the Claude
-# Code agent CLI (pairs with the extension) and the JS/TS lint/format/dead-code/CPD
-# tools that match this repo's own CI (prettier, eslint, knip, jscpd).
-RUN npm install -g @anthropic-ai/claude-code prettier eslint knip jscpd \
-    && command -v claude && prettier --version && eslint --version \
+# is set below, so they land in /usr/local — on PATH for every shell): the JS/TS
+# lint/format/dead-code/CPD tools that match this repo's own CI (prettier, eslint,
+# knip, jscpd). The Claude Code agent CLI is installed in OMNIBUS only (see above).
+RUN npm install -g prettier eslint knip jscpd \
+    && prettier --version && eslint --version \
     && knip --version && jscpd --version
 
 # Cross-cutting security scanner: Trivy (vuln/secret/misconfig/IaC), the same tool
