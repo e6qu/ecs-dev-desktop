@@ -1220,3 +1220,22 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
   process mode" property to #569 (it is the runtime-less tier, independent of the now-fixed
   panic), and closed the follow-up. Net: no code change; a misleading follow-up retired and
   an upstream fix verified, with the reasoning recorded so it isn't re-chased.
+- **2026-06-16 — SSH CA provisioning confirmed not-a-gap; added a plan-time half-config
+  guard.** Chased the DO_NEXT "remaining deploy wiring gap: `EDD_SSH_CA_KEY_PATH` not
+  provisioned by the Terraform module." Traced the SSH-cert path (`apps/web/lib/ssh-cert.ts`)
+  and the module: the CA **private** key is already provisioned the recommended way —
+  `EDD_SSH_CA_KEY` material via `secret_environment`, which the control-plane task def wires
+  as ECS `secrets` (`ecs.tf:82`) with execution-role `GetSecretValue` over those ARNs
+  (`iam.tf`), and the key never enters TF state; deploying.md Step 4 documents it end to end.
+  The on-disk `_PATH` variant is intentionally dev-only (provisioning it would mean a key on
+  disk / in state). So the note was stale. Found and hardened a genuine footgun instead:
+  `ssh_ca_public_key` (workspace sshd trust) and `EDD_SSH_CA_KEY` (control-plane signing) must
+  be set together; setting only the public key advertises SSH that can never issue a cert, and
+  it previously failed only at runtime. Added a `lifecycle.precondition` on
+  `aws_ecs_task_definition.control_plane` that fails the plan in that case (one-directional:
+  the reverse just leaves SSH disabled, which is benign). Verified `terraform fmt`/`validate`
+  green and the condition's three cases via `terraform console` (footgun→false/blocked;
+  both-set→true; public-empty→true). The condition uses only plan-time-known values (map keys
+  - an input string) on an always-created resource, so it always evaluates; the sim fixture and
+    `examples/complete` set neither var and stay unaffected. A full misconfigured-plan repro
+    against the sim was not run (disproportionate setup); the logic + safety were proven as above.

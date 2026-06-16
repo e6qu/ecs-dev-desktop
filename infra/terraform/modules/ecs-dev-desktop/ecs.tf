@@ -97,6 +97,20 @@ resource "aws_ecs_task_definition" "control_plane" {
     }
   }])
 
+  # Fail loudly on a half-configured SSH CA. ssh_ca_public_key makes workspace
+  # tasks trust the CA (EDD_SSH_CA_PUBLIC_KEY), but certificates are signed by the
+  # control plane with the CA *private* key (EDD_SSH_CA_KEY, from secret_environment).
+  # With the public key set and no private key, SSH is advertised yet unusable, and it
+  # would only surface at runtime when the ssh-cert route throws — so catch it at plan
+  # time. (The reverse, key material with no public key, just leaves SSH disabled on
+  # workspaces, which is benign.) See docs/deploying.md Step 4.
+  lifecycle {
+    precondition {
+      condition     = var.ssh_ca_public_key == "" || contains(keys(var.secret_environment), "EDD_SSH_CA_KEY")
+      error_message = "ssh_ca_public_key is set but secret_environment has no EDD_SSH_CA_KEY: workspace sshd would trust the CA while the control plane has no private key to sign certificates. Add EDD_SSH_CA_KEY (the CA private-key Secrets Manager ARN) to secret_environment, or unset ssh_ca_public_key. See docs/deploying.md Step 4."
+    }
+  }
+
   tags = local.tags
 }
 

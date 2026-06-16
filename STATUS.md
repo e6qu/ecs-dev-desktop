@@ -2,7 +2,7 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-16 (sockerless#569 confirmed fixed downstream; misframed integration-tier follow-up corrected)
+**Last updated:** 2026-06-16 (SSH CA provisioning confirmed + half-config plan-time guard added; stale DO_NEXT note corrected)
 
 ## Current phase
 
@@ -63,6 +63,20 @@ process-mode sim with **no container runtime** (CLAUDE.md §5), so a workspace
 target-specific assertion (§6.9). That path is — correctly — covered in the
 container-mode `e2e` tier (`agent-secret.e2e.ts`, workspace-lifecycle, user-journey).
 `BUGS.md` was updated to mark #569 confirmed and close the follow-up; no code change.
+
+A second stale note was then run down: the "remaining deploy wiring gap —
+`EDD_SSH_CA_KEY_PATH` not provisioned by Terraform." It is not a gap. The CA
+**private** key is provisioned the recommended way — `EDD_SSH_CA_KEY` material via
+`secret_environment`, wired as ECS `secrets` on the control-plane task with
+execution-role `GetSecretValue` and never landing in TF state (`ecs.tf`/`iam.tf`,
+docs/deploying.md Step 4); the on-disk `_PATH` variant is dev-only by design. While
+there, a real footgun was hardened: the control-plane task def gained a `precondition`
+that fails the plan when `ssh_ca_public_key` is set without a matching `EDD_SSH_CA_KEY`
+in `secret_environment` (workspaces would trust a CA that can never sign certs —
+previously a runtime-only failure). Verified: `terraform fmt`/`validate` green and the
+condition's three cases checked via `terraform console` (footgun → blocked; both-set →
+ok; SSH-disabled → ok); the sim test and `examples/complete` set neither var, so both
+stay unaffected.
 
 ## Prior phase (merged, #105)
 
