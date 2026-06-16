@@ -1182,3 +1182,12 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
   admin-catalog route and legacy redirect). Notes: Playwright still emitted external
   Node/tooling warnings about `module.register()` deprecation and `NO_COLOR` vs
   `FORCE_COLOR`; they were traced to the toolchain, not repo code.
+- **2026-06-16 — Dependency freshness follow-up after the UX pass.** The PR's `check-deps`
+  job later failed because the repo's age-gated freshness policy had moved underneath the
+  branch: `vitest` was one patch behind (`4.1.8 → 4.1.9`) and `@playwright/test` was one
+  minor behind (`1.60.0 → 1.61.0`). Refreshed both manifests and `pnpm-lock.yaml`, then
+  re-ran `pnpm check-deps` successfully. Verification on the updated dependency set:
+  representative Vitest target green (`packages/core` catalog tests) and the full portal
+  Playwright suite green **13/13** after installing the matching Chromium `v1228` browser
+  payload locally. The recurring `NO_COLOR` vs `FORCE_COLOR` warnings still came from the
+  Node/Playwright launcher stack rather than repo code.

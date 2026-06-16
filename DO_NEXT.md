@@ -39,6 +39,11 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
   portal Playwright green 13/13, offline `@edd/web build` green. No additional
   implementation work is queued on that slice beyond normal post-merge follow-up if
   review turns up something concrete.
+- **Dependency freshness follow-up — DONE.** The PR-era `check-deps` failure was just
+  release drift under the repo's own age gate: `vitest` moved `4.1.8 → 4.1.9` and
+  `@playwright/test` moved `1.60.0 → 1.61.0`. The manifests + `pnpm-lock.yaml` were
+  refreshed, `pnpm check-deps` is green again, and the newer Playwright/browser stack
+  re-ran the full portal suite cleanly (`13/13`).
 - **Golden-image collection — DONE (all PRs merged).** Split the single workspace
   image into a shared **`base`** (OpenVSCode, sshd + CA, idle-agent, entrypoint,
   git-credential helper, workspace user, Node, the workspace-UX fixes #90/#91/#94,

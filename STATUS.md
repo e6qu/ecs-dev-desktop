@@ -2,7 +2,7 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-16 (catalog/admin UX refactor merged-state continuity sync)
+**Last updated:** 2026-06-16 (dependency freshness follow-up after catalog/admin UX pass)
 
 ## Current phase
 
@@ -37,6 +37,13 @@ control-plane catalog integ green, and the full portal Playwright suite green
 **13/13**. Local static verification also stayed clean:
 `@edd/{api-contracts,db,core,control-plane}` builds green;
 `@edd/{db,core,control-plane,web}` lint green; `@edd/web build` green.
+
+After that pass, the dependency-freshness gate moved again: `check-deps` flagged
+`vitest` and `@playwright/test` as behind the latest age-eligible versions. Both
+were refreshed (`vitest 4.1.8 → 4.1.9`, `@playwright/test 1.60.0 → 1.61.0`), the
+pnpm lockfile was updated, `pnpm check-deps` returned clean again, and local
+verification re-confirmed a representative Vitest target plus the full portal
+Playwright suite green **13/13** on the newer browser stack.
 
 ## Prior phase (merged, #105)
 
