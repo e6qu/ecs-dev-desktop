@@ -1263,3 +1263,23 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
   typecheck + eslint clean. Slices 2 (`/api/ssh-keys` routes + Settings page + gateway
   `AuthorizedKeysCommand` + ownership authz + subdomain resolution) and 3 (public SSH NLB +
   Route53 `*.ssh`, AWS-gated by decision #1) are queued in `PLAN.md` §4b.
+- **2026-06-16 — User-registered SSH keys: Slice 2 (API + portal + authorize seam).**
+  Built the API and UX on the Slice-1 foundation. Routes: `/api/ssh-keys` GET (list) +
+  POST (register, 409 on conflict) and `/api/ssh-keys/[id]` DELETE (ownership-scoped, 404
+  otherwise); plus `POST /api/workspaces/[id]/ssh-authorize` — the gateway's connect-time
+  decision (gateway machine-auth only; authorize iff the presented key is registered to the
+  workspace owner; returns the workspace principal) — the seam the gateway will consume.
+  Added `sshAuthorizeRequest/Response` contracts, api-client `register/list/deleteSshKey`,
+  the `getSshKeyService()` web accessor, the Settings → SSH keys page + `SshKeys` client
+  component (register/list/remove, surfaces the real server error), the per-workspace `ssh`
+  command on the workspace card (shown when `EDD_SSH_BASE_DOMAIN` is set), the `SSH_BASE_DOMAIN`
+  config, and `isWorkspaceLabel` in core (dedupes the label regex). Verified: route integ
+  green on DynamoDB Local — ssh-keys CRUD/conflict/per-user-isolation (7) and ssh-authorize
+  owner/mismatch/unregistered/no-token (4); web typecheck + eslint + offline build green;
+  core 173 green. **Found while wiring:** the SSH proxy is a transparent `nc`/`-W` tunnel, so
+  the user's SSH authenticates **end-to-end with the workspace node** (both hops check the CA
+  cert today) — so registered-key auth at the gateway also needs the workspace node to trust
+  the key. Reclassified the gateway sshd wiring as **Slice 2c** with an explicit sub-decision
+  (dual-trust both sshds [recommended] vs a terminating bastion) rather than rushing a
+  security-sensitive proxy-auth change into this PR; it also needs the golden-image rebuild +
+  `docker-compose.ssh.yml` e2e. Captured in `PLAN.md` §4b.

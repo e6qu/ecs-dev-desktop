@@ -2,7 +2,7 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-16 (user-registered SSH keys + per-workspace subdomain — Slice 1 foundation landed)
+**Last updated:** 2026-06-16 (user-registered SSH keys — Slices 1+2 landed: foundation, API, authorize seam, portal; gateway sshd = Slice 2c)
 
 ## Current phase
 
@@ -13,16 +13,28 @@ certs): the human→gateway hop authenticates by the **registered public key**
 (Codespaces/Coder-style) and authorizes the workspace by **ownership at connect
 time**; the SSH **CA stays for the internal gateway↔workspace hop**; routing is
 wildcard-DNS → one public gateway (stock OpenSSH; the workspace id rides in the
-subdomain/username since SSH has no SNI). **Slice 1 (foundation) landed on
-`feat/ssh-key-registration`:** branded ids + pure `fingerprintPublicKey`
-(matches `ssh-keygen -lf`) + `workspaceSshHost` (`@edd/core`); register/list/delete
-contracts (`@edd/api-contracts`); the `sshKey` ElectroDB entity with a
-`byFingerprint` GSI for the gateway lookup + global key uniqueness (`@edd/db`); and
-`SshKeyService` (register/dedup/list/ownership-delete/`ownerForKey`)
-(`@edd/control-plane`). Verified: core+contracts unit green (173), service+entity
-integ green on DynamoDB Local (8/8), four packages typecheck + lint clean. Slices 2
-(routes/portal/gateway authorized-keys + ownership authz) and 3 (public SSH NLB +
-Route53 `*.ssh`, AWS-gated) are planned in `PLAN.md` §4b.
+subdomain/username since SSH has no SNI). **Slices 1+2 landed on `feat/ssh-key-registration`:**
+
+- **Slice 1 (foundation):** branded ids + pure `fingerprintPublicKey` (matches
+  `ssh-keygen -lf`) + `workspaceSshHost`/`isWorkspaceLabel` (`@edd/core`);
+  register/list/delete contracts (`@edd/api-contracts`); the `sshKey` ElectroDB
+  entity with a `byFingerprint` GSI + global key uniqueness (`@edd/db`);
+  `SshKeyService` (register/dedup/list/ownership-delete/`ownerForKey`)
+  (`@edd/control-plane`).
+- **Slice 2 (API + portal):** `/api/ssh-keys` CRUD + the gateway connect-time
+  decision endpoint `/api/workspaces/:id/ssh-authorize` (machine-auth; authorize iff
+  the key is registered to the workspace owner) — the seam the gateway will call;
+  api-client methods; Settings → SSH keys page; per-workspace `ssh …` command on the
+  workspace card (when `EDD_SSH_BASE_DOMAIN` is set); `SSH_BASE_DOMAIN` config.
+
+Verified: core+contracts unit green (173), service+entity + route integ green on
+DynamoDB Local (ssh-keys CRUD/conflict/isolation + ssh-authorize
+owner/mismatch/unregistered/no-token), web typecheck+lint+offline build green.
+**Remaining: Slice 2c** — the gateway sshd registered-key wiring. The proxy is a
+transparent `nc`/`-W` tunnel, so the user authenticates end-to-end with the
+workspace node; registered-key auth needs a sub-decision (dual-trust both sshds, or
+a terminating bastion) + the golden-image/e2e change. **Slice 3** = public SSH NLB +
+Route53 (AWS-gated). See `PLAN.md` §4b.
 
 **Catalog and session-launch UX cleanup are now part of the current mainline state.**
 The golden-image collection remains fully complete — the base/omnibus split + slim

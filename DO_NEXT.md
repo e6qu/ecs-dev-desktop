@@ -31,15 +31,17 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
 ## Available now (decision-free — immediate)
 
 - **User-registered SSH keys + per-workspace subdomain — IN PROGRESS (Phase 4b).**
-  Design confirmed with the user (registered-key human hop + ownership authz at connect
-  time; CA kept for the internal hop; wildcard-DNS routing). **Slice 1 (foundation) landed**
-  on `feat/ssh-key-registration` (core fingerprint/subdomain helpers + contracts + `sshKey`
-  entity + `SshKeyService`; unit+integ green). **Next: Slice 2 (no AWS)** — `/api/ssh-keys`
-  routes (register/list/delete), Settings → SSH keys portal page, the per-workspace `ssh …`
-  command on the workspace card/detail, gateway `AuthorizedKeysCommand` → control-plane key
-  lookup, per-connection ownership authz, and subdomain→workspace resolution; e2e via
-  `docker-compose.ssh.yml`. **Slice 3** = public SSH NLB + Route53 `*.ssh` (AWS-gated, #1).
-  Full plan in `PLAN.md` §4b.
+  Design confirmed with the user (registered-key human auth + ownership authz at connect
+  time; wildcard-DNS routing). **Slices 1+2 landed** on `feat/ssh-key-registration`:
+  foundation (core helpers + contracts + `sshKey` entity + `SshKeyService`), `/api/ssh-keys`
+  CRUD, the gateway `ssh-authorize` decision endpoint, api-client, Settings page, and the
+  per-workspace `ssh` command — unit + route integ green; web typecheck/lint/build green.
+  **Next: Slice 2c (no AWS, needs a sub-decision)** — wire the gateway sshd to authenticate
+  by registered key via `AuthorizedKeysCommand` → `ssh-authorize`. The proxy is a transparent
+  tunnel, so the user authenticates end-to-end with the workspace node: pick **dual-trust**
+  (both sshds verify the key; recommended) or a **terminating bastion**, then update both
+  sshd_configs + scripts + the `docker-compose.ssh.yml` e2e (golden-image rebuild).
+  **Slice 3** = public SSH NLB + Route53 `*.ssh` (AWS-gated, #1). Full plan in `PLAN.md` §4b.
 - **Catalog metadata picker + admin UX cleanup — DONE.** Mainline now carries the
   catalog metadata picker **and** the broader admin/navigation cleanup:
   `/admin/catalog`, legacy `/base-images` redirect, top-nav active state, unified
