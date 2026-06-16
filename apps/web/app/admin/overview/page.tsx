@@ -51,9 +51,7 @@ export default async function AdminOverviewPage() {
 
       <h2 style={{ fontSize: 16, marginBottom: 10 }}>By state</h2>
       {byState.length === 0 ? (
-        <p className="mono" style={{ color: "var(--dim)" }}>
-          no workspaces yet
-        </p>
+        <p className="state-note">no workspaces yet</p>
       ) : (
         <div className="health-rows">
           {byState.map(([state, n]) => (

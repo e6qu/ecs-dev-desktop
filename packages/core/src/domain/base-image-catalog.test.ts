@@ -17,7 +17,22 @@ const entry = (over: Partial<Parameters<typeof provisionBaseImage>[0]> = {}) =>
 describe("provisionBaseImage", () => {
   it("constructs an enabled entry with defaults", () => {
     const e = entry();
-    expect(e).toMatchObject({ name: "Node 20", enabled: true, description: "" });
+    expect(e).toMatchObject({
+      name: "Node 20",
+      enabled: true,
+      description: "",
+      tags: [],
+      tools: [],
+    });
+  });
+
+  it("normalizes catalog metadata labels", () => {
+    const e = entry({
+      tags: [" node ", "", "node", "LTS"],
+      tools: [" npm ", "pnpm", "npm"],
+    });
+    expect(e.tags).toEqual(["node", "LTS"]);
+    expect(e.tools).toEqual(["npm", "pnpm"]);
   });
 
   it("rejects an empty name or image", () => {
@@ -29,8 +44,18 @@ describe("provisionBaseImage", () => {
 describe("applyBaseImagePatch", () => {
   it("updates only the provided fields", () => {
     const e = entry({ description: "old" });
-    const next = applyBaseImagePatch(e, { enabled: false });
-    expect(next).toMatchObject({ enabled: false, name: "Node 20", description: "old" });
+    const next = applyBaseImagePatch(e, {
+      enabled: false,
+      tags: ["runtime", "runtime"],
+      tools: ["node", ""],
+    });
+    expect(next).toMatchObject({
+      enabled: false,
+      name: "Node 20",
+      description: "old",
+      tags: ["runtime"],
+      tools: ["node"],
+    });
     expect(next.image).toBe(e.image); // image ref is immutable
   });
 

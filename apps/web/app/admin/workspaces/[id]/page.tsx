@@ -4,8 +4,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { StatusBadge } from "../../../../components/StatusBadge";
+import { catalogDetailsByImage, lookupCatalogDetails } from "../../../../lib/catalog-details";
 import { WorkspaceActions } from "../../../../components/WorkspaceActions";
-import { getControlPlane } from "../../../../lib/control-plane";
+import { getCatalog, getControlPlane } from "../../../../lib/control-plane";
 import { TESTID } from "../../../../lib/testids";
 
 export const dynamic = "force-dynamic";
@@ -26,9 +27,13 @@ export default async function InspectWorkspacePage({
 }) {
   const { id } = await params;
   const cp = await getControlPlane();
-  const inspection = await cp.inspect(workspaceId(id));
+  const [inspection, catalog] = await Promise.all([
+    cp.inspect(workspaceId(id)),
+    getCatalog().list(),
+  ]);
   if (inspection === null) notFound();
   const { workspace: ws, timeline } = inspection;
+  const image = lookupCatalogDetails(catalogDetailsByImage(catalog), ws.baseImage);
 
   return (
     <>
@@ -48,7 +53,12 @@ export default async function InspectWorkspacePage({
       <div className="panel" style={{ marginBottom: 18 }}>
         <dl className="kv">
           <Row label="owner" value={ws.ownerId} />
-          <Row label="base image" value={ws.baseImage} />
+          <Row label="environment" value={image.name} />
+          <Row label="image ref" value={ws.baseImage} />
+          <Row
+            label="description"
+            value={image.description === "" ? undefined : image.description}
+          />
           <Row label="created" value={new Date(ws.createdAt).toLocaleString()} />
           <Row label="last activity" value={new Date(ws.lastActivity).toLocaleString()} />
           <Row label="task" value={ws.taskId} />
@@ -59,6 +69,15 @@ export default async function InspectWorkspacePage({
             value={ws.latestSnapshotAt ? new Date(ws.latestSnapshotAt).toLocaleString() : undefined}
           />
         </dl>
+        {image.tags.length > 0 && (
+          <div className="pill-row" style={{ marginTop: 16 }}>
+            {image.tags.map((tag) => (
+              <span key={tag} className="pill">
+                {tag}
+              </span>
+            ))}
+          </div>
+        )}
         <WorkspaceActions id={ws.id} state={ws.state} />
       </div>
 

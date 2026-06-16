@@ -10,13 +10,55 @@ import { createDynamoClient, ensureTable, makeBaseImageEntity, TABLE } from "@ed
 // The default golden catalog = the image collection (a shared base + omnibus and
 // slim per-language variants; see infra/images). Locally these are catalog entries
 // the fakes launch from; in the cloud they point at the golden ECR repos.
-const DEV_IMAGES: readonly { name: string; image: string }[] = [
-  { name: "Omnibus (all languages)", image: "golden/omnibus" },
-  { name: "TypeScript / Node", image: "golden/typescript" },
-  { name: "Python", image: "golden/python" },
-  { name: "Go", image: "golden/go" },
-  { name: "Java", image: "golden/java" },
-  { name: "Rust", image: "golden/rust" },
+const DEV_IMAGES: readonly {
+  name: string;
+  image: string;
+  description: string;
+  tags: readonly string[];
+  tools: readonly string[];
+}[] = [
+  {
+    name: "Omnibus (all languages)",
+    image: "golden/omnibus",
+    description: "Full polyglot workspace with every curated language toolchain and agent.",
+    tags: ["polyglot", "full", "agents"],
+    tools: ["claude", "codex", "trivy", "pnpm", "go", "python3", "javac", "cargo"],
+  },
+  {
+    name: "TypeScript / Node",
+    image: "golden/typescript",
+    description: "Lean Node and TypeScript environment for app and tooling work.",
+    tags: ["typescript", "node", "slim"],
+    tools: ["pnpm", "eslint", "prettier", "trivy"],
+  },
+  {
+    name: "Python",
+    image: "golden/python",
+    description: "Python runtime with the repo's lint, type, and security tools baked in.",
+    tags: ["python", "slim"],
+    tools: ["python3", "uv", "ruff", "semgrep"],
+  },
+  {
+    name: "Go",
+    image: "golden/go",
+    description: "Go workspace with the static analysis set used in CI.",
+    tags: ["go", "slim"],
+    tools: ["go", "golangci-lint", "staticcheck", "trivy"],
+  },
+  {
+    name: "Java",
+    image: "golden/java",
+    description: "JDK workspace with build tooling and the standard formatter.",
+    tags: ["java", "slim"],
+    tools: ["javac", "mvn", "gradle", "google-java-format"],
+  },
+  {
+    name: "Rust",
+    image: "golden/rust",
+    description: "Rust toolchain with linting and dependency-audit coverage.",
+    tags: ["rust", "slim"],
+    tools: ["cargo", "clippy", "cargo-audit", "trivy"],
+  },
 ];
 
 const table = process.env.DYNAMODB_TABLE ?? TABLE;
@@ -29,8 +71,8 @@ const catalog = new CatalogService({
   clock: systemClock,
 });
 if ((await catalog.list()).length === 0) {
-  for (const { name, image } of DEV_IMAGES) {
-    await catalog.create({ name, image: baseImage(image) });
+  for (const { name, image, description, tags, tools } of DEV_IMAGES) {
+    await catalog.create({ name, image: baseImage(image), description, tags, tools });
   }
   process.stdout.write(`dev-bootstrap: seeded ${DEV_IMAGES.length.toString()} base images\n`);
 }

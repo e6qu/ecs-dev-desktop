@@ -59,6 +59,30 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **Portal IA/UI inconsistencies around catalog + creation flow (2026-06-16)** — the
+  admin catalog lived outside the admin shell (`/base-images`), the top nav had no active
+  state while the admin nav did, and `/workspaces` exposed a second, thinner creation flow
+  that bypassed the richer `/sessions/new` environment/repo launcher. Closed in one pass:
+  catalog now lives at **`/admin/catalog`** (legacy `/base-images` redirects there), the
+  top nav has active-state location awareness, and `/workspaces` now points creation
+  traffic through the single session launcher. Also improved workspace information scent by
+  resolving catalog display names/metadata into the user grid and admin views, plus
+  responsive behavior for the admin shell, timeline, and audit/log layouts.
+- **`next build` depended on live Google Fonts fetches (2026-06-16)** — the web app
+  imported `next/font/google` (`Chakra Petch`, `IBM Plex Sans`, `IBM Plex Mono`) from
+  the root layout, so a production build in a restricted or offline environment failed
+  before even reaching app code (`Failed to fetch ... from Google Fonts`). Replaced the
+  build-time network dependency with local/fallback font-family CSS variables in
+  `globals.css`; `apps/web/app/layout.tsx` no longer performs outbound font fetches and
+  `pnpm --filter @edd/web build` is clean again in the sandbox.
+- **Missing DynamoDB Local surfaced as opaque Vitest hook timeouts (2026-06-16)** —
+  `waitForDynamo()` used the same 30000ms budget as Vitest's hook timeout, so when
+  `127.0.0.1:8000` was absent the suite died with generic `Hook timed out in 30000ms`
+  noise instead of the real endpoint error. Tightened the readiness budget to 10000ms
+  and included the target endpoint in the thrown error, so the same condition now fails
+  clearly and early (`DynamoDB at http://127.0.0.1:8000 did not become ready within
+10000ms`, with the underlying `connect EPERM/ECONNREFUSED` cause). This does not
+  hide the infrastructure problem; it makes it diagnosable.
 - **Workspace create against the sim returned a cryptic client error + an on-purpose
   500 (2026-06-15)** — creating a workspace in the `+AWS` dev tier failed because the
   sockerless sim has no ECS cluster; `runTask` threw "Cluster not found", the route

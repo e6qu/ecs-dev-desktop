@@ -262,15 +262,29 @@ describe("CatalogService (DynamoDB Local)", () => {
       name: "Node 20",
       image: baseImage("golden/node:20"),
       description: "LTS",
+      tags: ["typescript", "node"],
+      tools: ["pnpm", "eslint"],
     });
-    expect(created).toMatchObject({ name: "Node 20", enabled: true });
+    expect(created).toMatchObject({
+      name: "Node 20",
+      enabled: true,
+      tags: ["typescript", "node"],
+      tools: ["pnpm", "eslint"],
+    });
 
     expect((await catalog.list()).map((e) => e.id)).toContain(created.id);
-    expect((await catalog.get(baseImageId(created.id)))?.image).toBe("golden/node:20");
+    expect(await catalog.get(baseImageId(created.id))).toMatchObject({
+      image: "golden/node:20",
+      tags: ["typescript", "node"],
+    });
 
-    const updated = await catalog.update(baseImageId(created.id), { enabled: false });
+    const updated = await catalog.update(baseImageId(created.id), {
+      enabled: false,
+      tools: ["node", "pnpm"],
+    });
     expect(updated.ok).toBe(true);
-    if (updated.ok) expect(updated.value.enabled).toBe(false);
+    if (updated.ok)
+      expect(updated.value).toMatchObject({ enabled: false, tools: ["node", "pnpm"] });
 
     expect((await catalog.remove(baseImageId(created.id))).ok).toBe(true);
     expect(await catalog.get(baseImageId(created.id))).toBeNull();

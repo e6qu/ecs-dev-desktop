@@ -44,6 +44,8 @@ async function handlePOST(req: Request) {
       name: parsed.data.name,
       image: baseImage(parsed.data.image),
       description: parsed.data.description,
+      tags: parsed.data.tags,
+      tools: parsed.data.tools,
       enabled: parsed.data.enabled,
     });
     return NextResponse.json(entry, { status: 201 });

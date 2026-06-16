@@ -45,7 +45,13 @@ describe("base-images API end-to-end (DynamoDB Local)", () => {
   });
 
   it("admins manage the catalog; members can read but not write", async () => {
-    const body = JSON.stringify({ name: "Node 20", image: "golden/node:20", description: "LTS" });
+    const body = JSON.stringify({
+      name: "Node 20",
+      image: "golden/node:20",
+      description: "LTS",
+      tags: ["typescript", "node"],
+      tools: ["pnpm", "eslint"],
+    });
 
     // A member cannot create.
     const denied = await POST(new Request(url, { method: "POST", headers: member, body }));
@@ -55,13 +61,22 @@ describe("base-images API end-to-end (DynamoDB Local)", () => {
     const createRes = await POST(new Request(url, { method: "POST", headers: admin, body }));
     expect(createRes.status).toBe(201);
     const entry = baseImageEntry.parse(await createRes.json());
-    expect(entry).toMatchObject({ name: "Node 20", enabled: true });
+    expect(entry).toMatchObject({
+      name: "Node 20",
+      enabled: true,
+      tags: ["typescript", "node"],
+      tools: ["pnpm", "eslint"],
+    });
 
     // A member can browse the catalog.
     const listRes = await GET(new Request(url, { headers: member }));
     expect(listRes.status).toBe(200);
     const list = listBaseImagesResponse.parse(await listRes.json());
     expect(list.baseImages.map((e) => e.id)).toContain(entry.id);
+    expect(list.baseImages.find((e) => e.id === entry.id)).toMatchObject({
+      tags: ["typescript", "node"],
+      tools: ["pnpm", "eslint"],
+    });
 
     const one = `${url}/${entry.id}`;
 
@@ -70,12 +85,16 @@ describe("base-images API end-to-end (DynamoDB Local)", () => {
       new Request(one, {
         method: "PATCH",
         headers: admin,
-        body: JSON.stringify({ enabled: false }),
+        body: JSON.stringify({ enabled: false, tags: ["node"], tools: ["pnpm"] }),
       }),
       ctx(entry.id),
     );
     expect(patched.status).toBe(200);
-    expect(baseImageEntry.parse(await patched.json()).enabled).toBe(false);
+    expect(baseImageEntry.parse(await patched.json())).toMatchObject({
+      enabled: false,
+      tags: ["node"],
+      tools: ["pnpm"],
+    });
 
     // A member cannot delete.
     const delDenied = await DELETE(

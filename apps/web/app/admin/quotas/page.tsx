@@ -44,9 +44,7 @@ export default async function AdminQuotasPage() {
 
       <h2 style={{ fontSize: 16, marginBottom: 10 }}>Usage</h2>
       {owners.length === 0 ? (
-        <p className="mono" style={{ color: "var(--dim)" }}>
-          no workspaces yet
-        </p>
+        <p className="state-note">no workspaces yet</p>
       ) : (
         <div className="adm-rows">
           {owners.map(([owner, n]) => (

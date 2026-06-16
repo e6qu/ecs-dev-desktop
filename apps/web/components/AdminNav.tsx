@@ -10,10 +10,9 @@ const ITEMS: { label: string; href: string | null }[] = [
   { label: "Health", href: "/admin/health" },
   { label: "Infrastructure", href: "/admin/infrastructure" },
   { label: "Workspaces", href: "/admin/workspaces" },
+  { label: "Catalog", href: "/admin/catalog" },
   { label: "Costs", href: "/admin/costs" },
   { label: "Logs", href: "/admin/logs" },
-  { label: "Catalog", href: "/base-images" },
-  { label: "Users", href: null },
   { label: "Quotas", href: "/admin/quotas" },
 ];
 

@@ -2,29 +2,71 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-16 (golden-image follow-ups: Java formatter + agents omnibus-only)
+**Last updated:** 2026-06-16 (live portal e2e selector follow-up after session-launch UX change)
 
 ## Current phase
 
-**Golden-image follow-ups (the two flagged after #104).** On
-`feat/golden-image-followups`: (a) **Java formatter** — added `google-java-format`
-(the de-facto Java formatter; JAR + `/usr/local/bin` wrapper) to **java**+**omnibus**,
-so every language variant now has a format CLI; version resolved via the github.com
-`releases/latest` redirect (not the rate-limited api.github.com). (b) **Agents
-omnibus-only** — moved the AI agents (Claude Code + Codex extensions + the `claude`
-CLI, ~1 GB native) OUT of **base** and into **omnibus only**, so the slim variants
-drop ~1 GB each (base ~1.8→~0.9 GB; typescript ~2.2→~1.3, python ~3.6→~2.7, go ~1.4,
-java ~1.7, rust ~1.8); a slim-variant user installs the agents at runtime via the
-user-CLI path (#90/#91). Tests updated: `image-variants.e2e.ts` asserts agents ABSENT
-in slim variants + java has google-java-format; `workspace-toolchain.e2e.ts` keeps the
-omnibus agent assertions (now genuinely omnibus-sourced) + adds google-java-format.
-Larger unstarted backlog (see `DO_NEXT.md`): resource utilization / snapshot UX /
-auto-snapshot (#98–100), and the focused sockerless-fidelity exploratory pass.
+**Catalog and session-launch UX cleanup are now part of the current mainline state.**
+The golden-image collection remains fully complete — the base/omnibus split + slim
+variants (#97/#101/#102/#103), the fuller per-language tooling (#104), and both
+post-#104 follow-ups (#105). The latest completed pass was a broader
+**catalog/admin UX refactor** layered on top of the catalog metadata picker:
 
-## Prior phase (merged, #104)
+- base-image catalog entries carry structured **tags** + **tool highlights** end to end;
+- the new-session launcher uses a card-based environment picker with that metadata;
+- catalog management moved into the admin IA at **`/admin/catalog`** (the legacy
+  `/base-images` route redirects there);
+- `/workspaces` no longer presents a competing inline creator — session creation is
+  unified around `/sessions/new`;
+- workspace/admin lists now show catalog display names and stronger environment context
+  instead of mostly opaque ids/image refs;
+- top-level nav now has active-state location awareness, and the admin shell has better
+  narrow-width behavior;
+- the catalog form is labeled/grouped like an operator tool rather than placeholder-only.
 
-**Golden-image fuller per-language dev tooling (#95 follow-ons).** Rounded out the
-curated dev-tooling set so a workspace matches CI out of the box. Added the
+Also folded into the same pass while chasing unrelated but live issues proactively:
+(a) the web app no longer depends on `next/font/google`, so `pnpm --filter @edd/web build`
+works offline/in-sandbox; the typography now comes from local/fallback family variables in
+`globals.css`. (b) `waitForDynamo()` now fails **before** Vitest's hook timeout with an
+explicit endpoint-bearing error (`DynamoDB at http://127.0.0.1:8000 did not become ready
+within 10000ms`) instead of opaque 30s hook timeouts when DynamoDB Local is absent.
+
+Verification for this state included real local DynamoDB-backed runs (outside the
+sandbox where loopback access was permitted): `@edd/web` targeted integ green,
+control-plane catalog integ green, and the full portal Playwright suite green
+**13/13**. Local static verification also stayed clean:
+`@edd/{api-contracts,db,core,control-plane}` builds green;
+`@edd/{db,core,control-plane,web}` lint green; `@edd/web build` green.
+
+After that pass, the dependency-freshness gate moved again: `check-deps` flagged
+`vitest` and `@playwright/test` as behind the latest age-eligible versions. Both
+were refreshed (`vitest 4.1.8 → 4.1.9`, `@playwright/test 1.60.0 → 1.61.0`), the
+pnpm lockfile was updated, `pnpm check-deps` returned clean again, and local
+verification re-confirmed a representative Vitest target plus the full portal
+Playwright suite green **13/13** on the newer browser stack.
+
+One more CI follow-up surfaced after that: the **live** portal Playwright spec
+still automated the removed `/workspaces` inline `<select>` creator. The live test
+now drives the current `/sessions/new` launcher instead (catalog picker card +
+`blank session`), matching the merged UX. Local verification for the fix covered
+type-checking plus the standard portal Playwright suite green **13/13**; the full
+container-mode live harness remained a CI-only repro in this shell.
+
+## Prior phase (merged, #105)
+
+**Golden-image follow-ups: Java formatter + agents omnibus-only.** (a) **Java
+formatter** — added `google-java-format` (the de-facto Java formatter; JAR +
+`/usr/local/bin` wrapper) to **java**+**omnibus**, so every language variant now has a
+format CLI; version resolved via the github.com `releases/latest` redirect (not the
+rate-limited api.github.com). (b) **Agents omnibus-only** — moved the AI agents (Claude
+Code + Codex extensions + the `claude` CLI, ~1 GB native) OUT of **base** into
+**omnibus only**, so the slim variants drop ~1 GB each (base ~1.8→~0.9 GB; typescript
+~2.2→~1.3, python ~3.6→~2.7, go ~1.4, java ~1.7, rust ~1.8); a slim-variant user
+installs the agents at runtime via the user-CLI path (#90/#91). Tests: `image-variants.
+e2e.ts` asserts agents ABSENT in slim variants + java has google-java-format;
+`workspace-toolchain.e2e.ts` keeps the omnibus agent assertions (now genuinely
+omnibus-sourced) + adds google-java-format. (Local verification was hampered by a
+podman tag-reversion/GC quirk; CI built fresh and went green 5/5 + omnibus.)
 
 ## Prior phase (merged, #104)
 

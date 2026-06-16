@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import Link from "next/link";
 
+import { StateBlock } from "../../../components/StateBlock";
 import { StatusBadge } from "../../../components/StatusBadge";
+import { catalogDetailsByImage, lookupCatalogDetails } from "../../../lib/catalog-details";
 import { getControlPlane } from "../../../lib/control-plane";
+import { getCatalog } from "../../../lib/control-plane";
 import { TESTID } from "../../../lib/testids";
 
 export const dynamic = "force-dynamic";
@@ -10,7 +13,8 @@ export const dynamic = "force-dynamic";
 // Admin-only (the /admin layout gates it). Every workspace, newest first.
 export default async function AdminWorkspacesPage() {
   const cp = await getControlPlane();
-  const workspaces = await cp.list();
+  const [workspaces, catalog] = await Promise.all([cp.list(), getCatalog().list()]);
+  const details = catalogDetailsByImage(catalog);
   workspaces.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   return (
@@ -24,29 +28,30 @@ export default async function AdminWorkspacesPage() {
       </div>
 
       {workspaces.length === 0 ? (
-        <div className="empty">
-          <div className="big">No workspaces</div>
-          <p>Nothing has been provisioned yet.</p>
-        </div>
+        <StateBlock title="No workspaces" detail="Nothing has been provisioned yet." />
       ) : (
         <div className="adm-rows">
-          {workspaces.map((ws) => (
-            <Link
-              key={ws.id}
-              href={`/admin/workspaces/${ws.id}`}
-              className="adm-row"
-              data-testid={TESTID.workspaceRow}
-              data-id={ws.id}
-              data-status={ws.state}
-            >
-              <span className="wid">{ws.id}</span>
-              <StatusBadge state={ws.state} />
-              <div className="meta">
-                <span>image · {ws.baseImage}</span>
-                <span>owner · {ws.ownerId}</span>
-              </div>
-            </Link>
-          ))}
+          {workspaces.map((ws) => {
+            const image = lookupCatalogDetails(details, ws.baseImage);
+            return (
+              <Link
+                key={ws.id}
+                href={`/admin/workspaces/${ws.id}`}
+                className="adm-row"
+                data-testid={TESTID.workspaceRow}
+                data-id={ws.id}
+                data-status={ws.state}
+              >
+                <span className="wid">{image.name}</span>
+                <StatusBadge state={ws.state} />
+                <div className="meta">
+                  <span>workspace · {ws.id}</span>
+                  <span>image · {ws.baseImage}</span>
+                  <span>owner · {ws.ownerId}</span>
+                </div>
+              </Link>
+            );
+          })}
         </div>
       )}
     </>

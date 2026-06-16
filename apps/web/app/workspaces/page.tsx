@@ -4,8 +4,9 @@ import { defineAbilityFor } from "@edd/authz";
 import { ownerId } from "@edd/core";
 import Link from "next/link";
 
-import { CreateWorkspace } from "../../components/CreateWorkspace";
+import { StateBlock } from "../../components/StateBlock";
 import { WorkspaceCard } from "../../components/WorkspaceCard";
+import { catalogDetailsByImage, lookupCatalogDetails } from "../../lib/catalog-details";
 import { getCatalog, getControlPlane } from "../../lib/control-plane";
 import { getPagePrincipal } from "../../lib/principal";
 
@@ -19,15 +20,11 @@ export default async function WorkspacesPage({
   const principal = await getPagePrincipal();
   if (principal === null) {
     return (
-      <div className="empty">
-        <div className="big">Not signed in</div>
-        <p>Sign in to view and manage your workspaces.</p>
-        <p style={{ marginTop: 18 }}>
-          <Link className="btn primary" href="/login">
-            sign in
-          </Link>
-        </p>
-      </div>
+      <StateBlock
+        title="Not signed in"
+        detail="Sign in to view and manage your workspaces."
+        action={{ href: "/login", label: "sign in" }}
+      />
     );
   }
 
@@ -42,10 +39,8 @@ export default async function WorkspacesPage({
   workspaces.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   const canCreate = defineAbilityFor(principal).can("create", "Workspace");
-  // Launch only from enabled catalog entries (the admin-curated allow-list).
-  const options = (await getCatalog().list())
-    .filter((entry) => entry.enabled)
-    .map((entry) => ({ name: entry.name, image: entry.image }));
+  const catalog = await getCatalog().list();
+  const details = catalogDetailsByImage(catalog);
 
   return (
     <>
@@ -63,12 +58,12 @@ export default async function WorkspacesPage({
             <Link className="btn primary" href="/sessions/new">
               + new session
             </Link>
-            <CreateWorkspace images={options} />
+            <span className="state-note">
+              Pick the environment and repo once in the session launcher.
+            </span>
           </>
         ) : (
-          <span className="mono" style={{ color: "var(--dim)" }}>
-            read-only access
-          </span>
+          <span className="state-note">read-only access</span>
         )}
         <span className="spacer" />
         {isAdmin && (
@@ -84,15 +79,27 @@ export default async function WorkspacesPage({
       </div>
 
       {workspaces.length === 0 ? (
-        <div className="empty">
-          <div className="big">No workspaces yet</div>
-          <p>Spin one up from a golden base image to get started.</p>
-        </div>
+        <StateBlock
+          title="No workspaces yet"
+          detail="Start a session from a curated base image to begin."
+          action={canCreate ? { href: "/sessions/new", label: "new session" } : undefined}
+        />
       ) : (
         <div className="grid">
-          {workspaces.map((ws, i) => (
-            <WorkspaceCard key={ws.id} ws={ws} index={i} showOwner={viewAll} />
-          ))}
+          {workspaces.map((ws, i) => {
+            const image = lookupCatalogDetails(details, ws.baseImage);
+            return (
+              <WorkspaceCard
+                key={ws.id}
+                ws={ws}
+                index={i}
+                showOwner={viewAll}
+                imageName={image.name}
+                imageDescription={image.description}
+                imageTags={image.tags}
+              />
+            );
+          })}
         </div>
       )}
     </>
