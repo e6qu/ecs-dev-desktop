@@ -8,8 +8,11 @@ import {
   healthReport,
   infrastructureReport,
   listBaseImagesResponse,
+  listSshKeysResponse,
   listWorkspacesResponse,
   logStreamResult,
+  registerSshKeyRequest,
+  registerSshKeyResponse,
   sshCertRequest,
   sshCertResponse,
   sshConnectInfo,
@@ -26,9 +29,11 @@ import {
   type ListWorkspacesResponse,
   type LogStreamDto,
   type LogStreamResultDto,
+  type RegisterSshKeyRequest,
   type SshCertRequest,
   type SshCertResponse,
   type SshConnectInfo,
+  type SshKeyDto,
   type UpdateBaseImageRequest,
   type WorkspaceDto,
   type WorkspaceInspectionDto,
@@ -156,6 +161,30 @@ export class ApiClient {
 
   async deleteWorkspace(id: string): Promise<void> {
     await this.send(`/api/workspaces/${id}`, { method: "DELETE" });
+  }
+
+  // --- Account SSH keys ---
+
+  /** The caller's registered SSH public keys. */
+  async listSshKeys(): Promise<SshKeyDto[]> {
+    const res = await this.send("/api/ssh-keys");
+    return listSshKeysResponse.parse(await res.json()).keys;
+  }
+
+  /** Register an account-level SSH public key (409 if already registered). */
+  async registerSshKey(req: RegisterSshKeyRequest): Promise<SshKeyDto> {
+    const body = registerSshKeyRequest.parse(req);
+    const res = await this.send("/api/ssh-keys", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return registerSshKeyResponse.parse(await res.json()).key;
+  }
+
+  /** Delete one of the caller's registered SSH keys. */
+  async deleteSshKey(id: string): Promise<void> {
+    await this.send(`/api/ssh-keys/${id}`, { method: "DELETE" });
   }
 
   // --- Base-image catalog ---

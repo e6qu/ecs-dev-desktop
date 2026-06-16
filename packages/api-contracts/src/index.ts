@@ -372,6 +372,22 @@ export type ListSshKeysResponse = z.infer<typeof listSshKeysResponse>;
 export const deleteSshKeyResponse = z.object({ ok: z.literal(true) });
 export type DeleteSshKeyResponse = z.infer<typeof deleteSshKeyResponse>;
 
+/** POST /api/workspaces/:id/ssh-authorize — the SSH gateway's connect-time
+ * decision: does the presented public key belong to a user who owns this
+ * workspace? Gateway machine-auth only (no session). The gateway's
+ * `AuthorizedKeysCommand` calls this with the key the connecting client offered. */
+export const sshAuthorizeRequest = z.object({ publicKey: sshPublicKeyField });
+export type SshAuthorizeRequest = z.infer<typeof sshAuthorizeRequest>;
+
+/** POST /api/workspaces/:id/ssh-authorize — response body. `authorized` gates the
+ * connection; `principal` (present only when authorized) is the OS principal the
+ * gateway connects as. */
+export const sshAuthorizeResponse = z.object({
+  authorized: z.boolean(),
+  principal: z.string().optional(),
+});
+export type SshAuthorizeResponse = z.infer<typeof sshAuthorizeResponse>;
+
 /** POST /api/workspaces/:id/ssh-cert — response body. */
 export const sshCertResponse = z.object({
   /** Signed OpenSSH certificate ready to write to ~/.ssh/id_*-cert.pub. */
