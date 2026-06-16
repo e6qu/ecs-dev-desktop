@@ -133,6 +133,45 @@ export function makeGitCredentialEntity(client: DynamoDBClient, table = TABLE) {
 export type GitCredentialEntity = ReturnType<typeof makeGitCredentialEntity>;
 
 /**
+ * ElectroDB SSH-key entity over the same single table. Account-level public keys
+ * a user registers for SSH access. `primary` lists a user's keys (PK=ownerId,
+ * SK=keyId); `byFingerprint` (GSI1) resolves a presented public key to its owner
+ * for the gateway's authorized-keys lookup — and backs global key uniqueness (a
+ * public key identifies exactly one user). Only the *public* key is stored; the
+ * private key never reaches the server.
+ */
+export function makeSshKeyEntity(client: DynamoDBClient, table = TABLE) {
+  return new Entity(
+    {
+      model: { entity: "sshKey", version: "1", service: "edd" },
+      attributes: {
+        id: { type: "string", required: true },
+        ownerId: { type: "string", required: true },
+        label: { type: "string", required: true },
+        keyType: { type: "string", required: true },
+        fingerprint: { type: "string", required: true },
+        publicKey: { type: "string", required: true },
+        createdAt: { type: "string", required: true },
+      },
+      indexes: {
+        primary: {
+          pk: { field: "PK", composite: ["ownerId"] },
+          sk: { field: "SK", composite: ["id"] },
+        },
+        byFingerprint: {
+          index: "GSI1",
+          pk: { field: "GSI1PK", composite: ["fingerprint"] },
+          sk: { field: "GSI1SK", composite: [] },
+        },
+      },
+    },
+    { client, table },
+  );
+}
+
+export type SshKeyEntity = ReturnType<typeof makeSshKeyEntity>;
+
+/**
  * ElectroDB append-only audit-event entity over the same single table: one
  * record per control-plane action (actor + action + target + when). `byTime`
  * lists newest-first from one static partition (mirrors the base-image catalog

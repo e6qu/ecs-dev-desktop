@@ -12,6 +12,7 @@ export const ID_PREFIX = {
   snapshot: "snap-",
   task: "task-",
   baseImage: "img-",
+  sshKey: "sshk-",
 } as const;
 
 /** Default idle window before scale-to-zero: 30 minutes. */

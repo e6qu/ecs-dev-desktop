@@ -18,6 +18,13 @@ export type IsoTimestamp = Brand<string, "IsoTimestamp">;
  * authenticated caller to a workspace owner (IdP `sub`/`oid` differ across the
  * Auth.js portal IdP and the Pomerium proxy IdP; the email claim is shared). */
 export type Email = Brand<string, "Email">;
+/** A registered SSH key's record id. */
+export type SshKeyId = Brand<string, "SshKeyId">;
+/** An OpenSSH public-key line: `<type> <base64-blob> [comment]`. */
+export type SshPublicKey = Brand<string, "SshPublicKey">;
+/** An OpenSSH SHA256 key fingerprint, e.g. `SHA256:<base64-no-pad>` — the stable
+ * identity a key is deduped and looked up by (see `fingerprintPublicKey`). */
+export type SshKeyFingerprint = Brand<string, "SshKeyFingerprint">;
 
 /** Smart constructors (validate/brand an existing string). */
 export const workspaceId = (value: string): WorkspaceId => brand<"WorkspaceId">(value);
@@ -28,6 +35,10 @@ export const volumeId = (value: string): VolumeId => brand<"VolumeId">(value);
 export const snapshotId = (value: string): SnapshotId => brand<"SnapshotId">(value);
 export const taskId = (value: string): TaskId => brand<"TaskId">(value);
 export const isoTimestamp = (value: string): IsoTimestamp => brand<"IsoTimestamp">(value);
+export const sshKeyId = (value: string): SshKeyId => brand<"SshKeyId">(value);
+export const sshPublicKey = (value: string): SshPublicKey => brand<"SshPublicKey">(value);
+export const sshKeyFingerprint = (value: string): SshKeyFingerprint =>
+  brand<"SshKeyFingerprint">(value);
 
 /** Smart constructor for {@link Email}: validates a basic `local@domain.tld`
  * shape and normalises to lowercase so owner/caller comparison is
@@ -49,3 +60,4 @@ export const newBaseImageId = (): BaseImageId =>
 export const newVolumeId = (): VolumeId => volumeId(`${ID_PREFIX.volume}${randomUUID()}`);
 export const newSnapshotId = (): SnapshotId => snapshotId(`${ID_PREFIX.snapshot}${randomUUID()}`);
 export const newTaskId = (): TaskId => taskId(`${ID_PREFIX.task}${randomUUID()}`);
+export const newSshKeyId = (): SshKeyId => sshKeyId(`${ID_PREFIX.sshKey}${randomUUID()}`);

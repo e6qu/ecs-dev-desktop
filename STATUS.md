@@ -2,9 +2,27 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-16 (SSH CA provisioning confirmed + half-config plan-time guard added; stale DO_NEXT note corrected)
+**Last updated:** 2026-06-16 (user-registered SSH keys + per-workspace subdomain — Slice 1 foundation landed)
 
 ## Current phase
+
+**In progress — user-registered SSH keys + per-workspace SSH subdomain (Phase 4b).**
+The user asked for: each user inputs their SSH key, and SSHes into each running
+workspace at its own subdomain. Confirmed design (refines §1's short-lived user
+certs): the human→gateway hop authenticates by the **registered public key**
+(Codespaces/Coder-style) and authorizes the workspace by **ownership at connect
+time**; the SSH **CA stays for the internal gateway↔workspace hop**; routing is
+wildcard-DNS → one public gateway (stock OpenSSH; the workspace id rides in the
+subdomain/username since SSH has no SNI). **Slice 1 (foundation) landed on
+`feat/ssh-key-registration`:** branded ids + pure `fingerprintPublicKey`
+(matches `ssh-keygen -lf`) + `workspaceSshHost` (`@edd/core`); register/list/delete
+contracts (`@edd/api-contracts`); the `sshKey` ElectroDB entity with a
+`byFingerprint` GSI for the gateway lookup + global key uniqueness (`@edd/db`); and
+`SshKeyService` (register/dedup/list/ownership-delete/`ownerForKey`)
+(`@edd/control-plane`). Verified: core+contracts unit green (173), service+entity
+integ green on DynamoDB Local (8/8), four packages typecheck + lint clean. Slices 2
+(routes/portal/gateway authorized-keys + ownership authz) and 3 (public SSH NLB +
+Route53 `*.ssh`, AWS-gated) are planned in `PLAN.md` §4b.
 
 **Catalog and session-launch UX cleanup are now part of the current mainline state.**
 The golden-image collection remains fully complete — the base/omnibus split + slim

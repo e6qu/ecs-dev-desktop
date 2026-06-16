@@ -28,6 +28,7 @@ export {
   makeCostRollupEntity,
   makeGitCredentialEntity,
   makeReconcilerHeartbeatEntity,
+  makeSshKeyEntity,
   makeWorkspaceEntity,
   RECONCILER_HEARTBEAT_ID,
   type AuditEventEntity,
@@ -35,5 +36,6 @@ export {
   type CostRollupEntity,
   type GitCredentialEntity,
   type ReconcilerHeartbeatEntity,
+  type SshKeyEntity,
   type WorkspaceEntity,
 } from "./entities";

@@ -75,6 +75,37 @@ wake-on-connect against a real ECS workspace task on the container-mode sim.
   connect-time wake (real CP + real sim task) ✅; session recording ⬜;
   e2e-aws SSH-wakes-stopped ⬜.
 
+### 4b — User-registered SSH keys + per-workspace subdomain — 🟡 (foundation landed)
+
+**Goal:** a user registers their SSH **public** key once (account settings), then
+SSHes to each running workspace at its **own subdomain** (`<workspaceId>.<sshzone>`).
+Decision (confirmed with the user; refines §1's "short-lived user certs"): the
+**human→gateway hop authenticates by the registered key** (Codespaces/Coder-style)
+and authorizes the specific workspace **by ownership at connect time**; the SSH **CA
+is retained for the internal gateway↔workspace hop**. Routing is wildcard-DNS →
+single public gateway (stock OpenSSH; SSH has no SNI, so the workspace id rides in
+the subdomain/username — not a TLS-SNI tunnel, not a direct public endpoint).
+
+- ✅ **Slice 1 — foundation (no AWS):** branded `SshKeyId`/`SshPublicKey`/
+  `SshKeyFingerprint`, pure `fingerprintPublicKey` (matches `ssh-keygen -lf`),
+  `sshKeyType`, `workspaceSshHost(id, baseDomain)` (`@edd/core`); register/list/delete
+  Zod contracts reusing the boundary key validation (`@edd/api-contracts`); the
+  `sshKey` ElectroDB entity — PK=ownerId/SK=keyId + `byFingerprint` GSI1 for the
+  gateway lookup and **global key uniqueness** (`@edd/db`); `SshKeyService`
+  (register w/ dedup + `SshKeyConflictError`, list, ownership-scoped delete,
+  `ownerForKey` lookup) (`@edd/control-plane`). Unit/contract green; service+entity
+  integ green on DynamoDB Local.
+- ⬜ **Slice 2 — shell (no AWS):** `/api/ssh-keys` routes (register/list/delete);
+  Settings → SSH keys portal page; per-workspace `ssh …` command surfaced on the
+  workspace card/detail; gateway `AuthorizedKeysCommand` → control-plane key lookup;
+  per-connection ownership authz (replacing the cert-principal check on the human
+  hop); subdomain→workspace resolution. e2e via `docker-compose.ssh.yml`.
+- ⬜ **Slice 3 — ingress (AWS-gated, decision #1):** public SSH NLB + listener;
+  Route53 `*.<sshzone>` wildcard wired to the gateway.
+- **Gate:** register/list/delete ✅ (unit+integ); `AuthorizedKeysCommand` lookup ⬜;
+  ownership-authz-by-connection ⬜; subdomain routing ⬜; e2e key→subdomain→shell ⬜;
+  e2e-aws public SSH ingress ⬜.
+
 ## Phase 5 — Scale-to-zero + snapshot automation — 🟡
 
 ✅ Reconciler: idle stop+snapshot, scheduled snapshots, orphan GC (pure selectors +
