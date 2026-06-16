@@ -2,7 +2,7 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-16 (live portal e2e selector follow-up after session-launch UX change)
+**Last updated:** 2026-06-16 (sockerless#569 confirmed fixed downstream; misframed integration-tier follow-up corrected)
 
 ## Current phase
 
@@ -51,6 +51,18 @@ now drives the current `/sessions/new` launcher instead (catalog picker card +
 `blank session`), matching the merged UX. Local verification for the fix covered
 type-checking plus the standard portal Playwright suite green **13/13**; the full
 container-mode live harness remained a CI-only repro in this shell.
+
+A `BUGS.md` follow-up was then resolved: confirm sockerless#569 (managed-EBS
+`RunTask` panicked the process-mode sim) downstream. Confirmed fixed — against the
+re-pinned sim (`c69cd278`) the managed-EBS `RunTask` now returns a task ARN and the
+sim stays healthy through the async EBS transition where it previously crashed. The
+note's "re-enable a process-mode managed-EBS `RunTask` in the lightweight
+`integration` job" was itself misframed: the `integration` tier is the API-surface
+process-mode sim with **no container runtime** (CLAUDE.md §5), so a workspace
+`RunTask` cannot reach RUNNING there and asserting otherwise would be a
+target-specific assertion (§6.9). That path is — correctly — covered in the
+container-mode `e2e` tier (`agent-secret.e2e.ts`, workspace-lifecycle, user-journey).
+`BUGS.md` was updated to mark #569 confirmed and close the follow-up; no code change.
 
 ## Prior phase (merged, #105)
 

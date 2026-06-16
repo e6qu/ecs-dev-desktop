@@ -31,16 +31,24 @@ active breakage):
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-- **sockerless#569 (fixed upstream — now in the pinned ref)** — process-mode
-  (`SIM_RUNTIME=process`) `ecs:RunTask` with a managed-EBS volume used to **panic**
-  the sim (nil Docker client in the async transition: `ec2.go:3800` ← `ecs.go:1027`).
-  **Fixed by sockerless #569** (`05217316`), included in the submodule re-pin to
-  `c69cd278` (2026-06-16). Until verified downstream, the real
-  `EcsComputeProvider.runTask` managed-EBS path (incl. the agent-token secret
-  injection) is still exercised in **container mode**
-  (`packages/e2e/src/agent-secret.e2e.ts` + the user-journey/golden e2e).
-  **Follow-up:** re-enable a process-mode managed-EBS `RunTask` in the lightweight
-  `integration` job to confirm the fix and broaden cheap coverage.
+- **sockerless#569 (fixed upstream — confirmed downstream 2026-06-16)** —
+  process-mode (`SIM_RUNTIME=process`) `ecs:RunTask` with a managed-EBS volume used
+  to **panic** the sim (nil Docker client in the async transition: `ec2.go:3800` ←
+  `ecs.go:1027`). **Fixed by sockerless #569** (`05217316`), included in the
+  submodule re-pin to `c69cd278` (2026-06-16). **Confirmed downstream:** issuing the
+  managed-EBS `RunTask` against the re-pinned process-mode sim now returns a task
+  ARN and the sim survives the async EBS transition (stays healthy) — where it
+  previously crashed. The full launch-to-RUNNING path with the agent-token secret
+  injection is exercised in **container mode** (`agent-secret.e2e.ts`, the
+  workspace-lifecycle e2e, and the user-journey/golden e2e). **No lightweight
+  integration variant is possible:** the `integration` tier is the **API-surface**
+  process-mode sim with no container runtime (CLAUDE.md §5), so a workspace `RunTask`
+  cannot reach RUNNING there (`EcsComputeProvider.runTask` waits for READY and the
+  container start fails with no Docker runtime); asserting it reached RUNNING in
+  process mode would be a target-specific assertion (forbidden by §6.9). Container
+  execution belongs to the `e2e` tier, which is exactly where this path is covered.
+  **Follow-up: none** — the panic regression is closed and the path is covered in the
+  correct tier.
 
 - **sockerless#583 (open)** — the ECS sim advertises a task's `Limits`
   (`CPU`/`Memory`) in task metadata but launches the container with **no cgroup
@@ -94,8 +102,10 @@ no downstream impact (we consume bleephub for OAuth).
   api-client tolerates an empty/non-JSON error body (clean `ApiError` with the status,
   no "Unexpected end of JSON input"). (4) `dev-bootstrap` seeds the full golden catalog
   (node-20/go-1.22/python-3.12), not just Node 20. Note: full workspace create against
-  the process-mode sim still can't complete (sockerless#569 managed-EBS) — the `+AWS`
-  tier is for adapter call shapes; use tier-0 fakes or container-mode e2e to create.
+  the process-mode sim still can't complete — the API-surface tier has no container
+  runtime, so the managed-EBS task never reaches RUNNING (independent of sockerless#569,
+  whose _panic_ on that path is now fixed). The `+AWS` tier is for adapter call shapes;
+  use tier-0 fakes or container-mode e2e to create.
 - **Concurrent wake-on-connect thundering herd → flaky `concurrent-connect` e2e
   (2026-06-15)** — N simultaneous `/connect` on a stopped workspace each launched
   their own `RunTask` (read→launch→persist; losers compensated), so a burst fired N

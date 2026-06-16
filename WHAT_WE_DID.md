@@ -1201,3 +1201,22 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
   Local verification: `pnpm --filter @edd/web exec tsc -p tsconfig.json --noEmit` green and
   the standard portal Playwright suite green **13/13**. The full live harness remained
   CI-only in this shell, but the failure mode was a stale selector, not a compute-path bug.
+- **2026-06-16 — sockerless#569 confirmed fixed downstream; the integration-tier
+  follow-up was retired as misframed.** The `BUGS.md` follow-up asked to "re-enable a
+  process-mode managed-EBS `RunTask` in the lightweight `integration` job" to confirm the
+  #569 panic fix. Brought up the re-pinned process-mode sim (`docker-compose.tier2.yml`,
+  `c69cd278`) and drove a managed-EBS `EcsComputeProvider.runTask` at it: the call
+  returned a real task ARN and the sim stayed healthy through the async EBS transition —
+  exactly the path that used to **panic** the sim before #569. So #569 is confirmed fixed.
+  But the task then **stopped at container start** (`docker client not initialized`):
+  the `integration` tier is the **API-surface** process-mode sim with no container runtime
+  (CLAUDE.md §5), so a workspace `RunTask` can never reach RUNNING there. A test that
+  asserted RUNNING in process mode would behave differently by target — forbidden by §6.9 —
+  and container execution is, by design, the **`e2e`** tier's job (where this path is
+  already covered by `agent-secret.e2e.ts`, workspace-lifecycle, and the user-journey/golden
+  e2e). Reverted the exploratory process-mode test + its `@aws-sdk/client-ec2` dev-dep
+  (no viable, rule-compliant cheap variant exists) and instead updated `BUGS.md`: marked
+  #569 confirmed, corrected the line-104 note that had attributed the "can't complete in
+  process mode" property to #569 (it is the runtime-less tier, independent of the now-fixed
+  panic), and closed the follow-up. Net: no code change; a misleading follow-up retired and
+  an upstream fix verified, with the reasoning recorded so it isn't re-chased.
