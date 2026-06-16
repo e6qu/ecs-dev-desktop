@@ -24,6 +24,8 @@ live. Hence:
 5. **Never ignore an error, warning, or anomaly — including a "pre-existing"
    one.** "Pre-existing" is unverifiable (see context note above); fix it, or
    record it in `BUGS.md`/`DO_NEXT.md`. Never silence or step around it.
+   **Diagnose from evidence — the failing log or a local repro — never an assumed
+   cause** (a CI failure is reproducible; reproduce it before "fixing" it).
 6. **Prefer established libraries for security** (authn/authz/SSH/crypto/sessions).
    Don't hand-roll.
 7. **Components build independently** (`pnpm --filter <name> build`).
@@ -109,8 +111,9 @@ Per task: read them first → do the work → update them (past tense at PR clos
 
 - `pnpm install`; `pnpm build|test|lint` via Turbo; per-package `pnpm --filter`.
 - **Deps: the latest version that is ≥ 1 day old** (pnpm `minimumReleaseAge: 1440`
-  — supply-chain safeguard; `check-deps` CI enforces it). Declare only what a
-  package imports; no unused deps.
+  — supply-chain safeguard; `check-deps` CI enforces it). A `check-deps` failure is
+  the gate working, not a flake: a newer age-eligible version exists — bump it and
+  commit the lockfile. Declare only what a package imports; no unused deps.
 - **Shell scripts**: pass `shellcheck`; run under bash **and** zsh, macOS **and**
   Linux. Portable only (`$0`-derived paths, `unset CDPATH`; no `BASH_SOURCE`,
   arrays, `pushd`, or GNU-only flags). The `shellcheck` CI job enforces it.
