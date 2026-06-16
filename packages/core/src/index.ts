@@ -236,6 +236,7 @@ export { createLogger, formatLogLine } from "./observability/logger";
 // SSH: workspace principal derivation.
 export {
   fingerprintPublicKey,
+  isWorkspaceLabel,
   sshKeyType,
   workspacePrincipal,
   workspaceSshHost,

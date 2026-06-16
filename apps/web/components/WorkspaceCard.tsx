@@ -14,6 +14,7 @@ export function WorkspaceCard({
   imageName,
   imageDescription,
   imageTags,
+  sshCommand,
 }: {
   ws: WorkspaceDto;
   index: number;
@@ -21,6 +22,8 @@ export function WorkspaceCard({
   imageName: string;
   imageDescription: string;
   imageTags: readonly string[];
+  /** Per-workspace `ssh …` connect command, when the SSH subdomain is configured. */
+  sshCommand?: string;
 }) {
   return (
     <article
@@ -47,6 +50,19 @@ export function WorkspaceCard({
         </div>
       )}
       {showOwner && <div className="owner">owner · {ws.ownerId}</div>}
+      {sshCommand !== undefined && (
+        <div className="meta-line">
+          <span className="meta-label">ssh</span>
+          <code
+            className="meta-value"
+            data-testid={TESTID.workspaceSshCommand}
+            data-host={sshCommand}
+            style={{ wordBreak: "break-all" }}
+          >
+            {sshCommand}
+          </code>
+        </div>
+      )}
       <WorkspaceActions id={ws.id} state={ws.state} />
     </article>
   );

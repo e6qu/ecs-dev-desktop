@@ -117,6 +117,16 @@ export const entra = {
  */
 export const WORKSPACE_BASE_DOMAIN = process.env.EDD_WORKSPACE_BASE_DOMAIN ?? "devbox.localhost";
 
+/**
+ * Base domain under which a running workspace is reachable over SSH as
+ * `<ws-id>.<baseDomain>` through the SSH gateway. Empty (the default) until a
+ * deployment provisions the public SSH ingress + wildcard DNS (Phase 4b); the
+ * portal surfaces each workspace's `ssh` command only when this is set, so it
+ * never advertises an address that does not resolve. Real deployments set
+ * `EDD_SSH_BASE_DOMAIN` (e.g. `ssh.example.com`). Base-domain-only config (§6.8).
+ */
+export const SSH_BASE_DOMAIN = process.env.EDD_SSH_BASE_DOMAIN ?? "";
+
 /** Control-plane path the workspace gate (PEP) consults for a per-request
  * access decision (PDP). Mounted under the Next.js app router. */
 export const WORKSPACE_AUTHZ_PATH = "/api/internal/authz";

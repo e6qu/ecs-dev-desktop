@@ -8,6 +8,12 @@ import { sshKeyFingerprint, type SshKeyFingerprint, type SshPublicKey } from "./
  * proxy-authz.ts — a `ws-<uuid>` id is 39 chars, the regex max). */
 const WORKSPACE_LABEL_RE = /^[a-z0-9][a-z0-9-]{0,38}$/;
 
+/** Whether a workspace id is a valid DNS/SSH label (so callers can decide
+ * before building a principal/host that would otherwise throw). */
+export function isWorkspaceLabel(value: string): boolean {
+  return WORKSPACE_LABEL_RE.test(value);
+}
+
 /**
  * SSH principal a workspace container runs as. The gateway authenticates the
  * human identity (via a registered key or our SSH CA cert), then connects as
@@ -16,7 +22,7 @@ const WORKSPACE_LABEL_RE = /^[a-z0-9][a-z0-9-]{0,38}$/;
  * match.
  */
 export function workspacePrincipal(workspaceId: string): string {
-  if (!WORKSPACE_LABEL_RE.test(workspaceId)) {
+  if (!isWorkspaceLabel(workspaceId)) {
     throw new Error(`invalid workspaceId for SSH principal: ${workspaceId}`);
   }
   return `dev-${workspaceId}`;
@@ -30,7 +36,7 @@ export function workspacePrincipal(workspaceId: string): string {
  * (`workspaceIdFromHost`) so the SSH and HTTP subdomains stay in lockstep.
  */
 export function workspaceSshHost(workspaceId: string, baseDomain: string): string {
-  if (!WORKSPACE_LABEL_RE.test(workspaceId)) {
+  if (!isWorkspaceLabel(workspaceId)) {
     throw new Error(`invalid workspaceId for SSH host: ${workspaceId}`);
   }
   if (baseDomain.trim().length === 0) {

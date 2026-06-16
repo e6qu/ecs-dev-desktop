@@ -51,6 +51,14 @@ export const TESTID = {
   topologyNode: "topology-node",
   /** An edge row in the Infrastructure topology. Attrs: `data-from`, `data-to`. */
   topologyEdge: "topology-edge",
+  /** A registered SSH key row on account settings. Attrs: `data-fingerprint`. */
+  sshKeyRow: "ssh-key-row",
+  /** The SSH public-key textarea on account settings. */
+  sshKeyInput: "ssh-key-input",
+  /** Submit button to register the entered SSH key. */
+  sshKeyAdd: "ssh-key-add",
+  /** The per-workspace `ssh` connect command on a workspace card. Attr: `data-host`. */
+  workspaceSshCommand: "workspace-ssh-command",
   /** Dev-login form (EDD_DEV_AUTH=1) controls + error. */
   loginUser: "login-user",
   loginPassword: "login-password",

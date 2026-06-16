@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { WorkspaceDto } from "@edd/api-contracts";
 import { defineAbilityFor } from "@edd/authz";
-import { ownerId } from "@edd/core";
+import { SSH_BASE_DOMAIN } from "@edd/config";
+import { isWorkspaceLabel, ownerId, workspacePrincipal, workspaceSshHost } from "@edd/core";
 import Link from "next/link";
 
 import { StateBlock } from "../../components/StateBlock";
@@ -41,6 +42,14 @@ export default async function WorkspacesPage({
   const canCreate = defineAbilityFor(principal).can("create", "Workspace");
   const catalog = await getCatalog().list();
   const details = catalogDetailsByImage(catalog);
+
+  // The per-workspace SSH command, shown only once a deployment has provisioned
+  // the SSH subdomain zone (EDD_SSH_BASE_DOMAIN); otherwise there's no address to
+  // advertise. Single-gateway routing carries the workspace id in the username.
+  const sshCommandFor = (id: string): string | undefined =>
+    SSH_BASE_DOMAIN !== "" && isWorkspaceLabel(id)
+      ? `ssh ${workspacePrincipal(id)}@${workspaceSshHost(id, SSH_BASE_DOMAIN)}`
+      : undefined;
 
   return (
     <>
@@ -97,6 +106,7 @@ export default async function WorkspacesPage({
                 imageName={image.name}
                 imageDescription={image.description}
                 imageTags={image.tags}
+                sshCommand={sshCommandFor(ws.id)}
               />
             );
           })}
