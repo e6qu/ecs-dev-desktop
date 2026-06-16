@@ -78,8 +78,16 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
   follow-ups otherwise; see [`docs/observability-gaps.md`](./docs/observability-gaps.md).
 - **Docs** — `README` doc index, [`docs/running-locally.md`](./docs/running-locally.md)
   (runnable tier commands), and the AWS [`docs/deploying.md`](./docs/deploying.md)
-  runbook are current and cross-linked. Remaining deploy wiring gap:
-  `EDD_SSH_CA_KEY_PATH` (CA private key) is not provisioned by the Terraform module.
+  runbook are current and cross-linked. **SSH CA provisioning — DONE / note was stale.**
+  The CA private key _is_ provisioned by the Terraform module: the recommended path is
+  `EDD_SSH_CA_KEY` (key material) supplied via `secret_environment`, which the
+  control-plane task def wires as ECS `secrets` with execution-role `GetSecretValue`
+  (`ecs.tf` + `iam.tf`); the key never lands in TF state (deploying.md Step 4). The module
+  deliberately does **not** provision an on-disk `EDD_SSH_CA_KEY_PATH` (that file variant
+  is dev-only). Added a plan-time guard: the control-plane task def now has a
+  `precondition` that fails the plan if `ssh_ca_public_key` is set without a matching
+  `EDD_SSH_CA_KEY` in `secret_environment` (a half-configured CA that would advertise SSH
+  but never sign certs — previously only failing at runtime).
 
 - **ECS compute hardening follow-ups** (from the 2026-06-13 gap audit) — mostly
   **done** (see `BUGS.md` → Resolved): `runTask` readiness gating; `EDD_AGENT_TOKEN`
