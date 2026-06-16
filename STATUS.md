@@ -2,7 +2,7 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-16 (user-registered SSH keys — Slices 1+2 landed: foundation, API, authorize seam, portal; gateway sshd = Slice 2c)
+**Last updated:** 2026-06-16 (SSH dual-trust chosen; Slice 2c in progress — ssh-authorize+gateway done, golden-image+e2e remaining)
 
 ## Current phase
 
@@ -30,11 +30,20 @@ subdomain/username since SSH has no SNI). **Slices 1+2 landed on `feat/ssh-key-r
 Verified: core+contracts unit green (173), service+entity + route integ green on
 DynamoDB Local (ssh-keys CRUD/conflict/isolation + ssh-authorize
 owner/mismatch/unregistered/no-token), web typecheck+lint+offline build green.
-**Remaining: Slice 2c** — the gateway sshd registered-key wiring. The proxy is a
-transparent `nc`/`-W` tunnel, so the user authenticates end-to-end with the
-workspace node; registered-key auth needs a sub-decision (dual-trust both sshds, or
-a terminating bastion) + the golden-image/e2e change. **Slice 3** = public SSH NLB +
-Route53 (AWS-gated). See `PLAN.md` §4b.
+**Slice 2c in progress — dual-trust (chosen over a terminating bastion; no
+Teleport).** Public surface is identical either way (only the bastion is public;
+workspaces stay private), so the differentiator is internal trust — and a
+terminating bastion in stock OpenSSH is shell-only (breaks VS Code Remote-SSH/scp/
+forwarding) whereas dual-trust keeps full transparency. Both sshds authorize the
+**same registered key** via `ssh-authorize`. Done on `feat/ssh-dual-trust`:
+`ssh-authorize` now also accepts the **agent token** (integ 5 green), and the
+**gateway** sshd uses `AuthorizedKeysCommand` (gateway token) instead of CA/principal
+auth (shellcheck-clean). **Remaining (mid-flight, not yet wired end-to-end):** swap
+the **golden image** sshd (`infra/images/base`) to `AuthorizedKeysCommand` (agent
+token) + entrypoint env-persist + Dockerfile — a production-image change/rebuild;
+and rewrite the `docker-compose.ssh.yml` e2e to register a key against a stub
+control plane and assert key→shell, validating the full path. **Slice 3** = public
+SSH NLB + Route53 (AWS-gated). See `PLAN.md` §4b.
 
 **Catalog and session-launch UX cleanup are now part of the current mainline state.**
 The golden-image collection remains fully complete — the base/omnibus split + slim

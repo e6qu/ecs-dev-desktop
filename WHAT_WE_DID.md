@@ -1283,3 +1283,22 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
   (dual-trust both sshds [recommended] vs a terminating bastion) rather than rushing a
   security-sensitive proxy-auth change into this PR; it also needs the golden-image rebuild +
   `docker-compose.ssh.yml` e2e. Captured in `PLAN.md` §4b.
+- **2026-06-16 — SSH Slice 2c: dual-trust chosen; ssh-authorize + gateway done.** The user
+  initially leaned terminating bastion to "minimize public-internet surface." Surfaced that
+  public surface is **identical** in both models (only the bastion is internet-facing;
+  workspaces stay private VPC-internal) — the real difference is internal trust. A terminating
+  bastion in stock OpenSSH is shell-only (breaks VS Code Remote-SSH / scp / port-forwarding,
+  which matter for a VS Code platform); full transparency would mean adopting/​building
+  Teleport. The user ruled out Teleport and took the recommendation: **dual-trust** — both the
+  gateway and the workspace sshd authorize the same registered key via `ssh-authorize`
+  (per-connection, revocable; the workspace never stand-trusts a user key). Landed on
+  `feat/ssh-dual-trust`: (1) `ssh-authorize` now accepts the **workspace agent token** in
+  addition to the gateway token, so the inner-hop `AuthorizedKeysCommand` can call the same
+  decision (route integ 5 green, incl. the agent-token case); (2) the **gateway** sshd swapped
+  from CA/principal auth to `AuthorizedKeysCommand` (`services/ssh-gateway/authorized-keys.sh`,
+  gateway token), the transparent `nc` forward unchanged so the session stays end-to-end to the
+  workspace sshd (shellcheck-clean). **Mid-flight — not yet wired end-to-end:** the golden
+  image (`infra/images/base`) sshd still uses CA auth, and the `docker-compose.ssh.yml` e2e
+  still signs certs. Next: swap the golden image to `AuthorizedKeysCommand` (agent token) +
+  entrypoint env-persist + Dockerfile (prod-image rebuild), rewrite the e2e to register a key
+  against a stub control plane, and validate the full key→shell path.
