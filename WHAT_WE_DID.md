@@ -1499,3 +1499,13 @@ MaxResults` has an AWS minimum of 5 — reinforcing the rule to validate every p
   documented in TESTING.md (set `E2E_AWS_ROLE_ARN`, dispatch with `confirm=RUN`). Fuller suites the
   sim can't cover (Fargate cold-start, federation, IAM enforcement, 200+ load, wake-on-connect) are
   added as further jobs once this first slice is validated.
+- **2026-06-17 — Per-user quota-utilization metric (the last observability `Low` item).** Closed
+  the deferred quota gauge via the event-driven approach the earlier triage foresaw: it's emitted
+  from the **create route** (which knows both the owner's current count and their role-derived
+  `workspaceLimit(role)`), not the reconciler (which has `ownerId` but not the role). A pure,
+  testable `recordQuotaUsage(metrics, {owned, limit, role, allowed})` (`apps/web/lib/quota-metrics.ts`)
+  emits `quota.utilization` (gauge = `owned/limit`, 0 when unlimited) and `quota.denied` (count on
+  rejection), dimensioned by role only (bounded cardinality). Added the metric-name constants to
+  `@edd/core` and a memoized `getMetrics()` app sink accessor. 3 unit tests (allowed / unlimited /
+  denied). This closes the `observability-gaps.md` `Low` list entirely — the only thing left there
+  is the AWS-gated `e2e-aws` tier.

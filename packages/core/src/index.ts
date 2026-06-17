@@ -188,6 +188,8 @@ export {
   METRIC_FLEET_STOPPED,
   METRIC_FLEET_ACTIVE,
   METRIC_FLEET_COST_USD,
+  METRIC_QUOTA_UTILIZATION,
+  METRIC_QUOTA_DENIED,
 } from "./observability/metrics";
 
 // Observability — cost model (admin Costs; prices the lifecycle audit ledger).

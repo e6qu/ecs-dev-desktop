@@ -56,6 +56,12 @@ export const METRIC_FLEET_ACTIVE = "fleet.workspaces.active";
 /** Priced fleet total (USD) at sweep time. */
 export const METRIC_FLEET_COST_USD = "fleet.cost.usd";
 
+// Quota gauges (emitted on a workspace create attempt, dimensioned by role).
+/** Fraction of a user's per-role workspace quota in use (0 when unlimited). */
+export const METRIC_QUOTA_UTILIZATION = "quota.utilization";
+/** A create rejected because the per-role workspace quota was reached. */
+export const METRIC_QUOTA_DENIED = "quota.denied";
+
 /** Sink that drops every metric — the default when no real sink is wired. */
 export class NoopMetricSink implements MetricSink {
   count(): void {

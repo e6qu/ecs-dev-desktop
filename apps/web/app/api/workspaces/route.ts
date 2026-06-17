@@ -15,8 +15,10 @@ import {
   isResponse,
 } from "../../../lib/api";
 import { getCatalog, getControlPlane } from "../../../lib/control-plane";
+import { getMetrics } from "../../../lib/metrics";
 import { withObservability } from "../../../lib/observability";
 import { workspaceLimit } from "../../../lib/quota";
+import { recordQuotaUsage } from "../../../lib/quota-metrics";
 
 // GET /api/workspaces — admins see all; everyone else sees their own.
 async function handleGET(req: Request) {
@@ -53,9 +55,14 @@ async function handlePOST(req: Request) {
 
   const cp = await getControlPlane();
 
-  // Enforce the per-role workspace quota.
+  // Enforce the per-role workspace quota, and emit the per-role utilization gauge
+  // (plus a denial count when rejected) — the create path is the one place that
+  // knows both the owner's current count and their role-derived limit.
   const owned = await cp.list({ ownerId: ownerId(principal.id) });
-  if (!withinWorkspaceQuota(owned.length, workspaceLimit(principal.role))) {
+  const limit = workspaceLimit(principal.role);
+  const allowed = withinWorkspaceQuota(owned.length, limit);
+  recordQuotaUsage(getMetrics(), { owned: owned.length, limit, role: principal.role, allowed });
+  if (!allowed) {
     return conflict(`workspace quota reached (${owned.length.toString()})`);
   }
 
