@@ -7,13 +7,7 @@ import {
   CreateLogGroupCommand,
   FilterLogEventsCommand,
 } from "@aws-sdk/client-cloudwatch-logs";
-import {
-  CreateSubnetCommand,
-  CreateVpcCommand,
-  DeleteSubnetCommand,
-  DeleteVpcCommand,
-  EC2Client,
-} from "@aws-sdk/client-ec2";
+import { EC2Client } from "@aws-sdk/client-ec2";
 import {
   CreateClusterCommand as CreateEcsClusterCommand,
   DescribeTasksCommand,
@@ -27,9 +21,15 @@ import {
 import { EcsComputeProvider } from "@edd/compute-ecs";
 import { DEFAULT_AWS_REGION, DEFAULT_WORKSPACE_PORT as WORKSPACE_PORT } from "@edd/config";
 import { baseImage, workspaceId } from "@edd/core";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 
-import { awsSimClientConfig, configureAwsSimEnv, required, sleep } from "./aws-sim";
+import {
+  awsSimClientConfig,
+  configureAwsSimEnv,
+  createVpcWithEgress,
+  required,
+  sleep,
+} from "./aws-sim";
 import { hostReachableTarget } from "./docker-host";
 import { generateUserKey, startSshAuthorizeStub, taskExitCode } from "./golden-ssh-helpers";
 
@@ -174,22 +174,20 @@ describe(
     const ecs = new ECSClient(SIM);
     const logs = new CloudWatchLogsClient(SIM);
     let subnetId: string;
-    let vpcId: string;
 
     beforeAll(async () => {
-      const vpcOut = await ec2.send(new CreateVpcCommand({ CidrBlock: VPC_CIDR }));
-      vpcId = required(vpcOut.Vpc?.VpcId, "VpcId");
-      const subnetOut = await ec2.send(
-        new CreateSubnetCommand({ VpcId: vpcId, CidrBlock: SUBNET_CIDR }),
-      );
-      subnetId = required(subnetOut.Subnet?.SubnetId, "SubnetId");
+      // The workspace task authorizes SSH keys by calling the control plane
+      // (AuthorizedKeysCommand → ssh-authorize), so its subnet needs egress to
+      // reach it — same as any real deployment where a task talks to the control
+      // plane. A plain VPC with no route out would deny every key.
+      const vpc = await createVpcWithEgress(ec2, {
+        vpcCidr: VPC_CIDR,
+        subnetCidr: SUBNET_CIDR,
+        securityGroupName: `golden-ssh-sg-${RUN_ID}`,
+      });
+      subnetId = vpc.subnetId;
       await ecs.send(new CreateEcsClusterCommand({ clusterName: CLUSTER }));
       await logs.send(new CreateLogGroupCommand({ logGroupName: LOG_GROUP }));
-    });
-
-    afterAll(async () => {
-      await ec2.send(new DeleteSubnetCommand({ SubnetId: subnetId }));
-      await ec2.send(new DeleteVpcCommand({ VpcId: vpcId }));
     });
 
     async function runWorkspaceTask(controlPlaneUrl: string): Promise<{
