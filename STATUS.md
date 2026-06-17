@@ -2,7 +2,7 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-16 (SSH dual-trust chosen; Slice 2c in progress — ssh-authorize+gateway done, golden-image+e2e remaining)
+**Last updated:** 2026-06-17 (SSH dual-trust Slice 2c complete + docker-e2e validated; only AWS-gated public ingress left)
 
 ## Current phase
 
@@ -30,20 +30,19 @@ subdomain/username since SSH has no SNI). **Slices 1+2 landed on `feat/ssh-key-r
 Verified: core+contracts unit green (173), service+entity + route integ green on
 DynamoDB Local (ssh-keys CRUD/conflict/isolation + ssh-authorize
 owner/mismatch/unregistered/no-token), web typecheck+lint+offline build green.
-**Slice 2c in progress — dual-trust (chosen over a terminating bastion; no
-Teleport).** Public surface is identical either way (only the bastion is public;
-workspaces stay private), so the differentiator is internal trust — and a
-terminating bastion in stock OpenSSH is shell-only (breaks VS Code Remote-SSH/scp/
-forwarding) whereas dual-trust keeps full transparency. Both sshds authorize the
-**same registered key** via `ssh-authorize`. Done on `feat/ssh-dual-trust`:
-`ssh-authorize` now also accepts the **agent token** (integ 5 green), and the
-**gateway** sshd uses `AuthorizedKeysCommand` (gateway token) instead of CA/principal
-auth (shellcheck-clean). **Remaining (mid-flight, not yet wired end-to-end):** swap
-the **golden image** sshd (`infra/images/base`) to `AuthorizedKeysCommand` (agent
-token) + entrypoint env-persist + Dockerfile — a production-image change/rebuild;
-and rewrite the `docker-compose.ssh.yml` e2e to register a key against a stub
-control plane and assert key→shell, validating the full path. **Slice 3** = public
-SSH NLB + Route53 (AWS-gated). See `PLAN.md` §4b.
+**Slice 2c complete — dual-trust SSH, docker-e2e validated** (chosen over a
+terminating bastion; no Teleport — same public surface either way, and dual-trust
+keeps VS Code Remote-SSH/scp/forwarding). Both sshds authorize the **same registered
+key** via `ssh-authorize` (the gateway with its token, the workspace with its agent
+token). On `feat/ssh-dual-trust`: `ssh-authorize` accepts both tokens; the **gateway**
+sshd uses `AuthorizedKeysCommand`; the **golden image** added `AuthorizedKeysCommand`
+**alongside** the retained CA cert path (additive — the cert-based e2e suites keep
+passing; `EDD_SSH_CA_PUBLIC_KEY` now optional). The `ssh-proxy.e2e.ts` was rewritten
+self-contained (worker-thread stub control plane + docker-run node + proxy) and
+**validated 2/2 green**: a registered key is authorized at both hops and lands on the
+node, an unregistered key is denied. Deleted the obsolete `ssh-connect.e2e.ts` +
+`docker-compose.ssh.yml`; CI builds `edd-workspace-node:e2e`. **Only Slice 3 left —
+public SSH NLB + Route53 `*.ssh` (AWS-gated, decision #1).** See `PLAN.md` §4b.
 
 **Catalog and session-launch UX cleanup are now part of the current mainline state.**
 The golden-image collection remains fully complete — the base/omnibus split + slim

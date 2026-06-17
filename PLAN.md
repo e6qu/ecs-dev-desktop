@@ -75,7 +75,7 @@ wake-on-connect against a real ECS workspace task on the container-mode sim.
   connect-time wake (real CP + real sim task) ✅; session recording ⬜;
   e2e-aws SSH-wakes-stopped ⬜.
 
-### 4b — User-registered SSH keys + per-workspace subdomain — 🟡 (API + portal landed; gateway pending)
+### 4b — User-registered SSH keys + per-workspace subdomain — 🟡 (dual-trust SSH done; only AWS-gated ingress left)
 
 **Goal:** a user registers their SSH **public** key once (account settings), then
 SSHes to each running workspace at its **own subdomain** (`<workspaceId>.<sshzone>`).
@@ -113,29 +113,29 @@ transparency at the same public surface; the workspace authorizes per-connection
   command on the workspace card (shown when `EDD_SSH_BASE_DOMAIN` is set); config
   `SSH_BASE_DOMAIN`. Route integ green on DynamoDB Local; web typecheck/lint/build
   green.
-- 🟡 **Slice 2c — dual-trust sshd wiring (no AWS; heavy docker e2e).** Both sshds
-  authorize the registered key via `ssh-authorize`.
-  - ✅ `ssh-authorize` accepts the **agent token** too (inner hop), not just the
-    gateway token (integ green).
-  - ✅ **Gateway** sshd → `AuthorizedKeysCommand` (`authorized-keys.sh`, gateway
-    token) replacing CA/principal auth; transparent `nc` forward unchanged.
-  - ✅ **Golden image** (`infra/images/base`): `sshd_config` CA auth →
-    `AuthorizedKeysCommand` (`authorized-keys.sh`, agent token, runs as root);
-    entrypoint persists `EDD_*` to a root-only `/run/edd-ssh-env`; Dockerfile copies
-    the script; dropped the CA pubkey/principals + the `EDD_SSH_CA_PUBLIC_KEY` req.
-    Shellcheck-clean. (Production implementation complete.)
-  - ⬜ **e2e validation** (`docker-compose.ssh.yml` + `ssh-connect`/`ssh-proxy`): the
-    lightweight e2e workspace node (`services/ssh-gateway/sshd_config` + `Dockerfile.node`)
-    still uses CA auth — convert it to `AuthorizedKeysCommand`, extend the spec's stub
-    control plane to serve `ssh-authorize` + register a key, and assert key→shell /
-    unregistered-denied. The golden-image AWS-sim e2e (`golden-workspace-ssh.e2e.ts`)
-    likewise moves from cert-signing to key-registration. **This is the remaining
-    work** — the production code is in; the harness validates it end-to-end.
+- ✅ **Slice 2c — dual-trust sshd wiring (no AWS; docker e2e validated).** Both
+  sshds authorize the registered key via `ssh-authorize`.
+  - `ssh-authorize` accepts the gateway token **and** the workspace agent token
+    (integ green).
+  - **Gateway** sshd → `AuthorizedKeysCommand` (`authorized-keys.sh`, gateway token);
+    transparent `nc` forward unchanged, so the session stays end-to-end.
+  - **Golden image** (`infra/images/base`): added `AuthorizedKeysCommand`
+    (`authorized-keys.sh`, agent token, root, root-only `/run/edd-ssh-env`)
+    **alongside** the retained CA cert path — additive, so the many cert-based e2e
+    suites that SSH into the golden image keep passing; `EDD_SSH_CA_PUBLIC_KEY` is now
+    optional (empty CA file → only registered-key active; sshd accepts it).
+  - **e2e** (`ssh-proxy.e2e.ts`): rewritten self-contained — an in-process stub
+    control plane in a **worker thread** (keeps serving while the main thread blocks on
+    `spawnSync`) + docker-run node + proxy. Asserts a registered key is authorized at
+    both hops and lands on the node (`whoami=workspace`), and an unregistered key is
+    denied. **Validated locally 2/2 green.** Deleted the obsolete cert-based
+    `ssh-connect.e2e.ts` + `docker-compose.ssh.yml`; CI/test-e2e build
+    `edd-workspace-node:e2e` and pass `NODE_IMAGE`.
 - ⬜ **Slice 3 — ingress (AWS-gated, decision #1):** public SSH NLB + listener;
-  Route53 `*.<sshzone>` wildcard wired to the gateway.
-- **Gate:** register/list/delete ✅ (unit+integ); ssh-authorize decision ✅ (integ);
-  Settings page + per-workspace command ✅ (typecheck/build); gateway sshd registered-key
-  auth ⬜; subdomain routing ⬜; e2e key→subdomain→shell ⬜; e2e-aws public SSH ingress ⬜.
+  Route53 `*.<sshzone>` wildcard wired to the gateway. **Last remaining slice.**
+- **Gate:** register/list/delete ✅; ssh-authorize decision (both tokens) ✅; Settings
+  page + per-workspace command ✅; dual-trust registered-key auth at both hops ✅
+  (docker e2e); subdomain DNS + public SSH ingress ⬜ (e2e-aws, Slice 3).
 
 ## Phase 5 — Scale-to-zero + snapshot automation — 🟡
 

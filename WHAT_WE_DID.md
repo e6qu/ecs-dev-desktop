@@ -1302,3 +1302,25 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
   still signs certs. Next: swap the golden image to `AuthorizedKeysCommand` (agent token) +
   entrypoint env-persist + Dockerfile (prod-image rebuild), rewrite the e2e to register a key
   against a stub control plane, and validate the full key→shell path.
+- **2026-06-17 — SSH Slice 2c completed + docker-e2e validated.** Finished dual-trust:
+  the **golden image** got `AuthorizedKeysCommand` (agent token, root, root-only
+  `/run/edd-ssh-env`) **alongside** the retained CA cert path — additive on purpose, since
+  many e2e suites (golden-workspace-ssh, user-journey, ssh-wake-chain, image-variants,
+  workspace-toolchain) SSH into the golden image via certs and would otherwise break; sshd
+  supports both paths at once, and `EDD_SSH_CA_PUBLIC_KEY` became optional (empty CA file →
+  only registered-key active; verified sshd accepts an empty `TrustedUserCAKeys`). Rewrote
+  `ssh-proxy.e2e.ts` as a **self-contained** harness (no compose): the stub control plane
+  runs in a **worker thread** so it keeps serving while the main thread blocks on synchronous
+  `spawnSync(ssh/docker)` — the gateway and node call `ssh-authorize` _during_ the blocking
+  connection, which a main-loop server would deadlock (that was the bug behind a long
+  banner-exchange timeout; a separate-process stub worked, an in-process one didn't). The
+  test docker-runs its own node + proxy on a fresh network with a resilient host-alias probe
+  - named-container teardown; **2/2 green** — a registered key is authorized at both hops and
+    lands on the node (`whoami=workspace`), an unregistered key is denied. Deleted the obsolete
+    cert-based `ssh-connect.e2e.ts` and `docker-compose.ssh.yml`; CI + `scripts/test-e2e.sh`
+    now build `edd-workspace-node:e2e` and pass `NODE_IMAGE` instead of bringing up the compose
+    harness (whose node entrypoint now requires runtime env compose didn't set); dropped the
+    deleted ssh-connect CI step; `gen-ssh-ca` stays for the golden-image cert path. Updated
+    TESTING.md, the ssh-gateway README, the coverage doc. **Net: dual-trust SSH (Slices 1–2c)
+    is done and locally e2e-validated; only Slice 3 (public NLB + Route53, AWS-gated) remains.**
+    On `feat/ssh-dual-trust` / draft PR #110.

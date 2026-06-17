@@ -36,14 +36,14 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
   foundation (core helpers + contracts + `sshKey` entity + `SshKeyService`), `/api/ssh-keys`
   CRUD, the gateway `ssh-authorize` decision endpoint, api-client, Settings page, and the
   per-workspace `ssh` command — unit + route integ green; web typecheck/lint/build green.
-  **Slice 2c IN PROGRESS — dual-trust chosen** (over a terminating bastion; no Teleport —
-  same public surface either way, and dual-trust keeps VS Code Remote-SSH/scp/forwarding).
-  Done on `feat/ssh-dual-trust`: `ssh-authorize` accepts the agent token too; the **gateway**
-  sshd uses `AuthorizedKeysCommand`. **Next:** swap the **golden image** (`infra/images/base`)
-  sshd → `AuthorizedKeysCommand` (agent token) + entrypoint env-persist + Dockerfile (prod
-  image rebuild), then rewrite the `docker-compose.ssh.yml` e2e (register a key against a stub
-  control plane; assert key→shell + unregistered-denied) and validate the full path.
-  **Slice 3** = public SSH NLB + Route53 `*.ssh` (AWS-gated, #1). Full plan in `PLAN.md` §4b.
+  **Slices 1–2c DONE — dual-trust SSH, docker-e2e validated** (on `feat/ssh-dual-trust`,
+  draft PR #110). `ssh-authorize` accepts gateway + agent tokens; gateway + golden-image
+  sshd authorize the registered key via `AuthorizedKeysCommand` (golden image keeps the CA
+  cert path additively, so cert-based e2e suites still pass); `ssh-proxy.e2e.ts` rewritten
+  self-contained (worker-thread stub + docker-run node/proxy) and 2/2 green; deleted the
+  obsolete `ssh-connect.e2e.ts` + `docker-compose.ssh.yml`. **Only Slice 3 remains —
+  public SSH NLB + Route53 `*.ssh`, AWS-gated by the account decision (#1).** Once #110
+  merges and AWS is unblocked, wire the single public SSH ingress. Full plan in `PLAN.md` §4b.
 - **Catalog metadata picker + admin UX cleanup — DONE.** Mainline now carries the
   catalog metadata picker **and** the broader admin/navigation cleanup:
   `/admin/catalog`, legacy `/base-images` redirect, top-nav active state, unified
