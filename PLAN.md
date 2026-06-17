@@ -119,14 +119,18 @@ transparency at the same public surface; the workspace authorizes per-connection
     gateway token (integ green).
   - ✅ **Gateway** sshd → `AuthorizedKeysCommand` (`authorized-keys.sh`, gateway
     token) replacing CA/principal auth; transparent `nc` forward unchanged.
-  - ⬜ **Golden image** (`infra/images/base`): swap `sshd_config` CA auth →
-    `AuthorizedKeysCommand` (`authorized-keys.sh`, agent token); entrypoint persists
-    `EDD_*` for the pre-auth command; Dockerfile copies it. **Production image
-    change → rebuild.**
-  - ⬜ **e2e** (`docker-compose.ssh.yml` + `ssh-connect`/`ssh-proxy` e2e): register a
-    key against a stub control plane serving `ssh-authorize`; assert key→shell and
-    unregistered-key-denied. Validates the full dual-trust path. **Not yet wired
-    end-to-end** until the golden image + e2e land.
+  - ✅ **Golden image** (`infra/images/base`): `sshd_config` CA auth →
+    `AuthorizedKeysCommand` (`authorized-keys.sh`, agent token, runs as root);
+    entrypoint persists `EDD_*` to a root-only `/run/edd-ssh-env`; Dockerfile copies
+    the script; dropped the CA pubkey/principals + the `EDD_SSH_CA_PUBLIC_KEY` req.
+    Shellcheck-clean. (Production implementation complete.)
+  - ⬜ **e2e validation** (`docker-compose.ssh.yml` + `ssh-connect`/`ssh-proxy`): the
+    lightweight e2e workspace node (`services/ssh-gateway/sshd_config` + `Dockerfile.node`)
+    still uses CA auth — convert it to `AuthorizedKeysCommand`, extend the spec's stub
+    control plane to serve `ssh-authorize` + register a key, and assert key→shell /
+    unregistered-denied. The golden-image AWS-sim e2e (`golden-workspace-ssh.e2e.ts`)
+    likewise moves from cert-signing to key-registration. **This is the remaining
+    work** — the production code is in; the harness validates it end-to-end.
 - ⬜ **Slice 3 — ingress (AWS-gated, decision #1):** public SSH NLB + listener;
   Route53 `*.<sshzone>` wildcard wired to the gateway.
 - **Gate:** register/list/delete ✅ (unit+integ); ssh-authorize decision ✅ (integ);
