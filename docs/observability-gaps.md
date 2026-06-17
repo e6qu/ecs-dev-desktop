@@ -33,8 +33,10 @@ business API route is wrapped with `withObservability`, which emits a structured
 
 **Gaps.**
 
-- `parseLevel` infers level by substring-matching the raw message (brittle) — a
-  symptom of the no-structured-levels gap on the read side. _Low._
+- ~~`parseLevel` infers level by substring-matching the raw message~~ **Done
+  (2026-06-17).** `parseLevel` now reads the structured `level` field our loggers
+  emit (`formatLogLine` JSON), falling back to the substring heuristic only for
+  raw unstructured container stdout (idle-agent / workspace processes).
 
 ## Health
 
@@ -152,6 +154,18 @@ Remaining:
    #1, the top blocker). This is the one substantial item left and is **external** —
    the entire real-cloud tier is unverified, and it's also where the EMF→CloudWatch
    metrics, alarms firing, and live SSH-cert issuance get their first real check.
-2. Minor follow-ups (all _Low_): per-user quota-utilization gauges; `parseLevel`
-   heuristic on the log read side; control-plane self-health; cached fleet status
-   for 200+ scale.
+2. Minor follow-ups, triaged 2026-06-17:
+   - **`parseLevel` heuristic on the log read side — DONE** (reads the structured
+     `level`; see above).
+   - **Cached fleet status for 200+ scale** (_Medium_) — the one with real value left.
+     Deferred pending a **caching-strategy decision** (short-TTL memo vs a
+     reconciler-persisted aggregate vs `unstable_cache` revalidation) and its
+     staleness tolerance — an architecture call, not a mechanical fix.
+   - **Per-user quota-utilization gauges** (_Low_) — awkward fit: the reconciler
+     (where fleet gauges are emitted) has each workspace's `ownerId` but not the
+     owner's role, and the limit is `workspaceLimit(role)`. A true utilization gauge
+     needs role→limit resolution the reconciler lacks; deferred until that's worth
+     wiring (or emit it event-driven from the create path where role is known).
+   - **Control-plane self-health** (_Low_) — deliberately left hardcoded `ok`: by
+     construction it is the process answering its own request, so it cannot
+     meaningfully self-report degraded (if it were down it couldn't answer).

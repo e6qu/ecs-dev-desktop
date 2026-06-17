@@ -49,6 +49,28 @@ describe("parseLevel", () => {
     expect(parseLevel("WARNING: slow response")).toBe("warn");
     expect(parseLevel("ERROR stopping task")).toBe("error");
   });
+
+  // Structured lines from the control plane / reconciler carry an explicit `level`
+  // (see `formatLogLine`); the read side must honour it, not re-guess from the text.
+  it("reads the structured `level` field when present", () => {
+    expect(
+      parseLevel(
+        '{"level":"warn","ts":"2026-06-17T00:00:00.000Z","service":"reconciler","msg":"slow"}',
+      ),
+    ).toBe("warn");
+    expect(parseLevel('{"level":"error","service":"control-plane","msg":"boom"}')).toBe("error");
+  });
+  it("trusts the structured level even when the message text would mislead the heuristic", () => {
+    // msg contains "error", but the record's level is info → must stay info.
+    expect(
+      parseLevel('{"level":"info","service":"control-plane","msg":"cleared error cache"}'),
+    ).toBe("info");
+  });
+  it("falls back to the heuristic for non-JSON or level-less lines", () => {
+    expect(parseLevel('{"service":"x","msg":"error happened"}')).toBe("error"); // no level field
+    expect(parseLevel('{"level":"verbose","msg":"hi"}')).toBe("info"); // not a known level
+    expect(parseLevel("plain error text")).toBe("error");
+  });
 });
 
 // ── toLogLine (pure) ─────────────────────────────────────────────────────────

@@ -1455,3 +1455,18 @@ MaxResults` has an AWS minimum of 5 — reinforcing the rule to validate every p
   `DescribeTasks`/`ListTasks`/`StopTask` against an unknown cluster now all throw
   `ClusterNotFoundException`. Sanity-checked the broad bump locally — `@edd/storage-ec2` (4/4) and
   `@edd/compute-ecs` (4/4) integ green against the new sim — with full integ/e2e validation on CI.
+- **2026-06-17 — Observability `Low` triage: `parseLevel` reads structured levels; rest deferred
+  with rationale.** Picked up the deferred observability follow-ups. **Done:** `parseLevel`
+  (`@edd/cloudwatch-logs`) now reads the explicit `level` of a structured log line (our
+  `formatLogLine` JSON) instead of substring-matching the raw message — so an `info` line whose
+  text happens to contain "error" is no longer mis-levelled; the brittle heuristic remains only
+  for raw unstructured container stdout (idle-agent / workspace processes). Added a `structuredLevel`
+  parser + `isLogLevel` type guard; unit tests cover structured-wins-over-heuristic and the
+  non-JSON/level-less fallbacks. **Triaged + deferred** (recorded in `docs/observability-gaps.md`):
+  **cached fleet status** (_Medium_, the one with real value) needs a caching-strategy decision
+  (short-TTL memo vs reconciler-persisted aggregate vs `unstable_cache`) — an architecture call,
+  not a mechanical fix; **per-user quota gauges** (_Low_) are an awkward fit (the reconciler has
+  `ownerId` but not the owner's role, and the limit is `workspaceLimit(role)`); **control-plane
+  self-health** (_Low_) is deliberately hardcoded `ok` (by construction it answers its own request).
+  This closes the cleanly-fixable observability `Low` items; what's left is the AWS-gated `e2e-aws`
+  tier plus the one Medium item that's a deliberate design decision.
