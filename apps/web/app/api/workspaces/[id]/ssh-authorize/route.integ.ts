@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// The SSH gateway's connect-time authorize decision: a presented public key is
+// The dual-trust connect-time authorize decision: a presented public key is
 // allowed onto a workspace iff it is registered to that workspace's owner.
+// Both ends call this — the gateway (gateway token) and the workspace sshd (agent
+// token) — so coverage exercises both machine credentials.
 import { createHmac } from "node:crypto";
 
 import { sshAuthorizeResponse } from "@edd/api-contracts";
 import { workspacePrincipal } from "@edd/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { GATEWAY_SECRET_ENV } from "../../../../../lib/constants";
+import { AGENT_SECRET_ENV, GATEWAY_SECRET_ENV } from "../../../../../lib/constants";
 import {
   apiBase,
   createWorkspaceFor,
@@ -20,7 +22,8 @@ import { POST as authorize } from "./route";
 
 useWorkspaceTable("ecs-dev-des-web-ssh-authorize-integ");
 
-const TEST_SECRET = "c".repeat(64); // 32 bytes hex
+const TEST_SECRET = "c".repeat(64); // 32 bytes hex (gateway)
+const AGENT_SECRET = "d".repeat(64); // 32 bytes hex (workspace agent)
 // Distinct registered keys (a public key is globally unique per table).
 const KEY_1 =
   "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIO05tcFAayLhiz/g8pC9LS+JUAFz8sGtKxjB3FUIl2eE owner@a";
@@ -30,9 +33,15 @@ const KEY_3 =
   "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPrRbd6nXbeqi/zZlhYnFlq00cvMhe9UHQLxhdThG3fq intruder";
 const KEY_4_UNREGISTERED =
   "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMbpONUyoZDIwuUSyR9dTM/uE5vedEH4jQQkXN0OPoPJ nobody";
+const KEY_5 =
+  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIDXm9BOT8EBmUFLyp//axmOC3Cpg7Y8M/vYegl0+PIbx agent@owner";
 
 function gatewayToken(wsId: string): string {
   return createHmac("sha256", Buffer.from(TEST_SECRET, "hex")).update(wsId).digest("hex");
+}
+
+function agentToken(wsId: string): string {
+  return createHmac("sha256", Buffer.from(AGENT_SECRET, "hex")).update(wsId).digest("hex");
 }
 
 function authorizeReq(id: string, publicKey: string, token?: string): Request {
@@ -58,6 +67,7 @@ const registerFor = (actor: string, publicKey: string): Promise<Response> =>
 describe("POST /api/workspaces/:id/ssh-authorize (DynamoDB Local)", () => {
   beforeEach(() => {
     vi.stubEnv(GATEWAY_SECRET_ENV, TEST_SECRET);
+    vi.stubEnv(AGENT_SECRET_ENV, AGENT_SECRET);
   });
   afterEach(() => {
     vi.unstubAllEnvs();
@@ -72,6 +82,15 @@ describe("POST /api/workspaces/:id/ssh-authorize (DynamoDB Local)", () => {
     const body = sshAuthorizeResponse.parse(await res.json());
     expect(body.authorized).toBe(true);
     expect(body.principal).toBe(workspacePrincipal(id));
+  });
+
+  it("also accepts the workspace agent token (inner-hop AuthorizedKeysCommand)", async () => {
+    const id = await createWorkspaceFor("agent-owner");
+    expect((await registerFor("agent-owner", KEY_5)).status).toBe(201);
+
+    const res = await authorize(authorizeReq(id, KEY_5, agentToken(id)), routeCtx(id));
+    expect(res.status).toBe(200);
+    expect(sshAuthorizeResponse.parse(await res.json()).authorized).toBe(true);
   });
 
   it("denies a key registered to a different user (ownership mismatch)", async () => {

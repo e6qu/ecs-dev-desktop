@@ -22,8 +22,13 @@ sh "$here/gen-sim-tls-cert.sh"
 sh "$here/gen-sim-github-app.sh"
 docker compose -f docker-compose.e2e.yml up -d --build --wait
 sh "$here/gen-ssh-ca.sh"
+# The cert-based wake-chain e2e needs the workspace node up (compose); the
+# dual-trust ssh-proxy e2e is self-contained (docker-runs its own node from the
+# same image).
+docker build -f services/ssh-gateway/Dockerfile.node -t edd-workspace-node:e2e .
 docker compose -f docker-compose.ssh.yml up -d --build --wait
 
 # shellcheck disable=SC1091 # generated at bring-up by gen-sim-github-app.sh
 . ./temp/github-app/coords.env
-RECONCILER_IMAGE=edd-reconciler:e2e PROXY_IMAGE=edd-ssh-proxy:e2e pnpm test:e2e
+RECONCILER_IMAGE=edd-reconciler:e2e PROXY_IMAGE=edd-ssh-proxy:e2e \
+  NODE_IMAGE=edd-workspace-node:e2e pnpm test:e2e

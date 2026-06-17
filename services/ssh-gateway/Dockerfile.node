@@ -1,23 +1,20 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Workspace SSH node: standard OpenSSH sshd, certificate-only auth.
-# sshd trusts the CA whose public key is mounted at /etc/ssh/workspace-ca.pub
-# (e2e: scripts/gen-ssh-ca.sh; production: control-plane CA public key).
-# RBAC is via AuthorizedPrincipalsFile: each OS user's file lists the certificate
-# principals the CA may assert for it.
-#
-# Principal must equal workspacePrincipal("e2e") = "dev-e2e" (services/ssh-gateway).
-ARG WORKSPACE_PRINCIPAL=dev-e2e
-
+# Workspace SSH node (e2e harness): standard OpenSSH sshd with dual-trust
+# registered-key auth — AuthorizedKeysCommand asks the control plane whether the
+# presented key is registered to this workspace's owner (per-workspace agent
+# token). Mirrors the golden image's auth (reuses its authorized-keys.sh). The
+# login user is `workspace`; the workspace identifies itself by EDD_WORKSPACE_ID.
 FROM debian:trixie-slim
-ARG WORKSPACE_PRINCIPAL
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssh-server \
+  && apt-get install -y --no-install-recommends openssh-server curl \
   && rm -rf /var/lib/apt/lists/* \
-  && useradd --create-home --shell /bin/bash "${WORKSPACE_PRINCIPAL}" \
-  && usermod -p '*' "${WORKSPACE_PRINCIPAL}" \
+  && useradd --create-home --shell /bin/bash workspace \
+  && usermod -p '*' workspace \
   && ssh-keygen -A \
-  && mkdir -p /etc/ssh/principals /run/sshd \
-  && printf '%s\n' "${WORKSPACE_PRINCIPAL}" > "/etc/ssh/principals/${WORKSPACE_PRINCIPAL}"
+  && mkdir -p /run/sshd
 COPY services/ssh-gateway/sshd_config /etc/ssh/sshd_config
+# Reuse the production golden-image AuthorizedKeysCommand (agent token).
+COPY --chmod=0755 infra/images/base/authorized-keys.sh /usr/local/bin/edd-authorized-keys
+COPY --chmod=0755 services/ssh-gateway/node-entrypoint.sh /usr/local/bin/node-entrypoint.sh
 EXPOSE 22
-CMD ["/usr/sbin/sshd", "-D", "-e"]
+ENTRYPOINT ["/usr/local/bin/node-entrypoint.sh"]

@@ -113,16 +113,19 @@ certificate trust** (no `--insecure`, no skipped verification):
 - `EDD_SIM_SCHEME=https` flips the `@edd/config` sim base URLs to `https`; the
   client trusts the CA via `NODE_EXTRA_CA_CERTS`.
 - The **Entra** auth smoke (Graph provisioning + ROPC → id_token → group→role)
-  runs over HTTPS; the **SSH** connect + authz-deny runs against the standard sshd
-  workspace node (certificate auth via ephemeral CA).
+  runs over HTTPS. The **dual-trust SSH** proxy e2e is self-contained — it
+  docker-runs its own workspace node + gateway proxy against an in-process stub.
 
 ```
 sh scripts/gen-sim-tls-cert.sh
 docker compose -f docker-compose.https.yml up -d --build --wait
-docker compose -f docker-compose.ssh.yml up -d --build --wait
 EDD_SIM_SCHEME=https NODE_EXTRA_CA_CERTS="$PWD/temp/sim-tls/ca.pem" \
   pnpm --filter @edd/web exec vitest run --config vitest.e2e.config.ts lib/entra-auth.e2e.ts
-pnpm --filter @edd/ssh-gateway exec vitest run --config vitest.e2e.config.ts src/ssh-connect.e2e.ts
+
+docker build -f services/ssh-gateway/Dockerfile.proxy -t edd-ssh-proxy:e2e .
+docker build -f services/ssh-gateway/Dockerfile.node -t edd-workspace-node:e2e .
+PROXY_IMAGE=edd-ssh-proxy:e2e NODE_IMAGE=edd-workspace-node:e2e \
+  pnpm --filter @edd/ssh-gateway exec vitest run --config vitest.e2e.config.ts src/ssh-proxy.e2e.ts
 ```
 
 ## Local quickstart
@@ -144,11 +147,12 @@ docker build -f services/reconciler/Dockerfile -t edd-reconciler:e2e .
 docker build -t edd-base:e2e infra/images/base
 docker build --build-arg BASE=edd-base:e2e -t edd-workspace:e2e infra/images/omnibus
 docker build -f services/ssh-gateway/Dockerfile.proxy -t edd-ssh-proxy:e2e .
+docker build -f services/ssh-gateway/Dockerfile.node -t edd-workspace-node:e2e .
 sh scripts/gen-sim-tls-cert.sh   # Pomerium serves real TLS; cert mounted by compose
 docker compose -f docker-compose.e2e.yml up -d --build --wait
-sh scripts/gen-ssh-ca.sh
-docker compose -f docker-compose.ssh.yml up -d --build --wait
-RECONCILER_IMAGE=edd-reconciler:e2e PROXY_IMAGE=edd-ssh-proxy:e2e pnpm test:e2e
+sh scripts/gen-ssh-ca.sh         # golden image retains the CA cert path
+RECONCILER_IMAGE=edd-reconciler:e2e PROXY_IMAGE=edd-ssh-proxy:e2e \
+  NODE_IMAGE=edd-workspace-node:e2e pnpm test:e2e
 pnpm --filter web test:pw:live      # browser lifecycle on real ECS compute
 pnpm --filter web test:pw:pomerium  # browser OIDC login through Pomerium (TLS)
 

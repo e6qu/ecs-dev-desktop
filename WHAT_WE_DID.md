@@ -1283,3 +1283,60 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
   (dual-trust both sshds [recommended] vs a terminating bastion) rather than rushing a
   security-sensitive proxy-auth change into this PR; it also needs the golden-image rebuild +
   `docker-compose.ssh.yml` e2e. Captured in `PLAN.md` §4b.
+- **2026-06-16 — SSH Slice 2c: dual-trust chosen; ssh-authorize + gateway done.** The user
+  initially leaned terminating bastion to "minimize public-internet surface." Surfaced that
+  public surface is **identical** in both models (only the bastion is internet-facing;
+  workspaces stay private VPC-internal) — the real difference is internal trust. A terminating
+  bastion in stock OpenSSH is shell-only (breaks VS Code Remote-SSH / scp / port-forwarding,
+  which matter for a VS Code platform); full transparency would mean adopting/​building
+  Teleport. The user ruled out Teleport and took the recommendation: **dual-trust** — both the
+  gateway and the workspace sshd authorize the same registered key via `ssh-authorize`
+  (per-connection, revocable; the workspace never stand-trusts a user key). Landed on
+  `feat/ssh-dual-trust`: (1) `ssh-authorize` now accepts the **workspace agent token** in
+  addition to the gateway token, so the inner-hop `AuthorizedKeysCommand` can call the same
+  decision (route integ 5 green, incl. the agent-token case); (2) the **gateway** sshd swapped
+  from CA/principal auth to `AuthorizedKeysCommand` (`services/ssh-gateway/authorized-keys.sh`,
+  gateway token), the transparent `nc` forward unchanged so the session stays end-to-end to the
+  workspace sshd (shellcheck-clean). **Mid-flight — not yet wired end-to-end:** the golden
+  image (`infra/images/base`) sshd still uses CA auth, and the `docker-compose.ssh.yml` e2e
+  still signs certs. Next: swap the golden image to `AuthorizedKeysCommand` (agent token) +
+  entrypoint env-persist + Dockerfile (prod-image rebuild), rewrite the e2e to register a key
+  against a stub control plane, and validate the full key→shell path.
+- **2026-06-17 — SSH Slice 2c completed + docker-e2e validated.** Finished dual-trust:
+  the **golden image** got `AuthorizedKeysCommand` (agent token, root, root-only
+  `/run/edd-ssh-env`) **alongside** the retained CA cert path — additive on purpose, since
+  many e2e suites (golden-workspace-ssh, user-journey, ssh-wake-chain, image-variants,
+  workspace-toolchain) SSH into the golden image via certs and would otherwise break; sshd
+  supports both paths at once, and `EDD_SSH_CA_PUBLIC_KEY` became optional (empty CA file →
+  only registered-key active; verified sshd accepts an empty `TrustedUserCAKeys`). Rewrote
+  `ssh-proxy.e2e.ts` as a **self-contained** harness (no compose): the stub control plane
+  runs in a **worker thread** so it keeps serving while the main thread blocks on synchronous
+  `spawnSync(ssh/docker)` — the gateway and node call `ssh-authorize` _during_ the blocking
+  connection, which a main-loop server would deadlock (that was the bug behind a long
+  banner-exchange timeout; a separate-process stub worked, an in-process one didn't). The
+  test docker-runs its own node + proxy on a fresh network with a resilient host-alias probe
+  - named-container teardown; **2/2 green** — a registered key is authorized at both hops and
+    lands on the node (`whoami=workspace`), an unregistered key is denied. Deleted the obsolete
+    cert-based `ssh-connect.e2e.ts` and `docker-compose.ssh.yml`; CI + `scripts/test-e2e.sh`
+    now build `edd-workspace-node:e2e` and pass `NODE_IMAGE` instead of bringing up the compose
+    harness (whose node entrypoint now requires runtime env compose didn't set); dropped the
+    deleted ssh-connect CI step; `gen-ssh-ca` stays for the golden-image cert path. Updated
+    TESTING.md, the ssh-gateway README, the coverage doc. **Net: dual-trust SSH (Slices 1–2c)
+    is done and locally e2e-validated; only Slice 3 (public NLB + Route53, AWS-gated) remains.**
+    On `feat/ssh-dual-trust` / draft PR #110.
+- **2026-06-17 — Fix: SSH infra made additive after `ssh-wake-chain` CI failure.** PR #110
+  CI surfaced that the cert-based wake-chain e2e (`packages/e2e/src/ssh-wake-chain.e2e.ts`)
+  shares the gateway proxy image **and** the `docker-compose.ssh.yml` node — both of which the
+  Slice-2c changes had made registered-key-only (and the compose harness had been removed),
+  so the wake-chain broke (`No such container: edd-workspace-node`; the proxy no longer trusted
+  its cert; `AllowUsers workspace` rejected its `dev-<id>` login). Fixed by making the shared
+  SSH infra **additive** (CA cert + registered key), mirroring the golden image: the gateway
+  `sshd_config.proxy` and the e2e node `sshd_config` re-trust the CA alongside
+  `AuthorizedKeysCommand`; the proxy/node entrypoints ensure `workspace-ca.pub` exists (empty
+  when unmounted) and the node entrypoint makes `EDD_*` optional (CA-only when unset);
+  `AllowUsers workspace dev-*` on the node. Restored `docker-compose.ssh.yml` + the CI/test-e2e
+  bring-up. The self-contained `ssh-proxy.e2e.ts` now names its node `edd-dualtrust-node` to
+  avoid colliding with the compose node's global container name. Verified locally: dual-trust
+  e2e 2/2 green **and** the additive node accepts a CA cert as a `dev-<id>` principal
+  (`whoami=dev-test`). Lesson: changing shared SSH infra has a wide blast radius — additive
+  (both auth paths) is the safe migration; full CA removal is a later, deliberate step.

@@ -1,215 +1,257 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { Worker } from "node:worker_threads";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { workspacePrincipal } from "@edd/core";
-
 /**
- * SSH proxy e2e: validates the gateway proxy chain component-by-component.
+ * Dual-trust SSH e2e: a connecting client's **registered key** is authorized at
+ * BOTH hops by the control plane — the gateway proxy (public hop) and the
+ * workspace node (inner hop) each run AuthorizedKeysCommand → `ssh-authorize`.
  *
- * Harness:
- *  - workspace SSH node (docker-compose.ssh.yml, container edd-workspace-node)
- *  - SSH proxy container (edd-ssh-proxy:e2e, joined to the same Docker network)
- *  - stub control plane HTTP server (in-process)
+ * Self-contained harness (no docker-compose): an in-process stub control plane
+ * (dynamic port) + two `docker run` containers (workspace node + gateway proxy)
+ * joined to a fresh Docker network. The stub authorizes exactly the test's
+ * registered key; an unregistered key is denied at the first hop.
  *
- * Tests:
- *  1. From inside the proxy container, nc can reach the workspace node (TCP routing).
- *  2. The proxy's ForceCommand script (wake-and-forward.sh) calls the stub CP
- *     and its curl commands succeed — verified by SSHing directly using just the
- *     inner leg to the proxy and checking ForceCommand ran.
- *  3. The full chain: outer ssh → ProxyCommand → proxy → nc → workspace sshd → whoami.
- *
- * Key insight: the proxy container joins ecs-dev-desktop_default (the Compose network)
- * so edd-workspace-node:22 is accessible by container name via Docker's built-in DNS.
+ * Images are built by CI (`edd-workspace-node:e2e`, `edd-ssh-proxy:e2e`); locally
+ * the test builds them if absent.
  */
 
-const PRINCIPAL = workspacePrincipal("e2e"); // "dev-e2e"
+const WORKSPACE_ID = "e2e";
 const PROXY_PORT = "2223";
-const GATEWAY_SECRET = "d".repeat(64); // hex machine-auth secret (stub accepts any)
-const COMPOSE_NETWORK = "ecs-dev-desktop_default";
-const WORKSPACE_NODE = "edd-workspace-node";
-
-const TEMP = join(import.meta.dirname, "../../..", "services/ssh-gateway/temp/ssh-ca");
-const CA_PUB_KEY = join(TEMP, "ca.pub");
-const USER_KEY = join(TEMP, "proxy-e2e-id");
-
+const GATEWAY_SECRET = "d".repeat(64); // hex; the stub accepts any token
+const AGENT_TOKEN = "e".repeat(64); // the stub accepts any token
+const NETWORK = "edd-ssh-dualtrust-e2e";
+// Distinct from the compose harness's `edd-workspace-node` (used by the cert-based
+// wake-chain e2e) — container names are global, so a shared name would collide.
+const WORKSPACE_NODE = "edd-dualtrust-node";
+const PROXY_NAME = "edd-ssh-proxy-e2e";
+const NODE_IMAGE = process.env.NODE_IMAGE ?? "edd-workspace-node:e2e";
 const PROXY_IMAGE = process.env.PROXY_IMAGE ?? "edd-ssh-proxy:e2e";
 
-let proxyContainerId = "";
-let stubPort = 0;
-let stubServer: ReturnType<typeof createServer>;
+const REPO_ROOT = join(import.meta.dirname, "../../..");
+const TEMP = join(REPO_ROOT, "services/ssh-gateway/temp/ssh-ca");
+const USER_KEY = join(TEMP, "dualtrust-id"); // the registered key
+const ROGUE_KEY = join(TEMP, "dualtrust-rogue"); // an unregistered key
 
 const CMD_TIMEOUT_MS = 30_000;
+let proxyId = "";
+let stubWorker: Worker | undefined;
+let registeredKeyLine = ""; // "<type> <blob>" of USER_KEY (no comment)
 
 function run(
   cmd: string,
   args: string[],
   opts?: { timeout?: number },
 ): { status: number; stdout: string; stderr: string } {
-  const res = spawnSync(cmd, args, {
-    encoding: "utf8",
-    timeout: opts?.timeout ?? CMD_TIMEOUT_MS,
-  });
-  if (res.error) throw res.error;
+  const res = spawnSync(cmd, args, { encoding: "utf8", timeout: opts?.timeout ?? CMD_TIMEOUT_MS });
+  if (res.error) throw new Error(`\`${cmd} ${args.join(" ")}\` failed: ${res.error.message}`);
   return { status: res.status ?? -1, stdout: res.stdout, stderr: res.stderr };
 }
 
-function ssh(
-  timeoutMs: number,
-  ...args: string[]
-): { status: number; stdout: string; stderr: string } {
-  return run(
-    "ssh",
-    [
-      "-i",
-      USER_KEY,
-      "-o",
-      "StrictHostKeyChecking=no",
-      "-o",
-      "UserKnownHostsFile=/dev/null",
-      ...args,
-    ],
-    { timeout: timeoutMs },
-  );
+/** "<type> <blob>" — the comment-free key line ssh-authorize compares on. */
+function keyLine(pubPath: string): string {
+  const [type, blob] = readFileSync(pubPath, "utf8").trim().split(/\s+/);
+  return `${type} ${blob}`;
 }
 
-function startStub(workspaceHost: string, workspacePort: number): Promise<number> {
-  return new Promise((resolve) => {
-    stubServer = createServer((req: IncomingMessage, res: ServerResponse) => {
-      res.setHeader("content-type", "application/json");
-      const wsDto = JSON.stringify({
-        id: "e2e",
-        state: "running",
-        ownerId: "test",
-        baseImage: "test",
-        createdAt: "2026-01-01T00:00:00.000Z",
-      });
-      if (req.method === "POST" && req.url?.includes("/connect")) {
-        res.writeHead(200);
-        res.end(wsDto);
-      } else if (req.method === "GET" && req.url?.includes("/connect-info")) {
-        res.writeHead(200);
-        res.end(JSON.stringify({ host: workspaceHost, port: workspacePort }));
-      } else if (req.method === "GET") {
-        res.writeHead(200);
-        res.end(wsDto);
-      } else {
-        res.writeHead(404);
-        res.end("{}");
+/**
+ * Stub control plane, run in a **worker thread** so it keeps serving while the
+ * main thread blocks on synchronous `spawnSync(ssh/docker)` — the gateway and
+ * node call `ssh-authorize` *during* the blocking SSH connection, so an
+ * in-process server on the main event loop would deadlock. Authorizes only the
+ * registered key; serves wake (`/connect`) + `/connect-info`. Resolves the port.
+ */
+function startStub(): Promise<number> {
+  const code = `
+    const http = require('node:http');
+    const { workerData, parentPort } = require('node:worker_threads');
+    const KEY = workerData.key, NODE = workerData.node, ID = workerData.id;
+    const dto = JSON.stringify({ id: ID, state: 'running', ownerId: 'test', baseImage: 't', createdAt: '2026-01-01T00:00:00.000Z' });
+    const server = http.createServer((req, res) => {
+      res.setHeader('content-type', 'application/json');
+      const u = req.url || '';
+      if (req.method === 'POST' && u.includes('/ssh-authorize')) {
+        const chunks = [];
+        req.on('data', (c) => chunks.push(c));
+        req.on('end', () => {
+          let pk = '';
+          try { pk = (JSON.parse(Buffer.concat(chunks).toString()).publicKey || '').trim(); } catch {}
+          res.writeHead(200);
+          res.end(JSON.stringify(pk === KEY ? { authorized: true, principal: 'dev-e2e' } : { authorized: false }));
+        });
+        return;
       }
+      if (req.method === 'POST' && u.includes('/connect')) { res.writeHead(200); res.end(dto); }
+      else if (req.method === 'GET' && u.includes('/connect-info')) { res.writeHead(200); res.end(JSON.stringify({ host: NODE, port: 22 })); }
+      else if (req.method === 'GET') { res.writeHead(200); res.end(dto); }
+      else { res.writeHead(404); res.end('{}'); }
     });
-    stubServer.listen(0, "0.0.0.0", () => {
-      const addr = stubServer.address();
-      resolve(typeof addr === "object" && addr !== null ? addr.port : 0);
+    server.listen(0, '0.0.0.0', () => parentPort.postMessage(server.address().port));
+  `;
+  return new Promise((resolve) => {
+    const worker = new Worker(code, {
+      eval: true,
+      workerData: { key: registeredKeyLine, node: WORKSPACE_NODE, id: WORKSPACE_ID },
+    });
+    stubWorker = worker;
+    worker.once("message", (port: number) => {
+      resolve(port);
     });
   });
 }
 
-function hostControlPlaneTarget(): { host: string; dockerArgs: string[] } {
-  const probe = run(
+/** Build the image from its Dockerfile (context = repo root) unless it exists —
+ * CI pre-builds them; locally the first run builds. `--load` ensures the result
+ * lands in the local image store under the buildx container driver. */
+function buildImageIfAbsent(image: string, dockerfile: string): void {
+  if (run("docker", ["image", "inspect", image]).status === 0) return;
+  const b = run(
+    "docker",
+    ["build", "--load", "-f", join(REPO_ROOT, dockerfile), "-t", image, REPO_ROOT],
+    { timeout: 300_000 },
+  );
+  if (b.status !== 0) throw new Error(`image build failed (${image}): ${b.stderr}${b.stdout}`);
+}
+
+/** The host alias + docker args that let a container reach the host's stub.
+ * Docker Desktop/dockerd support `--add-host host-gateway`; colima/podman reject
+ * it and resolve `host.containers.internal` natively. Probe with an explicit name
+ * + bounded timeout, treating any failure (incl. timeout) as the latter — a failed
+ * `--add-host` run can leave a "Created" container, so clean it up regardless. */
+function hostTarget(): { host: string; dockerArgs: string[] } {
+  run("docker", ["rm", "-f", "edd-host-probe"]);
+  const probe = spawnSync(
     "docker",
     [
       "run",
       "--rm",
+      "--name",
+      "edd-host-probe",
       "--add-host",
       "host.docker.internal:host-gateway",
       "--entrypoint",
       "true",
       PROXY_IMAGE,
     ],
-    { timeout: 10_000 },
+    { encoding: "utf8", timeout: 10_000 },
   );
-  if (probe.status === 0) {
-    return {
-      host: "host.docker.internal",
-      dockerArgs: ["--add-host", "host.docker.internal:host-gateway"],
-    };
+  run("docker", ["rm", "-f", "edd-host-probe"]);
+  return !probe.error && probe.status === 0
+    ? {
+        host: "host.docker.internal",
+        dockerArgs: ["--add-host", "host.docker.internal:host-gateway"],
+      }
+    : { host: "host.containers.internal", dockerArgs: [] };
+}
+
+function waitForTcp(port: string, timeoutMs: number): boolean {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (run("nc", ["-zw1", "localhost", port], { timeout: 3_000 }).status === 0) return true;
+    if (run("sleep", ["0.5"]).status !== 0) break;
   }
-  return { host: "host.containers.internal", dockerArgs: [] };
+  return false;
+}
+
+/** Force-remove the named containers + network (idempotent). */
+function teardownContainers(): void {
+  run("docker", ["rm", "-f", WORKSPACE_NODE, PROXY_NAME]);
+  run("docker", ["network", "rm", NETWORK]);
+}
+
+/** Wait until the workspace node's sshd accepts TCP — probed from inside the
+ * proxy container (the node has no host-published port). Avoids a banner-exchange
+ * race where the first connection arrives before the node sshd is listening. */
+function waitForNode(timeoutMs: number): boolean {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const probe = run("docker", ["exec", proxyId, "nc", "-zw1", WORKSPACE_NODE, "22"]);
+    if (probe.status === 0) return true;
+    if (run("sleep", ["0.5"]).status !== 0) break;
+  }
+  return false;
 }
 
 describe(
-  "SSH proxy: gateway container → workspace node (stub control plane)",
-  { timeout: 60_000 },
+  "dual-trust SSH: registered key authorized at gateway + node",
+  { timeout: 120_000 },
   () => {
     beforeAll(async () => {
       mkdirSync(TEMP, { recursive: true });
+      for (const k of [USER_KEY, ROGUE_KEY]) {
+        run("ssh-keygen", ["-q", "-t", "ed25519", "-N", "", "-f", k, "-C", "edd-dualtrust"]);
+      }
+      registeredKeyLine = keyLine(`${USER_KEY}.pub`);
 
-      run("ssh-keygen", ["-q", "-t", "ed25519", "-N", "", "-f", USER_KEY, "-C", "edd-proxy-e2e"]);
-      const signed = run("ssh-keygen", [
-        "-s",
-        join(TEMP, "ca"),
-        "-I",
-        "edd-proxy-e2e-tester",
-        "-n",
-        PRINCIPAL,
-        "-V",
-        "+1h",
-        `${USER_KEY}.pub`,
-      ]);
-      if (signed.status !== 0) throw new Error(`cert sign failed: ${signed.stderr}`);
+      buildImageIfAbsent(NODE_IMAGE, "services/ssh-gateway/Dockerfile.node");
+      buildImageIfAbsent(PROXY_IMAGE, "services/ssh-gateway/Dockerfile.proxy");
 
-      stubPort = await startStub(WORKSPACE_NODE, 22);
-      const controlPlane = hostControlPlaneTarget();
+      // Idempotent pre-cleanup: a prior aborted run can leave the named containers
+      // or network behind, which would wedge `docker run`/`network create`.
+      teardownContainers();
 
-      const docker = run("docker", [
+      run("docker", ["network", "create", NETWORK]);
+      const stubPort = await startStub();
+      const target = hostTarget();
+      const cpUrl = `http://${target.host}:${stubPort}`;
+
+      const node = run("docker", [
         "run",
         "-d",
+        "--name",
+        WORKSPACE_NODE,
+        "--network",
+        NETWORK,
+        ...target.dockerArgs,
+        "-e",
+        `EDD_WORKSPACE_ID=${WORKSPACE_ID}`,
+        "-e",
+        `EDD_CONTROL_PLANE_URL=${cpUrl}`,
+        "-e",
+        `EDD_AGENT_TOKEN=${AGENT_TOKEN}`,
+        NODE_IMAGE,
+      ]);
+      if (node.status !== 0) throw new Error(`node run failed: ${node.stderr}`);
+
+      const proxy = run("docker", [
+        "run",
+        "-d",
+        "--name",
+        PROXY_NAME,
         "-p",
         `${PROXY_PORT}:22`,
         "--network",
-        COMPOSE_NETWORK,
-        ...controlPlane.dockerArgs,
-        "-v",
-        `${CA_PUB_KEY}:/etc/ssh/workspace-ca.pub:ro`,
+        NETWORK,
+        ...target.dockerArgs,
         "-e",
-        `EDD_CONTROL_PLANE_URL=http://${controlPlane.host}:${stubPort}`,
+        `EDD_CONTROL_PLANE_URL=${cpUrl}`,
         "-e",
         `EDD_GATEWAY_SECRET=${GATEWAY_SECRET}`,
         PROXY_IMAGE,
       ]);
-      if (docker.status !== 0) throw new Error(`docker run failed: ${docker.stderr}`);
-      proxyContainerId = docker.stdout.trim();
+      if (proxy.status !== 0) throw new Error(`proxy run failed: ${proxy.stderr}`);
+      proxyId = proxy.stdout.trim();
 
-      // Wait for proxy sshd to accept TCP connections.
-      const deadline = Date.now() + 15_000;
-      while (Date.now() < deadline) {
-        try {
-          const probe = run("nc", ["-zw1", "localhost", PROXY_PORT], { timeout: 3_000 });
-          if (probe.status === 0) break;
-        } catch {
-          // not ready yet
-        }
-        await new Promise((r) => setTimeout(r, 500));
-      }
+      if (!waitForTcp(PROXY_PORT, 15_000)) throw new Error("proxy sshd did not come up");
+      if (!waitForNode(15_000)) throw new Error("workspace node sshd did not come up");
     });
 
-    afterAll(() => {
-      if (proxyContainerId) run("docker", ["rm", "-f", proxyContainerId], { timeout: 10_000 });
-      stubServer.close();
+    afterAll(async () => {
+      teardownContainers();
+      await stubWorker?.terminate();
     });
 
-    it("proxy container can reach workspace node:22 via container-name DNS", () => {
-      // From inside the proxy container, nc -zw1 edd-workspace-node 22 must succeed.
-      // This proves Docker container-name DNS routing works on the shared network.
-      const res = run("docker", ["exec", proxyContainerId, "nc", "-zw1", WORKSPACE_NODE, "22"]);
-      expect(res.status, `nc from proxy to workspace failed:\n${res.stdout}${res.stderr}`).toBe(0);
-    });
-
-    it("SSH through the proxy reaches the workspace node (TCP forwarding path)", () => {
-      // Use ProxyCommand with -W %h:%p on the inner ssh. -W creates a direct-tcpip
-      // channel on the proxy (ForceCommand does NOT apply to direct-tcpip), routing
-      // TCP to edd-workspace-node:22 without triggering wake-and-forward.sh.
-      // This proves the proxy is on the right network and can forward TCP to the
-      // workspace node. The -o options apply per-connection: inner ssh gets
-      // StrictHostKeyChecking=no via its own flags; outer ssh gets it via -o.
-      const innerCmd = [
+    /** Outer ssh → ProxyCommand (inner ssh to gateway, ForceCommand wakes+forwards)
+     * → workspace node. `key` is presented at both hops. */
+    function connect(key: string): { status: number; stdout: string; stderr: string } {
+      const inner = [
         "ssh",
+        "-T",
         "-i",
-        USER_KEY,
+        key,
         "-o",
         "StrictHostKeyChecking=no",
         "-o",
@@ -218,22 +260,37 @@ describe(
         "ConnectTimeout=10",
         "-p",
         PROXY_PORT,
-        `${PRINCIPAL}@localhost`,
-        "-W",
-        `${WORKSPACE_NODE}:22`,
+        "dev-e2e@localhost",
       ].join(" ");
-
-      const res = ssh(
-        15_000,
-        "-o",
-        `ProxyCommand=${innerCmd}`,
-        "-o",
-        "ConnectTimeout=10",
-        `${PRINCIPAL}@${WORKSPACE_NODE}`,
-        "whoami",
+      return run(
+        "ssh",
+        [
+          "-i",
+          key,
+          "-o",
+          "StrictHostKeyChecking=no",
+          "-o",
+          "UserKnownHostsFile=/dev/null",
+          "-o",
+          "ConnectTimeout=10",
+          "-o",
+          `ProxyCommand=${inner}`,
+          `workspace@${WORKSPACE_NODE}`,
+          "whoami",
+        ],
+        { timeout: 30_000 },
       );
-      expect(res.status, `proxy SSH failed:\n${res.stdout}${res.stderr}`).toBe(0);
-      expect(res.stdout.trim()).toBe(PRINCIPAL);
+    }
+
+    it("authorizes the registered key end-to-end and lands on the workspace node", () => {
+      const res = connect(USER_KEY);
+      expect(res.status, `dual-trust SSH failed:\n${res.stdout}${res.stderr}`).toBe(0);
+      expect(res.stdout.trim()).toBe("workspace");
+    });
+
+    it("denies an unregistered key at the gateway", () => {
+      const res = connect(ROGUE_KEY);
+      expect(res.status, "unregistered key must be denied").not.toBe(0);
     });
   },
 );

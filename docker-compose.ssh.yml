@@ -1,12 +1,12 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# SSH e2e harness: a workspace node running standard OpenSSH (sshd), certificate-auth only.
+# SSH e2e harness: a workspace node running standard OpenSSH (sshd) with additive
+# auth (CA cert + registered key). Used by the cert-based wake-chain e2e
+# (`packages/e2e/src/ssh-wake-chain.e2e.ts`), which signs a user cert via the real
+# control plane and provisions a `dev-<id>` principal into this node at runtime.
 #
-# Auth is via ephemeral SSH CA certificates — the test harness (scripts/gen-ssh-ca.sh)
-# generates the CA and signs user certs; sshd trusts the CA public key mounted from
-# temp/ssh-ca/ca.pub. Run gen-ssh-ca.sh before `docker compose up`.
-#
-# Session recording is a deploy-tier feature (CloudTrail events via AWS SDK, not
-# sshd-level recording); the e2e asserts connect-as-principal and authz-deny only.
+# The CA public key is mounted from temp/ssh-ca/ca.pub (run scripts/gen-ssh-ca.sh
+# first). The dual-trust registered-key path is exercised separately by the
+# self-contained `services/ssh-gateway/src/ssh-proxy.e2e.ts` (its own containers).
 services:
   workspace-node:
     build:

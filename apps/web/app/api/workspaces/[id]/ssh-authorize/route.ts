@@ -6,7 +6,7 @@ import { workspaceId, workspacePrincipal } from "@edd/core";
 
 import { badRequest, notFound } from "../../../../../lib/api";
 import { getControlPlane, getSshKeyService } from "../../../../../lib/control-plane";
-import { checkGatewayAuth } from "../../../../../lib/machine-auth";
+import { checkAgentAuth, checkGatewayAuth } from "../../../../../lib/machine-auth";
 import { withObservability } from "../../../../../lib/observability";
 
 interface Ctx {
@@ -15,16 +15,18 @@ interface Ctx {
 
 const unauthorized = () => NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
-// POST /api/workspaces/:id/ssh-authorize — the SSH gateway's connect-time
-// decision. Gateway machine-auth ONLY (per-workspace HMAC; no session). Given the
-// public key the connecting client offered, authorize the connection iff the key
-// is registered AND its owner owns this workspace. The authentication (key →
-// user) and authorization (user → this workspace) both resolve here so the
-// gateway's AuthorizedKeysCommand stays a thin curl. Works on a stopped
+// POST /api/workspaces/:id/ssh-authorize — the connect-time decision for the
+// dual-trust SSH path. Machine-auth only (per-workspace HMAC; no session): the
+// **gateway** token (its sshd's AuthorizedKeysCommand on the public hop) OR the
+// **workspace agent** token (the workspace sshd's AuthorizedKeysCommand on the
+// inner hop) — both ends authorize the same presented key against the same
+// decision. Given the public key the connecting client offered, authorize iff the
+// key is registered AND its owner owns this workspace. Works on a stopped
 // workspace — the ownership record persists across scale-to-zero.
 async function handlePOST(req: Request, { params }: Ctx) {
   const { id } = await params;
-  if (checkGatewayAuth(req, id) !== "valid") return unauthorized();
+  const authed = checkGatewayAuth(req, id) === "valid" || checkAgentAuth(req, id) === "valid";
+  if (!authed) return unauthorized();
 
   const body = sshAuthorizeRequest.safeParse(await req.json());
   if (!body.success) return badRequest(body.error.issues[0]?.message);

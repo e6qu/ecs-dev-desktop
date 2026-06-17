@@ -75,7 +75,7 @@ wake-on-connect against a real ECS workspace task on the container-mode sim.
   connect-time wake (real CP + real sim task) ✅; session recording ⬜;
   e2e-aws SSH-wakes-stopped ⬜.
 
-### 4b — User-registered SSH keys + per-workspace subdomain — 🟡 (API + portal landed; gateway pending)
+### 4b — User-registered SSH keys + per-workspace subdomain — 🟡 (dual-trust SSH done; only AWS-gated ingress left)
 
 **Goal:** a user registers their SSH **public** key once (account settings), then
 SSHes to each running workspace at its **own subdomain** (`<workspaceId>.<sshzone>`).
@@ -84,10 +84,16 @@ authenticate the human by the **registered key** (Codespaces/Coder-style) and
 authorize the specific workspace **by ownership at connect time**. Routing is
 wildcard-DNS → single public gateway (stock OpenSSH; SSH has no SNI, so the
 workspace id rides in the subdomain/username — not a TLS-SNI tunnel, not a direct
-public endpoint). **Open sub-decision (Slice 2c):** the proxy is a transparent
-tunnel, so the user authenticates end-to-end with the workspace node — registered-key
-auth means either dual-trust (both sshds verify the key) or a terminating bastion;
-the earlier "keep the CA for the internal hop" framing assumed a terminating bastion.
+public endpoint). **Sub-decision resolved → dual-trust (no Teleport).** The proxy
+is a transparent tunnel, so the user authenticates end-to-end with the workspace
+node; both the gateway and the workspace sshd authorize the **same registered key**
+via `ssh-authorize`. Chosen over a terminating bastion because public surface is
+**identical** either way (only the bastion is public; workspaces stay private) — the
+differentiator is internal trust, and a terminating bastion in stock OpenSSH is
+shell-only (breaks VS Code Remote-SSH / scp / forwarding), while a transparent
+terminating proxy would mean adopting/​building Teleport. Dual-trust keeps full
+transparency at the same public surface; the workspace authorizes per-connection
+(revocable), so it never stands-trusts a user key.
 
 - ✅ **Slice 1 — foundation (no AWS):** branded `SshKeyId`/`SshPublicKey`/
   `SshKeyFingerprint`, pure `fingerprintPublicKey` (matches `ssh-keygen -lf`),
@@ -107,21 +113,29 @@ the earlier "keep the CA for the internal hop" framing assumed a terminating bas
   command on the workspace card (shown when `EDD_SSH_BASE_DOMAIN` is set); config
   `SSH_BASE_DOMAIN`. Route integ green on DynamoDB Local; web typecheck/lint/build
   green.
-- ⬜ **Slice 2c — gateway sshd wiring (no AWS; needs a design call + heavy e2e).**
-  The proxy is a transparent `nc`/`-W` tunnel, so the user's SSH authenticates
-  **end-to-end with the workspace node** (both hops currently check the CA cert).
-  Registered-key auth therefore needs a decision: **(a) dual-trust** — both the
-  gateway and the golden-image workspace sshd use `AuthorizedKeysCommand` →
-  `ssh-authorize` (gateway token / agent token), dropping the cert on the user
-  path (simplest; CA no longer on the human path); **(b) terminating bastion** —
-  the gateway terminates the user's SSH and re-originates a CA-cert SSH to the
-  workspace (bigger re-arch). Then update both sshd_configs + scripts and the
-  `docker-compose.ssh.yml` e2e (golden-image rebuild). Recommendation: (a).
+- ✅ **Slice 2c — dual-trust sshd wiring (no AWS; docker e2e validated).** Both
+  sshds authorize the registered key via `ssh-authorize`.
+  - `ssh-authorize` accepts the gateway token **and** the workspace agent token
+    (integ green).
+  - **Gateway** sshd → `AuthorizedKeysCommand` (`authorized-keys.sh`, gateway token);
+    transparent `nc` forward unchanged, so the session stays end-to-end.
+  - **Golden image** (`infra/images/base`): added `AuthorizedKeysCommand`
+    (`authorized-keys.sh`, agent token, root, root-only `/run/edd-ssh-env`)
+    **alongside** the retained CA cert path — additive, so the many cert-based e2e
+    suites that SSH into the golden image keep passing; `EDD_SSH_CA_PUBLIC_KEY` is now
+    optional (empty CA file → only registered-key active; sshd accepts it).
+  - **e2e** (`ssh-proxy.e2e.ts`): rewritten self-contained — an in-process stub
+    control plane in a **worker thread** (keeps serving while the main thread blocks on
+    `spawnSync`) + docker-run node + proxy. Asserts a registered key is authorized at
+    both hops and lands on the node (`whoami=workspace`), and an unregistered key is
+    denied. **Validated locally 2/2 green.** Deleted the obsolete cert-based
+    `ssh-connect.e2e.ts` + `docker-compose.ssh.yml`; CI/test-e2e build
+    `edd-workspace-node:e2e` and pass `NODE_IMAGE`.
 - ⬜ **Slice 3 — ingress (AWS-gated, decision #1):** public SSH NLB + listener;
-  Route53 `*.<sshzone>` wildcard wired to the gateway.
-- **Gate:** register/list/delete ✅ (unit+integ); ssh-authorize decision ✅ (integ);
-  Settings page + per-workspace command ✅ (typecheck/build); gateway sshd registered-key
-  auth ⬜; subdomain routing ⬜; e2e key→subdomain→shell ⬜; e2e-aws public SSH ingress ⬜.
+  Route53 `*.<sshzone>` wildcard wired to the gateway. **Last remaining slice.**
+- **Gate:** register/list/delete ✅; ssh-authorize decision (both tokens) ✅; Settings
+  page + per-workspace command ✅; dual-trust registered-key auth at both hops ✅
+  (docker e2e); subdomain DNS + public SSH ingress ⬜ (e2e-aws, Slice 3).
 
 ## Phase 5 — Scale-to-zero + snapshot automation — 🟡
 
