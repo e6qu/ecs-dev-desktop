@@ -7,7 +7,4 @@
 set -eu
 unset CDPATH
 printenv | grep '^EDD_' >/run/edd-env || true
-# sshd_config references TrustedUserCAKeys unconditionally; ensure the file exists
-# (empty when no CA is mounted → only the registered-key path is active).
-[ -f /etc/ssh/workspace-ca.pub ] || : >/etc/ssh/workspace-ca.pub
 exec /usr/sbin/sshd -D -e "$@"

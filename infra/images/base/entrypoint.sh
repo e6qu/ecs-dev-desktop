@@ -1,9 +1,8 @@
 #!/bin/sh
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Container entrypoint: configures SSH (registered-key auth via the control plane,
-# plus the SSH CA cert path when a CA key is provided), starts sshd and the
-# idle-agent in the background, then execs OpenVSCode Server as the workspace user.
-# tini (PID 1) reaps the background children.
+# Container entrypoint: configures SSH (registered-key auth via the control plane),
+# starts sshd and the idle-agent in the background, then execs OpenVSCode Server as
+# the workspace user. tini (PID 1) reaps the background children.
 
 set -eu
 
@@ -18,7 +17,7 @@ if ! printf '%s' "${EDD_WORKSPACE_ID}" | grep -Eq '^[a-z0-9][a-z0-9-]{0,38}$'; t
   exit 1
 fi
 
-install -d -o root -g root -m 0755 /etc/ssh/principals /run/sshd
+install -d -o root -g root -m 0755 /run/sshd
 install -d -o workspace -g workspace -m 0755 /home/workspace
 
 # Persist the coordinates the registered-key AuthorizedKeysCommand needs (sshd
@@ -30,15 +29,6 @@ install -d -o workspace -g workspace -m 0755 /home/workspace
     "${EDD_WORKSPACE_ID}" "${EDD_CONTROL_PLANE_URL}" "${EDD_AGENT_TOKEN}" \
     >/run/edd-ssh-env
 )
-
-# SSH CA path (optional): trust the control-plane CA when its public key is
-# provided, mapping the cert principal dev-<id> to the `workspace` login. The
-# config references workspace-ca.pub unconditionally, so always create the file
-# (empty when no CA is configured → only the registered-key path is active).
-printf '%s\n' "${EDD_SSH_CA_PUBLIC_KEY:-}" >/etc/ssh/workspace-ca.pub
-chmod 0644 /etc/ssh/workspace-ca.pub
-printf '%s\n' "dev-${EDD_WORKSPACE_ID}" >/etc/ssh/principals/workspace
-chmod 0644 /etc/ssh/principals/workspace
 
 ssh-keygen -A >/dev/null
 /usr/sbin/sshd -t -f /etc/ssh/sshd_config
