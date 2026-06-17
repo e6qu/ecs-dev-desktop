@@ -138,11 +138,11 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
   Adversarial conformance sweep of the AWS call shapes we depend on (process-mode sim,
   pin `c69cd278`), diffing each against documented AWS behaviour. **EBS/ECS/Secrets-Manager/
   CloudWatch error+filter shapes are largely conformant**; filed three genuine cloud-spec
-  gaps upstream: **#590** (EC2 `DescribeSnapshots` ignores `MaxResults`/`NextToken`),
+  gaps upstream — **#590** (EC2 `DescribeSnapshots` ignores `MaxResults`/`NextToken`),
   **#591** (EC2 `CreateVolume` accepts a missing required `AvailabilityZone`), **#592** (ECS
-  cluster-scoped ops don't raise `ClusterNotFoundException` for an unknown cluster). All
-  low/medium impact, none block us (see `BUGS.md` → External blockers). Two would-be findings
-  were discarded as probe errors, not sim bugs. **Remaining for a later slice:** ECS
+  cluster-scoped ops don't raise `ClusterNotFoundException`) — **all fixed by upstream #593 and
+  confirmed downstream** (submodule re-pinned `c69cd278` → `fcb58281`; see `BUGS.md`). Two
+  would-be findings were discarded as probe errors, not sim bugs. **Remaining for a later slice:** ECS
   `RunTask`/task-def validation, IAM/STS, S3, and pagination on the other list APIs — keep it
   adversarial (unexpected params, pagination, error shapes), validate every probe against the
   AWS spec first, and file genuine gaps only in `e6qu/sockerless` (§0.9).

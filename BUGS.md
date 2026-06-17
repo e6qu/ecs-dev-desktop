@@ -58,26 +58,21 @@ active breakage):
   issue #92. **Before adopting the enforced-limits fix, bump `DEFAULT_WORKSPACE_MEMORY`**
   or the golden workspace will OOM at the current 1024 MB sizing.
 
-- **sockerless#590 (open, low impact)** — EC2 `DescribeSnapshots` (and almost
-  certainly `DescribeVolumes`) ignore `MaxResults` and never return a `NextToken`:
-  the sim returns the whole result set in one page. Found 2026-06-17 in the focused
-  EBS conformance pass (`OwnerIds:["self"], MaxResults:5` over 7 owned snapshots →
-  returned 7, no `NextToken`). **Does not block us:** our `listSnapshots`/`listVolumes`
-  use the SDK paginators, which terminate correctly on a single page; the pagination
-  contract is just unmodeled (untested `NextToken` loop; >1000 results wouldn't page).
-- **sockerless#591 (open, low impact)** — EC2 `CreateVolume` succeeds with **no**
-  `AvailabilityZone` (silently defaults to `us-east-1a`); real AWS requires it and
-  returns `MissingParameter`/400. Found 2026-06-17 (same pass). **Does not block us:**
-  we always pass an AZ; this is lax required-param validation only.
-- **sockerless#592 (open, medium impact)** — ECS cluster-scoped ops don't validate
-  cluster existence: against an unknown cluster, `DescribeTasks` returns a `MISSING`
-  task failure, `ListTasks` returns empty (200), and `StopTask` throws
-  `InvalidParameterException` — none raise the AWS `ClusterNotFoundException`. Found
-  2026-06-17 (ECS slice). **Watch:** code distinguishing "cluster gone" from "task
-  gone" (reconciler cleanup, drift detection) would misclassify against the sim. The
-  sim IS correct when the cluster exists (unknown task → `MISSING`/`InvalidParameterException`).
+- **sockerless#590/#591/#592 (fixed upstream — confirmed downstream 2026-06-17)** — the
+  three conformance gaps from the focused fidelity pass, all fixed by sockerless **#593**
+  (`fcb58281`) and **confirmed downstream** after re-pinning the submodule to it and
+  re-running the probes against the process-mode sim:
+  - **#590** — EC2 `DescribeSnapshots` ignored `MaxResults`/`NextToken`. Now
+    `DescribeSnapshots({OwnerIds:["self"], MaxResults:5})` over 6 snapshots returns 5 +
+    a `NextToken` (paginates).
+  - **#591** — EC2 `CreateVolume` accepted a missing required `AvailabilityZone`. Now
+    `CreateVolume({Size:8})` (no AZ) returns `MissingParameter`/400.
+  - **#592** — ECS cluster-scoped ops didn't raise `ClusterNotFoundException` for an
+    unknown cluster. Now `DescribeTasks`/`ListTasks`/`StopTask` against an unknown cluster
+    all throw `ClusterNotFoundException`.
 
-Latest focused fidelity pass (2026-06-17, submodule `c69cd278`, `SIM_RUNTIME=process`)
+Latest focused fidelity pass (2026-06-17, probed against `c69cd278`, `SIM_RUNTIME=process`;
+the three gaps it found were fixed by #593 and the submodule re-pinned to `fcb58281`)
 adversarially probed the AWS call shapes we depend on vs documented behaviour, across
 four surfaces:
 

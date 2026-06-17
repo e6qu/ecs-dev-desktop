@@ -1447,3 +1447,11 @@ MaxResults` has an AWS minimum of 5 — reinforcing the rule to validate every p
   spec before claiming a divergence. Recorded in `BUGS.md` → External blockers (all low/medium
   impact, none block us). Next fidelity slice if revisited: ECS `RunTask`/task-def validation,
   IAM/STS, and pagination on the other list APIs.
+- **2026-06-17 — Confirmed #590/#591/#592 fixed; re-pinned sockerless `c69cd278` → `fcb58281`.**
+  Upstream **#593** (a fail-loud / no-fallback audit) fixed all three gaps the fidelity pass filed.
+  Re-pinned the submodule to the #593 merge (`fcb58281`), rebuilt the process-mode sim, and re-ran
+  the probes: **#590** `DescribeSnapshots(MaxResults=5)` now returns 5 + a `NextToken`; **#591**
+  `CreateVolume` with no `AvailabilityZone` now returns `MissingParameter`; **#592**
+  `DescribeTasks`/`ListTasks`/`StopTask` against an unknown cluster now all throw
+  `ClusterNotFoundException`. Sanity-checked the broad bump locally — `@edd/storage-ec2` (4/4) and
+  `@edd/compute-ecs` (4/4) integ green against the new sim — with full integ/e2e validation on CI.
