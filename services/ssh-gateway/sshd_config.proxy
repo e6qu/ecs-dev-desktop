@@ -1,26 +1,33 @@
-# SSH gateway proxy sshd_config (dual-trust path).
-# Users authenticate with their registered SSH key: AuthorizedKeysCommand asks the
-# control plane whether the presented key is registered to the owner of the
-# workspace named by the login user (dev-<id>). sshd then runs wake-and-forward.sh
-# (ForceCommand) to wake the workspace and proxy TCP to its sshd, which
-# independently re-authorizes the same key (the workspace's own AuthorizedKeysCommand).
+# SSH gateway proxy sshd_config. Two control-plane-mediated auth paths coexist on
+# the public hop, mirroring the workspace sshd:
+#  - Registered key (dual-trust): AuthorizedKeysCommand asks the control plane
+#    whether the presented key is registered to the owner of the workspace named by
+#    the login user (dev-<id>).
+#  - SSH CA certificate: sshd trusts the control-plane CA (mounted at
+#    workspace-ca.pub) and accepts a cert whose principal equals the login user.
+# Either succeeds; then ForceCommand (wake-and-forward.sh) wakes the workspace and
+# proxies TCP to its sshd, which independently re-authorizes by the same path.
 Port 22
 AddressFamily inet
 ListenAddress 0.0.0.0
 
-# Registered-key auth — no passwords, no standing key trust; the control plane
-# decides per connection (and can revoke by removing the key).
 PubkeyAuthentication yes
 PasswordAuthentication no
 ChallengeResponseAuthentication no
 PermitRootLogin no
 
-# Authorize the presented key against the control plane. Runs as `nobody`
-# (pre-auth), reading the machine-auth secret from /run/edd-env (saved by the
-# entrypoint, world-readable in this single-purpose proxy as wake-and-forward
-# already requires).
+# Registered-key path: authorize the presented key against the control plane. Runs
+# as `nobody` (pre-auth), reading the machine-auth secret from /run/edd-env (saved
+# by the entrypoint, world-readable in this single-purpose proxy as
+# wake-and-forward already requires).
 AuthorizedKeysCommand /usr/local/bin/authorized-keys.sh %u %t %k
 AuthorizedKeysCommandUser nobody
+
+# SSH CA path: trust the control-plane CA; the cert must carry a principal equal to
+# the login name (workspacePrincipal(workspaceId)).
+TrustedUserCAKeys /etc/ssh/workspace-ca.pub
+AuthorizedPrincipalsCommand /bin/echo %u
+AuthorizedPrincipalsCommandUser nobody
 
 # The gateway only forwards; it does not run user shells.
 ForceCommand /usr/local/bin/wake-and-forward.sh

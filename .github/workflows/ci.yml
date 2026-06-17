@@ -145,11 +145,22 @@ jobs:
           exit 1
       - name: Generate SSH CA for the e2e harness
         run: sh scripts/gen-ssh-ca.sh
-      # Dual-trust SSH proxy e2e (ssh-proxy.e2e.ts) is self-contained: it docker-runs
-      # its own workspace node + proxy against an in-process stub control plane, so
-      # it only needs the node image pre-built (the proxy image is built above).
+      # The cert-based wake-chain e2e (ssh-wake-chain.e2e.ts) provisions a dev-<id>
+      # principal into this node and SSHes to it; the dual-trust ssh-proxy.e2e.ts is
+      # self-contained (docker-runs its own node from the same image).
       - name: Build SSH workspace-node Docker image
         run: docker build -f services/ssh-gateway/Dockerfile.node -t edd-workspace-node:e2e .
+      - name: Build & start the SSH harness (OpenSSH workspace node)
+        run: |
+          for attempt in 1 2 3; do
+            if docker compose -f docker-compose.ssh.yml up -d --build --wait; then
+              exit 0
+            fi
+            echo "::warning::SSH harness bring-up failed (attempt ${attempt}); retrying"
+            docker compose -f docker-compose.ssh.yml down -v || true
+            sleep "$((attempt * 20))"
+          done
+          exit 1
       - name: Build golden workspace image for e2e
         run: |
           # Golden image collection: build the shared base, then the omnibus variant
@@ -190,6 +201,8 @@ jobs:
         run: docker logs ecs-dev-desktop-pomerium-1 2>&1 || true
       - if: always()
         run: docker compose -f docker-compose.e2e.yml down
+      - if: always()
+        run: docker compose -f docker-compose.ssh.yml down
 
   # Build BOTH images the macOS job needs ONCE on Linux (native BuildKit, fast) and
   # publish them to GHCR, so the macOS job pulls instead of building under colima —

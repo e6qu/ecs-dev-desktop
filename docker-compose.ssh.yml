@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# SSH e2e harness: a workspace node running standard OpenSSH (sshd) with additive
+# auth (CA cert + registered key). Used by the cert-based wake-chain e2e
+# (`packages/e2e/src/ssh-wake-chain.e2e.ts`), which signs a user cert via the real
+# control plane and provisions a `dev-<id>` principal into this node at runtime.
+#
+# The CA public key is mounted from temp/ssh-ca/ca.pub (run scripts/gen-ssh-ca.sh
+# first). The dual-trust registered-key path is exercised separately by the
+# self-contained `services/ssh-gateway/src/ssh-proxy.e2e.ts` (its own containers).
+services:
+  workspace-node:
+    build:
+      context: .
+      dockerfile: services/ssh-gateway/Dockerfile.node
+    container_name: edd-workspace-node
+    volumes:
+      # CA public key: sshd trusts any certificate signed by this key.
+      - ./services/ssh-gateway/temp/ssh-ca/ca.pub:/etc/ssh/workspace-ca.pub:ro
+    ports:
+      - "2222:22"
+    healthcheck:
+      test: ["CMD-SHELL", "/usr/sbin/sshd -t -f /etc/ssh/sshd_config && echo ok"]
+      interval: 3s
+      timeout: 3s
+      retries: 20

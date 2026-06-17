@@ -24,7 +24,9 @@ const PROXY_PORT = "2223";
 const GATEWAY_SECRET = "d".repeat(64); // hex; the stub accepts any token
 const AGENT_TOKEN = "e".repeat(64); // the stub accepts any token
 const NETWORK = "edd-ssh-dualtrust-e2e";
-const WORKSPACE_NODE = "edd-workspace-node";
+// Distinct from the compose harness's `edd-workspace-node` (used by the cert-based
+// wake-chain e2e) — container names are global, so a shared name would collide.
+const WORKSPACE_NODE = "edd-dualtrust-node";
 const PROXY_NAME = "edd-ssh-proxy-e2e";
 const NODE_IMAGE = process.env.NODE_IMAGE ?? "edd-workspace-node:e2e";
 const PROXY_IMAGE = process.env.PROXY_IMAGE ?? "edd-ssh-proxy:e2e";
