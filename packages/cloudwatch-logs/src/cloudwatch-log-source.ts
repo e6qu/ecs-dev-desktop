@@ -100,7 +100,32 @@ export function toLogLine(e: FilteredLogEvent, stream: LogStream): LogLine {
   };
 }
 
+const LOG_LEVELS: ReadonlySet<string> = new Set(["info", "warn", "error"]);
+
+function isLogLevel(value: unknown): value is LogLevel {
+  return typeof value === "string" && LOG_LEVELS.has(value);
+}
+
+/** The explicit `level` of a structured log line (`formatLogLine` JSON), or
+ * `undefined` for a non-JSON / level-less line (raw container stdout). */
+function structuredLevel(msg: string): LogLevel | undefined {
+  const trimmed = msg.trimStart();
+  if (!trimmed.startsWith("{")) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(trimmed);
+  } catch {
+    return undefined; // not JSON — a raw stdout line; fall back to the heuristic
+  }
+  if (typeof parsed !== "object" || parsed === null || !("level" in parsed)) return undefined;
+  return isLogLevel(parsed.level) ? parsed.level : undefined;
+}
+
 export function parseLevel(msg: string): LogLevel {
+  // Prefer the structured `level` our loggers emit; only guess from the text for
+  // unstructured lines (e.g. raw idle-agent / workspace-process stdout).
+  const structured = structuredLevel(msg);
+  if (structured !== undefined) return structured;
   const m = msg.toLowerCase();
   if (m.includes("error") || m.includes(" err ") || m.includes(" err:")) return "error";
   if (m.includes("warn")) return "warn";

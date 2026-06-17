@@ -33,8 +33,10 @@ business API route is wrapped with `withObservability`, which emits a structured
 
 **Gaps.**
 
-- `parseLevel` infers level by substring-matching the raw message (brittle) — a
-  symptom of the no-structured-levels gap on the read side. _Low._
+- ~~`parseLevel` infers level by substring-matching the raw message~~ **Done
+  (2026-06-17).** `parseLevel` now reads the structured `level` field our loggers
+  emit (`formatLogLine` JSON), falling back to the substring heuristic only for
+  raw unstructured container stdout (idle-agent / workspace processes).
 
 ## Health
 
@@ -71,8 +73,10 @@ breakdown via `tallyWorkspaceStates`), per-workspace inspect, costs, quotas.
 
 **Gaps.**
 
-- Overview recomputes from a full `cp.list()` scan per load — fine now, but the
-  platform targets 200+ workspaces; no cached/aggregated fleet status. _Medium._
+- ~~Overview recomputes from a full `cp.list()` scan per load~~ **Done (2026-06-17).**
+  The admin Overview now reads `getFleetStatus()` — the fleet aggregate (state tallies +
+  distinct owners) cached for a short TTL (10s) via a single-flight `ttlCache`, so bursts
+  (multiple admins / live refresh) collapse to one scan at 200+ workspaces.
 - No real-time status (cold-start in progress, wake latency, per-workspace
   last-heartbeat age). _Low._
 
@@ -152,6 +156,18 @@ Remaining:
    #1, the top blocker). This is the one substantial item left and is **external** —
    the entire real-cloud tier is unverified, and it's also where the EMF→CloudWatch
    metrics, alarms firing, and live SSH-cert issuance get their first real check.
-2. Minor follow-ups (all _Low_): per-user quota-utilization gauges; `parseLevel`
-   heuristic on the log read side; control-plane self-health; cached fleet status
-   for 200+ scale.
+2. Minor follow-ups, triaged 2026-06-17:
+   - **`parseLevel` heuristic on the log read side — DONE** (reads the structured
+     `level`; see above).
+   - **Cached fleet status for 200+ scale** (_Medium_) — **DONE** via a short-TTL (10s)
+     single-flight memo (`lib/ttl-cache.ts` + `lib/fleet-status.ts`); chosen over a
+     reconciler-persisted aggregate (staleness = the ~5-min sweep) for fresher data with
+     a bounded scan rate.
+   - **Per-user quota-utilization gauges** (_Low_) — awkward fit: the reconciler
+     (where fleet gauges are emitted) has each workspace's `ownerId` but not the
+     owner's role, and the limit is `workspaceLimit(role)`. A true utilization gauge
+     needs role→limit resolution the reconciler lacks; deferred until that's worth
+     wiring (or emit it event-driven from the create path where role is known).
+   - **Control-plane self-health** (_Low_) — deliberately left hardcoded `ok`: by
+     construction it is the process answering its own request, so it cannot
+     meaningfully self-report degraded (if it were down it couldn't answer).

@@ -1,19 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { tallyWorkspaceStates } from "@edd/core";
 import Link from "next/link";
 
 import { StatTile } from "../../../components/StatTile";
-import { getCatalog, getControlPlane } from "../../../lib/control-plane";
+import { getCatalog } from "../../../lib/control-plane";
+import { getFleetStatus } from "../../../lib/fleet-status";
 import { TESTID } from "../../../lib/testids";
 
 export const dynamic = "force-dynamic";
 
 // Admin-only (the /admin layout gates it). At-a-glance fleet + catalog state.
 export default async function AdminOverviewPage() {
-  const cp = await getControlPlane();
-  const [workspaces, catalog] = await Promise.all([cp.list(), getCatalog().list()]);
-  const stats = tallyWorkspaceStates(workspaces.map((w) => w.state));
-  const owners = new Set(workspaces.map((w) => w.ownerId)).size;
+  // The fleet aggregate is cached for a short TTL (see `getFleetStatus`) so this
+  // page doesn't re-scan the whole fleet on every load at 200+ workspaces.
+  const [{ stats, owners }, catalog] = await Promise.all([getFleetStatus(), getCatalog().list()]);
   const enabled = catalog.filter((c) => c.enabled).length;
 
   const tiles = [
