@@ -118,6 +118,9 @@ RUN printf '%s\n' \
 # Idle-agent + entrypoint (live in /usr/local/bin).
 COPY --chmod=0755 idle-agent.sh /usr/local/bin/edd-idle-agent
 COPY --chmod=0755 entrypoint.sh /usr/local/bin/edd-entrypoint
+# sshd AuthorizedKeysCommand (dual-trust): must be root-owned and not group/other-
+# writable per sshd; COPY --chmod=0755 from the build context satisfies that.
+COPY --chmod=0755 authorized-keys.sh /usr/local/bin/edd-authorized-keys
 
 # Git credential helper: clone/push private repos using the session owner's token
 # fetched from the control plane at use time (nothing stored on the EBS volume).

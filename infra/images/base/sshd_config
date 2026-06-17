@@ -1,8 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# sshd configuration for the golden workspace image.
-# Certificate-only auth: the image trusts the control-plane SSH CA public key
-# injected at runtime as /etc/ssh/workspace-ca.pub. The workspace ID maps to an
-# OpenSSH certificate principal in /etc/ssh/principals/workspace.
+# sshd configuration for the golden workspace image (dual-trust SSH path).
+# Registered-key auth: AuthorizedKeysCommand asks the control plane whether the
+# presented key is registered to this workspace's owner (authenticated by the
+# per-workspace agent token). No standing key trust — the decision is made per
+# connection and is revocable by removing the key.
 
 # Per-image drop-ins live here so variants can override them — notably the
 # `SetEnv PATH` for the `ssh <host> '<cmd>'` exec channel (a non-login,
@@ -22,8 +23,11 @@ PasswordAuthentication no
 ChallengeResponseAuthentication no
 PubkeyAuthentication yes
 
-TrustedUserCAKeys /etc/ssh/workspace-ca.pub
-AuthorizedPrincipalsFile /etc/ssh/principals/%u
+# Authorize the presented key against the control plane (per-workspace agent
+# token, read from /run/edd-ssh-env). Runs as root pre-auth; the script + that
+# env file are root-only so the workspace user can't read the agent token.
+AuthorizedKeysCommand /usr/local/bin/edd-authorized-keys %t %k
+AuthorizedKeysCommandUser root
 
 AllowUsers workspace
 X11Forwarding no

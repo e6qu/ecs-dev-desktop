@@ -1,33 +1,34 @@
 #!/bin/sh
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Container entrypoint: configures SSH certificate auth, starts sshd and the
-# idle-agent in the background, then execs OpenVSCode Server as the workspace
-# user. tini (PID 1) reaps the background children.
+# Container entrypoint: configures dual-trust SSH (registered-key auth via the
+# control plane), starts sshd and the idle-agent in the background, then execs
+# OpenVSCode Server as the workspace user. tini (PID 1) reaps the background children.
 
 set -eu
 
-# Fail loudly if the agent token vars are missing — the container is useless
-# without them in production; surface the misconfiguration immediately.
+# Fail loudly if the agent vars are missing — the container is useless without
+# them in production; surface the misconfiguration immediately.
 : "${EDD_WORKSPACE_ID:?EDD_WORKSPACE_ID is required}"
 : "${EDD_CONTROL_PLANE_URL:?EDD_CONTROL_PLANE_URL is required}"
 : "${EDD_AGENT_TOKEN:?EDD_AGENT_TOKEN is required}"
-: "${EDD_SSH_CA_PUBLIC_KEY:?EDD_SSH_CA_PUBLIC_KEY is required}"
 
 if ! printf '%s' "${EDD_WORKSPACE_ID}" | grep -Eq '^[a-z0-9][a-z0-9-]{0,38}$'; then
   echo "invalid EDD_WORKSPACE_ID for SSH principal: ${EDD_WORKSPACE_ID}" >&2
   exit 1
 fi
 
-workspace_principal="dev-${EDD_WORKSPACE_ID}"
-
-install -d -o root -g root -m 0755 /etc/ssh/principals /run/sshd
+install -d -o root -g root -m 0755 /run/sshd
 install -d -o workspace -g workspace -m 0755 /home/workspace
 
-printf '%s\n' "${EDD_SSH_CA_PUBLIC_KEY}" >/etc/ssh/workspace-ca.pub
-chmod 0644 /etc/ssh/workspace-ca.pub
-
-printf '%s\n' "${workspace_principal}" >/etc/ssh/principals/workspace
-chmod 0644 /etc/ssh/principals/workspace
+# Persist the coordinates the dual-trust AuthorizedKeysCommand needs (sshd strips
+# its environment). Root-only (0600): the command runs as root, and the workspace
+# user must not be able to read the per-workspace agent token.
+(
+  umask 077
+  printf 'EDD_WORKSPACE_ID=%s\nEDD_CONTROL_PLANE_URL=%s\nEDD_AGENT_TOKEN=%s\n' \
+    "${EDD_WORKSPACE_ID}" "${EDD_CONTROL_PLANE_URL}" "${EDD_AGENT_TOKEN}" \
+    >/run/edd-ssh-env
+)
 
 ssh-keygen -A >/dev/null
 /usr/sbin/sshd -t -f /etc/ssh/sshd_config
