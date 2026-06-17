@@ -26,17 +26,23 @@ import { agentToken, EcsComputeProvider } from "@edd/compute-ecs";
 import { baseImage, workspaceId } from "@edd/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { awsSimClientConfig, configureAwsSimEnv, required } from "./aws-sim";
+import {
+  awsSimClientConfig,
+  configureAwsSimEnv,
+  e2eEbsRoleArn,
+  e2eWorkspaceImage,
+  required,
+} from "./aws-sim";
 
 configureAwsSimEnv();
 
 const SIM = awsSimClientConfig();
 const RUN_ID = randomUUID().slice(0, 8);
 const CLUSTER = `edd-agent-secret-${RUN_ID}`;
-const WORKSPACE_IMAGE = "edd-workspace:e2e";
+const WORKSPACE_IMAGE = e2eWorkspaceImage();
 const WORKSPACE_CONTAINER = "workspace";
 const WS_ID = `ws-secret-${RUN_ID}`;
-const EBS_ROLE = "arn:aws:iam::123456789012:role/ecsInfrastructureRole";
+const EBS_ROLE = e2eEbsRoleArn();
 const AGENT_SECRET = "a".repeat(64); // 32-byte hex master HMAC key (test value)
 const CONTROL_PLANE_URL = "http://127.0.0.1:3000";
 const LOG_GROUP = `/edd/e2e/agent-secret-${RUN_ID}`;

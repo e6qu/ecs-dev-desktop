@@ -35,6 +35,7 @@ import {
   awsSimClientConfig,
   configureAwsSimEnv,
   createVpcWithEgress,
+  e2eWorkspaceImage,
   required,
   sleep,
 } from "./aws-sim";
@@ -58,7 +59,7 @@ process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
 
 // The reconciler image must be pre-built: `docker build -f services/reconciler/Dockerfile -t edd-reconciler:e2e .`
 const RECONCILER_IMAGE = process.env.RECONCILER_IMAGE ?? "edd-reconciler:e2e";
-const WORKSPACE_IMAGE = "edd-workspace:e2e";
+const WORKSPACE_IMAGE = e2eWorkspaceImage();
 const RUN_ID = randomUUID().slice(0, 8);
 const CLUSTER = `edd-reconciler-e2e-${RUN_ID}`;
 const TABLE = `edd-reconciler-e2e-${RUN_ID}`;

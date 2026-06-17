@@ -6,7 +6,7 @@ import { workspace, workspaceInspection } from "@edd/api-contracts";
 import { dynamodb } from "@edd/config";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { configureAwsSimEnv, required, sleep } from "./aws-sim";
+import { configureAwsSimEnv, e2eWorkspaceImage, required, sleep } from "./aws-sim";
 import { startLiveEcsApp, type LiveEcsApp } from "./live-ecs-app";
 import { devHeaders } from "./web-app";
 
@@ -27,7 +27,7 @@ configureAwsSimEnv();
 process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
 
 const RUN_ID = randomUUID().slice(0, 8);
-const WORKSPACE_IMAGE = "edd-workspace:e2e";
+const WORKSPACE_IMAGE = e2eWorkspaceImage();
 const AGENT_SECRET = "a1".repeat(32);
 const OWNER = "race-user";
 const RACERS = 5;

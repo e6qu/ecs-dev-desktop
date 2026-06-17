@@ -10,7 +10,7 @@ import { createDynamoClient, dropTable, dynamodb, ensureTable, makeWorkspaceEnti
 import { Ec2StorageProvider } from "@edd/storage-ec2";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { awsSimClientConfig, configureAwsSimEnv, required, sleep } from "./aws-sim";
+import { awsSimClientConfig, configureAwsSimEnv, e2eEbsRoleArn, required, sleep } from "./aws-sim";
 
 configureAwsSimEnv();
 process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
@@ -18,7 +18,7 @@ process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
 const TABLE = "ecs-dev-desktop-e2e-lifecycle";
 const CLUSTER = "edd-workspaces";
 const IMAGE = "nginx:alpine"; // long-running default CMD, so the task stays RUNNING
-const EBS_ROLE = "arn:aws:iam::123456789012:role/ecsInfrastructureRole";
+const EBS_ROLE = e2eEbsRoleArn();
 
 const SIM = awsSimClientConfig({ accessKeyId: "local", secretAccessKey: "local" });
 

@@ -17,11 +17,11 @@ import { CatalogService } from "@edd/control-plane";
 import { baseImage, systemClock } from "@edd/core";
 import { createDynamoClient, dropTable, ensureTable, makeBaseImageEntity } from "@edd/db";
 
-import { awsSimClientConfig, createVpcWithEgress } from "./aws-sim";
+import { awsSimClientConfig, createVpcWithEgress, e2eEbsRoleArn } from "./aws-sim";
 import { hostReachableTarget } from "./docker-host";
 import { startWebApp, type WebApp } from "./web-app";
 
-const EBS_ROLE = "arn:aws:iam::123456789012:role/ecsInfrastructureRole";
+const EBS_ROLE = e2eEbsRoleArn();
 
 export interface LiveEcsApp {
   web: WebApp;
