@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 
 import { workspace, type WorkspaceDto } from "@edd/api-contracts";
 import { dynamodb } from "@edd/config";
@@ -158,10 +158,14 @@ describe("SSH wake-on-connect chain against the real control plane", { timeout: 
 
     // Connect to the gateway as the workspace principal with the registered key.
     // sshd authorizes the key (AuthorizedKeysCommand → ssh-authorize) and runs the
-    // ForceCommand, which calls the REAL control plane to wake the workspace, then
-    // tries to nc to the (unreachable) fake host — so the ssh exits non-zero, but
-    // the wake has already happened, which is what we assert.
-    run(
+    // ForceCommand, which calls the REAL control plane to wake the workspace (steps
+    // 1-3 of wake-and-forward.sh) and THEN `nc`s to the fake host. That fake host is
+    // an unrouteable TEST-NET address, so the nc — and thus the ssh session — never
+    // returns. We run ssh ASYNC (not spawnSync, which would freeze the event loop and
+    // let our own keep-alive sockets to the control plane go stale) and poll for the
+    // wake; the ssh is killed once we observe it. We assert the wake, not the forward
+    // (landing on a node is covered by ssh-proxy.e2e).
+    const ssh = spawn(
       "ssh",
       [
         "-T",
@@ -179,20 +183,24 @@ describe("SSH wake-on-connect chain against the real control plane", { timeout: 
         PROXY_PORT,
         `${principal}@localhost`,
       ],
-      30_000,
+      { stdio: "ignore" },
     );
 
-    // The wake really happened through the gateway's machine-auth API calls — only
-    // possible if the gateway first authorized the registered key.
-    const deadline = Date.now() + 30_000;
-    let state = before.state;
-    while (Date.now() < deadline) {
-      state = workspace.parse(await (await api(`/workspaces/${wsId}`)).json()).state;
-      if (state === "running") break;
-      await new Promise((r) => setTimeout(r, 1_000));
+    try {
+      // The wake really happened through the gateway's machine-auth API calls — only
+      // possible if the gateway first authorized the registered key.
+      const deadline = Date.now() + 30_000;
+      let state = before.state;
+      while (Date.now() < deadline) {
+        state = workspace.parse(await (await api(`/workspaces/${wsId}`)).json()).state;
+        if (state === "running") break;
+        await new Promise((r) => setTimeout(r, 1_000));
+      }
+      expect(state, "gateway must wake the stopped workspace via the real control plane").toBe(
+        "running",
+      );
+    } finally {
+      ssh.kill("SIGKILL");
     }
-    expect(state, "gateway must wake the stopped workspace via the real control plane").toBe(
-      "running",
-    );
   });
 });

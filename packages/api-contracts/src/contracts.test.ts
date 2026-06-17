@@ -2,6 +2,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  COST_WINDOW_DAYS,
+  costReportQuery,
   createWorkspaceRequest,
   infrastructureReport,
   registerSshKeyRequest,
@@ -87,5 +89,15 @@ describe("api-contracts", () => {
       createdAt: "2026-06-01T00:00:00.000Z",
     });
     expect(parsed.keyType).toBe("ssh-ed25519");
+  });
+
+  it("defaults the cost window to all-time and falls back on garbage/absent input", () => {
+    expect(costReportQuery.parse({ window: "7d" }).window).toBe("7d");
+    expect(costReportQuery.parse({}).window).toBe("all"); // absent → all
+    expect(costReportQuery.parse({ window: "bogus" }).window).toBe("all"); // invalid → all
+  });
+
+  it("maps every cost window to its day span (all = lifetime)", () => {
+    expect(COST_WINDOW_DAYS).toEqual({ all: null, "1d": 1, "7d": 7, "30d": 30 });
   });
 });

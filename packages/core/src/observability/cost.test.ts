@@ -10,14 +10,18 @@ import {
   costEvent as evt,
 } from "./cost-fixtures";
 import {
+  clipIntervals,
   computeFleetCost,
   deriveBillingIntervals,
   deriveBillingState,
   priceIntervals,
+  relativeWindow,
   resumeBilling,
 } from "./cost";
 
 import type { AuditEvent } from "./audit";
+
+const DAY = 24 * HOUR;
 
 describe("deriveBillingIntervals", () => {
   it("treats create as the start of a running interval, open to `now`", () => {
@@ -225,4 +229,67 @@ describe("deriveBillingState + resumeBilling (rollup figure-equivalence)", () =>
       });
     }
   }
+});
+
+describe("clipIntervals", () => {
+  it("keeps only the part of each interval inside the window", () => {
+    const clipped = clipIntervals(
+      { running: [{ fromMs: T0, toMs: T0 + 4 * HOUR }], stopped: [], terminated: false },
+      { fromMs: T0 + HOUR, toMs: T0 + 3 * HOUR },
+    );
+    expect(clipped.running).toEqual([{ fromMs: T0 + HOUR, toMs: T0 + 3 * HOUR }]);
+    expect(clipped.stopped).toEqual([]);
+  });
+
+  it("drops intervals entirely outside the window and preserves `terminated`", () => {
+    const clipped = clipIntervals(
+      {
+        running: [{ fromMs: T0, toMs: T0 + HOUR }],
+        stopped: [{ fromMs: T0 + 5 * HOUR, toMs: T0 + 6 * HOUR }],
+        terminated: true,
+      },
+      { fromMs: T0 + 2 * HOUR, toMs: T0 + 4 * HOUR },
+    );
+    expect(clipped.running).toEqual([]);
+    expect(clipped.stopped).toEqual([]);
+    expect(clipped.terminated).toBe(true);
+  });
+});
+
+describe("relativeWindow", () => {
+  it("spans [now - days, now)", () => {
+    expect(relativeWindow(at(48), 1)).toEqual({ fromMs: T0 + DAY, toMs: T0 + 2 * DAY });
+  });
+});
+
+describe("computeFleetCost windowing", () => {
+  const NOW = at(72); // 3 days after T0
+  const inputs = [
+    {
+      workspaceId: "ws-recent",
+      owner: "alice",
+      state: "running",
+      events: [evt("session.create", 60, "ws-recent")], // started 12h before NOW, still running
+    },
+    {
+      workspaceId: "ws-old",
+      owner: "bob",
+      state: "deleted",
+      events: [evt("session.create", 0, "ws-old"), evt("session.delete", 2, "ws-old")],
+    },
+  ];
+
+  it("prices only in-window run-time and drops sessions inactive in the window", () => {
+    const report = computeFleetCost(inputs, PRICING, SIZING, NOW, relativeWindow(NOW, 1));
+    expect(report.bySession.map((s) => s.workspaceId)).toEqual(["ws-recent"]);
+    expect(report.bySession[0]?.runningMs).toBe(12 * HOUR); // clipped to the last day
+    expect(report.byUser.map((u) => u.owner)).toEqual(["alice"]);
+    expect(report.windowStart).toBe(at(48));
+  });
+
+  it("without a window prices the full lifetime (windowStart = earliest event)", () => {
+    const report = computeFleetCost(inputs, PRICING, SIZING, NOW);
+    expect(report.bySession.map((s) => s.workspaceId).sort()).toEqual(["ws-old", "ws-recent"]);
+    expect(report.windowStart).toBe(at(0));
+  });
 });

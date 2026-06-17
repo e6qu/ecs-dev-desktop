@@ -362,11 +362,13 @@ remaining Open compute items:
   EBS panics (nil Docker client), so the secret/runTask path is validated in
   container mode (not the process-mode `integration` job).
 
-Deferred (the one explicitly perf-only item, not a bug): cost-report time-windowing
-
-- rollups (`BUGS.md` → Open) — a correct mid-session-boundary rollup is a sizable
-  subsystem and must not change figures, so it stays a follow-up. `CONNECTION_TOKEN`
-  injection lands with the future DYNAMIC wake-on-connect gate it's tied to.
+Done since: **cost-report time-windowing** — `/admin/costs?window=all|1d|7d|30d`
+scopes the report to the last N days (pure interval-clipping in `@edd/core`; the
+lifetime path is byte-identical, so the rollup figure-equivalence invariant is
+untouched). The feared "sizable bucketed-rollup subsystem" was unnecessary —
+clipping the lifetime intervals to the window is exact. Still deferred:
+`CONNECTION_TOKEN` injection (lands with the future DYNAMIC wake-on-connect gate
+it's tied to).
 
 ## Earlier (merged)
 

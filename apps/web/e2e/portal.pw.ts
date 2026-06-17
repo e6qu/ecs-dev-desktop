@@ -228,6 +228,20 @@ test("admin costs page prices fleet spend per session and per user", async ({
   await expect(row).toHaveAttribute("data-owner", "erin");
   // …and erin is rolled up in the per-user view.
   await expect(page.locator(sel(TESTID.costUserRow, { "data-owner": "erin" }))).toBeVisible();
+
+  // The time-window selector defaults to "All time" and scopes the report when
+  // changed. The session was created just now, so it stays inside the 24h window.
+  await expect(page.locator(sel(TESTID.costWindow, { "data-window": "all" }))).toHaveAttribute(
+    "data-active",
+    "true",
+  );
+  await page.locator(sel(TESTID.costWindow, { "data-window": "1d" })).click();
+  await expect(page).toHaveURL(/\?window=1d$/);
+  await expect(page.locator(sel(TESTID.costWindow, { "data-window": "1d" }))).toHaveAttribute(
+    "data-active",
+    "true",
+  );
+  await expect(page.locator(sel(TESTID.costSessionRow, { "data-id": ws.id }))).toBeVisible();
 });
 
 test("admin logs page shows the derived audit feed and the CloudWatch streams", async ({

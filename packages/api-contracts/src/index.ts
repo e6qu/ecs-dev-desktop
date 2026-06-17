@@ -273,6 +273,22 @@ export const costReport = z.object({
 });
 export type CostReport = z.infer<typeof costReport>;
 
+/** Time window for the cost report: `all` = full lifetime, the rest = last N days. */
+export const costWindow = z.enum(["all", "1d", "7d", "30d"]);
+export type CostWindow = z.infer<typeof costWindow>;
+
+/** Days each {@link costWindow} spans; `null` = all-time (price the whole ledger). */
+export const COST_WINDOW_DAYS: Record<CostWindow, number | null> = {
+  all: null,
+  "1d": 1,
+  "7d": 7,
+  "30d": 30,
+};
+
+/** Parse a possibly-absent `?window=` value to a valid window (defaults to `all`). */
+export const costReportQuery = z.object({ window: costWindow.catch("all") });
+export type CostReportQuery = z.infer<typeof costReportQuery>;
+
 // --- Admin: log streams (control-plane derived now; CloudWatch on AWS) ---
 
 export const logStream = z.enum(["control-plane", "reconciler", "container"]);

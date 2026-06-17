@@ -1372,3 +1372,59 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
   typecheck + eslint + knip clean; core unit 173 green. Lesson: once a parallel path is
   proven, removing the old one _entirely_ (config, infra, images, tests, docs in one sweep)
   is cleaner than leaving a dual-trust-plus-CA surface that every future change must reason about.
+- **2026-06-17 — Cost report time-windowing** (`feat/cost-time-windowing`). Added the
+  deferred follow-up to the cost visualization: the admin `/admin/costs` page and
+  `GET /api/admin/costs` now take `?window=all|1d|7d|30d` to scope spend to the last N
+  days. Cost is linear in running/stopped duration, so windowing is just **clipping** the
+  lifetime billing intervals to `[now - days, now)` before pricing — implemented as pure
+  `clipIntervals` + `relativeWindow` in `@edd/core`, threaded through an optional `window`
+  on `computeFleetCost` and `CostService.report(windowDays?)`. The earlier worry (STATUS
+  framed it as needing a "sizable bucketed-rollup subsystem that must not change figures")
+  was unfounded: on-the-fly clipping is exact and the **lifetime path stays byte-identical**,
+  so the O(history)→O(recent) cost-rollup figure-equivalence invariant is untouched (windowed
+  requests simply full-scan — a single checkpoint→now rollup can't serve an arbitrary window).
+  Sessions with no run-time inside the window are dropped from the list. UI: a `.tabs`
+  segmented selector (reusing the existing component) in the page header, link-driven so the
+  page stays a server component; `LiveRefresh` preserves the selected window across refreshes.
+  Contracts: `costWindow` enum + `COST_WINDOW_DAYS` map + `costReportQuery` (`.catch("all")`
+  so a garbage/absent `?window=` falls back, never 400s). TDD throughout: core windowing unit
+  (clip / relativeWindow / windowed `computeFleetCost`), a windowed `CostService.report` unit,
+  a route integ (`?window=1d` scopes; garbage → all-time), a contract test, and a Playwright
+  assertion that the selector defaults to "All time" and switching to "24h" navigates + keeps a
+  just-run session visible. Verified: contracts 10 / core 178 / control-plane 23 unit green,
+  cost route integ 5 green, rollup-equivalence integ green, the costs pw test green;
+  eslint + knip clean.
+- **2026-06-17 — Fixed two SSH e2e regressions from #111 (surfaced on the cost PR's CI).**
+  #111 merged red: `golden-workspace-ssh.e2e.ts` and `ssh-wake-chain.e2e.ts` failed
+  deterministically in the container-mode `e2e` job (which runs on every PR, so the cost PR
+  inherited them). Diagnosed iteratively from the CI logs (each fix sharpened the next
+  failure), never sim-special-casing — the fixes are all standard cloud-API/coordinate work.
+  **(1) golden-workspace-ssh — root cause: the workspace subnet had no egress.** #111 switched
+  the golden image from CA-cert auth (validated locally by sshd, no network) to **registered-key
+  auth**, where the workspace calls the control plane (`AuthorizedKeysCommand → ssh-authorize`)
+  to authorize each key. But this test created a plain VPC/subnet with **no route out**, so the
+  authorize curl couldn't reach the control plane and every key was denied — exactly what real
+  AWS would do for a task with no IGW/NAT route (so it's faithful cloud behaviour, not a sim
+  bug). The original symptom was a hang (the authorize curl had no timeout, blocking sshd
+  pre-auth); two intermediate fixes made it legible — a curl `--connect-timeout`/`--max-time`
+  on the authorizers (`infra/images/base/authorized-keys.sh`,
+  `services/ssh-gateway/authorized-keys.sh`, `wake-and-forward.sh`: a slow/unreachable control
+  plane must never hang an SSH login, a real DoS) turned the hang into a clean
+  `Permission denied (publickey)`, and decoupling the client loop's two checks (SSH-authorize,
+  then poll OpenVSCode :3000) gave distinct error messages. The real fix has two parts, both
+  matching the passing `data-durability` e2e (same stub+authorize path): the workspace task
+  needs a **public IP** (`assignPublicIp: true` — golden had it hardcoded `false`; the provider
+  default and `data-durability` are ENABLED) **and** its subnet needs **egress**
+  (`createVpcWithEgress`: IGW + route). i.e. a public-subnet task that can reach the control
+  plane — exactly what real AWS requires. (Egress alone wasn't enough — a public-IP-less task
+  still can't route out; that intermediate run still got `Permission denied`.) **(2) ssh-wake-chain — root cause: a synchronous
+  ssh froze the event loop.** `EDD_FAKE_SSH_HOST` is an unrouteable TEST-NET address, so the
+  gateway's post-wake `nc` hangs and the ssh session never returns. The first fix bounded it with
+  `spawnSync(..., {timeout})`, but that **blocks Node's event loop** for the whole timeout, during
+  which our own keep-alive socket to the control plane went idle and the server closed it → the
+  next `fetch` failed with `other side closed`. Final fix: run ssh **async** (`spawn`, killed once
+  the wake is observed) so the loop stays free to poll. Local repro couldn't reproduce the CI
+  condition (this host runs Podman — the workspace task won't start ready — vs CI's dockerd), so
+  each iteration leaned on the CI-log evidence + the `data-durability` control; CI verifies.
+  Lessons: don't merge a red e2e job; a no-network failure can masquerade as a timeout; and never
+  block the event loop in an async test.

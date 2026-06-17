@@ -96,3 +96,52 @@ describe("CostService.report", () => {
     expect(report.bySession[0]?.computeUsd).toBeGreaterThan(0);
   });
 });
+
+describe("CostService.report windowing", () => {
+  const DAY = 24 * 3_600_000;
+  const day = (d: number) => isoTimestamp(new Date(epoch + d * DAY).toISOString());
+  const NOW = day(10);
+  const winClock: Clock = { now: () => NOW };
+  const ev = (action: string, d: number, target: string): AuditEvent => ({
+    action,
+    at: day(d),
+    actor: target,
+    target,
+    detail: "",
+  });
+
+  function winService(events: AuditEvent[], workspaces: WorkspaceDto[]): CostService {
+    return new CostService({
+      audit: {
+        all: () => Promise.resolve(events),
+        since: (from: string) =>
+          Promise.resolve(events.filter((e) => e.at.localeCompare(from) > 0)),
+      },
+      workspaces: { list: () => Promise.resolve(workspaces) },
+      clock: winClock,
+      pricing: PRICING,
+      sizing: SIZING,
+    });
+  }
+
+  // An old (days 0-1) session and a recent (day 9 → still running at day 10) one.
+  const events: AuditEvent[] = [
+    ev("session.create", 0, "ws-old"),
+    ev("session.delete", 1, "ws-old"),
+    ev("session.create", 9, "ws-recent"),
+  ];
+  const workspaces = [dto("ws-recent", "alice", "running")]; // ws-old's record is gone
+
+  it("limits the report to the last N days, dropping sessions inactive in the window", async () => {
+    const report = await winService(events, workspaces).report(7); // last 7 days
+    expect(report.bySession.map((s) => s.workspaceId)).toEqual(["ws-recent"]);
+    expect(report.bySession[0]?.runningMs).toBe(DAY); // day 9 → now (day 10), clipped to window
+    expect(report.windowStart).toBe(day(3)); // now - 7 days
+  });
+
+  it("prices the full lifetime when no window is given", async () => {
+    const report = await winService(events, workspaces).report();
+    expect(report.bySession.map((s) => s.workspaceId).sort()).toEqual(["ws-old", "ws-recent"]);
+    expect(report.windowStart).toBe(day(0)); // earliest event
+  });
+});

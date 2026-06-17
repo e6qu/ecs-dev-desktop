@@ -55,7 +55,10 @@ AUTH_HEADER="Authorization: Bearer ${GATEWAY_TOKEN}"
 CP="${EDD_CONTROL_PLANE_URL}"
 
 # Step 1: wake the workspace (idempotent — no-op if already running).
-connect_status=$(curl -s -o /dev/null -w "%{http_code}" \
+# `--connect-timeout` bounds an unreachable control plane (the connection never
+# establishes) without capping a legitimately slow wake (real cold-start); the
+# overall time is governed by the poll deadline below.
+connect_status=$(curl -s --connect-timeout 5 -o /dev/null -w "%{http_code}" \
   -X POST "${CP}/api/workspaces/${WORKSPACE_ID}/connect" \
   -H "${AUTH_HEADER}")
 if [ "$connect_status" != "200" ]; then
@@ -66,7 +69,7 @@ fi
 # Step 2: poll until running (max 60 s).
 DEADLINE=$(($(date +%s) + 60))
 while true; do
-  state=$(curl -s "${CP}/api/workspaces/${WORKSPACE_ID}" \
+  state=$(curl -s --connect-timeout 3 --max-time 10 "${CP}/api/workspaces/${WORKSPACE_ID}" \
     -H "${AUTH_HEADER}" | grep -o '"state":"[^"]*"' | cut -d'"' -f4)
   if [ "$state" = "running" ] || [ "$state" = "idle" ]; then
     break
@@ -79,7 +82,7 @@ while true; do
 done
 
 # Step 3: get the workspace's ENI host:port.
-connect_info=$(curl -s "${CP}/api/workspaces/${WORKSPACE_ID}/connect-info" \
+connect_info=$(curl -s --connect-timeout 3 --max-time 10 "${CP}/api/workspaces/${WORKSPACE_ID}/connect-info" \
   -H "${AUTH_HEADER}")
 WORKSPACE_HOST=$(printf '%s' "$connect_info" | grep -o '"host":"[^"]*"' | cut -d'"' -f4)
 WORKSPACE_PORT=$(printf '%s' "$connect_info" | grep -o '"port":[0-9]*' | cut -d: -f2)
