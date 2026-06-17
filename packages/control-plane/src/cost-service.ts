@@ -9,11 +9,13 @@ import {
   isoTimestamp,
   priceDurations,
   priceIntervals,
+  relativeWindow,
   resumeBilling,
   type AuditEvent,
   type BillingState,
   type Clock,
   type FleetCostReport,
+  type Interval,
   type IsoTimestamp,
   type Pricing,
   type SessionCost,
@@ -111,8 +113,16 @@ function asPhase(value: string): BillingState["phase"] {
 export class CostService {
   constructor(private readonly deps: CostServiceDeps) {}
 
-  async report(): Promise<FleetCostReport> {
+  /**
+   * The fleet cost report. With `windowDays` it covers only the last N days
+   * (each session priced over its in-window run-time); without it, the full
+   * lifetime. A windowed report always full-scans: the cost rollup is a single
+   * checkpoint→now accumulation that cannot be clamped to an arbitrary window,
+   * so it accelerates only the lifetime report.
+   */
+  async report(windowDays?: number | null): Promise<FleetCostReport> {
     const now = this.now();
+    if (windowDays != null) return this.fullScanReport(now, relativeWindow(now, windowDays));
     const rollups = this.deps.rollups ? await this.deps.rollups.list() : [];
     return rollups.length === 0 ? this.fullScanReport(now) : this.rollupReport(rollups, now);
   }
@@ -146,8 +156,9 @@ export class CostService {
     await this.deps.rollups.replaceAll(out);
   }
 
-  /** The exact full-ledger scan (also the rollup-absent fallback). */
-  private async fullScanReport(now: IsoTimestamp): Promise<FleetCostReport> {
+  /** The exact full-ledger scan (also the rollup-absent fallback). With `window`
+   * each session is priced over only its in-window run-time. */
+  private async fullScanReport(now: IsoTimestamp, window?: Interval): Promise<FleetCostReport> {
     const [events, workspaces] = await Promise.all([
       this.deps.audit.all(),
       this.deps.workspaces.list(),
@@ -165,7 +176,7 @@ export class CostService {
         events: wsEvents,
       };
     });
-    return computeFleetCost(inputs, this.deps.pricing, this.deps.sizing, now);
+    return computeFleetCost(inputs, this.deps.pricing, this.deps.sizing, now, window);
   }
 
   /** Price from the checkpoints + the events since them (O(recent)). Resuming each

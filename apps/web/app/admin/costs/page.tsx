@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { COST_WINDOW_DAYS, costWindow, type CostWindow } from "@edd/api-contracts";
 import Link from "next/link";
 
 import { LiveRefresh } from "../../../components/LiveRefresh";
@@ -13,6 +14,14 @@ const MS_PER_HOUR = 60 * 60 * 1000;
  * cost continuously; this keeps the figures current without a manual reload). */
 const LIVE_REFRESH_MS = 15_000;
 
+/** The window selector, in display order, with their human labels. */
+const WINDOWS: readonly { key: CostWindow; label: string }[] = [
+  { key: "all", label: "All time" },
+  { key: "30d", label: "30 days" },
+  { key: "7d", label: "7 days" },
+  { key: "1d", label: "24h" },
+];
+
 /** Display USD: cents for visible amounts, more precision for sub-cent figures
  * (sim/short runs) so a real-but-tiny cost never reads as exactly $0.00. */
 function usd(value: number): string {
@@ -26,10 +35,21 @@ function hours(ms: number): string {
 }
 
 // Admin-only (the /admin layout gates it). Fleet spend, derived by pricing the
-// lifecycle audit ledger; rolled up per user and per session.
-export default async function AdminCostsPage() {
-  const report = await (await getCostService()).report();
+// lifecycle audit ledger; rolled up per user and per session. `?window=` scopes
+// the report to the last N days (default: the full lifetime).
+export default async function AdminCostsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ window?: string }>;
+}) {
+  const window = costWindow.catch("all").parse((await searchParams).window);
+  const report = await (await getCostService()).report(COST_WINDOW_DAYS[window]);
   const { total, byUser, bySession, pricing, sizing } = report;
+
+  const scope =
+    window === "all"
+      ? "the complete lifecycle"
+      : `the last ${WINDOWS.find((w) => w.key === window)?.label ?? window} of the lifecycle`;
 
   const tiles = [
     { kind: "total", label: "total", value: total.totalUsd, sub: "all components" },
@@ -46,13 +66,28 @@ export default async function AdminCostsPage() {
           <div className="kicker">admin</div>
           <h1>Costs</h1>
           <p>
-            Spend computed from the complete lifecycle <Link href="/admin/logs">ledger</Link> —
-            every workspace&apos;s running vs. scaled-to-zero time, priced at the rates below and
-            updated live as workspaces run. Rates: {usd(pricing.fargateVcpuHourUsd)}/vCPU-hr,{" "}
+            Spend computed from {scope} <Link href="/admin/logs">ledger</Link> — every
+            workspace&apos;s running vs. scaled-to-zero time, priced at the rates below and updated
+            live as workspaces run. Rates: {usd(pricing.fargateVcpuHourUsd)}/vCPU-hr,{" "}
             {usd(pricing.fargateGbHourUsd)}/GB-hr, {usd(pricing.ebsGbMonthUsd)}/GB-mo volume,{" "}
             {usd(pricing.snapshotGbMonthUsd)}/GB-mo snapshot · per workspace: {sizing.vcpu} vCPU,{" "}
             {sizing.memoryGib} GiB, {sizing.volumeGib} GiB disk.
           </p>
+        </div>
+        <div className="tabs" aria-label="cost window">
+          {WINDOWS.map((w) => (
+            <Link
+              key={w.key}
+              href={w.key === "all" ? "/admin/costs" : `/admin/costs?window=${w.key}`}
+              className={w.key === window ? "on" : ""}
+              aria-current={w.key === window ? "page" : undefined}
+              data-testid={TESTID.costWindow}
+              data-window={w.key}
+              data-active={w.key === window}
+            >
+              {w.label}
+            </Link>
+          ))}
         </div>
       </div>
 

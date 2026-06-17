@@ -58,6 +58,29 @@ describe("admin cost report", () => {
     expect(stop?.actor).toBe("bob");
   });
 
+  it("scopes the report to a time window via ?window= (last 24h includes a just-run session)", async () => {
+    const id = await createWorkspaceFor("dana");
+    expect((await postLifecycle(stopWorkspace, "stop", "dana", id)).status).toBe(200);
+
+    const res = await GET(
+      new Request("http://localhost/api/admin/costs?window=1d", { headers: admin("root") }),
+    );
+    expect(res.status).toBe(200);
+    const report = costReport.parse(await res.json());
+    // The session ran just now, so it is inside the 24h window.
+    expect(report.bySession.some((s) => s.workspaceId === id)).toBe(true);
+    // windowStart is exactly now - 1 day (not the ledger start) — window in effect.
+    const dayMs = 24 * 60 * 60 * 1000;
+    expect(Date.parse(report.generatedAt) - Date.parse(report.windowStart)).toBe(dayMs);
+  });
+
+  it("falls back to the full lifetime on a garbage ?window= value", async () => {
+    const res = await GET(
+      new Request("http://localhost/api/admin/costs?window=bogus", { headers: admin("root") }),
+    );
+    expect(res.status).toBe(200); // costReportQuery.catch → "all"; not a 400
+  });
+
   it("denies non-admins", async () => {
     const res = await GET(
       new Request("http://localhost/api/admin/costs", {

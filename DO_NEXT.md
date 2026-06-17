@@ -114,7 +114,11 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
 - **Cost visualization — built** (`feat/cost-visualization`): admin `/admin/costs`
   prices the lifecycle audit ledger (compute + live-volume + snapshot) per session
   / user / fleet; lifecycle audit centralized in `WorkspaceService` so the ledger
-  is complete. Follow-up (time-windowing / rollups) tracked in `BUGS.md` → Open.
+  is complete. **Time-windowing — DONE** (`feat/cost-time-windowing`): `?window=all|1d|7d|30d`
+  scopes the report to the last N days (pure interval-clipping in `@edd/core`; lifetime
+  path unchanged, so the rollup figure-equivalence invariant is untouched). The earlier
+  "sizable bucketed-rollup subsystem" was unnecessary — on-the-fly clipping is exact.
+  The O(history)→O(recent) cost **rollups** were already done (`BUGS.md` → Resolved).
 - **GitHub App provider — built** (`feat/github-app-provider`): `GitProvider` seam
   (user-OAuth + GitHub-App installation-token impls), selectable by config; the
   repos/namespaces routes + clone/push broker go through it. New HARD RULE §6.9

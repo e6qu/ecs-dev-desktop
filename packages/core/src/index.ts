@@ -205,11 +205,13 @@ export type {
 } from "./observability/cost";
 export {
   aggregateFleetCost,
+  clipIntervals,
   computeFleetCost,
   deriveBillingIntervals,
   deriveBillingState,
   priceDurations,
   priceIntervals,
+  relativeWindow,
   resumeBilling,
 } from "./observability/cost";
 

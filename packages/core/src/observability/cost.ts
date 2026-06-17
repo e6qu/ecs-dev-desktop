@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { IsoTimestamp } from "../domain/ids";
+import { isoTimestamp, type IsoTimestamp } from "../domain/ids";
 
 import type { AuditEvent } from "./audit";
 
@@ -20,6 +20,8 @@ import type { AuditEvent } from "./audit";
 
 /** Milliseconds in one hour. */
 const MS_PER_HOUR = 60 * 60 * 1000;
+/** Milliseconds in one day (for now-relative report windows). */
+const MS_PER_DAY = 24 * MS_PER_HOUR;
 /**
  * Hours AWS bills per "month" for per-GB-month resources (EBS volumes and
  * snapshots): a flat 730 (AWS's documented convention), independent of calendar
@@ -179,6 +181,38 @@ export function deriveBillingIntervals(
 
 function totalMs(intervals: readonly Interval[]): number {
   return intervals.reduce((sum, i) => sum + (i.toMs - i.fromMs), 0);
+}
+
+/** Intersect one interval with `[fromMs, toMs)`; `null` when they do not overlap. */
+function clipInterval(i: Interval, fromMs: number, toMs: number): Interval | null {
+  const from = Math.max(i.fromMs, fromMs);
+  const to = Math.min(i.toMs, toMs);
+  return to > from ? { fromMs: from, toMs: to } : null;
+}
+
+/**
+ * Pure: clip a workspace's billing intervals to a `[fromMs, toMs)` window — keep
+ * only the part of each running/stopped interval that falls inside it. Pricing is
+ * linear in the durations, so a windowed report is just the lifetime intervals
+ * clipped to the window and priced. `terminated` is unchanged: it describes the
+ * session's lifecycle, not the window.
+ */
+export function clipIntervals(intervals: BillingIntervals, window: Interval): BillingIntervals {
+  const clip = (xs: readonly Interval[]): Interval[] =>
+    xs
+      .map((i) => clipInterval(i, window.fromMs, window.toMs))
+      .filter((i): i is Interval => i !== null);
+  return {
+    running: clip(intervals.running),
+    stopped: clip(intervals.stopped),
+    terminated: intervals.terminated,
+  };
+}
+
+/** Pure: the now-relative report window `[now - days, now)` in epoch ms. */
+export function relativeWindow(now: IsoTimestamp, days: number): Interval {
+  const nowMs = Date.parse(now);
+  return { fromMs: nowMs - days * MS_PER_DAY, toMs: nowMs };
 }
 
 /** Pure: price reconstructed intervals for one workspace at the given rates/sizing. */
@@ -369,30 +403,41 @@ const ZERO_COST: CostBreakdown = {
 
 /**
  * Pure: the full fleet cost report — per session, rolled up per user and to a
- * fleet total — from each workspace's lifecycle events. Lifetime cost (derived
- * from the whole ledger the caller supplies). Sessions and users are returned
- * most-expensive first.
+ * fleet total — from each workspace's lifecycle events. Without `window` this is
+ * the lifetime cost (the whole ledger the caller supplies). With `window`, each
+ * session is priced over only the part of its run-time inside `[from, to)`, and
+ * sessions with no activity in the window are dropped. Sessions and users are
+ * returned most-expensive first.
  */
 export function computeFleetCost(
   inputs: readonly WorkspaceCostInput[],
   pricing: Pricing,
   sizing: WorkspaceSizing,
   now: IsoTimestamp,
+  window?: Interval,
 ): FleetCostReport {
-  const bySession: SessionCost[] = inputs.map((w) => {
-    const intervals = deriveBillingIntervals(w.events, now);
+  const bySession: SessionCost[] = [];
+  for (const w of inputs) {
+    // State/terminated describe the session's lifecycle (independent of the
+    // window), so derive them from the full intervals; price the clipped ones.
+    const lifetime = deriveBillingIntervals(w.events, now);
+    const intervals = window ? clipIntervals(lifetime, window) : lifetime;
     const cost = priceIntervals(intervals, pricing, sizing);
-    const state = w.state ?? (intervals.terminated ? "terminated" : "unknown");
-    return {
+    // In a windowed view, omit sessions with no run-time inside the window.
+    if (window && cost.runningMs + cost.stoppedMs === 0) continue;
+    bySession.push({
       workspaceId: w.workspaceId,
       owner: w.owner,
-      state,
-      terminated: intervals.terminated,
+      state: w.state ?? (lifetime.terminated ? "terminated" : "unknown"),
+      terminated: lifetime.terminated,
       ...cost,
-    };
-  });
+    });
+  }
 
-  return aggregateFleetCost(bySession, pricing, sizing, now, earliestEventAt(inputs, now));
+  const windowStart = window
+    ? isoTimestamp(new Date(window.fromMs).toISOString())
+    : earliestEventAt(inputs, now);
+  return aggregateFleetCost(bySession, pricing, sizing, now, windowStart);
 }
 
 /**

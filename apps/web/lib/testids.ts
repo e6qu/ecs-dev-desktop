@@ -45,6 +45,8 @@ export const TESTID = {
   costUserRow: "cost-user-row",
   /** A per-session cost row on the admin Costs page. Attrs: `data-id`, `data-owner`, `data-usd`. */
   costSessionRow: "cost-session-row",
+  /** A time-window selector link on the admin Costs page. Attrs: `data-window`, `data-active`. */
+  costWindow: "cost-window",
   /** A cluster-metric tile on the Infrastructure view. Attrs: `data-metric`, `data-value`. */
   clusterStat: "cluster-stat",
   /** A node in the Infrastructure topology graph. Attrs: `data-node`, `data-kind`, `data-h` (status). */

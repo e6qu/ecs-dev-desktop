@@ -1372,3 +1372,25 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
   typecheck + eslint + knip clean; core unit 173 green. Lesson: once a parallel path is
   proven, removing the old one _entirely_ (config, infra, images, tests, docs in one sweep)
   is cleaner than leaving a dual-trust-plus-CA surface that every future change must reason about.
+- **2026-06-17 — Cost report time-windowing** (`feat/cost-time-windowing`). Added the
+  deferred follow-up to the cost visualization: the admin `/admin/costs` page and
+  `GET /api/admin/costs` now take `?window=all|1d|7d|30d` to scope spend to the last N
+  days. Cost is linear in running/stopped duration, so windowing is just **clipping** the
+  lifetime billing intervals to `[now - days, now)` before pricing — implemented as pure
+  `clipIntervals` + `relativeWindow` in `@edd/core`, threaded through an optional `window`
+  on `computeFleetCost` and `CostService.report(windowDays?)`. The earlier worry (STATUS
+  framed it as needing a "sizable bucketed-rollup subsystem that must not change figures")
+  was unfounded: on-the-fly clipping is exact and the **lifetime path stays byte-identical**,
+  so the O(history)→O(recent) cost-rollup figure-equivalence invariant is untouched (windowed
+  requests simply full-scan — a single checkpoint→now rollup can't serve an arbitrary window).
+  Sessions with no run-time inside the window are dropped from the list. UI: a `.tabs`
+  segmented selector (reusing the existing component) in the page header, link-driven so the
+  page stays a server component; `LiveRefresh` preserves the selected window across refreshes.
+  Contracts: `costWindow` enum + `COST_WINDOW_DAYS` map + `costReportQuery` (`.catch("all")`
+  so a garbage/absent `?window=` falls back, never 400s). TDD throughout: core windowing unit
+  (clip / relativeWindow / windowed `computeFleetCost`), a windowed `CostService.report` unit,
+  a route integ (`?window=1d` scopes; garbage → all-time), a contract test, and a Playwright
+  assertion that the selector defaults to "All time" and switching to "24h" navigates + keeps a
+  just-run session visible. Verified: contracts 10 / core 178 / control-plane 23 unit green,
+  cost route integ 5 green, rollup-equivalence integ green, the costs pw test green;
+  eslint + knip clean.
