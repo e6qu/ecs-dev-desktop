@@ -33,9 +33,9 @@ a runnable composition is in [`infra/terraform/examples/complete`](../infra/terr
    the Terraform `backend` — do this before the first `apply` so state is never
    local. (The module README lists this as prerequisite #1.)
 2. Set the module inputs: `name`, `aws_region`, `domain_name` (enables ACM +
-   Route 53 + the `*.devbox` wildcard), `ssh_ca_public_key` (see Step 4), the
-   optional `nat_mode` (`managed` NAT gateway or cost-optimized `fck-nat`
-   instance), task sizing, and `secret_environment` (see Step 3).
+   Route 53 + the `*.devbox` wildcard), the optional `nat_mode` (`managed` NAT
+   gateway or cost-optimized `fck-nat` instance), task sizing, and
+   `secret_environment` (see Step 3).
 3. `terraform apply`. This creates: VPC/subnets/NAT, DynamoDB single-table
    (PK/SK + GSI1 + GSI2, on-demand), ECR repos (control-plane + golden), KMS,
    IAM roles, the ECS cluster + control-plane service (autoscaled, on-demand
@@ -63,8 +63,8 @@ Two images go to the ECR repos the module created:
 2. **A golden workspace image** (the [`infra/images`](../infra/images/README.md)
    collection — a shared `base` plus the `omnibus`/per-language variants; build a
    variant `FROM base`) → the matching entry in `golden_repository_urls`. These bake
-   OpenVSCode Server, the toolchains, and `sshd` + the SSH CA wiring (there is no
-   separate "SSH proxy" image — SSH is served from the workspace task).
+   OpenVSCode Server, the toolchains, and `sshd` + its registered-key authorizer
+   (there is no separate "SSH proxy" image — SSH is served from the workspace task).
 
 ```sh
 aws ecr get-login-password --region <region> \
@@ -87,15 +87,14 @@ name → value, for non-secret config.
 
 Secrets (`secret_environment`):
 
-| Group        | Variable                                                       | Purpose                                                    |
-| ------------ | -------------------------------------------------------------- | ---------------------------------------------------------- |
-| Auth.js      | `AUTH_SECRET`                                                  | session/JWT signing                                        |
-| IdP (GitHub) | `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`                         | GitHub OAuth/App                                           |
-| IdP (Entra)  | `AUTH_MICROSOFT_ENTRA_ID_ID`, `AUTH_MICROSOFT_ENTRA_ID_SECRET` | Azure Entra OIDC client                                    |
-| Crypto       | `EDD_TOKEN_ENC_KEY`                                            | 32-byte hex AES key — gates git-credential storage         |
-| Crypto       | `EDD_GATEWAY_SECRET`                                           | gateway↔control-plane machine-auth HMAC (connect/wake)     |
-| Crypto       | `EDD_AGENT_SECRET`                                             | idle-agent heartbeat HMAC                                  |
-| SSH          | `EDD_SSH_CA_KEY`                                               | the CA **private** key material for cert issuance (Step 4) |
+| Group        | Variable                                                       | Purpose                                                                |
+| ------------ | -------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| Auth.js      | `AUTH_SECRET`                                                  | session/JWT signing                                                    |
+| IdP (GitHub) | `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`                         | GitHub OAuth/App                                                       |
+| IdP (Entra)  | `AUTH_MICROSOFT_ENTRA_ID_ID`, `AUTH_MICROSOFT_ENTRA_ID_SECRET` | Azure Entra OIDC client                                                |
+| Crypto       | `EDD_TOKEN_ENC_KEY`                                            | 32-byte hex AES key — gates git-credential storage                     |
+| Crypto       | `EDD_GATEWAY_SECRET`                                           | gateway↔control-plane machine-auth HMAC (connect/wake + ssh-authorize) |
+| Crypto       | `EDD_AGENT_SECRET`                                             | idle-agent heartbeat + workspace ssh-authorize HMAC                    |
 
 Non-secret config (`extra_environment`):
 
@@ -111,20 +110,19 @@ Non-secret config (`extra_environment`):
 > `EDD_ADMIN_GROUPS`. If you leave `EDD_ADMIN_GROUPS` unset, **no one can administer
 > the platform.** Set it to your admin IdP group before first sign-in.
 
-## Step 4 — SSH CA
+## Step 4 — SSH access (registered keys)
 
-Workspace SSH uses short-lived OpenSSH **certificates** signed by your CA.
+Workspace SSH is **registered-key only** — no CA, no certificates, no deploy-time
+SSH key material. Each user registers their own public key in the portal
+(`/settings` → SSH keys, `POST /api/ssh-keys`), and access is **dual-trust**: both
+the SSH gateway's `sshd` and the workspace's `sshd` run an `AuthorizedKeysCommand`
+that calls the control plane's `POST /api/workspaces/:id/ssh-authorize`, which
+authorizes the presented key iff it is registered to that workspace's owner.
 
-1. Generate the CA keypair (`scripts/gen-ssh-ca.sh` produces `ca` + `ca.pub`).
-2. Pass the **public** key to Terraform as `ssh_ca_public_key` — the module injects
-   it into workspace tasks so `sshd` trusts certs signed by your CA.
-3. Store the **private** key in Secrets Manager and pass its ARN to the control
-   plane via `secret_environment` under the key **`EDD_SSH_CA_KEY`** — exactly how
-   `AUTH_SECRET`/`EDD_AGENT_SECRET` are handled. The control plane materializes it
-   to a `0600` temp file at cert-issuance time (`apps/web/lib/ssh-cert.ts`). This is
-   the recommended path: the CA private key never lands in Terraform state.
-   (`EDD_SSH_CA_KEY_PATH` is still honored if you instead mount the key as a file;
-   it wins when both are set. Without either, the SSH-cert route throws.)
+There is nothing to provision here beyond the HMAC secrets already set in Step 3:
+the gateway authenticates to `ssh-authorize` with `EDD_GATEWAY_SECRET`, and the
+in-workspace authorizer with its injected agent token (derived from
+`EDD_AGENT_SECRET`). Users self-serve key registration after first sign-in.
 
 ## Step 5 — DNS/TLS + identity-aware proxy
 

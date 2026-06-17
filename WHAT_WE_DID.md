@@ -8,7 +8,8 @@
 ## Key decisions & lessons (durable)
 
 - **Architecture (locked, `AGENTS.md` §1):** ECS Fargate; DynamoDB single-table +
-  ElectroDB (over Aurora); OpenSSH + our SSH CA; identity-aware proxy + wildcard DNS (over the
+  ElectroDB (over Aurora); OpenSSH registered-key auth (no CA — dual-trust via
+  `ssh-authorize`); identity-aware proxy + wildcard DNS (over the
   ~100-rule ALB cap); EBS-snapshot-as-persistence + scale-to-zero; Auth.js + CASL.
   Workspace runtime = **ECS-managed EBS** (compute creates/releases the task's volume;
   storage owns snapshot/restore/GC).
@@ -1340,3 +1341,34 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
   e2e 2/2 green **and** the additive node accepts a CA cert as a `dev-<id>` principal
   (`whoami=dev-test`). Lesson: changing shared SSH infra has a wide blast radius — additive
   (both auth paths) is the safe migration; full CA removal is a later, deliberate step.
+- **2026-06-17 — SSH Slice 2d: clean-break removal of the SSH-CA path (registered-key only).**
+  With dual-trust proven (#110 merged), took the deliberate full-removal step the prior entry
+  flagged. The user confirmed we carry **no legacy** (mid-development), so this is a clean
+  break, not an additive shim. On `feat/ssh-registered-key-only`, deleted the entire
+  certificate path: the `POST /api/workspaces/:id/ssh-cert` route (+ integ) and
+  `apps/web/lib/ssh-cert.ts` (+ test); the `sshCertRequest/Response` contracts and the
+  api-client `sshCert` method; `scripts/gen-ssh-ca.sh`; `docker-compose.ssh.yml`; the
+  `EDD_SSH_CA_*` config, the `EcsComputeProvider` `sshCaPublicKey` config + `EDD_SSH_CA_PUBLIC_KEY`
+  env injection (+ `fromEnv`); the Terraform `ssh_ca_public_key` var **and** the #108
+  half-config `precondition` (the guard for a now-nonexistent var); and all CA wiring from the
+  golden/gateway/e2e-node sshd configs + entrypoints (no `TrustedUserCAKeys`,
+  `AuthorizedPrincipalsCommand`, or `workspace-ca.pub` ensure). The shared infra the #110 fix
+  had made additive is back to registered-key only; `ssh-proxy.e2e.ts` keeps its
+  `edd-dualtrust-node` name (the compose node it avoided is gone).
+  **Migrated the cert-based e2e suites to registered keys** (per the user's "migrate all
+  properly"): `golden-workspace-ssh` + `data-durability` now use an in-process
+  `startSshAuthorizeStub` control plane (the golden image's `AuthorizedKeysCommand` hits it;
+  no full CP needed for these low-level image tests); `user-journey` registers an account key
+  via `/api/ssh-keys` and asserts the DTO + listing (it only ever _issued_ a cert, no SSH
+  connection); `ssh-wake-chain` registers a key and proves the gateway wakes a STOPPED
+  workspace through the **real** control plane via `ssh-authorize` + `ForceCommand` (no node —
+  landing-on-node is covered by `ssh-proxy`). `image-variants` + `workspace-toolchain` only
+  needed the dead `EDD_SSH_CA_PUBLIC_KEY` env dropped (they use `docker exec`, not SSH). Also
+  dropped the throwaway-CA plumbing from the live harnesses (`live-ecs-app` + callers,
+  Playwright live/vscode setup) and made the e2e key-scratch dir self-create (the deleted
+  `gen-ssh-ca.sh` used to make it). Swept all docs/comments to the registered-key story
+  (runbook Step 4, READMEs, coverage/observability docs, the AGENTS.md §1 architecture table,
+  core `ssh.ts` + topology descriptions). Verified: `@edd/e2e`/`@edd/core`/`@edd/ssh-gateway`
+  typecheck + eslint + knip clean; core unit 173 green. Lesson: once a parallel path is
+  proven, removing the old one _entirely_ (config, infra, images, tests, docs in one sweep)
+  is cleaner than leaving a dual-trust-plus-CA surface that every future change must reason about.

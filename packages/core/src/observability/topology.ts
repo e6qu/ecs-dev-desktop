@@ -69,7 +69,8 @@ export const SYSTEM_TOPOLOGY: Topology = {
       id: "ssh-gateway",
       label: "SSH gateway",
       kind: "edge",
-      description: "OpenSSH sshd; accepts short-lived CA certs and forwards to the workspace ENI.",
+      description:
+        "OpenSSH sshd; authorizes registered keys via ssh-authorize and forwards to the workspace ENI.",
     },
     {
       id: "control-plane",

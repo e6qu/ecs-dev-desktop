@@ -58,7 +58,7 @@ Tooling: **Vitest**.
 | CloudTrail / CloudWatch Logs adapters        | sockerless AWS process mode                                                                                                                 |
 | GitHub OAuth / Apps                          | `bleephub`                                                                                                                                  |
 | Azure Entra Graph + OIDC                     | sockerless Azure/Entra simulator                                                                                                            |
-| SSH (OpenSSH)                                | `sshd` in Docker + ephemeral SSH CA; cert auth + RBAC                                                                                       |
+| SSH (OpenSSH)                                | `sshd` in Docker; registered-key auth via the control plane (`ssh-authorize`)                                                               |
 | SSH wake-on-connect proxy (component)        | OpenSSH proxy container + stub control plane + workspace node                                                                               |
 | SSH wake-on-connect chain (real CP)          | OpenSSH proxy + production `next start` + DynamoDB Local                                                                                    |
 | LIVE user journey (real API, no fakes)       | production `next start` + `COMPUTE_PROVIDER=ecs` on container-mode sim (idle-agent heartbeats incl.)                                        |
@@ -150,7 +150,6 @@ docker build -f services/ssh-gateway/Dockerfile.proxy -t edd-ssh-proxy:e2e .
 docker build -f services/ssh-gateway/Dockerfile.node -t edd-workspace-node:e2e .
 sh scripts/gen-sim-tls-cert.sh   # Pomerium serves real TLS; cert mounted by compose
 docker compose -f docker-compose.e2e.yml up -d --build --wait
-sh scripts/gen-ssh-ca.sh         # golden image retains the CA cert path
 RECONCILER_IMAGE=edd-reconciler:e2e PROXY_IMAGE=edd-ssh-proxy:e2e \
   NODE_IMAGE=edd-workspace-node:e2e pnpm test:e2e
 pnpm --filter web test:pw:live      # browser lifecycle on real ECS compute

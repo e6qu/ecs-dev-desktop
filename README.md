@@ -16,7 +16,7 @@ UI, and an admin control plane. Think self-hosted Coder / GitHub Codespaces.
 - [`docs/running-locally.md`](./docs/running-locally.md) — run/develop/test the app
   locally: `pnpm dev` and the tiered options (fakes → bleephub → sockerless AWS).
 - [`docs/deploying.md`](./docs/deploying.md) — the AWS deployment runbook
-  (Terraform → images → env/secrets → SSH CA → DNS/proxy → seed) — see
+  (Terraform → images → env/secrets → SSH access → DNS/proxy → seed) — see
   [Deploying](#deploying).
 - [`PLAN.md`](./PLAN.md) — phased roadmap with per-phase deliverables + testing.
 - [`TESTING.md`](./TESTING.md) — unit, integration, e2e, HTTPS, Terraform, and
@@ -30,7 +30,7 @@ UI, and an admin control plane. Think self-hosted Coder / GitHub Codespaces.
 - **Component docs:**
   [`infra/images/README.md`](./infra/images/README.md) (golden workspace image) ·
   [`infra/proxy/README.md`](./infra/proxy/README.md) (Pomerium identity-aware proxy) ·
-  [`services/ssh-gateway/README.md`](./services/ssh-gateway/README.md) (OpenSSH + SSH CA).
+  [`services/ssh-gateway/README.md`](./services/ssh-gateway/README.md) (OpenSSH, registered-key auth).
 - [`docs/simulator-live-coverage.md`](./docs/simulator-live-coverage.md) — live
   coverage and next test candidates against the sockerless AWS/Azure simulators.
 - **Continuity files** (kept in sync every task, past tense at PR close):
@@ -41,17 +41,17 @@ UI, and an admin control plane. Think self-hosted Coder / GitHub Codespaces.
 
 ## Architecture at a glance
 
-| Dimension   | Decision                                                                            |
-| ----------- | ----------------------------------------------------------------------------------- |
-| Compute     | AWS ECS Fargate (200+ workspaces)                                                   |
-| Persistence | EBS snapshot as the unit of state (stateful + snapshot + scale-to-zero)             |
-| Auth        | GitHub OAuth + Azure Entra ID, groups → roles                                       |
-| RBAC        | CASL (shared by API and UI)                                                         |
-| SSH         | OpenSSH (`sshd`) + our SSH CA (certificate auth, RBAC via AuthorizedPrincipalsFile) |
-| Web + API   | Next.js, API-first (UI consumes the same API)                                       |
-| State store | DynamoDB single-table + ElectroDB                                                   |
-| Simulators  | sockerless AWS + Azure/Entra + bleephub, built from source                          |
-| IaC         | Terraform · Monorepo: Turborepo + pnpm                                              |
+| Dimension   | Decision                                                                               |
+| ----------- | -------------------------------------------------------------------------------------- |
+| Compute     | AWS ECS Fargate (200+ workspaces)                                                      |
+| Persistence | EBS snapshot as the unit of state (stateful + snapshot + scale-to-zero)                |
+| Auth        | GitHub OAuth + Azure Entra ID, groups → roles                                          |
+| RBAC        | CASL (shared by API and UI)                                                            |
+| SSH         | OpenSSH (`sshd`); registered-key auth via the control plane (dual-trust ssh-authorize) |
+| Web + API   | Next.js, API-first (UI consumes the same API)                                          |
+| State store | DynamoDB single-table + ElectroDB                                                      |
+| Simulators  | sockerless AWS + Azure/Entra + bleephub, built from source                             |
+| IaC         | Terraform · Monorepo: Turborepo + pnpm                                                 |
 
 ## Running the app
 
@@ -90,7 +90,7 @@ Nothing is provisioned on AWS yet — the Terraform module is built and
 **simulator-apply-proven** every PR, with real `apply` gated on an AWS account +
 domain (see [`DO_NEXT.md`](./DO_NEXT.md) open decisions). The full runbook —
 Terraform backend, the module, the **two** images, every required env var/secret,
-the SSH CA, DNS/TLS + proxy, and seeding — is in
+SSH access, DNS/TLS + proxy, and seeding — is in
 **[`docs/deploying.md`](./docs/deploying.md)**. In short:
 
 1. **Provision infra** with the Terraform module
@@ -103,12 +103,12 @@ the SSH CA, DNS/TLS + proxy, and seeding — is in
    (`apps/web` — the control-plane service _and_ the reconciler run it, via a
    command override) and a **golden workspace image** (the
    [`infra/images`](infra/images/README.md) collection — a shared `base` plus
-   `omnibus`/per-language variants; all bake `sshd` + the SSH CA, no separate proxy image).
+   `omnibus`/per-language variants; all bake `sshd` + its registered-key authorizer, no separate proxy image).
 3. **Configure secrets** the module does not inject — Auth.js (`AUTH_SECRET`,
    `AUTH_URL`/`AUTH_TRUST_HOST`) + IdP creds, RBAC groups (`EDD_ADMIN_GROUPS` — set
-   this or no one is an admin), crypto (`EDD_TOKEN_ENC_KEY`, `EDD_GATEWAY_SECRET`,
-   `EDD_AGENT_SECRET`), and the SSH CA private key (`EDD_SSH_CA_KEY` material via
-   Secrets Manager — the secure default; `EDD_SSH_CA_KEY_PATH` if you mount a file).
+   this or no one is an admin), and crypto (`EDD_TOKEN_ENC_KEY`, `EDD_GATEWAY_SECRET`,
+   `EDD_AGENT_SECRET`). SSH needs no extra secret — it is registered-key only, and
+   the gateway/workspace authorize keys via `EDD_GATEWAY_SECRET`/`EDD_AGENT_SECRET`.
    The infra coordinates (`COMPUTE_PROVIDER`, `AUDIT_PROVIDER`, `LOG_PROVIDER`,
    cluster/subnets/roles, …) are injected by the module. Same code, real cloud by
    coordinates alone (`AGENTS.md` §6.8/§6.9).

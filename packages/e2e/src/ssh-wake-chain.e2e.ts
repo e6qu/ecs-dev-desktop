@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { readFileSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 
 import { workspace, type WorkspaceDto } from "@edd/api-contracts";
@@ -95,6 +95,7 @@ describe("SSH wake-on-connect chain against the real control plane", { timeout: 
 
     // Register the connecting client's SSH key for the workspace owner; the gateway
     // authorizes it via the control plane's ssh-authorize.
+    mkdirSync(dirname(USER_KEY), { recursive: true });
     for (const f of [USER_KEY, `${USER_KEY}.pub`]) rmSync(f, { force: true });
     expect(run("ssh-keygen", ["-q", "-t", "ed25519", "-N", "", "-f", USER_KEY]).status).toBe(0);
     const reg = await api("/ssh-keys", {

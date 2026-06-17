@@ -5,8 +5,9 @@
 // public key with the control plane (/api/ssh-keys); the golden image's
 // AuthorizedKeysCommand authorizes it. Used by the golden-workspace-ssh and
 // data-durability suites.
-import { readFileSync, rmSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { createServer } from "node:http";
+import { dirname } from "node:path";
 import { spawnSync } from "node:child_process";
 
 import {
@@ -118,6 +119,7 @@ export interface UserKeyPair {
 /** Generate a fresh ed25519 key at `userKey`, returning the base64 private key +
  * the public-key line the caller registers with the control plane. */
 export function generateUserKey(userKey: string, identity: string): UserKeyPair {
+  mkdirSync(dirname(userKey), { recursive: true });
   for (const p of [userKey, `${userKey}.pub`]) rmSync(p, { force: true });
   const keygen = run("ssh-keygen", [
     "-q",
