@@ -1482,3 +1482,20 @@ MaxResults` has an AWS minimum of 5 — reinforcing the rule to validate every p
   Turborepo cache (`.turbo/cache`), ~6 GB of orphaned `<none>` Docker build layers from the e2e/sim
   image builds, `apps/web/.next`, per-package `dist/`, and scratch `temp/`, and downed the project
   compose stacks — ~59 GB reclaimed (40 GB → 93 GB free), all regenerable.
+- **2026-06-17 — Built out the `e2e-aws` workflow (first slice: real EBS snapshot round-trip).**
+  Turned the `e2e-aws.yml` skeleton (echoed TODOs) into a working manual real-AWS tier, chosen by
+  the user with the explicit "untestable until the account lands" caveat. Kept it **self-contained
+  and safe** rather than refactoring the sim-defaulting coordinate plumbing blind (which would risk
+  breaking green CI): `packages/e2e/src/aws-ebs-smoke.ts` builds the EC2 client from real
+  coordinates only (`AWS_REGION` + OIDC creds, **no** endpoint override — it refuses to run if
+  `AWS_ENDPOINT_URL` is set, since a set endpoint means a sim) and does create gp3 volume → snapshot
+  → wait-completed (logging the **real** completion latency a sim can't model) → restore a new
+  volume from the snapshot → assert lineage; it deletes its own resources in `finally`. The workflow
+  adds OIDC role assumption (role/region from repo `vars`, no static keys), a `confirm=RUN` dispatch
+  gate, a 30-min timeout (cost cap), and a belt-and-suspenders `always()` step that sweeps everything
+  tagged `edd-e2eaws-run=<run-id>` so a hard crash can't leak resources. Validated what's testable:
+  `@edd/e2e` tsc + eslint clean, knip entry registered, **actionlint clean** (incl. shellcheck on the
+  teardown bash). The real run + teardown are validated only once an account is supplied (DO_NEXT #1);
+  documented in TESTING.md (set `E2E_AWS_ROLE_ARN`, dispatch with `confirm=RUN`). Fuller suites the
+  sim can't cover (Fargate cold-start, federation, IAM enforcement, 200+ load, wake-on-connect) are
+  added as further jobs once this first slice is validated.

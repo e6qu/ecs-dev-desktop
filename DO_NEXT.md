@@ -161,6 +161,13 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
   (account + remote state backend), golden image real Fargate deploy, wiring `apps/web`
   to real adapters, Pomerium real federation + DNS, reconciler cron, CloudTrail/
   CloudWatch/Cost observability, Phase 7, `e2e-aws`.
+  - **`e2e-aws` first slice is BUILT (2026-06-17), gated only on the role/secrets.** The
+    workflow (`.github/workflows/e2e-aws.yml`) wires OIDC → role, a self-contained real-EBS
+    snapshot round-trip smoke (`packages/e2e/src/aws-ebs-smoke.ts`), an `always()` tag-sweep
+    teardown, and a 30-min cost cap. To run when AWS lands: set repo vars `E2E_AWS_ROLE_ARN`
+    (+ optional `E2E_AWS_REGION`) and dispatch on `main` with `confirm=RUN`. **Untested until
+    a real account exists** — validate the teardown on the first run. Fuller suites (Fargate
+    cold-start, federation, IAM enforcement, 200+ load, wake-on-connect) follow as further jobs.
 - **On DNS (#2):** real `*.devbox.<domain>` routing + ACM (the module is sim-proven;
   the real hosted zone + cert issuance is AWS/registrar-gated).
 

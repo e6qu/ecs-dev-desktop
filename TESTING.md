@@ -90,6 +90,19 @@ Exclusively certifies what no simulator can:
 6. IAM least-privilege actually enforcing (Access Analyzer / policy simulator).
 7. KMS grants, cross-region snapshot copy, DR drills.
 
+**Status — first slice wired (`.github/workflows/e2e-aws.yml`).** The `ebs` job
+runs `packages/e2e/src/aws-ebs-smoke.ts` — a self-contained EBS snapshot
+round-trip on real EC2 (create gp3 volume → snapshot → measure real completion
+latency → restore a new volume → assert lineage), with no compute/ECR so teardown
+is trivial. It builds the EC2 client from real coordinates only (refuses to run if
+`AWS_ENDPOINT_URL` is set — there is no sim here). The smoke deletes its own
+resources in `finally`; the workflow **also** sweeps everything tagged
+`edd-e2eaws-run=<run-id>` on `always()`, behind a 30-min timeout (cost guardrail).
+To run: set repo variables **`E2E_AWS_ROLE_ARN`** (an OIDC-assumable role with EC2
+EBS perms) and optionally `E2E_AWS_REGION`, then dispatch the workflow on `main`
+with input **`confirm=RUN`**. Items 2–7 above are added as further jobs once this is
+validated against a real account (DO_NEXT #1).
+
 ## Infrastructure tests
 
 CI runs `terraform fmt -check -recursive`, `init -backend=false`, and `validate`
