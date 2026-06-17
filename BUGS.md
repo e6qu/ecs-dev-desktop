@@ -14,11 +14,13 @@ per-workspace log view. The **one substantial item left is
 external**: `e2e-aws` (the whole real-cloud tier — EBS durability, real Fargate
 cold-start, IAM, ACM/DNS, EMF→CloudWatch metrics + alarms, live registered-key SSH)
 is unrun, blocked on the AWS account/region decision (`DO_NEXT.md` #1). Otherwise
-only the triaged observability follow-ups remain (2026-06-17): **`parseLevel` done**
+the triaged observability follow-ups are now closed (2026-06-17): **`parseLevel` done**
 (reads the structured log `level`); **cached fleet status done** (short-TTL
-single-flight memo on the admin Overview); **per-user quota gauges** (_Low_) awkward
-fit (reconciler lacks role→limit); **control-plane self-health** (_Low_) deliberately
-hardcoded `ok` by construction. See [`docs/observability-gaps.md`](./docs/observability-gaps.md).
+single-flight memo on the admin Overview); **per-user quota gauges done**
+(`quota.utilization` + `quota.denied`, emitted event-driven from the create path);
+**control-plane self-health** (_Low_) deliberately hardcoded `ok` by construction. So
+the only observability item left is the AWS-gated `e2e-aws` tier. See
+[`docs/observability-gaps.md`](./docs/observability-gaps.md).
 
 ECS compute hardening follow-ups (from the 2026-06-13 gap audit; the impactful
 ones were fixed — see Resolved — these remain as deliberate follow-ups, not

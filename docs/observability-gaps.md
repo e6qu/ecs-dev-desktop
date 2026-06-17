@@ -105,7 +105,10 @@ active}` and a priced `fleet.cost.usd` once per sweep.
 
 **Gaps.**
 
-- Per-user quota-utilization gauges are not yet emitted. _Low._
+- ~~Per-user quota-utilization gauges are not yet emitted.~~ **Done (2026-06-17).**
+  The create route emits a `quota.utilization` gauge (`owned / limit`, dimensioned by
+  role; 0 when unlimited) and a `quota.denied` count on rejection — the create path is
+  the one place that knows both the owner's count and their role-derived limit.
 - Real-AWS verification that EMF stdout lands as CloudWatch metrics + alarms fire
   (only the JSON shape is unit-tested; the sim has no metrics endpoint). _Tracked
   under `e2e-aws`._
@@ -163,11 +166,10 @@ Remaining:
      single-flight memo (`lib/ttl-cache.ts` + `lib/fleet-status.ts`); chosen over a
      reconciler-persisted aggregate (staleness = the ~5-min sweep) for fresher data with
      a bounded scan rate.
-   - **Per-user quota-utilization gauges** (_Low_) — awkward fit: the reconciler
-     (where fleet gauges are emitted) has each workspace's `ownerId` but not the
-     owner's role, and the limit is `workspaceLimit(role)`. A true utilization gauge
-     needs role→limit resolution the reconciler lacks; deferred until that's worth
-     wiring (or emit it event-driven from the create path where role is known).
+   - **Per-user quota-utilization gauges** (_Low_) — **DONE** via the event-driven
+     approach foreseen here: emitted from the create path (which knows the role-derived
+     limit), not the reconciler (which has `ownerId` but not the role). `quota.utilization`
+     gauge + `quota.denied` count, dimensioned by role.
    - **Control-plane self-health** (_Low_) — deliberately left hardcoded `ok`: by
      construction it is the process answering its own request, so it cannot
      meaningfully self-report degraded (if it were down it couldn't answer).
