@@ -1,12 +1,14 @@
 #!/usr/bin/env sh
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# Generate an ephemeral SSH CA for the SSH e2e harness (docker-compose.ssh.yml).
+# Generate an ephemeral SSH CA for the SSH e2e tests. The golden workspace image
+# retains the CA cert auth path (TrustedUserCAKeys) alongside the new dual-trust
+# registered-key path, so the cert-based e2e suites still use this CA.
 # Output: temp/ssh-ca/ca (private key) and temp/ssh-ca/ca.pub (public key).
 #
-# The public key is mounted into the workspace-node container as TrustedUserCAKeys.
-# The private key is used by the test (ssh-connect.e2e.ts) to sign short-lived user
-# certificates; it is never committed (temp/ is gitignored).
+# The public key is injected into the workspace as TrustedUserCAKeys.
+# The private key is used by the cert-based e2e suites (e.g. golden-workspace-ssh)
+# to sign short-lived user certificates; it is never committed (temp/ is gitignored).
 #
 # Portable: POSIX sh, passes shellcheck, runs under bash and zsh on macOS+Linux.
 # Idempotent: overwrites any existing key to ensure the mounted pub key matches.
