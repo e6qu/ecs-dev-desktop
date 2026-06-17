@@ -1,9 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# sshd configuration for the golden workspace image (dual-trust SSH path).
-# Registered-key auth: AuthorizedKeysCommand asks the control plane whether the
-# presented key is registered to this workspace's owner (authenticated by the
-# per-workspace agent token). No standing key trust — the decision is made per
-# connection and is revocable by removing the key.
+# sshd configuration for the golden workspace image. Two control-plane-mediated
+# auth paths coexist:
+#  - Registered key (dual-trust): AuthorizedKeysCommand asks the control plane
+#    whether the presented key is registered to this workspace's owner
+#    (per-workspace agent token); per-connection, revocable.
+#  - SSH CA certificate (the established path): sshd trusts the control-plane CA
+#    and maps the cert principal to the `workspace` login via AuthorizedPrincipalsFile.
+# Either succeeds independently; the CA path is retained for compatibility while
+# clients migrate to registered keys.
 
 # Per-image drop-ins live here so variants can override them — notably the
 # `SetEnv PATH` for the `ssh <host> '<cmd>'` exec channel (a non-login,
@@ -23,11 +27,17 @@ PasswordAuthentication no
 ChallengeResponseAuthentication no
 PubkeyAuthentication yes
 
-# Authorize the presented key against the control plane (per-workspace agent
-# token, read from /run/edd-ssh-env). Runs as root pre-auth; the script + that
-# env file are root-only so the workspace user can't read the agent token.
+# Registered-key path: authorize the presented key against the control plane
+# (per-workspace agent token, read from /run/edd-ssh-env). Runs as root pre-auth;
+# the script + that env file are root-only so the workspace user can't read the
+# agent token.
 AuthorizedKeysCommand /usr/local/bin/edd-authorized-keys %t %k
 AuthorizedKeysCommandUser root
+
+# SSH CA path: trust the control-plane CA (public key injected at runtime) and map
+# the certificate principal to the `workspace` login.
+TrustedUserCAKeys /etc/ssh/workspace-ca.pub
+AuthorizedPrincipalsFile /etc/ssh/principals/%u
 
 AllowUsers workspace
 X11Forwarding no
