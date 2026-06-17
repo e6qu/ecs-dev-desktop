@@ -1,9 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { execFileSync } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 import { workspace } from "@edd/api-contracts";
 import { dynamodb } from "@edd/config";
@@ -31,17 +27,6 @@ const RUN_ID = randomUUID().slice(0, 8);
 const WORKSPACE_IMAGE = process.env.WORKSPACE_IMAGE ?? "edd-workspace:e2e";
 const OWNER = "ide-user";
 
-/** Throwaway ed25519 CA public key — the workspace entrypoint requires
- * EDD_SSH_CA_PUBLIC_KEY to configure sshd (this flow exercises the HTTP IDE). */
-function genCaPublicKey(): string {
-  const dir = mkdtempSync(join(tmpdir(), "edd-ideflow-ca-"));
-  const key = join(dir, "ca");
-  execFileSync("ssh-keygen", ["-q", "-t", "ed25519", "-N", "", "-f", key, "-C", "edd-ideflow-ca"]);
-  const pub = readFileSync(`${key}.pub`, "utf8").trim();
-  rmSync(dir, { recursive: true, force: true });
-  return pub;
-}
-
 /** Follow OpenVSCode's token redirect with a cookie jar (node fetch has none):
  * `/?tkn=` → 302 (Set-Cookie) → GET the workbench with that cookie. */
 async function fetchWorkbench(bridge: IdeBridge): Promise<{ status: number; body: string }> {
@@ -68,7 +53,6 @@ describe(
         vpcCidr: "10.80.0.0/16",
         subnetCidr: "10.80.1.0/24",
         agentSecret: randomBytes(32).toString("hex"),
-        sshCaPublicKey: genCaPublicKey(),
       });
     });
 

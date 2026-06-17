@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 
@@ -16,33 +16,33 @@ import { devHeaders, startWebApp, type WebApp } from "./web-app";
 /**
  * Wake-on-connect chain e2e against the REAL control plane (no stub):
  *
- *   ssh client → gateway proxy container (ForceCommand wake-and-forward.sh)
+ *   ssh client (registered key) → gateway proxy container
+ *     → AuthorizedKeysCommand → POST /ssh-authorize (the key is registered to the
+ *       workspace's owner) → sshd accepts → ForceCommand wake-and-forward.sh
  *     → POST /connect + GET /:id + GET /connect-info on the production-built
  *       `apps/web` (HMAC gateway machine-auth, DynamoDB Local persistence)
- *     → nc forward to the workspace node's sshd (docker-compose.ssh.yml)
  *
- * The workspace is STOPPED before the connection, so the chain only succeeds
- * if the gateway's API calls genuinely wake it (snapshot → running) first.
- * The user's certificate comes from the real POST /ssh-cert route.
- *
- * The component-level proxy test (stub control plane) lives in
- * services/ssh-gateway; this one proves the gateway↔control-plane contract.
+ * The workspace is STOPPED before the connection, so it only reaches "running" if
+ * the gateway's machine-auth API calls genuinely wake it. This proves the
+ * gateway↔control-plane contract end to end; landing a shell on a workspace node
+ * is covered by services/ssh-gateway/src/ssh-proxy.e2e.ts.
  */
 
 const TABLE = "ecs-dev-desktop-ssh-wake-chain-e2e";
 const GATEWAY_SECRET = "c".repeat(64); // 32 bytes hex
 const PROXY_IMAGE = process.env.PROXY_IMAGE ?? "edd-ssh-proxy:e2e";
-const PROXY_PORT = "2224"; // 2222 = workspace node, 2223 = stub-CP proxy test
-const COMPOSE_NETWORK = "ecs-dev-desktop_default";
-const WORKSPACE_NODE = "edd-workspace-node";
+const PROXY_PORT = "2224";
 const NODE_IMAGE = "golden/node:20";
 const OWNER = "wake-chain-user";
+// The fake compute records no ENI; connect-info points the gateway here. nc to it
+// fails (no real node), but the wake already happened by then — which is the assertion.
+const FAKE_SSH_HOST = "192.0.2.2"; // TEST-NET-1, unreachable
 
-const SSH_CA_DIR = join(import.meta.dirname, "../../../services/ssh-gateway/temp/ssh-ca");
-const CA_KEY = join(SSH_CA_DIR, "ca");
-const CA_PUB = join(SSH_CA_DIR, "ca.pub");
-const USER_KEY = join(SSH_CA_DIR, "wake-chain-id");
-
+const USER_KEY = join(
+  import.meta.dirname,
+  "../../../services/ssh-gateway/temp/ssh-ca",
+  "wake-chain-id",
+);
 const CMD_TIMEOUT_MS = 30_000;
 
 process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
@@ -57,19 +57,6 @@ function run(
   return { status: res.status ?? -1, stdout: res.stdout, stderr: res.stderr };
 }
 
-/** Provision the dev-<wsId> OS login in a container (production uses NSS modules). */
-function provisionPrincipal(container: string, principal: string, withPrincipalsFile: boolean) {
-  const cmds = [
-    `useradd --create-home --shell /bin/bash ${principal}`,
-    `usermod -p '*' ${principal}`,
-    ...(withPrincipalsFile
-      ? [`printf '%s\\n' ${principal} > /etc/ssh/principals/${principal}`]
-      : []),
-  ].join(" && ");
-  const res = run("docker", ["exec", container, "sh", "-c", cmds]);
-  if (res.status !== 0) throw new Error(`provision ${principal} in ${container}: ${res.stderr}`);
-}
-
 describe("SSH wake-on-connect chain against the real control plane", { timeout: 300_000 }, () => {
   let web: WebApp;
   let wsId = "";
@@ -77,14 +64,10 @@ describe("SSH wake-on-connect chain against the real control plane", { timeout: 
   let proxyContainerId = "";
 
   async function api(path: string, init?: RequestInit): Promise<Response> {
-    return fetch(`${web.baseUrl}/api${path}`, {
-      headers: devHeaders(OWNER, "member"),
-      ...init,
-    });
+    return fetch(`${web.baseUrl}/api${path}`, { headers: devHeaders(OWNER, "member"), ...init });
   }
 
   beforeAll(async () => {
-    // Fresh table + catalog seed for the real control plane.
     const client = createDynamoClient();
     await dropTable(client, TABLE);
     await ensureTable(client, TABLE);
@@ -97,9 +80,7 @@ describe("SSH wake-on-connect chain against the real control plane", { timeout: 
       DYNAMODB_ENDPOINT: process.env.DYNAMODB_ENDPOINT ?? dynamodb.endpoint,
       DYNAMODB_TABLE: TABLE,
       EDD_GATEWAY_SECRET: GATEWAY_SECRET,
-      EDD_SSH_CA_KEY_PATH: CA_KEY,
-      // Fake compute records no ENI; point connect-info at the harness node.
-      EDD_FAKE_SSH_HOST: WORKSPACE_NODE,
+      EDD_FAKE_SSH_HOST: FAKE_SSH_HOST,
     }));
 
     // Create the workspace through the real API, as a member.
@@ -112,23 +93,20 @@ describe("SSH wake-on-connect chain against the real control plane", { timeout: 
     wsId = ws.id;
     principal = workspacePrincipal(wsId);
 
-    // Real SSH cert issuance: the control plane signs the user's public key.
-    for (const f of [USER_KEY, `${USER_KEY}.pub`, `${USER_KEY}-cert.pub`])
-      rmSync(f, { force: true });
-    const keygen = run("ssh-keygen", ["-q", "-t", "ed25519", "-N", "", "-f", USER_KEY]);
-    expect(keygen.status, keygen.stderr).toBe(0);
-    const certRes = await api(`/workspaces/${wsId}/ssh-cert`, {
+    // Register the connecting client's SSH key for the workspace owner; the gateway
+    // authorizes it via the control plane's ssh-authorize.
+    for (const f of [USER_KEY, `${USER_KEY}.pub`]) rmSync(f, { force: true });
+    expect(run("ssh-keygen", ["-q", "-t", "ed25519", "-N", "", "-f", USER_KEY]).status).toBe(0);
+    const reg = await api("/ssh-keys", {
       method: "POST",
-      body: JSON.stringify({ publicKey: readFileSync(`${USER_KEY}.pub`, "utf8") }),
+      body: JSON.stringify({ publicKey: readFileSync(`${USER_KEY}.pub`, "utf8").trim() }),
     });
-    expect(certRes.status).toBe(200);
-    const { cert } = (await certRes.json()) as { cert: string };
-    writeFileSync(`${USER_KEY}-cert.pub`, cert);
+    expect(reg.status).toBe(201);
 
     // Scale to zero so the gateway MUST wake it for the chain to work.
     expect((await api(`/workspaces/${wsId}/stop`, { method: "POST" })).status).toBe(200);
 
-    // Gateway proxy container on the harness network, pointed at the real CP.
+    // Gateway proxy container, pointed at the real control plane via the host alias.
     const port = new URL(web.baseUrl).port;
     const target = hostReachableTarget(PROXY_IMAGE);
     const docker = run("docker", [
@@ -136,11 +114,7 @@ describe("SSH wake-on-connect chain against the real control plane", { timeout: 
       "-d",
       "-p",
       `${PROXY_PORT}:22`,
-      "--network",
-      COMPOSE_NETWORK,
       ...target.dockerArgs,
-      "-v",
-      `${CA_PUB}:/etc/ssh/workspace-ca.pub:ro`,
       "-e",
       `EDD_CONTROL_PLANE_URL=http://${target.host}:${port}`,
       "-e",
@@ -150,9 +124,15 @@ describe("SSH wake-on-connect chain against the real control plane", { timeout: 
     if (docker.status !== 0) throw new Error(`docker run failed: ${docker.stderr}`);
     proxyContainerId = docker.stdout.trim();
 
-    // The login user must exist where sshd authenticates it.
-    provisionPrincipal(proxyContainerId, principal, false);
-    provisionPrincipal(WORKSPACE_NODE, principal, true);
+    // The dev-<id> login user must exist where sshd authenticates it.
+    const provision = run("docker", [
+      "exec",
+      proxyContainerId,
+      "sh",
+      "-c",
+      `useradd --create-home --shell /bin/bash ${principal} && usermod -p '*' ${principal}`,
+    ]);
+    if (provision.status !== 0) throw new Error(`provision ${principal}: ${provision.stderr}`);
 
     // Wait for the proxy sshd to accept TCP.
     const deadline = Date.now() + 20_000;
@@ -167,35 +147,23 @@ describe("SSH wake-on-connect chain against the real control plane", { timeout: 
     if (proxyContainerId) run("docker", ["rm", "-f", proxyContainerId]);
     web.stop();
     await dropTable(createDynamoClient(), TABLE);
+    for (const f of [USER_KEY, `${USER_KEY}.pub`]) rmSync(f, { force: true });
   });
 
-  it("SSH through the gateway wakes the stopped workspace and reaches the node", async () => {
+  it("SSH with a registered key wakes the stopped workspace through the gateway", async () => {
     // Sanity: the workspace is stopped before the connection.
     const before = workspace.parse(await (await api(`/workspaces/${wsId}`)).json());
     expect(before.state).toBe("stopped");
 
-    // Inner leg: a normal SSH session to the gateway — sshd runs the ForceCommand
-    // (wake-and-forward.sh), which calls the REAL control plane and then bridges
-    // stdio to the workspace node. The outer ssh speaks the SSH protocol through
-    // that bridge and authenticates to the workspace node with the same cert.
-    const innerCmd = [
-      "ssh",
-      "-i",
-      USER_KEY,
-      "-o",
-      "StrictHostKeyChecking=no",
-      "-o",
-      "UserKnownHostsFile=/dev/null",
-      "-o",
-      "ConnectTimeout=10",
-      "-p",
-      PROXY_PORT,
-      `${principal}@localhost`,
-    ].join(" ");
-
-    const res = run(
+    // Connect to the gateway as the workspace principal with the registered key.
+    // sshd authorizes the key (AuthorizedKeysCommand → ssh-authorize) and runs the
+    // ForceCommand, which calls the REAL control plane to wake the workspace, then
+    // tries to nc to the (unreachable) fake host — so the ssh exits non-zero, but
+    // the wake has already happened, which is what we assert.
+    run(
       "ssh",
       [
+        "-T",
         "-i",
         USER_KEY,
         "-o",
@@ -203,19 +171,27 @@ describe("SSH wake-on-connect chain against the real control plane", { timeout: 
         "-o",
         "UserKnownHostsFile=/dev/null",
         "-o",
-        `ProxyCommand=${innerCmd}`,
+        "IdentitiesOnly=yes",
         "-o",
-        "ConnectTimeout=15",
-        `${principal}@${WORKSPACE_NODE}`,
-        "whoami",
+        "ConnectTimeout=10",
+        "-p",
+        PROXY_PORT,
+        `${principal}@localhost`,
       ],
-      60_000,
+      30_000,
     );
-    expect(res.status, `chain SSH failed:\n${res.stdout}${res.stderr}`).toBe(0);
-    expect(res.stdout.trim()).toBe(principal);
 
-    // The wake really happened through the gateway's machine-auth API calls.
-    const after = workspace.parse(await (await api(`/workspaces/${wsId}`)).json());
-    expect(after.state).toBe("running");
+    // The wake really happened through the gateway's machine-auth API calls — only
+    // possible if the gateway first authorized the registered key.
+    const deadline = Date.now() + 30_000;
+    let state = before.state;
+    while (Date.now() < deadline) {
+      state = workspace.parse(await (await api(`/workspaces/${wsId}`)).json()).state;
+      if (state === "running") break;
+      await new Promise((r) => setTimeout(r, 1_000));
+    }
+    expect(state, "gateway must wake the stopped workspace via the real control plane").toBe(
+      "running",
+    );
   });
 });

@@ -44,8 +44,6 @@ export interface LiveEcsAppOptions {
   subnetCidr: string;
   /** 32-byte hex agent secret for the in-workspace idle-agent HMAC path. */
   agentSecret: string;
-  /** Trusted SSH CA public key injected into workspace tasks. */
-  sshCaPublicKey: string;
   /** Extra env merged into the web app (e.g. EDD_HEARTBEAT_INTERVAL_S). */
   extraEnv?: Record<string, string>;
 }
@@ -97,7 +95,6 @@ export async function startLiveEcsApp(opts: LiveEcsAppOptions): Promise<LiveEcsA
     ECS_LOG_GROUP_WORKSPACES: logGroup,
     CONTROL_PLANE_URL: `http://${hostAlias}:${String(port)}`,
     EDD_AGENT_SECRET: opts.agentSecret,
-    EDD_SSH_CA_PUBLIC_KEY: opts.sshCaPublicKey,
     ...opts.extraEnv,
   }));
 

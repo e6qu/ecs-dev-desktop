@@ -7,7 +7,7 @@
 # with `FROM` and add their own tools. Extensions are sourced from Open VSX.
 #
 # Runtime env vars expected by the container (consumed by the shared entrypoint):
-#   EDD_WORKSPACE_ID, EDD_CONTROL_PLANE_URL, EDD_AGENT_TOKEN, EDD_SSH_CA_PUBLIC_KEY
+#   EDD_WORKSPACE_ID, EDD_CONTROL_PLANE_URL, EDD_AGENT_TOKEN
 #   EDD_HEARTBEAT_INTERVAL_S (optional), CONNECTION_TOKEN (injected by ECS secrets)
 FROM node:22-bookworm-slim
 

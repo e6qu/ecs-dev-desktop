@@ -75,7 +75,8 @@ export const SYSTEM_TOPOLOGY: Topology = {
       id: "control-plane",
       label: "Control plane (web)",
       kind: "compute",
-      description: "Next.js login + admin UI + API; issues SSH certs and drives the lifecycle.",
+      description:
+        "Next.js login + admin UI + API; authorizes registered SSH keys and drives the lifecycle.",
     },
     {
       id: "reconciler",

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { randomUUID } from "node:crypto";
-import { readFileSync, rmSync, writeFileSync } from "node:fs";
+import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 
@@ -10,7 +10,7 @@ import { EC2Client } from "@aws-sdk/client-ec2";
 import { workspace, workspaceInspection, type WorkspaceDetailDto } from "@edd/api-contracts";
 import { aws, dynamodb } from "@edd/config";
 import { CatalogService } from "@edd/control-plane";
-import { baseImage, systemClock, workspacePrincipal } from "@edd/core";
+import { baseImage, systemClock } from "@edd/core";
 import { createDynamoClient, dropTable, ensureTable, makeBaseImageEntity } from "@edd/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -34,9 +34,9 @@ import { devHeaders, startWebApp, type WebApp } from "./web-app";
  *
  * Steps: create (real ECS task launches) → admin Inspect shows real bindings →
  * the IN-WORKSPACE idle-agent posts real HMAC heartbeats back to the control
- * plane (lastActivity advances) → SSH cert issuance via the API → point-in-time
- * snapshot → stop (scale to zero; the sim task really stops) → wake-on-connect
- * (a NEW task hydrates from the snapshot) → delete.
+ * plane (lastActivity advances) → register an account SSH key via the API →
+ * point-in-time snapshot → stop (scale to zero; the sim task really stops) →
+ * wake-on-connect (a NEW task hydrates from the snapshot) → delete.
  */
 
 configureAwsSimEnv();
@@ -161,16 +161,13 @@ describe(
         CONTROL_PLANE_URL: `http://${hostAlias}:${String(port)}`,
         EDD_AGENT_SECRET: AGENT_SECRET,
         EDD_HEARTBEAT_INTERVAL_S: String(HEARTBEAT_INTERVAL_S),
-        EDD_SSH_CA_KEY_PATH: join(SSH_CA_DIR, "ca"),
-        EDD_SSH_CA_PUBLIC_KEY: readFileSync(join(SSH_CA_DIR, "ca.pub"), "utf8").trim(),
       }));
     });
 
     afterAll(async () => {
       web.stop();
       await dropTable(createDynamoClient(), TABLE);
-      for (const f of [USER_KEY, `${USER_KEY}.pub`, `${USER_KEY}-cert.pub`])
-        rmSync(f, { force: true });
+      for (const f of [USER_KEY, `${USER_KEY}.pub`]) rmSync(f, { force: true });
     });
 
     it("creates a workspace: a real golden-image ECS task with managed EBS", async () => {
@@ -211,22 +208,19 @@ describe(
       expect(advanced, "idle-agent heartbeat never advanced lastActivity").toBe(true);
     });
 
-    it("issues a real SSH certificate for the workspace principal via the API", async () => {
+    it("registers an account SSH key the workspace authorizes by ownership", async () => {
       const keygen = run("ssh-keygen", ["-q", "-t", "ed25519", "-N", "", "-f", USER_KEY]);
       expect(keygen.status, keygen.stderr).toBe(0);
-      const res = await api(`/workspaces/${wsId}/ssh-cert`, {
-        method: "POST",
-        body: JSON.stringify({ publicKey: readFileSync(`${USER_KEY}.pub`, "utf8") }),
-      });
-      expect(res.status).toBe(200);
-      const { cert } = (await res.json()) as { cert: string };
-      expect(cert).toMatch(/^ssh-ed25519-cert-v01@openssh\.com /);
+      const publicKey = readFileSync(`${USER_KEY}.pub`, "utf8").trim();
+      const res = await api("/ssh-keys", { method: "POST", body: JSON.stringify({ publicKey }) });
+      expect(res.status).toBe(201);
+      const { key } = (await res.json()) as { key: { fingerprint: string; keyType: string } };
+      expect(key.keyType).toBe("ssh-ed25519");
+      expect(key.fingerprint).toMatch(/^SHA256:/);
 
-      // The cert really grants the workspace principal (ssh-keygen -L).
-      const certFile = `${USER_KEY}-cert.pub`;
-      writeFileSync(certFile, cert);
-      const inspectCert = run("ssh-keygen", ["-L", "-f", certFile]);
-      expect(inspectCert.stdout).toContain(workspacePrincipal(wsId));
+      // It is listed for the owner — the gateway/workspace authorize SSH by this.
+      const listed = (await (await api("/ssh-keys")).json()) as { keys: { fingerprint: string }[] };
+      expect(listed.keys.some((k) => k.fingerprint === key.fingerprint)).toBe(true);
     });
 
     it("takes a point-in-time snapshot through the API (real EBS snapshot)", async () => {
