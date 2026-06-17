@@ -1470,3 +1470,15 @@ MaxResults` has an AWS minimum of 5 — reinforcing the rule to validate every p
   self-health** (_Low_) is deliberately hardcoded `ok` (by construction it answers its own request).
   This closes the cleanly-fixable observability `Low` items; what's left is the AWS-gated `e2e-aws`
   tier plus the one Medium item that's a deliberate design decision.
+- **2026-06-17 — Cached fleet status (the Medium observability item) + 53 GB local cleanup.**
+  Picked the short-TTL strategy (user's call): the admin Overview now reads `getFleetStatus()` —
+  the fleet aggregate (state tallies + distinct owners) behind a generic **single-flight `ttlCache`**
+  (`apps/web/lib/ttl-cache.ts`, 10s TTL) — instead of a full `cp.list()` scan per page load, so
+  bursts (multiple admins / live refresh) collapse to one scan at 200+ workspaces. Chose short-TTL
+  over a reconciler-persisted aggregate (whose staleness would be the ~5-min sweep). `ttlCache`
+  takes `nowMs` for deterministic tests (§6.10): caches within TTL, reloads after, shares an
+  in-flight load across concurrent callers, and does **not** cache a rejection (4 unit tests).
+  Also did a **local disk cleanup** at the user's request (disk was 90% full): cleared the 53 GB
+  Turborepo cache (`.turbo/cache`), ~6 GB of orphaned `<none>` Docker build layers from the e2e/sim
+  image builds, `apps/web/.next`, per-package `dist/`, and scratch `temp/`, and downed the project
+  compose stacks — ~59 GB reclaimed (40 GB → 93 GB free), all regenerable.

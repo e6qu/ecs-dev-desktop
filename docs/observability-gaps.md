@@ -73,8 +73,10 @@ breakdown via `tallyWorkspaceStates`), per-workspace inspect, costs, quotas.
 
 **Gaps.**
 
-- Overview recomputes from a full `cp.list()` scan per load — fine now, but the
-  platform targets 200+ workspaces; no cached/aggregated fleet status. _Medium._
+- ~~Overview recomputes from a full `cp.list()` scan per load~~ **Done (2026-06-17).**
+  The admin Overview now reads `getFleetStatus()` — the fleet aggregate (state tallies +
+  distinct owners) cached for a short TTL (10s) via a single-flight `ttlCache`, so bursts
+  (multiple admins / live refresh) collapse to one scan at 200+ workspaces.
 - No real-time status (cold-start in progress, wake latency, per-workspace
   last-heartbeat age). _Low._
 
@@ -157,10 +159,10 @@ Remaining:
 2. Minor follow-ups, triaged 2026-06-17:
    - **`parseLevel` heuristic on the log read side — DONE** (reads the structured
      `level`; see above).
-   - **Cached fleet status for 200+ scale** (_Medium_) — the one with real value left.
-     Deferred pending a **caching-strategy decision** (short-TTL memo vs a
-     reconciler-persisted aggregate vs `unstable_cache` revalidation) and its
-     staleness tolerance — an architecture call, not a mechanical fix.
+   - **Cached fleet status for 200+ scale** (_Medium_) — **DONE** via a short-TTL (10s)
+     single-flight memo (`lib/ttl-cache.ts` + `lib/fleet-status.ts`); chosen over a
+     reconciler-persisted aggregate (staleness = the ~5-min sweep) for fresher data with
+     a bounded scan rate.
    - **Per-user quota-utilization gauges** (_Low_) — awkward fit: the reconciler
      (where fleet gauges are emitted) has each workspace's `ownerId` but not the
      owner's role, and the limit is `workspaceLimit(role)`. A true utilization gauge

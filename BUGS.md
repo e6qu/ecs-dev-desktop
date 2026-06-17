@@ -15,10 +15,10 @@ external**: `e2e-aws` (the whole real-cloud tier — EBS durability, real Fargat
 cold-start, IAM, ACM/DNS, EMF→CloudWatch metrics + alarms, live registered-key SSH)
 is unrun, blocked on the AWS account/region decision (`DO_NEXT.md` #1). Otherwise
 only the triaged observability follow-ups remain (2026-06-17): **`parseLevel` done**
-(reads the structured log `level`); **cached fleet status** (_Medium_) deferred
-pending a caching-strategy decision; **per-user quota gauges** (_Low_) awkward fit;
-**control-plane self-health** (_Low_) deliberately hardcoded `ok` by construction.
-See [`docs/observability-gaps.md`](./docs/observability-gaps.md).
+(reads the structured log `level`); **cached fleet status done** (short-TTL
+single-flight memo on the admin Overview); **per-user quota gauges** (_Low_) awkward
+fit (reconciler lacks role→limit); **control-plane self-health** (_Low_) deliberately
+hardcoded `ok` by construction. See [`docs/observability-gaps.md`](./docs/observability-gaps.md).
 
 ECS compute hardening follow-ups (from the 2026-06-13 gap audit; the impactful
 ones were fixed — see Resolved — these remain as deliberate follow-ups, not
