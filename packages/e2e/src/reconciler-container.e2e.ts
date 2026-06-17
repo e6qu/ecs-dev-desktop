@@ -21,8 +21,6 @@ import {
   DescribeLogStreamsCommand,
   GetLogEventsCommand,
 } from "@aws-sdk/client-cloudwatch-logs";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 
 import { EC2Client } from "@aws-sdk/client-ec2";
 import { EcsComputeProvider } from "@edd/compute-ecs";
@@ -70,7 +68,6 @@ const FAKE_EBS_ROLE = "arn:aws:iam::000000000000:role/ecsInfrastructureRole";
 // (TEST-NET control plane) is exactly the "user went away" idle scenario.
 const UNREACHABLE_CP = "http://192.0.2.1:9";
 const AGENT_SECRET = "f".repeat(64);
-const SSH_CA_PUB = join(import.meta.dirname, "../../../services/ssh-gateway/temp/ssh-ca/ca.pub");
 // Backdated past DEFAULT_IDLE_THRESHOLD_MS (30 min) so the sweep must stop it.
 const STALE_BY_MS = 45 * 60 * 1000;
 
@@ -144,7 +141,6 @@ describe(
             assignPublicIp: true,
             controlPlaneUrl: UNREACHABLE_CP,
             agentSecret: AGENT_SECRET,
-            sshCaPublicKey: readFileSync(SSH_CA_PUB, "utf8").trim(),
           },
         }),
         clock: systemClock,
