@@ -329,16 +329,8 @@ const sshPublicKeyField = z
   .max(SSH_PUBLIC_KEY_MAX, "publicKey is too large")
   .refine((s) => SSH_PUBLIC_KEY_RE.test(s.trim()), "publicKey is not a valid OpenSSH public key");
 
-/** POST /api/workspaces/:id/ssh-cert — request body. */
-export const sshCertRequest = z.object({
-  /** User's SSH public key in OpenSSH authorized_keys format (e.g. "ssh-ed25519 AAAA... comment"). */
-  publicKey: sshPublicKeyField,
-});
-export type SshCertRequest = z.infer<typeof sshCertRequest>;
-
-/** POST /api/ssh-keys — register an account-level SSH public key. The key is
- * validated identically to the cert path; `label` is an optional human name
- * (e.g. "laptop"), trimmed and length-capped. */
+/** POST /api/ssh-keys — register an account-level SSH public key. `label` is an
+ * optional human name (e.g. "laptop"), trimmed and length-capped. */
 export const registerSshKeyRequest = z.object({
   publicKey: sshPublicKeyField,
   label: z.string().trim().max(100, "label is too long").optional(),
@@ -387,13 +379,6 @@ export const sshAuthorizeResponse = z.object({
   principal: z.string().optional(),
 });
 export type SshAuthorizeResponse = z.infer<typeof sshAuthorizeResponse>;
-
-/** POST /api/workspaces/:id/ssh-cert — response body. */
-export const sshCertResponse = z.object({
-  /** Signed OpenSSH certificate ready to write to ~/.ssh/id_*-cert.pub. */
-  cert: z.string(),
-});
-export type SshCertResponse = z.infer<typeof sshCertResponse>;
 
 /** GET /api/workspaces/:id/connect-info — response body. */
 export const sshConnectInfo = z.object({

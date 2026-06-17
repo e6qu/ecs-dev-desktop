@@ -13,8 +13,6 @@ import {
   logStreamResult,
   registerSshKeyRequest,
   registerSshKeyResponse,
-  sshCertRequest,
-  sshCertResponse,
   sshConnectInfo,
   updateBaseImageRequest,
   workspace,
@@ -30,8 +28,6 @@ import {
   type LogStreamDto,
   type LogStreamResultDto,
   type RegisterSshKeyRequest,
-  type SshCertRequest,
-  type SshCertResponse,
   type SshConnectInfo,
   type SshKeyDto,
   type UpdateBaseImageRequest,
@@ -140,17 +136,6 @@ export class ApiClient {
   async heartbeatWorkspace(id: string): Promise<WorkspaceDto> {
     const res = await this.send(`/api/workspaces/${id}/heartbeat`, { method: "POST" });
     return workspace.parse(await res.json());
-  }
-
-  /** Issue a short-lived SSH certificate signed by the workspace SSH CA. */
-  async sshCert(id: string, req: SshCertRequest): Promise<SshCertResponse> {
-    const body = sshCertRequest.parse(req);
-    const res = await this.send(`/api/workspaces/${id}/ssh-cert`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    return sshCertResponse.parse(await res.json());
   }
 
   /** Get the SSH host:port of a running workspace's task ENI (wake first via connectWorkspace). */
