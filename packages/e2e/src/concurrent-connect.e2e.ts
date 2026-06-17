@@ -1,7 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 
 import { ListTasksCommand } from "@aws-sdk/client-ecs";
 import { workspace, workspaceInspection } from "@edd/api-contracts";
@@ -33,7 +31,6 @@ const WORKSPACE_IMAGE = "edd-workspace:e2e";
 const AGENT_SECRET = "a1".repeat(32);
 const OWNER = "race-user";
 const RACERS = 5;
-const SSH_CA_DIR = join(import.meta.dirname, "../../../services/ssh-gateway/temp/ssh-ca");
 
 describe(
   "concurrent wake-on-connect race (real CP + container-mode sim)",
@@ -63,7 +60,6 @@ describe(
         vpcCidr: "10.74.0.0/16",
         subnetCidr: "10.74.1.0/24",
         agentSecret: AGENT_SECRET,
-        sshCaPublicKey: readFileSync(join(SSH_CA_DIR, "ca.pub"), "utf8").trim(),
       });
     });
 

@@ -16,10 +16,9 @@ export function isWorkspaceLabel(value: string): boolean {
 
 /**
  * SSH principal a workspace container runs as. The gateway authenticates the
- * human identity (via a registered key or our SSH CA cert), then connects as
- * this system user. `AuthorizedPrincipalsFile` in the workspace node's
- * sshd_config maps the OS user to the allowed certificate principal — they must
- * match.
+ * human identity by their registered public key (its `AuthorizedKeysCommand`
+ * asks the control plane's `ssh-authorize` whether the presented key belongs to
+ * the workspace owner), then connects as this system user.
  */
 export function workspacePrincipal(workspaceId: string): string {
   if (!isWorkspaceLabel(workspaceId)) {

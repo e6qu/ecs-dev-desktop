@@ -11,8 +11,6 @@
 // secret-injected token — is covered by the user-journey heartbeat e2e, whose
 // provider also now takes the Secrets Manager path via fromEnv.) Endpoint-only.
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 
 import { CloudWatchLogsClient, CreateLogGroupCommand } from "@aws-sdk/client-cloudwatch-logs";
 import { CreateSubnetCommand, CreateVpcCommand, EC2Client } from "@aws-sdk/client-ec2";
@@ -42,9 +40,6 @@ const EBS_ROLE = "arn:aws:iam::123456789012:role/ecsInfrastructureRole";
 const AGENT_SECRET = "a".repeat(64); // 32-byte hex master HMAC key (test value)
 const CONTROL_PLANE_URL = "http://127.0.0.1:3000";
 const LOG_GROUP = `/edd/e2e/agent-secret-${RUN_ID}`;
-// The golden image's entrypoint validates required env (control-plane URL + SSH CA)
-// and exits if absent; provide the same config the golden-ssh e2e proves keeps it up.
-const CA_PUB = join(import.meta.dirname, "../../../services/ssh-gateway/temp/ssh-ca/ca.pub");
 
 describe(
   "agent token delivered via Secrets Manager (container-mode sim)",
@@ -79,7 +74,6 @@ describe(
           containerName: WORKSPACE_CONTAINER,
           controlPlaneUrl: CONTROL_PLANE_URL,
           agentSecret: AGENT_SECRET,
-          sshCaPublicKey: readFileSync(CA_PUB, "utf8").trim(),
           logGroupName: LOG_GROUP,
         },
       });

@@ -2,18 +2,19 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-17 (SSH dual-trust Slice 2c complete + docker-e2e validated; only AWS-gated public ingress left)
+**Last updated:** 2026-06-17 (SSH clean break: CA path fully removed, registered-key only; e2e migrated; only AWS-gated public ingress left)
 
 ## Current phase
 
 **In progress — user-registered SSH keys + per-workspace SSH subdomain (Phase 4b).**
 The user asked for: each user inputs their SSH key, and SSHes into each running
-workspace at its own subdomain. Confirmed design (refines §1's short-lived user
-certs): the human→gateway hop authenticates by the **registered public key**
-(Codespaces/Coder-style) and authorizes the workspace by **ownership at connect
-time**; the SSH **CA stays for the internal gateway↔workspace hop**; routing is
-wildcard-DNS → one public gateway (stock OpenSSH; the workspace id rides in the
-subdomain/username since SSH has no SNI). **Slices 1+2 landed on `feat/ssh-key-registration`:**
+workspace at its own subdomain. Confirmed design: SSH is **registered-key only** —
+both the human→gateway hop and the internal gateway→workspace hop authenticate by
+the user's **registered public key** and authorize the workspace by **ownership at
+connect time** (`ssh-authorize`). There is **no SSH CA and no certificates** — the
+CA path was fully removed in a clean break (we carry no legacy; mid-development).
+Routing is wildcard-DNS → one public gateway (stock OpenSSH; the workspace id rides
+in the subdomain/username since SSH has no SNI). **Slices 1+2 landed on `feat/ssh-key-registration`:**
 
 - **Slice 1 (foundation):** branded ids + pure `fingerprintPublicKey` (matches
   `ssh-keygen -lf`) + `workspaceSshHost`/`isWorkspaceLabel` (`@edd/core`);
@@ -35,13 +36,24 @@ terminating bastion; no Teleport — same public surface either way, and dual-tr
 keeps VS Code Remote-SSH/scp/forwarding). Both sshds authorize the **same registered
 key** via `ssh-authorize` (the gateway with its token, the workspace with its agent
 token). On `feat/ssh-dual-trust`: `ssh-authorize` accepts both tokens; the **gateway**
-sshd uses `AuthorizedKeysCommand`; the **golden image** added `AuthorizedKeysCommand`
-**alongside** the retained CA cert path (additive — the cert-based e2e suites keep
-passing; `EDD_SSH_CA_PUBLIC_KEY` now optional). The `ssh-proxy.e2e.ts` was rewritten
-self-contained (worker-thread stub control plane + docker-run node + proxy) and
-**validated 2/2 green**: a registered key is authorized at both hops and lands on the
-node, an unregistered key is denied. Deleted the obsolete `ssh-connect.e2e.ts` +
-`docker-compose.ssh.yml`; CI builds `edd-workspace-node:e2e`. **Only Slice 3 left —
+sshd and the **golden image** both authorize via `AuthorizedKeysCommand`. The
+`ssh-proxy.e2e.ts` was rewritten self-contained (worker-thread stub control plane +
+docker-run node + proxy) and **validated 2/2 green**: a registered key is authorized
+at both hops and lands on the node, an unregistered key is denied.
+
+**Clean-break CA removal complete (2026-06-17, `feat/ssh-registered-key-only`).**
+With dual-trust proven, the entire SSH-CA path was deleted — no additive shim, no
+legacy: the `/ssh-cert` route + `lib/ssh-cert.ts`, the `sshCert*` contracts +
+api-client method, `scripts/gen-ssh-ca.sh`, `docker-compose.ssh.yml`, the
+`EDD_SSH_CA_*` config + compute-provider env injection, the Terraform
+`ssh_ca_public_key` var **and** its #108 half-config precondition, and all CA wiring
+from the golden/gateway/node images. The cert-based e2e suites were migrated to
+registered keys: `golden-workspace-ssh` + `data-durability` use an in-process
+`ssh-authorize` stub control plane; `user-journey` registers an account key via the
+API; `ssh-wake-chain` registers a key and proves the gateway wakes a STOPPED
+workspace through the **real** control plane (landing-on-node stays covered by
+`ssh-proxy`). Docs + the architecture table + the `EDD_SSH_CA_KEY` deploy secret
+were all updated. CI builds `edd-workspace-node:e2e`. **Only Slice 3 left —
 public SSH NLB + Route53 `*.ssh` (AWS-gated, decision #1).** See `PLAN.md` §4b.
 
 **Catalog and session-launch UX cleanup are now part of the current mainline state.**
@@ -102,19 +114,10 @@ target-specific assertion (§6.9). That path is — correctly — covered in the
 container-mode `e2e` tier (`agent-secret.e2e.ts`, workspace-lifecycle, user-journey).
 `BUGS.md` was updated to mark #569 confirmed and close the follow-up; no code change.
 
-A second stale note was then run down: the "remaining deploy wiring gap —
-`EDD_SSH_CA_KEY_PATH` not provisioned by Terraform." It is not a gap. The CA
-**private** key is provisioned the recommended way — `EDD_SSH_CA_KEY` material via
-`secret_environment`, wired as ECS `secrets` on the control-plane task with
-execution-role `GetSecretValue` and never landing in TF state (`ecs.tf`/`iam.tf`,
-docs/deploying.md Step 4); the on-disk `_PATH` variant is dev-only by design. While
-there, a real footgun was hardened: the control-plane task def gained a `precondition`
-that fails the plan when `ssh_ca_public_key` is set without a matching `EDD_SSH_CA_KEY`
-in `secret_environment` (workspaces would trust a CA that can never sign certs —
-previously a runtime-only failure). Verified: `terraform fmt`/`validate` green and the
-condition's three cases checked via `terraform console` (footgun → blocked; both-set →
-ok; SSH-disabled → ok); the sim test and `examples/complete` set neither var, so both
-stay unaffected.
+(A second stale note about `EDD_SSH_CA_KEY` Terraform provisioning, and the #108
+half-config `precondition` added to guard it, are now moot — the entire SSH-CA
+path was removed in the 2026-06-17 clean break above. There is no CA secret, no
+`ssh_ca_public_key` var, and no precondition to provision or guard.)
 
 ## Prior phase (merged, #105)
 

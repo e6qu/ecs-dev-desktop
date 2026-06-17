@@ -31,7 +31,7 @@ variable "route53_zone_id" {
 }
 
 variable "auth_secret_arns" {
-  description = "Map of env-var name → Secrets Manager ARN for ALL secret env vars (auth + crypto + SSH CA), e.g. AUTH_SECRET, AUTH_GITHUB_*, EDD_TOKEN_ENC_KEY, EDD_GATEWAY_SECRET, EDD_AGENT_SECRET, EDD_SSH_CA_KEY."
+  description = "Map of env-var name → Secrets Manager ARN for ALL secret env vars (auth + crypto), e.g. AUTH_SECRET, AUTH_GITHUB_*, EDD_TOKEN_ENC_KEY, EDD_GATEWAY_SECRET, EDD_AGENT_SECRET."
   type        = map(string)
   default     = {}
 }

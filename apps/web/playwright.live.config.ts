@@ -9,7 +9,7 @@ import { defineConfig, devices } from "@playwright/test";
  * same live path as `packages/e2e/src/user-journey.e2e.ts`.
  *
  * Harness prerequisites (same as the e2e tier — see TESTING.md):
- * docker-compose.e2e.yml up, `edd-workspace:e2e` built, gen-ssh-ca.sh run.
+ * docker-compose.e2e.yml up, `edd-workspace:e2e` built.
  * Provisioning happens in the webServer command (Playwright starts the
  * webServer BEFORE globalSetup): `start-live-app.sh` → `live-cloud-setup.ts`.
  */

@@ -18,7 +18,6 @@ availability_zones = ["us-east-1a", "us-east-1b"]
 #   EDD_TOKEN_ENC_KEY  = "arn:aws:secretsmanager:us-east-1:111122223333:secret:edd/token-enc-key-AbCdEf"
 #   EDD_GATEWAY_SECRET = "arn:aws:secretsmanager:us-east-1:111122223333:secret:edd/gateway-secret-AbCdEf"
 #   EDD_AGENT_SECRET   = "arn:aws:secretsmanager:us-east-1:111122223333:secret:edd/agent-secret-AbCdEf"
-#   EDD_SSH_CA_KEY     = "arn:aws:secretsmanager:us-east-1:111122223333:secret:edd/ssh-ca-key-AbCdEf"
 # }
 
 # Non-secret config. EDD_ADMIN_GROUPS is REQUIRED — without it no one is an admin.

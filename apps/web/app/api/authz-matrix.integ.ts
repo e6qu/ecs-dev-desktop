@@ -22,7 +22,6 @@ import { POST as snapshotWs } from "./workspaces/[id]/snapshot/route";
 import { POST as connectWs } from "./workspaces/[id]/connect/route";
 import { POST as heartbeatWs } from "./workspaces/[id]/heartbeat/route";
 import { GET as connectInfo } from "./workspaces/[id]/connect-info/route";
-import { POST as sshCert } from "./workspaces/[id]/ssh-cert/route";
 import { GET as listBaseImages, POST as createBaseImage } from "./base-images/route";
 
 // Route handlers ignore the request host/path (they read headers + body); these
@@ -122,14 +121,6 @@ describe("authorization matrix: item routes deny viewer and unauthenticated", ()
     {
       name: "GET /:id/connect-info",
       call: (id, r) => connectInfo(item(id, "/connect-info", r, "GET"), routeCtx(id)),
-    },
-    {
-      name: "POST /:id/ssh-cert",
-      call: (id, r) =>
-        sshCert(
-          item(id, "/ssh-cert", r, "POST", { publicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5 x" }),
-          routeCtx(id),
-        ),
     },
   ];
 

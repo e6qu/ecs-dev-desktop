@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { randomUUID } from "node:crypto";
-import { readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -27,11 +26,12 @@ import {
 } from "@aws-sdk/client-ecs";
 import { EcsComputeProvider } from "@edd/compute-ecs";
 import { DEFAULT_AWS_REGION, DEFAULT_WORKSPACE_PORT as WORKSPACE_PORT } from "@edd/config";
-import { baseImage, workspaceId, workspacePrincipal } from "@edd/core";
+import { baseImage, workspaceId } from "@edd/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { awsSimClientConfig, configureAwsSimEnv, required, sleep } from "./aws-sim";
-import { run, taskExitCode } from "./golden-ssh-helpers";
+import { hostReachableTarget } from "./docker-host";
+import { generateUserKey, startSshAuthorizeStub, taskExitCode } from "./golden-ssh-helpers";
 
 configureAwsSimEnv();
 
@@ -44,17 +44,17 @@ const CLIENT_CONTAINER = "client";
 const WORKSPACE_CONTAINER = "workspace";
 const WORKSPACE_ID = `ws-golden-${RUN_ID}`;
 const LOG_GROUP = `/edd/e2e/golden-ssh-${RUN_ID}`;
-const CONTROL_PLANE_URL = "http://127.0.0.1:3000";
 const EBS_ROLE = "arn:aws:iam::123456789012:role/ecsInfrastructureRole";
 const AGENT_SECRET = "a".repeat(64);
 const SSH_ATTEMPTS = 30;
 const ECS_EXEC_MARKER = `edd-ecs-exec-${RUN_ID}`;
 const ECS_EXEC_TIMEOUT_MS = 15_000;
 const SSM_MESSAGE_SCHEMA_VERSION = "1.0";
-const SSH_CA_DIR = join(import.meta.dirname, "../../../services/ssh-gateway/temp/ssh-ca");
-const CA_KEY = join(SSH_CA_DIR, "ca");
-const CA_PUB = join(SSH_CA_DIR, "ca.pub");
-const USER_KEY = join(SSH_CA_DIR, `golden-${RUN_ID}`);
+const USER_KEY = join(
+  import.meta.dirname,
+  "../../../services/ssh-gateway/temp/ssh-ca",
+  `golden-${RUN_ID}`,
+);
 
 const SIM = awsSimClientConfig();
 
@@ -156,42 +156,6 @@ async function waitForTask(
   throw new Error(`task ${taskArn} never reached ${status}`);
 }
 
-function signUserCert(principal: string): { privateKeyBase64: string; cert: string } {
-  for (const path of [USER_KEY, `${USER_KEY}.pub`, `${USER_KEY}-cert.pub`]) {
-    rmSync(path, { force: true });
-  }
-  const keygen = run("ssh-keygen", [
-    "-q",
-    "-t",
-    "ed25519",
-    "-N",
-    "",
-    "-f",
-    USER_KEY,
-    "-C",
-    "edd-golden-workspace-e2e",
-  ]);
-  if (keygen.status !== 0) throw new Error(`ssh-keygen key failed: ${keygen.stderr}`);
-
-  const signed = run("ssh-keygen", [
-    "-s",
-    CA_KEY,
-    "-I",
-    `edd-golden-${RUN_ID}`,
-    "-n",
-    principal,
-    "-V",
-    "+1h",
-    `${USER_KEY}.pub`,
-  ]);
-  if (signed.status !== 0) throw new Error(`ssh-keygen sign failed: ${signed.stderr}`);
-
-  return {
-    privateKeyBase64: readFileSync(USER_KEY).toString("base64"),
-    cert: readFileSync(`${USER_KEY}-cert.pub`, "utf8").trim(),
-  };
-}
-
 describe(
   "golden workspace image against the container-mode AWS simulator",
   { timeout: 240_000 },
@@ -218,7 +182,10 @@ describe(
       await ec2.send(new DeleteVpcCommand({ VpcId: vpcId }));
     });
 
-    async function runWorkspaceTask(): Promise<{ taskArn: string; sshHost: string }> {
+    async function runWorkspaceTask(controlPlaneUrl: string): Promise<{
+      taskArn: string;
+      sshHost: string;
+    }> {
       const compute = new EcsComputeProvider({
         client: ecs,
         config: {
@@ -227,9 +194,8 @@ describe(
           ebsRoleArn: EBS_ROLE,
           assignPublicIp: false,
           containerName: WORKSPACE_CONTAINER,
-          controlPlaneUrl: CONTROL_PLANE_URL,
+          controlPlaneUrl,
           agentSecret: AGENT_SECRET,
-          sshCaPublicKey: readFileSync(CA_PUB, "utf8").trim(),
           logGroupName: LOG_GROUP,
         },
       });
@@ -240,17 +206,12 @@ describe(
       return { taskArn: task.id, sshHost: required(task.sshHost, "sshHost") };
     }
 
-    async function registerClientTask(
-      host: string,
-      privateKeyBase64: string,
-      cert: string,
-    ): Promise<string> {
+    async function registerClientTask(host: string, privateKeyBase64: string): Promise<string> {
       const script = [
         'printf "%s" "$SSH_PRIVATE_KEY_B64" | base64 -d > /tmp/id',
-        'printf "%s\\n" "$SSH_CERT" > /tmp/id-cert.pub',
-        "chmod 600 /tmp/id /tmp/id-cert.pub",
+        "chmod 600 /tmp/id",
         `for i in $(seq 1 ${SSH_ATTEMPTS}); do`,
-        `  if ssh -i /tmp/id -o CertificateFile=/tmp/id-cert.pub -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=3 workspace@${host} whoami > /tmp/out 2>&1 && grep -q '^workspace$' /tmp/out; then`,
+        `  if ssh -i /tmp/id -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=3 workspace@${host} whoami > /tmp/out 2>&1 && grep -q '^workspace$' /tmp/out; then`,
         // The same awsvpc task also serves OpenVSCode on :3000; without a
         // connection token it answers 403 (its token gate) — proof the editor
         // HTTP service is up inside the sim ECS task, not just sshd.
@@ -277,10 +238,7 @@ describe(
               essential: true,
               entryPoint: ["sh", "-c"],
               command: [script],
-              environment: [
-                { name: "SSH_PRIVATE_KEY_B64", value: privateKeyBase64 },
-                { name: "SSH_CERT", value: cert },
-              ],
+              environment: [{ name: "SSH_PRIVATE_KEY_B64", value: privateKeyBase64 }],
               logConfiguration: {
                 logDriver: "awslogs",
                 options: {
@@ -301,14 +259,19 @@ describe(
       return (out.events ?? []).map((event) => event.message ?? "").join("\n");
     }
 
-    it("launches the managed-EBS golden image, accepts CA-signed SSH, and serves OpenVSCode on :3000", async () => {
-      const { taskArn: workspaceTaskArn, sshHost } = await runWorkspaceTask();
+    it("launches the managed-EBS golden image, accepts a registered SSH key, and serves OpenVSCode on :3000", async () => {
+      // The connecting client's registered key; the stub control plane (reachable
+      // from inside the sim task) authorizes it via the golden image's
+      // AuthorizedKeysCommand → ssh-authorize.
+      const { privateKeyBase64, publicKey } = generateUserKey(USER_KEY, "edd-golden-workspace-e2e");
+      const hostAlias = hostReachableTarget(WORKSPACE_IMAGE).host;
+      const stub = await startSshAuthorizeStub(publicKey, hostAlias);
+      const { taskArn: workspaceTaskArn, sshHost } = await runWorkspaceTask(stub.controlPlaneUrl);
       try {
         await waitForTask(ecs, workspaceTaskArn, "RUNNING");
         expect(sshHost).toMatch(/^10\.71\.1\.\d+$/);
 
-        const { privateKeyBase64, cert } = signUserCert(workspacePrincipal(WORKSPACE_ID));
-        const clientTaskDef = await registerClientTask(sshHost, privateKeyBase64, cert);
+        const clientTaskDef = await registerClientTask(sshHost, privateKeyBase64);
         const clientRun = await ecs.send(
           new RunTaskCommand({
             cluster: CLUSTER,
@@ -323,6 +286,7 @@ describe(
         const stopped = await waitForTask(ecs, clientTask, "STOPPED");
         expect(taskExitCode(stopped), await logMessages()).toBe(0);
       } finally {
+        stub.stop();
         await ecs.send(new StopTaskCommand({ cluster: CLUSTER, task: workspaceTaskArn }));
         await waitForTask(ecs, workspaceTaskArn, "STOPPED");
       }

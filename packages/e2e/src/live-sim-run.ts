@@ -8,10 +8,6 @@
 //
 // Endpoint-only (§6.8): the same code targets real AWS by changing coordinates.
 import { randomBytes } from "node:crypto";
-import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 import { workspace } from "@edd/api-contracts";
 import { dynamodb } from "@edd/config";
@@ -20,17 +16,6 @@ import { configureAwsSimEnv } from "./aws-sim";
 import { startIdeBridge } from "./ide-bridge";
 import { startLiveEcsApp } from "./live-ecs-app";
 import { devHeaders } from "./web-app";
-
-/** Generate a throwaway ed25519 CA public key (the workspace entrypoint requires
- * EDD_SSH_CA_PUBLIC_KEY to configure sshd; this harness exercises the HTTP IDE). */
-function genCaPublicKey(): string {
-  const dir = mkdtempSync(join(tmpdir(), "edd-live-ca-"));
-  const key = join(dir, "ca");
-  execFileSync("ssh-keygen", ["-q", "-t", "ed25519", "-N", "", "-f", key, "-C", "edd-live-ca"]);
-  const pub = readFileSync(`${key}.pub`, "utf8").trim();
-  rmSync(dir, { recursive: true, force: true });
-  return pub;
-}
 
 configureAwsSimEnv();
 // Pin DynamoDB to the standalone DynamoDB-Local container (8000), not the sim's
@@ -46,7 +31,6 @@ const app = await startLiveEcsApp({
   vpcCidr: "10.70.0.0/16",
   subnetCidr: "10.70.1.0/24",
   agentSecret: randomBytes(32).toString("hex"),
-  sshCaPublicKey: genCaPublicKey(),
 });
 
 // Create one workspace through the real API (real RunTask on the sim cluster) and

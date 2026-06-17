@@ -27,7 +27,7 @@ sim writes to ECS-managed EBS → snapshot → new task restores → data presen
 (`packages/e2e`). `EcsComputeProvider` + full `WorkspaceService` lifecycle run on it.
 
 - ⬜ **AWS-gated:** publish the `infra/images` golden base (OpenVSCode Server +
-  idle-agent, Open VSX, OpenSSH CA/principal wiring); real Fargate deploy;
+  idle-agent, Open VSX, OpenSSH registered-key wiring); real Fargate deploy;
   cold-start baseline; image vuln scan.
 - **Gate:** sim ✅; real EBS durability/latency + cold-start → `e2e-aws`.
 
@@ -58,10 +58,12 @@ leg over TLS in `e2e-https`; sockerless#547 gates Entra group→role interactive
 
 ## Phase 4 — SSH gateway — 🟡
 
-✅ Standard OpenSSH (`sshd`) workspace node + ephemeral SSH CA + certificate auth +
-`AuthorizedPrincipalsFile` RBAC — connect-as-principal + authz-deny mock-free in Docker
-(`services/ssh-gateway`). Control plane owns the CA; Auth.js handles user auth, portal
-issues short-lived SSH certificates. ✅ Wake-on-connect proxy component path:
+✅ Standard OpenSSH (`sshd`) workspace node + **registered-key auth** —
+connect-as-user and authz-deny proven mock-free in Docker (`services/ssh-gateway`).
+The gateway and workspace sshd both authorize the user's registered public key via
+the control plane's `ssh-authorize`; Auth.js handles user auth. (The original
+ephemeral-CA / short-lived certificate approach was superseded and removed in 4b —
+registered-key only, no CA.) ✅ Wake-on-connect proxy component path:
 `WorkspaceService.connect()` is idempotent and wakes scaled-to-zero from snapshot;
 the gateway calls `connect` + `connect-info` before forwarding to a workspace node.
 
@@ -79,7 +81,8 @@ wake-on-connect against a real ECS workspace task on the container-mode sim.
 
 **Goal:** a user registers their SSH **public** key once (account settings), then
 SSHes to each running workspace at its **own subdomain** (`<workspaceId>.<sshzone>`).
-Decision (confirmed with the user; refines §1's "short-lived user certs"):
+Decision (confirmed with the user; **replaces** §1's original "short-lived user
+certs" — SSH is now registered-key only, no CA):
 authenticate the human by the **registered key** (Codespaces/Coder-style) and
 authorize the specific workspace **by ownership at connect time**. Routing is
 wildcard-DNS → single public gateway (stock OpenSSH; SSH has no SNI, so the
@@ -120,10 +123,7 @@ transparency at the same public surface; the workspace authorizes per-connection
   - **Gateway** sshd → `AuthorizedKeysCommand` (`authorized-keys.sh`, gateway token);
     transparent `nc` forward unchanged, so the session stays end-to-end.
   - **Golden image** (`infra/images/base`): added `AuthorizedKeysCommand`
-    (`authorized-keys.sh`, agent token, root, root-only `/run/edd-ssh-env`)
-    **alongside** the retained CA cert path — additive, so the many cert-based e2e
-    suites that SSH into the golden image keep passing; `EDD_SSH_CA_PUBLIC_KEY` is now
-    optional (empty CA file → only registered-key active; sshd accepts it).
+    (`authorized-keys.sh`, agent token, root, root-only `/run/edd-ssh-env`).
   - **e2e** (`ssh-proxy.e2e.ts`): rewritten self-contained — an in-process stub
     control plane in a **worker thread** (keeps serving while the main thread blocks on
     `spawnSync`) + docker-run node + proxy. Asserts a registered key is authorized at
@@ -131,6 +131,18 @@ transparency at the same public surface; the workspace authorizes per-connection
     denied. **Validated locally 2/2 green.** Deleted the obsolete cert-based
     `ssh-connect.e2e.ts` + `docker-compose.ssh.yml`; CI/test-e2e build
     `edd-workspace-node:e2e` and pass `NODE_IMAGE`.
+- ✅ **Slice 2d — clean-break CA removal (no AWS)** (`feat/ssh-registered-key-only`).
+  With dual-trust proven, deleted the entire SSH-CA path (no additive shim, no legacy):
+  the `/ssh-cert` route + `lib/ssh-cert.ts`, `sshCert*` contracts + api-client method,
+  `scripts/gen-ssh-ca.sh`, `docker-compose.ssh.yml`, the `EDD_SSH_CA_*` config +
+  compute-provider env injection, the Terraform `ssh_ca_public_key` var **and** its #108
+  half-config `precondition`, and all CA wiring from the golden/gateway/node images.
+  Migrated the cert-based e2e suites to registered keys: `golden-workspace-ssh` +
+  `data-durability` use an in-process `ssh-authorize` **stub** control plane;
+  `user-journey` registers an account key via the API; `ssh-wake-chain` registers a key
+  and proves the gateway wakes a STOPPED workspace through the **real** control plane
+  (landing-on-node stays covered by `ssh-proxy`). Docs + the architecture table +
+  the `EDD_SSH_CA_KEY` deploy secret all updated.
 - ⬜ **Slice 3 — ingress (AWS-gated, decision #1):** public SSH NLB + listener;
   Route53 `*.<sshzone>` wildcard wired to the gateway. **Last remaining slice.**
 - **Gate:** register/list/delete ✅; ssh-authorize decision (both tokens) ✅; Settings

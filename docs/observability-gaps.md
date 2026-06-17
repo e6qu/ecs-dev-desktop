@@ -143,8 +143,8 @@ Done (2026-06-14): readiness probe (`/api/readyz`), storage Health-board check,
 structured logging (control plane + reconciler), a metrics layer (wake latency +
 reconciler counts) with CloudWatch alarms, CloudTrail audit pagination, **API
 request latency/error metrics + access logging, fleet + cost gauges, reconciler
-health (heartbeat staleness), per-workspace log view, and SSH CA key-material
-support** (`EDD_SSH_CA_KEY` via Secrets Manager — no CA key in Terraform state).
+health (heartbeat staleness), and a per-workspace log view**. (SSH is
+registered-key only — no CA key material to manage.)
 
 Remaining:
 

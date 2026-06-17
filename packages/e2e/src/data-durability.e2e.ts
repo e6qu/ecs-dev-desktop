@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { randomUUID } from "node:crypto";
-import { readFileSync, rmSync } from "node:fs";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
 
 import { CloudWatchLogsClient, CreateLogGroupCommand } from "@aws-sdk/client-cloudwatch-logs";
@@ -9,20 +9,20 @@ import { EC2Client } from "@aws-sdk/client-ec2";
 import { EcsComputeProvider } from "@edd/compute-ecs";
 import { dynamodb } from "@edd/config";
 import { WorkspaceService } from "@edd/control-plane";
-import {
-  baseImage,
-  ownerId,
-  systemClock,
-  unwrap,
-  workspaceId,
-  workspacePrincipal,
-} from "@edd/core";
+import { baseImage, ownerId, systemClock, unwrap, workspaceId } from "@edd/core";
 import { createDynamoClient, dropTable, ensureTable, makeWorkspaceEntity } from "@edd/db";
 import { Ec2StorageProvider } from "@edd/storage-ec2";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { awsSimClientConfig, configureAwsSimEnv, createVpcWithEgress, required } from "./aws-sim";
-import { runSshClientTask, signWorkspaceCert, waitForTask } from "./golden-ssh-helpers";
+import { hostReachableTarget } from "./docker-host";
+import {
+  generateUserKey,
+  runSshClientTask,
+  startSshAuthorizeStub,
+  type SshAuthorizeStub,
+  waitForTask,
+} from "./golden-ssh-helpers";
 
 /**
  * Data durability across a REAL scale-to-zero cycle, driven through
@@ -48,13 +48,13 @@ const LOG_GROUP = `/edd/e2e/durability-${RUN_ID}`;
 const WORKSPACE_IMAGE = "edd-workspace:e2e";
 const EBS_ROLE = "arn:aws:iam::123456789012:role/ecsInfrastructureRole";
 const AGENT_SECRET = "d2".repeat(32);
-const CONTROL_PLANE_URL = "http://127.0.0.1:3000"; // idle-agent heartbeats fail harmlessly
 const SUBNET_CIDR_RE = /^10\.76\.1\.\d+$/;
 
-const SSH_CA_DIR = join(import.meta.dirname, "../../../services/ssh-gateway/temp/ssh-ca");
-const CA_KEY = join(SSH_CA_DIR, "ca");
-const CA_PUB = join(SSH_CA_DIR, "ca.pub");
-const USER_KEY = join(SSH_CA_DIR, `durability-${RUN_ID}`);
+const USER_KEY = join(
+  import.meta.dirname,
+  "../../../services/ssh-gateway/temp/ssh-ca",
+  `durability-${RUN_ID}`,
+);
 
 const SIM = awsSimClientConfig();
 
@@ -67,6 +67,8 @@ describe(
     let dynamo: ReturnType<typeof createDynamoClient>;
     let service: WorkspaceService;
     let subnetId: string;
+    let privateKeyBase64 = "";
+    let stub: SshAuthorizeStub;
 
     beforeAll(async () => {
       const vpc = await createVpcWithEgress(ec2, {
@@ -80,6 +82,12 @@ describe(
         new CreateLogGroupCommand({ logGroupName: LOG_GROUP }),
       );
 
+      // Registered key + a stub control plane (reachable from inside sim tasks) that
+      // authorizes it via the golden image's AuthorizedKeysCommand → ssh-authorize.
+      const key = generateUserKey(USER_KEY, `durable-${RUN_ID}`);
+      privateKeyBase64 = key.privateKeyBase64;
+      stub = await startSshAuthorizeStub(key.publicKey, hostReachableTarget(WORKSPACE_IMAGE).host);
+
       dynamo = createDynamoClient();
       await dropTable(dynamo, TABLE);
       await ensureTable(dynamo, TABLE);
@@ -92,9 +100,8 @@ describe(
             cluster: CLUSTER,
             subnets: [subnetId],
             ebsRoleArn: EBS_ROLE,
-            controlPlaneUrl: CONTROL_PLANE_URL,
+            controlPlaneUrl: stub.controlPlaneUrl,
             agentSecret: AGENT_SECRET,
-            sshCaPublicKey: readFileSync(CA_PUB, "utf8").trim(),
             logGroupName: LOG_GROUP,
           },
         }),
@@ -103,9 +110,9 @@ describe(
     });
 
     afterAll(async () => {
+      stub.stop();
       await dropTable(dynamo, TABLE);
-      for (const p of [USER_KEY, `${USER_KEY}.pub`, `${USER_KEY}-cert.pub`])
-        rmSync(p, { force: true });
+      for (const p of [USER_KEY, `${USER_KEY}.pub`]) rmSync(p, { force: true });
     });
 
     it("a file written into a workspace survives stop → snapshot → wake", async () => {
@@ -120,13 +127,7 @@ describe(
       expect(firstHost).toMatch(SUBNET_CIDR_RE);
       await waitForTask(ecs, CLUSTER, firstTask, "RUNNING");
 
-      // 2. SSH in and write a unique marker + its checksum to the managed mount.
-      const cred = signWorkspaceCert(
-        CA_KEY,
-        USER_KEY,
-        workspacePrincipal(ws.id),
-        `durable-${RUN_ID}`,
-      );
+      // 2. SSH in (registered key) and write a unique marker + checksum to the mount.
       const marker = `edd-durable-${RUN_ID}-${randomUUID().slice(0, 8)}`;
       const writeExit = await runSshClientTask(ecs, {
         cluster: CLUSTER,
@@ -135,7 +136,7 @@ describe(
         logGroup: LOG_GROUP,
         family: `durability-writer-${RUN_ID}`,
         host: firstHost,
-        cred,
+        privateKeyBase64,
         remoteCmd: `printf %s '${marker}' > /home/workspace/persist.txt && sha256sum /home/workspace/persist.txt > /home/workspace/persist.sha && sync`,
       });
       expect(writeExit, "writing the marker over SSH should succeed").toBe(0);
@@ -163,7 +164,7 @@ describe(
         logGroup: LOG_GROUP,
         family: `durability-reader-${RUN_ID}`,
         host: secondHost,
-        cred,
+        privateKeyBase64,
         remoteCmd: `cd /home/workspace && sha256sum -c persist.sha && grep -q '${marker}' persist.txt`,
       });
       expect(verifyExit, "the marker must survive scale-to-zero byte-for-byte").toBe(0);

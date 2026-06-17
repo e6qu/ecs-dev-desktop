@@ -4,9 +4,6 @@
 // hello-world (producing a real artifact) as the non-root `workspace` user over
 // a login shell (the PATH the OpenVSCode terminal / SSH session actually get).
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -29,12 +26,6 @@ function sh(cmd: string): string {
 }
 
 beforeAll(() => {
-  const keyDir = mkdtempSync(join(tmpdir(), "edd-tc-ca-"));
-  const caKey = join(keyDir, "ca");
-  execFileSync("ssh-keygen", ["-q", "-t", "ed25519", "-N", "", "-f", caKey, "-C", "edd-tc-ca"]);
-  const caPub = readFileSync(`${caKey}.pub`, "utf8").trim();
-  rmSync(keyDir, { recursive: true, force: true });
-
   execFileSync("docker", ["rm", "-f", CONTAINER], { stdio: "ignore" });
   execFileSync("docker", [
     "run",
@@ -47,8 +38,6 @@ beforeAll(() => {
     "EDD_CONTROL_PLANE_URL=http://127.0.0.1:9",
     "-e",
     "EDD_AGENT_TOKEN=t",
-    "-e",
-    `EDD_SSH_CA_PUBLIC_KEY=${caPub}`,
     "-e",
     "CONNECTION_TOKEN=t",
     IMAGE,

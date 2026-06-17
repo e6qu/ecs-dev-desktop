@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 import {
   VSCODE_BASE_URL,
@@ -19,14 +16,6 @@ import {
  * differs — the ECS/managed-EBS wrapping is covered by the e2e tier.
  */
 export default async function globalSetup(): Promise<void> {
-  // A throwaway SSH CA pubkey — the entrypoint requires it (sshd config), though
-  // this proof exercises the HTTP path, not SSH.
-  const keyDir = mkdtempSync(join(tmpdir(), "edd-vscode-ca-"));
-  const caKey = join(keyDir, "ca");
-  execFileSync("ssh-keygen", ["-q", "-t", "ed25519", "-N", "", "-f", caKey, "-C", "edd-vscode-ca"]);
-  const caPub = readFileSync(`${caKey}.pub`, "utf8").trim();
-  rmSync(keyDir, { recursive: true, force: true });
-
   execFileSync("docker", ["rm", "-f", VSCODE_CONTAINER], { stdio: "ignore" });
   execFileSync("docker", [
     "run",
@@ -41,8 +30,6 @@ export default async function globalSetup(): Promise<void> {
     "EDD_CONTROL_PLANE_URL=http://127.0.0.1:9",
     "-e",
     "EDD_AGENT_TOKEN=edd-vscode-agent-token",
-    "-e",
-    `EDD_SSH_CA_PUBLIC_KEY=${caPub}`,
     "-e",
     `CONNECTION_TOKEN=${VSCODE_TOKEN}`,
     VSCODE_IMAGE,

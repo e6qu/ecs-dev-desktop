@@ -9,9 +9,8 @@ workspace `sshd` each run an `AuthorizedKeysCommand` that asks the control plane
 the workspace's owner — authenticated by the gateway token on the public hop and the
 per-workspace agent token on the inner hop, so each is per-connection and revocable.
 The session is a transparent `nc` tunnel, so it stays end-to-end to the workspace
-`sshd` (shells, `scp`, port-forwarding, VS Code Remote-SSH all work). The control
-plane's **SSH CA** cert path is retained on the golden image alongside this, for
-compatibility while clients migrate.
+`sshd` (shells, `scp`, port-forwarding, VS Code Remote-SSH all work). There is no
+SSH CA and no certificates — a registered public key is the only SSH credential.
 
 This package owns only the pure, testable derived config — e.g. the OS principal
 a user maps to on a workspace node (`workspacePrincipal`).

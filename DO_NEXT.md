@@ -20,7 +20,7 @@
 Resolved: DynamoDB+ElectroDB · sockerless from source · Fargate managed-EBS ·
 manual real-AWS on `main` · AGPL-3.0-or-later · Turborepo+pnpm · CASL · dep floor
 1440 · admin observability = derive-now + CloudTrail/CloudWatch · OpenVSCode Server ·
-OpenSSH + our SSH CA · **per-workspace proxy authorization** (decision #5: chose
+OpenSSH registered-key auth (no CA) · **per-workspace proxy authorization** (decision #5: chose
 external-authz → control plane; built the workspace gate PEP + `/api/internal/authz`
 PDP, ownership by owner email; **now proven live end-to-end** — browser → Pomerium →
 gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI `e2e-gate`,
@@ -36,14 +36,18 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
   foundation (core helpers + contracts + `sshKey` entity + `SshKeyService`), `/api/ssh-keys`
   CRUD, the gateway `ssh-authorize` decision endpoint, api-client, Settings page, and the
   per-workspace `ssh` command — unit + route integ green; web typecheck/lint/build green.
-  **Slices 1–2c DONE — dual-trust SSH, docker-e2e validated** (on `feat/ssh-dual-trust`,
-  draft PR #110). `ssh-authorize` accepts gateway + agent tokens; gateway + golden-image
-  sshd authorize the registered key via `AuthorizedKeysCommand` (golden image keeps the CA
-  cert path additively, so cert-based e2e suites still pass); `ssh-proxy.e2e.ts` rewritten
-  self-contained (worker-thread stub + docker-run node/proxy) and 2/2 green; deleted the
-  obsolete `ssh-connect.e2e.ts` + `docker-compose.ssh.yml`. **Only Slice 3 remains —
-  public SSH NLB + Route53 `*.ssh`, AWS-gated by the account decision (#1).** Once #110
-  merges and AWS is unblocked, wire the single public SSH ingress. Full plan in `PLAN.md` §4b.
+  **Slices 1–2c DONE — dual-trust SSH, docker-e2e validated** (#110 merged).
+  `ssh-authorize` accepts gateway + agent tokens; gateway + golden-image sshd authorize
+  the registered key via `AuthorizedKeysCommand`; `ssh-proxy.e2e.ts` rewritten
+  self-contained (worker-thread stub + docker-run node/proxy) and 2/2 green.
+  **Clean-break CA removal DONE** (`feat/ssh-registered-key-only`): deleted the
+  `/ssh-cert` route + `lib/ssh-cert.ts`, `sshCert*` contracts + api-client, `gen-ssh-ca.sh`,
+  `docker-compose.ssh.yml`, `EDD_SSH_CA_*` config + compute-provider injection, the
+  Terraform `ssh_ca_public_key` var + #108 precondition, and all CA image wiring; migrated
+  the cert-based e2e suites to registered keys (stub CP for the golden-image tests; real CP
+  for user-journey + ssh-wake-chain). **Only Slice 3 remains — public SSH NLB + Route53
+  `*.ssh`, AWS-gated by the account decision (#1).** Once AWS is unblocked, wire the single
+  public SSH ingress. Full plan in `PLAN.md` §4b.
 - **Catalog metadata picker + admin UX cleanup — DONE.** Mainline now carries the
   catalog metadata picker **and** the broader admin/navigation cleanup:
   `/admin/catalog`, legacy `/base-images` redirect, top-nav active state, unified
@@ -64,7 +68,7 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
   the live ECS lifecycle test matches the merged UX instead of timing out on a missing
   control.
 - **Golden-image collection — DONE (all PRs merged).** Split the single workspace
-  image into a shared **`base`** (OpenVSCode, sshd + CA, idle-agent, entrypoint,
+  image into a shared **`base`** (OpenVSCode, sshd + registered-key authorizer, idle-agent, entrypoint,
   git-credential helper, workspace user, Node, the workspace-UX fixes #90/#91/#94,
   the AI agents #93, and cross-cutting JS/TS tooling) plus thin variants `FROM base`:
   **omnibus** (all toolchains), **typescript**, **python**, **go**, **java**,
@@ -85,23 +89,18 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
 - **Launch-readiness / observability — essentially complete** (`BUGS.md` →
   Resolved): readiness probe, storage health, structured logging, metrics + alarms,
   CloudTrail pagination, API request latency/error metrics + access logging, fleet +
-  cost gauges, reconciler health (heartbeat), per-workspace log view, and SSH CA
-  key-material support (`EDD_SSH_CA_KEY`). The one substantial item left is **`e2e-aws`**
-  (blocked on the AWS account decision below) — it's where the EMF→CloudWatch
-  metrics, alarms, and live SSH-cert issuance get their first real check. Only _Low_
-  follow-ups otherwise; see [`docs/observability-gaps.md`](./docs/observability-gaps.md).
+  cost gauges, reconciler health (heartbeat), and a per-workspace log view. The one
+  substantial item left is **`e2e-aws`** (blocked on the AWS account decision below) —
+  it's where the EMF→CloudWatch metrics, alarms, and live registered-key SSH get their
+  first real check. Only _Low_ follow-ups otherwise; see
+  [`docs/observability-gaps.md`](./docs/observability-gaps.md).
 - **Docs** — `README` doc index, [`docs/running-locally.md`](./docs/running-locally.md)
   (runnable tier commands), and the AWS [`docs/deploying.md`](./docs/deploying.md)
-  runbook are current and cross-linked. **SSH CA provisioning — DONE / note was stale.**
-  The CA private key _is_ provisioned by the Terraform module: the recommended path is
-  `EDD_SSH_CA_KEY` (key material) supplied via `secret_environment`, which the
-  control-plane task def wires as ECS `secrets` with execution-role `GetSecretValue`
-  (`ecs.tf` + `iam.tf`); the key never lands in TF state (deploying.md Step 4). The module
-  deliberately does **not** provision an on-disk `EDD_SSH_CA_KEY_PATH` (that file variant
-  is dev-only). Added a plan-time guard: the control-plane task def now has a
-  `precondition` that fails the plan if `ssh_ca_public_key` is set without a matching
-  `EDD_SSH_CA_KEY` in `secret_environment` (a half-configured CA that would advertise SSH
-  but never sign certs — previously only failing at runtime).
+  runbook are current and cross-linked. **SSH CA fully removed** (2026-06-17 clean
+  break): no `EDD_SSH_CA_KEY` secret, no `ssh_ca_public_key` Terraform var, no #108
+  precondition. SSH is registered-key only — the gateway/workspace authorize keys via
+  `ssh-authorize` using `EDD_GATEWAY_SECRET`/`EDD_AGENT_SECRET` (already provisioned);
+  nothing SSH-specific is left to provision.
 
 - **ECS compute hardening follow-ups** (from the 2026-06-13 gap audit) — mostly
   **done** (see `BUGS.md` → Resolved): `runTask` readiness gating; `EDD_AGENT_TOKEN`

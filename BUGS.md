@@ -9,11 +9,10 @@ inventoried, prioritized, and cross-referenced in
 [`docs/observability-gaps.md`](./docs/observability-gaps.md). Nearly all are now
 **fixed** (see Resolved): readiness probe, storage Health-board check, structured
 logging, metrics + alarms, CloudTrail pagination, API request latency/error
-metrics + access logging, fleet + cost gauges, reconciler health (heartbeat), the
-per-workspace log view, and SSH CA key-material support (`EDD_SSH_CA_KEY` via
-Secrets Manager — no key in Terraform state). The **one substantial item left is
+metrics + access logging, fleet + cost gauges, reconciler health (heartbeat), and the
+per-workspace log view. The **one substantial item left is
 external**: `e2e-aws` (the whole real-cloud tier — EBS durability, real Fargate
-cold-start, IAM, ACM/DNS, EMF→CloudWatch metrics + alarms, live SSH-cert issuance)
+cold-start, IAM, ACM/DNS, EMF→CloudWatch metrics + alarms, live registered-key SSH)
 is unrun, blocked on the AWS account/region decision (`DO_NEXT.md` #1). Only _Low_
 follow-ups otherwise (per-user quota gauges, `parseLevel`, control-plane
 self-health, cached fleet status).

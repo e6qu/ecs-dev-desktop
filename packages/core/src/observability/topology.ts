@@ -69,13 +69,15 @@ export const SYSTEM_TOPOLOGY: Topology = {
       id: "ssh-gateway",
       label: "SSH gateway",
       kind: "edge",
-      description: "OpenSSH sshd; accepts short-lived CA certs and forwards to the workspace ENI.",
+      description:
+        "OpenSSH sshd; authorizes registered keys via ssh-authorize and forwards to the workspace ENI.",
     },
     {
       id: "control-plane",
       label: "Control plane (web)",
       kind: "compute",
-      description: "Next.js login + admin UI + API; issues SSH certs and drives the lifecycle.",
+      description:
+        "Next.js login + admin UI + API; authorizes registered SSH keys and drives the lifecycle.",
     },
     {
       id: "reconciler",

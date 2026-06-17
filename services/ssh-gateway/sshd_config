@@ -1,12 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # sshd configuration for the workspace SSH node (e2e harness; mirrors the golden
-# image's additive auth). Two control-plane-mediated paths coexist:
-#  - Registered key (dual-trust): AuthorizedKeysCommand asks the control plane
-#    whether the presented key is registered to this workspace's owner (agent token,
-#    read from /run/edd-ssh-env when present). Login user `workspace`.
-#  - SSH CA certificate: sshd trusts the CA (workspace-ca.pub) and maps the cert
-#    principal to a `dev-<id>` login via AuthorizedPrincipalsFile (the wake-chain
-#    harness provisions the dev-<id> user + principals file at runtime).
+# image). Registered-key auth: AuthorizedKeysCommand asks the control plane whether
+# the presented key is registered to this workspace's owner (agent token, read from
+# the root-only /run/edd-ssh-env). Login user `workspace`. No certificates.
 
 Port 22
 AddressFamily any
@@ -18,16 +14,10 @@ PasswordAuthentication no
 ChallengeResponseAuthentication no
 PubkeyAuthentication yes
 
-# Registered-key path (agent token, read from the root-only /run/edd-ssh-env when
-# present). Runs as root pre-auth.
 AuthorizedKeysCommand /usr/local/bin/edd-authorized-keys %t %k
 AuthorizedKeysCommandUser root
 
-# SSH CA path (cert principal → login via the principals file).
-TrustedUserCAKeys /etc/ssh/workspace-ca.pub
-AuthorizedPrincipalsFile /etc/ssh/principals/%u
-
-AllowUsers workspace dev-*
+AllowUsers workspace
 
 # Disable features not needed in the workspace model.
 X11Forwarding no

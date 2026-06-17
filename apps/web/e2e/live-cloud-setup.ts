@@ -7,7 +7,7 @@
 // dynamic env (subnet/SG ids, host alias) is written to temp/live-pw.env,
 // which the start script sources. Endpoint-only (§6.8).
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 import { CloudWatchLogsClient, CreateLogGroupCommand } from "@aws-sdk/client-cloudwatch-logs";
@@ -28,7 +28,6 @@ const LOG_GROUP = `/edd/e2e/pw-live-${RUN_ID}`;
 const WORKSPACE_IMAGE = "edd-workspace:e2e";
 const EBS_ROLE = "arn:aws:iam::123456789012:role/ecsInfrastructureRole";
 const AGENT_SECRET = "d".repeat(64);
-const SSH_CA_PUB = join(import.meta.dirname, "../../../services/ssh-gateway/temp/ssh-ca/ca.pub");
 const ENV_FILE = join(import.meta.dirname, "../temp/live-pw.env");
 
 const dynamoEndpoint = process.env.DYNAMODB_ENDPOINT ?? dynamodb.endpoint;
@@ -83,7 +82,6 @@ const lines = [
   exportLine("ECS_LOG_GROUP_WORKSPACES", LOG_GROUP),
   exportLine("CONTROL_PLANE_URL", `http://${hostAlias}:${String(PORT)}`),
   exportLine("EDD_AGENT_SECRET", AGENT_SECRET),
-  exportLine("EDD_SSH_CA_PUBLIC_KEY", readFileSync(SSH_CA_PUB, "utf8").trim()),
 ];
 mkdirSync(dirname(ENV_FILE), { recursive: true });
 writeFileSync(ENV_FILE, lines.join("\n") + "\n");
