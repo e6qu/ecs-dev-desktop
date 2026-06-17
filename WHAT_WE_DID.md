@@ -1324,3 +1324,19 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
     TESTING.md, the ssh-gateway README, the coverage doc. **Net: dual-trust SSH (Slices 1–2c)
     is done and locally e2e-validated; only Slice 3 (public NLB + Route53, AWS-gated) remains.**
     On `feat/ssh-dual-trust` / draft PR #110.
+- **2026-06-17 — Fix: SSH infra made additive after `ssh-wake-chain` CI failure.** PR #110
+  CI surfaced that the cert-based wake-chain e2e (`packages/e2e/src/ssh-wake-chain.e2e.ts`)
+  shares the gateway proxy image **and** the `docker-compose.ssh.yml` node — both of which the
+  Slice-2c changes had made registered-key-only (and the compose harness had been removed),
+  so the wake-chain broke (`No such container: edd-workspace-node`; the proxy no longer trusted
+  its cert; `AllowUsers workspace` rejected its `dev-<id>` login). Fixed by making the shared
+  SSH infra **additive** (CA cert + registered key), mirroring the golden image: the gateway
+  `sshd_config.proxy` and the e2e node `sshd_config` re-trust the CA alongside
+  `AuthorizedKeysCommand`; the proxy/node entrypoints ensure `workspace-ca.pub` exists (empty
+  when unmounted) and the node entrypoint makes `EDD_*` optional (CA-only when unset);
+  `AllowUsers workspace dev-*` on the node. Restored `docker-compose.ssh.yml` + the CI/test-e2e
+  bring-up. The self-contained `ssh-proxy.e2e.ts` now names its node `edd-dualtrust-node` to
+  avoid colliding with the compose node's global container name. Verified locally: dual-trust
+  e2e 2/2 green **and** the additive node accepts a CA cert as a `dev-<id>` principal
+  (`whoami=dev-test`). Lesson: changing shared SSH infra has a wide blast radius — additive
+  (both auth paths) is the safe migration; full CA removal is a later, deliberate step.
