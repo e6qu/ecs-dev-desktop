@@ -200,7 +200,11 @@ describe(
           cluster: CLUSTER,
           subnets: [subnetId],
           ebsRoleArn: EBS_ROLE,
-          assignPublicIp: false,
+          // The workspace must reach the control plane to authorize SSH keys
+          // (AuthorizedKeysCommand → ssh-authorize), so it needs a public IP +
+          // the subnet's egress route — a public-subnet task, like `data-durability`
+          // (whose default is ENABLED). With no public IP every key is denied.
+          assignPublicIp: true,
           containerName: WORKSPACE_CONTAINER,
           controlPlaneUrl,
           agentSecret: AGENT_SECRET,

@@ -1411,9 +1411,13 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
   `services/ssh-gateway/authorized-keys.sh`, `wake-and-forward.sh`: a slow/unreachable control
   plane must never hang an SSH login, a real DoS) turned the hang into a clean
   `Permission denied (publickey)`, and decoupling the client loop's two checks (SSH-authorize,
-  then poll OpenVSCode :3000) gave distinct error messages. The real fix: give the subnet
-  egress with `createVpcWithEgress` (IGW + route), exactly as the passing `data-durability`
-  e2e — same stub+authorize path — already does. **(2) ssh-wake-chain — root cause: a synchronous
+  then poll OpenVSCode :3000) gave distinct error messages. The real fix has two parts, both
+  matching the passing `data-durability` e2e (same stub+authorize path): the workspace task
+  needs a **public IP** (`assignPublicIp: true` — golden had it hardcoded `false`; the provider
+  default and `data-durability` are ENABLED) **and** its subnet needs **egress**
+  (`createVpcWithEgress`: IGW + route). i.e. a public-subnet task that can reach the control
+  plane — exactly what real AWS requires. (Egress alone wasn't enough — a public-IP-less task
+  still can't route out; that intermediate run still got `Permission denied`.) **(2) ssh-wake-chain — root cause: a synchronous
   ssh froze the event loop.** `EDD_FAKE_SSH_HOST` is an unrouteable TEST-NET address, so the
   gateway's post-wake `nc` hangs and the ssh session never returns. The first fix bounded it with
   `spawnSync(..., {timeout})`, but that **blocks Node's event loop** for the whole timeout, during
