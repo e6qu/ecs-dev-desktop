@@ -1394,3 +1394,27 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
   just-run session visible. Verified: contracts 10 / core 178 / control-plane 23 unit green,
   cost route integ 5 green, rollup-equivalence integ green, the costs pw test green;
   eslint + knip clean.
+- **2026-06-17 — Fixed two SSH e2e regressions from #111 (surfaced on the cost PR's CI).**
+  #111 merged red: `golden-workspace-ssh.e2e.ts` and `ssh-wake-chain.e2e.ts` failed
+  deterministically in the container-mode `e2e` job (which runs on every PR, so the cost PR
+  inherited them). Diagnosed from the CI logs + code, not assumption: (1) **ssh-wake-chain —
+  `spawnSync ssh ETIMEDOUT`**: the test set `EDD_FAKE_SSH_HOST` to an unrouteable TEST-NET
+  address, so after the gateway wakes the workspace, `wake-and-forward.sh`'s `nc` to it hangs
+  (a black-hole drops packets — no connection-refused), the `ssh` never returns, and the 30s
+  `spawnSync` threw _before_ the wake assertion. Fix: bound the ssh and **tolerate** the
+  timeout (the wake — a synchronous curl — completes well before the nc stalls), then assert
+  the wake. (2) **golden-workspace-ssh — client task "never reached STOPPED"**: the in-sim SSH
+  client loop coupled "SSH whoami" + ":3000 returns 403" over 30 attempts; OpenVSCode accepts
+  TCP early but is slow to serve its token gate in the sim, so each iteration burned
+  `ssh + curl(--max-time 5) + sleep 2` ≈ 9s → ~270s, overrunning the **180s** default
+  `waitForTask` STOPPED timeout (`data-durability`, same stub+authorize path but exits on the
+  first SSH success, passed — proving the authorize path itself works). Fix: **decouple** the
+  two phases (each exits as soon as met), give the client task an explicit 260s stop budget
+  under a 360s describe timeout, and surface the CloudWatch logs on a real exit-≠0. Also
+  **hardened the SSH authorizers** (`infra/images/base/authorized-keys.sh`,
+  `services/ssh-gateway/authorized-keys.sh`) and `wake-and-forward.sh` with curl
+  `--connect-timeout`/`--max-time`: a slow/unreachable control plane must never hang sshd's
+  pre-auth phase (a real DoS, not just a test issue). The local repro couldn't reproduce the
+  CI condition — this host runs Podman (the workspace task fails to start ready) vs CI's
+  dockerd — so the fixes rest on the CI-log evidence + the data-durability control; CI verifies.
+  Lesson: don't merge with a red e2e job — these were live regressions, not flakes.

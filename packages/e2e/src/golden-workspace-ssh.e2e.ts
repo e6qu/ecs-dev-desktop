@@ -47,6 +47,13 @@ const LOG_GROUP = `/edd/e2e/golden-ssh-${RUN_ID}`;
 const EBS_ROLE = "arn:aws:iam::123456789012:role/ecsInfrastructureRole";
 const AGENT_SECRET = "a".repeat(64);
 const SSH_ATTEMPTS = 30;
+/** Editor poll budget (phase 2): OpenVSCode accepts TCP early but is slow to
+ * actually serve its token gate in the sim, so it gets a longer, separate budget. */
+const OPENVSCODE_ATTEMPTS = 45;
+/** STOPPED-wait for the SSH client task: must cover both decoupled phases
+ * (~SSH_ATTEMPTS + OPENVSCODE_ATTEMPTS polls) with headroom under the describe
+ * timeout — the prior 180s default fired mid-loop and read as "never STOPPED". */
+const CLIENT_STOP_TIMEOUT_MS = 260_000;
 const ECS_EXEC_MARKER = `edd-ecs-exec-${RUN_ID}`;
 const ECS_EXEC_TIMEOUT_MS = 15_000;
 const SSM_MESSAGE_SCHEMA_VERSION = "1.0";
@@ -142,8 +149,9 @@ async function waitForTask(
   ecs: ECSClient,
   taskArn: string,
   status: "RUNNING" | "STOPPED",
+  timeoutMs = 180_000,
 ): Promise<Task> {
-  const deadline = Date.now() + 180_000;
+  const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const out = await ecs.send(new DescribeTasksCommand({ cluster: CLUSTER, tasks: [taskArn] }));
     const task = required(out.tasks?.[0], "task");
@@ -158,7 +166,9 @@ async function waitForTask(
 
 describe(
   "golden workspace image against the container-mode AWS simulator",
-  { timeout: 240_000 },
+  // Headroom for the worst case: workspace launch + the client task's two-phase
+  // poll (CLIENT_STOP_TIMEOUT_MS) + teardown. The success path is far faster.
+  { timeout: 360_000 },
   () => {
     const ec2 = new EC2Client(SIM);
     const ecs = new ECSClient(SIM);
@@ -207,21 +217,33 @@ describe(
     }
 
     async function registerClientTask(host: string, privateKeyBase64: string): Promise<string> {
+      const sshOpts =
+        "-i /tmp/id -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=3";
+      // Two decoupled phases: prove the registered key authorizes (SSH lands us on
+      // the workspace), THEN poll OpenVSCode until it warms up. Coupling them into a
+      // single retry — re-running SSH on every editor poll — let one slow signal
+      // (the editor takes a while to serve in the sim) stall behind the other and
+      // overrun the task-stop deadline; decoupled, each exits as soon as it is met.
       const script = [
         'printf "%s" "$SSH_PRIVATE_KEY_B64" | base64 -d > /tmp/id',
         "chmod 600 /tmp/id",
+        // Phase 1 — registered-key SSH authorize → we are `workspace` on the node.
+        "authorized=",
         `for i in $(seq 1 ${SSH_ATTEMPTS}); do`,
-        `  if ssh -i /tmp/id -o IdentitiesOnly=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=3 workspace@${host} whoami > /tmp/out 2>&1 && grep -q '^workspace$' /tmp/out; then`,
-        // The same awsvpc task also serves OpenVSCode on :3000; without a
-        // connection token it answers 403 (its token gate) — proof the editor
-        // HTTP service is up inside the sim ECS task, not just sshd.
-        `    code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://${host}:${String(WORKSPACE_PORT)}/ || echo 000)`,
-        `    echo "openvscode :${String(WORKSPACE_PORT)} gate => $code" >&2`,
-        `    [ "$code" = "403" ] && exit 0`,
-        "  fi",
+        `  if ssh ${sshOpts} workspace@${host} whoami 2>/tmp/err | grep -q '^workspace$'; then authorized=1; break; fi`,
         "  sleep 2",
         "done",
-        "cat /tmp/out >&2",
+        'if [ -z "$authorized" ]; then echo "ssh never authorized:" >&2; cat /tmp/err >&2; exit 1; fi',
+        'echo "registered-key SSH authorized" >&2',
+        // Phase 2 — the SAME awsvpc task serves OpenVSCode on :3000; with no
+        // connection token it answers 403 (its token gate) — proof the editor HTTP
+        // service is up in the sim ECS task, not just sshd. Poll until it warms.
+        `for i in $(seq 1 ${OPENVSCODE_ATTEMPTS}); do`,
+        `  code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://${host}:${String(WORKSPACE_PORT)}/ || echo 000)`,
+        `  [ "$code" = "403" ] && { echo "openvscode :${String(WORKSPACE_PORT)} gate => 403" >&2; exit 0; }`,
+        "  sleep 2",
+        "done",
+        'echo "openvscode never returned 403 (last=$code)" >&2',
         "exit 1",
       ].join("\n");
       const out = await ecs.send(
@@ -283,7 +305,7 @@ describe(
           }),
         );
         const clientTask = required(clientRun.tasks?.[0]?.taskArn, "client taskArn");
-        const stopped = await waitForTask(ecs, clientTask, "STOPPED");
+        const stopped = await waitForTask(ecs, clientTask, "STOPPED", CLIENT_STOP_TIMEOUT_MS);
         expect(taskExitCode(stopped), await logMessages()).toBe(0);
       } finally {
         stub.stop();

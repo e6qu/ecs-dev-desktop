@@ -27,7 +27,10 @@ fi
 key_type="${1:?key type is required}"
 key_blob="${2:?key blob is required}"
 
-response=$(curl -s -X POST \
+# Bound the request: a slow/unreachable control plane must NOT hang sshd's auth
+# phase (this command runs pre-auth and blocks the login until it returns). On
+# timeout curl prints nothing → the key is treated as not authorized → sshd denies.
+response=$(curl -s --connect-timeout 3 --max-time 8 -X POST \
   "${EDD_CONTROL_PLANE_URL}/api/workspaces/${EDD_WORKSPACE_ID}/ssh-authorize" \
   -H "Authorization: Bearer ${EDD_AGENT_TOKEN}" \
   -H "content-type: application/json" \

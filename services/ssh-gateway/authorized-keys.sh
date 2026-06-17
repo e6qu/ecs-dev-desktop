@@ -44,7 +44,10 @@ if [ -z "$token" ]; then
   exit 0
 fi
 
-response=$(curl -s -X POST \
+# Bound the request: a slow/unreachable control plane must NOT hang sshd's auth
+# phase (this command runs pre-auth and blocks the login until it returns). On
+# timeout curl prints nothing → the key is treated as not authorized → sshd denies.
+response=$(curl -s --connect-timeout 3 --max-time 8 -X POST \
   "${EDD_CONTROL_PLANE_URL}/api/workspaces/${workspace_id}/ssh-authorize" \
   -H "Authorization: Bearer ${token}" \
   -H "content-type: application/json" \

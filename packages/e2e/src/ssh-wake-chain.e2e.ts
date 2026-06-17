@@ -158,10 +158,13 @@ describe("SSH wake-on-connect chain against the real control plane", { timeout: 
 
     // Connect to the gateway as the workspace principal with the registered key.
     // sshd authorizes the key (AuthorizedKeysCommand → ssh-authorize) and runs the
-    // ForceCommand, which calls the REAL control plane to wake the workspace, then
-    // tries to nc to the (unreachable) fake host — so the ssh exits non-zero, but
-    // the wake has already happened, which is what we assert.
-    run(
+    // ForceCommand, which calls the REAL control plane to wake the workspace (steps
+    // 1-3 of wake-and-forward.sh) and THEN `nc`s to the fake host. That fake host is
+    // an unrouteable TEST-NET address, so the nc — and thus the ssh session — never
+    // returns; we deliberately bound the ssh and tolerate the timeout, because the
+    // wake (a synchronous curl) completes well before the nc stalls. We assert the
+    // wake, not the forward (landing on a node is covered by ssh-proxy.e2e).
+    spawnSync(
       "ssh",
       [
         "-T",
@@ -179,7 +182,9 @@ describe("SSH wake-on-connect chain against the real control plane", { timeout: 
         PROXY_PORT,
         `${principal}@localhost`,
       ],
-      30_000,
+      // Generous bound: TCP + handshake + key authorize + wake + state poll all
+      // finish in a few seconds; the kill just stops us waiting on the doomed nc.
+      { encoding: "utf8", timeout: 25_000 },
     );
 
     // The wake really happened through the gateway's machine-auth API calls — only
