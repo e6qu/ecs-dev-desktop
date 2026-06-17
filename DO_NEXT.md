@@ -134,14 +134,18 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
   snapshot chain (sim handles it, none filed). ECS Exec now has a real data-channel
   proof: standard `OpenDataChannel` handshake → command output streamed from the task;
   no divergence was found.
-- **Planned (later, not now): focused sockerless fidelity exploratory pass.** A
-  deliberate sweep that drives more ECS/EBS/Secrets-Manager/CloudWatch call shapes
-  against the sim and diffs each against documented AWS behaviour, filing any
-  genuine, reproducible gap upstream in `e6qu/sockerless` (only there — §0.9). Scope
-  it as adversarial probing (unexpected params, pagination, error shapes, idempotency)
-  rather than re-running the green suites. Nothing to file from the Infrastructure
-  work — `DescribeClusters`/`clusterInfo` conformed exactly. (Requested 2026-06-15;
-  the live-test/IDE + golden-image threads are now done, so this is unblocked.)
+- **Focused sockerless fidelity exploratory pass — first slice DONE (2026-06-17).**
+  Adversarial conformance sweep of the AWS call shapes we depend on (process-mode sim,
+  pin `c69cd278`), diffing each against documented AWS behaviour. **EBS/ECS/Secrets-Manager/
+  CloudWatch error+filter shapes are largely conformant**; filed three genuine cloud-spec
+  gaps upstream — **#590** (EC2 `DescribeSnapshots` ignores `MaxResults`/`NextToken`),
+  **#591** (EC2 `CreateVolume` accepts a missing required `AvailabilityZone`), **#592** (ECS
+  cluster-scoped ops don't raise `ClusterNotFoundException`) — **all fixed by upstream #593 and
+  confirmed downstream** (submodule re-pinned `c69cd278` → `fcb58281`; see `BUGS.md`). Two
+  would-be findings were discarded as probe errors, not sim bugs. **Remaining for a later slice:** ECS
+  `RunTask`/task-def validation, IAM/STS, S3, and pagination on the other list APIs — keep it
+  adversarial (unexpected params, pagination, error shapes), validate every probe against the
+  AWS spec first, and file genuine gaps only in `e6qu/sockerless` (§0.9).
 - Covered (see `docs/simulator-live-coverage.md`): the real VS Code workspace
   (OpenVSCode browser proof + polyglot toolchain compiles + OpenVSCode :3000 inside
   the sim ECS task), browser Pomerium OIDC login, portal browser lifecycle on real

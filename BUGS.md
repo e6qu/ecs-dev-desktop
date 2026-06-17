@@ -58,7 +58,40 @@ active breakage):
   issue #92. **Before adopting the enforced-limits fix, bump `DEFAULT_WORKSPACE_MEMORY`**
   or the golden workspace will OOM at the current 1024 MB sizing.
 
-Latest full simulator pass (2026-06-12, submodule `9d43f3d` / PR #550) found no
+- **sockerless#590/#591/#592 (fixed upstream — confirmed downstream 2026-06-17)** — the
+  three conformance gaps from the focused fidelity pass, all fixed by sockerless **#593**
+  (`fcb58281`) and **confirmed downstream** after re-pinning the submodule to it and
+  re-running the probes against the process-mode sim:
+  - **#590** — EC2 `DescribeSnapshots` ignored `MaxResults`/`NextToken`. Now
+    `DescribeSnapshots({OwnerIds:["self"], MaxResults:5})` over 6 snapshots returns 5 +
+    a `NextToken` (paginates).
+  - **#591** — EC2 `CreateVolume` accepted a missing required `AvailabilityZone`. Now
+    `CreateVolume({Size:8})` (no AZ) returns `MissingParameter`/400.
+  - **#592** — ECS cluster-scoped ops didn't raise `ClusterNotFoundException` for an
+    unknown cluster. Now `DescribeTasks`/`ListTasks`/`StopTask` against an unknown cluster
+    all throw `ClusterNotFoundException`.
+
+Latest focused fidelity pass (2026-06-17, probed against `c69cd278`, `SIM_RUNTIME=process`;
+the three gaps it found were fixed by #593 and the submodule re-pinned to `fcb58281`)
+adversarially probed the AWS call shapes we depend on vs documented behaviour, across
+four surfaces:
+
+- **EBS** — not-found error codes (`InvalidVolume.NotFound` / `InvalidSnapshot.NotFound`,
+  HTTP 400) and server-side `Filter`s **conformant**; 2 gaps filed (#590 pagination, #591
+  CreateVolume AZ validation).
+- **ECS** — `MISSING` task/cluster failures and `InvalidParameterException` (unknown
+  task) **conformant**; 1 gap filed (#592 no `ClusterNotFoundException` for an unknown
+  cluster).
+- **Secrets Manager** — `ResourceNotFoundException` (Get/PutSecretValue) +
+  `ResourceExistsException` (duplicate CreateSecret) **fully conformant**.
+- **CloudWatch Logs** — `ResourceNotFoundException` (Filter/GetLogEvents on a missing
+  group) + `ResourceAlreadyExistsException` (duplicate CreateLogGroup) **fully conformant**.
+
+Two would-be findings were discarded as probe errors, not sim bugs (`CreateSnapshot`
+has no `ClientToken` idempotency in AWS; `DescribeSnapshots MaxResults` min is 5) — a
+reminder to validate each probe against the AWS spec before filing.
+
+Earlier full simulator pass (2026-06-12, submodule `9d43f3d` / PR #550) found no
 sockerless fidelity bugs across all live surfaces (real-CP wake chain, live
 user journey, reconciler scale-to-zero + drift, Auth.js callback routes,
 concurrent-wake race, TLS storage adapter). PR #550 is bleephub-Actions-only;
