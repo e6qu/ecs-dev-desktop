@@ -1,31 +1,100 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Manual real-AWS tier (see TESTING.md / AGENTS.md §5). Certifies what no
-# simulator can: EBS snapshot durability/latency, real Fargate, real Entra/
-# GitHub federation, IAM enforcement, ACM/DNS, perf, KMS/DR.
+# simulator can: real EBS snapshot durability + latency, real Fargate, real
+# Entra/GitHub federation, IAM enforcement, ACM/DNS, perf, KMS/DR.
 #
-# Triggered manually, only on `main`. Uses GitHub OIDC -> AWS role (no static
-# keys) and MUST auto-teardown even on failure. Wired in later phases.
+# Triggered manually, only on `main`, via GitHub OIDC -> AWS role (no static
+# keys). It MUST tear down even on failure, with a cost guardrail.
+#
+# Prerequisites (supplied once the AWS account decision lands — DO_NEXT #1):
+#   - repo/environment variable `E2E_AWS_ROLE_ARN`  — the OIDC-assumable role
+#     (needs EC2 EBS perms: Create/Describe/Delete Volume + Snapshot + tags)
+#   - repo/environment variable `E2E_AWS_REGION`    — optional; defaults below
+#
+# This first slice runs the self-contained EBS snapshot round-trip (no compute,
+# no ECR — easy, cheap, bulletproof teardown). The fuller suites the simulator
+# cannot cover (real Fargate cold-start, federation, IAM enforcement, 200+ load,
+# wake-on-connect) are added as further jobs once this is validated against the
+# account.
 name: e2e-aws (manual)
 
 on:
   workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Type RUN to confirm — this provisions and tears down REAL AWS resources"
+        required: true
+        default: ""
+      region:
+        description: "AWS region (overrides the E2E_AWS_REGION variable)"
+        required: false
+        default: ""
 
 permissions:
   id-token: write
   contents: read
 
+# Never run two real-AWS jobs at once (shared account, cost, teardown safety).
+concurrency: e2e-aws
+
 jobs:
-  e2e-aws:
-    name: e2e-aws
-    if: github.ref == 'refs/heads/main'
+  ebs:
+    name: e2e-aws — EBS snapshot round-trip
+    # Manual, main-only, and gated on the explicit RUN confirmation.
+    if: github.ref == 'refs/heads/main' && github.event.inputs.confirm == 'RUN'
     runs-on: ubuntu-latest
+    timeout-minutes: 30 # cost/time guardrail — the job is force-killed past this
+    env:
+      EDD_E2E_AWS_PREFIX: edd-e2eaws-${{ github.run_id }}
+      AWS_REGION: ${{ github.event.inputs.region != '' && github.event.inputs.region || vars.E2E_AWS_REGION || 'us-east-1' }}
     steps:
       - uses: actions/checkout@v6.0.2
-      - name: Guard
+      - uses: pnpm/action-setup@v6.0.8
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 22
+      - run: pnpm install --frozen-lockfile
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4.0.2
+        with:
+          role-to-assume: ${{ vars.E2E_AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: ${{ env.EDD_E2E_AWS_PREFIX }}
+
+      - name: Verify assumed identity
+        run: aws sts get-caller-identity
+
+      - name: EBS snapshot durability + latency smoke
+        run: pnpm --filter @edd/e2e exec tsx src/aws-ebs-smoke.ts
+
+      # Belt-and-suspenders: the smoke deletes its own resources in `finally`, but a
+      # hard crash or a timeout-kill could leak. Sweep everything tagged with this
+      # run's prefix, on success OR failure. Best-effort (no `set -e`).
+      - name: Teardown — sweep tagged resources
+        if: always()
+        env:
+          PREFIX: ${{ env.EDD_E2E_AWS_PREFIX }}
         run: |
-          echo "Manual real-AWS e2e tier — skeleton."
-          echo "TODO (gated on DO_NEXT #5 AWS account/region):"
-          echo "  - configure-aws-credentials via OIDC role"
-          echo "  - provision ephemeral env (unique prefix)"
-          echo "  - run EBS snapshot round-trip + federation + IAM + perf suites"
-          echo "  - ALWAYS teardown (trap/always()) + cost budget guardrail"
+          set -u
+          echo "sweeping resources tagged edd-e2eaws-run=${PREFIX}"
+          # Snapshots first (deletable independently of any volume).
+          aws ec2 describe-snapshots --owner-ids self \
+            --filters "Name=tag:edd-e2eaws-run,Values=${PREFIX}" \
+            --query 'Snapshots[].SnapshotId' --output text \
+            | tr '\t' '\n' \
+            | while read -r snap; do
+                [ -n "${snap}" ] || continue
+                echo "deleting snapshot ${snap}"
+                aws ec2 delete-snapshot --snapshot-id "${snap}" || true
+              done
+          # Then any (detached) volumes the smoke created.
+          aws ec2 describe-volumes \
+            --filters "Name=tag:edd-e2eaws-run,Values=${PREFIX}" \
+            --query 'Volumes[].VolumeId' --output text \
+            | tr '\t' '\n' \
+            | while read -r vol; do
+                [ -n "${vol}" ] || continue
+                echo "deleting volume ${vol}"
+                aws ec2 delete-volume --volume-id "${vol}" || true
+              done
