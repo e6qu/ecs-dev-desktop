@@ -152,20 +152,14 @@ variable "secret_environment" {
   description = <<-EOT
     Secret environment variables for the control-plane task, mapped to the
     Secrets Manager / SSM ARNs that hold them. The module grants the execution role
-    read access to every referenced ARN. Provide the auth + crypto + SSH-CA secrets
-    here (never as plain env vars): AUTH_SECRET, AUTH_GITHUB_ID/SECRET,
+    read access to every referenced ARN. Provide the auth + crypto secrets here
+    (never as plain env vars): AUTH_SECRET, AUTH_GITHUB_ID/SECRET,
     AUTH_MICROSOFT_ENTRA_ID_ID/SECRET, EDD_TOKEN_ENC_KEY, EDD_GATEWAY_SECRET,
-    EDD_AGENT_SECRET, EDD_SSH_CA_KEY (the CA private key material). Non-secret config
-    (RBAC groups, AUTH_TRUST_HOST, base domain, JWKS) goes in extra_environment.
+    EDD_AGENT_SECRET. Non-secret config (RBAC groups, AUTH_TRUST_HOST, base domain,
+    JWKS) goes in extra_environment.
   EOT
   type        = map(string)
   default     = {}
-}
-
-variable "ssh_ca_public_key" {
-  description = "OpenSSH CA public key injected into workspace tasks as EDD_SSH_CA_PUBLIC_KEY. Required for golden-image SSH."
-  type        = string
-  default     = ""
 }
 
 # ---- DNS / TLS (optional; gated on domain_name) ----

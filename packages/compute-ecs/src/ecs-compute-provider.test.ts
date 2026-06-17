@@ -98,7 +98,7 @@ describe("taskReady", () => {
 });
 
 describe("workspaceEnvironment", () => {
-  it("injects workspace identity, heartbeat, and SSH CA variables", () => {
+  it("injects workspace identity and the agent token", () => {
     const secret = "unit-test-agent-secret-not-sensitive";
     const env = workspaceEnvironment(
       {
@@ -106,7 +106,6 @@ describe("workspaceEnvironment", () => {
         ebsRoleArn: "arn:aws:iam::123456789012:role/ecsInfrastructureRole",
         controlPlaneUrl: "https://edd.example.test",
         agentSecret: secret,
-        sshCaPublicKey: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest edd-ca",
       },
       "ws-1",
     );
@@ -115,7 +114,6 @@ describe("workspaceEnvironment", () => {
       { name: "EDD_WORKSPACE_ID", value: "ws-1" },
       { name: "EDD_CONTROL_PLANE_URL", value: "https://edd.example.test" },
       { name: "EDD_AGENT_TOKEN", value: agentToken(secret, "ws-1") },
-      { name: "EDD_SSH_CA_PUBLIC_KEY", value: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITest edd-ca" },
     ]);
   });
 

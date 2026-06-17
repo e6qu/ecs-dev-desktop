@@ -84,8 +84,6 @@ export interface EcsComputeConfig {
    * env var; the heartbeat route verifies the same HMAC server-side.
    */
   agentSecret?: string;
-  /** OpenSSH CA public key trusted by workspace sshd for user certificates. */
-  sshCaPublicKey?: string;
   /** Idle-agent heartbeat interval (seconds) injected into the workspace
    * container as EDD_HEARTBEAT_INTERVAL_S; the image defaults to
    * DEFAULT_HEARTBEAT_INTERVAL_S when absent (scale-to-zero tuning knob). */
@@ -157,8 +155,6 @@ export function workspaceEnvironment(
       name: "EDD_AGENT_TOKEN",
       value: agentToken(config.agentSecret, workspaceId),
     });
-  if (config.sshCaPublicKey !== undefined)
-    env.push({ name: "EDD_SSH_CA_PUBLIC_KEY", value: config.sshCaPublicKey });
   if (config.heartbeatIntervalS !== undefined)
     env.push({ name: "EDD_HEARTBEAT_INTERVAL_S", value: String(config.heartbeatIntervalS) });
   // Repo to clone at first boot ("one repo per session"). The git credential is
@@ -524,7 +520,7 @@ export class EcsComputeProvider implements ComputeProvider {
    * Reads: AWS_REGION, AWS_ENDPOINT_URL, ECS_CLUSTER, ECS_SUBNETS (comma-separated),
    * ECS_SECURITY_GROUPS (comma-separated), ECS_EBS_ROLE_ARN, ECS_EXECUTION_ROLE_ARN,
    * ECS_TASK_ROLE_ARN, ECS_TASK_CPU, ECS_TASK_MEMORY, ECS_VOLUME_GIB, CONTROL_PLANE_URL,
-   * EDD_AGENT_SECRET, EDD_SSH_CA_PUBLIC_KEY. Throws loudly if required vars are absent.
+   * EDD_AGENT_SECRET. Throws loudly if required vars are absent.
    */
   static fromEnv(agentSecret?: string): EcsComputeProvider {
     const subnets = process.env.ECS_SUBNETS?.split(",").filter(Boolean) ?? [];
@@ -556,7 +552,6 @@ export class EcsComputeProvider implements ComputeProvider {
         assignPublicIp: process.env.ECS_ASSIGN_PUBLIC_IP === "1",
         controlPlaneUrl: process.env.CONTROL_PLANE_URL,
         agentSecret,
-        sshCaPublicKey: process.env.EDD_SSH_CA_PUBLIC_KEY,
         logGroupName: process.env.ECS_LOG_GROUP_WORKSPACES,
         ...(heartbeatIntervalS !== undefined ? { heartbeatIntervalS } : {}),
       },
