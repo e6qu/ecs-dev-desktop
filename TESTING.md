@@ -91,11 +91,15 @@ Exclusively certifies what no simulator can:
 7. KMS grants, cross-region snapshot copy, DR drills.
 
 **Status — first slice wired (`.github/workflows/e2e-aws.yml`).** The `ebs` job
-runs `packages/e2e/src/aws-ebs-smoke.ts` — a self-contained EBS snapshot
-round-trip on real EC2 (create gp3 volume → snapshot → measure real completion
-latency → restore a new volume → assert lineage), with no compute/ECR so teardown
-is trivial. It builds the EC2 client from real coordinates only (refuses to run if
-`AWS_ENDPOINT_URL` is set — there is no sim here). The smoke deletes its own
+runs `packages/e2e/src/aws-ebs-smoke.ts`, a thin wrapper over `runEbsSmoke`
+(`@edd/storage-ec2`): create gp3 volume → snapshot → measure real completion
+latency → restore a new volume → assert lineage, with no compute/ECR so teardown
+is trivial. **Coordinate-driven, so the logic is not "untested until AWS":** the
+**same** `runEbsSmoke` is exercised against the sockerless sim by the `integration`
+job (`packages/storage-ec2/src/ebs-smoke.integ.ts`, which also asserts the `finally`
+teardown deleted everything), and against real AWS here — differing only by
+`AWS_ENDPOINT_URL` (set → sim; absent → real). What's real-AWS-only is the
+**latency/durability fidelity**, not the round-trip logic. The smoke deletes its own
 resources in `finally`; the workflow **also** sweeps everything tagged
 `edd-e2eaws-run=<run-id>` on `always()`, behind a 30-min timeout (cost guardrail).
 To run: set repo variables **`E2E_AWS_ROLE_ARN`** (an OIDC-assumable role with EC2

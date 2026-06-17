@@ -2,3 +2,5 @@
 // Real EBS-backed StorageProvider over the EC2 API (sim or real AWS by endpoint).
 export { Ec2StorageProvider } from "./ec2-storage-provider";
 export type { Ec2StorageProviderDeps } from "./ec2-storage-provider";
+export { runEbsSmoke, EBS_SMOKE_TAG_KEY } from "./ebs-smoke";
+export type { EbsSmokeResult } from "./ebs-smoke";
