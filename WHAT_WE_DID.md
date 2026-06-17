@@ -1428,3 +1428,22 @@ active}` (via `tallyWorkspaceStates` over the full list) and a priced
   each iteration leaned on the CI-log evidence + the `data-durability` control; CI verifies.
   Lessons: don't merge a red e2e job; a no-network failure can masquerade as a timeout; and never
   block the event loop in an async test.
+- **2026-06-17 — Focused sockerless fidelity conformance pass (EBS/ECS/SecretsManager/CloudWatch).**
+  Ran the long-queued adversarial conformance sweep: drove the AWS call shapes we depend on against
+  the process-mode sim (`SIM_RUNTIME=process`, pin `c69cd278`) with unexpected/edge inputs and
+  diffed each against documented AWS behaviour (scratch probes in gitignored `temp/probes/`, not CI
+  tests). **Conformant:** EBS not-found error codes + server-side `Filter`s; ECS `MISSING`
+  task/cluster failures + `InvalidParameterException` for an unknown task; Secrets Manager
+  `ResourceNotFoundException`/`ResourceExistsException`; CloudWatch Logs
+  `ResourceNotFoundException`/`ResourceAlreadyExistsException` (all exact, 400). **Filed upstream
+  (genuine cloud-spec gaps):** #590 — EC2 `DescribeSnapshots` ignores `MaxResults`/`NextToken`
+  (pagination unimplemented; our SDK paginators still terminate correctly at small scale); #591 —
+  EC2 `CreateVolume` accepts a missing required `AvailabilityZone` (silently defaults); #592 — ECS
+  cluster-scoped ops (`DescribeTasks`/`ListTasks`/`StopTask`) never raise `ClusterNotFoundException`
+  for an unknown cluster (medium impact: code distinguishing cluster-gone from task-gone would
+  misclassify). **Discarded two would-be findings as probe errors, not sim bugs** — `CreateSnapshot`
+  has no `ClientToken` idempotency in AWS (the SDK type wouldn't compile it), and `DescribeSnapshots
+MaxResults` has an AWS minimum of 5 — reinforcing the rule to validate every probe against the AWS
+  spec before claiming a divergence. Recorded in `BUGS.md` → External blockers (all low/medium
+  impact, none block us). Next fidelity slice if revisited: ECS `RunTask`/task-def validation,
+  IAM/STS, and pagination on the other list APIs.
