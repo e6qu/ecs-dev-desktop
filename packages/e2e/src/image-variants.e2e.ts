@@ -6,9 +6,6 @@
 // golden-images workflow) / `infra/images/<variant>`; this runs them prebuilt as
 // `edd-ws-<variant>:e2e`.
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -100,16 +97,6 @@ if (!HAVE_VARIANT_IMAGES) {
   );
 }
 
-/** Throwaway ed25519 CA pubkey — the entrypoint requires EDD_SSH_CA_PUBLIC_KEY. */
-function genCaPublicKey(): string {
-  const dir = mkdtempSync(join(tmpdir(), "edd-var-ca-"));
-  const key = join(dir, "ca");
-  execFileSync("ssh-keygen", ["-q", "-t", "ed25519", "-N", "", "-f", key, "-C", "edd-var-ca"]);
-  const pub = readFileSync(`${key}.pub`, "utf8").trim();
-  rmSync(dir, { recursive: true, force: true });
-  return pub;
-}
-
 describe.skipIf(!HAVE_VARIANT_IMAGES)(
   "golden workspace language variants (slim, FROM base)",
   { timeout: 120_000 },
@@ -142,8 +129,6 @@ describe.skipIf(!HAVE_VARIANT_IMAGES)(
           "EDD_CONTROL_PLANE_URL=http://127.0.0.1:9",
           "-e",
           "EDD_AGENT_TOKEN=t",
-          "-e",
-          `EDD_SSH_CA_PUBLIC_KEY=${genCaPublicKey()}`,
           "-e",
           "CONNECTION_TOKEN=t",
           v.image,
