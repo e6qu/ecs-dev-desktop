@@ -78,33 +78,42 @@ test("OpenVSCode workspace: load the workbench, compile from the terminal, verif
     await expect(terminal).toBeVisible({ timeout: 30_000 });
   }
 
-  // 3. Type code + compile + run, all through the VS Code terminal. Wait for the
-  //    shell to be ready and prime a clean prompt first — typing too early drops
-  //    the leading keystrokes (xterm isn't attached to the pty yet).
+  // 3. Type code + compile + run through the VS Code terminal, verifying the build
+  //    artifact on the container filesystem (robust vs xterm scraping). xterm can
+  //    drop the leading keystrokes before it is attached to the pty, so RE-ISSUE the
+  //    build command until the artifact appears rather than betting on one keystroke
+  //    burst landing — that single-shot was the source of the rare flake.
+  const artifactBuilt = (): boolean => {
+    try {
+      return inWorkspace("cd ~/proof && ./hello 2>/dev/null").trim().includes(BUILD_MARKER);
+    } catch {
+      return false;
+    }
+  };
+
   await page.locator(".xterm-screen").first().click();
   await page.waitForTimeout(2_500);
-  await page.keyboard.press("Enter");
-  await page.waitForTimeout(800);
-  await page.keyboard.type(BUILD_COMMAND, { delay: 25 });
-  await page.keyboard.press("Enter");
-  await page.waitForTimeout(10_000); // let the build run
+  let built = false;
+  for (let attempt = 0; attempt < 4 && !built; attempt++) {
+    await page.keyboard.press("Enter"); // prime a clean prompt
+    await page.waitForTimeout(800);
+    await page.keyboard.type(BUILD_COMMAND, { delay: 25 });
+    await page.keyboard.press("Enter");
+    // If the keystrokes landed, the Go build produces ~/proof/hello within seconds;
+    // poll the filesystem and, if it never appears, retry the keystrokes.
+    const deadline = Date.now() + 20_000;
+    while (Date.now() < deadline) {
+      await page.waitForTimeout(1_000);
+      if (artifactBuilt()) {
+        built = true;
+        break;
+      }
+    }
+  }
   await page.screenshot({ path: shot("02-terminal-build.png") });
 
-  // 4. Verify the build artifact exists, is a real ELF binary, and runs with the
-  //    expected output — confirmed on the container filesystem (robust vs xterm
-  //    scraping). The compile was driven by the keystrokes above.
-  await expect
-    .poll(
-      () => {
-        try {
-          return inWorkspace("cd ~/proof && ./hello 2>/dev/null").trim();
-        } catch {
-          return "";
-        }
-      },
-      { timeout: 60_000, intervals: [1_000] },
-    )
-    .toContain(BUILD_MARKER);
+  // 4. The keyboard-driven terminal must have produced the build artifact.
+  expect(built, "keyboard-driven VS Code terminal never produced the build artifact").toBe(true);
 
   // ELF magic (0x7f 'E' 'L' 'F') proves it's a compiled binary, not a script.
   const magic = inWorkspace("od -An -tx1 -N4 ~/proof/hello").trim().replace(/\s+/g, " ");

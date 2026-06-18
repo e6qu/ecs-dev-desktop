@@ -118,6 +118,42 @@ function transactionCanceledAsConflict(): Error {
   return e;
 }
 
+/** ElectroDB transaction-item codes that are PERMANENT failures — a bad write, not a
+ * concurrency loss — so a retry can't fix them and they must surface loudly rather
+ * than being misreported as a benign optimistic-CAS conflict (§6.5). The contention
+ * codes (`ConditionalCheckFailed`, `TransactionConflict`, throttling) keep the
+ * conflict/retry path, which is the right "someone else changed it, retry" semantics. */
+const FATAL_TX_CODES: ReadonlySet<string> = new Set([
+  "ValidationError",
+  "ItemCollectionSizeLimitExceeded",
+]);
+
+interface CanceledTransaction {
+  readonly data?: readonly ({ readonly code?: string } | null | undefined)[] | null;
+}
+
+/** The permanent-failure code among a canceled transaction's items, if any. */
+export function fatalTransactionCode(result: CanceledTransaction): string | undefined {
+  for (const item of result.data ?? []) {
+    const code = item?.code;
+    if (code !== undefined && FATAL_TX_CODES.has(code)) return code;
+  }
+  return undefined;
+}
+
+/** Throw the right error for a canceled write transaction: a permanent data error
+ * surfaces loudly (a real bug → 500); everything else is the benign optimistic-CAS
+ * conflict the caller's version-conflict handling expects. */
+function throwForCanceledTransaction(result: CanceledTransaction): never {
+  const fatal = fatalTransactionCode(result);
+  if (fatal !== undefined) {
+    throw new Error(
+      `workspace write transaction failed (DynamoDB ${fatal}) — not a concurrency conflict`,
+    );
+  }
+  throw transactionCanceledAsConflict();
+}
+
 /** Projection of an active workspace used by the reconciler. */
 export interface ActiveWorkspace {
   id: WorkspaceId;
@@ -290,6 +326,42 @@ export class WorkspaceService {
       id: workspaceId(r.id),
       lastActivity: isoTimestamp(r.lastActivity),
     }));
+  }
+
+  /** Workspaces sitting in `provisioning` — candidates for the reconciler's stuck-wake
+   * recovery (the pure age filter decides which are actually stuck). `lastActivity` is
+   * the claim time `markWaking` stamped at PHASE 1. */
+  async listStuckProvisioning(): Promise<ActiveWorkspace[]> {
+    const records = await this.recordsByStates(["provisioning"]);
+    return records.map((r) => ({
+      id: workspaceId(r.id),
+      lastActivity: isoTimestamp(r.lastActivity),
+    }));
+  }
+
+  /** Revert a workspace whose wake crashed mid-flight (stuck `provisioning`) back to
+   * `stopped` so it is wake-able again — the self-healing counterpart of the in-process
+   * `rollbackWake`. The snapshot is carried forward (a wake always has one) and no
+   * task/volume is bound yet, so nothing real is orphaned (a task whose launch outran
+   * the crash is reaped by the orphan-task reaper). A lost version-CAS race — a slow
+   * wake that finally committed `→running` — is a benign conflict, not an error. No
+   * audit event: the claim was never billed, so neither is the revert. */
+  async recoverStuckProvisioning(id: WorkspaceId): Promise<Result<void, DomainError>> {
+    const loaded = await this.find(id);
+    if (loaded?.ws.state !== "provisioning") {
+      return err(conflictError(`workspace ${id} is no longer provisioning`));
+    }
+    const reverted = markStopped(loaded.ws, undefined, isoTimestamp(this.deps.clock.now()));
+    if (!reverted.ok) return err(reverted.error);
+    try {
+      await this.persistTransition(reverted.value, loaded.version);
+      return ok(undefined);
+    } catch (e) {
+      if (isVersionConflict(e)) {
+        return err(conflictError(`workspace ${id} provisioning recovery lost a race`));
+      }
+      throw e;
+    }
   }
 
   /** Workspaces with a live volume that the reconciler may snapshot on schedule. */
@@ -695,7 +767,7 @@ export class WorkspaceService {
             ev.put(auditItem.attrs).commit(),
           ],
         ).go();
-        if (result.canceled) throw transactionCanceledAsConflict();
+        if (result.canceled) throwForCanceledTransaction(result);
       }
     } catch (e) {
       if (!isVersionConflict(e)) throw e;
@@ -763,7 +835,7 @@ export class WorkspaceService {
       { ws: this.deps.workspaces, ev: auditItem.entity },
       ({ ws: wsE, ev }) => [wsE.create(item).commit(), ev.put(auditItem.attrs).commit()],
     ).go();
-    if (result.canceled) throw transactionCanceledAsConflict();
+    if (result.canceled) throwForCanceledTransaction(result);
   }
 
   /** Persist a lifecycle transition, conditioned on the version the caller's
@@ -808,6 +880,6 @@ export class WorkspaceService {
         ];
       },
     ).go();
-    if (result.canceled) throw transactionCanceledAsConflict();
+    if (result.canceled) throwForCanceledTransaction(result);
   }
 }

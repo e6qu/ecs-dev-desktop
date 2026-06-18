@@ -22,6 +22,16 @@ export const DEFAULT_IDLE_THRESHOLD_MS = 30 * 60 * 1000;
 export const DEFAULT_SNAPSHOT_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 /**
+ * How long a workspace may sit in `provisioning` before the reconciler treats the
+ * wake as dead and reverts it to `stopped` (self-healing): 10 minutes. A legitimate
+ * cold start resolves well inside this — the readiness poll caps PHASE 2 at ~180s and
+ * the in-process `start()` then commits running or rolls back — so only a wake whose
+ * driving process *crashed* between the claim and the commit stays provisioning this
+ * long. Comfortably above the legit window so an in-flight wake is never reverted.
+ */
+export const DEFAULT_PROVISIONING_TIMEOUT_MS = 10 * 60 * 1000;
+
+/**
  * Grace window before an unreferenced volume/snapshot becomes GC-eligible: 1
  * hour. Guards against reaping a resource that was just created but is not yet
  * recorded against a workspace in the control plane (a create/persist race).

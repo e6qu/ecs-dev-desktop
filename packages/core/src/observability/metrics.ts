@@ -45,6 +45,9 @@ export const METRIC_RECONCILER_GC_FAILED = "reconciler.gc.failed";
 export const METRIC_RECONCILER_TASKS_REAPED = "reconciler.tasks.reaped";
 /** Orphan-task stops that errored (best-effort, counted and logged). */
 export const METRIC_RECONCILER_TASKS_REAP_FAILED = "reconciler.tasks.reap_failed";
+/** Workspaces reverted from a crashed wake (stuck `provisioning` → `stopped`),
+ * self-healed by the reconciler so they become wake-able again. */
+export const METRIC_RECONCILER_PROVISIONING_RECOVERED = "reconciler.provisioning.recovered";
 /** Actions skipped because a concurrent update won the race (not failures). */
 export const METRIC_RECONCILER_SKIPPED = "reconciler.skipped";
 

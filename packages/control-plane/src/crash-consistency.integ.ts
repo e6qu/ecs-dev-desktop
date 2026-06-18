@@ -164,4 +164,34 @@ describe("crash-consistency: persist failure compensates the launched task", () 
     expect(retried.ok).toBe(true);
     if (retried.ok) expect(retried.value.state).toBe("running");
   });
+
+  it("recoverStuckProvisioning reverts a wake stranded in provisioning (commit + rollback both failed)", async () => {
+    const ws = await service.create({
+      ownerId: ownerId("crash-d"),
+      baseImage: baseImage("golden/node:20"),
+    });
+    expect((await service.stop(workspaceId(ws.id))).ok).toBe(true);
+
+    // The task launches; then fail ALL writes so BOTH the commit (provisioning →
+    // running) AND the rollback fail — leaving the record stranded in provisioning,
+    // exactly as a crashed/evicted process would.
+    compute.afterLaunch = () => {
+      outage.failWrites = true;
+    };
+    await expect(service.start(workspaceId(ws.id))).rejects.toThrow(OUTAGE_MESSAGE);
+    compute.afterLaunch = undefined;
+    outage.failWrites = false;
+
+    // Stranded in provisioning — no other sweep would ever touch it.
+    expect((await service.get(workspaceId(ws.id)))?.state).toBe("provisioning");
+
+    // Self-healing: recover it back to stopped (its snapshot is preserved, so it is
+    // wake-able again).
+    expect((await service.recoverStuckProvisioning(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.get(workspaceId(ws.id)))?.state).toBe("stopped");
+
+    const retried = await service.start(workspaceId(ws.id));
+    expect(retried.ok).toBe(true);
+    if (retried.ok) expect(retried.value.state).toBe("running");
+  });
 });

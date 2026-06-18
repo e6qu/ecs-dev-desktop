@@ -94,6 +94,8 @@ when `LOG_PROVIDER=cloudwatch`, else no-op; no `PutMetricData` calls). Wired:
   `reconciler.tasks.reaped`/`reap_failed` from the orphan-task reaper (self-heals
   RUNNING workspace tasks with no control-plane record — the compute analogue of
   orphan-volume GC). A non-zero `reap_failed` warrants a look (a stuck orphan task).
+  Also `reconciler.provisioning.recovered` — workspaces reverted from a crashed wake
+  (stuck `provisioning` → `stopped`, so they become wake-able again).
 - **CloudWatch alarms** (`alarms.tf`): reconciler-failed and wake-latency-p99-high,
   with optional `alarm_sns_topic_arns` (gated by `enable_metric_alarms`; off for the
   sim, which exposes no metrics endpoint).
