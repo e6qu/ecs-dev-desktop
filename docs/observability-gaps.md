@@ -132,8 +132,11 @@ truncation at volume.
 
 **Gaps.**
 
-- Audit-source failures degrade to `[]` (by design) and are now logged via the
-  structured logger, but there's no metric/alert on the degradation. _Low._
+- ~~Audit-source failures degrade to `[]` (by design) and are now logged via the
+  structured logger, but there's no metric/alert on the degradation.~~ **Done
+  (2026-06-18).** The admin audit route emits `audit.source.degraded` (dimensioned by
+  source) alongside the log when a source errors and is degraded to an empty feed —
+  a persistent non-zero count means CloudTrail or the stored ledger is failing.
 
 ## Testing gaps
 

@@ -58,6 +58,10 @@ export const METRIC_API_REQUEST = "api.request";
 export const METRIC_API_LATENCY_MS = "api.request.latency_ms";
 /** An API request that produced a 5xx (or threw). */
 export const METRIC_API_ERROR = "api.request.error";
+/** An audit source errored and was degraded to an empty feed (dimensioned by
+ * source) — by design the feed never blanks, but a persistent non-zero value means
+ * a source (CloudTrail / the stored ledger) is failing and warrants a look. */
+export const METRIC_AUDIT_SOURCE_DEGRADED = "audit.source.degraded";
 
 // Fleet gauges (emitted once per reconciler sweep).
 export const METRIC_FLEET_TOTAL = "fleet.workspaces.total";

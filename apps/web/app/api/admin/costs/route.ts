@@ -2,7 +2,7 @@
 import { COST_WINDOW_DAYS, costReportQuery } from "@edd/api-contracts";
 import { NextResponse } from "next/server";
 
-import { isResponse, requireAdmin } from "../../../../lib/api";
+import { badRequest, isResponse, requireAdmin } from "../../../../lib/api";
 import { getCostService } from "../../../../lib/control-plane";
 import { withObservability } from "../../../../lib/observability";
 
@@ -14,10 +14,12 @@ async function handleGET(req: Request) {
   const principal = await requireAdmin(req);
   if (isResponse(principal)) return principal;
 
-  const { window } = costReportQuery.parse({
+  // Validate the query at the boundary → 400 (not a 500) on a bad ?window=.
+  const parsed = costReportQuery.safeParse({
     window: new URL(req.url).searchParams.get("window") ?? undefined,
   });
-  const report = await (await getCostService()).report(COST_WINDOW_DAYS[window]);
+  if (!parsed.success) return badRequest(parsed.error.issues[0]?.message);
+  const report = await (await getCostService()).report(COST_WINDOW_DAYS[parsed.data.window]);
   return NextResponse.json(report);
 }
 
