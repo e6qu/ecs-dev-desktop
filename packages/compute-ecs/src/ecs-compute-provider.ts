@@ -104,6 +104,10 @@ export interface EcsComputeProviderDeps {
   secretsClient?: SecretsManagerClient;
 }
 
+function errMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 function required<T>(value: T | undefined | null, field: string): T {
   if (value === undefined || value === null) throw new Error(`ECS response missing ${field}`);
   return value;
@@ -386,8 +390,29 @@ export class EcsComputeProvider implements ComputeProvider {
       }),
     );
     const arn = required(out.tasks?.[0]?.taskArn, "taskArn");
-    const ready = await this.awaitTaskReady(arn);
-    return { id: taskId(arn), volumeId: volumeId(ready.volumeId), sshHost: ready.sshHost };
+    // The task is now launched. If it never becomes ready (stops mid-boot, or the
+    // readiness poll times out), stop it before propagating — otherwise a failed
+    // launch leaks a running Fargate task and its managed EBS volume (the caller
+    // never receives this ARN, so it cannot compensate; the managed volume's
+    // deleteOnTermination then reaps the volume with the stopped task).
+    try {
+      const ready = await this.awaitTaskReady(arn);
+      return { id: taskId(arn), volumeId: volumeId(ready.volumeId), sshHost: ready.sshHost };
+    } catch (err) {
+      try {
+        await this.stopTask(taskId(arn));
+      } catch (stopErr) {
+        // Cleanup failed too — do not swallow it: the task may be leaked and needs a
+        // look. Surface it alongside the original launch failure.
+        throw new Error(
+          `workspace task ${arn} failed to become ready and could not be stopped ` +
+            `(it may be leaked — needs manual cleanup): ${errMessage(err)}; ` +
+            `stop error: ${errMessage(stopErr)}`,
+          { cause: stopErr },
+        );
+      }
+      throw err;
+    }
   }
 
   /**
