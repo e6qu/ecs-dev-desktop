@@ -1619,3 +1619,13 @@ createVolume`/`createSnapshot` create the resource then `waitUntilVolumeAvailabl
   doesn't linger. Test: an upstream that answers the upgrade with a raw 503 → the gate relays 503 and
   closes (without the fix the client hangs to timeout). workspace-gate unit 13 green; tsc/eslint/knip
   clean.
+- **2026-06-18 — Hardened the flaky `pw:vscode` browser proof (terminal keystroke retry).** The
+  "VS Code workspace browser proof" flaked in CI (`EDD-VSCODE-BUILD-OK` not found). Root cause: the
+  build was driven by a SINGLE keystroke burst into the integrated terminal, but xterm can drop the
+  leading keystrokes before it's attached to the pty — so the build command never ran and the 60s
+  artifact poll waited for a binary that never came. The verification (a container-filesystem probe
+  of the compiled `~/proof/hello` ELF) was already robust; the flake was upstream. Fix: **re-issue
+  the build command** (up to 4 rounds, polling the filesystem ~20s each) so a dropped burst is
+  retried, while still proving the keyboard-driven terminal works (the artifact only appears if the
+  keystrokes landed and the build ran in the terminal). Relative-time poll loops only (§6.10). eslint
+  - tsc clean; the real proof is the e2e job.
