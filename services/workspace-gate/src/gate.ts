@@ -114,6 +114,11 @@ function proxyHttp(upstream: URL, req: IncomingMessage, res: ServerResponse): vo
     if (!res.headersSent) res.writeHead(502);
     res.end();
   });
+  // If the client goes away mid-exchange, abort the upstream request so its socket
+  // doesn't linger (a no-op once the response has already completed normally).
+  res.on("close", () => {
+    proxyReq.destroy();
+  });
   req.pipe(proxyReq);
 }
 
@@ -143,6 +148,18 @@ function proxyUpgrade(
     upstreamSocket.on("close", teardown);
     clientSocket.on("error", teardown);
     clientSocket.on("close", teardown);
+  });
+  // The upstream answered WITHOUT upgrading (e.g. a just-woken workspace whose
+  // editor isn't serving WebSocket yet returns an error/redirect). Relay the status
+  // and close the client socket — otherwise it hangs open until the client times
+  // out, leaking a socket per such connection.
+  proxyReq.on("response", (proxyRes) => {
+    const reason = proxyRes.statusMessage ?? "";
+    clientSocket.write(
+      `HTTP/1.1 ${String(proxyRes.statusCode ?? 502)} ${reason}\r\nconnection: close\r\n\r\n`,
+    );
+    clientSocket.destroy();
+    proxyRes.destroy();
   });
   proxyReq.on("error", () => clientSocket.destroy());
   if (head.length > 0) proxyReq.write(head);
