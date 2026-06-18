@@ -165,6 +165,57 @@ describe("workspace gate", () => {
     });
     expect(status).toBe(403);
   });
+
+  it("relays a non-upgrade upstream response and closes the socket (no hung socket)", async () => {
+    verdict = 204;
+    pdpThrows = false;
+    // An upstream that receives the upgrade but answers with a normal HTTP response
+    // (e.g. a just-woken workspace whose editor isn't serving WebSocket yet).
+    const noUpgrade = createServer();
+    noUpgrade.on("upgrade", (_req, socket) => {
+      socket.write("HTTP/1.1 503 Service Unavailable\r\nconnection: close\r\n\r\n");
+      socket.end();
+    });
+    await new Promise<void>((resolve) => noUpgrade.listen(0, "127.0.0.1", resolve));
+    const g = createGate({
+      pdpUrl: "http://pdp.invalid/api/internal/authz",
+      upstreamUrl: `http://127.0.0.1:${String(port(noUpgrade))}`,
+      fetchImpl: () => Promise.resolve(new Response(null, { status: 204 })),
+    });
+    await new Promise<void>((resolve) => g.listen(0, "127.0.0.1", resolve));
+
+    try {
+      // Without the fix the client socket hangs (no upgrade, no relayed response)
+      // until the test times out; with it, the 503 is relayed and the socket closes.
+      const status = await new Promise<number>((resolve, reject) => {
+        const req = httpRequest({
+          port: port(g),
+          path: "/ws",
+          headers: {
+            host: "ws-abc.devbox.localhost",
+            connection: "Upgrade",
+            upgrade: "websocket",
+            [POMERIUM_ASSERTION_HEADER]: "a-token",
+          },
+        });
+        req.on("response", (res) => {
+          res.resume();
+          resolve(res.statusCode ?? 0);
+        });
+        req.on("upgrade", () => {
+          reject(new Error("upstream did not upgrade; expected a relayed response"));
+        });
+        req.on("error", reject);
+        req.end();
+      });
+      expect(status).toBe(503);
+    } finally {
+      g.closeAllConnections();
+      g.close();
+      noUpgrade.closeAllConnections();
+      noUpgrade.close();
+    }
+  });
 });
 
 describe("workspace gate (dynamic upstream resolver)", () => {

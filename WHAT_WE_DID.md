@@ -1607,3 +1607,15 @@ createVolume`/`createSnapshot` create the resource then `waitUntilVolumeAvailabl
   alarms (off for the sim, which has no metrics endpoint); new `control_plane_5xx_threshold` var.
   `terraform fmt` + `validate` clean. The real firing is `e2e-aws`-validated (ALB metrics are
   real-AWS-only). This + the orphan-task reaper are the "both, reaper first" self-healing items.
+- **2026-06-18 — workspace-gate proxy: fix a per-connection socket leak on a non-upgrade upstream
+  (audit cont.).** Auditing the gate (it fronts every workspace connection), `proxyUpgrade` only
+  handled the `upgrade` + `error` events: if the upstream answered a WebSocket upgrade with a **normal
+  HTTP response** instead of switching protocols — e.g. a just-woken workspace whose editor isn't
+  serving WebSocket yet returns 502/503 — the `response` event was unhandled, so the **client socket
+  was never written to or destroyed and hung open** until the client timed out (a socket leak per such
+  connection, and these cluster during cold-start wakes). Added a `response` handler that relays the
+  status line and closes the client socket. Also hardened `proxyHttp`: abort the upstream request when
+  the client disconnects mid-exchange (`res` close → `proxyReq.destroy()`), so the upstream socket
+  doesn't linger. Test: an upstream that answers the upgrade with a raw 503 → the gate relays 503 and
+  closes (without the fix the client hangs to timeout). workspace-gate unit 13 green; tsc/eslint/knip
+  clean.
