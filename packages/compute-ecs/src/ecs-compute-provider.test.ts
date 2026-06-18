@@ -1,9 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { baseImage } from "@edd/core";
+import {
+  DescribeTasksCommand,
+  ECSClient,
+  RegisterTaskDefinitionCommand,
+  RunTaskCommand,
+  StopTaskCommand,
+} from "@aws-sdk/client-ecs";
+import { baseImage, workspaceId } from "@edd/core";
 import { describe, expect, it } from "vitest";
 
 import {
   agentToken,
+  EcsComputeProvider,
   taskDefinitionFamily,
   taskPrivateIp,
   taskReady,
@@ -159,5 +167,54 @@ describe("workspaceEnvironment", () => {
     );
     expect(env.map((e) => e.name)).not.toContain("EDD_REPO_URL");
     expect(env.map((e) => e.name)).not.toContain("EDD_REPO_REF");
+  });
+});
+
+describe("EcsComputeProvider.runTask cleanup on a failed launch", () => {
+  const LAUNCHED_ARN = "arn:aws:ecs:us-east-1:123456789012:task/edd/abc123";
+
+  /** A client whose launched task stops before becoming ready (so awaitTaskReady
+   * throws), recording every StopTask issued so the test can assert cleanup. */
+  function failingLaunchClient(stops: string[]): ECSClient {
+    const send = (command: unknown): Promise<unknown> => {
+      if (command instanceof RegisterTaskDefinitionCommand) {
+        return Promise.resolve({
+          taskDefinition: { taskDefinitionArn: "arn:aws:ecs:::task-definition/edd:1" },
+        });
+      }
+      if (command instanceof RunTaskCommand) {
+        return Promise.resolve({ tasks: [{ taskArn: LAUNCHED_ARN }] });
+      }
+      if (command instanceof DescribeTasksCommand) {
+        return Promise.resolve({
+          tasks: [{ taskArn: LAUNCHED_ARN, lastStatus: "STOPPED", stoppedReason: "boot failed" }],
+        });
+      }
+      if (command instanceof StopTaskCommand) {
+        stops.push(command.input.task ?? "");
+        return Promise.resolve({});
+      }
+      return Promise.reject(new Error("unexpected command"));
+    };
+    return { send } as unknown as ECSClient;
+  }
+
+  it("stops the launched task when it never becomes ready (no leaked Fargate task)", async () => {
+    const stops: string[] = [];
+    const provider = new EcsComputeProvider({
+      client: failingLaunchClient(stops),
+      config: { subnets: ["subnet-1"], ebsRoleArn: "arn:aws:iam::123456789012:role/ebs" },
+    });
+
+    await expect(
+      provider.runTask({
+        workspaceId: workspaceId("ws-fail"),
+        baseImage: baseImage("edd-workspace:e2e"),
+      }),
+    ).rejects.toThrow(/stopped before becoming ready/);
+
+    // The launched task was stopped exactly once — the failed launch left nothing
+    // running (its managed EBS volume is reaped by deleteOnTermination).
+    expect(stops).toEqual([LAUNCHED_ARN]);
   });
 });

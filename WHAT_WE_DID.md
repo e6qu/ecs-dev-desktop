@@ -1552,3 +1552,16 @@ MaxResults` has an AWS minimum of 5 — reinforcing the rule to validate every p
   unit test (one stuck delete → the other orphan still reaped, failure counted + logged, no throw) and
   updated the exact-match GC assertions. reconciler unit 9 + integ 7 (vs sim/DynamoDB Local) + core
   178 green; tsc + eslint + knip clean.
+- **2026-06-18 — Stop the launched task when a workspace launch fails to become ready (compute-leak
+  fix).** Continuing the destructive-path hardening into the compute provider: `EcsComputeProvider.
+runTask` calls `RunTaskCommand` (a real Fargate task is now launched) and then `awaitTaskReady`,
+  which **throws** if the task stops mid-boot or the readiness poll times out. On that throw the ARN
+  never escaped `runTask`, so the caller (`WorkspaceService.create`/wake — which only compensates
+  with `stopTask(task.id)` once it HAS the id) could not clean it up: a failed/timed-out launch
+  **leaked a running Fargate task + its managed EBS volume**, unreferenced (the storage GC reaps
+  volumes, but nothing reaps a task with no record). Fixed in `runTask`: wrap `awaitTaskReady`, and on
+  failure best-effort `stopTask(arn)` before rethrowing — stopping the task reaps the managed volume
+  via `deleteOnTermination`. If the cleanup stop ALSO fails it is **not swallowed** (§6.5): a combined
+  error is thrown with the original `cause` so a genuinely-leaked task is visible. Added a unit test
+  (mock ECS client whose task STOPS before ready → `runTask` rejects AND issues exactly one StopTask
+  for the launched ARN). compute-ecs unit 17 green; tsc + eslint + knip clean.
