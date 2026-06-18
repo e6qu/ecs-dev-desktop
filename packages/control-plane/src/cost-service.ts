@@ -257,7 +257,16 @@ export class StoredCostRollupStore implements CostRollupStore {
   }
 
   async replaceAll(records: readonly CostRollupRecord[]): Promise<void> {
-    if (records.length === 0) return;
-    await this.entity.put([...records]).go();
+    // A true replace: delete any checkpoint absent from the new generation (a
+    // workspace that left the ledger) before upserting the rest, so a stale rollup
+    // row can never be double-counted by `rollupReport`. Today the audit ledger is
+    // append-only, so the id set is monotonic and the delete is a no-op — but this
+    // keeps the swap correct if that invariant ever changes, rather than relying on it.
+    const keep = new Set(records.map((r) => r.workspaceId));
+    const stale = (await this.list()).filter((r) => !keep.has(r.workspaceId));
+    if (stale.length > 0) {
+      await this.entity.delete(stale.map((r) => ({ workspaceId: r.workspaceId }))).go();
+    }
+    if (records.length > 0) await this.entity.put([...records]).go();
   }
 }

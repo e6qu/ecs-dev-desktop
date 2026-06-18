@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { registerSshKeyRequest } from "@edd/api-contracts";
 import { SshKeyConflictError } from "@edd/control-plane";
 
-import { authenticate, badRequest, conflict, errorMessage, isResponse } from "../../../lib/api";
+import { authenticate, badRequest, conflict, isResponse } from "../../../lib/api";
 import { getSshKeyService } from "../../../lib/control-plane";
 import { withObservability } from "../../../lib/observability";
 
@@ -40,7 +40,9 @@ async function handlePOST(req: Request) {
     return NextResponse.json({ key }, { status: 201 });
   } catch (err) {
     if (err instanceof SshKeyConflictError) return conflict(err.message);
-    return NextResponse.json({ error: errorMessage(err) }, { status: 500 });
+    // Unexpected — re-throw so withObservability logs it and returns a bodiless 500
+    // (don't echo the internal error message to the client).
+    throw err;
   }
 }
 

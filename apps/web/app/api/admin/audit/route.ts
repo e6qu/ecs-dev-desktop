@@ -1,14 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { DEFAULT_AUDIT_FEED_LIMIT, type AuditEvent } from "@edd/core";
+import { DEFAULT_AUDIT_FEED_LIMIT, METRIC_AUDIT_SOURCE_DEGRADED, type AuditEvent } from "@edd/core";
 import { NextResponse } from "next/server";
 
 import { isResponse, requireAdmin } from "../../../../lib/api";
 import { getAuditLog, getAuditSource } from "../../../../lib/control-plane";
 import { errorField, log } from "../../../../lib/logger";
+import { getMetrics } from "../../../../lib/metrics";
 import { withObservability } from "../../../../lib/observability";
 
 /** One source's events, or [] if that source errors — so a single failing source
- * degrades the feed rather than blanking it. The failure is logged (not silent). */
+ * degrades the feed rather than blanking it. The failure is logged AND metered (not
+ * silent): a persistent `audit.source.degraded` count means a source is failing. */
 async function safeRecent(
   label: string,
   source: { recent: () => Promise<AuditEvent[]> },
@@ -17,6 +19,7 @@ async function safeRecent(
     return await source.recent();
   } catch (err) {
     log.error("audit source failed", { source: label, error: errorField(err) });
+    getMetrics().count(METRIC_AUDIT_SOURCE_DEGRADED, 1, { source: label });
     return [];
   }
 }

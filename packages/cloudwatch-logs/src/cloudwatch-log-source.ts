@@ -5,7 +5,12 @@ import {
   ResourceNotFoundException,
   type FilteredLogEvent,
 } from "@aws-sdk/client-cloudwatch-logs";
-import { DEFAULT_WORKSPACE_CONTAINER, DEFAULT_WORKSPACE_LOG_STREAM_PREFIX } from "@edd/config";
+import {
+  AWS_SDK_MAX_ATTEMPTS,
+  AWS_SDK_RETRY_MODE,
+  DEFAULT_WORKSPACE_CONTAINER,
+  DEFAULT_WORKSPACE_LOG_STREAM_PREFIX,
+} from "@edd/config";
 import {
   assertNever,
   isoTimestamp,
@@ -60,7 +65,13 @@ export class CloudWatchLogSource implements LogSource {
   ) {}
 
   static fromEnv(appName: string): CloudWatchLogSource {
-    return new CloudWatchLogSource(new CloudWatchLogsClient({}), appName);
+    return new CloudWatchLogSource(
+      new CloudWatchLogsClient({
+        maxAttempts: AWS_SDK_MAX_ATTEMPTS,
+        retryMode: AWS_SDK_RETRY_MODE,
+      }),
+      appName,
+    );
   }
 
   async read(stream: LogStream, filter?: LogReadFilter): Promise<LogStreamResult> {

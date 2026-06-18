@@ -1658,3 +1658,20 @@ listStuckProvisioning` + `recoverStuckProvisioning` revert provisioning→stoppe
   lost-race skip) + a crash-consistency integ that strands a record in provisioning (commit + rollback
   both fail) and recovers it back to wake-able (DynamoDB Local). core 182 + reconciler 14 + control-plane
   28 unit + 7+41 integ green; tsc/eslint/knip clean.
+- **2026-06-18 — Security breadth audit (clean) + cleared the remaining deferred fixes.** A focused
+  security/authz/input-validation audit of the whole request surface — all 28 API routes (auth +
+  CASL + ownership/IDOR + body/param validation + error leakage), machine-auth/HMAC, the Pomerium PDP
+  (JWKS + aud/iss/exp binding, host-spoof resistance), and the IdP claim→role mapping — found **no real
+  defects** (the surface is consistently guarded via the shared `lib/api` guards). It surfaced two
+  low hardening nits, both fixed: `admin/costs` used `.parse` (a bad `?window=` → 500) → now `safeParse`
+  → 400; `ssh-keys` POST echoed the internal error message in its 500 body → now re-throws so
+  `withObservability` logs it and returns a bodiless 500. Also cleared the actionable **deferred** items
+  flagged across recent audits: (a) the CloudWatch Logs + Pricing clients now use the configured
+  6/adaptive retry policy (completing the DynamoDB+CloudTrail pass); (b) `StoredCostRollupStore.replaceAll`
+  is now a TRUE replace (deletes checkpoints absent from the new generation before upserting, so a
+  stale rollup can't be double-counted — was an upsert safe only by the append-only invariant); (c) the
+  admin audit route emits `audit.source.degraded` when a source errors and is degraded to an empty feed.
+  Left deferred-by-design (documented, not actionable now): control-plane self-health hardcoded `ok` (by
+  construction), `CONNECTION_TOKEN` injection (the future wake-on-connect gate), the upstream sockerless
+  blockers, and the recorded DynamoDB-Local delete-vs-wake flake. core 182 + cloudwatch-logs 21 +
+  control-plane 28 + web 63 unit + cost integ green; tsc/eslint/knip clean.

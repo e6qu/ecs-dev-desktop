@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { GetProductsCommand, PricingClient } from "@aws-sdk/client-pricing";
-import { DEFAULT_AWS_REGION, workspacePricing } from "@edd/config";
+import {
+  AWS_SDK_MAX_ATTEMPTS,
+  AWS_SDK_RETRY_MODE,
+  DEFAULT_AWS_REGION,
+  workspacePricing,
+} from "@edd/config";
 import type { Pricing } from "@edd/core";
 
 /**
@@ -97,7 +102,11 @@ async function getProducts(
  * only the rates it could resolve; the caller fills the rest from config.
  */
 async function fetchAwsPricing(region: string): Promise<Partial<Pricing>> {
-  const client = new PricingClient({ region: PRICE_LIST_ENDPOINT_REGION });
+  const client = new PricingClient({
+    region: PRICE_LIST_ENDPOINT_REGION,
+    maxAttempts: AWS_SDK_MAX_ATTEMPTS,
+    retryMode: AWS_SDK_RETRY_MODE,
+  });
   const regionFilter: Filter = { Type: "TERM_MATCH", Field: "regionCode", Value: region };
   const out: { -readonly [K in keyof Pricing]?: Pricing[K] } = {};
 
