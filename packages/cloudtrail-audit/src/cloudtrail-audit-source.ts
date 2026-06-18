@@ -5,6 +5,7 @@ import {
   type Event,
   type LookupEventsCommandOutput,
 } from "@aws-sdk/client-cloudtrail";
+import { AWS_SDK_MAX_ATTEMPTS, AWS_SDK_RETRY_MODE } from "@edd/config";
 import {
   DEFAULT_AUDIT_FEED_LIMIT,
   isoTimestamp,
@@ -24,7 +25,11 @@ export class CloudTrailAuditSource implements AuditSource {
   constructor(private readonly client: CloudTrailClient) {}
 
   static fromEnv(): CloudTrailAuditSource {
-    return new CloudTrailAuditSource(new CloudTrailClient({}));
+    // Adaptive retry: CloudTrail `LookupEvents` is aggressively throttled (~1-2 TPS),
+    // so the paginated `recent()` loop benefits from the platform's backoff policy.
+    return new CloudTrailAuditSource(
+      new CloudTrailClient({ maxAttempts: AWS_SDK_MAX_ATTEMPTS, retryMode: AWS_SDK_RETRY_MODE }),
+    );
   }
 
   async recent(limit?: number): Promise<AuditEvent[]> {
