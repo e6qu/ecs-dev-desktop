@@ -32,10 +32,12 @@ a runnable composition is in [`infra/terraform/examples/complete`](../infra/terr
 1. **Bootstrap remote state** (S3 bucket + DynamoDB lock table) and configure it as
    the Terraform `backend` — do this before the first `apply` so state is never
    local. (The module README lists this as prerequisite #1.)
-2. Set the module inputs: `name`, `aws_region`, `domain_name` (enables ACM +
-   Route 53 + the `*.devbox` wildcard), the optional `nat_mode` (`managed` NAT
-   gateway or cost-optimized `fck-nat` instance), task sizing, and
-   `secret_environment` (see Step 3).
+2. Set the module inputs: `name`, `domain_name` (enables ACM +
+   Route 53 + the `*.devbox` wildcard), the optional `nat_mode` (`gateway` —
+   AWS-managed NAT Gateway, or `instance` — a cost-optimized fck-nat EC2
+   instance), task sizing, and `secret_environment` (see Step 3). The AWS region
+   comes from the configured AWS provider (the module derives it via
+   `data "aws_region"`), not a module input.
 3. `terraform apply`. This creates: VPC/subnets/NAT, DynamoDB single-table
    (PK/SK + GSI1 + GSI2, on-demand), ECR repos (control-plane + golden), KMS,
    IAM roles, the ECS cluster + control-plane service (autoscaled, on-demand

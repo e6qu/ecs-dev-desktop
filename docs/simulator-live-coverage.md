@@ -45,9 +45,9 @@ credentials, and normal cloud configuration.
 These are feasible against the current simulators and should stay in the same
 endpoint-only model: no product branches, no special fake code paths.
 
-| Candidate                       | Simulator path                         | Reason                                                                                                                                                                |
-| ------------------------------- | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Idle-agent heartbeat RESUMPTION | golden image + togglable control plane | Tolerance of an unreachable control plane is already shown (the agent never crashes the task); _resumption_ after the CP returns needs a togglable-CP harness to add. |
+| Candidate            | Simulator path | Reason                                                                                                                                                                        |
+| -------------------- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| _(none outstanding)_ | —              | The last candidate — idle-agent heartbeat **resumption** after the control plane returns — is now covered (`idle-agent-resume.integ.ts`); see "Done since the last revision". |
 
 Done since the last revision: the full user journey, the portal browser
 lifecycle, and the browser Pomerium OIDC login run live; the Auth.js callback
@@ -57,7 +57,9 @@ heavy data-fidelity, TLS storage-adapter, and adversarial-auth coverage, plus a
 depth pass (exhaustive CASL ability + route-authz matrices, concurrency-pair
 safety incl. a delete-vs-wake leak fix, GC TOCTOU, ssh-key/ssh-authorize input hardening),
 and an end-to-end pass (data durability across a real scale-to-zero cycle
-verified over SSH; the reconciler container's drift sweep).
+verified over SSH; the reconciler container's drift sweep), and the idle-agent's
+heartbeat **resumption** after a control-plane outage (the real `idle-agent.sh`
+driven against a togglable stub control plane — tolerance + resumption).
 
 Per-workspace proxy authorization (formerly the one known gap) is now enforced:
 a workspace **gate** (PEP, `services/workspace-gate`) fronts each workspace,
