@@ -31,6 +31,8 @@ function fakeService(overrides: Partial<ReconcilerService> = {}): ReconcilerServ
     snapshot: () => Promise.reject(new Error("snapshot not expected")),
     listReferencedStorage: () => Promise.resolve({ volumeIds: [], snapshotIds: [] }),
     listReferencedTasks: () => Promise.resolve([]),
+    listStuckProvisioning: () => Promise.resolve([]),
+    recoverStuckProvisioning: () => Promise.reject(new Error("recover not expected")),
     ...overrides,
   };
 }
@@ -353,5 +355,58 @@ describe("Reconciler.reapOrphanTasks", () => {
       clock: fixedClock("2026-06-01T02:00:00.000Z"),
     });
     expect(await reconciler.reapOrphanTasks()).toEqual({ scanned: 0, reaped: 0, failed: 0 });
+  });
+});
+
+describe("Reconciler.recoverProvisioning", () => {
+  it("reverts a wake stuck past the timeout and spares a fresh one", async () => {
+    const recovered: string[] = [];
+    const service = fakeService({
+      listStuckProvisioning: () =>
+        Promise.resolve([
+          { id: workspaceId("ws-stuck"), lastActivity: isoTimestamp("2026-06-01T00:00:00.000Z") },
+          { id: workspaceId("ws-fresh"), lastActivity: isoTimestamp("2026-06-01T01:59:00.000Z") },
+        ]),
+      recoverStuckProvisioning: (id) => {
+        recovered.push(id);
+        return Promise.resolve(ok(undefined));
+      },
+    });
+    const reconciler = new Reconciler({
+      service,
+      storage: await emptyStorage(),
+      clock: fixedClock("2026-06-01T02:00:00.000Z"),
+      provisioningTimeoutMs: THIRTY_MIN,
+    });
+
+    expect(await reconciler.recoverProvisioning()).toEqual({
+      scanned: 2,
+      recovered: 1,
+      skipped: 0,
+    });
+    expect(recovered).toEqual([workspaceId("ws-stuck")]);
+  });
+
+  it("skips (does not throw) a recovery that loses a state race", async () => {
+    const service = fakeService({
+      listStuckProvisioning: () =>
+        Promise.resolve([
+          { id: workspaceId("ws-stuck"), lastActivity: isoTimestamp("2026-06-01T00:00:00.000Z") },
+        ]),
+      // A slow wake committed → running before we reverted it.
+      recoverStuckProvisioning: () => Promise.resolve(err(conflictError("won the wake"))),
+    });
+    const reconciler = new Reconciler({
+      service,
+      storage: await emptyStorage(),
+      clock: fixedClock("2026-06-01T02:00:00.000Z"),
+      provisioningTimeoutMs: THIRTY_MIN,
+    });
+
+    expect(await reconciler.recoverProvisioning()).toEqual({
+      scanned: 1,
+      recovered: 0,
+      skipped: 1,
+    });
   });
 });

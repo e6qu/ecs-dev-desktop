@@ -1629,3 +1629,32 @@ createVolume`/`createSnapshot` create the resource then `waitUntilVolumeAvailabl
   retried, while still proving the keyboard-driven terminal works (the artifact only appears if the
   keystrokes landed and the build ran in the terminal). Relative-time poll loops only (§6.10). eslint
   - tsc clean; the real proof is the e2e job.
+- **2026-06-18 — Audit pass (adapters): retry policy + transaction-cancellation classification.**
+  Two findings from a focused partial-failure audit of the db/adapter layers (cost model, CloudWatch/
+  CloudTrail/Secrets all came back clean). (1) **DynamoDB + CloudTrail clients ignored the configured
+  retry policy** — every other AWS client passes `AWS_SDK_MAX_ATTEMPTS=6`/`retryMode=adaptive`, but
+  `createDynamoClient` (the highest-traffic, most-contended client — every CAS write + `writeTransaction`
+  at 200+ scale) and `CloudTrailAuditSource.fromEnv` (LookupEvents is throttled ~1-2 TPS) were on the
+  SDK defaults (3/standard); added the config. (2) **`writeTransaction` cancellations were all
+  misclassified as benign version conflicts** — the code threw a synthetic `ConditionalCheckFailedException`
+  for ANY `result.canceled`, discarding ElectroDB's per-item `code`. So a permanent `ValidationError`/
+  `ItemCollectionSizeLimitExceeded` was silently swallowed as a "lost race" (§6.5). Added
+  `fatalTransactionCode` (pure, unit-tested): a permanent data-error code surfaces loudly (500); the
+  contention codes (`ConditionalCheckFailed`/`TransactionConflict`/throttling) keep the conflict/retry
+  path. control-plane unit 28; db/cloudtrail build clean.
+- **2026-06-18 — Self-healing: recover workspaces STUCK in `provisioning` (crashed wake).** The main
+  gap from the self-healing audit: `start()` is claim-before-launch — it CAS-commits `stopped →
+provisioning` (no taskId), launches, then CAS-commits `→ running`. If the driving process dies
+  between, the record is stranded in `provisioning` FOREVER — `listActive` only queries running/idle,
+  so no sweep (drift/idle/snapshot/GC) ever sees it; the workspace can't connect, wake, or scale-to-zero
+  (only `remove` works). Added a reconciler recovery step (runs FIRST, before drift): `WorkspaceService.
+listStuckProvisioning` + `recoverStuckProvisioning` revert provisioning→stopped via `markStopped`
+  (the snapshot is carried forward — a wake always has one — so it's wake-able again; the in-process
+  `rollbackWake` does the same), best-effort with a lost-CAS-race skip (a slow wake that finally
+  committed). Timeout `DEFAULT_PROVISIONING_TIMEOUT_MS` = 10 min (well above the ~180s legit cold-start
+  window so an in-flight wake is never reverted), env-overridable (`EDD_PROVISIONING_TIMEOUT_MS`). New
+  `reconciler.provisioning.recovered` metric. The orphan task (if its launch outran the crash) is
+  already handled by the reaper. Tests: reconciler unit `recoverProvisioning` (revert-vs-spare-fresh,
+  lost-race skip) + a crash-consistency integ that strands a record in provisioning (commit + rollback
+  both fail) and recovers it back to wake-able (DynamoDB Local). core 182 + reconciler 14 + control-plane
+  28 unit + 7+41 integ green; tsc/eslint/knip clean.

@@ -8,7 +8,8 @@
  * Optional env read by the SDK adapters: AWS_REGION, AWS_ENDPOINT_URL,
  * DYNAMODB_ENDPOINT — same as the rest of the platform.
  * Optional tuning (DO_NEXT decision #4 knobs; defaults in @edd/core):
- * EDD_IDLE_THRESHOLD_MS, EDD_SNAPSHOT_INTERVAL_MS, EDD_GC_GRACE_MS.
+ * EDD_IDLE_THRESHOLD_MS, EDD_SNAPSHOT_INTERVAL_MS, EDD_GC_GRACE_MS,
+ * EDD_PROVISIONING_TIMEOUT_MS.
  */
 import { metricSinkFromEnv } from "@edd/cloudwatch-metrics";
 import { EcsComputeProvider } from "@edd/compute-ecs";
@@ -32,6 +33,7 @@ import {
   METRIC_RECONCILER_FAILED,
   METRIC_RECONCILER_GC_DELETED,
   METRIC_RECONCILER_GC_FAILED,
+  METRIC_RECONCILER_PROVISIONING_RECOVERED,
   METRIC_RECONCILER_TASKS_REAPED,
   METRIC_RECONCILER_TASKS_REAP_FAILED,
   METRIC_RECONCILER_SKIPPED,
@@ -69,6 +71,7 @@ function tuningMs(name: string): number | undefined {
 const idleThresholdMs = tuningMs("EDD_IDLE_THRESHOLD_MS");
 const snapshotIntervalMs = tuningMs("EDD_SNAPSHOT_INTERVAL_MS");
 const gcGraceMs = tuningMs("EDD_GC_GRACE_MS");
+const provisioningTimeoutMs = tuningMs("EDD_PROVISIONING_TIMEOUT_MS");
 
 const dynamo = createDynamoClient();
 const storage = Ec2StorageProvider.fromEnv();
@@ -113,6 +116,7 @@ const reconciler = new Reconciler({
   ...(idleThresholdMs === undefined ? {} : { idleThresholdMs }),
   ...(snapshotIntervalMs === undefined ? {} : { snapshotIntervalMs }),
   ...(gcGraceMs === undefined ? {} : { gcGraceMs }),
+  ...(provisioningTimeoutMs === undefined ? {} : { provisioningTimeoutMs }),
 });
 
 try {
@@ -120,6 +124,7 @@ try {
 
   // Per-action metrics (CloudWatch EMF on AWS) — the sweep's effect over time.
   metrics.count(METRIC_RECONCILER_SWEEP);
+  metrics.count(METRIC_RECONCILER_PROVISIONING_RECOVERED, result.provisioning.recovered);
   metrics.count(METRIC_RECONCILER_DRIFT_LOST, result.drift.lost);
   metrics.count(METRIC_RECONCILER_STOPPED, result.idle.stopped);
   metrics.count(METRIC_RECONCILER_SNAPSHOTTED, result.snapshots.snapshotted);
@@ -132,11 +137,16 @@ try {
   metrics.count(METRIC_RECONCILER_TASKS_REAP_FAILED, result.tasks.failed);
   metrics.count(
     METRIC_RECONCILER_SKIPPED,
-    result.drift.skipped + result.idle.skipped + result.snapshots.skipped,
+    result.provisioning.skipped +
+      result.drift.skipped +
+      result.idle.skipped +
+      result.snapshots.skipped,
   );
 
   // Structured, queryable per-sweep log (was a single untyped JSON line).
   log.info("maintenance sweep complete", {
+    provisioningScanned: result.provisioning.scanned,
+    provisioningRecovered: result.provisioning.recovered,
     driftScanned: result.drift.scanned,
     driftLost: result.drift.lost,
     idleScanned: result.idle.scanned,
@@ -148,7 +158,11 @@ try {
     tasksScanned: result.tasks.scanned,
     tasksReaped: result.tasks.reaped,
     tasksReapFailed: result.tasks.failed,
-    skipped: result.drift.skipped + result.idle.skipped + result.snapshots.skipped,
+    skipped:
+      result.provisioning.skipped +
+      result.drift.skipped +
+      result.idle.skipped +
+      result.snapshots.skipped,
   });
 
   // Post-sweep observability (best-effort — a gauge/heartbeat hiccup must not turn

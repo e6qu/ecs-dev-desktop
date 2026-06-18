@@ -2,6 +2,7 @@
 import {
   DEFAULT_GC_GRACE_MS,
   DEFAULT_IDLE_THRESHOLD_MS,
+  DEFAULT_PROVISIONING_TIMEOUT_MS,
   DEFAULT_SNAPSHOT_INTERVAL_MS,
   isoTimestamp,
   selectDueForSnapshot,
@@ -49,6 +50,13 @@ export interface ReconcilerService {
   /** Task ids still referenced by a workspace record — the orphan-task reaper's
    * keep-set (a RUNNING workspace task in none of these is an orphan). */
   listReferencedTasks(): Promise<readonly TaskId[]>;
+  /** Workspaces sitting in `provisioning` (claim time as `lastActivity`) — candidates
+   * for stuck-wake recovery. */
+  listStuckProvisioning(): Promise<readonly ActiveWorkspace[]>;
+  /** Revert a workspace whose wake crashed mid-flight (stuck `provisioning`) to
+   * `stopped`. Returns a Result so a benign race (a slow wake that finally committed)
+   * is skipped, not thrown. */
+  recoverStuckProvisioning(id: WorkspaceId): Promise<Result<unknown, DomainError>>;
 }
 
 /** Pure: the ids of workspaces idle for at least `idleThresholdMs`. */
@@ -85,6 +93,9 @@ export interface ReconcilerDeps {
   snapshotIntervalMs?: number;
   /** Grace window before an orphan is reaped; defaults to `DEFAULT_GC_GRACE_MS`. */
   gcGraceMs?: number;
+  /** How long a record may sit in `provisioning` before its crashed wake is reverted
+   * to `stopped`; defaults to `DEFAULT_PROVISIONING_TIMEOUT_MS`. */
+  provisioningTimeoutMs?: number;
 }
 
 export interface DriftResult {
@@ -92,6 +103,15 @@ export interface DriftResult {
   /** Records whose task was gone; transitioned to stopped (snapshot) or error. */
   lost: number;
   /** Reconciles rejected by a concurrent update (skipped, not failed). */
+  skipped: number;
+}
+
+export interface ProvisioningResult {
+  /** Records sitting in `provisioning`. */
+  scanned: number;
+  /** Stuck wakes reverted to `stopped` (self-healed). */
+  recovered: number;
+  /** Reverts rejected by a concurrent update — a slow wake that finally committed. */
   skipped: number;
 }
 
@@ -128,6 +148,7 @@ export interface ReapResult {
 }
 
 export interface MaintenanceResult {
+  provisioning: ProvisioningResult;
   drift: DriftResult;
   idle: ReconcileResult;
   snapshots: SnapshotResult;
@@ -143,11 +164,13 @@ export class Reconciler {
   private readonly idleThresholdMs: number;
   private readonly snapshotIntervalMs: number;
   private readonly gcGraceMs: number;
+  private readonly provisioningTimeoutMs: number;
 
   constructor(private readonly deps: ReconcilerDeps) {
     this.idleThresholdMs = deps.idleThresholdMs ?? DEFAULT_IDLE_THRESHOLD_MS;
     this.snapshotIntervalMs = deps.snapshotIntervalMs ?? DEFAULT_SNAPSHOT_INTERVAL_MS;
     this.gcGraceMs = deps.gcGraceMs ?? DEFAULT_GC_GRACE_MS;
+    this.provisioningTimeoutMs = deps.provisioningTimeoutMs ?? DEFAULT_PROVISIONING_TIMEOUT_MS;
   }
 
   private now(): IsoTimestamp {
@@ -170,6 +193,27 @@ export class Reconciler {
       else if (result.value.lost) lost += 1;
     }
     return { scanned: active.length, lost, skipped };
+  }
+
+  /**
+   * Self-heal crashed wakes: revert records stuck in `provisioning` past the timeout
+   * back to `stopped` so they are wake-able again. A wake claims `stopped →
+   * provisioning` then commits `→ running`; if the driving process dies between, the
+   * record is stranded forever (no sweep touches `provisioning`). Reuses the same
+   * "older-than" age filter as the idle sweep; the revert is best-effort and a lost
+   * race (a slow wake that finally committed) is skipped, not failed. MUST run first —
+   * before any other sweep can act on a half-woken record.
+   */
+  async recoverProvisioning(): Promise<ProvisioningResult> {
+    const candidates = await this.deps.service.listStuckProvisioning();
+    const stuck = selectIdle(candidates, this.now(), this.provisioningTimeoutMs);
+    let recovered = 0;
+    let skipped = 0;
+    for (const id of stuck) {
+      if ((await this.deps.service.recoverStuckProvisioning(id)).ok) recovered += 1;
+      else skipped += 1;
+    }
+    return { scanned: candidates.length, recovered, skipped };
   }
 
   /** Scale idle workspaces to zero (snapshot + tear down). A stop rejected by a
@@ -301,7 +345,10 @@ export class Reconciler {
   /** One full maintenance sweep: scale-to-zero, scheduled snapshots, reap orphaned
    * tasks, then GC. */
   async runMaintenance(): Promise<MaintenanceResult> {
-    // Drift first: stop() on a record whose task died out-of-band would try
+    // Provisioning recovery first: a record stranded mid-wake must be back to
+    // stopped before any other sweep reasons about it.
+    const provisioning = await this.recoverProvisioning();
+    // Drift next: stop() on a record whose task died out-of-band would try
     // to snapshot a volume the platform already released.
     const drift = await this.detectDrift();
     const idle = await this.runOnce();
@@ -310,6 +357,6 @@ export class Reconciler {
     // (deleteOnTermination), which the next sweep's GC then reaps.
     const tasks = await this.reapOrphanTasks();
     const gc = await this.collectGarbage();
-    return { drift, idle, snapshots, tasks, gc };
+    return { provisioning, drift, idle, snapshots, tasks, gc };
   }
 }
