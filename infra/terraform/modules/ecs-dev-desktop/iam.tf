@@ -235,6 +235,12 @@ data "aws_iam_policy_document" "scheduler" {
       values   = ["ecs-tasks.amazonaws.com"]
     }
   }
+  # Deliver a failed sweep invocation to the dead-letter queue.
+  statement {
+    sid       = "ReconcilerDeadLetter"
+    actions   = ["sqs:SendMessage"]
+    resources = [aws_sqs_queue.reconciler_dlq.arn]
+  }
 }
 
 resource "aws_iam_role" "scheduler" {

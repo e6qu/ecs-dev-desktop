@@ -96,3 +96,127 @@ resource "aws_cloudwatch_metric_alarm" "control_plane_5xx" {
   ok_actions          = var.alarm_sns_topic_arns
   tags                = local.tags
 }
+
+# Reconciler LIVENESS — no sweep ran in the window. The reconciler-failed alarm only
+# fires when a sweep RUNS and throws; if the scheduled task never launches (capacity,
+# image pull, a broken schedule), no sweep runs and no metric is emitted — the whole
+# self-healing engine is silently dead. `treat_missing_data = breaching` turns that
+# silence into the alarm: a Sum of `reconciler.sweep.count` below 1 over the window
+# (set comfortably above the schedule cadence) means it is not running.
+resource "aws_cloudwatch_metric_alarm" "reconciler_not_running" {
+  count               = var.enable_metric_alarms ? 1 : 0
+  alarm_name          = "${var.name}-reconciler-not-running"
+  alarm_description   = "No reconciler sweep ran in the window — the self-healing engine is down."
+  namespace           = local.metric_namespace
+  metric_name         = "reconciler.sweep.count"
+  statistic           = "Sum"
+  period              = var.reconciler_liveness_period
+  evaluation_periods  = 1
+  threshold           = 1
+  comparison_operator = "LessThanThreshold"
+  treat_missing_data  = "breaching"
+  alarm_actions       = var.alarm_sns_topic_arns
+  ok_actions          = var.alarm_sns_topic_arns
+  tags                = local.tags
+}
+
+# Reconciler self-healing FAILURES — a delete/stop the sweep retried still failed.
+# A non-zero count means an orphan volume (gc.failed) or task (tasks.reap_failed) is
+# stuck and leaking cost; the sweep keeps running (best-effort) but a human is needed.
+resource "aws_cloudwatch_metric_alarm" "reconciler_gc_failed" {
+  count               = var.enable_metric_alarms ? 1 : 0
+  alarm_name          = "${var.name}-reconciler-gc-failed"
+  alarm_description   = "Reconciler GC failed to delete an orphan volume/snapshot (a stuck, cost-leaking orphan)."
+  namespace           = local.metric_namespace
+  metric_name         = "reconciler.gc.failed"
+  statistic           = "Sum"
+  period              = 3600
+  evaluation_periods  = 1
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = var.alarm_sns_topic_arns
+  ok_actions          = var.alarm_sns_topic_arns
+  tags                = local.tags
+}
+
+resource "aws_cloudwatch_metric_alarm" "reconciler_reap_failed" {
+  count               = var.enable_metric_alarms ? 1 : 0
+  alarm_name          = "${var.name}-reconciler-reap-failed"
+  alarm_description   = "Reconciler failed to stop an orphan workspace task (a stuck, cost-leaking Fargate task)."
+  namespace           = local.metric_namespace
+  metric_name         = "reconciler.tasks.reap_failed"
+  statistic           = "Sum"
+  period              = 3600
+  evaluation_periods  = 1
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = var.alarm_sns_topic_arns
+  ok_actions          = var.alarm_sns_topic_arns
+  tags                = local.tags
+}
+
+# DynamoDB throttling — sustained read/write throttle events on the single table.
+# The clients now retry with adaptive backoff, but persistent throttling at 200+
+# scale means the table needs attention (it survives a burst, not a sustained one).
+resource "aws_cloudwatch_metric_alarm" "dynamodb_throttle" {
+  count               = var.enable_metric_alarms ? 1 : 0
+  alarm_name          = "${var.name}-dynamodb-throttle"
+  alarm_description   = "Sustained DynamoDB read/write throttling on the control-plane table."
+  evaluation_periods  = 3
+  threshold           = var.dynamodb_throttle_threshold
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = var.alarm_sns_topic_arns
+  ok_actions          = var.alarm_sns_topic_arns
+  tags                = local.tags
+
+  metric_query {
+    id          = "throttle"
+    expression  = "reads + writes"
+    label       = "Read + Write throttle events"
+    return_data = true
+  }
+  metric_query {
+    id = "reads"
+    metric {
+      namespace   = "AWS/DynamoDB"
+      metric_name = "ReadThrottleEvents"
+      dimensions  = { TableName = aws_dynamodb_table.this.name }
+      period      = 300
+      stat        = "Sum"
+    }
+  }
+  metric_query {
+    id = "writes"
+    metric {
+      namespace   = "AWS/DynamoDB"
+      metric_name = "WriteThrottleEvents"
+      dimensions  = { TableName = aws_dynamodb_table.this.name }
+      period      = 300
+      stat        = "Sum"
+    }
+  }
+}
+
+# Reconciler DLQ depth — a scheduled invocation that failed even after the retry
+# lands in the dead-letter queue. Any message means a sweep was dropped (distinct
+# from a sweep that ran and threw, which `reconciler-failed` covers).
+resource "aws_cloudwatch_metric_alarm" "reconciler_dlq" {
+  count               = var.enable_metric_alarms ? 1 : 0
+  alarm_name          = "${var.name}-reconciler-dlq"
+  alarm_description   = "A reconciler schedule invocation failed and landed in the dead-letter queue."
+  namespace           = "AWS/SQS"
+  metric_name         = "ApproximateNumberOfMessagesVisible"
+  dimensions          = { QueueName = aws_sqs_queue.reconciler_dlq.name }
+  statistic           = "Maximum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = var.alarm_sns_topic_arns
+  ok_actions          = var.alarm_sns_topic_arns
+  tags                = local.tags
+}

@@ -154,11 +154,16 @@ API/UI (the local `scripts/dev.sh` seeds one for dev; production has no auto-see
   CloudWatch (`LOG_PROVIDER=cloudwatch`, injected by the module).
 - **Metrics + alarms:** wake-on-connect latency and reconciler action/failure
   counts are emitted as CloudWatch EMF. The module creates alarms — `reconciler-failed`,
-  `wake-latency-p99`, and (on AWS-managed ALB metrics, so they fire even if the app
-  can't emit) `control-plane-unhealthy` (no healthy task behind the ALB → the control
-  plane is down) and `control-plane-5xx` (the API erroring). Set `alarm_sns_topic_arns`
-  to be notified, `wake_latency_alarm_ms` / `control_plane_5xx_threshold` to tune, or
-  `enable_metric_alarms = false` to skip.
+  **`reconciler-not-running`** (no sweep ran in the window → the self-healing engine is
+  down), **`reconciler-gc-failed`** / **`reconciler-reap-failed`** (a stuck cost-leaking
+  orphan), `wake-latency-p99`, **`dynamodb-throttle`**, **`reconciler-dlq`** (a dropped
+  sweep invocation), and (on AWS-managed ALB metrics, so they fire even if the app can't
+  emit) `control-plane-unhealthy` and `control-plane-5xx` — plus a `…-ops` **CloudWatch
+  dashboard** and an optional `monthly_budget_usd` cost guardrail. Set `alarm_sns_topic_arns`
+  to be notified; `wake_latency_alarm_ms` / `control_plane_5xx_threshold` /
+  `dynamodb_throttle_threshold` / `reconciler_liveness_period` / `monthly_budget_usd` to
+  tune; or `enable_metric_alarms = false` to skip. Incident response: see the
+  [operations runbook](./runbook.md).
 
 ## What is still un-exercised against real AWS
 

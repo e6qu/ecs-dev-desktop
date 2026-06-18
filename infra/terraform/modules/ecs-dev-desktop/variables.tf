@@ -245,3 +245,21 @@ variable "control_plane_5xx_threshold" {
   type        = number
   default     = 10
 }
+
+variable "reconciler_liveness_period" {
+  description = "Window (seconds) over which at least one reconciler sweep must run before the not-running alarm fires. Set comfortably above the reconciler schedule cadence (default schedule rate(5 minutes))."
+  type        = number
+  default     = 900
+}
+
+variable "dynamodb_throttle_threshold" {
+  description = "Read+write throttle events (per 5-minute period) above which the DynamoDB throttling alarm fires."
+  type        = number
+  default     = 0
+}
+
+variable "monthly_budget_usd" {
+  description = "Monthly cost budget (USD) for the AWS Budgets guardrail; 0 disables it. Notifies alarm_sns_topic_arns at 80% (forecast) and 100% (actual)."
+  type        = number
+  default     = 0
+}

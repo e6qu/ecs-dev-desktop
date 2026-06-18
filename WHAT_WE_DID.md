@@ -1675,3 +1675,22 @@ listStuckProvisioning` + `recoverStuckProvisioning` revert provisioning→stoppe
   construction), `CONNECTION_TOKEN` injection (the future wake-on-connect gate), the upstream sockerless
   blockers, and the recorded DynamoDB-Local delete-vs-wake flake. core 182 + cloudwatch-logs 21 +
   control-plane 28 + web 63 unit + cost integ green; tsc/eslint/knip clean.
+- **2026-06-18 — Operational monitoring cluster (the buildable ops-readiness gaps).** From an
+  ops-readiness gap analysis of the ECS Fargate deployment, built the buildable-now cluster. CloudWatch
+  alarms (`alarms.tf`): **`reconciler-not-running`** — the key blind spot: `reconciler-failed` only fires
+  when a sweep RUNS and throws, so a scheduled task that never launches left the whole self-healing
+  engine silently dead; this alarms on a `reconciler.sweep.count` Sum `< 1` over the window with
+  `treat_missing_data = breaching`. Plus `reconciler-gc-failed`/`reconciler-reap-failed` (a stuck,
+  cost-leaking orphan), a metric-math `dynamodb-throttle` alarm, and a `reconciler-dlq` alarm. Added an
+  SQS **dead-letter queue** on the EventBridge→reconciler target (`dead_letter_config` + the scheduler
+  IAM `sqs:SendMessage`) so a dropped sweep is visible; an `…-ops` **CloudWatch dashboard** (`monitoring.tf`,
+  jsonencode: fleet/cost, wake p50/p99, CP healthy-hosts + 5xx, reconciler actions + failures, DynamoDB
+  throttles); and an optional monthly **AWS Budgets** cost guardrail (`monthly_budget_usd`, 80%/100% SNS).
+  Observability: a per-request **correlation id** in `withObservability` — threaded into the access +
+  thrown-error logs and stamped on every response as `x-edd-request-id` (injectable for tests). Wrote the
+  incident **runbook** (`docs/runbook.md`): each alarm → diagnosis → remediation, the first-stops (ops
+  dashboard / Health board / per-workspace logs / audit / correlation id / ECS Exec), and reliability
+  notes (NAT `instance` is a single-AZ SPOF → use `gateway` for prod; DynamoDB PITR + deletion protection
+  on). `terraform fmt`+`validate` clean; web unit 64; tsc/eslint/knip clean. **Deferred (AWS-gated /
+  larger):** full X-Ray/OTel distributed tracing, a synthetic create→wake→connect canary, EBS AZ/region
+  DR, and real-time per-workspace status — all want the account to build+validate against real AWS.

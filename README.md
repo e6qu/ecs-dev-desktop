@@ -15,6 +15,8 @@ UI, and an admin control plane. Think self-hosted Coder / GitHub Codespaces.
   rules of engagement for contributors/agents. (`CLAUDE.md` is a symlink to it.)
 - [`docs/running-locally.md`](./docs/running-locally.md) — run/develop/test the app
   locally: `pnpm dev` and the tiered options (fakes → bleephub → sockerless AWS).
+- [`docs/runbook.md`](./docs/runbook.md) — operations runbook: incident response
+  (alarms → diagnosis → remediation), the ops dashboard, and where to look.
 - [`docs/deploying.md`](./docs/deploying.md) — the AWS deployment runbook
   (Terraform → images → env/secrets → SSH access → DNS/proxy → seed) — see
   [Deploying](#deploying).
