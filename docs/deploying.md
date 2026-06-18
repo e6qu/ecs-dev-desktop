@@ -153,9 +153,12 @@ API/UI (the local `scripts/dev.sh` seeds one for dev; production has no auto-see
 - **Logs:** the control plane and reconciler emit structured JSON lines to
   CloudWatch (`LOG_PROVIDER=cloudwatch`, injected by the module).
 - **Metrics + alarms:** wake-on-connect latency and reconciler action/failure
-  counts are emitted as CloudWatch EMF. The module creates alarms
-  (reconciler-failed, wake-latency-p99); set `alarm_sns_topic_arns` to be notified,
-  `wake_latency_alarm_ms` to tune the SLO, or `enable_metric_alarms = false` to skip.
+  counts are emitted as CloudWatch EMF. The module creates alarms — `reconciler-failed`,
+  `wake-latency-p99`, and (on AWS-managed ALB metrics, so they fire even if the app
+  can't emit) `control-plane-unhealthy` (no healthy task behind the ALB → the control
+  plane is down) and `control-plane-5xx` (the API erroring). Set `alarm_sns_topic_arns`
+  to be notified, `wake_latency_alarm_ms` / `control_plane_5xx_threshold` to tune, or
+  `enable_metric_alarms = false` to skip.
 
 ## What is still un-exercised against real AWS
 

@@ -1595,4 +1595,15 @@ createVolume`/`createSnapshot` create the resource then `waitUntilVolumeAvailabl
   core/compute-ecs/control-plane/reconciler; the local fake path no-ops (the port is optional). Tests:
   `selectOrphanTasks` (4), `reapOrphanTasks` incl. stop-failure + no-compute no-op (3), real
   `listWorkspaceTasks` tag-filtering (mock ECS client). core 182 + reconciler 12 + compute-ecs 18 +
-  reconciler integ 7 green; tsc + eslint + knip clean. (Follow-up: control-plane-down alarms.)
+  reconciler integ 7 green; tsc + eslint + knip clean.
+- **2026-06-18 — Self-healing alerting: control-plane down/degraded alarms.** ECS already self-heals
+  the control plane (service auto-restart + deployment circuit breaker + `/api/healthz` liveness +
+  `/api/readyz` readiness), but nothing **alerted** when it was down — only `reconciler.sweep.failed`
+  and wake-latency were alarmed. Added two CloudWatch alarms (`alarms.tf`) on **AWS-managed ALB
+  metrics** (so they fire even when the control plane can't emit its own EMF): `control-plane-unhealthy`
+  (HealthyHostCount `< 1` for ~3 min behind the ALB — the CP is down / crash-looping / a stuck
+  dependency) and `control-plane-5xx` (target `HTTPCode_Target_5XX_Count` over a tunable threshold —
+  up but erroring). Same `enable_metric_alarms` gate + `alarm_sns_topic_arns` actions as the existing
+  alarms (off for the sim, which has no metrics endpoint); new `control_plane_5xx_threshold` var.
+  `terraform fmt` + `validate` clean. The real firing is `e2e-aws`-validated (ALB metrics are
+  real-AWS-only). This + the orphan-task reaper are the "both, reaper first" self-healing items.

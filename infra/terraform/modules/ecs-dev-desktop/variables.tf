@@ -239,3 +239,9 @@ variable "wake_latency_alarm_ms" {
   type        = number
   default     = 120000
 }
+
+variable "control_plane_5xx_threshold" {
+  description = "Target 5xx responses (per 5-minute period) above which the control-plane-erroring alarm fires."
+  type        = number
+  default     = 10
+}
