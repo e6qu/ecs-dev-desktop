@@ -54,7 +54,7 @@ resource "aws_cloudwatch_dashboard" "ops" {
         height = 6
         properties = {
           title  = "Fleet"
-          region = data.aws_region.current.name
+          region = data.aws_region.current.region
           view   = "timeSeries"
           metrics = [
             [local.metric_namespace, "fleet.workspaces.total"],
@@ -72,7 +72,7 @@ resource "aws_cloudwatch_dashboard" "ops" {
         height = 6
         properties = {
           title   = "Fleet cost (USD)"
-          region  = data.aws_region.current.name
+          region  = data.aws_region.current.region
           view    = "timeSeries"
           metrics = [[local.metric_namespace, "fleet.cost.usd"]]
         }
@@ -85,7 +85,7 @@ resource "aws_cloudwatch_dashboard" "ops" {
         height = 6
         properties = {
           title  = "Wake-on-connect latency (ms)"
-          region = data.aws_region.current.name
+          region = data.aws_region.current.region
           view   = "timeSeries"
           metrics = [
             [local.metric_namespace, "workspace.wake.latency_ms", { stat = "p50" }],
@@ -101,7 +101,7 @@ resource "aws_cloudwatch_dashboard" "ops" {
         height = 6
         properties = {
           title  = "Control plane — healthy hosts & target 5xx"
-          region = data.aws_region.current.name
+          region = data.aws_region.current.region
           view   = "timeSeries"
           metrics = [
             ["AWS/ApplicationELB", "HealthyHostCount", "LoadBalancer", aws_lb.this.arn_suffix, "TargetGroup", aws_lb_target_group.control_plane.arn_suffix, { stat = "Minimum" }],
@@ -117,7 +117,7 @@ resource "aws_cloudwatch_dashboard" "ops" {
         height = 6
         properties = {
           title  = "Reconciler actions"
-          region = data.aws_region.current.name
+          region = data.aws_region.current.region
           view   = "timeSeries"
           metrics = [
             [local.metric_namespace, "reconciler.idle.stopped", { stat = "Sum" }],
@@ -136,7 +136,7 @@ resource "aws_cloudwatch_dashboard" "ops" {
         height = 6
         properties = {
           title  = "Failures — reconciler & DynamoDB throttling"
-          region = data.aws_region.current.name
+          region = data.aws_region.current.region
           view   = "timeSeries"
           metrics = [
             [local.metric_namespace, "reconciler.sweep.failed", { stat = "Sum" }],
