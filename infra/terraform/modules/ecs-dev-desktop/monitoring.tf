@@ -9,6 +9,7 @@
 resource "aws_sqs_queue" "reconciler_dlq" {
   name                      = "${var.name}-reconciler-dlq"
   message_retention_seconds = 1209600 # 14 days
+  sqs_managed_sse_enabled   = true    # SSE-SQS encryption at rest (no KMS key to manage)
   tags                      = local.tags
 }
 
