@@ -4,6 +4,7 @@ import {
   DescribeClustersCommand,
   DescribeTasksCommand,
   ECSClient,
+  ListTasksCommand,
   RegisterTaskDefinitionCommand,
   RunTaskCommand,
   StopTaskCommand,
@@ -28,8 +29,10 @@ import {
   DEFAULT_WORKSPACE_VOLUME_GIB,
 } from "@edd/config";
 import {
+  isoTimestamp,
   taskId,
   volumeId,
+  workspaceId,
   type BaseImage,
   type ClusterInfo,
   type ComponentHealth,
@@ -38,6 +41,7 @@ import {
   type TaskLiveness,
   type RunTaskInput,
   type TaskId,
+  type WorkspaceTaskRef,
 } from "@edd/core";
 
 interface EnvironmentEntry {
@@ -47,6 +51,11 @@ interface EnvironmentEntry {
 
 /** Task-definition volume name; mounted at the configured path in the container. */
 const WORKSPACE_VOLUME = "workspace";
+/** ECS task tag carrying the owning workspace id, set on every workspace task at
+ * launch. The reconciler's orphan-task reaper enumerates tasks by this tag (so it
+ * only ever reaps workspace tasks, never the control-plane/reconciler tasks that
+ * share the cluster) and reads the workspace id from its value. */
+const WORKSPACE_TAG_KEY = "edd:workspace-id";
 /** SSH port the workspace sshd listens on (declared in the task def alongside
  * the OpenVSCode HTTP port {@link DEFAULT_WORKSPACE_PORT}). */
 const WORKSPACE_SSH_PORT = 22;
@@ -356,6 +365,9 @@ export class EcsComputeProvider implements ComputeProvider {
         cluster: this.cluster(),
         taskDefinition: taskDef,
         launchType: "FARGATE",
+        // Tag the task with its workspace so the reconciler's orphan-task reaper can
+        // enumerate workspace tasks (and only those) and read the workspace id back.
+        tags: [{ key: WORKSPACE_TAG_KEY, value: input.workspaceId }],
         // Inject the SSM exec agent so admins/automation can `aws ecs execute-command`
         // into a live workspace (debugging, break-glass) — the capability was
         // sim-proven on a standalone task; the production launch path enables it too.
@@ -447,6 +459,52 @@ export class EcsComputeProvider implements ComputeProvider {
         reason: "edd: workspace lifecycle stop (scale-to-zero/delete)",
       }),
     );
+  }
+
+  /**
+   * Enumerate RUNNING workspace tasks (those carrying the {@link WORKSPACE_TAG_KEY}
+   * tag) for the reconciler's orphan-task reaper. ListTasks gives RUNNING task ARNs
+   * (paginated); DescribeTasks (with TAGS) resolves each task's owning-workspace tag
+   * and start time. Non-workspace tasks in the same cluster (control-plane,
+   * reconciler) lack the tag and are excluded.
+   */
+  async listWorkspaceTasks(): Promise<readonly WorkspaceTaskRef[]> {
+    const arns: string[] = [];
+    let nextToken: string | undefined;
+    do {
+      const page = await this.client.send(
+        new ListTasksCommand({
+          cluster: this.cluster(),
+          desiredStatus: "RUNNING",
+          ...(nextToken === undefined ? {} : { nextToken }),
+        }),
+      );
+      arns.push(...(page.taskArns ?? []));
+      nextToken = page.nextToken;
+    } while (nextToken !== undefined);
+
+    const refs: WorkspaceTaskRef[] = [];
+    // DescribeTasks accepts at most 100 task ARNs per call.
+    for (let i = 0; i < arns.length; i += 100) {
+      const batch = arns.slice(i, i + 100);
+      const out = await this.client.send(
+        new DescribeTasksCommand({ cluster: this.cluster(), tasks: batch, include: ["TAGS"] }),
+      );
+      for (const task of out.tasks ?? []) {
+        const wsId = task.tags?.find((t) => t.key === WORKSPACE_TAG_KEY)?.value;
+        // A workspace task always has the tag, an ARN, and (once launched) a start
+        // time; skip anything missing one rather than guess.
+        if (wsId === undefined || task.taskArn === undefined || task.startedAt === undefined) {
+          continue;
+        }
+        refs.push({
+          id: taskId(task.taskArn),
+          workspaceId: workspaceId(wsId),
+          startedAt: isoTimestamp(task.startedAt.toISOString()),
+        });
+      }
+    }
+    return refs;
   }
 
   /** Observed liveness via DescribeTasks. A missing/expired task (ECS prunes

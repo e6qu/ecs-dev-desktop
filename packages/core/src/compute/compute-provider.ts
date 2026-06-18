@@ -1,5 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { BaseImage, SnapshotId, TaskId, VolumeId, WorkspaceId } from "../domain/ids";
+import type {
+  BaseImage,
+  IsoTimestamp,
+  SnapshotId,
+  TaskId,
+  VolumeId,
+  WorkspaceId,
+} from "../domain/ids";
 import type { ComponentHealth } from "../observability/health";
 
 /**
@@ -56,12 +63,29 @@ export interface ClusterInfo {
   readonly registeredContainerInstances: number;
 }
 
+/**
+ * A platform-managed workspace task as enumerated for orphan reaping: the running
+ * task, the workspace it belongs to (read from its tag), and when it started (for
+ * the grace window). The reconciler stops any whose workspace no longer references
+ * them — the compute analogue of orphan-volume GC.
+ */
+export interface WorkspaceTaskRef {
+  readonly id: TaskId;
+  readonly workspaceId: WorkspaceId;
+  readonly startedAt: IsoTimestamp;
+}
+
 export interface ComputeProvider {
   /** Launch a task with a fresh or snapshot-hydrated managed EBS volume. */
   runTask(input: RunTaskInput): Promise<ComputeTask>;
 
   /** Stop the task; the platform releases its managed EBS volume. */
   stopTask(taskId: TaskId): Promise<void>;
+
+  /** Enumerate RUNNING workspace tasks this platform launched (identified by the
+   * per-workspace tag `runTask` sets), for the reconciler's orphan-task reaper.
+   * Optional — absent ⇒ no compute reaping (a backend that can't list tagged tasks). */
+  listWorkspaceTasks?(): Promise<readonly WorkspaceTaskRef[]>;
 
   /** Observed liveness of a task — the reconciler's drift-detection input
    * (a record claiming `running` whose task died out-of-band must stop

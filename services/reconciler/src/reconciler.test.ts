@@ -6,8 +6,12 @@ import {
   fixedClock,
   isoTimestamp,
   ok,
+  taskId,
   workspaceId,
+  type ComputeProvider,
   type StorageProvider,
+  type TaskId,
+  type WorkspaceTaskRef,
 } from "@edd/core";
 import { describe, expect, it } from "vitest";
 
@@ -26,6 +30,7 @@ function fakeService(overrides: Partial<ReconcilerService> = {}): ReconcilerServ
     listSnapshotCandidates: () => Promise.resolve([]),
     snapshot: () => Promise.reject(new Error("snapshot not expected")),
     listReferencedStorage: () => Promise.resolve({ volumeIds: [], snapshotIds: [] }),
+    listReferencedTasks: () => Promise.resolve([]),
     ...overrides,
   };
 }
@@ -272,5 +277,81 @@ describe("Reconciler.collectGarbage", () => {
     expect((await storage.listVolumes()).map((v) => v.id)).not.toContain(reapable.id);
     expect(warnings).toHaveLength(1);
     expect(warnings[0]?.fields).toMatchObject({ volumeId: stuck.id });
+  });
+});
+
+describe("Reconciler.reapOrphanTasks", () => {
+  const startedLongAgo = isoTimestamp("2026-06-01T00:00:00.000Z"); // well before the clock
+
+  const ref = (id: string, ws: string): WorkspaceTaskRef => ({
+    id: taskId(id),
+    workspaceId: workspaceId(ws),
+    startedAt: startedLongAgo,
+  });
+
+  /** A ComputeProvider that lists `tasks` and records every stopTask; `failStop`
+   * makes that one stop throw (a throttled/failed StopTask). */
+  function fakeCompute(opts: {
+    tasks: readonly WorkspaceTaskRef[];
+    stops: TaskId[];
+    failStop?: TaskId;
+  }): ComputeProvider {
+    return {
+      runTask: () => Promise.reject(new Error("runTask not expected")),
+      taskState: () => Promise.resolve("stopped"),
+      listWorkspaceTasks: () => Promise.resolve(opts.tasks),
+      stopTask: (id) => {
+        if (opts.failStop !== undefined && id === opts.failStop) {
+          return Promise.reject(new Error("StopTask throttled"));
+        }
+        opts.stops.push(id);
+        return Promise.resolve();
+      },
+    };
+  }
+
+  it("stops a tagged task no record references and spares a referenced one", async () => {
+    const stops: TaskId[] = [];
+    const orphan = ref("task-orphan", "ws-1");
+    const kept = ref("task-kept", "ws-2");
+    const reconciler = new Reconciler({
+      service: fakeService({ listReferencedTasks: () => Promise.resolve([kept.id]) }),
+      storage: await emptyStorage(),
+      compute: fakeCompute({ tasks: [orphan, kept], stops }),
+      clock: fixedClock("2026-06-01T02:00:00.000Z"),
+      gcGraceMs: ONE_HOUR,
+    });
+
+    expect(await reconciler.reapOrphanTasks()).toEqual({ scanned: 2, reaped: 1, failed: 0 });
+    expect(stops).toEqual([orphan.id]);
+  });
+
+  it("counts (does not throw) a stop that fails, still reaping the rest", async () => {
+    const stops: TaskId[] = [];
+    const warnings: Record<string, unknown>[] = [];
+    const a = ref("task-a", "ws-a");
+    const b = ref("task-b", "ws-b");
+    const reconciler = new Reconciler({
+      service: fakeService({ listReferencedTasks: () => Promise.resolve([]) }),
+      storage: await emptyStorage(),
+      compute: fakeCompute({ tasks: [a, b], stops, failStop: a.id }),
+      clock: fixedClock("2026-06-01T02:00:00.000Z"),
+      gcGraceMs: ONE_HOUR,
+      logger: { warn: (_m, fields) => warnings.push(fields ?? {}) },
+    });
+
+    expect(await reconciler.reapOrphanTasks()).toEqual({ scanned: 2, reaped: 1, failed: 1 });
+    expect(stops).toEqual([b.id]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatchObject({ taskId: a.id, workspaceId: a.workspaceId });
+  });
+
+  it("is a no-op when no compute provider is wired (e.g. the local fake path)", async () => {
+    const reconciler = new Reconciler({
+      service: fakeService(),
+      storage: await emptyStorage(),
+      clock: fixedClock("2026-06-01T02:00:00.000Z"),
+    });
+    expect(await reconciler.reapOrphanTasks()).toEqual({ scanned: 0, reaped: 0, failed: 0 });
   });
 });

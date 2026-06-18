@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { IsoTimestamp, SnapshotId, VolumeId, WorkspaceId } from "../domain/ids";
+import type { WorkspaceTaskRef } from "../compute/compute-provider";
+import type { IsoTimestamp, SnapshotId, TaskId, VolumeId, WorkspaceId } from "../domain/ids";
 import type { SnapshotRef, VolumeRef } from "../storage/storage-provider";
 
 /**
@@ -51,6 +52,22 @@ export function selectOrphanSnapshots(
   return existing
     .filter((s) => !referenced.has(s.id) && olderThan(s.createdAt, now, graceMs))
     .map((s) => s.id);
+}
+
+/**
+ * Workspace tasks safe to stop: RUNNING tasks this platform launched whose workspace
+ * no longer references them (the record was deleted, never persisted, or points at a
+ * different task) AND that started at least `graceMs` ago. The grace window guards the
+ * same create/persist race as {@link selectOrphanVolumes} — a task launched moments
+ * ago but not yet recorded must not be reaped. The compute analogue of orphan-volume GC.
+ */
+export function selectOrphanTasks(
+  existing: readonly WorkspaceTaskRef[],
+  referenced: ReadonlySet<TaskId>,
+  now: IsoTimestamp,
+  graceMs: number,
+): readonly WorkspaceTaskRef[] {
+  return existing.filter((t) => !referenced.has(t.id) && olderThan(t.startedAt, now, graceMs));
 }
 
 /**

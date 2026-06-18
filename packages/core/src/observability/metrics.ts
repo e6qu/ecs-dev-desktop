@@ -40,6 +40,11 @@ export const METRIC_RECONCILER_GC_DELETED = "reconciler.gc.deleted";
  * counts and continues rather than aborting the sweep; a non-zero value warrants
  * a look (an orphan kept failing to reap). */
 export const METRIC_RECONCILER_GC_FAILED = "reconciler.gc.failed";
+/** Orphaned workspace tasks reaped: RUNNING tasks no live workspace references
+ * (a record was deleted/never-persisted), self-healed by stopping them. */
+export const METRIC_RECONCILER_TASKS_REAPED = "reconciler.tasks.reaped";
+/** Orphan-task stops that errored (best-effort, counted and logged). */
+export const METRIC_RECONCILER_TASKS_REAP_FAILED = "reconciler.tasks.reap_failed";
 /** Actions skipped because a concurrent update won the race (not failures). */
 export const METRIC_RECONCILER_SKIPPED = "reconciler.skipped";
 

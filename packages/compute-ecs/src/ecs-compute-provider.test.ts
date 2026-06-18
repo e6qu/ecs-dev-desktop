@@ -2,6 +2,7 @@
 import {
   DescribeTasksCommand,
   ECSClient,
+  ListTasksCommand,
   RegisterTaskDefinitionCommand,
   RunTaskCommand,
   StopTaskCommand,
@@ -216,5 +217,45 @@ describe("EcsComputeProvider.runTask cleanup on a failed launch", () => {
     // The launched task was stopped exactly once — the failed launch left nothing
     // running (its managed EBS volume is reaped by deleteOnTermination).
     expect(stops).toEqual([LAUNCHED_ARN]);
+  });
+});
+
+describe("EcsComputeProvider.listWorkspaceTasks", () => {
+  const WS_ARN = "arn:aws:ecs:us-east-1:123456789012:task/edd/ws1";
+  const INFRA_ARN = "arn:aws:ecs:us-east-1:123456789012:task/edd/infra1";
+  const started = new Date("2026-06-01T00:00:00.000Z");
+
+  /** A client with two RUNNING tasks: one tagged workspace task and one untagged
+   * infrastructure task (e.g. the control-plane) sharing the cluster. */
+  function clusterClient(): ECSClient {
+    const send = (command: unknown): Promise<unknown> => {
+      if (command instanceof ListTasksCommand) {
+        return Promise.resolve({ taskArns: [WS_ARN, INFRA_ARN] });
+      }
+      if (command instanceof DescribeTasksCommand) {
+        return Promise.resolve({
+          tasks: [
+            {
+              taskArn: WS_ARN,
+              startedAt: started,
+              tags: [{ key: "edd:workspace-id", value: "ws-1" }],
+            },
+            { taskArn: INFRA_ARN, startedAt: started, tags: [] },
+          ],
+        });
+      }
+      return Promise.reject(new Error("unexpected command"));
+    };
+    return { send } as unknown as ECSClient;
+  }
+
+  it("returns only the tagged workspace task, with its workspace id + start time", async () => {
+    const provider = new EcsComputeProvider({
+      client: clusterClient(),
+      config: { subnets: ["subnet-1"], ebsRoleArn: "arn:aws:iam::123456789012:role/ebs" },
+    });
+    expect(await provider.listWorkspaceTasks()).toEqual([
+      { id: WS_ARN, workspaceId: "ws-1", startedAt: started.toISOString() },
+    ]);
   });
 });

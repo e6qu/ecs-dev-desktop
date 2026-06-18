@@ -6,14 +6,17 @@ import {
   isoTimestamp,
   selectDueForSnapshot,
   selectOrphanSnapshots,
+  selectOrphanTasks,
   selectOrphanVolumes,
   type Clock,
+  type ComputeProvider,
   type DomainError,
   type IsoTimestamp,
   type ReferencedStorage,
   type Result,
   type SnapshotCandidate,
   type StorageProvider,
+  type TaskId,
   type WorkspaceId,
 } from "@edd/core";
 
@@ -43,6 +46,9 @@ export interface ReconcilerService {
   snapshot(id: WorkspaceId): Promise<Result<unknown, DomainError>>;
   /** Storage ids still referenced by a workspace — never garbage-collected. */
   listReferencedStorage(): Promise<ReferencedStorage>;
+  /** Task ids still referenced by a workspace record — the orphan-task reaper's
+   * keep-set (a RUNNING workspace task in none of these is an orphan). */
+  listReferencedTasks(): Promise<readonly TaskId[]>;
 }
 
 /** Pure: the ids of workspaces idle for at least `idleThresholdMs`. */
@@ -67,8 +73,11 @@ export interface ReconcilerDeps {
   service: ReconcilerService;
   /** Storage port used to enumerate and reap orphaned volumes/snapshots. */
   storage: StorageProvider;
+  /** Compute port used to enumerate + stop orphaned workspace tasks (self-healing).
+   * Optional — absent, or a provider without `listWorkspaceTasks`, ⇒ no task reaping. */
+  compute?: ComputeProvider;
   clock: Clock;
-  /** Optional logger; GC delete failures are logged through it when present. */
+  /** Optional logger; GC delete and orphan-task stop failures are logged through it. */
   logger?: ReconcilerLogger;
   /** Idle window before scale-to-zero; defaults to `DEFAULT_IDLE_THRESHOLD_MS`. */
   idleThresholdMs?: number;
@@ -109,10 +118,20 @@ export interface GcResult {
   snapshotsFailed: number;
 }
 
+export interface ReapResult {
+  /** Tagged, RUNNING workspace tasks enumerated. */
+  scanned: number;
+  /** Orphaned tasks stopped — no workspace record referenced them (self-healed). */
+  reaped: number;
+  /** Orphan stops that errored — best-effort, counted and logged, not thrown. */
+  failed: number;
+}
+
 export interface MaintenanceResult {
   drift: DriftResult;
   idle: ReconcileResult;
   snapshots: SnapshotResult;
+  tasks: ReapResult;
   gc: GcResult;
 }
 
@@ -241,14 +260,56 @@ export class Reconciler {
     return { volumesDeleted, snapshotsDeleted, volumesFailed, snapshotsFailed };
   }
 
-  /** One full maintenance sweep: scale-to-zero, scheduled snapshots, then GC. */
+  /**
+   * Self-heal orphaned workspace tasks: stop any RUNNING task this platform launched
+   * that no workspace record references (a record was deleted, never persisted, or
+   * repointed). The compute analogue of {@link collectGarbage} — best-effort per task
+   * (one stop failure is counted + logged, never aborts the sweep), guarded by the
+   * same grace window so a just-launched-but-not-yet-recorded task is spared. No-op
+   * when the compute backend can't enumerate tagged tasks (`listWorkspaceTasks` absent).
+   */
+  async reapOrphanTasks(): Promise<ReapResult> {
+    const compute = this.deps.compute;
+    const listTasks = compute?.listWorkspaceTasks?.bind(compute);
+    if (compute === undefined || listTasks === undefined) {
+      return { scanned: 0, reaped: 0, failed: 0 };
+    }
+    const [referenced, existing] = await Promise.all([
+      this.deps.service.listReferencedTasks(),
+      listTasks(),
+    ]);
+    const orphans = selectOrphanTasks(existing, new Set(referenced), this.now(), this.gcGraceMs);
+
+    let reaped = 0;
+    let failed = 0;
+    for (const task of orphans) {
+      try {
+        await compute.stopTask(task.id);
+        reaped += 1;
+      } catch (err) {
+        failed += 1;
+        this.deps.logger?.warn("reap: failed to stop orphan workspace task", {
+          taskId: task.id,
+          workspaceId: task.workspaceId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    return { scanned: existing.length, reaped, failed };
+  }
+
+  /** One full maintenance sweep: scale-to-zero, scheduled snapshots, reap orphaned
+   * tasks, then GC. */
   async runMaintenance(): Promise<MaintenanceResult> {
     // Drift first: stop() on a record whose task died out-of-band would try
     // to snapshot a volume the platform already released.
     const drift = await this.detectDrift();
     const idle = await this.runOnce();
     const snapshots = await this.snapshotDue();
+    // Reap orphaned tasks before GC: stopping an orphan releases its managed volume
+    // (deleteOnTermination), which the next sweep's GC then reaps.
+    const tasks = await this.reapOrphanTasks();
     const gc = await this.collectGarbage();
-    return { drift, idle, snapshots, gc };
+    return { drift, idle, snapshots, tasks, gc };
   }
 }

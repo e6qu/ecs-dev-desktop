@@ -1577,3 +1577,22 @@ createVolume`/`createSnapshot` create the resource then `waitUntilVolumeAvailabl
   methods. Unit tests drive the real SDK waiters to a fast terminal-state failure (mock EC2 client,
   `deleted`/`error` acceptors) and assert the cleanup delete fires; storage-ec2 unit 3 green
   (~0.3s); tsc + eslint + knip clean.
+- **2026-06-18 — Self-healing: reconciler reaps orphaned workspace TASKS (the compute analogue of
+  storage GC).** The user asked for self-healing when services are down/fail. Assessment found the
+  platform already self-heals a lot (ECS service auto-restart + circuit breaker + `/api/healthz`
+  liveness + `/api/readyz` readiness, the scheduled reconciler, drift detection, idle-agent tolerance
+  #118, leak cleanup #120/#121), but had **one real gap**: the reconciler reaped orphan volumes/
+  snapshots yet **never orphaned ECS tasks** — a RUNNING workspace task with no control-plane record
+  (a crash between RunTask and persist, a partial wake, an out-of-band launch) leaked the most
+  expensive resource forever, since nothing reaped a task with no record. Built the reaper as a clean
+  mirror of the storage GC: workspace tasks are now **tagged** (`edd:workspace-id`) at launch so the
+  reaper enumerates only workspace tasks (never the control-plane/reconciler tasks sharing the
+  cluster); a `listWorkspaceTasks` compute port (ListTasks + DescribeTasks/TAGS), a
+  `listReferencedTasks` keep-set on the control plane, a pure `selectOrphanTasks` (same grace window as
+  volume GC, so a just-launched-but-not-yet-recorded task is spared), and `Reconciler.reapOrphanTasks`
+  that stops orphans **best-effort** (counted + logged, never aborts the sweep — runs before GC so a
+  reaped task's volume becomes GC-able). New `reconciler.tasks.reaped`/`reap_failed` metrics. Touches
+  core/compute-ecs/control-plane/reconciler; the local fake path no-ops (the port is optional). Tests:
+  `selectOrphanTasks` (4), `reapOrphanTasks` incl. stop-failure + no-compute no-op (3), real
+  `listWorkspaceTasks` tag-filtering (mock ECS client). core 182 + reconciler 12 + compute-ecs 18 +
+  reconciler integ 7 green; tsc + eslint + knip clean. (Follow-up: control-plane-down alarms.)
