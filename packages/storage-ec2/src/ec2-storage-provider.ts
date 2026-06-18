@@ -58,6 +58,10 @@ function required<T>(value: T | undefined, field: string): T {
   return value;
 }
 
+function errMessage(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 /**
  * Real EBS-backed StorageProvider over the EC2 API. Identical against the
  * sockerless AWS simulator and real AWS — only the endpoint differs (AGENTS.md
@@ -121,10 +125,14 @@ export class Ec2StorageProvider implements StorageProvider {
       }),
     );
     const id = volumeId(required(out.VolumeId, "VolumeId"));
-    await waitUntilVolumeAvailable(
-      { client: this.client, maxWaitTime: SETTLE_WAIT_SECONDS },
-      { VolumeIds: [id] },
-    );
+    try {
+      await waitUntilVolumeAvailable(
+        { client: this.client, maxWaitTime: SETTLE_WAIT_SECONDS },
+        { VolumeIds: [id] },
+      );
+    } catch (err) {
+      return await this.deleteOrSurfaceLeak(() => this.deleteVolume(id), `volume ${id}`, err);
+    }
     return opts?.fromSnapshot ? { id, hydratedFrom: opts.fromSnapshot } : { id };
   }
 
@@ -136,10 +144,14 @@ export class Ec2StorageProvider implements StorageProvider {
       }),
     );
     const id = snapshotId(required(out.SnapshotId, "SnapshotId"));
-    await waitUntilSnapshotCompleted(
-      { client: this.client, maxWaitTime: SETTLE_WAIT_SECONDS },
-      { SnapshotIds: [id] },
-    );
+    try {
+      await waitUntilSnapshotCompleted(
+        { client: this.client, maxWaitTime: SETTLE_WAIT_SECONDS },
+        { SnapshotIds: [id] },
+      );
+    } catch (err) {
+      return await this.deleteOrSurfaceLeak(() => this.deleteSnapshot(id), `snapshot ${id}`, err);
+    }
     return { id, sourceVolumeId: volume };
   }
 
@@ -149,6 +161,31 @@ export class Ec2StorageProvider implements StorageProvider {
 
   async deleteSnapshot(snapshot: SnapshotId): Promise<void> {
     await this.client.send(new DeleteSnapshotCommand({ SnapshotId: snapshot }));
+  }
+
+  /**
+   * A resource was created but never settled (its post-create waiter failed —
+   * timeout or an `error` state). Delete it so a failed create doesn't leak EBS,
+   * then rethrow the original error. The reconciler GC would eventually reap the
+   * tagged orphan, but immediate cleanup avoids the cost-accrual window (and a
+   * retry storm piling up orphans faster than GC reaps). If the cleanup delete
+   * ALSO fails it is surfaced, not swallowed (§6.5), so a leaked resource is visible.
+   */
+  private async deleteOrSurfaceLeak(
+    remove: () => Promise<void>,
+    what: string,
+    cause: unknown,
+  ): Promise<never> {
+    try {
+      await remove();
+    } catch (cleanupErr) {
+      throw new Error(
+        `${what} was created but never became available and could not be deleted ` +
+          `(may be leaked until GC): ${errMessage(cause)}; cleanup: ${errMessage(cleanupErr)}`,
+        { cause: cleanupErr },
+      );
+    }
+    throw cause instanceof Error ? cause : new Error(errMessage(cause));
   }
 
   async listVolumes(): Promise<readonly VolumeRef[]> {

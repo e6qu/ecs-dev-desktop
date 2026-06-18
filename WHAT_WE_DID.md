@@ -1565,3 +1565,15 @@ runTask` calls `RunTaskCommand` (a real Fargate task is now launched) and then `
   error is thrown with the original `cause` so a genuinely-leaked task is visible. Added a unit test
   (mock ECS client whose task STOPS before ready → `runTask` rejects AND issues exactly one StopTask
   for the launched ARN). compute-ecs unit 17 green; tsc + eslint + knip clean.
+- **2026-06-18 — Storage provider: delete a volume/snapshot whose post-create settle fails (audit
+  cont.).** Completing the provider-pair hardening (compute was the prior fix): `Ec2StorageProvider.
+createVolume`/`createSnapshot` create the resource then `waitUntilVolumeAvailable`/
+  `waitUntilSnapshotCompleted`, which **throw** on timeout or a terminal `error`/`deleted` state — and
+  the just-created id never escaped, so a failed settle left the resource behind. Lower severity than
+  the compute leak (these resources are tagged, so the reconciler GC reaps them past the 1h grace),
+  so this is defense-in-depth: immediate cleanup avoids the cost-accrual window and a retry storm
+  piling up orphans faster than GC reaps. Added a shared `deleteOrSurfaceLeak` (best-effort delete →
+  rethrow original; a failed cleanup is surfaced with `cause`, not swallowed, §6.5) used by both
+  methods. Unit tests drive the real SDK waiters to a fast terminal-state failure (mock EC2 client,
+  `deleted`/`error` acceptors) and assert the cleanup delete fires; storage-ec2 unit 3 green
+  (~0.3s); tsc + eslint + knip clean.
