@@ -10,6 +10,7 @@
   },
   "scripts": {
     "lint": "eslint .",
+    "test:integ": "vitest run --config vitest.integ.config.ts",
     "test:e2e": "vitest run --config vitest.e2e.config.ts"
   },
   "dependencies": {

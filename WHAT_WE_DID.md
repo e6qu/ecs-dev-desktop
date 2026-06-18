@@ -1524,3 +1524,16 @@ MaxResults` has an AWS minimum of 5 — reinforcing the rule to validate every p
   process-mode sim (round-trip + teardown green); tsc + eslint + knip clean. Lesson: don't bake a
   "real-only" guard that special-cases the sim — coordinate-drive it and the sim validates the logic
   for free; only the real-world _fidelity_ is AWS-gated.
+- **2026-06-18 — Closed the idle-agent heartbeat RESUMPTION testing gap (the last non-AWS Medium).**
+  The user-journey e2e already proves the in-workspace agent beats and advances `lastActivity`
+  (liveness/tolerance in-container); what was untested was that it TOLERATES the control plane going
+  away and RESUMES once it returns — behaviour that lives entirely in `idle-agent.sh`'s loop (a
+  guarded `curl` that logs-but-doesn't-exit on failure). Rather than a flaky container restart, added
+  `packages/e2e/src/idle-agent-resume.integ.ts`: it drives the REAL `infra/images/base/idle-agent.sh`
+  (sh + curl, the exact `--retry`/`--max-time` flags) against a stub control plane (a Node http
+  server) toggled down → up, asserting (a) no acks land and the process does not exit while the CP
+  503s, then (b) a fresh beat lands after the CP returns. Deterministic — 1s interval + relative
+  polling, no wall-clock assertions (§6.10); 3/3 stable at ~7.3s. Established a new lightweight
+  `@edd/e2e` `test:integ` tier (`vitest.integ.config.ts`, no container/sim) so it runs in the
+  existing `integration` CI job (`pnpm test:integ` is turbo-wired); first test of an `infra/images`
+  shell script. tsc + eslint + knip + shellcheck clean.

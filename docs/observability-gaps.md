@@ -139,8 +139,14 @@ truncation at volume.
 - **sockerless#569 (open):** process-mode `RunTask` with managed EBS panics the
   sim, so the managed-EBS launch path (incl. agent-secret injection) runs only in
   container-mode e2e, never in the lighter process-mode integration job. _Medium._
-- **Idle-agent heartbeat RESUMPTION** after the control plane returns — tolerance
-  is proven, resumption is not (the remaining live-test candidate). _Medium._
+- ~~**Idle-agent heartbeat RESUMPTION** after the control plane returns — tolerance
+  is proven, resumption is not~~ **Done (2026-06-18).** `idle-agent-resume.integ.ts`
+  drives the real `infra/images/base/idle-agent.sh` (sh + curl, the exact retry flags)
+  against a stub control plane toggled down → up: it asserts the agent lands no acks
+  and does **not** exit while the CP is 503 (tolerance), then a fresh beat lands once
+  the CP returns (resumption). Deterministic (1s interval + relative polling, §6.10);
+  runs in the `integration` job via a new lightweight `@edd/e2e` `test:integ` tier (no
+  container/sim). The in-container liveness was already covered by the user-journey e2e.
 - **`CONNECTION_TOKEN` injection** unimplemented/untested — deferred to the future
   DYNAMIC wake-on-connect gate. _Low._
 
