@@ -164,7 +164,7 @@ Remaining:
 1. **Unblock and run `e2e-aws`** once the AWS account decision lands (open decision
    #1, the top blocker). This is the one substantial item left and is **external** —
    the entire real-cloud tier is unverified, and it's also where the EMF→CloudWatch
-   metrics, alarms firing, and live SSH-cert issuance get their first real check.
+   metrics, alarms firing, and live registered-key SSH get their first real check.
 2. Minor follow-ups, triaged 2026-06-17:
    - **`parseLevel` heuristic on the log read side — DONE** (reads the structured
      `level`; see above).

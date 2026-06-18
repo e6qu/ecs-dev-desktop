@@ -58,6 +58,13 @@ describe("/api/ssh-keys (DynamoDB Local)", () => {
     expect((await register("alice", "not-a-key")).status).toBe(400);
   });
 
+  it("rejects a malformed JSON body with 400, not a 500", async () => {
+    const res = await POST(
+      new Request(base, { method: "POST", headers: member("alice"), body: "{ not json" }),
+    );
+    expect(res.status).toBe(400);
+  });
+
   it("rejects re-registering the same key (409)", async () => {
     expect((await register("alice", KEY_A)).status).toBe(409);
   });

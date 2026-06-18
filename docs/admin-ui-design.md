@@ -69,10 +69,14 @@ A separate admin section with a left **sidebar**, distinct from the user portal:
 
 - `GET /api/admin/health` → `HealthReport` (the component board).
 - `GET /api/admin/workspaces` → all workspaces (admin list; already have `cp.list()`).
-- `GET /api/admin/workspaces/:id/events` → derived lifecycle timeline (AuditSource).
+- `GET /api/admin/workspaces/:id` → full workspace detail **plus** the derived
+  lifecycle timeline (AuditSource), in one response — there is no separate
+  `/events` route.
 - `GET /api/admin/audit` → recent audit events (AuditSource).
 - `GET /api/admin/logs?target=…` → log lines (LogSource).
-- `GET /api/admin/quotas` / `PUT …` → quota config + usage.
+- Quotas are a **server-rendered admin page** (`/admin/quotas`) reading
+  `cp.list()` usage against the `@edd/config` per-role limits — config-driven, so
+  there is no quota REST route to GET/PUT.
 
 All gated by CASL `manage` (admin). Contracts in `@edd/api-contracts`; client in
 `@edd/api-client`; same dev-auth + Playwright coverage as the portal.
@@ -90,14 +94,18 @@ All gated by CASL `manage` (admin). Contracts in `@edd/api-contracts`; client in
 - ✅ **Phase C — CloudTrail + CloudWatch Logs adapters:** CloudTrail audit adapter
   and CloudWatch Logs adapter (container/app/reconciler), endpoint-only and
   integration-tested against the sockerless AWS simulator.
-- ⬜ **Phase C remainder — Metrics/cost + deploy health:** CloudWatch Metrics +
-  Cost Explorer/CUR dashboard, plus real ECS/EBS/SSH/Pomerium health; validated at
-  `e2e-aws`.
+- 🟡 **Phase C — Metrics/cost + deploy health:** the metrics **emission** layer now
+  exists (`@edd/cloudwatch-metrics`, EMF-over-stdout — wake latency, reconciler
+  counts, API latency/error, fleet + quota gauges; 2026-06-14/17). What remains is
+  the CloudWatch Metrics + Cost Explorer/CUR dashboard and real ECS/EBS/SSH/Pomerium
+  health — validated at `e2e-aws` (the EMF→CloudWatch landing is only unit-tested
+  for shape so far).
 
 ## Notes / open points
 
-- **Metrics/cost** are inherently cloud-only → deferred to Phase C with a clear
-  placeholder in Overview.
+- **Metrics/cost**: the emission layer now exists (`@edd/cloudwatch-metrics`); the
+  real-AWS verification (EMF→CloudWatch) and the cost dashboard remain Phase C /
+  `e2e-aws`-gated.
 - **Real-time:** polling/auto-refresh now (simple, decision-free); SSE/websockets
   only if needed later.
 - **Users list** is derived from workspace owners + the session role; in-app role

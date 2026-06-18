@@ -118,4 +118,20 @@ describe("POST /api/workspaces/:id/ssh-authorize (DynamoDB Local)", () => {
     const res = await authorize(authorizeReq(id, KEY_1, "deadbeef"), routeCtx(id));
     expect(res.status).toBe(401);
   });
+
+  it("rejects a malformed JSON body with 400, not a 500", async () => {
+    const id = await createWorkspaceFor("owner5");
+    const res = await authorize(
+      new Request(`${apiBase}/${id}/ssh-authorize`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${gatewayToken(id)}`,
+          "content-type": "application/json",
+        },
+        body: "{ not json",
+      }),
+      routeCtx(id),
+    );
+    expect(res.status).toBe(400);
+  });
 });

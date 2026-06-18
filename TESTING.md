@@ -19,8 +19,9 @@ in a **manual** suite on `main`.
 - **When the simulator is missing/incorrect for something we need, we file (or
   comment on) an issue in `e6qu/sockerless`** and track it in `BUGS.md` under
   _External blockers_. Current sockerless blockers are cleared; the pin is
-  PR #549 (`777ffd3`), which also fixed our #547/#548 Entra OIDC fidelity
-  reports (`login_hint` user binding; `client_secret_basic`).
+  PR #593 (`fcb58281`), which fixed the #590/#591/#592 conformance gaps from the
+  focused fidelity pass (EBS `DescribeSnapshots` pagination, `CreateVolume` AZ
+  validation, ECS `ClusterNotFoundException`).
 - **LocalStack** is kept only as an optional cross-check where sockerless is
   immature; not a primary gate.
 - Live simulator coverage and candidate app surfaces are tracked in
@@ -62,6 +63,7 @@ Tooling: **Vitest**.
 | SSH wake-on-connect proxy (component)        | OpenSSH proxy container + stub control plane + workspace node                                                                               |
 | SSH wake-on-connect chain (real CP)          | OpenSSH proxy + production `next start` + DynamoDB Local                                                                                    |
 | LIVE user journey (real API, no fakes)       | production `next start` + `COMPUTE_PROVIDER=ecs` on container-mode sim (idle-agent heartbeats incl.)                                        |
+| Idle-agent heartbeat resumption              | the real `idle-agent.sh` driven against a togglable stub control plane (`@edd/e2e` `test:integ`, no container/sim)                          |
 | Reconciler scale-to-zero (real task)         | seeded stale workspace + scheduler-fired sweep on container-mode sim                                                                        |
 | Auth.js callback routes                      | real NextAuth handlers vs `bleephub` + Azure/Entra sim (Entra leg TLS-only → `e2e-https`)                                                   |
 | Identity-aware proxy                         | real Pomerium in Docker + sockerless Azure/Entra OIDC                                                                                       |
