@@ -31,6 +31,7 @@ import {
   METRIC_RECONCILER_DRIFT_LOST,
   METRIC_RECONCILER_FAILED,
   METRIC_RECONCILER_GC_DELETED,
+  METRIC_RECONCILER_GC_FAILED,
   METRIC_RECONCILER_SKIPPED,
   METRIC_RECONCILER_SNAPSHOTTED,
   METRIC_RECONCILER_STOPPED,
@@ -92,21 +93,23 @@ const cost = new CostService({
   sizing: workspaceSizing(),
   rollups: new StoredCostRollupStore(makeCostRollupEntity(dynamo, table)),
 });
-const reconciler = new Reconciler({
-  service,
-  storage,
-  clock: systemClock,
-  ...(idleThresholdMs === undefined ? {} : { idleThresholdMs }),
-  ...(snapshotIntervalMs === undefined ? {} : { snapshotIntervalMs }),
-  ...(gcGraceMs === undefined ? {} : { gcGraceMs }),
-});
-
 const log = createLogger({
   service: "reconciler",
   clock: systemClock,
   write: (line) => void process.stdout.write(`${line}\n`),
 });
 const metrics = metricSinkFromEnv();
+
+const reconciler = new Reconciler({
+  service,
+  storage,
+  clock: systemClock,
+  // Surface best-effort GC delete failures (a stuck orphan) loudly, per resource.
+  logger: log,
+  ...(idleThresholdMs === undefined ? {} : { idleThresholdMs }),
+  ...(snapshotIntervalMs === undefined ? {} : { snapshotIntervalMs }),
+  ...(gcGraceMs === undefined ? {} : { gcGraceMs }),
+});
 
 try {
   const result = await reconciler.runMaintenance();
@@ -120,6 +123,7 @@ try {
     METRIC_RECONCILER_GC_DELETED,
     result.gc.volumesDeleted + result.gc.snapshotsDeleted,
   );
+  metrics.count(METRIC_RECONCILER_GC_FAILED, result.gc.volumesFailed + result.gc.snapshotsFailed);
   metrics.count(
     METRIC_RECONCILER_SKIPPED,
     result.drift.skipped + result.idle.skipped + result.snapshots.skipped,
@@ -134,6 +138,7 @@ try {
     snapshotted: result.snapshots.snapshotted,
     volumesDeleted: result.gc.volumesDeleted,
     snapshotsDeleted: result.gc.snapshotsDeleted,
+    gcFailed: result.gc.volumesFailed + result.gc.snapshotsFailed,
     skipped: result.drift.skipped + result.idle.skipped + result.snapshots.skipped,
   });
 

@@ -36,6 +36,10 @@ export const METRIC_RECONCILER_SNAPSHOTTED = "reconciler.snapshots.taken";
 export const METRIC_RECONCILER_DRIFT_LOST = "reconciler.drift.lost";
 /** Orphan volumes + snapshots garbage-collected in a sweep. */
 export const METRIC_RECONCILER_GC_DELETED = "reconciler.gc.deleted";
+/** Orphan deletes that errored (e.g. a volume transiently in-use). Best-effort GC
+ * counts and continues rather than aborting the sweep; a non-zero value warrants
+ * a look (an orphan kept failing to reap). */
+export const METRIC_RECONCILER_GC_FAILED = "reconciler.gc.failed";
 /** Actions skipped because a concurrent update won the race (not failures). */
 export const METRIC_RECONCILER_SKIPPED = "reconciler.skipped";
 
