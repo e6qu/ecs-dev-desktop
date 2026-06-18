@@ -14,7 +14,14 @@ import { createDynamoClient, dropTable, ensureTable, makeWorkspaceEntity } from 
 import { Ec2StorageProvider } from "@edd/storage-ec2";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { awsSimClientConfig, configureAwsSimEnv, createVpcWithEgress, required } from "./aws-sim";
+import {
+  awsSimClientConfig,
+  configureAwsSimEnv,
+  createVpcWithEgress,
+  e2eEbsRoleArn,
+  e2eWorkspaceImage,
+  required,
+} from "./aws-sim";
 import { hostReachableTarget } from "./docker-host";
 import {
   generateUserKey,
@@ -45,8 +52,8 @@ const RUN_ID = randomUUID().slice(0, 8);
 const TABLE = `edd-durability-${RUN_ID}`;
 const CLUSTER = `edd-durability-${RUN_ID}`;
 const LOG_GROUP = `/edd/e2e/durability-${RUN_ID}`;
-const WORKSPACE_IMAGE = "edd-workspace:e2e";
-const EBS_ROLE = "arn:aws:iam::123456789012:role/ecsInfrastructureRole";
+const WORKSPACE_IMAGE = e2eWorkspaceImage();
+const EBS_ROLE = e2eEbsRoleArn();
 const AGENT_SECRET = "d2".repeat(32);
 const SUBNET_CIDR_RE = /^10\.76\.1\.\d+$/;
 

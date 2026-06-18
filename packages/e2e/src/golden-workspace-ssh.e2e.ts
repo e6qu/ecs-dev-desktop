@@ -27,6 +27,8 @@ import {
   awsSimClientConfig,
   configureAwsSimEnv,
   createVpcWithEgress,
+  e2eEbsRoleArn,
+  e2eWorkspaceImage,
   required,
   sleep,
 } from "./aws-sim";
@@ -39,12 +41,12 @@ const RUN_ID = randomUUID().slice(0, 8);
 const CLUSTER = `edd-golden-ssh-${RUN_ID}`;
 const VPC_CIDR = "10.71.0.0/16";
 const SUBNET_CIDR = "10.71.1.0/24";
-const WORKSPACE_IMAGE = "edd-workspace:e2e";
+const WORKSPACE_IMAGE = e2eWorkspaceImage();
 const CLIENT_CONTAINER = "client";
 const WORKSPACE_CONTAINER = "workspace";
 const WORKSPACE_ID = `ws-golden-${RUN_ID}`;
 const LOG_GROUP = `/edd/e2e/golden-ssh-${RUN_ID}`;
-const EBS_ROLE = "arn:aws:iam::123456789012:role/ecsInfrastructureRole";
+const EBS_ROLE = e2eEbsRoleArn();
 const AGENT_SECRET = "a".repeat(64);
 const SSH_ATTEMPTS = 30;
 /** Editor poll budget (phase 2): OpenVSCode accepts TCP early but is slow to

@@ -44,6 +44,22 @@ export function awsSimClientConfig(
   };
 }
 
+// Coordinates (AGENTS.md §6.9): the workspace image and the ECS infrastructure
+// (managed-EBS) role are externally-supplied facts, not targets. They default to
+// the sim-appropriate values so CI runs unchanged; supplying the env vars points
+// the SAME specs at real AWS (an ECR image URI; the real role ARN).
+
+/** Golden workspace image: the local `:e2e` tag by default, or an ECR URI via env. */
+export function e2eWorkspaceImage(): string {
+  return process.env.WORKSPACE_IMAGE ?? "edd-workspace:e2e";
+}
+
+/** ECS infrastructure (managed-EBS) role ARN: a sim placeholder by default, or the
+ * real role ARN via env. */
+export function e2eEbsRoleArn(): string {
+  return process.env.EDD_E2E_EBS_ROLE_ARN ?? "arn:aws:iam::123456789012:role/ecsInfrastructureRole";
+}
+
 export function required<T>(value: T | null | undefined, field: string): T {
   if (value === undefined || value === null) throw new Error(`missing ${field}`);
   return value;

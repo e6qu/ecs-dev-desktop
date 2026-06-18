@@ -20,6 +20,7 @@ import {
   awsSimClientConfig,
   configureAwsSimEnv,
   createVpcWithEgress,
+  e2eEbsRoleArn,
   required,
   sleep,
 } from "./aws-sim";
@@ -42,7 +43,7 @@ const RUN_ID = randomUUID().slice(0, 8);
 const TABLE = `edd-drift-${RUN_ID}`;
 const CLUSTER = `edd-drift-${RUN_ID}`;
 const IMAGE = "nginx:alpine"; // long-running default CMD, so the task stays RUNNING
-const EBS_ROLE = "arn:aws:iam::123456789012:role/ecsInfrastructureRole";
+const EBS_ROLE = e2eEbsRoleArn();
 
 const SIM = awsSimClientConfig();
 

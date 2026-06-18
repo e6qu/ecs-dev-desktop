@@ -1509,3 +1509,18 @@ MaxResults` has an AWS minimum of 5 — reinforcing the rule to validate every p
   `@edd/core` and a memoized `getMetrics()` app sink accessor. 3 unit tests (allowed / unlimited /
   denied). This closes the `observability-gaps.md` `Low` list entirely — the only thing left there
   is the AWS-gated `e2e-aws` tier.
+- **2026-06-17 — Made the e2e-aws EBS smoke coordinate-driven + sim-validated (it wasn't really
+  "untested until AWS").** The user pushed back on the e2e-aws caveat — and rightly: the smoke I'd
+  shipped in #115 _refused to run if `AWS_ENDPOINT_URL` was set_, which is an **anti-§6.9 special-case
+  against the sim** and the very reason it looked untestable. Fixed it the §6.9 way: extracted the
+  round-trip into `runEbsSmoke(ec2, prefix)` in `@edd/storage-ec2` (where the EBS context + integ
+  tier already live), made `packages/e2e/src/aws-ebs-smoke.ts` a thin coordinate-driven wrapper
+  (honours `AWS_ENDPOINT_URL` if set), and added `ebs-smoke.integ.ts` that runs the SAME `runEbsSmoke`
+  **against the sockerless sim** — asserting the round-trip + lineage AND that the `finally` teardown
+  deleted the volume (`InvalidVolume.NotFound`). So it now runs both ways by coordinates alone: the
+  `integration` job validates the logic + teardown against the sim (no ci.yml change — storage-ec2's
+  `test:integ` already runs there), and `e2e-aws` runs the identical logic against real AWS for the
+  latency/durability fidelity a sim genuinely can't model. Validated locally against the running
+  process-mode sim (round-trip + teardown green); tsc + eslint + knip clean. Lesson: don't bake a
+  "real-only" guard that special-cases the sim — coordinate-drive it and the sim validates the logic
+  for free; only the real-world _fidelity_ is AWS-gated.

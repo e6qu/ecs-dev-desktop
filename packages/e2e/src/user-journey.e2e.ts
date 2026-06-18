@@ -18,6 +18,8 @@ import {
   awsSimClientConfig,
   configureAwsSimEnv,
   createVpcWithEgress,
+  e2eEbsRoleArn,
+  e2eWorkspaceImage,
   required,
   sleep,
 } from "./aws-sim";
@@ -46,8 +48,8 @@ const RUN_ID = randomUUID().slice(0, 8);
 const TABLE = `edd-user-journey-${RUN_ID}`;
 const CLUSTER = `edd-journey-${RUN_ID}`;
 const LOG_GROUP = `/edd/e2e/journey-${RUN_ID}`;
-const WORKSPACE_IMAGE = "edd-workspace:e2e";
-const EBS_ROLE = "arn:aws:iam::123456789012:role/ecsInfrastructureRole";
+const WORKSPACE_IMAGE = e2eWorkspaceImage();
+const EBS_ROLE = e2eEbsRoleArn();
 const AGENT_SECRET = "e".repeat(64);
 const HEARTBEAT_INTERVAL_S = 5;
 const OWNER = "journey-user";
