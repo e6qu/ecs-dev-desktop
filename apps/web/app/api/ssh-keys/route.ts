@@ -22,7 +22,13 @@ async function handlePOST(req: Request) {
   const principal = await authenticate(req);
   if (isResponse(principal)) return principal;
 
-  const body = registerSshKeyRequest.safeParse(await req.json());
+  let raw: unknown;
+  try {
+    raw = await req.json();
+  } catch {
+    return badRequest();
+  }
+  const body = registerSshKeyRequest.safeParse(raw);
   if (!body.success) return badRequest(body.error.issues[0]?.message);
 
   try {

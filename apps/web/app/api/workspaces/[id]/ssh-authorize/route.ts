@@ -28,7 +28,13 @@ async function handlePOST(req: Request, { params }: Ctx) {
   const authed = checkGatewayAuth(req, id) === "valid" || checkAgentAuth(req, id) === "valid";
   if (!authed) return unauthorized();
 
-  const body = sshAuthorizeRequest.safeParse(await req.json());
+  let raw: unknown;
+  try {
+    raw = await req.json();
+  } catch {
+    return badRequest();
+  }
+  const body = sshAuthorizeRequest.safeParse(raw);
   if (!body.success) return badRequest(body.error.issues[0]?.message);
 
   const ws = await (await getControlPlane()).get(workspaceId(id));
