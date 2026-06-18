@@ -57,11 +57,19 @@ export function selectIdle(
     .map((w) => w.id);
 }
 
+/** Minimal logging port — `@edd/core`'s `createLogger` satisfies it structurally.
+ * Used to surface best-effort GC delete failures loudly (not swallowed). */
+export interface ReconcilerLogger {
+  warn(message: string, fields?: Record<string, unknown>): void;
+}
+
 export interface ReconcilerDeps {
   service: ReconcilerService;
   /** Storage port used to enumerate and reap orphaned volumes/snapshots. */
   storage: StorageProvider;
   clock: Clock;
+  /** Optional logger; GC delete failures are logged through it when present. */
+  logger?: ReconcilerLogger;
   /** Idle window before scale-to-zero; defaults to `DEFAULT_IDLE_THRESHOLD_MS`. */
   idleThresholdMs?: number;
   /** Interval between scheduled snapshots; defaults to `DEFAULT_SNAPSHOT_INTERVAL_MS`. */
@@ -95,6 +103,10 @@ export interface SnapshotResult {
 export interface GcResult {
   volumesDeleted: number;
   snapshotsDeleted: number;
+  /** Orphan deletes that errored (e.g. a volume transiently in-use). GC is
+   * best-effort per resource — these are counted and logged, not thrown. */
+  volumesFailed: number;
+  snapshotsFailed: number;
 }
 
 export interface MaintenanceResult {
@@ -191,10 +203,42 @@ export class Reconciler {
       this.gcGraceMs,
     );
 
-    for (const id of orphanVolumes) await this.deps.storage.deleteVolume(id);
-    for (const id of orphanSnapshots) await this.deps.storage.deleteSnapshot(id);
+    // Best-effort per resource: one delete that errors (e.g. a volume transiently
+    // in-use, throttling, or already gone) must not strand the remaining orphans or
+    // abort the sweep — the same resilience the idle/snapshot/drift sweeps have. The
+    // error is counted and logged (not swallowed), and a persistent failure surfaces
+    // as a non-zero `reconciler.gc.failed` metric.
+    let volumesDeleted = 0;
+    let volumesFailed = 0;
+    for (const id of orphanVolumes) {
+      try {
+        await this.deps.storage.deleteVolume(id);
+        volumesDeleted += 1;
+      } catch (err) {
+        volumesFailed += 1;
+        this.deps.logger?.warn("gc: failed to delete orphan volume", {
+          volumeId: id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
 
-    return { volumesDeleted: orphanVolumes.length, snapshotsDeleted: orphanSnapshots.length };
+    let snapshotsDeleted = 0;
+    let snapshotsFailed = 0;
+    for (const id of orphanSnapshots) {
+      try {
+        await this.deps.storage.deleteSnapshot(id);
+        snapshotsDeleted += 1;
+      } catch (err) {
+        snapshotsFailed += 1;
+        this.deps.logger?.warn("gc: failed to delete orphan snapshot", {
+          snapshotId: id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+
+    return { volumesDeleted, snapshotsDeleted, volumesFailed, snapshotsFailed };
   }
 
   /** One full maintenance sweep: scale-to-zero, scheduled snapshots, then GC. */

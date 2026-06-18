@@ -63,7 +63,12 @@ describe("Reconciler GC against the sim via Ec2StorageProvider", () => {
     const orphanSnap = await storage.createSnapshot(orphanVol.id);
 
     const result = await reconciler.collectGarbage();
-    expect(result).toEqual({ volumesDeleted: 1, snapshotsDeleted: 1 });
+    expect(result).toEqual({
+      volumesDeleted: 1,
+      snapshotsDeleted: 1,
+      volumesFailed: 0,
+      snapshotsFailed: 0,
+    });
 
     // The live workspace's volume survives; the orphans are gone.
     expect((await storage.listVolumes()).map((v) => v.id)).toEqual(liveVolumes);

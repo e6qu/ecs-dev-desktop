@@ -197,7 +197,12 @@ describe("Reconciler.collectGarbage", () => {
       gcGraceMs: ONE_HOUR,
     });
 
-    expect(await reconciler.collectGarbage()).toEqual({ volumesDeleted: 1, snapshotsDeleted: 1 });
+    expect(await reconciler.collectGarbage()).toEqual({
+      volumesDeleted: 1,
+      snapshotsDeleted: 1,
+      volumesFailed: 0,
+      snapshotsFailed: 0,
+    });
     expect((await storage.listVolumes()).map((v) => v.id)).toEqual([keep.id]);
     expect((await storage.listSnapshots()).map((s) => s.id)).toEqual([keepSnap.id]);
     // The orphans really are gone.
@@ -216,7 +221,56 @@ describe("Reconciler.collectGarbage", () => {
       gcGraceMs: ONE_HOUR,
     });
 
-    expect(await reconciler.collectGarbage()).toEqual({ volumesDeleted: 0, snapshotsDeleted: 0 });
+    expect(await reconciler.collectGarbage()).toEqual({
+      volumesDeleted: 0,
+      snapshotsDeleted: 0,
+      volumesFailed: 0,
+      snapshotsFailed: 0,
+    });
     expect((await storage.listVolumes()).map((v) => v.id)).toEqual([orphan.id]);
+  });
+
+  it("continues GC when one delete fails — reaps the rest, counts + logs the failure", async () => {
+    const inner = await FakeStorageProvider.create(fixedClock("2026-06-01T00:00:00.000Z"));
+    const stuck = await inner.createVolume();
+    const reapable = await inner.createVolume();
+
+    // A storage where deleting `stuck` throws (as real EBS does for a volume still
+    // in-use / detaching), delegating everything else to the fake.
+    const storage: StorageProvider = {
+      createVolume: (opts) => inner.createVolume(opts),
+      readFile: (v, p) => inner.readFile(v, p),
+      writeFile: (v, p, d) => inner.writeFile(v, p, d),
+      createSnapshot: (v) => inner.createSnapshot(v),
+      deleteVolume: (id) =>
+        id === stuck.id
+          ? Promise.reject(new Error("VolumeInUse: volume is still attached"))
+          : inner.deleteVolume(id),
+      deleteSnapshot: (id) => inner.deleteSnapshot(id),
+      listVolumes: () => inner.listVolumes(),
+      listSnapshots: () => inner.listSnapshots(),
+    };
+
+    const warnings: { message: string; fields?: Record<string, unknown> }[] = [];
+    const reconciler = new Reconciler({
+      service: fakeService(), // nothing referenced — both volumes are orphans
+      storage,
+      clock: fixedClock("2026-06-01T02:00:00.000Z"), // past the grace window
+      gcGraceMs: ONE_HOUR,
+      logger: { warn: (message, fields) => warnings.push({ message, fields }) },
+    });
+
+    // The stuck delete fails but the reapable orphan is still collected — the sweep
+    // is not aborted — and the failure is counted + logged (not swallowed).
+    expect(await reconciler.collectGarbage()).toEqual({
+      volumesDeleted: 1,
+      snapshotsDeleted: 0,
+      volumesFailed: 1,
+      snapshotsFailed: 0,
+    });
+    expect((await storage.listVolumes()).map((v) => v.id)).toEqual([stuck.id]);
+    expect((await storage.listVolumes()).map((v) => v.id)).not.toContain(reapable.id);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]?.fields).toMatchObject({ volumeId: stuck.id });
   });
 });

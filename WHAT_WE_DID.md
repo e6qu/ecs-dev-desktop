@@ -1537,3 +1537,18 @@ MaxResults` has an AWS minimum of 5 — reinforcing the rule to validate every p
   `@edd/e2e` `test:integ` tier (`vitest.integ.config.ts`, no container/sim) so it runs in the
   existing `integration` CI job (`pnpm test:integ` is turbo-wired); first test of an `infra/images`
   shell script. tsc + eslint + knip + shellcheck clean.
+- **2026-06-18 — Hardened reconciler GC to be best-effort per resource (highest-blast-radius path).**
+  A robustness audit of the reconciler found the one real gap: `collectGarbage` deleted orphan
+  volumes/snapshots in a bare `for … await storage.deleteVolume(id)` loop — so a SINGLE delete that
+  throws (very plausible on real AWS: a volume transiently in-use/detaching → `VolumeInUse`,
+  throttling, or an already-deleted volume → `InvalidVolume.NotFound`) aborted the rest of GC AND
+  propagated out of `runMaintenance`, failing the whole sweep (counted as `reconciler.sweep.failed`)
+  and stranding the remaining orphans (cost accruing). This contradicted the reconciler's own design
+  — the idle/snapshot/drift sweeps already skip-and-continue ("one racy workspace must not abort the
+  sweep"). Made GC match: each delete is now try/caught, **counted and logged (not swallowed)**, and
+  the sweep continues. `GcResult` gained `volumesFailed`/`snapshotsFailed`; a new
+  `reconciler.gc.failed` metric (`@edd/core`) is emitted and the per-resource error is logged via an
+  optional `ReconcilerLogger` on the deps (the run entrypoint passes its structured logger). Added a
+  unit test (one stuck delete → the other orphan still reaped, failure counted + logged, no throw) and
+  updated the exact-match GC assertions. reconciler unit 9 + integ 7 (vs sim/DynamoDB Local) + core
+  178 green; tsc + eslint + knip clean.
