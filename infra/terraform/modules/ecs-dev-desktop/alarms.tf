@@ -46,3 +46,53 @@ resource "aws_cloudwatch_metric_alarm" "wake_latency_high" {
   ok_actions          = var.alarm_sns_topic_arns
   tags                = local.tags
 }
+
+# Control plane is DOWN — no healthy task behind the ALB for several minutes. ECS
+# self-heals (the service replaces unhealthy tasks; the circuit breaker rolls a bad
+# deploy back), but a crash-loop or a stuck dependency keeps HealthyHostCount at 0,
+# and this is the signal a human needs. Uses the AWS-managed ALB metric so it fires
+# even when the control plane itself can't emit (its own EMF would be silent).
+resource "aws_cloudwatch_metric_alarm" "control_plane_unhealthy" {
+  count             = var.enable_metric_alarms ? 1 : 0
+  alarm_name        = "${var.name}-control-plane-unhealthy"
+  alarm_description = "No healthy control-plane task behind the ALB (the control plane is down)."
+  namespace         = "AWS/ApplicationELB"
+  metric_name       = "HealthyHostCount"
+  dimensions = {
+    LoadBalancer = aws_lb.this.arn_suffix
+    TargetGroup  = aws_lb_target_group.control_plane.arn_suffix
+  }
+  statistic           = "Minimum"
+  period              = 60
+  evaluation_periods  = 3 # ~3 min with no healthy host (ride out a normal deploy)
+  threshold           = 1
+  comparison_operator = "LessThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = var.alarm_sns_topic_arns
+  ok_actions          = var.alarm_sns_topic_arns
+  tags                = local.tags
+}
+
+# Control plane is UP but ERRORING — sustained target 5xx responses (the companion
+# to the unhealthy alarm: down vs degraded). Also an AWS-managed ALB metric, so it
+# is independent of the app's own error-rate metric.
+resource "aws_cloudwatch_metric_alarm" "control_plane_5xx" {
+  count             = var.enable_metric_alarms ? 1 : 0
+  alarm_name        = "${var.name}-control-plane-5xx"
+  alarm_description = "Control-plane target 5xx responses exceed the threshold (the API is erroring)."
+  namespace         = "AWS/ApplicationELB"
+  metric_name       = "HTTPCode_Target_5XX_Count"
+  dimensions = {
+    LoadBalancer = aws_lb.this.arn_suffix
+    TargetGroup  = aws_lb_target_group.control_plane.arn_suffix
+  }
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = var.control_plane_5xx_threshold
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = var.alarm_sns_topic_arns
+  ok_actions          = var.alarm_sns_topic_arns
+  tags                = local.tags
+}

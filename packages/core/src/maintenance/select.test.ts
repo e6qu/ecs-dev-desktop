@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { describe, expect, it } from "vitest";
 
-import { isoTimestamp, snapshotId, volumeId, workspaceId } from "../domain/ids";
+import type { WorkspaceTaskRef } from "../compute/compute-provider";
+import { isoTimestamp, snapshotId, taskId, volumeId, workspaceId } from "../domain/ids";
 import type { SnapshotRef, VolumeRef } from "../storage/storage-provider";
 import {
   selectDueForSnapshot,
   selectOrphanSnapshots,
+  selectOrphanTasks,
   selectOrphanVolumes,
   type SnapshotCandidate,
 } from "./select";
@@ -88,5 +90,38 @@ describe("selectDueForSnapshot", () => {
       { id: workspaceId("ws-edge"), latestSnapshotAt: exactGrace },
     ];
     expect(selectDueForSnapshot(candidates, now, ONE_HOUR)).toEqual([workspaceId("ws-edge")]);
+  });
+});
+
+describe("selectOrphanTasks", () => {
+  const taskRef = (id: string, ws: string, startedAt = old): WorkspaceTaskRef => ({
+    id: taskId(id),
+    workspaceId: workspaceId(ws),
+    startedAt,
+  });
+
+  it("reaps a tagged task no record references, past the grace window", () => {
+    const existing = [taskRef("task-orphan", "ws-1"), taskRef("task-kept", "ws-2")];
+    const referenced = new Set([taskId("task-kept")]);
+    expect(selectOrphanTasks(existing, referenced, now, ONE_HOUR)).toEqual([
+      taskRef("task-orphan", "ws-1"),
+    ]);
+  });
+
+  it("spares a referenced task even past the grace window", () => {
+    const existing = [taskRef("task-kept", "ws-2")];
+    expect(selectOrphanTasks(existing, new Set([taskId("task-kept")]), now, ONE_HOUR)).toEqual([]);
+  });
+
+  it("spares an unreferenced task still inside the grace window (create/persist race)", () => {
+    const existing = [taskRef("task-fresh", "ws-3", recent)];
+    expect(selectOrphanTasks(existing, new Set(), now, ONE_HOUR)).toEqual([]);
+  });
+
+  it("reaps a task started exactly the grace ago (>= boundary)", () => {
+    const existing = [taskRef("task-edge", "ws-4", exactGrace)];
+    expect(selectOrphanTasks(existing, new Set(), now, ONE_HOUR)).toEqual([
+      taskRef("task-edge", "ws-4", exactGrace),
+    ]);
   });
 });

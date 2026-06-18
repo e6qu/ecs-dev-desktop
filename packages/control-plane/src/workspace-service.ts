@@ -44,6 +44,7 @@ import {
   type SnapshotCandidate,
   type SnapshotId,
   type StorageProvider,
+  type TaskId,
   type VolumeId,
   type Workspace,
   type WorkspaceId,
@@ -314,6 +315,19 @@ export class WorkspaceService {
       if (r.latestSnapshotId !== undefined) snapshotIds.push(snapshotId(r.latestSnapshotId));
     });
     return { volumeIds, snapshotIds };
+  }
+
+  /** Every task id any workspace record still references — the orphan-task reaper's
+   * keep-set. Conservative: includes a stopped record's last task id (that task is
+   * not RUNNING, so it is not a reap candidate anyway), so a task any record names is
+   * never reaped. A RUNNING workspace task in no record is the orphan. */
+  async listReferencedTasks(): Promise<readonly TaskId[]> {
+    const { data } = await this.deps.workspaces.scan.go({ pages: "all" });
+    const taskIds: TaskId[] = [];
+    data.forEach((r: WorkspaceRecord) => {
+      if (r.taskId !== undefined) taskIds.push(taskId(r.taskId));
+    });
+    return taskIds;
   }
 
   /** Fetch all workspace records in the given lifecycle states (fully paginated). */

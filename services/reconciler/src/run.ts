@@ -32,6 +32,8 @@ import {
   METRIC_RECONCILER_FAILED,
   METRIC_RECONCILER_GC_DELETED,
   METRIC_RECONCILER_GC_FAILED,
+  METRIC_RECONCILER_TASKS_REAPED,
+  METRIC_RECONCILER_TASKS_REAP_FAILED,
   METRIC_RECONCILER_SKIPPED,
   METRIC_RECONCILER_SNAPSHOTTED,
   METRIC_RECONCILER_STOPPED,
@@ -103,8 +105,10 @@ const metrics = metricSinkFromEnv();
 const reconciler = new Reconciler({
   service,
   storage,
+  // Enables the orphan-task reaper (self-heals workspace tasks with no record).
+  compute,
   clock: systemClock,
-  // Surface best-effort GC delete failures (a stuck orphan) loudly, per resource.
+  // Surface best-effort GC delete + orphan-task stop failures loudly, per resource.
   logger: log,
   ...(idleThresholdMs === undefined ? {} : { idleThresholdMs }),
   ...(snapshotIntervalMs === undefined ? {} : { snapshotIntervalMs }),
@@ -124,6 +128,8 @@ try {
     result.gc.volumesDeleted + result.gc.snapshotsDeleted,
   );
   metrics.count(METRIC_RECONCILER_GC_FAILED, result.gc.volumesFailed + result.gc.snapshotsFailed);
+  metrics.count(METRIC_RECONCILER_TASKS_REAPED, result.tasks.reaped);
+  metrics.count(METRIC_RECONCILER_TASKS_REAP_FAILED, result.tasks.failed);
   metrics.count(
     METRIC_RECONCILER_SKIPPED,
     result.drift.skipped + result.idle.skipped + result.snapshots.skipped,
@@ -139,6 +145,9 @@ try {
     volumesDeleted: result.gc.volumesDeleted,
     snapshotsDeleted: result.gc.snapshotsDeleted,
     gcFailed: result.gc.volumesFailed + result.gc.snapshotsFailed,
+    tasksScanned: result.tasks.scanned,
+    tasksReaped: result.tasks.reaped,
+    tasksReapFailed: result.tasks.failed,
     skipped: result.drift.skipped + result.idle.skipped + result.snapshots.skipped,
   });
 

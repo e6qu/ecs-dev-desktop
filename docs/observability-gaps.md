@@ -90,7 +90,10 @@ when `LOG_PROVIDER=cloudwatch`, else no-op; no `PutMetricData` calls). Wired:
 - **Cold-start / wake-on-connect latency** (`workspace.wake.latency_ms`, timing) —
   emitted from `WorkspaceService.start`, dimensioned by base image.
 - **Reconciler action + failure counts** — sweep, drift-lost, idle-stopped,
-  snapshots-taken, gc-deleted, skipped, and `reconciler.sweep.failed`.
+  snapshots-taken, gc-deleted, skipped, `reconciler.sweep.failed`, and (2026-06-18)
+  `reconciler.tasks.reaped`/`reap_failed` from the orphan-task reaper (self-heals
+  RUNNING workspace tasks with no control-plane record — the compute analogue of
+  orphan-volume GC). A non-zero `reap_failed` warrants a look (a stuck orphan task).
 - **CloudWatch alarms** (`alarms.tf`): reconciler-failed and wake-latency-p99-high,
   with optional `alarm_sns_topic_arns` (gated by `enable_metric_alarms`; off for the
   sim, which exposes no metrics endpoint).

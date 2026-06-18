@@ -122,6 +122,7 @@ export type { ReferencedStorage, SnapshotCandidate } from "./maintenance/select"
 export {
   selectDueForSnapshot,
   selectOrphanSnapshots,
+  selectOrphanTasks,
   selectOrphanVolumes,
 } from "./maintenance/select";
 
@@ -132,6 +133,7 @@ export type {
   ComputeTask,
   RunTaskInput,
   TaskLiveness,
+  WorkspaceTaskRef,
 } from "./compute/compute-provider";
 export type { FakeComputeConfig } from "./compute/fake-compute-provider";
 export { FakeComputeProvider } from "./compute/fake-compute-provider";
@@ -180,6 +182,8 @@ export {
   METRIC_RECONCILER_DRIFT_LOST,
   METRIC_RECONCILER_GC_DELETED,
   METRIC_RECONCILER_GC_FAILED,
+  METRIC_RECONCILER_TASKS_REAPED,
+  METRIC_RECONCILER_TASKS_REAP_FAILED,
   METRIC_RECONCILER_SKIPPED,
   METRIC_API_REQUEST,
   METRIC_API_LATENCY_MS,

@@ -1565,3 +1565,45 @@ runTask` calls `RunTaskCommand` (a real Fargate task is now launched) and then `
   error is thrown with the original `cause` so a genuinely-leaked task is visible. Added a unit test
   (mock ECS client whose task STOPS before ready → `runTask` rejects AND issues exactly one StopTask
   for the launched ARN). compute-ecs unit 17 green; tsc + eslint + knip clean.
+- **2026-06-18 — Storage provider: delete a volume/snapshot whose post-create settle fails (audit
+  cont.).** Completing the provider-pair hardening (compute was the prior fix): `Ec2StorageProvider.
+createVolume`/`createSnapshot` create the resource then `waitUntilVolumeAvailable`/
+  `waitUntilSnapshotCompleted`, which **throw** on timeout or a terminal `error`/`deleted` state — and
+  the just-created id never escaped, so a failed settle left the resource behind. Lower severity than
+  the compute leak (these resources are tagged, so the reconciler GC reaps them past the 1h grace),
+  so this is defense-in-depth: immediate cleanup avoids the cost-accrual window and a retry storm
+  piling up orphans faster than GC reaps. Added a shared `deleteOrSurfaceLeak` (best-effort delete →
+  rethrow original; a failed cleanup is surfaced with `cause`, not swallowed, §6.5) used by both
+  methods. Unit tests drive the real SDK waiters to a fast terminal-state failure (mock EC2 client,
+  `deleted`/`error` acceptors) and assert the cleanup delete fires; storage-ec2 unit 3 green
+  (~0.3s); tsc + eslint + knip clean.
+- **2026-06-18 — Self-healing: reconciler reaps orphaned workspace TASKS (the compute analogue of
+  storage GC).** The user asked for self-healing when services are down/fail. Assessment found the
+  platform already self-heals a lot (ECS service auto-restart + circuit breaker + `/api/healthz`
+  liveness + `/api/readyz` readiness, the scheduled reconciler, drift detection, idle-agent tolerance
+  #118, leak cleanup #120/#121), but had **one real gap**: the reconciler reaped orphan volumes/
+  snapshots yet **never orphaned ECS tasks** — a RUNNING workspace task with no control-plane record
+  (a crash between RunTask and persist, a partial wake, an out-of-band launch) leaked the most
+  expensive resource forever, since nothing reaped a task with no record. Built the reaper as a clean
+  mirror of the storage GC: workspace tasks are now **tagged** (`edd:workspace-id`) at launch so the
+  reaper enumerates only workspace tasks (never the control-plane/reconciler tasks sharing the
+  cluster); a `listWorkspaceTasks` compute port (ListTasks + DescribeTasks/TAGS), a
+  `listReferencedTasks` keep-set on the control plane, a pure `selectOrphanTasks` (same grace window as
+  volume GC, so a just-launched-but-not-yet-recorded task is spared), and `Reconciler.reapOrphanTasks`
+  that stops orphans **best-effort** (counted + logged, never aborts the sweep — runs before GC so a
+  reaped task's volume becomes GC-able). New `reconciler.tasks.reaped`/`reap_failed` metrics. Touches
+  core/compute-ecs/control-plane/reconciler; the local fake path no-ops (the port is optional). Tests:
+  `selectOrphanTasks` (4), `reapOrphanTasks` incl. stop-failure + no-compute no-op (3), real
+  `listWorkspaceTasks` tag-filtering (mock ECS client). core 182 + reconciler 12 + compute-ecs 18 +
+  reconciler integ 7 green; tsc + eslint + knip clean.
+- **2026-06-18 — Self-healing alerting: control-plane down/degraded alarms.** ECS already self-heals
+  the control plane (service auto-restart + deployment circuit breaker + `/api/healthz` liveness +
+  `/api/readyz` readiness), but nothing **alerted** when it was down — only `reconciler.sweep.failed`
+  and wake-latency were alarmed. Added two CloudWatch alarms (`alarms.tf`) on **AWS-managed ALB
+  metrics** (so they fire even when the control plane can't emit its own EMF): `control-plane-unhealthy`
+  (HealthyHostCount `< 1` for ~3 min behind the ALB — the CP is down / crash-looping / a stuck
+  dependency) and `control-plane-5xx` (target `HTTPCode_Target_5XX_Count` over a tunable threshold —
+  up but erroring). Same `enable_metric_alarms` gate + `alarm_sns_topic_arns` actions as the existing
+  alarms (off for the sim, which has no metrics endpoint); new `control_plane_5xx_threshold` var.
+  `terraform fmt` + `validate` clean. The real firing is `e2e-aws`-validated (ALB metrics are
+  real-AWS-only). This + the orphan-task reaper are the "both, reaper first" self-healing items.

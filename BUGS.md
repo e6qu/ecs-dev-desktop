@@ -4,6 +4,17 @@
 
 ## Open
 
+- **`concurrency-pairs.integ.ts` "delete vs wake" — rare DynamoDB-Local flake (2026-06-18).**
+  The test fires `remove` + `start` concurrently and asserts exactly one wins. Both methods use
+  proper version-CAS (`start`'s PHASE-1 claim and `remove`'s delete are each conditioned on the read
+  `version`), so on real DynamoDB exactly one commits. **DynamoDB Local**'s weaker conditional-write
+  isolation can, very rarely under load, let both `version == V` writes commit — observed once in CI
+  (`delOk=true, startOk=true`); not reproducible locally (18/18). It is a test-substrate fidelity gap,
+  not a control-plane bug, and **not** filed upstream (DynamoDB Local is not sockerless). Production
+  impact is nil (real DynamoDB serializes the CAS); and even the hypothetical resulting orphan — a
+  running task with no record — is now **self-healed by the orphan-task reaper** (this branch).
+  Re-running the job passes. Revisit only if the rate climbs.
+
 **Launch-readiness gaps (logs / health / status / metrics / testing)** are
 inventoried, prioritized, and cross-referenced in
 [`docs/observability-gaps.md`](./docs/observability-gaps.md). Nearly all are now
