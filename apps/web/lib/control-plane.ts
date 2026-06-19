@@ -132,7 +132,8 @@ async function activeProviders(): Promise<{
   storage: Ec2StorageProvider | FakeStorageProvider;
   compute: EcsComputeProvider | FakeComputeProvider;
 }> {
-  if (process.env.COMPUTE_PROVIDER === "ecs") return buildRealProviders();
+  if (useRealProviders()) return buildRealProviders();
+  assertFakeProvidersAllowed();
   const storage = await FakeStorageProvider.create();
   return { storage, compute: new FakeComputeProvider(storage) };
 }
@@ -209,9 +210,46 @@ function buildRealProviders(): { storage: Ec2StorageProvider; compute: EcsComput
   return { storage, compute };
 }
 
+/** The real EBS/ECS adapters are selected by `COMPUTE_PROVIDER=ecs`. */
+function useRealProviders(): boolean {
+  return process.env.COMPUTE_PROVIDER === "ecs";
+}
+
+/**
+ * Whether falling back to the in-process fakes is permitted for this process. Pure
+ * over the given env so it is unit-testable. Fakes are allowed only when this is
+ * plainly a dev/test deployment: `NODE_ENV` is not `production`, the dev-auth shim is
+ * on (`EDD_DEV_AUTH=1` — never set in prod, since it bypasses the real IdP), or an
+ * explicit opt-in (`EDD_ALLOW_FAKE_PROVIDERS=1`) is set.
+ */
+export function fakeProvidersAllowed(env: Record<string, string | undefined>): boolean {
+  return (
+    env.NODE_ENV !== "production" ||
+    env.EDD_DEV_AUTH === "1" ||
+    env.EDD_ALLOW_FAKE_PROVIDERS === "1"
+  );
+}
+
+/**
+ * Fail loud rather than silently fall back to the in-process fakes in production
+ * (§6.5). A prod deploy that forgot `COMPUTE_PROVIDER=ecs` would otherwise report
+ * workspaces as "running" without ever launching ECS/EBS — a dangerous no-op. Call
+ * before constructing any fake provider.
+ */
+function assertFakeProvidersAllowed(): void {
+  if (!fakeProvidersAllowed(process.env)) {
+    throw new Error(
+      "Refusing to use in-process fake compute/storage in production: a misconfigured " +
+        "deploy would report workspaces as running without launching ECS/EBS. Set " +
+        "COMPUTE_PROVIDER=ecs to use the real adapters, or EDD_ALLOW_FAKE_PROVIDERS=1 to " +
+        "explicitly opt into the fakes (dev/test only).",
+    );
+  }
+}
+
 async function build(): Promise<WorkspaceService> {
   const client = createDynamoClient();
-  if (process.env.COMPUTE_PROVIDER === "ecs") {
+  if (useRealProviders()) {
     const { storage, compute } = buildRealProviders();
     return new WorkspaceService({
       workspaces: makeWorkspaceEntity(client, tableName()),
@@ -223,6 +261,7 @@ async function build(): Promise<WorkspaceService> {
       metrics: metricSinkFromEnv(),
     });
   }
+  assertFakeProvidersAllowed();
   const storage = await FakeStorageProvider.create();
   // The fake compute provider records no real ENI; e2e harnesses that pair the
   // fake control plane with a real sshd container set EDD_FAKE_SSH_HOST so

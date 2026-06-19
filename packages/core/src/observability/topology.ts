@@ -118,7 +118,7 @@ export const SYSTEM_TOPOLOGY: Topology = {
     { from: "control-plane", to: "dynamodb", label: "state (ElectroDB)" },
     { from: "control-plane", to: "compute", label: "RunTask / StopTask" },
     { from: "control-plane", to: "storage", label: "snapshot / restore" },
-    { from: "control-plane", to: "ssh-gateway", label: "issues CA certs" },
+    { from: "control-plane", to: "ssh-gateway", label: "ssh-authorize (registered key)" },
     { from: "compute", to: "workspace", label: "launches" },
     { from: "compute", to: "storage", label: "managed EBS volume" },
     { from: "ssh-gateway", to: "workspace", label: "forwards to ENI" },

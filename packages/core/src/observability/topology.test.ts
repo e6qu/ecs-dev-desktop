@@ -18,6 +18,19 @@ describe("system topology", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
+  it("describes SSH trust as registered-key authorize, not the removed CA path", () => {
+    // The CA/cert trust path was removed in the registered-key clean break (#111);
+    // no edge label may still claim the control plane issues SSH certs.
+    for (const e of SYSTEM_TOPOLOGY.edges) {
+      expect(e.label.toLowerCase()).not.toContain("ca cert");
+      expect(e.label.toLowerCase()).not.toContain("issues ca");
+    }
+    const sshTrust = SYSTEM_TOPOLOGY.edges.find(
+      (e) => e.from === "control-plane" && e.to === "ssh-gateway",
+    );
+    expect(sshTrust?.label).toContain("ssh-authorize");
+  });
+
   it("declares the core components an operator expects", () => {
     const ids = new Set(SYSTEM_TOPOLOGY.nodes.map((n) => n.id));
     for (const id of ["control-plane", "dynamodb", "compute", "storage", "reconciler"]) {

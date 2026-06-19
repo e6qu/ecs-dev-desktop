@@ -91,10 +91,13 @@ describe("api-contracts", () => {
     expect(parsed.keyType).toBe("ssh-ed25519");
   });
 
-  it("defaults the cost window to all-time and falls back on garbage/absent input", () => {
+  it("defaults an absent cost window to all-time but REJECTS an invalid explicit value", () => {
     expect(costReportQuery.parse({ window: "7d" }).window).toBe("7d");
     expect(costReportQuery.parse({}).window).toBe("all"); // absent → all
-    expect(costReportQuery.parse({ window: "bogus" }).window).toBe("all"); // invalid → all
+    expect(costReportQuery.parse({ window: undefined }).window).toBe("all"); // absent → all
+    // An explicit garbage value must fail (so the route boundary returns 400, not a
+    // silent lifetime report) — `.default("all")`, not `.catch("all")`.
+    expect(costReportQuery.safeParse({ window: "bogus" }).success).toBe(false);
   });
 
   it("maps every cost window to its day span (all = lifetime)", () => {
