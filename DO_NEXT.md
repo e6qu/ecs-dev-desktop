@@ -28,6 +28,64 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
 
 ---
 
+## Code-review remediation (codex 2026-06-19) — ACTIONABLE NOW, none deferred
+
+A deep `codex` review (full log `~/codex-review.log`; summary `~/codex-review-summary.md`)
+surfaced 12 findings; 4 were independently re-verified against the code. **Every one is
+actionable without the AWS account decision** (the terraform/IAM items validate against the
+`terraform-sim` IAM simulation; final real-enforcement proof is additive on `e2e-aws`). They are
+bundled into **`PLAN.md` Phase 9** and tracked as concrete bugs in `BUGS.md` → Open. Priority order:
+
+1. **[Critical] Silent fake-provider fallback in production** — `apps/web/lib/control-plane.ts:135`
+   (+ `build()`) use the in-process fakes whenever `COMPUTE_PROVIDER!=ecs`, no `NODE_ENV=production`
+   guard (§6.5 violation; a misconfigured prod reports workspaces "running" without launching ECS/EBS).
+   Fix: require a real provider in production; fakes only behind an explicit dev/test flag.
+2. **[Critical] Terraform IAM blocks the agent-secret path** — the adapter does
+   `CreateSecret`/`PutSecretValue`/tag under `edd/workspace/*/agent` (`compute-ecs/.../ecs-compute-provider.ts:327`)
+   - injects via task-def `secrets` (:297), but `iam.tf:136` grants only `GetSecretValue` on configured
+     secrets and the execution role (`iam.tf:35`) reads only `var.secret_environment`. Add scoped
+     create/put/tag + execution-role read for `edd/workspace/*/agent`.
+3. **[Critical] Workspace exec/task role ARNs never passed to the control plane** — `fromEnv()` reads
+   `ECS_EXECUTION_ROLE_ARN`/`ECS_TASK_ROLE_ARN` (`ecs-compute-provider.ts:626`) but `ecs.tf:38`
+   (`local.base_environment`) omits both → real task defs lack roles for ECR pulls/awslogs/secret
+   injection. Create a least-privilege workspace task role, set both env vars, add both to `iam:PassRole`.
+4. **[Critical] SSH-key uniqueness is race-prone** — read-then-unconditional-`put`
+   (`ssh-key-service.ts:88→112`); the `byFingerprint` GSI isn't a uniqueness constraint. Fix:
+   transactional fingerprint sentinel with `attribute_not_exists`.
+5. **[High] No early snapshot** — `provision()` records no `latestSnapshotId` (`core/.../workspace.ts:60`);
+   default snapshot interval is 6h → early Fargate eviction loses all state. Snapshot soon after
+   bootstrap + a shorter early-session cadence.
+6. **[High] Repo-clone + git-credential failures hidden** — `entrypoint.sh:50/55` continues past a
+   failed clone; `git-credential-helper.sh:13/21` exits 0 on missing/failed creds. Fail loud + surface
+   a visible bootstrap status in the portal for configured session repos (directly serves the non-dev
+   safety goal).
+7. **[High] Per-workspace agent secrets never GC'd** — created at `edd/workspace/${wsId}/agent`
+   (`ecs-compute-provider.ts:329`); `remove()` only stops the task; reconciler GC covers storage/tasks
+   only. Tag by workspace; delete on terminate + periodic secret GC.
+8. **[Medium] ECS task-definition revision sprawl** — per-workspace cache key (`ecs-compute-provider.ts:258`)
+   but image-only family (:263) → unbounded revisions. Deregister old revisions or share stable task defs.
+9. **[Medium] Missing owner email → inaccessible workspace** — create route drops a malformed email to
+   `undefined` (`workspaces/route.ts:69`); proxy-authz then denies non-admins (`proxy-authz.ts:54`).
+   Require a valid owner identity at create, or authorize by a stable subject claim.
+10. **[Medium] `?window=bad` silently becomes `all`** — `costWindow.catch("all")`
+    (`api-contracts/index.ts:289`) makes `safeParse` always succeed, so the route's `badRequest` is dead
+    (closes the gap the #127 route change missed). Reject invalid explicit values.
+11. **[Low] Topology graph stale** — `topology.ts:121` still says the SSH gateway "issues CA certs";
+    update to registered-key authorization / `ssh-authorize` (CA removed in #111).
+
+**Deferred-but-now-actionable, folded into Phase 9 (no longer "future"):**
+
+- **`CONNECTION_TOKEN` injection** — generate + persist the OpenVSCode token in the control plane and
+  hand it to the authenticated user via the proxy (was parked on the "future DYNAMIC wake-on-connect
+  gate"; the token generation/persistence is independently doable now).
+- **Cross-region EBS snapshot DR** (snapshot → `CopySnapshot` → restore) — now sim-validatable since
+  **sockerless#602** landed; add the DR copy path + an e2e against the sim (previously parked as
+  real-AWS-only).
+
+Only genuinely AWS-account-gated work (real `terraform apply`, real DNS/ACM, real IdP federation, 200+
+load, live `e2e-aws` enforcement) stays under decision #1 below — that is an external decision, not a
+deferral by choice.
+
 ## Available now (decision-free — immediate)
 
 - **User-registered SSH keys + per-workspace subdomain — IN PROGRESS (Phase 4b).**
@@ -105,8 +163,9 @@ gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI
 - **ECS compute hardening follow-ups** (from the 2026-06-13 gap audit) — mostly
   **done** (see `BUGS.md` → Resolved): `runTask` readiness gating; `EDD_AGENT_TOKEN`
   → Secrets Manager (no plaintext); real `EcsComputeProvider.health()`; ECS Exec on
-  the launch path. Remaining: `CONNECTION_TOKEN` injection (lands with the future
-  DYNAMIC wake-on-connect gate).
+  the launch path. Remaining: `CONNECTION_TOKEN` injection — **now actionable** (Phase 9):
+  generate + persist the token in the control plane and hand it to the authenticated user
+  via the proxy; no longer parked on the future DYNAMIC wake-on-connect gate.
 - **Cost — done.** Figure-exact rollups (O(recent) report) + live AWS Price List
   rate sourcing (`EDD_AWS_PRICING=1`, region-accurate, config fallback); both in
   `BUGS.md` → Resolved. The live-rate fetch is real-AWS-validated (`e2e-aws`); CI

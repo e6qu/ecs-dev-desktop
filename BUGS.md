@@ -4,6 +4,62 @@
 
 ## Open
 
+### Code-review findings (codex, 2026-06-19) — being remediated in PLAN.md Phase 9
+
+All actionable now (no AWS-account gate); ✓ = independently re-verified against the code.
+
+- **[Critical] Silent fake-provider fallback in production.** `apps/web/lib/control-plane.ts:135`
+  (+ `build()`) instantiate `FakeStorageProvider`/`FakeComputeProvider` whenever `COMPUTE_PROVIDER!=ecs`,
+  with no `NODE_ENV=production` guard. A misconfigured prod deploy reports workspaces "running" without
+  launching ECS/EBS (a §6.5 silent-fallback). ✓ Fix: require a real provider in production.
+- **[Critical] Terraform IAM doesn't allow the per-workspace agent-secret path.** Adapter does
+  `CreateSecret`/`PutSecretValue`/tag under `edd/workspace/*/agent`
+  (`packages/compute-ecs/src/ecs-compute-provider.ts:327`) + injects via task-def `secrets` (:297), but
+  `infra/terraform/modules/ecs-dev-desktop/iam.tf:136` grants only `GetSecretValue` on configured
+  secrets and the execution role (`iam.tf:35`) reads only `var.secret_environment`. Real launch with
+  `EDD_AGENT_SECRET` fails / can't resolve `EDD_AGENT_TOKEN`. Fix: scoped create/put/tag + execution-role
+  read for `edd/workspace/*/agent`; validate via the `terraform-sim` IAM simulation.
+- **[Critical] Workspace exec/task role ARNs never passed to the control plane.** `fromEnv()` reads
+  `ECS_EXECUTION_ROLE_ARN`/`ECS_TASK_ROLE_ARN` (`ecs-compute-provider.ts:626`) but `ecs.tf:38`
+  (`local.base_environment`) omits both → real task defs lack roles for private-ECR pulls, awslogs,
+  secret injection, runtime AWS. Fix: least-privilege workspace task role, set both env vars, add both
+  to `iam:PassRole`.
+- **[Critical] SSH-key fingerprint uniqueness is race-prone.** `register()` reads `findByFingerprint`
+  (`packages/control-plane/src/ssh-key-service.ts:88`) then does an unconditional `put` (:112); the
+  `byFingerprint` GSI (`packages/db/src/entities.ts:161`) is not a uniqueness constraint, so two users
+  can concurrently register the same key → ambiguous gateway lookup. ✓ Fix: transactional fingerprint
+  sentinel with `attribute_not_exists`.
+- **[High] No early snapshot → fresh-workspace data loss.** `provision()` records no `latestSnapshotId`
+  (`packages/core/src/domain/workspace.ts:60`); drift recovery marks `error` (:150); default snapshot
+  interval is 6h (`packages/core/src/domain/constants.ts:21`). Early Fargate eviction/crash loses all
+  workspace state. Fix: initial snapshot soon after bootstrap/repo-clone + a shorter early-session cadence.
+- **[High] Repo-clone + git-credential failures are silently hidden.** Golden image continues past a
+  failed `git clone` (`infra/images/base/entrypoint.sh:50`/`:55`); the credential helper exits 0 on
+  missing/failed creds (`infra/images/base/git-credential-helper.sh:13`/`:21`). A non-dev lands in an
+  empty workspace with only a container log. Fix: fail loud into a visible bootstrap status (portal) for
+  configured session repos; silent unauthenticated fallback only for public/no-session paths.
+- **[High] Per-workspace agent secrets are never deleted.** Created at `edd/workspace/${wsId}/agent`
+  (`ecs-compute-provider.ts:329`); `remove()` only stops the task
+  (`packages/control-plane/src/workspace-service.ts:781`); reconciler GC covers storage/tasks only
+  (`services/reconciler/src/index.ts:345`). Stale machine tokens accumulate. Fix: tag secrets by
+  workspace; delete on terminate + periodic secret GC.
+- **[Medium] ECS task-definition revision sprawl.** Cache key is per-image+workspace
+  (`ecs-compute-provider.ts:258`) but the family is image-only (:263) → unbounded revisions per
+  user/wake/restart, slowing provisioning and risking quotas. Fix: deregister old revisions or share
+  stable task definitions.
+- **[Medium] Missing owner email creates an inaccessible workspace.** Create route catches a malformed
+  email and sets `ownerEmail=undefined` (`apps/web/app/api/workspaces/route.ts:69`); proxy-authz then
+  denies non-admins when owner email is missing (`packages/core/src/domain/proxy-authz.ts:54`). Fix:
+  require a valid owner identity at create, or authorize by a stable subject claim.
+- **[Medium] `/api/admin/costs?window=bad` silently becomes `all`.** `costReportQuery` uses
+  `costWindow.catch("all")` (`packages/api-contracts/src/index.ts:289`), so `safeParse` never fails and
+  the route's `badRequest` branch (`apps/web/app/api/admin/costs/route.ts:21`) is dead — an operator typo
+  shows lifetime cost. ✓ (the #127 route change is defeated by the schema). Fix: reject invalid explicit
+  values while still defaulting an absent param.
+- **[Low] Topology graph documents removed SSH CA behavior.** `packages/core/src/observability/topology.ts:121`
+  still says control plane → SSH gateway "issues CA certs". Fix: registered-key authorization /
+  `ssh-authorize` (CA removed in #111).
+
 - **`concurrency-pairs.integ.ts` "delete vs wake" — rare DynamoDB-Local flake (2026-06-18).**
   The test fires `remove` + `start` concurrently and asserts exactly one wins. Both methods use
   proper version-CAS (`start`'s PHASE-1 claim and `remove`'s delete are each conditioned on the read
@@ -38,11 +94,10 @@ ones were fixed — see Resolved — these remain as deliberate follow-ups, not
 active breakage):
 
 - **`CONNECTION_TOKEN` (OpenVSCode) not yet injected by the provider** — a random
-  per-boot token today. The control plane should generate + persist it (Secrets
-  Manager, alongside the now-secret-injected agent token) so it can hand the token
-  to the authenticated user via the proxy. Tied to the per-workspace proxy-authz
-  handoff (the DYNAMIC wake-on-connect gate, itself a future extension), so it
-  lands with that. The agent-token plaintext exposure is **fixed** (see Resolved).
+  per-boot token today. **Now actionable (Phase 9), no longer parked on the future
+  DYNAMIC gate:** the control plane should generate + persist it (Secrets Manager,
+  alongside the now-secret-injected agent token) and hand it to the authenticated user
+  via the proxy. The agent-token plaintext exposure is **fixed** (see Resolved).
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
