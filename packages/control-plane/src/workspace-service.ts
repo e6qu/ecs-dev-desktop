@@ -20,6 +20,7 @@ import {
   markStopped,
   markTaskLost,
   markWaking,
+  METRIC_SECURITY_PRIVILEGE_ATTEMPT,
   METRIC_WORKSPACE_WAKE_LATENCY_MS,
   newWorkspaceId,
   notFoundError,
@@ -862,6 +863,30 @@ export class WorkspaceService {
    * interval) — used to decide a final snapshot before delete. */
   private snapshotStale(ws: Workspace): boolean {
     return ws.latestSnapshotId === undefined;
+  }
+
+  /**
+   * Record a security event reported by the in-workspace privilege guard (a blocked
+   * attempt to run a privileged tool like docker/sudo). Writes a first-class audit
+   * event (so it shows in the admin audit/Logs view) and emits a metric dimensioned by
+   * tool (so it shows in the admin dashboard + the security alarm). The sandbox already
+   * blocked the operation; this makes it visible + auditable, fleet-wide.
+   */
+  async recordSecurityEvent(
+    id: WorkspaceId,
+    event: { kind: "privilege_attempt"; tool: string },
+  ): Promise<Result<void, DomainError>> {
+    const found = await this.find(id);
+    if (found === null) return err(notFoundError("workspace", id));
+    const item = this.auditItem({
+      action: `security.${event.kind}`,
+      target: id,
+      actor: "workspace",
+      detail: event.tool,
+    });
+    if (item !== undefined) await item.entity.put(item.attrs).go();
+    this.deps.metrics?.count(METRIC_SECURITY_PRIVILEGE_ATTEMPT, 1, { tool: event.tool });
+    return ok(undefined);
   }
 
   /** Stopped/error workspaces that reference a snapshot they would restore from — the

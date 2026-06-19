@@ -66,6 +66,11 @@ export const METRIC_RECONCILER_ERROR_GAUGE = "reconciler.workspaces.error";
 /** Gauge: workspaces currently in the `deleting` tombstone (teardown in progress). */
 export const METRIC_RECONCILER_DELETING_GAUGE = "reconciler.workspaces.deleting";
 
+/** A workspace attempted a privileged operation the sandbox blocks (docker, sudo, …) —
+ * reported by the in-image privilege guard. Dimensioned by `tool`. A spike is a signal
+ * worth an operator's eye (curiosity, misunderstanding, or probing). */
+export const METRIC_SECURITY_PRIVILEGE_ATTEMPT = "security.privilege_attempt";
+
 // API request metrics (emitted by the route observability wrapper).
 /** One handled API request (dimensioned by route + status class). */
 export const METRIC_API_REQUEST = "api.request";

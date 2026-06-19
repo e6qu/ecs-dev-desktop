@@ -121,6 +121,26 @@ resource "aws_cloudwatch_metric_alarm" "reconciler_not_running" {
 }
 
 # Reconciler self-healing FAILURES — a delete/stop the sweep retried still failed.
+# A burst of blocked privileged-tool attempts (docker/sudo/… from inside workspaces)
+# worth an operator's eye — curiosity, a misunderstanding, or probing. The sandbox
+# already blocked them; this surfaces the pattern.
+resource "aws_cloudwatch_metric_alarm" "security_privilege_attempts" {
+  count               = var.enable_metric_alarms ? 1 : 0
+  alarm_name          = "${var.name}-security-privilege-attempts"
+  alarm_description   = "Workspaces attempted privileged tools the sandbox blocks (docker/sudo/…) above the threshold."
+  namespace           = local.metric_namespace
+  metric_name         = "security.privilege_attempt"
+  statistic           = "Sum"
+  period              = 300
+  evaluation_periods  = 1
+  threshold           = var.privilege_attempt_alarm_threshold
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = var.alarm_sns_topic_arns
+  ok_actions          = var.alarm_sns_topic_arns
+  tags                = local.tags
+}
+
 # A workspace stuck in `error` (unrecoverable — no snapshot, or one deleted out-of-band)
 # can't be self-healed forward; it needs a human to recreate or delete it. Sustained
 # above the threshold across the window = page someone.

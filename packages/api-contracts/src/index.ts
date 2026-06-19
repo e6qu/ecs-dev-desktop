@@ -42,6 +42,18 @@ export const workspace = z.object({
 });
 export type WorkspaceDto = z.infer<typeof workspace>;
 
+/** A security event reported by the in-workspace guard (agent machine-auth). */
+export const securityEventRequest = z.object({
+  kind: z.enum(["privilege_attempt"]),
+  /** The guarded tool the workspace tried to run (e.g. "docker", "sudo"). */
+  tool: z
+    .string()
+    .min(1)
+    .max(64)
+    .regex(/^[a-zA-Z0-9._-]+$/),
+});
+export type SecurityEventRequest = z.infer<typeof securityEventRequest>;
+
 export const createWorkspaceRequest = z.object({
   baseImage: z.string().min(1),
   /** Optional git repo to clone into the session at first boot ("one repo per
