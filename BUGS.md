@@ -54,9 +54,9 @@ active breakage):
     `snapshotId` (cross-region EBS **DR** flow snapshot→copy→restore is exercisable).
   - **#603 — CloudWatch alarm API** — `PutMetricAlarm`/`DescribeAlarms`/`DeleteAlarms` work across
     all three CW wire protocols; `DescribeAlarms` evaluates `StateValue` live from metric data
-    honouring `TreatMissingData` (probed: a `sweep.count < 1` alarm reads `ALARM`). The module's
-    9 alarm resources apply + round-trip via terraform — **except** the wake-latency p99 alarm,
-    blocked by #609 below.
+    honouring `TreatMissingData` (probed: a `sweep.count < 1` alarm reads `ALARM`). All 9 module
+    alarm resources apply + round-trip idempotently via terraform (the wake-latency p99 alarm
+    needed the #609 fix below).
   - **#604 — CloudWatch Logs EMF extraction** — an EMF `PutLogEvents` doc is now queryable through
     the metric APIs (`get-metric-statistics`/`list-metrics`) with no `PutMetricData` call (probed:
     `quota.utilization=42` round-tripped).
@@ -66,25 +66,28 @@ active breakage):
     `(EventTime, EventId)` cursor (no page overlap on a growing trail; probed with a mid-walk
     mutation → zero duplicate `EventId`s); read-only `LookupEvents` is no longer self-recorded.
 
-- **sockerless#608/#609 (open — filed 2026-06-19)** — two further gaps surfaced when flipping the
-  module's `enable_metric_alarms` on against the rebuilt sim (so the alarm/dashboard resources now
-  apply through terraform). Both keep the alarms + dashboard `false` for the sim apply until fixed:
-  - **#608 — CloudWatch `PutDashboard` not implemented** (404 / unrouted; the sim's `dashboard.go`
-    is its own `/sim/v1/*` operator console, not the AWS API). Blocks applying `aws_cloudwatch_dashboard`
-    against the sim → `enable_cloudwatch_dashboard=false` for the sim fixture.
-  - **#609 — CloudWatch alarms drop a percentile `ExtendedStatistic`** (e.g. `p99`): `PutMetricAlarm`
-    accepts it, `DescribeAlarms` returns neither `Statistic` nor `ExtendedStatistic`, so it never
-    round-trips → our wake-latency p99 alarm shows a **perpetual `plan` diff** and fails the
-    `plan -detailed-exitcode` idempotency gate. Keeps `enable_metric_alarms=false` for the sim
-    fixture; flip it true (independently of the dashboard) once #609 lands. The other 8 module
-    alarms are idempotent — only the p99 one is blocked.
+- **sockerless#608/#609 (fixed upstream — confirmed downstream 2026-06-19)** — the two residual
+  CloudWatch gaps that had kept the alarm/dashboard resources off for the sim apply, both fixed by
+  sockerless **#611** (merge `322d16ad`) and **confirmed downstream** after re-pinning the submodule
+  to it (from `74c0a3d2`) and re-probing the rebuilt sim:
+  - **#608 — CloudWatch dashboard API** — new `cloudwatch_dashboards.go` implements
+    `PutDashboard`/`GetDashboard`/`ListDashboards`/`DeleteDashboards` over all three CW wire
+    protocols (probed: put→`[]`, get echoes the body, list→`["ops"]`, delete clears).
+  - **#609 — alarm percentile `ExtendedStatistic`** — the alarm store now carries `ExtendedStatistic`
+    (mutually exclusive with `Statistic`) across all three protocols and evaluates the percentile from
+    metric data (probed: a `p99` alarm round-trips `ExtendedStatistic=p99`, `Statistic=null`).
 
-  Confirmed faithful on the sim across both passes (so the above are the only gaps): CloudWatch
-  metric write/read + EMF, the full EBS create/snapshot/restore **and copy** lifecycle, alarm
-  CRUD + state evaluation, EC2 `tag:` filters + `OwnerIds:self` + pagination + the volume/snapshot
-  waiters, Secrets Manager `CreateSecret`→`ResourceExistsException`→`PutSecretValue` upsert, ECS
-  `RunTask --tags` → `DescribeTasks include:TAGS` / `ListTasks --desired-status` / `DescribeClusters`
-  counts, and the `create→wake→connect→delete` journey (the container-mode `user-journey` e2e).
+  With both fixed, the sim fixture runs `enable_metric_alarms=true` **and**
+  `enable_cloudwatch_dashboard=true`: all 9 alarm resources + the ops dashboard apply against the sim
+  and `plan -detailed-exitcode` is **0 (idempotent)** — confirmed locally (apply + clean destroy of
+  66 resources). So there are **no open sockerless blockers** — every AWS surface our code/terraform
+  drives is now sim-validatable: CloudWatch metric write/read + EMF + **alarms + dashboards**, the
+  full EBS create/snapshot/restore **and copy** lifecycle, EC2 `tag:` filters + `OwnerIds:self` +
+  pagination + the volume/snapshot waiters, Secrets Manager
+  `CreateSecret`→`ResourceExistsException`→`PutSecretValue` upsert, ECS `RunTask --tags` →
+  `DescribeTasks include:TAGS` / `ListTasks --desired-status` / `DescribeClusters` counts, CloudTrail
+  `LookupEvents` cursor pagination, and the `create→wake→connect→delete` journey (the container-mode
+  `user-journey` e2e).
 
 - **sockerless#569 (fixed upstream — confirmed downstream 2026-06-16)** —
   process-mode (`SIM_RUNTIME=process`) `ecs:RunTask` with a managed-EBS volume used

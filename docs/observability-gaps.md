@@ -117,13 +117,14 @@ active}` and a priced `fleet.cost.usd` once per sweep.
 - Real-AWS verification that EMF stdout lands as CloudWatch metrics + alarms fire
   (only the JSON shape is unit-tested). _Tracked under `e2e-aws`._ As of the
   2026-06-19 fidelity passes the sim now supports the CloudWatch metric read/write
-  APIs, **EMF extraction** (sockerless#604), the **alarm API** (sockerless#603), and
-  EC2 `CopySnapshot` (sockerless#602) — all adopted by re-pinning the submodule to
-  #607. Two residual gaps keep the module's alarm/dashboard resources off for the sim
-  terraform apply: `PutDashboard` (sockerless#608) and percentile `ExtendedStatistic`
-  round-trip for the wake-latency p99 alarm (sockerless#609). Once those land, the
-  alarm + dashboard resources become sim-CI-validatable, not just real-AWS (see
-  `BUGS.md` → External blockers).
+  APIs, **EMF extraction** (sockerless#604), the **alarm API** + percentile
+  `ExtendedStatistic` (sockerless#603/#609), the **dashboard API** (sockerless#608),
+  and EC2 `CopySnapshot` (sockerless#602) — adopted by re-pinning the submodule
+  through #607→#611. The sim terraform fixture now runs with `enable_metric_alarms`
+  **and** `enable_cloudwatch_dashboard` on: all 9 alarms + the ops dashboard apply +
+  plan idempotently against the sim, so the EMF→metrics→alarms→dashboard path is
+  sim-CI-validatable (the real-AWS `e2e-aws` run still covers genuine cloud delivery
+  latency/DNS/IAM). See `BUGS.md` → External blockers.
 
 ## Audit
 
