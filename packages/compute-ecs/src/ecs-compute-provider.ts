@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { createHmac, timingSafeEqual } from "node:crypto";
 import {
+  DeregisterTaskDefinitionCommand,
   DescribeClustersCommand,
   DescribeTasksCommand,
   ECSClient,
   ListTasksCommand,
+  paginateListTaskDefinitionFamilies,
+  paginateListTaskDefinitions,
   RegisterTaskDefinitionCommand,
   RunTaskCommand,
   StopTaskCommand,
@@ -137,10 +140,14 @@ function positiveIntEnv(name: string): number | undefined {
   return n;
 }
 
+/** Prefix of every workspace task-definition family — distinguishes them from the
+ * control-plane/reconciler task defs so the reconciler's task-def GC only prunes ours. */
+const WORKSPACE_TASKDEF_FAMILY_PREFIX = "edd-ws-";
+
 /** A valid ECS task-definition family derived from a base-image reference
  * (ECS families allow letters, numbers, hyphens, underscores). */
 export function taskDefinitionFamily(image: BaseImage): string {
-  return `edd-ws-${image.replace(/[^a-zA-Z0-9-]/g, "-").slice(0, 200)}`;
+  return `${WORKSPACE_TASKDEF_FAMILY_PREFIX}${image.replace(/[^a-zA-Z0-9-]/g, "-").slice(0, 200)}`;
 }
 
 /** Derive the per-workspace idle-agent token: HMAC-SHA256(secret, workspaceId). */
@@ -390,6 +397,40 @@ export class EcsComputeProvider implements ComputeProvider {
       if (err instanceof Error && err.name === "ResourceNotFoundException") return;
       throw err;
     }
+  }
+
+  /** Deregister all but the newest `keepPerFamily` ACTIVE revisions of each
+   * `edd-ws-*` workspace task-definition family. Per-launch secret injection forces a
+   * new revision each time, so they grow unbounded otherwise; a running task keeps its
+   * (now-inactive) revision and a wake registers a fresh one, so pruning old ones is
+   * safe. Best-effort per revision (a deregister that errors is skipped, not fatal). */
+  async pruneTaskDefinitions(keepPerFamily: number): Promise<number> {
+    const families: string[] = [];
+    for await (const page of paginateListTaskDefinitionFamilies(
+      { client: this.client },
+      { familyPrefix: WORKSPACE_TASKDEF_FAMILY_PREFIX, status: "ACTIVE" },
+    )) {
+      families.push(...(page.families ?? []));
+    }
+    let deregistered = 0;
+    for (const family of families) {
+      const arns: string[] = [];
+      for await (const page of paginateListTaskDefinitions(
+        { client: this.client },
+        { familyPrefix: family, status: "ACTIVE", sort: "DESC" },
+      )) {
+        arns.push(...(page.taskDefinitionArns ?? []));
+      }
+      for (const arn of arns.slice(keepPerFamily)) {
+        try {
+          await this.client.send(new DeregisterTaskDefinitionCommand({ taskDefinition: arn }));
+          deregistered += 1;
+        } catch {
+          // Best-effort: a revision in a transient state (or already inactive) is skipped.
+        }
+      }
+    }
+    return deregistered;
   }
 
   async runTask(input: RunTaskInput): Promise<ComputeTask> {

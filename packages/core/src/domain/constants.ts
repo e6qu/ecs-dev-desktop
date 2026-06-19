@@ -34,6 +34,12 @@ export const DEFAULT_EARLY_SNAPSHOT_INTERVAL_MS = 10 * 60 * 1000;
 /** How long a workspace counts as "early session" for the shorter snapshot cadence: 1 hour. */
 export const DEFAULT_EARLY_SESSION_MS = 60 * 60 * 1000;
 
+/** Newest ACTIVE task-definition revisions to keep per workspace family when the
+ * reconciler prunes (older ones are deregistered). Per-launch secret injection forces
+ * a new revision each time, so they accumulate unbounded; keeping a generous recent
+ * window bounds them while leaving plenty for in-flight launches. */
+export const DEFAULT_TASKDEF_KEEP_REVISIONS = 20;
+
 /**
  * How long a workspace may sit in `provisioning` before the reconciler treats the
  * wake as dead and reverts it to `stopped` (self-healing): 10 minutes. A legitimate

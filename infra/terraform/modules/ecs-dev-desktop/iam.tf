@@ -238,6 +238,13 @@ data "aws_iam_policy_document" "reconciler" {
     actions   = ["secretsmanager:DeleteSecret"]
     resources = [local.workspace_agent_secret_arns]
   }
+  # Task-definition GC: deregister stale workspace revisions (List/Deregister are
+  # account-scoped; the reconciler filters to the edd-ws-* families in code).
+  statement {
+    sid       = "PruneWorkspaceTaskDefinitions"
+    actions   = ["ecs:ListTaskDefinitionFamilies", "ecs:ListTaskDefinitions", "ecs:DeregisterTaskDefinition"]
+    resources = ["*"]
+  }
 }
 
 resource "aws_iam_role" "reconciler" {

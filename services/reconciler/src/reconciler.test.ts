@@ -438,6 +438,61 @@ describe("Reconciler.reapOrphanSecrets", () => {
   });
 });
 
+describe("Reconciler.pruneTaskDefinitions", () => {
+  it("delegates to the backend with the keep-count and reports the count", async () => {
+    let keepSeen: number | undefined;
+    const reconciler = new Reconciler({
+      service: fakeService(),
+      storage: await emptyStorage(),
+      compute: {
+        runTask: () => Promise.reject(new Error("x")),
+        taskState: () => Promise.resolve("stopped"),
+        stopTask: () => Promise.resolve(),
+        pruneTaskDefinitions: (keep) => {
+          keepSeen = keep;
+          return Promise.resolve(7);
+        },
+      },
+      clock: fixedClock("2026-06-01T02:00:00.000Z"),
+      taskDefKeep: 5,
+    });
+    expect(await reconciler.pruneTaskDefinitions()).toEqual({ deregistered: 7 });
+    expect(keepSeen).toBe(5);
+  });
+
+  it("is a no-op (and never throws) when the backend can't prune", async () => {
+    const reconciler = new Reconciler({
+      service: fakeService(),
+      storage: await emptyStorage(),
+      compute: {
+        runTask: () => Promise.reject(new Error("x")),
+        taskState: () => Promise.resolve("stopped"),
+        stopTask: () => Promise.resolve(),
+      },
+      clock: fixedClock("2026-06-01T02:00:00.000Z"),
+    });
+    expect(await reconciler.pruneTaskDefinitions()).toEqual({ deregistered: 0 });
+  });
+
+  it("counts a prune that throws as zero, logging it (best-effort)", async () => {
+    const warnings: Record<string, unknown>[] = [];
+    const reconciler = new Reconciler({
+      service: fakeService(),
+      storage: await emptyStorage(),
+      compute: {
+        runTask: () => Promise.reject(new Error("x")),
+        taskState: () => Promise.resolve("stopped"),
+        stopTask: () => Promise.resolve(),
+        pruneTaskDefinitions: () => Promise.reject(new Error("AccessDenied")),
+      },
+      clock: fixedClock("2026-06-01T02:00:00.000Z"),
+      logger: { warn: (_m, fields) => warnings.push(fields ?? {}) },
+    });
+    expect(await reconciler.pruneTaskDefinitions()).toEqual({ deregistered: 0 });
+    expect(warnings).toHaveLength(1);
+  });
+});
+
 describe("Reconciler.recoverProvisioning", () => {
   it("reverts a wake stuck past the timeout and spares a fresh one", async () => {
     const recovered: string[] = [];

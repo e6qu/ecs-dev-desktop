@@ -6,6 +6,7 @@ import {
   DEFAULT_IDLE_THRESHOLD_MS,
   DEFAULT_PROVISIONING_TIMEOUT_MS,
   DEFAULT_SNAPSHOT_INTERVAL_MS,
+  DEFAULT_TASKDEF_KEEP_REVISIONS,
   isoTimestamp,
   selectDueForSnapshot,
   selectOrphanSecrets,
@@ -101,6 +102,8 @@ export interface ReconcilerDeps {
   earlySnapshotIntervalMs?: number;
   /** How long a workspace stays on the early snapshot cadence; defaults to `DEFAULT_EARLY_SESSION_MS`. */
   earlySessionMs?: number;
+  /** Newest task-def revisions to keep per family when pruning; defaults to `DEFAULT_TASKDEF_KEEP_REVISIONS`. */
+  taskDefKeep?: number;
   /** Grace window before an orphan is reaped; defaults to `DEFAULT_GC_GRACE_MS`. */
   gcGraceMs?: number;
   /** How long a record may sit in `provisioning` before its crashed wake is reverted
@@ -164,6 +167,7 @@ export interface MaintenanceResult {
   snapshots: SnapshotResult;
   tasks: ReapResult;
   secrets: ReapResult;
+  taskDefs: { deregistered: number };
   gc: GcResult;
 }
 
@@ -176,6 +180,7 @@ export class Reconciler {
   private readonly snapshotIntervalMs: number;
   private readonly earlySnapshotIntervalMs: number;
   private readonly earlySessionMs: number;
+  private readonly taskDefKeep: number;
   private readonly gcGraceMs: number;
   private readonly provisioningTimeoutMs: number;
 
@@ -185,6 +190,7 @@ export class Reconciler {
     this.earlySnapshotIntervalMs =
       deps.earlySnapshotIntervalMs ?? DEFAULT_EARLY_SNAPSHOT_INTERVAL_MS;
     this.earlySessionMs = deps.earlySessionMs ?? DEFAULT_EARLY_SESSION_MS;
+    this.taskDefKeep = deps.taskDefKeep ?? DEFAULT_TASKDEF_KEEP_REVISIONS;
     this.gcGraceMs = deps.gcGraceMs ?? DEFAULT_GC_GRACE_MS;
     this.provisioningTimeoutMs = deps.provisioningTimeoutMs ?? DEFAULT_PROVISIONING_TIMEOUT_MS;
   }
@@ -398,8 +404,27 @@ export class Reconciler {
     return { scanned: existing.length, reaped, failed };
   }
 
+  /**
+   * Deregister stale workspace task-definition revisions (keep the newest N per
+   * family). Per-launch secret injection registers a new revision each time, so they
+   * grow unbounded; this bounds them. Best-effort — absent on the backend ⇒ a no-op.
+   */
+  async pruneTaskDefinitions(): Promise<{ deregistered: number }> {
+    const compute = this.deps.compute;
+    const prune = compute?.pruneTaskDefinitions?.bind(compute);
+    if (prune === undefined) return { deregistered: 0 };
+    try {
+      return { deregistered: await prune(this.taskDefKeep) };
+    } catch (err) {
+      this.deps.logger?.warn("prune: failed to deregister stale task definitions", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return { deregistered: 0 };
+    }
+  }
+
   /** One full maintenance sweep: scale-to-zero, scheduled snapshots, reap orphaned
-   * tasks + secrets, then GC. */
+   * tasks + secrets, prune stale task defs, then GC. */
   async runMaintenance(): Promise<MaintenanceResult> {
     // Provisioning recovery first: a record stranded mid-wake must be back to
     // stopped before any other sweep reasons about it.
@@ -414,7 +439,9 @@ export class Reconciler {
     const tasks = await this.reapOrphanTasks();
     // Reap agent secrets whose workspace record is gone (symmetric to orphan tasks).
     const secrets = await this.reapOrphanSecrets();
+    // Bound task-definition revision growth (per-launch secret injection accumulates them).
+    const taskDefs = await this.pruneTaskDefinitions();
     const gc = await this.collectGarbage();
-    return { provisioning, drift, idle, snapshots, tasks, secrets, gc };
+    return { provisioning, drift, idle, snapshots, tasks, secrets, taskDefs, gc };
   }
 }
