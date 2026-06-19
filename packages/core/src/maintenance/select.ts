@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { WorkspaceTaskRef } from "../compute/compute-provider";
+import type { WorkspaceAgentSecretRef, WorkspaceTaskRef } from "../compute/compute-provider";
 import type { IsoTimestamp, SnapshotId, TaskId, VolumeId, WorkspaceId } from "../domain/ids";
 import type { SnapshotRef, VolumeRef } from "../storage/storage-provider";
 
@@ -70,6 +70,24 @@ export function selectOrphanTasks(
   graceMs: number,
 ): readonly WorkspaceTaskRef[] {
   return existing.filter((t) => !referenced.has(t.id) && olderThan(t.startedAt, now, graceMs));
+}
+
+/**
+ * Per-workspace agent secrets to reap: those whose workspace id no longer exists
+ * (the record was deleted, so the secret leaks) AND created at least `graceMs` ago.
+ * The grace window guards the create/persist race (a secret created moments ago for
+ * a workspace whose record isn't yet visible must not be reaped). The
+ * secrets-manager analogue of orphan-volume/-task GC.
+ */
+export function selectOrphanSecrets(
+  existing: readonly WorkspaceAgentSecretRef[],
+  liveWorkspaceIds: ReadonlySet<WorkspaceId>,
+  now: IsoTimestamp,
+  graceMs: number,
+): readonly WorkspaceAgentSecretRef[] {
+  return existing.filter(
+    (s) => !liveWorkspaceIds.has(s.workspaceId) && olderThan(s.createdAt, now, graceMs),
+  );
 }
 
 /**

@@ -12,6 +12,8 @@ import {
 } from "@aws-sdk/client-ecs";
 import {
   CreateSecretCommand,
+  DeleteSecretCommand,
+  paginateListSecrets,
   PutSecretValueCommand,
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
@@ -41,6 +43,7 @@ import {
   type TaskLiveness,
   type RunTaskInput,
   type TaskId,
+  type WorkspaceAgentSecretRef,
   type WorkspaceTaskRef,
 } from "@edd/core";
 
@@ -328,7 +331,18 @@ export class EcsComputeProvider implements ComputeProvider {
     const token = agentToken(required(this.config.agentSecret, "agentSecret"), wsId);
     const name = `edd/workspace/${wsId}/agent`;
     try {
-      const out = await client.send(new CreateSecretCommand({ Name: name, SecretString: token }));
+      const out = await client.send(
+        new CreateSecretCommand({
+          Name: name,
+          SecretString: token,
+          // Tagged so the reconciler's orphan-secret GC can find + attribute it,
+          // and the reaper's tag-scoped IAM applies (edd:managed, like every resource).
+          Tags: [
+            { Key: WORKSPACE_TAG_KEY, Value: wsId },
+            { Key: "edd:managed", Value: "true" },
+          ],
+        }),
+      );
       return required(out.ARN, "secret ARN");
     } catch (err) {
       if (err instanceof Error && err.name === "ResourceExistsException") {
@@ -337,6 +351,43 @@ export class EcsComputeProvider implements ComputeProvider {
         );
         return required(put.ARN, "secret ARN");
       }
+      throw err;
+    }
+  }
+
+  /** Enumerate the per-workspace agent-token secrets (by name prefix), for the
+   * reconciler's orphan-secret GC. No-op shape when no secrets client is configured. */
+  async listWorkspaceAgentSecrets(): Promise<readonly WorkspaceAgentSecretRef[]> {
+    if (this.secrets === undefined) return [];
+    const refs: WorkspaceAgentSecretRef[] = [];
+    for await (const page of paginateListSecrets(
+      { client: this.secrets },
+      { Filters: [{ Key: "tag-key", Values: [WORKSPACE_TAG_KEY] }] },
+    )) {
+      for (const s of page.SecretList ?? []) {
+        const wsId = (s.Tags ?? []).find((t) => t.Key === WORKSPACE_TAG_KEY)?.Value;
+        if (s.Name === undefined || wsId === undefined || s.CreatedDate === undefined) continue;
+        refs.push({
+          name: s.Name,
+          workspaceId: workspaceId(wsId),
+          createdAt: isoTimestamp(s.CreatedDate.toISOString()),
+        });
+      }
+    }
+    return refs;
+  }
+
+  /** Delete an agent secret by name (idempotent: a missing secret is a no-op).
+   * `ForceDeleteWithoutRecovery` skips the 30-day recovery window so the name + token
+   * are reclaimed immediately. */
+  async deleteAgentSecret(name: string): Promise<void> {
+    if (this.secrets === undefined) return;
+    try {
+      await this.secrets.send(
+        new DeleteSecretCommand({ SecretId: name, ForceDeleteWithoutRecovery: true }),
+      );
+    } catch (err) {
+      if (err instanceof Error && err.name === "ResourceNotFoundException") return;
       throw err;
     }
   }

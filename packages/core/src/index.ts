@@ -124,6 +124,7 @@ export { FakeStorageProvider } from "./storage/fake-storage-provider";
 export type { ReferencedStorage, SnapshotCandidate } from "./maintenance/select";
 export {
   selectDueForSnapshot,
+  selectOrphanSecrets,
   selectOrphanSnapshots,
   selectOrphanTasks,
   selectOrphanVolumes,
@@ -136,6 +137,7 @@ export type {
   ComputeTask,
   RunTaskInput,
   TaskLiveness,
+  WorkspaceAgentSecretRef,
   WorkspaceTaskRef,
 } from "./compute/compute-provider";
 export type { FakeComputeConfig } from "./compute/fake-compute-provider";

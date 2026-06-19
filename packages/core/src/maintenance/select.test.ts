@@ -6,6 +6,7 @@ import { isoTimestamp, snapshotId, taskId, volumeId, workspaceId } from "../doma
 import type { SnapshotRef, VolumeRef } from "../storage/storage-provider";
 import {
   selectDueForSnapshot,
+  selectOrphanSecrets,
   selectOrphanSnapshots,
   selectOrphanTasks,
   selectOrphanVolumes,
@@ -159,5 +160,31 @@ describe("selectOrphanTasks", () => {
     expect(selectOrphanTasks(existing, new Set(), now, ONE_HOUR)).toEqual([
       taskRef("task-edge", "ws-4", exactGrace),
     ]);
+  });
+});
+
+describe("selectOrphanSecrets", () => {
+  const secretRef = (ws: string, createdAt = old) => ({
+    name: `edd/workspace/${ws}/agent`,
+    workspaceId: workspaceId(ws),
+    createdAt,
+  });
+
+  it("reaps a secret whose workspace is gone, past the grace window", () => {
+    const existing = [secretRef("ws-dead"), secretRef("ws-live")];
+    const live = new Set([workspaceId("ws-live")]);
+    expect(selectOrphanSecrets(existing, live, now, ONE_HOUR)).toEqual([secretRef("ws-dead")]);
+  });
+
+  it("spares a secret whose workspace still exists, even when old", () => {
+    const existing = [secretRef("ws-live")];
+    expect(selectOrphanSecrets(existing, new Set([workspaceId("ws-live")]), now, ONE_HOUR)).toEqual(
+      [],
+    );
+  });
+
+  it("spares an orphan secret still inside the grace window (create/persist race)", () => {
+    const existing = [secretRef("ws-fresh", recent)];
+    expect(selectOrphanSecrets(existing, new Set(), now, ONE_HOUR)).toEqual([]);
   });
 });

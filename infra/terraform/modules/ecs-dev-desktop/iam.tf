@@ -225,6 +225,19 @@ data "aws_iam_policy_document" "reconciler" {
       values   = ["true"]
     }
   }
+  # Orphan-secret GC: list the agent secrets (account-scoped; tag-filtered in code)
+  # and delete those whose workspace record is gone — scoped to the edd/workspace/*
+  # name prefix.
+  statement {
+    sid       = "ListSecretsForReaping"
+    actions   = ["secretsmanager:ListSecrets"]
+    resources = ["*"]
+  }
+  statement {
+    sid       = "ReapWorkspaceAgentSecrets"
+    actions   = ["secretsmanager:DeleteSecret"]
+    resources = [local.workspace_agent_secret_arns]
+  }
 }
 
 resource "aws_iam_role" "reconciler" {

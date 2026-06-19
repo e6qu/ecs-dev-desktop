@@ -8,6 +8,7 @@ import {
   DEFAULT_SNAPSHOT_INTERVAL_MS,
   isoTimestamp,
   selectDueForSnapshot,
+  selectOrphanSecrets,
   selectOrphanSnapshots,
   selectOrphanTasks,
   selectOrphanVolumes,
@@ -52,6 +53,9 @@ export interface ReconcilerService {
   /** Task ids still referenced by a workspace record — the orphan-task reaper's
    * keep-set (a RUNNING workspace task in none of these is an orphan). */
   listReferencedTasks(): Promise<readonly TaskId[]>;
+  /** Ids of every workspace that still exists — the orphan-secret reaper's keep-set
+   * (an agent secret tagged with a workspace id in none of these is an orphan). */
+  listWorkspaceIds(): Promise<readonly WorkspaceId[]>;
   /** Workspaces sitting in `provisioning` (claim time as `lastActivity`) — candidates
    * for stuck-wake recovery. */
   listStuckProvisioning(): Promise<readonly ActiveWorkspace[]>;
@@ -159,6 +163,7 @@ export interface MaintenanceResult {
   idle: ReconcileResult;
   snapshots: SnapshotResult;
   tasks: ReapResult;
+  secrets: ReapResult;
   gc: GcResult;
 }
 
@@ -356,8 +361,45 @@ export class Reconciler {
     return { scanned: existing.length, reaped, failed };
   }
 
+  /**
+   * Reap per-workspace agent secrets whose workspace record is gone (deleted). The
+   * secret is left to this sweep on terminate — symmetric to the retained snapshot —
+   * rather than deleted synchronously, so there is no delete racing a concurrent wake.
+   * Best-effort per secret: a delete that errors is counted + logged, never aborts.
+   */
+  async reapOrphanSecrets(): Promise<ReapResult> {
+    const compute = this.deps.compute;
+    const listSecrets = compute?.listWorkspaceAgentSecrets?.bind(compute);
+    const deleteSecret = compute?.deleteAgentSecret?.bind(compute);
+    if (compute === undefined || listSecrets === undefined || deleteSecret === undefined) {
+      return { scanned: 0, reaped: 0, failed: 0 };
+    }
+    const [existing, liveIds] = await Promise.all([
+      listSecrets(),
+      this.deps.service.listWorkspaceIds(),
+    ]);
+    const orphans = selectOrphanSecrets(existing, new Set(liveIds), this.now(), this.gcGraceMs);
+
+    let reaped = 0;
+    let failed = 0;
+    for (const secret of orphans) {
+      try {
+        await deleteSecret(secret.name);
+        reaped += 1;
+      } catch (err) {
+        failed += 1;
+        this.deps.logger?.warn("reap: failed to delete orphan workspace secret", {
+          secret: secret.name,
+          workspaceId: secret.workspaceId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    return { scanned: existing.length, reaped, failed };
+  }
+
   /** One full maintenance sweep: scale-to-zero, scheduled snapshots, reap orphaned
-   * tasks, then GC. */
+   * tasks + secrets, then GC. */
   async runMaintenance(): Promise<MaintenanceResult> {
     // Provisioning recovery first: a record stranded mid-wake must be back to
     // stopped before any other sweep reasons about it.
@@ -370,7 +412,9 @@ export class Reconciler {
     // Reap orphaned tasks before GC: stopping an orphan releases its managed volume
     // (deleteOnTermination), which the next sweep's GC then reaps.
     const tasks = await this.reapOrphanTasks();
+    // Reap agent secrets whose workspace record is gone (symmetric to orphan tasks).
+    const secrets = await this.reapOrphanSecrets();
     const gc = await this.collectGarbage();
-    return { provisioning, drift, idle, snapshots, tasks, gc };
+    return { provisioning, drift, idle, snapshots, tasks, secrets, gc };
   }
 }

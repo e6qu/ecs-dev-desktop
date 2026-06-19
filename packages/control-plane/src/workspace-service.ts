@@ -403,6 +403,13 @@ export class WorkspaceService {
     return taskIds;
   }
 
+  /** Ids of every workspace that still exists (any state) — the orphan-secret
+   * reaper's keep-set. Fully paginated, like the other reconciler reads. */
+  async listWorkspaceIds(): Promise<readonly WorkspaceId[]> {
+    const { data } = await this.deps.workspaces.scan.go({ pages: "all" });
+    return data.map((r: WorkspaceRecord) => workspaceId(r.id));
+  }
+
   /** Fetch all workspace records in the given lifecycle states (fully paginated). */
   private async recordsByStates(states: readonly WorkspaceState[]): Promise<WorkspaceRecord[]> {
     const pages = await Promise.all(

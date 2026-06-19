@@ -31,6 +31,7 @@ function fakeService(overrides: Partial<ReconcilerService> = {}): ReconcilerServ
     snapshot: () => Promise.reject(new Error("snapshot not expected")),
     listReferencedStorage: () => Promise.resolve({ volumeIds: [], snapshotIds: [] }),
     listReferencedTasks: () => Promise.resolve([]),
+    listWorkspaceIds: () => Promise.resolve([]),
     listStuckProvisioning: () => Promise.resolve([]),
     recoverStuckProvisioning: () => Promise.reject(new Error("recover not expected")),
     ...overrides,
@@ -355,6 +356,85 @@ describe("Reconciler.reapOrphanTasks", () => {
       clock: fixedClock("2026-06-01T02:00:00.000Z"),
     });
     expect(await reconciler.reapOrphanTasks()).toEqual({ scanned: 0, reaped: 0, failed: 0 });
+  });
+});
+
+describe("Reconciler.reapOrphanSecrets", () => {
+  const createdLongAgo = isoTimestamp("2026-06-01T00:00:00.000Z"); // before the clock
+
+  const secretRef = (ws: string) => ({
+    name: `edd/workspace/${ws}/agent`,
+    workspaceId: workspaceId(ws),
+    createdAt: createdLongAgo,
+  });
+
+  function fakeCompute(opts: {
+    secrets: ReturnType<typeof secretRef>[];
+    deletes: string[];
+    failDelete?: string;
+  }): ComputeProvider {
+    return {
+      runTask: () => Promise.reject(new Error("runTask not expected")),
+      taskState: () => Promise.resolve("stopped"),
+      stopTask: () => Promise.resolve(),
+      listWorkspaceAgentSecrets: () => Promise.resolve(opts.secrets),
+      deleteAgentSecret: (name) => {
+        if (opts.failDelete !== undefined && name === opts.failDelete) {
+          return Promise.reject(new Error("DeleteSecret throttled"));
+        }
+        opts.deletes.push(name);
+        return Promise.resolve();
+      },
+    };
+  }
+
+  it("deletes a secret whose workspace is gone and spares one still live", async () => {
+    const deletes: string[] = [];
+    const orphan = secretRef("ws-dead");
+    const live = secretRef("ws-live");
+    const reconciler = new Reconciler({
+      service: fakeService({
+        listWorkspaceIds: () => Promise.resolve([workspaceId("ws-live")]),
+      }),
+      storage: await emptyStorage(),
+      compute: fakeCompute({ secrets: [orphan, live], deletes }),
+      clock: fixedClock("2026-06-01T02:00:00.000Z"),
+      gcGraceMs: ONE_HOUR,
+    });
+    expect(await reconciler.reapOrphanSecrets()).toEqual({ scanned: 2, reaped: 1, failed: 0 });
+    expect(deletes).toEqual([orphan.name]);
+  });
+
+  it("counts (does not throw) a delete that fails, still reaping the rest", async () => {
+    const deletes: string[] = [];
+    const warnings: Record<string, unknown>[] = [];
+    const a = secretRef("ws-a");
+    const b = secretRef("ws-b");
+    const reconciler = new Reconciler({
+      service: fakeService({ listWorkspaceIds: () => Promise.resolve([]) }),
+      storage: await emptyStorage(),
+      compute: fakeCompute({ secrets: [a, b], deletes, failDelete: a.name }),
+      clock: fixedClock("2026-06-01T02:00:00.000Z"),
+      gcGraceMs: ONE_HOUR,
+      logger: { warn: (_m, fields) => warnings.push(fields ?? {}) },
+    });
+    expect(await reconciler.reapOrphanSecrets()).toEqual({ scanned: 2, reaped: 1, failed: 1 });
+    expect(deletes).toEqual([b.name]);
+    expect(warnings).toHaveLength(1);
+  });
+
+  it("is a no-op when the compute backend can't list/delete secrets (fakes)", async () => {
+    const reconciler = new Reconciler({
+      service: fakeService(),
+      storage: await emptyStorage(),
+      compute: {
+        runTask: () => Promise.reject(new Error("x")),
+        taskState: () => Promise.resolve("stopped"),
+        stopTask: () => Promise.resolve(),
+      },
+      clock: fixedClock("2026-06-01T02:00:00.000Z"),
+    });
+    expect(await reconciler.reapOrphanSecrets()).toEqual({ scanned: 0, reaped: 0, failed: 0 });
   });
 });
 
