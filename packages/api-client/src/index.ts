@@ -2,6 +2,7 @@
 import {
   auditFeedResponse,
   baseImageEntry,
+  costReport,
   createBaseImageRequest,
   createWorkspaceRequest,
   errorResponse,
@@ -22,6 +23,8 @@ import {
   type BaseImageEntryDto,
   type CreateBaseImageRequest,
   type CreateWorkspaceRequest,
+  type CostReport,
+  type CostWindow,
   type HealthReportDto,
   type ConfigSyncReportDto,
   type InfrastructureReportDto,
@@ -245,6 +248,14 @@ export class ApiClient {
   async adminAudit(): Promise<AuditFeedResponse> {
     const res = await this.send("/api/admin/audit");
     return auditFeedResponse.parse(await res.json());
+  }
+
+  /** The fleet cost report (priced lifecycle ledger), per session + per user +
+   * fleet total. `window` scopes it to the last N days (default `all` = lifetime). */
+  async adminCosts(window?: CostWindow): Promise<CostReport> {
+    const qs = window === undefined ? "" : `?window=${window}`;
+    const res = await this.send(`/api/admin/costs${qs}`);
+    return costReport.parse(await res.json());
   }
 
   /** Read one admin log stream; CloudWatch-backed on AWS. An optional

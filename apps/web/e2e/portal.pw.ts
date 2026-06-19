@@ -102,10 +102,12 @@ test("member creates, stops, and deletes a workspace from the catalog", async ({
   await card.getByRole("button", { name: "stop" }).click();
   await expect(card).toHaveAttribute("data-status", "stopped");
 
-  // Delete is async now: it tombstones the workspace (state → `deleting`) and the
-  // reconciler converges teardown + removal. So the card transitions to `deleting`
-  // (and offers no further actions) rather than vanishing instantly.
+  // Delete takes a two-step confirm (it destroys the EBS volume/snapshot): the first
+  // click arms it, the second confirms. Delete is then async — it tombstones the
+  // workspace (state → `deleting`) and the reconciler converges teardown + removal, so
+  // the card transitions to `deleting` rather than vanishing instantly.
   await card.getByRole("button", { name: "delete" }).click();
+  await card.getByRole("button", { name: /confirm delete/ }).click();
   await expect(card).toHaveAttribute("data-status", "deleting");
 });
 
