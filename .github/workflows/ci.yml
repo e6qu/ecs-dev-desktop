@@ -1002,7 +1002,7 @@ jobs:
 
           # -- IAM roles + policies -----------------------------------------------
           for ROLE in eddsim-task-execution eddsim-control-plane eddsim-reconciler \
-                       eddsim-scheduler eddsim-ecs-infrastructure; do
+                       eddsim-scheduler eddsim-ecs-infrastructure eddsim-workspace; do
             assert_eq "IAM role ${ROLE} exists" "${ROLE}" \
               "$(aws --endpoint-url "${ENDPT}" iam get-role --role-name "${ROLE}" \
                 --query 'Role.RoleName' --output text)"
@@ -1018,7 +1018,7 @@ jobs:
           assert_eq "IAM reconciler inline policy count 1" "1" \
             "$(aws --endpoint-url "${ENDPT}" iam list-role-policies \
               --role-name eddsim-reconciler --query 'length(PolicyNames)' --output text)"
-          assert_eq "IAM platform roles count 5" "5" \
+          assert_eq "IAM platform roles count 6" "6" \
             "$(aws --endpoint-url "${ENDPT}" iam list-roles \
               --query "length(Roles[?starts_with(RoleName,'eddsim')])" --output text)"
           assert_eq "IAM ecs-infrastructure managed policy attached" "1" \
@@ -1032,6 +1032,14 @@ jobs:
           assert_eq "IAM execution extra inline policy count 1" "1" \
             "$(aws --endpoint-url "${ENDPT}" iam list-role-policies \
               --role-name eddsim-task-execution --query 'length(PolicyNames)' --output text)"
+          # The workspace runtime role is least-privilege by design: no inline policy,
+          # no attached managed policy (the container reaches the control plane over HMAC).
+          assert_eq "IAM workspace role inline policy count 0" "0" \
+            "$(aws --endpoint-url "${ENDPT}" iam list-role-policies \
+              --role-name eddsim-workspace --query 'length(PolicyNames)' --output text)"
+          assert_eq "IAM workspace role attached policy count 0" "0" \
+            "$(aws --endpoint-url "${ENDPT}" iam list-attached-role-policies \
+              --role-name eddsim-workspace --query 'length(AttachedPolicies)' --output text)"
 
           # -- IAM trust relationships (AssumeRolePolicyDocument) ------------------
           assert_eq "IAM execution role trusts ecs-tasks" "ecs-tasks.amazonaws.com" \
