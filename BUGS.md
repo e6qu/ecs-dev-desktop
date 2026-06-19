@@ -66,6 +66,26 @@ active breakage):
   create/snapshot/restore lifecycle, and the `create→wake→connect→delete` journey (the
   container-mode `user-journey` e2e). Awaiting upstream fixes (cf. #593's #590/#591/#592 cycle).
 
+- **sockerless#605/#606 (open — filed 2026-06-19)** — a second, deeper fidelity pass that
+  inventoried every AWS API _call shape_ our code actually issues (paginators, waiters, tag
+  filters, transactions) and probed each against the process-mode sim, cross-checking the sim Go
+  source. Most surfaces were faithful (EC2 `tag:` filters + `OwnerIds:self` + pagination + the
+  volume/snapshot waiters; Secrets Manager `CreateSecret`→`ResourceExistsException`→`PutSecretValue`
+  upsert; ECS `RunTask --tags` round-tripping through `DescribeTasks include:TAGS`,
+  `ListTasks --desired-status`, `DescribeClusters` counts). Two genuine gaps, both hitting our code:
+  - **#605 — CloudWatch Logs `FilterLogEvents` ignores `logStreamNamePrefix`** (`handleCWFilterLogEvents`
+    decodes only `logStreamNames` exact-match; no prefix field). Our per-workspace log view
+    (`packages/cloudwatch-logs/.../cloudwatch-log-source.ts:82`) scopes container logs by stream
+    prefix, so against the sim it returns **every** workspace's container events (cross-workspace
+    leakage). Small fix — the sibling `DescribeLogStreams` handler already does `HasPrefix`.
+  - **#606 — CloudTrail `LookupEvents` pagination uses an absolute numeric-offset token**
+    (`awsPageExplicit`) over a list re-sorted newest-first, so events arriving mid-pagination shift
+    the offset and pages **overlap/duplicate** (and can skip). Compounded by the sim recording
+    read-only calls into the trail. Our audit-source `NextToken` loop
+    (`packages/cloudtrail-audit/.../cloudtrail-audit-source.ts:45`) would collect duplicate and miss
+    entries. Real CloudTrail uses an opaque, snapshot-consistent cursor. Until fixed, sim-backed
+    audit pagination is neither complete nor de-duplicated.
+
 - **sockerless#569 (fixed upstream — confirmed downstream 2026-06-16)** —
   process-mode (`SIM_RUNTIME=process`) `ecs:RunTask` with a managed-EBS volume used
   to **panic** the sim (nil Docker client in the async transition: `ec2.go:3800` ←

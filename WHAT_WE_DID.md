@@ -1707,3 +1707,15 @@ listStuckProvisioning` + `recoverStuckProvisioning` revert provisioning→stoppe
   Recorded in `BUGS.md` → External blockers; cross-referenced from `observability-gaps.md`. Once these
   land upstream (cf. the #593/#590-#592 cycle), our alarms, EMF metrics, and EBS DR become
   sim-CI-validatable rather than real-AWS-only.
+- **2026-06-19 — Deeper call-shape fidelity pass; filed 2 more sockerless gaps (#605/#606).** Followed
+  the first pass by inventorying every AWS API _call shape_ our code issues (EC2 paginators/waiters/tag
+  filters, ECS `RunTask`+tags/`ListTasks`/`DescribeTasks include:TAGS`, Secrets Manager idempotent
+  upsert, CloudWatch Logs `FilterLogEvents`, CloudTrail `LookupEvents` pagination, DynamoDB
+  transactions) and probed each against the process-mode sim, cross-checking the Go source (and
+  correcting one false-positive — a process-mode task stopping immediately, not a `ListTasks` filter
+  bug). Most surfaces were faithful; two genuine gaps, both hitting our code, were filed upstream with
+  deterministic reproductions: **sockerless#605** (`FilterLogEvents` ignores `logStreamNamePrefix` →
+  our per-workspace log view leaks every workspace's container events) and **sockerless#606**
+  (CloudTrail `LookupEvents` absolute-offset `NextToken` over a newest-first list → overlapping/
+  duplicate pages; our audit-source pagination loop collects duplicates and misses entries). Recorded
+  in `BUGS.md` → External blockers.
