@@ -201,7 +201,7 @@ export interface MaintenanceResult {
   snapshots: SnapshotResult;
   tasks: ReapResult;
   secrets: ReapResult;
-  taskDefs: { deregistered: number };
+  taskDefs: { deregistered: number; failed: number };
   gc: GcResult;
 }
 
@@ -501,17 +501,20 @@ export class Reconciler {
    * family). Per-launch secret injection registers a new revision each time, so they
    * grow unbounded; this bounds them. Best-effort — absent on the backend ⇒ a no-op.
    */
-  async pruneTaskDefinitions(): Promise<{ deregistered: number }> {
+  async pruneTaskDefinitions(): Promise<{ deregistered: number; failed: number }> {
     const compute = this.deps.compute;
     const prune = compute?.pruneTaskDefinitions?.bind(compute);
-    if (prune === undefined) return { deregistered: 0 };
+    if (prune === undefined) return { deregistered: 0, failed: 0 };
     try {
-      return { deregistered: await prune(this.taskDefKeep) };
+      return { deregistered: await prune(this.taskDefKeep), failed: 0 };
     } catch (err) {
       this.deps.logger?.warn("prune: failed to deregister stale task definitions", {
         error: err instanceof Error ? err.message : String(err),
       });
-      return { deregistered: 0 };
+      // Surface the failure as a count (not a success-shaped `deregistered: 0`) so a
+      // persistent prune failure shows on a metric/alarm instead of growing revisions
+      // unbounded in silence — the whole point of this sweep.
+      return { deregistered: 0, failed: 1 };
     }
   }
 

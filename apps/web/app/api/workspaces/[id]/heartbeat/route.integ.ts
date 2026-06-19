@@ -4,6 +4,7 @@ import { createHmac } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  admin,
   apiBase,
   createWorkspaceFor,
   member,
@@ -11,6 +12,7 @@ import {
   useWorkspaceTable,
 } from "../../../../../lib/test-support/workspace-route-harness";
 import { AGENT_SECRET_ENV } from "../../../../../lib/constants";
+import { GET as inspect } from "../../../admin/workspaces/[id]/route";
 import { POST as stop } from "../stop/route";
 import { POST as heartbeat } from "./route";
 
@@ -65,6 +67,27 @@ describe("POST /api/workspaces/:id/heartbeat (DynamoDB Local)", () => {
   it("forbids heartbeating another member's workspace (403)", async () => {
     const id = await createWorkspaceFor("alice");
     expect((await beat("bob", id)).status).toBe(403);
+  });
+
+  it("applies a functional self-report sent over the SESSION path (not only the agent path)", async () => {
+    const id = await createWorkspaceFor("alice");
+    const res = await heartbeat(
+      new Request(`${apiBase}/${id}/heartbeat`, {
+        method: "POST",
+        headers: { ...member("alice"), "Content-Type": "application/json" },
+        body: JSON.stringify({ functional: { ide: false, workspace: true } }),
+      }),
+      routeCtx(id),
+    );
+    expect(res.status).toBe(200);
+    // Proven applied (not merely 200): the admin Inspect view reflects the degraded
+    // functional status the session heartbeat reported (ide down → degraded).
+    const detail = await inspect(
+      new Request(`${apiBase}/../admin/workspaces/${id}`, { headers: admin("root") }),
+      routeCtx(id),
+    );
+    const body = (await detail.json()) as { workspace: { functional?: string } };
+    expect(body.workspace.functional).toBe("degraded");
   });
 
   describe("agent machine-auth", () => {

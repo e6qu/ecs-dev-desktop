@@ -1853,3 +1853,19 @@ listStuckProvisioning` + `recoverStuckProvisioning` revert provisioning→stoppe
   core 14 (manifest + eval + config-sync passthrough), web 16 (preflight helpers + drift gate +
   config-sync route integ); full lint/build/typecheck green. Reconciler runtime preflight (it has no
   UI/API) left as a noted follow-up — its grants are covered by the manifest + CI drift gate.
+
+- **2026-06-20 — Broad code-quality sweep (6-agent audit) + batch-1 remediation.** Ran a six-dimension
+  adversarial audit (API-first/thin-UI, fake telemetry/monitoring, weak types, fake/anemic tests,
+  idempotency/self-heal/fail-loud, correctness/UX), each finding traced to the code. The codebase scored
+  high (no fabricated metrics, no `any`/`@ts-ignore` in src, strong authz/cost coverage, honest
+  degrade-to-`unknown` telemetry). **Batch 1 — correctness + fail-loud + telemetry honesty — fixed and
+  tested** on `fix/sweep-correctness-failloud`: `toWorkspaceDto` repoUrl round-trip (A1), heartbeat
+  functional self-report on the session path (A2), snapshot lifecycle guard against snapshotting a
+  `deleting` tombstone (A3), `/api/admin/logs` unknown-workspaceId no longer leaks the unfiltered stream
+  (A4), `create()` compensation no longer masks the original error / leaks on cleanup failure (H2),
+  reconciler heartbeat written before the flaky cost/gauge step so a healthy reconciler can't look
+  `degraded` (MED-1), and `pruneTaskDefinitions` surfaces a `failed` count + new `reconciler.taskdefs.*`
+  metrics instead of a silent success-shaped zero (L1). The remaining findings (weak-type branding,
+  AWS-adapter request-shape test fidelity + port contracts, the API-first thin-UI refactor, the quota
+  TOCTOU atomic counter, and the UX confirmations/stale-state handling) are recorded in `BUGS.md` →
+  Open (Code-quality sweep) for follow-up batches.

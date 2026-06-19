@@ -464,7 +464,7 @@ describe("Reconciler.pruneTaskDefinitions", () => {
       clock: fixedClock("2026-06-01T02:00:00.000Z"),
       taskDefKeep: 5,
     });
-    expect(await reconciler.pruneTaskDefinitions()).toEqual({ deregistered: 7 });
+    expect(await reconciler.pruneTaskDefinitions()).toEqual({ deregistered: 7, failed: 0 });
     expect(keepSeen).toBe(5);
   });
 
@@ -479,7 +479,7 @@ describe("Reconciler.pruneTaskDefinitions", () => {
       },
       clock: fixedClock("2026-06-01T02:00:00.000Z"),
     });
-    expect(await reconciler.pruneTaskDefinitions()).toEqual({ deregistered: 0 });
+    expect(await reconciler.pruneTaskDefinitions()).toEqual({ deregistered: 0, failed: 0 });
   });
 
   it("counts a prune that throws as zero, logging it (best-effort)", async () => {
@@ -496,7 +496,10 @@ describe("Reconciler.pruneTaskDefinitions", () => {
       clock: fixedClock("2026-06-01T02:00:00.000Z"),
       logger: { warn: (_m, fields) => warnings.push(fields ?? {}) },
     });
-    expect(await reconciler.pruneTaskDefinitions()).toEqual({ deregistered: 0 });
+    // A throwing prune must surface as `failed: 1` (NOT a success-shaped `deregistered: 0`)
+    // so a persistent failure shows on the prune-failed metric/alarm instead of letting
+    // task-def revisions grow unbounded in silence — the whole point of the sweep.
+    expect(await reconciler.pruneTaskDefinitions()).toEqual({ deregistered: 0, failed: 1 });
     expect(warnings).toHaveLength(1);
   });
 });
