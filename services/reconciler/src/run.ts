@@ -72,6 +72,7 @@ const idleThresholdMs = tuningMs("EDD_IDLE_THRESHOLD_MS");
 const snapshotIntervalMs = tuningMs("EDD_SNAPSHOT_INTERVAL_MS");
 const earlySnapshotIntervalMs = tuningMs("EDD_EARLY_SNAPSHOT_INTERVAL_MS");
 const earlySessionMs = tuningMs("EDD_EARLY_SESSION_MS");
+const convergeBudget = tuningMs("EDD_CONVERGE_BUDGET");
 const gcGraceMs = tuningMs("EDD_GC_GRACE_MS");
 const provisioningTimeoutMs = tuningMs("EDD_PROVISIONING_TIMEOUT_MS");
 
@@ -119,6 +120,7 @@ const reconciler = new Reconciler({
   ...(snapshotIntervalMs === undefined ? {} : { snapshotIntervalMs }),
   ...(earlySnapshotIntervalMs === undefined ? {} : { earlySnapshotIntervalMs }),
   ...(earlySessionMs === undefined ? {} : { earlySessionMs }),
+  ...(convergeBudget === undefined ? {} : { convergeBudget }),
   ...(gcGraceMs === undefined ? {} : { gcGraceMs }),
   ...(provisioningTimeoutMs === undefined ? {} : { provisioningTimeoutMs }),
 });

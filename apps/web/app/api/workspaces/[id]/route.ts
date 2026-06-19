@@ -23,9 +23,10 @@ async function handleGET(req: Request, { params }: Ctx) {
   return NextResponse.json(ctx.ws);
 }
 
-// DELETE /api/workspaces/:id — remove() returns a typed Result; the central mapper
-// turns a domain failure into its status (a concurrent double-delete → not_found →
-// 404), so a racy delete can never escape as a 500.
+// DELETE /api/workspaces/:id — marks the workspace for deletion (the `deleting`
+// tombstone); the reconciler converges teardown and removes the record. Async by
+// design, so it returns 202 Accepted (not 204). remove() returns a typed Result; the
+// central mapper turns a domain failure into its status (so a racy delete never 500s).
 async function handleDELETE(req: Request, { params }: Ctx) {
   const ctx = await loadOwnedWorkspace(req, params, "delete");
   if (isResponse(ctx)) return ctx;
@@ -36,7 +37,7 @@ async function handleDELETE(req: Request, { params }: Ctx) {
     ctx.principal === undefined ? undefined : auditActor(ctx.principal),
   );
   if (!result.ok) return domainErrorResponse(result.error);
-  return new NextResponse(null, { status: 204 });
+  return new NextResponse(null, { status: 202 });
 }
 
 export const GET = withObservability("workspaces.get", handleGET);

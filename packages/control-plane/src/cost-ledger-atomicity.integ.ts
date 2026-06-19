@@ -91,8 +91,10 @@ describe("lifecycle audit ledger is exact (atomic with the transition)", () => {
   it("retains the full ledger after the workspace is deleted (deleted sessions still price)", async () => {
     const id = await running("atom-d");
     expect((await service.stop(workspaceId(id))).ok).toBe(true);
+    // remove() tombstones (records session.delete atomically); finishDeleting removes
+    // the record. The append-only events outlive the record for the cost model.
     expect((await service.remove(workspaceId(id))).ok).toBe(true);
-    // The record is gone, but its append-only events remain for the cost model.
+    expect((await service.finishDeleting(workspaceId(id))).ok).toBe(true);
     expect(await service.get(workspaceId(id))).toBeNull();
     expect(await eventsFor(id, "session.create")).toHaveLength(1);
     expect(await eventsFor(id, "session.stop")).toHaveLength(1);

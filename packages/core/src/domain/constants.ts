@@ -40,6 +40,11 @@ export const DEFAULT_EARLY_SESSION_MS = 60 * 60 * 1000;
  * window bounds them while leaving plenty for in-flight launches. */
 export const DEFAULT_TASKDEF_KEEP_REVISIONS = 20;
 
+/** Max finish-delete / error-recover convergence actions the reconciler performs per
+ * sweep. Bounds blast radius after a mass drift/delete event — the fleet converges
+ * over several sweeps instead of issuing thousands of stop/delete calls at once. */
+export const DEFAULT_CONVERGE_BUDGET = 50;
+
 /**
  * How long a workspace may sit in `provisioning` before the reconciler treats the
  * wake as dead and reverts it to `stopped` (self-healing): 10 minutes. A legitimate

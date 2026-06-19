@@ -221,9 +221,15 @@ describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
     if (!result.ok) expect(result.error.kind).toBe("conflict");
   });
 
-  it("removes a workspace", async () => {
+  it("removes a workspace: tombstones it, then finishDeleting removes the record", async () => {
     const ws = await service.create({ ownerId: ownerId("dave"), baseImage: baseImage("img") });
+    // remove() is async now: it marks the `deleting` tombstone (record persists).
     expect((await service.remove(workspaceId(ws.id))).ok).toBe(true);
+    const tombstoned = await service.get(workspaceId(ws.id));
+    expect(tombstoned?.state).toBe("deleting");
+    expect((await service.listDeleting()).map((w) => w.id)).toContain(ws.id);
+    // The reconciler's finishDeleting converges teardown and removes the record.
+    expect((await service.finishDeleting(workspaceId(ws.id))).ok).toBe(true);
     expect(await service.get(workspaceId(ws.id))).toBeNull();
   });
 

@@ -261,13 +261,17 @@ describe(
       await awaitTaskStatus(newTask, "RUNNING");
     });
 
-    it("delete removes the workspace and stops its task", async () => {
-      const detail = await inspect();
-      const taskArn = required(detail.taskId, "taskId");
-      await expectStatus(await api(`/workspaces/${wsId}`, { method: "DELETE" }), 204);
-      expect((await api(`/workspaces/${wsId}`)).status).toBe(404);
-
-      await awaitTaskStatus(taskArn, "STOPPED");
+    it("delete marks the workspace for teardown (async `deleting` tombstone)", async () => {
+      // Delete is now async: it returns 202 and moves the workspace to the `deleting`
+      // tombstone (desiredState="deleted"); the record persists so the reconciler can
+      // converge teardown (stop task, final snapshot, remove record) resumably. The
+      // record is therefore still readable as `deleting` right after the request. The
+      // finish-delete convergence (task stop + record removal) is covered by the
+      // reconciler tests.
+      await expectStatus(await api(`/workspaces/${wsId}`, { method: "DELETE" }), 202);
+      const after = await inspect();
+      expect(after.state).toBe("deleting");
+      expect(after.desiredState).toBe("deleted");
     });
   },
 );

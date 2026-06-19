@@ -34,6 +34,10 @@ function fakeService(overrides: Partial<ReconcilerService> = {}): ReconcilerServ
     listWorkspaceIds: () => Promise.resolve([]),
     listStuckProvisioning: () => Promise.resolve([]),
     recoverStuckProvisioning: () => Promise.reject(new Error("recover not expected")),
+    listDeleting: () => Promise.resolve([]),
+    finishDeleting: () => Promise.reject(new Error("finishDeleting not expected")),
+    listRecoverableErrors: () => Promise.resolve([]),
+    recoverError: () => Promise.reject(new Error("recoverError not expected")),
     ...overrides,
   };
 }
@@ -490,6 +494,59 @@ describe("Reconciler.pruneTaskDefinitions", () => {
     });
     expect(await reconciler.pruneTaskDefinitions()).toEqual({ deregistered: 0 });
     expect(warnings).toHaveLength(1);
+  });
+});
+
+describe("Reconciler.finishDeletions + recoverErrors (desired-state convergence)", () => {
+  const ok = () => Promise.resolve({ ok: true as const, value: undefined });
+  const fail = () =>
+    Promise.resolve({ ok: false as const, error: { kind: "conflict" as const, reason: "x" } });
+
+  it("finishes each deleting tombstone, counting failures and retrying next sweep", async () => {
+    const finished: string[] = [];
+    const reconciler = new Reconciler({
+      service: fakeService({
+        listDeleting: () =>
+          Promise.resolve([{ id: workspaceId("ws-a") }, { id: workspaceId("ws-b") }]),
+        finishDeleting: (id) => {
+          if (id === workspaceId("ws-b")) return fail();
+          finished.push(id);
+          return ok();
+        },
+      }),
+      storage: await emptyStorage(),
+      clock: fixedClock("2026-06-01T02:00:00.000Z"),
+    });
+    expect(await reconciler.finishDeletions()).toEqual({ scanned: 2, acted: 1, failed: 1 });
+    expect(finished).toEqual([workspaceId("ws-a")]);
+  });
+
+  it("recovers each recoverable error workspace forward to stopped", async () => {
+    const recovered: string[] = [];
+    const reconciler = new Reconciler({
+      service: fakeService({
+        listRecoverableErrors: () => Promise.resolve([{ id: workspaceId("ws-err") }]),
+        recoverError: (id) => {
+          recovered.push(id);
+          return ok();
+        },
+      }),
+      storage: await emptyStorage(),
+      clock: fixedClock("2026-06-01T02:00:00.000Z"),
+    });
+    expect(await reconciler.recoverErrors()).toEqual({ scanned: 1, acted: 1, failed: 0 });
+    expect(recovered).toEqual([workspaceId("ws-err")]);
+  });
+
+  it("bounds each convergence sweep by the budget (converges over multiple sweeps)", async () => {
+    const ids = Array.from({ length: 5 }, (_, i) => ({ id: workspaceId(`ws-${i.toString()}`) }));
+    const reconciler = new Reconciler({
+      service: fakeService({ listDeleting: () => Promise.resolve(ids), finishDeleting: ok }),
+      storage: await emptyStorage(),
+      clock: fixedClock("2026-06-01T02:00:00.000Z"),
+      convergeBudget: 2,
+    });
+    expect(await reconciler.finishDeletions()).toEqual({ scanned: 5, acted: 2, failed: 0 });
   });
 });
 

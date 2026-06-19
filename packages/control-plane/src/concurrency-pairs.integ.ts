@@ -235,8 +235,9 @@ describe("concurrent transition pairs are version-safe (DynamoDB Local + fakes)"
     // running task with no record.
     const finalLoaded = await service.get(workspaceId(id));
     if (delOk && !startOk) {
-      // Delete won: record gone, and start compensated its task (no new volume).
-      expect(finalLoaded).toBeNull();
+      // Delete won the version-CAS: the record is the `deleting` tombstone (teardown is
+      // the reconciler's), and start() lost its claim before launching → no new volume.
+      expect(finalLoaded?.state).toBe("deleting");
       expect((await storage.listVolumes()).length).toBe(volumesBefore);
     } else if (startOk && !delOk) {
       // Wake won: record present and running, backed by exactly one live volume.
