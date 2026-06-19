@@ -109,8 +109,10 @@ export const workspaceDetail = z.object({
   id: z.string(),
   ownerId: z.string(),
   /** Owner's email — the identity the proxy matches a caller against for
-   * per-workspace access. Absent on records created without a session email. */
-  ownerEmail: z.string().optional(),
+   * per-workspace access. Absent on records created without a session email.
+   * Validated as an email (not a bare string) so a malformed value is rejected at
+   * the wire boundary, matching `@edd/core`'s `email()` smart constructor. */
+  ownerEmail: z.email().optional(),
   /** Git repo cloned into the session, if any ("one repo per session"). */
   repoUrl: z.string().optional(),
   baseImage: z.string(),

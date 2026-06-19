@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { createWorkspaceRequest } from "@edd/api-contracts";
 import { defineAbilityFor } from "@edd/authz";
 import { ComputeUnavailableError, QuotaExceededError } from "@edd/control-plane";
-import { baseImage, ownerId, unavailableError, withinWorkspaceQuota } from "@edd/core";
+import { baseImage, unavailableError, withinWorkspaceQuota } from "@edd/core";
 
 import {
   authenticate,
@@ -29,9 +29,7 @@ async function handleGET(req: Request) {
 
   const cp = await getControlPlane();
   const workspaces =
-    principal.role === "admin"
-      ? await cp.list()
-      : await cp.list({ ownerId: ownerId(principal.id) });
+    principal.role === "admin" ? await cp.list() : await cp.list({ ownerId: principal.id });
   return NextResponse.json({ workspaces });
 }
 
@@ -60,7 +58,7 @@ async function handlePOST(req: Request) {
   // Enforce the per-role workspace quota, and emit the per-role utilization gauge
   // (plus a denial count when rejected) — the create path is the one place that
   // knows both the owner's current count and their role-derived limit.
-  const owned = await cp.list({ ownerId: ownerId(principal.id) });
+  const owned = await cp.list({ ownerId: principal.id });
   const limit = workspaceLimit(principal.role);
   const allowed = withinWorkspaceQuota(owned.length, limit);
   recordQuotaUsage(getMetrics(), { owned: owned.length, limit, role: principal.role, allowed });
@@ -78,7 +76,7 @@ async function handlePOST(req: Request) {
   let workspace;
   try {
     workspace = await cp.create({
-      ownerId: ownerId(principal.id),
+      ownerId: principal.id,
       ...(ownerEmail === undefined ? {} : { ownerEmail }),
       ...(parsed.data.repoUrl === undefined ? {} : { repoUrl: parsed.data.repoUrl }),
       ...(parsed.data.repoRef === undefined ? {} : { repoRef: parsed.data.repoRef }),

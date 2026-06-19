@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { describe, expect, it } from "vitest";
 
+import { ownerId } from "@edd/core";
+
 import { defineAbilityFor, ROLES, type Action, type Role, type Subject } from "./index";
 
 const ACTIONS: Action[] = ["create", "read", "update", "delete", "manage"];
@@ -35,7 +37,7 @@ function isAllowed(role: Role, action: Action, subject: Subject): boolean {
 
 describe("RBAC ability matrix (every role × action × subject)", () => {
   for (const role of ROLES) {
-    const ability = defineAbilityFor({ id: "u", role });
+    const ability = defineAbilityFor({ id: ownerId("u"), role });
     for (const action of ACTIONS) {
       for (const subject of SUBJECTS) {
         const expected = isAllowed(role, action, subject);
@@ -47,12 +49,12 @@ describe("RBAC ability matrix (every role × action × subject)", () => {
   }
 
   it("a member cannot touch Users at all", () => {
-    const a = defineAbilityFor({ id: "u", role: "member" });
+    const a = defineAbilityFor({ id: ownerId("u"), role: "member" });
     for (const action of ACTIONS) expect(a.can(action, "User")).toBe(false);
   });
 
   it("a viewer cannot mutate the catalog or any workspace", () => {
-    const a = defineAbilityFor({ id: "u", role: "viewer" });
+    const a = defineAbilityFor({ id: ownerId("u"), role: "viewer" });
     for (const action of ["create", "update", "delete"] as const) {
       expect(a.can(action, "Workspace")).toBe(false);
       expect(a.can(action, "BaseImage")).toBe(false);

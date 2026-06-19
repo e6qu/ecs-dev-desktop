@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { Principal, Role } from "@edd/authz";
+import { ownerId } from "@edd/core";
 import type { Session } from "next-auth";
 
 import {
@@ -23,7 +24,7 @@ export function devAuthEnabled(): boolean {
 /** Build a principal from a candidate id/role pair (rejects unknown roles). */
 function devPrincipal(id: string | undefined, role: string | undefined): Principal | null {
   if (id === undefined || role === undefined || !isRole(role)) return null;
-  return { id, role };
+  return { id: ownerId(id), role };
 }
 
 /** Pure: extract the principal from an Auth.js session. */
@@ -31,7 +32,7 @@ export function principalFromSession(session: Session | null): Principal | null 
   if (session === null) return null;
   const sessionEmail = session.user.email;
   return {
-    id: session.user.id,
+    id: ownerId(session.user.id),
     role: session.user.role,
     ...(typeof sessionEmail === "string" && sessionEmail.length > 0 ? { email: sessionEmail } : {}),
   };

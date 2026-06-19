@@ -2,7 +2,7 @@
 import type { WorkspaceDto } from "@edd/api-contracts";
 import { defineAbilityFor } from "@edd/authz";
 import { SSH_BASE_DOMAIN } from "@edd/config";
-import { isWorkspaceLabel, ownerId, workspacePrincipal, workspaceSshHost } from "@edd/core";
+import { isWorkspaceLabel, workspacePrincipal, workspaceSshHost } from "@edd/core";
 import Link from "next/link";
 
 import { StateBlock } from "../../components/StateBlock";
@@ -36,7 +36,7 @@ export default async function WorkspacesPage({
   const cp = await getControlPlane();
   const workspaces: WorkspaceDto[] = viewAll
     ? await cp.list()
-    : await cp.list({ ownerId: ownerId(principal.id) });
+    : await cp.list({ ownerId: principal.id });
   workspaces.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   const canCreate = defineAbilityFor(principal).can("create", "Workspace");
