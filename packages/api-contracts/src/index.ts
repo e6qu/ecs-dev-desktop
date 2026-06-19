@@ -42,6 +42,18 @@ export const workspace = z.object({
 });
 export type WorkspaceDto = z.infer<typeof workspace>;
 
+/** Config-sync report: is the running deployment wired the way it should be? */
+export const configCheck = z.object({
+  name: z.string(),
+  status: z.enum(["ok", "drift", "unknown"]),
+  detail: z.string(),
+});
+export const configSyncReport = z.object({
+  inSync: z.boolean(),
+  checks: z.array(configCheck),
+});
+export type ConfigSyncReportDto = z.infer<typeof configSyncReport>;
+
 /** A security event reported by the in-workspace guard (agent machine-auth). */
 export const securityEventRequest = z.object({
   kind: z.enum(["privilege_attempt"]),

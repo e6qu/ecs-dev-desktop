@@ -4,10 +4,13 @@ import { CloudWatchLogSource } from "@edd/cloudwatch-logs";
 import { metricSinkFromEnv } from "@edd/cloudwatch-metrics";
 import { EcsComputeProvider } from "@edd/compute-ecs";
 import {
+  evaluateConfigSync,
   FakeComputeProvider,
   FakeStorageProvider,
   systemClock,
   type ComponentHealth,
+  type ConfigSyncReport,
+  type DependencyStatus,
 } from "@edd/core";
 import { workspaceSizing } from "@edd/config";
 
@@ -171,6 +174,26 @@ export async function getInfrastructureService(): Promise<InfrastructureService>
     health,
     compute,
     listWorkspaceStates: async () => (await cp.list()).map((w) => w.state),
+  });
+}
+
+/**
+ * App-level config-sync self-check: does the running control plane match its expected
+ * configuration (real providers selected, the ECS/EBS + observability coordinates
+ * present, DynamoDB + the ECS cluster reachable)? Pure evaluation in `@edd/core`; this
+ * shell gathers `process.env` + the two live dependency signals from the Health board.
+ */
+export async function getConfigSyncReport(): Promise<ConfigSyncReport> {
+  const report = await (await getHealthService()).report();
+  const statusOf = (component: string): DependencyStatus => {
+    const c = report.components.find((x) => x.component === component);
+    if (c === undefined || c.status === "unknown") return "unknown";
+    return c.status === "ok" ? "ok" : "down";
+  };
+  return evaluateConfigSync({
+    env: process.env,
+    dynamodb: statusOf("dynamodb"),
+    compute: statusOf("compute"),
   });
 }
 

@@ -8,6 +8,7 @@ import {
   USER_ID_HEADER,
 } from "../../../lib/constants";
 import { GET as auditGet } from "./audit/route";
+import { GET as configSyncGet } from "./config-sync/route";
 import { GET as healthGet } from "./health/route";
 import { GET as logsGet } from "./logs/route";
 import { GET as inspectGet } from "./workspaces/[id]/route";
@@ -29,6 +30,7 @@ const ENDPOINTS: { name: string; call: (req: Request) => Promise<Response> }[] =
   { name: "workspaces/:id", call: (req) => inspectGet(req, params("ws-x")) },
   { name: "audit", call: (req) => auditGet(req) },
   { name: "logs", call: (req) => logsGet(req) },
+  { name: "config-sync", call: (req) => configSyncGet(req) },
 ];
 
 function asRole(role: string): Request {

@@ -175,6 +175,15 @@ export { deriveWorkspaceTimeline } from "./observability/timeline";
 export type { WorkspaceStats } from "./observability/stats";
 export { tallyWorkspaceStates } from "./observability/stats";
 
+// Config-sync self-check (pure): is the deployment wired as expected?
+export type {
+  ConfigCheck,
+  ConfigSyncInput,
+  ConfigSyncReport,
+  DependencyStatus,
+} from "./observability/config-sync";
+export { evaluateConfigSync } from "./observability/config-sync";
+
 // Observability — derived audit feed (admin Logs/Audit; CloudTrail on AWS).
 export type { AuditEvent, AuditSource, FleetAuditInput } from "./observability/audit";
 export { deriveFleetAudit } from "./observability/audit";
