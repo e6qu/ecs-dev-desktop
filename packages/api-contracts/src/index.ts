@@ -285,8 +285,11 @@ export const COST_WINDOW_DAYS: Record<CostWindow, number | null> = {
   "30d": 30,
 };
 
-/** Parse a possibly-absent `?window=` value to a valid window (defaults to `all`). */
-export const costReportQuery = z.object({ window: costWindow.catch("all") });
+/** Parse a possibly-absent `?window=` value to a valid window: an absent param
+ * defaults to `all`, but an explicit invalid value is rejected (`.default` not
+ * `.catch`, so the route's boundary `safeParse` → 400 actually fires — `.catch`
+ * would silently swallow `?window=garbage` into `all`). */
+export const costReportQuery = z.object({ window: costWindow.default("all") });
 export type CostReportQuery = z.infer<typeof costReportQuery>;
 
 // --- Admin: log streams (control-plane derived now; CloudWatch on AWS) ---

@@ -57,11 +57,14 @@ export {
 // Domain constants.
 export {
   DEFAULT_AUDIT_FEED_LIMIT,
+  DEFAULT_EARLY_SESSION_MS,
+  DEFAULT_EARLY_SNAPSHOT_INTERVAL_MS,
   DEFAULT_GC_GRACE_MS,
   DEFAULT_IDLE_THRESHOLD_MS,
   DEFAULT_PROVISIONING_TIMEOUT_MS,
   DEFAULT_RECONCILER_STALE_MS,
   DEFAULT_SNAPSHOT_INTERVAL_MS,
+  DEFAULT_TASKDEF_KEEP_REVISIONS,
   ID_PREFIX,
 } from "./domain/constants";
 
@@ -122,6 +125,7 @@ export { FakeStorageProvider } from "./storage/fake-storage-provider";
 export type { ReferencedStorage, SnapshotCandidate } from "./maintenance/select";
 export {
   selectDueForSnapshot,
+  selectOrphanSecrets,
   selectOrphanSnapshots,
   selectOrphanTasks,
   selectOrphanVolumes,
@@ -134,6 +138,7 @@ export type {
   ComputeTask,
   RunTaskInput,
   TaskLiveness,
+  WorkspaceAgentSecretRef,
   WorkspaceTaskRef,
 } from "./compute/compute-provider";
 export type { FakeComputeConfig } from "./compute/fake-compute-provider";

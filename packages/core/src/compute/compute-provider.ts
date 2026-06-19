@@ -75,6 +75,16 @@ export interface WorkspaceTaskRef {
   readonly startedAt: IsoTimestamp;
 }
 
+/** A per-workspace agent-token secret the compute backend created, for the
+ * reconciler's orphan-secret GC (a secret whose workspace record is gone leaks
+ * otherwise — the secrets-manager analogue of orphan-volume/-task GC). */
+export interface WorkspaceAgentSecretRef {
+  /** The Secrets Manager secret name (`edd/workspace/<id>/agent`). */
+  readonly name: string;
+  readonly workspaceId: WorkspaceId;
+  readonly createdAt: IsoTimestamp;
+}
+
 export interface ComputeProvider {
   /** Launch a task with a fresh or snapshot-hydrated managed EBS volume. */
   runTask(input: RunTaskInput): Promise<ComputeTask>;
@@ -86,6 +96,22 @@ export interface ComputeProvider {
    * per-workspace tag `runTask` sets), for the reconciler's orphan-task reaper.
    * Optional — absent ⇒ no compute reaping (a backend that can't list tagged tasks). */
   listWorkspaceTasks?(): Promise<readonly WorkspaceTaskRef[]>;
+
+  /** Enumerate the per-workspace agent-token secrets this backend created, for the
+   * reconciler's orphan-secret GC. Optional — absent ⇒ no secret reaping (a backend
+   * with no secret injection). Paired with {@link deleteAgentSecret}. */
+  listWorkspaceAgentSecrets?(): Promise<readonly WorkspaceAgentSecretRef[]>;
+
+  /** Delete a per-workspace agent-token secret by name (idempotent: a missing
+   * secret is a no-op). Used by the reconciler's orphan-secret GC. */
+  deleteAgentSecret?(name: string): Promise<void>;
+
+  /** Deregister all but the newest `keepPerFamily` ACTIVE workspace task-definition
+   * revisions per family, returning how many were deregistered. Per-workspace secret
+   * injection forces a new revision per launch, so they accumulate unbounded; this
+   * bounds them. Safe: a running task keeps its (now-inactive) revision, and a wake
+   * registers a fresh one. Optional — absent ⇒ no task-def GC. */
+  pruneTaskDefinitions?(keepPerFamily: number): Promise<number>;
 
   /** Observed liveness of a task — the reconciler's drift-detection input
    * (a record claiming `running` whose task died out-of-band must stop

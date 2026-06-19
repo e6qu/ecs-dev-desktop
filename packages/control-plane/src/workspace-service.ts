@@ -371,6 +371,7 @@ export class WorkspaceService {
       .filter((r) => r.volumeId !== undefined)
       .map((r) => ({
         id: workspaceId(r.id),
+        createdAt: isoTimestamp(r.createdAt),
         ...(r.latestSnapshotAt === undefined
           ? {}
           : { latestSnapshotAt: isoTimestamp(r.latestSnapshotAt) }),
@@ -400,6 +401,13 @@ export class WorkspaceService {
       if (r.taskId !== undefined) taskIds.push(taskId(r.taskId));
     });
     return taskIds;
+  }
+
+  /** Ids of every workspace that still exists (any state) — the orphan-secret
+   * reaper's keep-set. Fully paginated, like the other reconciler reads. */
+  async listWorkspaceIds(): Promise<readonly WorkspaceId[]> {
+    const { data } = await this.deps.workspaces.scan.go({ pages: "all" });
+    return data.map((r: WorkspaceRecord) => workspaceId(r.id));
   }
 
   /** Fetch all workspace records in the given lifecycle states (fully paginated). */

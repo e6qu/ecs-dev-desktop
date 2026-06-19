@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { WorkspaceTaskRef } from "../compute/compute-provider";
+import type { WorkspaceAgentSecretRef, WorkspaceTaskRef } from "../compute/compute-provider";
 import type { IsoTimestamp, SnapshotId, TaskId, VolumeId, WorkspaceId } from "../domain/ids";
 import type { SnapshotRef, VolumeRef } from "../storage/storage-provider";
 
@@ -14,6 +14,8 @@ export interface SnapshotCandidate {
   readonly id: WorkspaceId;
   /** When the workspace was last snapshotted; absent if never. */
   readonly latestSnapshotAt?: IsoTimestamp;
+  /** When the workspace was created; enables the shorter early-session cadence. */
+  readonly createdAt?: IsoTimestamp;
 }
 
 /** The storage ids still referenced by live workspaces (must never be GC'd). */
@@ -71,17 +73,46 @@ export function selectOrphanTasks(
 }
 
 /**
- * Workspaces due for a point-in-time snapshot: never snapshotted, or last
- * snapshotted at least `intervalMs` ago.
+ * Per-workspace agent secrets to reap: those whose workspace id no longer exists
+ * (the record was deleted, so the secret leaks) AND created at least `graceMs` ago.
+ * The grace window guards the create/persist race (a secret created moments ago for
+ * a workspace whose record isn't yet visible must not be reaped). The
+ * secrets-manager analogue of orphan-volume/-task GC.
+ */
+export function selectOrphanSecrets(
+  existing: readonly WorkspaceAgentSecretRef[],
+  liveWorkspaceIds: ReadonlySet<WorkspaceId>,
+  now: IsoTimestamp,
+  graceMs: number,
+): readonly WorkspaceAgentSecretRef[] {
+  return existing.filter(
+    (s) => !liveWorkspaceIds.has(s.workspaceId) && olderThan(s.createdAt, now, graceMs),
+  );
+}
+
+/**
+ * Workspaces due for a point-in-time snapshot. A workspace that has NEVER been
+ * snapshotted is always due, so a fresh session gets a recoverable point on the very
+ * next sweep rather than after a full interval. Otherwise it is due when its last
+ * snapshot is older than the applicable interval: a YOUNG workspace (created within
+ * `early.sessionMs`) uses the shorter `early.intervalMs` so a new session's work is
+ * captured frequently before the workspace settles onto the steady-state `intervalMs`.
+ * `early` is optional — omit it to use a single interval for all candidates.
  */
 export function selectDueForSnapshot(
   candidates: readonly SnapshotCandidate[],
   now: IsoTimestamp,
   intervalMs: number,
+  early?: { readonly intervalMs: number; readonly sessionMs: number },
 ): WorkspaceId[] {
   return candidates
-    .filter(
-      (c) => c.latestSnapshotAt === undefined || olderThan(c.latestSnapshotAt, now, intervalMs),
-    )
+    .filter((c) => {
+      if (c.latestSnapshotAt === undefined) return true;
+      const isYoung =
+        early !== undefined &&
+        c.createdAt !== undefined &&
+        !olderThan(c.createdAt, now, early.sessionMs);
+      return olderThan(c.latestSnapshotAt, now, isYoung ? early.intervalMs : intervalMs);
+    })
     .map((c) => c.id);
 }

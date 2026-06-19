@@ -186,10 +186,46 @@ conditions every transition write so concurrent wakes can't leak ECS tasks.
 enabled catalog) + UI (`/base-images` admin page + create-from-catalog picker). ✅
 **Playwright portal e2e** (built app + DynamoDB Local, cookie dev-auth shim, CI job).
 
+## Phase 9 — Code-review remediation & pre-AWS hardening — ⬜ actionable now (no AWS gate)
+
+From the 2026-06-19 `codex` review (12 findings, 4 re-verified) plus previously-deferred items that
+became actionable. **None of this is gated on the AWS account decision** — code fixes land + unit/integ
+test on fakes/DynamoDB-Local; the terraform/IAM fixes validate against the `terraform-sim` IAM
+simulation; `e2e-aws` only adds final real-enforcement proof. Tracked as bugs in `BUGS.md` → Open and
+prioritized in `DO_NEXT.md`. **Deliverables (do not defer any actionable item):**
+
+- **Critical** — (1) require a real compute/storage provider in production (kill the silent fake
+  fallback, `apps/web/lib/control-plane.ts`); (2) terraform IAM for the per-workspace agent-secret
+  create/inject path (scoped `CreateSecret`/`PutSecretValue`/tag + execution-role read on
+  `edd/workspace/*/agent`); (3) create + pass the workspace execution/task role ARNs (ECR pull,
+  awslogs, secret injection, `iam:PassRole`); (4) transactional SSH-key fingerprint uniqueness.
+- **High** — (5) early/initial snapshot so a fresh workspace is recoverable before the 6h cadence;
+  (6) fail-loud + portal-visible bootstrap status for repo-clone / git-credential failures (non-dev
+  safety); (7) GC per-workspace Secrets Manager agent secrets on terminate + periodic secret GC.
+- **Medium / Low** — (8) bound ECS task-definition revision growth; (9) require a valid owner identity
+  for proxy-routed workspaces (or authorize by a stable subject claim); (10) reject invalid `?window=`
+  instead of coercing to `all`; (11) fix the stale topology CA-cert edge text.
+- **Deferred → now actionable:** **cross-region EBS snapshot DR** (snapshot → `CopySnapshot` →
+  restore) — **DONE**: `StorageProvider.copySnapshot` + the EC2 adapter (cross-region client by
+  coordinates alone, §6.9), proven by a sim integ (snapshot→copy→restore) now that **sockerless#602**
+  landed. `CONNECTION_TOKEN` — on review this is **correctly coupled to the future DYNAMIC
+  wake-on-connect gate**, NOT a free-standing fix: the image already consumes `CONNECTION_TOKEN` when
+  injected (`entrypoint.sh`), but the current STATIC gate model runs the IDE **tokenless behind the
+  gate** (`EDD_DISABLE_CONNECTION_TOKEN=1` — the gate is the PEP). Generating/persisting/injecting a
+  token has no consumer until the gate forwards it (the dynamic-gate extension), so building it now
+  would be dead code (§6.5). It stays with that extension; the image side is already ready.
+
+- **Gate:** each item proven by a unit/integ/e2e test on fakes / DynamoDB-Local / the sim (incl. the
+  `terraform-sim` IAM simulation for the IAM/role items + a sim DR copy e2e); real-enforcement checks
+  for the IAM/role items roll into `e2e-aws` when AWS lands.
+
 ## Phase 7 — Hardening, scale & DR — ⬜ pending (AWS-gated)
 
 Autoscaling, warm pools, SOCI; cross-region snapshot copy; secrets in Secrets Manager;
-full audit; quota enforcement at scale; DR runbook; load test to 200+.
+full audit; quota enforcement at scale; DR runbook; load test to 200+. (The **cross-region
+snapshot-copy DR flow** is no longer parked here — it is sim-validatable now via
+**sockerless#602** and pulled forward into Phase 9; only the real cross-region/200+-load
+proofs remain AWS-gated here.)
 
 - **Gate:** 200+ load within latency budget; DR drill (cross-region restore);
   `/security-review` clean; pen-test checklist. (Real AWS only.)

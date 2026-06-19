@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { createWorkspaceRequest } from "@edd/api-contracts";
 import { defineAbilityFor } from "@edd/authz";
 import { ComputeUnavailableError } from "@edd/control-plane";
-import { baseImage, email, ownerId, unavailableError, withinWorkspaceQuota } from "@edd/core";
+import { baseImage, ownerId, unavailableError, withinWorkspaceQuota } from "@edd/core";
 
 import {
   authenticate,
@@ -16,6 +16,8 @@ import {
 } from "../../../lib/api";
 import { getCatalog, getControlPlane } from "../../../lib/control-plane";
 import { getMetrics } from "../../../lib/metrics";
+import { resolveOwnerEmail } from "../../../lib/owner-email";
+import { devAuthEnabled } from "../../../lib/principal";
 import { withObservability } from "../../../lib/observability";
 import { workspaceLimit } from "../../../lib/quota";
 import { recordQuotaUsage } from "../../../lib/quota-metrics";
@@ -66,14 +68,13 @@ async function handlePOST(req: Request) {
     return conflict(`workspace quota reached (${owned.length.toString()})`);
   }
 
-  // Record the owner's email (when the session carries one) so the proxy can
-  // match a caller to this workspace; a malformed value is dropped, not fatal.
-  let ownerEmail;
-  try {
-    ownerEmail = principal.email === undefined ? undefined : email(principal.email);
-  } catch {
-    ownerEmail = undefined;
-  }
+  // Record the owner's email so the proxy can match a caller to this workspace. A
+  // present email must be valid (never silently dropped — §6.5) and a real (non-dev)
+  // session with no email is rejected, since the workspace would be unopenable via the
+  // proxy — better a clear 400 now than a created-but-inaccessible workspace.
+  const ownerEmailResult = resolveOwnerEmail(principal.email, devAuthEnabled());
+  if (!ownerEmailResult.ok) return badRequest(ownerEmailResult.reason);
+  const ownerEmail = ownerEmailResult.email;
   let workspace;
   try {
     workspace = await cp.create({

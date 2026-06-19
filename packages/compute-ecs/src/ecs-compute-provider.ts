@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { createHmac, timingSafeEqual } from "node:crypto";
 import {
+  DeregisterTaskDefinitionCommand,
   DescribeClustersCommand,
   DescribeTasksCommand,
   ECSClient,
   ListTasksCommand,
+  paginateListTaskDefinitionFamilies,
+  paginateListTaskDefinitions,
   RegisterTaskDefinitionCommand,
   RunTaskCommand,
   StopTaskCommand,
@@ -12,6 +15,8 @@ import {
 } from "@aws-sdk/client-ecs";
 import {
   CreateSecretCommand,
+  DeleteSecretCommand,
+  paginateListSecrets,
   PutSecretValueCommand,
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
@@ -41,6 +46,7 @@ import {
   type TaskLiveness,
   type RunTaskInput,
   type TaskId,
+  type WorkspaceAgentSecretRef,
   type WorkspaceTaskRef,
 } from "@edd/core";
 
@@ -134,10 +140,14 @@ function positiveIntEnv(name: string): number | undefined {
   return n;
 }
 
+/** Prefix of every workspace task-definition family — distinguishes them from the
+ * control-plane/reconciler task defs so the reconciler's task-def GC only prunes ours. */
+const WORKSPACE_TASKDEF_FAMILY_PREFIX = "edd-ws-";
+
 /** A valid ECS task-definition family derived from a base-image reference
  * (ECS families allow letters, numbers, hyphens, underscores). */
 export function taskDefinitionFamily(image: BaseImage): string {
-  return `edd-ws-${image.replace(/[^a-zA-Z0-9-]/g, "-").slice(0, 200)}`;
+  return `${WORKSPACE_TASKDEF_FAMILY_PREFIX}${image.replace(/[^a-zA-Z0-9-]/g, "-").slice(0, 200)}`;
 }
 
 /** Derive the per-workspace idle-agent token: HMAC-SHA256(secret, workspaceId). */
@@ -328,7 +338,18 @@ export class EcsComputeProvider implements ComputeProvider {
     const token = agentToken(required(this.config.agentSecret, "agentSecret"), wsId);
     const name = `edd/workspace/${wsId}/agent`;
     try {
-      const out = await client.send(new CreateSecretCommand({ Name: name, SecretString: token }));
+      const out = await client.send(
+        new CreateSecretCommand({
+          Name: name,
+          SecretString: token,
+          // Tagged so the reconciler's orphan-secret GC can find + attribute it,
+          // and the reaper's tag-scoped IAM applies (edd:managed, like every resource).
+          Tags: [
+            { Key: WORKSPACE_TAG_KEY, Value: wsId },
+            { Key: "edd:managed", Value: "true" },
+          ],
+        }),
+      );
       return required(out.ARN, "secret ARN");
     } catch (err) {
       if (err instanceof Error && err.name === "ResourceExistsException") {
@@ -339,6 +360,77 @@ export class EcsComputeProvider implements ComputeProvider {
       }
       throw err;
     }
+  }
+
+  /** Enumerate the per-workspace agent-token secrets (by name prefix), for the
+   * reconciler's orphan-secret GC. No-op shape when no secrets client is configured. */
+  async listWorkspaceAgentSecrets(): Promise<readonly WorkspaceAgentSecretRef[]> {
+    if (this.secrets === undefined) return [];
+    const refs: WorkspaceAgentSecretRef[] = [];
+    for await (const page of paginateListSecrets(
+      { client: this.secrets },
+      { Filters: [{ Key: "tag-key", Values: [WORKSPACE_TAG_KEY] }] },
+    )) {
+      for (const s of page.SecretList ?? []) {
+        const wsId = (s.Tags ?? []).find((t) => t.Key === WORKSPACE_TAG_KEY)?.Value;
+        if (s.Name === undefined || wsId === undefined || s.CreatedDate === undefined) continue;
+        refs.push({
+          name: s.Name,
+          workspaceId: workspaceId(wsId),
+          createdAt: isoTimestamp(s.CreatedDate.toISOString()),
+        });
+      }
+    }
+    return refs;
+  }
+
+  /** Delete an agent secret by name (idempotent: a missing secret is a no-op).
+   * `ForceDeleteWithoutRecovery` skips the 30-day recovery window so the name + token
+   * are reclaimed immediately. */
+  async deleteAgentSecret(name: string): Promise<void> {
+    if (this.secrets === undefined) return;
+    try {
+      await this.secrets.send(
+        new DeleteSecretCommand({ SecretId: name, ForceDeleteWithoutRecovery: true }),
+      );
+    } catch (err) {
+      if (err instanceof Error && err.name === "ResourceNotFoundException") return;
+      throw err;
+    }
+  }
+
+  /** Deregister all but the newest `keepPerFamily` ACTIVE revisions of each
+   * `edd-ws-*` workspace task-definition family. Per-launch secret injection forces a
+   * new revision each time, so they grow unbounded otherwise; a running task keeps its
+   * (now-inactive) revision and a wake registers a fresh one, so pruning old ones is
+   * safe. Best-effort per revision (a deregister that errors is skipped, not fatal). */
+  async pruneTaskDefinitions(keepPerFamily: number): Promise<number> {
+    const families: string[] = [];
+    for await (const page of paginateListTaskDefinitionFamilies(
+      { client: this.client },
+      { familyPrefix: WORKSPACE_TASKDEF_FAMILY_PREFIX, status: "ACTIVE" },
+    )) {
+      families.push(...(page.families ?? []));
+    }
+    let deregistered = 0;
+    for (const family of families) {
+      const arns: string[] = [];
+      for await (const page of paginateListTaskDefinitions(
+        { client: this.client },
+        { familyPrefix: family, status: "ACTIVE", sort: "DESC" },
+      )) {
+        arns.push(...(page.taskDefinitionArns ?? []));
+      }
+      for (const arn of arns.slice(keepPerFamily)) {
+        try {
+          await this.client.send(new DeregisterTaskDefinitionCommand({ taskDefinition: arn }));
+          deregistered += 1;
+        } catch {
+          // Best-effort: a revision in a transient state (or already inactive) is skipped.
+        }
+      }
+    }
+    return deregistered;
   }
 
   async runTask(input: RunTaskInput): Promise<ComputeTask> {

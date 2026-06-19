@@ -18,14 +18,25 @@ set -eu
 # the session regardless, so drain it.
 cat >/dev/null 2>&1 || true
 
-_resp="$(curl -fsS --max-time 10 \
+# This IS a configured managed session (all three vars present), so a broker failure
+# is real — surface it on stderr (git shows a helper's stderr) instead of silently
+# falling back to unauthenticated access and failing the clone/push opaquely later.
+# Still exit 0: returning no credential is valid, and git then reports the auth
+# failure with our diagnostic visible (rather than the helper aborting git itself).
+if ! _resp="$(curl -fsS --max-time 10 \
   -H "Authorization: Bearer ${EDD_AGENT_TOKEN}" \
-  "${EDD_CONTROL_PLANE_URL}/api/workspaces/${EDD_WORKSPACE_ID}/git-credential" 2>/dev/null)" || exit 0
+  "${EDD_CONTROL_PLANE_URL}/api/workspaces/${EDD_WORKSPACE_ID}/git-credential" 2>&1)"; then
+  echo "edd: could not fetch a git credential from the control plane: ${_resp}" >&2
+  exit 0
+fi
 
 # Parse {"username":"…","token":"…"} without jq (not guaranteed in the image).
 _user="$(printf '%s' "${_resp}" | sed -n 's/.*"username":"\([^"]*\)".*/\1/p')"
 _pass="$(printf '%s' "${_resp}" | sed -n 's/.*"token":"\([^"]*\)".*/\1/p')"
-[ -n "${_pass}" ] || exit 0
+if [ -z "${_pass}" ]; then
+  echo "edd: the control plane returned no git token for this session (is your Git account linked?)" >&2
+  exit 0
+fi
 
 printf 'username=%s\n' "${_user:-x-access-token}"
 printf 'password=%s\n' "${_pass}"

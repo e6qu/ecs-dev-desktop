@@ -22,6 +22,25 @@ export const DEFAULT_IDLE_THRESHOLD_MS = 30 * 60 * 1000;
 export const DEFAULT_SNAPSHOT_INTERVAL_MS = 6 * 60 * 60 * 1000;
 
 /**
+ * Shorter snapshot cadence for a YOUNG workspace (created within
+ * {@link DEFAULT_EARLY_SESSION_MS}): 10 minutes. A fresh session's work is the most
+ * exposed — a never-snapshotted workspace is captured on the very next sweep, but
+ * without this its *second* snapshot would wait the full 6h. The early cadence keeps
+ * a new session's data recoverable to within ~10 minutes before it settles onto the
+ * steady-state interval, bounding data loss on an early Fargate eviction/crash.
+ */
+export const DEFAULT_EARLY_SNAPSHOT_INTERVAL_MS = 10 * 60 * 1000;
+
+/** How long a workspace counts as "early session" for the shorter snapshot cadence: 1 hour. */
+export const DEFAULT_EARLY_SESSION_MS = 60 * 60 * 1000;
+
+/** Newest ACTIVE task-definition revisions to keep per workspace family when the
+ * reconciler prunes (older ones are deregistered). Per-launch secret injection forces
+ * a new revision each time, so they accumulate unbounded; keeping a generous recent
+ * window bounds them while leaving plenty for in-flight launches. */
+export const DEFAULT_TASKDEF_KEEP_REVISIONS = 20;
+
+/**
  * How long a workspace may sit in `provisioning` before the reconciler treats the
  * wake as dead and reverts it to `stopped` (self-healing): 10 minutes. A legitimate
  * cold start resolves well inside this — the readiness poll caps PHASE 2 at ~180s and

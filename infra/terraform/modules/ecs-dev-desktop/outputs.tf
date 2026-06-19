@@ -70,6 +70,11 @@ output "ecs_infrastructure_role_arn" {
   value       = aws_iam_role.ecs_infrastructure.arn
 }
 
+output "workspace_task_role_arn" {
+  description = "Runtime task role ARN for per-workspace containers (pass on RunTask)."
+  value       = aws_iam_role.workspace.arn
+}
+
 output "task_execution_role_arn" {
   description = "Shared ECS task-execution role ARN."
   value       = aws_iam_role.execution.arn

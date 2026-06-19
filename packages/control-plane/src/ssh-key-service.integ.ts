@@ -1,6 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { fingerprintPublicKey } from "@edd/core";
-import { createDynamoClient, dropTable, dynamodb, ensureTable, makeSshKeyEntity } from "@edd/db";
+import {
+  createDynamoClient,
+  dropTable,
+  dynamodb,
+  ensureTable,
+  makeSshKeyEntity,
+  makeSshKeyFingerprintEntity,
+} from "@edd/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { SshKeyConflictError, SshKeyService } from "./index";
@@ -14,6 +21,8 @@ const KEY_A =
   "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIN4ZbjzMeOtIzbUqhfKMeKGhK/v/L86UOuNmnczpU42p alice@laptop";
 const KEY_B =
   "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAILZBANeXuKzUz8czqLXOC2dgKD/Ia+l8/lZQbpgQ8Vh9 bob@desktop";
+const KEY_C =
+  "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKA1+rpLqH5A/dIfoBrc4KoHz8LmkDeeoHNiUvA1B5MA carol@concurrent";
 
 // A monotonic clock so list-ordering by createdAt is deterministic.
 function tickingClock(): { now(): string } {
@@ -28,7 +37,11 @@ describe("SshKeyService against DynamoDB Local", () => {
     const dynamo = createDynamoClient();
     await dropTable(dynamo, TABLE);
     await ensureTable(dynamo, TABLE);
-    svc = new SshKeyService({ keys: makeSshKeyEntity(dynamo, TABLE), clock: tickingClock() });
+    svc = new SshKeyService({
+      keys: makeSshKeyEntity(dynamo, TABLE),
+      fingerprints: makeSshKeyFingerprintEntity(dynamo, TABLE),
+      clock: tickingClock(),
+    });
   });
 
   afterAll(async () => {
@@ -60,6 +73,25 @@ describe("SshKeyService against DynamoDB Local", () => {
 
   it("rejects registering a key already owned by another account (global uniqueness)", async () => {
     await expect(svc.register("mallory", KEY_A)).rejects.toMatchObject({ ownedByCaller: false });
+  });
+
+  it("admits exactly one winner when two accounts register the same key concurrently", async () => {
+    // The pre-fix read-then-put let both writers pass the GSI read and both commit;
+    // the fingerprint-claim transaction makes exactly one win and the other conflict.
+    const results = await Promise.allSettled([
+      svc.register("dana", KEY_C),
+      svc.register("erin", KEY_C),
+    ]);
+    expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+    const rejected = results.find((r) => r.status === "rejected");
+    expect(rejected?.status).toBe("rejected");
+    if (rejected?.status === "rejected") {
+      expect(rejected.reason).toBeInstanceOf(SshKeyConflictError);
+    }
+    // Exactly one owner record exists for that fingerprint (no duplicate).
+    const winner = await svc.ownerForKey(KEY_C);
+    expect(winner).not.toBeNull();
+    expect(["dana", "erin"]).toContain(winner?.ownerId);
   });
 
   it("resolves a presented public key to its owner (gateway lookup)", async () => {

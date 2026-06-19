@@ -10,6 +10,12 @@ locals {
   region     = data.aws_region.current.region
   partition  = data.aws_partition.current.partition
 
+  # Per-workspace agent-token secrets the control plane creates at runtime
+  # (`edd/workspace/<id>/agent`; Secrets Manager appends a random suffix). The
+  # control-plane role manages them and the task execution role reads them for
+  # container injection — both scoped to this name prefix, not all secrets.
+  workspace_agent_secret_arns = "arn:${data.aws_partition.current.partition}:secretsmanager:${data.aws_region.current.region}:${data.aws_caller_identity.current.account_id}:secret:edd/workspace/*"
+
   # Every resource carries these for cost allocation, ownership, and GC scoping
   # (the control plane reaps only resources tagged edd:managed = true).
   tags = merge(

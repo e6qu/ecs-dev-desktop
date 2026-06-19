@@ -2,9 +2,23 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-17 (SSH clean break: CA path fully removed, registered-key only; e2e migrated; only AWS-gated public ingress left)
+**Last updated:** 2026-06-19 (codex code-review run → Phase 9 remediation opened; all sockerless fidelity blockers closed via #607/#611)
 
-## Current phase
+## Current focus — Phase 9: code-review remediation (codex 2026-06-19)
+
+A deep `codex` review (read-only; model `gpt-5.5`; full log `~/codex-review.log`, summary
+`~/codex-review-summary.md`) produced 12 findings, 4 independently re-verified. **All are actionable
+now without the AWS account decision** and are tracked in `BUGS.md` → Open and `PLAN.md` Phase 9 — 4
+Critical (silent prod fake-provider fallback; terraform IAM missing the agent-secret create/inject
+path; workspace exec/task role ARNs never passed; SSH-key uniqueness race), 3 High (no early snapshot →
+fresh-workspace data loss; hidden repo-clone/git-credential failures; un-GC'd per-workspace secrets),
+4 Medium/Low. **Nothing actionable is deferred:** the previously-parked `CONNECTION_TOKEN` injection and
+the cross-region EBS snapshot DR flow (now sim-validatable via sockerless#602) are pulled into Phase 9;
+only genuine real-AWS work (apply, DNS/ACM, federation, 200+ load, `e2e-aws` enforcement) stays under
+open decision #1. Two recent sim-fidelity efforts (#127, #128) closed **all** sockerless blockers
+(#602–#606 via #607; #608/#609 via #611), so the EMF→metrics→alarms→dashboard path is sim-CI-validatable.
+
+## Prior phase — user-registered SSH keys + per-workspace SSH subdomain (Phase 4b)
 
 **In progress — user-registered SSH keys + per-workspace SSH subdomain (Phase 4b).**
 The user asked for: each user inputs their SSH key, and SSHes into each running

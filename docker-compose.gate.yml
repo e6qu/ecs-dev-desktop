@@ -52,7 +52,10 @@ services:
   # (/api/internal/authz). It verifies the Pomerium assertion against Pomerium's
   # JWKS (fetched via the health.devbox.localhost alias over trusted-CA TLS) and
   # decides ownership from the DynamoDB workspace record. COMPUTE_PROVIDER is
-  # left unset (the PDP only reads ownership; no compute needed).
+  # left unset (the PDP only reads ownership; no compute needed), so the in-process
+  # fakes back compute/storage — opted into explicitly with EDD_ALLOW_FAKE_PROVIDERS
+  # since the image runs `next start` (NODE_ENV=production), where falling back to the
+  # fakes is otherwise refused.
   web:
     build:
       context: .
@@ -60,6 +63,7 @@ services:
     environment:
       DYNAMODB_ENDPOINT: http://dynamodb-local:8000
       DYNAMODB_TABLE: edd-gate-e2e
+      EDD_ALLOW_FAKE_PROVIDERS: "1"
       AWS_REGION: us-east-1
       AWS_ACCESS_KEY_ID: dummy
       AWS_SECRET_ACCESS_KEY: dummy

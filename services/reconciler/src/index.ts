@@ -1,11 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
+  DEFAULT_EARLY_SESSION_MS,
+  DEFAULT_EARLY_SNAPSHOT_INTERVAL_MS,
   DEFAULT_GC_GRACE_MS,
   DEFAULT_IDLE_THRESHOLD_MS,
   DEFAULT_PROVISIONING_TIMEOUT_MS,
   DEFAULT_SNAPSHOT_INTERVAL_MS,
+  DEFAULT_TASKDEF_KEEP_REVISIONS,
   isoTimestamp,
   selectDueForSnapshot,
+  selectOrphanSecrets,
   selectOrphanSnapshots,
   selectOrphanTasks,
   selectOrphanVolumes,
@@ -50,6 +54,9 @@ export interface ReconcilerService {
   /** Task ids still referenced by a workspace record — the orphan-task reaper's
    * keep-set (a RUNNING workspace task in none of these is an orphan). */
   listReferencedTasks(): Promise<readonly TaskId[]>;
+  /** Ids of every workspace that still exists — the orphan-secret reaper's keep-set
+   * (an agent secret tagged with a workspace id in none of these is an orphan). */
+  listWorkspaceIds(): Promise<readonly WorkspaceId[]>;
   /** Workspaces sitting in `provisioning` (claim time as `lastActivity`) — candidates
    * for stuck-wake recovery. */
   listStuckProvisioning(): Promise<readonly ActiveWorkspace[]>;
@@ -91,6 +98,12 @@ export interface ReconcilerDeps {
   idleThresholdMs?: number;
   /** Interval between scheduled snapshots; defaults to `DEFAULT_SNAPSHOT_INTERVAL_MS`. */
   snapshotIntervalMs?: number;
+  /** Shorter snapshot interval for a young workspace; defaults to `DEFAULT_EARLY_SNAPSHOT_INTERVAL_MS`. */
+  earlySnapshotIntervalMs?: number;
+  /** How long a workspace stays on the early snapshot cadence; defaults to `DEFAULT_EARLY_SESSION_MS`. */
+  earlySessionMs?: number;
+  /** Newest task-def revisions to keep per family when pruning; defaults to `DEFAULT_TASKDEF_KEEP_REVISIONS`. */
+  taskDefKeep?: number;
   /** Grace window before an orphan is reaped; defaults to `DEFAULT_GC_GRACE_MS`. */
   gcGraceMs?: number;
   /** How long a record may sit in `provisioning` before its crashed wake is reverted
@@ -153,6 +166,8 @@ export interface MaintenanceResult {
   idle: ReconcileResult;
   snapshots: SnapshotResult;
   tasks: ReapResult;
+  secrets: ReapResult;
+  taskDefs: { deregistered: number };
   gc: GcResult;
 }
 
@@ -163,12 +178,19 @@ export interface MaintenanceResult {
 export class Reconciler {
   private readonly idleThresholdMs: number;
   private readonly snapshotIntervalMs: number;
+  private readonly earlySnapshotIntervalMs: number;
+  private readonly earlySessionMs: number;
+  private readonly taskDefKeep: number;
   private readonly gcGraceMs: number;
   private readonly provisioningTimeoutMs: number;
 
   constructor(private readonly deps: ReconcilerDeps) {
     this.idleThresholdMs = deps.idleThresholdMs ?? DEFAULT_IDLE_THRESHOLD_MS;
     this.snapshotIntervalMs = deps.snapshotIntervalMs ?? DEFAULT_SNAPSHOT_INTERVAL_MS;
+    this.earlySnapshotIntervalMs =
+      deps.earlySnapshotIntervalMs ?? DEFAULT_EARLY_SNAPSHOT_INTERVAL_MS;
+    this.earlySessionMs = deps.earlySessionMs ?? DEFAULT_EARLY_SESSION_MS;
+    this.taskDefKeep = deps.taskDefKeep ?? DEFAULT_TASKDEF_KEEP_REVISIONS;
     this.gcGraceMs = deps.gcGraceMs ?? DEFAULT_GC_GRACE_MS;
     this.provisioningTimeoutMs = deps.provisioningTimeoutMs ?? DEFAULT_PROVISIONING_TIMEOUT_MS;
   }
@@ -234,7 +256,10 @@ export class Reconciler {
   /** Take scheduled point-in-time snapshots of workspaces past the interval. */
   async snapshotDue(): Promise<SnapshotResult> {
     const candidates = await this.deps.service.listSnapshotCandidates();
-    const due = selectDueForSnapshot(candidates, this.now(), this.snapshotIntervalMs);
+    const due = selectDueForSnapshot(candidates, this.now(), this.snapshotIntervalMs, {
+      intervalMs: this.earlySnapshotIntervalMs,
+      sessionMs: this.earlySessionMs,
+    });
     let snapshotted = 0;
     let skipped = 0;
     for (const id of due) {
@@ -342,8 +367,64 @@ export class Reconciler {
     return { scanned: existing.length, reaped, failed };
   }
 
+  /**
+   * Reap per-workspace agent secrets whose workspace record is gone (deleted). The
+   * secret is left to this sweep on terminate — symmetric to the retained snapshot —
+   * rather than deleted synchronously, so there is no delete racing a concurrent wake.
+   * Best-effort per secret: a delete that errors is counted + logged, never aborts.
+   */
+  async reapOrphanSecrets(): Promise<ReapResult> {
+    const compute = this.deps.compute;
+    const listSecrets = compute?.listWorkspaceAgentSecrets?.bind(compute);
+    const deleteSecret = compute?.deleteAgentSecret?.bind(compute);
+    if (compute === undefined || listSecrets === undefined || deleteSecret === undefined) {
+      return { scanned: 0, reaped: 0, failed: 0 };
+    }
+    const [existing, liveIds] = await Promise.all([
+      listSecrets(),
+      this.deps.service.listWorkspaceIds(),
+    ]);
+    const orphans = selectOrphanSecrets(existing, new Set(liveIds), this.now(), this.gcGraceMs);
+
+    let reaped = 0;
+    let failed = 0;
+    for (const secret of orphans) {
+      try {
+        await deleteSecret(secret.name);
+        reaped += 1;
+      } catch (err) {
+        failed += 1;
+        this.deps.logger?.warn("reap: failed to delete orphan workspace secret", {
+          secret: secret.name,
+          workspaceId: secret.workspaceId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    return { scanned: existing.length, reaped, failed };
+  }
+
+  /**
+   * Deregister stale workspace task-definition revisions (keep the newest N per
+   * family). Per-launch secret injection registers a new revision each time, so they
+   * grow unbounded; this bounds them. Best-effort — absent on the backend ⇒ a no-op.
+   */
+  async pruneTaskDefinitions(): Promise<{ deregistered: number }> {
+    const compute = this.deps.compute;
+    const prune = compute?.pruneTaskDefinitions?.bind(compute);
+    if (prune === undefined) return { deregistered: 0 };
+    try {
+      return { deregistered: await prune(this.taskDefKeep) };
+    } catch (err) {
+      this.deps.logger?.warn("prune: failed to deregister stale task definitions", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return { deregistered: 0 };
+    }
+  }
+
   /** One full maintenance sweep: scale-to-zero, scheduled snapshots, reap orphaned
-   * tasks, then GC. */
+   * tasks + secrets, prune stale task defs, then GC. */
   async runMaintenance(): Promise<MaintenanceResult> {
     // Provisioning recovery first: a record stranded mid-wake must be back to
     // stopped before any other sweep reasons about it.
@@ -356,7 +437,11 @@ export class Reconciler {
     // Reap orphaned tasks before GC: stopping an orphan releases its managed volume
     // (deleteOnTermination), which the next sweep's GC then reaps.
     const tasks = await this.reapOrphanTasks();
+    // Reap agent secrets whose workspace record is gone (symmetric to orphan tasks).
+    const secrets = await this.reapOrphanSecrets();
+    // Bound task-definition revision growth (per-launch secret injection accumulates them).
+    const taskDefs = await this.pruneTaskDefinitions();
     const gc = await this.collectGarbage();
-    return { provisioning, drift, idle, snapshots, tasks, gc };
+    return { provisioning, drift, idle, snapshots, tasks, secrets, taskDefs, gc };
   }
 }

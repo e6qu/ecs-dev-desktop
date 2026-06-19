@@ -1749,3 +1749,18 @@ listStuckProvisioning` + `recoverStuckProvisioning` revert provisioning→stoppe
   reproduces" evidence comments on #608/#609. Net: the full EMF→metrics→alarms→dashboard observability
   path is now sim-CI-validatable, and **no sockerless gap blocks us** — `BUGS.md` → External blockers
   has #602–#606 and #608/#609 all fixed-confirmed.
+- **2026-06-19 — Phase 9: codex code-review remediation (12 findings + DR), one PR (#129).** A deep
+  `codex` review produced 12 findings; all were fixed with tests, none deferred. **Critical:** prod
+  fake-provider guard (fail-loud `control-plane.ts`); terraform IAM for the per-workspace agent-secret
+  create/inject path + a workspace task role + passed `ECS_EXECUTION_ROLE_ARN`/`ECS_TASK_ROLE_ARN`;
+  transactional SSH-key fingerprint uniqueness (sentinel + `writeTransaction`). **High:** shorter
+  early-session snapshot cadence (no fresh-workspace data loss); fail-loud repo-clone/git-credential
+  surfacing (stderr→portal log view + IDE marker); orphan agent-secret GC (tag-on-create + reconciler
+  `reapOrphanSecrets`). **Medium/Low:** task-def revision GC (reconciler prune, keep newest N per
+  family); owner-identity required at create (no unopenable workspaces); cost `?window=` rejects
+  invalid; topology CA-cert text. **Deferred→done:** cross-region EBS snapshot DR
+  (`StorageProvider.copySnapshot` + sim integ, via sockerless#602). **Coupled, not built:**
+  `CONNECTION_TOKEN` — correctly stays with the future DYNAMIC gate (tokenless-behind-gate today;
+  building it now = dead code §6.5). Each finding sim/integ/unit-validated; the two terraform criticals
+  proven against the `terraform-sim` IAM apply. Two self-introduced CI failures (gate fakes opt-in +
+  a cost integ assertion) were diagnosed from the logs and fixed.
