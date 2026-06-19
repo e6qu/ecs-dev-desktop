@@ -115,8 +115,11 @@ active}` and a priced `fleet.cost.usd` once per sweep.
   role; 0 when unlimited) and a `quota.denied` count on rejection — the create path is
   the one place that knows both the owner's count and their role-derived limit.
 - Real-AWS verification that EMF stdout lands as CloudWatch metrics + alarms fire
-  (only the JSON shape is unit-tested; the sim has no metrics endpoint). _Tracked
-  under `e2e-aws`._
+  (only the JSON shape is unit-tested). _Tracked under `e2e-aws`._ A 2026-06-19
+  fidelity pass found the sim DOES support the CloudWatch metric read/write APIs but
+  not **EMF extraction** (sockerless#604) or the **alarm API** (sockerless#603) — so
+  this could become sim-validatable, not just real-AWS, once those land (see `BUGS.md`
+  → External blockers).
 
 ## Audit
 

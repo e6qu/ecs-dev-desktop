@@ -46,6 +46,26 @@ active breakage):
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
+- **sockerless#602/#603/#604 (open — filed 2026-06-19)** — a fidelity pass over the surfaces
+  behind our "AWS-gated" ops/DR items found three genuine gaps (probe + sim-source verified),
+  each blocking sim-validation of something currently real-AWS-only:
+  - **#602 — EC2 `CopySnapshot` not implemented** (`InvalidAction`; no handler). Blocks
+    cross-region EBS snapshot **DR** (snapshot → copy → restore) against the sim.
+  - **#603 — CloudWatch alarm API not implemented** (`PutMetricAlarm`/`DescribeAlarms` →
+    `InvalidAction`; the sim has CloudWatch _metrics_ but not _alarms_). This is why
+    `enable_metric_alarms=false` for the sim — none of our alarms (`reconciler-not-running`,
+    the CP-down/5xx, GC/reap/throttle) are sim-validatable. Once fixed, alarm CRUD + evaluation
+    against the sim's existing metrics closes the loop.
+  - **#604 — CloudWatch Logs does not extract EMF** (`PutLogEvents` stores events but never
+    parses the `_aws.CloudWatchMetrics` block into metrics). Our metrics ride EMF-over-logs, so
+    this blocks validating the whole `@edd/cloudwatch-metrics` path against the sim — even though
+    the sim already supports the CloudWatch metric _read_ APIs.
+
+  What DOES run on the sim today (so these are the only gaps): CloudWatch metric write/read
+  (`PutMetricData`/`GetMetricStatistics`/`GetMetricData`/`ListMetrics`), the full EBS
+  create/snapshot/restore lifecycle, and the `create→wake→connect→delete` journey (the
+  container-mode `user-journey` e2e). Awaiting upstream fixes (cf. #593's #590/#591/#592 cycle).
+
 - **sockerless#569 (fixed upstream — confirmed downstream 2026-06-16)** —
   process-mode (`SIM_RUNTIME=process`) `ecs:RunTask` with a managed-EBS volume used
   to **panic** the sim (nil Docker client in the async transition: `ec2.go:3800` ←

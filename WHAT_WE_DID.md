@@ -1694,3 +1694,16 @@ listStuckProvisioning` + `recoverStuckProvisioning` revert provisioning→stoppe
   on). `terraform fmt`+`validate` clean; web unit 64; tsc/eslint/knip clean. **Deferred (AWS-gated /
   larger):** full X-Ray/OTel distributed tracing, a synthetic create→wake→connect canary, EBS AZ/region
   DR, and real-time per-workspace status — all want the account to build+validate against real AWS.
+- **2026-06-19 — Sockerless fidelity pass on the "AWS-gated" ops/DR surfaces; filed 3 upstream gaps.**
+  Probed how much of the AWS-gated work (alarms, EMF metrics, EBS DR) could run on sockerless instead
+  of needing the account. Rigorously (probe + sim-source verified, catching two of my own CLI
+  false-positives) found: the sim DOES implement CloudWatch metrics (`PutMetricData`/`GetMetricStatistics`/
+  `GetMetricData`/`ListMetrics`) and the full EBS create/snapshot/restore lifecycle, and the
+  create→wake→connect journey already runs (the `user-journey` e2e) — but three genuine gaps remain,
+  each filed upstream with a reproduction + AWS-spec reference: **sockerless#602** (EC2 `CopySnapshot`
+  unimplemented → blocks cross-region EBS DR), **#603** (CloudWatch alarm API unimplemented — metrics
+  but no `PutMetricAlarm`/`DescribeAlarms` → why `enable_metric_alarms=false` for the sim), **#604**
+  (CloudWatch Logs doesn't extract EMF → our EMF-over-logs metrics path can't be sim-validated).
+  Recorded in `BUGS.md` → External blockers; cross-referenced from `observability-gaps.md`. Once these
+  land upstream (cf. the #593/#590-#592 cycle), our alarms, EMF metrics, and EBS DR become
+  sim-CI-validatable rather than real-AWS-only.
