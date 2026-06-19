@@ -82,9 +82,9 @@ test("member lifecycle in the browser acts on real ECS tasks (create â†’ stop â†
   expect(woken.taskId).not.toBe(created.taskId);
   expect(woken.latestSnapshotId).toMatch(/^snap-/);
 
-  // Delete: the workspace (and its task) goes away.
+  // Delete is async: the workspace moves to the `deleting` tombstone (the reconciler
+  // converges teardown of the task/volume and removes the record). So the card
+  // transitions to `deleting` (no further actions) rather than vanishing instantly.
   await card.getByRole("button", { name: "delete" }).click();
-  await expect(
-    page.locator(sel(TESTID.workspaceCard, { "data-image": WORKSPACE_IMAGE })),
-  ).toHaveCount(0);
+  await expect(card).toHaveAttribute("data-status", "deleting");
 });
