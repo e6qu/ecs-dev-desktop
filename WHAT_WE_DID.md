@@ -1764,3 +1764,32 @@ listStuckProvisioning` + `recoverStuckProvisioning` revert provisioning→stoppe
   building it now = dead code §6.5). Each finding sim/integ/unit-validated; the two terraform criticals
   proven against the `terraform-sim` IAM apply. Two self-introduced CI failures (gate fakes opt-in +
   a cost integ assertion) were diagnosed from the logs and fixed.
+- **2026-06-19 — Self-recovery + monitoring (4 themes, one PR; codex-advised).** Asked codex for
+  self-recovery recommendations, synthesised with our own analysis, confirmed 4 design decisions with
+  the user (one bundled PR; desired-state + tombstone async delete; Middle data-safety; live config
+  self-check now), then built all four on `feat/self-recovery-and-monitoring`:
+  - **Self-recovery / convergence.** Durable intent (`desiredState` present/deleted) + a `deleting`
+    tombstone so an interrupted delete is resumable; `markRecovered` (error→stopped when a snapshot
+    exists) + `markSnapshotLost` (reverse drift: a referenced snapshot deleted out-of-band → honest
+    unrecoverable error). `WorkspaceService.remove` now CAS-marks the tombstone (DELETE → **202**,
+    idempotent); reconciler `recoverErrors` + `finishDeletions` + `detectStorageDrift` sweeps converge
+    each cycle, budget-bounded (`DEFAULT_CONVERGE_BUDGET`), Middle data-safety (final snapshot before
+    teardown). Metrics `reconciler.recovered/deletions.{finished,failed}/drift.snapshot_lost` + gauges
+    `workspaces.error/.deleting`; alarms `workspaces-stuck-error` (needs a human) +
+    `reconciler-deletions-failed`. Propagated the async-delete semantics through every affected
+    integ/e2e suite.
+  - **Privilege/security warnings.** In-image privilege guard (`edd-privilege-guard.sh`) shims
+    docker/sudo/mount/… on PATH: blocks (exit 126) + warns the user + ships a structured line to
+    CloudWatch + reports to the control plane. `POST /api/workspaces/:id/security-event` (agent auth) →
+    a first-class audit event + `security.privilege_attempt` metric; alarm `security-privilege-attempts`.
+  - **Config-sync self-check (UI/API/SDK/CLI).** Pure `evaluateConfigSync` (real providers + ECS/EBS +
+    observability coordinates + DynamoDB/cluster reachability → ok/drift/unknown). `GET
+/api/admin/config-sync`, `api-client.adminConfigSync`, a Configuration-sync card on the admin
+    Infrastructure page, and a **new thin `@edd/cli` `edd` CLI** over the SDK (`edd config-sync/doctor`
+    exits 1 on drift; `health`/`status`/`workspaces`). Terraform-plan infra drift is left as a separate
+    deploy-time gate (noted in DO_NEXT).
+  - **Functional usability checks.** The idle-agent probes whether the desktop is actually usable (IDE
+    on :3000 reachable + workspace writable) and folds it into the heartbeat; the control plane stores
+    it (surfaced as a `usable` row in admin Inspect). The create→clone→build→run→delete journey
+    (user-journey + workspace-toolchain e2e) is the synthetic canary. Each theme unit/integ-tested;
+    full build + lint + tf validate clean.
