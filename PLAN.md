@@ -205,9 +205,15 @@ prioritized in `DO_NEXT.md`. **Deliverables (do not defer any actionable item):*
 - **Medium / Low** — (8) bound ECS task-definition revision growth; (9) require a valid owner identity
   for proxy-routed workspaces (or authorize by a stable subject claim); (10) reject invalid `?window=`
   instead of coercing to `all`; (11) fix the stale topology CA-cert edge text.
-- **Deferred → now actionable (folded in, no longer "future"):** `CONNECTION_TOKEN` generation +
-  persistence + proxy handoff; **cross-region EBS snapshot DR** (snapshot → `CopySnapshot` → restore)
-  now that **sockerless#602** makes it sim-validatable.
+- **Deferred → now actionable:** **cross-region EBS snapshot DR** (snapshot → `CopySnapshot` →
+  restore) — **DONE**: `StorageProvider.copySnapshot` + the EC2 adapter (cross-region client by
+  coordinates alone, §6.9), proven by a sim integ (snapshot→copy→restore) now that **sockerless#602**
+  landed. `CONNECTION_TOKEN` — on review this is **correctly coupled to the future DYNAMIC
+  wake-on-connect gate**, NOT a free-standing fix: the image already consumes `CONNECTION_TOKEN` when
+  injected (`entrypoint.sh`), but the current STATIC gate model runs the IDE **tokenless behind the
+  gate** (`EDD_DISABLE_CONNECTION_TOKEN=1` — the gate is the PEP). Generating/persisting/injecting a
+  token has no consumer until the gate forwards it (the dynamic-gate extension), so building it now
+  would be dead code (§6.5). It stays with that extension; the image side is already ready.
 
 - **Gate:** each item proven by a unit/integ/e2e test on fakes / DynamoDB-Local / the sim (incl. the
   `terraform-sim` IAM simulation for the IAM/role items + a sim DR copy e2e); real-enforcement checks

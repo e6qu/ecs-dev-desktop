@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
+  CopySnapshotCommand,
   CreateSnapshotCommand,
   CreateVolumeCommand,
   DeleteSnapshotCommand,
@@ -50,6 +51,11 @@ export interface Ec2StorageProviderDeps {
   region?: string;
   /** Restrict managed resources to this scope (tagged + filtered on enumerate). */
   scope?: string;
+  /** Build an EC2 client for another region (cross-region snapshot copy / DR). The
+   * same coordinates as the source — only the region changes — so it hits the sim
+   * (shared endpoint) or real AWS (per-region endpoint) by config alone (§6.9).
+   * Absent ⇒ `copySnapshot` is unavailable. */
+  clientForRegion?: (region: string) => EC2Client;
 }
 
 /** Throw if a required field the cloud should have returned is absent. */
@@ -78,27 +84,37 @@ function errMessage(e: unknown): string {
 export class Ec2StorageProvider implements StorageProvider {
   private readonly client: EC2Client;
   private readonly availabilityZone: string;
+  private readonly region: string;
   private readonly scope?: string;
+  private readonly clientForRegion?: (region: string) => EC2Client;
 
   constructor(deps: Ec2StorageProviderDeps) {
     this.client = deps.client;
-    this.availabilityZone = deps.availabilityZone ?? `${deps.region ?? DEFAULT_AWS_REGION}a`;
+    this.region = deps.region ?? DEFAULT_AWS_REGION;
+    this.availabilityZone = deps.availabilityZone ?? `${this.region}a`;
     this.scope = deps.scope;
+    this.clientForRegion = deps.clientForRegion;
   }
 
   /** Build a provider from the ambient AWS env (`AWS_ENDPOINT_URL` → the sim). */
   static fromEnv(opts: { scope?: string } = {}): Ec2StorageProvider {
     const region = process.env.AWS_REGION ?? DEFAULT_AWS_REGION;
     const endpoint = process.env.AWS_ENDPOINT_URL;
-    const client = new EC2Client({
+    const clientForRegion = (r: string): EC2Client =>
+      new EC2Client({
+        region: r,
+        maxAttempts: AWS_SDK_MAX_ATTEMPTS,
+        retryMode: AWS_SDK_RETRY_MODE,
+        ...(endpoint
+          ? { endpoint, credentials: { accessKeyId: "local", secretAccessKey: "local" } }
+          : {}),
+      });
+    return new Ec2StorageProvider({
+      client: clientForRegion(region),
       region,
-      maxAttempts: AWS_SDK_MAX_ATTEMPTS,
-      retryMode: AWS_SDK_RETRY_MODE,
-      ...(endpoint
-        ? { endpoint, credentials: { accessKeyId: "local", secretAccessKey: "local" } }
-        : {}),
+      clientForRegion,
+      ...opts,
     });
-    return new Ec2StorageProvider({ client, region, ...opts });
   }
 
   private managedTags(): Tag[] {
@@ -153,6 +169,44 @@ export class Ec2StorageProvider implements StorageProvider {
       return await this.deleteOrSurfaceLeak(() => this.deleteSnapshot(id), `snapshot ${id}`, err);
     }
     return { id, sourceVolumeId: volume };
+  }
+
+  /**
+   * Copy a snapshot to `destinationRegion` for disaster recovery. CopySnapshot is
+   * issued AGAINST the destination region (it names the origin via `SourceRegion`),
+   * so we build a client for that region with the same coordinates (endpoint/creds)
+   * as the source — the sim (shared endpoint) or real AWS (per-region) by config
+   * alone (§6.9). The copy is tagged managed so it enumerates + GCs like any other.
+   */
+  async copySnapshot(snapshot: SnapshotId, destinationRegion: string): Promise<SnapshotId> {
+    if (this.clientForRegion === undefined) {
+      throw new Error("copySnapshot requires a clientForRegion factory (cross-region DR)");
+    }
+    const dest = this.clientForRegion(destinationRegion);
+    const out = await dest.send(
+      new CopySnapshotCommand({
+        SourceRegion: this.region,
+        SourceSnapshotId: snapshot,
+        Description: `edd DR copy of ${snapshot} from ${this.region}`,
+        TagSpecifications: [{ ResourceType: "snapshot", Tags: this.managedTags() }],
+      }),
+    );
+    const id = snapshotId(required(out.SnapshotId, "copied SnapshotId"));
+    // The copy starts `pending`; a volume can only hydrate from a `completed`
+    // snapshot, so wait for it to settle in the destination region before returning.
+    try {
+      await waitUntilSnapshotCompleted(
+        { client: dest, maxWaitTime: SETTLE_WAIT_SECONDS },
+        { SnapshotIds: [id] },
+      );
+    } catch (err) {
+      return await this.deleteOrSurfaceLeak(
+        () => dest.send(new DeleteSnapshotCommand({ SnapshotId: id })).then(() => undefined),
+        `copied snapshot ${id}`,
+        err,
+      );
+    }
+    return id;
   }
 
   async deleteVolume(volume: VolumeId): Promise<void> {

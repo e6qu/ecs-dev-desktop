@@ -74,14 +74,16 @@ bundled into **`PLAN.md` Phase 9** and tracked as concrete bugs in `BUGS.md` →
 11. **[Low] Topology graph stale** — `topology.ts:121` still says the SSH gateway "issues CA certs";
     update to registered-key authorization / `ssh-authorize` (CA removed in #111).
 
-**Deferred-but-now-actionable, folded into Phase 9 (no longer "future"):**
+**Deferred-but-now-actionable:**
 
-- **`CONNECTION_TOKEN` injection** — generate + persist the OpenVSCode token in the control plane and
-  hand it to the authenticated user via the proxy (was parked on the "future DYNAMIC wake-on-connect
-  gate"; the token generation/persistence is independently doable now).
-- **Cross-region EBS snapshot DR** (snapshot → `CopySnapshot` → restore) — now sim-validatable since
-  **sockerless#602** landed; add the DR copy path + an e2e against the sim (previously parked as
-  real-AWS-only).
+- **Cross-region EBS snapshot DR** (snapshot → `CopySnapshot` → restore) — **DONE** (Phase 9):
+  `StorageProvider.copySnapshot` + EC2 adapter (cross-region client by coordinates alone, §6.9) +
+  a sim integ proving snapshot→copy→restore, now that **sockerless#602** landed.
+- **`CONNECTION_TOKEN` injection** — on review, **correctly coupled to the future DYNAMIC
+  wake-on-connect gate**, not free-standing. The image already consumes `CONNECTION_TOKEN` when
+  injected, but the STATIC gate model runs tokenless behind the gate (`EDD_DISABLE_CONNECTION_TOKEN=1`),
+  so a control-plane-generated token has no consumer until the gate forwards it — building it now is
+  dead code (§6.5). Lands with that gate extension.
 
 Only genuinely AWS-account-gated work (real `terraform apply`, real DNS/ACM, real IdP federation, 200+
 load, live `e2e-aws` enforcement) stays under decision #1 below — that is an external decision, not a

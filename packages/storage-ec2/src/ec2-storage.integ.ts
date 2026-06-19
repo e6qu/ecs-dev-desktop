@@ -36,6 +36,29 @@ describe("Ec2StorageProvider against the sockerless AWS sim", () => {
     expect(afterVols).not.toContain(restored.id);
   });
 
+  it("runs the cross-region DR flow: snapshot → CopySnapshot → restore from the copy", async () => {
+    // Disaster recovery: a workspace snapshot is copied to another region, from which
+    // a fresh volume can be hydrated. The sim serves any region from one endpoint, so
+    // the "destination region" is nominal here, but the standard CopySnapshot →
+    // restore path is exercised end to end (sockerless#602). Real cross-region
+    // durability/latency is the e2e-aws tier; this proves the API flow + lineage.
+    const vol = await sp.createVolume();
+    const snap = await sp.createSnapshot(vol.id);
+
+    const copyId = await sp.copySnapshot(snap.id, "us-west-2");
+    expect(copyId).not.toBe(snap.id); // a new, independent snapshot
+    expect((await sp.listSnapshots()).map((s) => s.id)).toContain(copyId);
+
+    // Restore (hydrate) a fresh volume from the DR copy — the recovery step.
+    const recovered = await sp.createVolume({ fromSnapshot: copyId });
+    expect(recovered.hydratedFrom).toBe(copyId);
+
+    await sp.deleteVolume(recovered.id);
+    await sp.deleteSnapshot(copyId);
+    await sp.deleteSnapshot(snap.id);
+    await sp.deleteVolume(vol.id);
+  });
+
   it("runs a multi-generation snapshot chain (repeated scale-to-zero persistence)", async () => {
     // Scale-to-zero persists a workspace as an EBS snapshot, then hydrates a fresh
     // volume from it on wake — over and over. Each cycle snapshots a volume that

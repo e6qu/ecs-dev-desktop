@@ -44,6 +44,10 @@ export interface StorageProvider {
   listVolumes(): Promise<readonly VolumeRef[]>;
   /** Enumerate existing snapshots (for orphan GC). */
   listSnapshots(): Promise<readonly SnapshotRef[]>;
+  /** Copy a snapshot to another region for disaster recovery (snapshot → copy →
+   * restore-in-region), returning the new snapshot id. Optional — absent ⇒ no
+   * cross-region DR (a backend without copy support). */
+  copySnapshot?(snapshotId: SnapshotId, destinationRegion: string): Promise<SnapshotId>;
   /** Dependency health (admin Health board). Real adapters do a live check; absent
    * ⇒ reported as `unknown` (real check available on AWS). */
   health?(): Promise<ComponentHealth>;

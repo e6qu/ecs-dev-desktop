@@ -94,10 +94,14 @@ ones were fixed — see Resolved — these remain as deliberate follow-ups, not
 active breakage):
 
 - **`CONNECTION_TOKEN` (OpenVSCode) not yet injected by the provider** — a random
-  per-boot token today. **Now actionable (Phase 9), no longer parked on the future
-  DYNAMIC gate:** the control plane should generate + persist it (Secrets Manager,
-  alongside the now-secret-injected agent token) and hand it to the authenticated user
-  via the proxy. The agent-token plaintext exposure is **fixed** (see Resolved).
+  per-boot token today. On the Phase-9 review this is **correctly coupled to the future
+  DYNAMIC wake-on-connect gate**, not a free-standing fix: the golden image already
+  consumes `CONNECTION_TOKEN` when injected (`entrypoint.sh`), but the current STATIC
+  gate model runs the IDE **tokenless behind the gate** (`EDD_DISABLE_CONNECTION_TOKEN=1`;
+  the gate is the PEP). The control plane generating/persisting/injecting a token has no
+  consumer until the gate forwards it to the authenticated user — building it now would
+  be dead code (§6.5), so it lands with that gate extension (the image side is ready).
+  The agent-token plaintext exposure is **fixed** (see Resolved).
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
