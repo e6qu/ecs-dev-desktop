@@ -53,4 +53,44 @@ describe("evaluateConfigSync", () => {
     // unknown deps don't make it "out of sync"
     expect(report.inSync).toBe(true);
   });
+
+  it("adds an IAM-permissions check from the preflight signal; unknown never breaks sync", () => {
+    const present = evaluateConfigSync({
+      env: REAL_ENV,
+      dynamodb: "ok",
+      compute: "ok",
+      iam: { kind: "checked", decisions: [{ action: "ecs:RunTask", allowed: true }] },
+    });
+    expect(present.checks.some((c) => c.name === "iam-permissions:control-plane")).toBe(true);
+
+    const unknown = evaluateConfigSync({
+      env: REAL_ENV,
+      dynamodb: "ok",
+      compute: "ok",
+      iam: { kind: "unavailable", reason: "no caller identity" },
+    });
+    const iamCheck = unknown.checks.find((c) => c.name === "iam-permissions:control-plane");
+    expect(iamCheck?.status).toBe("unknown");
+    expect(unknown.inSync).toBe(true);
+  });
+
+  it("omits the IAM check when no preflight signal is supplied", () => {
+    const report = evaluateConfigSync({ env: REAL_ENV, dynamodb: "ok", compute: "ok" });
+    expect(report.checks.some((c) => c.name.startsWith("iam-permissions"))).toBe(false);
+  });
+
+  it("passes the resolved IAM identity through to the report", () => {
+    const identity = {
+      account: "123456789012",
+      callerArn: "arn:aws:sts::123456789012:assumed-role/edd-control-plane/sess",
+      principalArn: "arn:aws:iam::123456789012:role/edd-control-plane",
+    };
+    const report = evaluateConfigSync({
+      env: REAL_ENV,
+      dynamodb: "ok",
+      compute: "ok",
+      iamIdentity: identity,
+    });
+    expect(report.identity).toEqual(identity);
+  });
 });

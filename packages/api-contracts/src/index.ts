@@ -48,9 +48,18 @@ export const configCheck = z.object({
   status: z.enum(["ok", "drift", "unknown"]),
   detail: z.string(),
 });
+/** The resolved AWS caller identity the control plane runs as (sts:GetCallerIdentity). */
+export const iamIdentity = z.object({
+  account: z.string(),
+  callerArn: z.string(),
+  principalArn: z.string().nullable(),
+});
+export type IamIdentityDto = z.infer<typeof iamIdentity>;
 export const configSyncReport = z.object({
   inSync: z.boolean(),
   checks: z.array(configCheck),
+  /** Present on a real deployment once the caller identity resolves. */
+  identity: iamIdentity.optional(),
 });
 export type ConfigSyncReportDto = z.infer<typeof configSyncReport>;
 

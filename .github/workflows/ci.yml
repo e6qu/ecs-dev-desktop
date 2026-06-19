@@ -1265,6 +1265,10 @@ jobs:
           assert_iam "iam:PassRole execution role to ecs-tasks allowed" "allowed" \
             --action-names "iam:PassRole" --resource-arns "${EXEC_ROLE_ARN}" \
             --context-entries "ContextKeyName=iam:PassedToService,ContextKeyValues=ecs-tasks.amazonaws.com,ContextKeyType=string"
+          # IAM self-check grant: the control plane must be able to simulate its own
+          # principal (the runtime config-sync IAM preflight depends on this).
+          assert_iam "iam:SimulatePrincipalPolicy self-check allowed" "allowed" \
+            --action-names "iam:SimulatePrincipalPolicy" --resource-arns "*"
 
           # -- IAM policy simulation: reconciler role --------------------------------
           RECON_ROLE=$(terraform -chdir="${TF_DIR}" output -raw reconciler_task_role_arn)

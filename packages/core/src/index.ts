@@ -190,6 +190,23 @@ export type {
 } from "./observability/config-sync";
 export { evaluateConfigSync } from "./observability/config-sync";
 
+// IAM requirements (pure): the per-component required-action manifest + self-check.
+export type {
+  IamComponent,
+  IamConditionContext,
+  IamResourceScope,
+  IamRequirement,
+  IamActionDecision,
+  IamPreflightSignal,
+  IamIdentity,
+} from "./observability/iam-requirements";
+export {
+  IAM_REQUIREMENTS,
+  IAM_CONTEXT_TOKENS,
+  requiredActions,
+  evaluateIamPermissions,
+} from "./observability/iam-requirements";
+
 // Observability — derived audit feed (admin Logs/Audit; CloudTrail on AWS).
 export type { AuditEvent, AuditSource, FleetAuditInput } from "./observability/audit";
 export { deriveFleetAudit } from "./observability/audit";
