@@ -74,11 +74,21 @@ describe("admin cost report", () => {
     expect(Date.parse(report.generatedAt) - Date.parse(report.windowStart)).toBe(dayMs);
   });
 
-  it("falls back to the full lifetime on a garbage ?window= value", async () => {
+  it("rejects a garbage ?window= value with 400 (not a silent lifetime report)", async () => {
     const res = await GET(
       new Request("http://localhost/api/admin/costs?window=bogus", { headers: admin("root") }),
     );
-    expect(res.status).toBe(200); // costReportQuery.catch → "all"; not a 400
+    // costReportQuery uses `.default("all")`, so an absent param defaults but an
+    // explicit invalid value fails validation → the route returns 400 at the boundary
+    // instead of silently showing lifetime cost (the prior `.catch("all")` swallowed it).
+    expect(res.status).toBe(400);
+  });
+
+  it("defaults an absent ?window= to the full lifetime (200)", async () => {
+    const res = await GET(
+      new Request("http://localhost/api/admin/costs", { headers: admin("root") }),
+    );
+    expect(res.status).toBe(200);
   });
 
   it("denies non-admins", async () => {
