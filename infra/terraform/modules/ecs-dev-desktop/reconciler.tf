@@ -32,5 +32,11 @@ resource "aws_scheduler_schedule" "reconciler" {
     retry_policy {
       maximum_retry_attempts = 1
     }
+
+    # A sweep invocation that fails even after the retry goes to the DLQ instead of
+    # vanishing — so a reconciler that never launches is visible (alarmed in alarms.tf).
+    dead_letter_config {
+      arn = aws_sqs_queue.reconciler_dlq.arn
+    }
   }
 }

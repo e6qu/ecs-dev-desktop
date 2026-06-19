@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { randomUUID } from "node:crypto";
+
 import { metricSinkFromEnv } from "@edd/cloudwatch-metrics";
 import {
   METRIC_API_ERROR,
@@ -9,6 +11,10 @@ import {
 } from "@edd/core";
 
 import { errorField, log } from "./logger";
+
+/** Response header carrying the per-request correlation id, so a user-visible error
+ * can be traced to its access-log line (which logs the same `requestId`). */
+export const REQUEST_ID_HEADER = "x-edd-request-id";
 
 /**
  * Per-request observability for the API routes: latency + status + error-rate
@@ -22,12 +28,15 @@ export interface ObservabilityDeps {
   metrics: MetricSink;
   log: StructuredLogger;
   now: () => number;
+  /** Per-request correlation id source (injectable for deterministic tests). */
+  id: () => string;
 }
 
 const defaultDeps: ObservabilityDeps = {
   metrics: metricSinkFromEnv(),
   log,
   now: () => Date.now(),
+  id: () => randomUUID(),
 };
 
 function methodOf(first: unknown): string {
@@ -40,12 +49,13 @@ function record(
   method: string,
   status: number,
   durationMs: number,
+  requestId: string,
 ): void {
   const statusClass = `${String(Math.floor(status / 100))}xx`;
   deps.metrics.timing(METRIC_API_LATENCY_MS, durationMs, { route, status: statusClass });
   deps.metrics.count(METRIC_API_REQUEST, 1, { route, status: statusClass });
   if (status >= 500) deps.metrics.count(METRIC_API_ERROR, 1, { route });
-  deps.log.info("api request", { route, method, status, durationMs });
+  deps.log.info("api request", { route, method, status, durationMs, requestId });
 }
 
 /**
@@ -62,17 +72,20 @@ export function withObservability<A extends unknown[]>(
   return async (...args: A): Promise<Response> => {
     const startedMs = deps.now();
     const method = methodOf(args[0]);
+    const requestId = deps.id();
     try {
       const res = await handler(...args);
-      record(deps, route, method, res.status, deps.now() - startedMs);
+      res.headers.set(REQUEST_ID_HEADER, requestId);
+      record(deps, route, method, res.status, deps.now() - startedMs, requestId);
       return res;
     } catch (err) {
       // Observe and re-throw: a thrown error here is by definition UNEXPECTED (a
       // genuine 500). Handled/expected failures are returned as the appropriate
       // status by the route/service (e.g. a compute-launch failure → 503), never
-      // raised. The wrapper only records + re-raises.
-      record(deps, route, method, 500, deps.now() - startedMs);
-      deps.log.error("api request threw", { route, method, error: errorField(err) });
+      // raised. The wrapper only records + re-raises (the correlation id is in both
+      // the access log and the thrown-error log).
+      record(deps, route, method, 500, deps.now() - startedMs, requestId);
+      deps.log.error("api request threw", { route, method, requestId, error: errorField(err) });
       throw err;
     }
   };

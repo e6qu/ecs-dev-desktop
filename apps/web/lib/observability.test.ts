@@ -3,7 +3,7 @@ import { InMemoryMetricSink, type StructuredLogger } from "@edd/core";
 import { NextResponse } from "next/server";
 import { describe, expect, it } from "vitest";
 
-import { withObservability, type ObservabilityDeps } from "./observability";
+import { REQUEST_ID_HEADER, withObservability, type ObservabilityDeps } from "./observability";
 
 function deps(): { deps: ObservabilityDeps; metrics: InMemoryMetricSink; logs: string[] } {
   const metrics = new InMemoryMetricSink();
@@ -15,7 +15,7 @@ function deps(): { deps: ObservabilityDeps; metrics: InMemoryMetricSink; logs: s
   };
   // A clock that advances 5ms per read → deterministic non-zero latency.
   let t = 1000;
-  return { deps: { metrics, log, now: () => (t += 5) }, metrics, logs };
+  return { deps: { metrics, log, now: () => (t += 5), id: () => "req-test-id" }, metrics, logs };
 }
 
 describe("withObservability", () => {
@@ -62,5 +62,17 @@ describe("withObservability", () => {
     await expect(wrapped(new Request("http://x/api/throws"))).rejects.toThrow("nope");
     expect(metrics.recorded.some((m) => m.name === "api.request.error")).toBe(true);
     expect(logs).toContain("error:api request threw");
+  });
+
+  it("stamps the correlation id on the response header", async () => {
+    const { deps: d } = deps();
+    const wrapped = withObservability(
+      "workspaces.list",
+      (_req: Request) => Promise.resolve(NextResponse.json({ ok: true })),
+      d,
+    );
+
+    const res = await wrapped(new Request("http://x/api/workspaces"));
+    expect(res.headers.get(REQUEST_ID_HEADER)).toBe("req-test-id");
   });
 });

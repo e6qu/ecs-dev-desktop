@@ -24,7 +24,7 @@
     "@types/node": "^25.9.3",
     "eslint": "^10.5.0",
     "eslint-config-prettier": "^10.1.8",
-    "jscpd": "^5.0.9",
+    "jscpd": "^5.0.10",
     "knip": "^6.17.1",
     "turbo": "^2.9.18",
     "typescript": "^6.0.3",

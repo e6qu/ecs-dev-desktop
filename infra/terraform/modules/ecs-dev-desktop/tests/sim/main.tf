@@ -42,6 +42,7 @@ provider "aws" {
     scheduler      = var.sim_endpoint
     appautoscaling = var.sim_endpoint
     cloudtrail     = var.sim_endpoint
+    sqs            = var.sim_endpoint
   }
 }
 
