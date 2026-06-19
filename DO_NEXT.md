@@ -14,8 +14,9 @@
 3. **Identity-aware proxy** — confirm Pomerium (sim-proven; vs Authentik/in-house).
 4. **Heartbeat interval & idle threshold** — scale-to-zero tuning. The knobs
    now exist (`EDD_HEARTBEAT_INTERVAL_S` injected into workspace tasks;
-   `EDD_IDLE_THRESHOLD_MS`/`EDD_SNAPSHOT_INTERVAL_MS`/`EDD_GC_GRACE_MS` on the
-   reconciler) — the open decision is only the production default values.
+   `EDD_IDLE_THRESHOLD_MS`/`EDD_SNAPSHOT_INTERVAL_MS`/`EDD_EARLY_SNAPSHOT_INTERVAL_MS`/
+   `EDD_EARLY_SESSION_MS`/`EDD_GC_GRACE_MS` on the reconciler) — the open decision is
+   only the production default values.
 
 Resolved: DynamoDB+ElectroDB · sockerless from source · Fargate managed-EBS ·
 manual real-AWS on `main` · AGPL-3.0-or-later · Turborepo+pnpm · CASL · dep floor

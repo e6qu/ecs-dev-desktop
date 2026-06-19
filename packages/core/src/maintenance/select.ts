@@ -14,6 +14,8 @@ export interface SnapshotCandidate {
   readonly id: WorkspaceId;
   /** When the workspace was last snapshotted; absent if never. */
   readonly latestSnapshotAt?: IsoTimestamp;
+  /** When the workspace was created; enables the shorter early-session cadence. */
+  readonly createdAt?: IsoTimestamp;
 }
 
 /** The storage ids still referenced by live workspaces (must never be GC'd). */
@@ -71,17 +73,28 @@ export function selectOrphanTasks(
 }
 
 /**
- * Workspaces due for a point-in-time snapshot: never snapshotted, or last
- * snapshotted at least `intervalMs` ago.
+ * Workspaces due for a point-in-time snapshot. A workspace that has NEVER been
+ * snapshotted is always due, so a fresh session gets a recoverable point on the very
+ * next sweep rather than after a full interval. Otherwise it is due when its last
+ * snapshot is older than the applicable interval: a YOUNG workspace (created within
+ * `early.sessionMs`) uses the shorter `early.intervalMs` so a new session's work is
+ * captured frequently before the workspace settles onto the steady-state `intervalMs`.
+ * `early` is optional — omit it to use a single interval for all candidates.
  */
 export function selectDueForSnapshot(
   candidates: readonly SnapshotCandidate[],
   now: IsoTimestamp,
   intervalMs: number,
+  early?: { readonly intervalMs: number; readonly sessionMs: number },
 ): WorkspaceId[] {
   return candidates
-    .filter(
-      (c) => c.latestSnapshotAt === undefined || olderThan(c.latestSnapshotAt, now, intervalMs),
-    )
+    .filter((c) => {
+      if (c.latestSnapshotAt === undefined) return true;
+      const isYoung =
+        early !== undefined &&
+        c.createdAt !== undefined &&
+        !olderThan(c.createdAt, now, early.sessionMs);
+      return olderThan(c.latestSnapshotAt, now, isYoung ? early.intervalMs : intervalMs);
+    })
     .map((c) => c.id);
 }

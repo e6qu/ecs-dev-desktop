@@ -371,6 +371,7 @@ export class WorkspaceService {
       .filter((r) => r.volumeId !== undefined)
       .map((r) => ({
         id: workspaceId(r.id),
+        createdAt: isoTimestamp(r.createdAt),
         ...(r.latestSnapshotAt === undefined
           ? {}
           : { latestSnapshotAt: isoTimestamp(r.latestSnapshotAt) }),

@@ -8,8 +8,8 @@
  * Optional env read by the SDK adapters: AWS_REGION, AWS_ENDPOINT_URL,
  * DYNAMODB_ENDPOINT — same as the rest of the platform.
  * Optional tuning (DO_NEXT decision #4 knobs; defaults in @edd/core):
- * EDD_IDLE_THRESHOLD_MS, EDD_SNAPSHOT_INTERVAL_MS, EDD_GC_GRACE_MS,
- * EDD_PROVISIONING_TIMEOUT_MS.
+ * EDD_IDLE_THRESHOLD_MS, EDD_SNAPSHOT_INTERVAL_MS, EDD_EARLY_SNAPSHOT_INTERVAL_MS,
+ * EDD_EARLY_SESSION_MS, EDD_GC_GRACE_MS, EDD_PROVISIONING_TIMEOUT_MS.
  */
 import { metricSinkFromEnv } from "@edd/cloudwatch-metrics";
 import { EcsComputeProvider } from "@edd/compute-ecs";
@@ -70,6 +70,8 @@ function tuningMs(name: string): number | undefined {
 
 const idleThresholdMs = tuningMs("EDD_IDLE_THRESHOLD_MS");
 const snapshotIntervalMs = tuningMs("EDD_SNAPSHOT_INTERVAL_MS");
+const earlySnapshotIntervalMs = tuningMs("EDD_EARLY_SNAPSHOT_INTERVAL_MS");
+const earlySessionMs = tuningMs("EDD_EARLY_SESSION_MS");
 const gcGraceMs = tuningMs("EDD_GC_GRACE_MS");
 const provisioningTimeoutMs = tuningMs("EDD_PROVISIONING_TIMEOUT_MS");
 
@@ -115,6 +117,8 @@ const reconciler = new Reconciler({
   logger: log,
   ...(idleThresholdMs === undefined ? {} : { idleThresholdMs }),
   ...(snapshotIntervalMs === undefined ? {} : { snapshotIntervalMs }),
+  ...(earlySnapshotIntervalMs === undefined ? {} : { earlySnapshotIntervalMs }),
+  ...(earlySessionMs === undefined ? {} : { earlySessionMs }),
   ...(gcGraceMs === undefined ? {} : { gcGraceMs }),
   ...(provisioningTimeoutMs === undefined ? {} : { provisioningTimeoutMs }),
 });

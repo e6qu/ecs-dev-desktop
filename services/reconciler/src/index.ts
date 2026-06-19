@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
+  DEFAULT_EARLY_SESSION_MS,
+  DEFAULT_EARLY_SNAPSHOT_INTERVAL_MS,
   DEFAULT_GC_GRACE_MS,
   DEFAULT_IDLE_THRESHOLD_MS,
   DEFAULT_PROVISIONING_TIMEOUT_MS,
@@ -91,6 +93,10 @@ export interface ReconcilerDeps {
   idleThresholdMs?: number;
   /** Interval between scheduled snapshots; defaults to `DEFAULT_SNAPSHOT_INTERVAL_MS`. */
   snapshotIntervalMs?: number;
+  /** Shorter snapshot interval for a young workspace; defaults to `DEFAULT_EARLY_SNAPSHOT_INTERVAL_MS`. */
+  earlySnapshotIntervalMs?: number;
+  /** How long a workspace stays on the early snapshot cadence; defaults to `DEFAULT_EARLY_SESSION_MS`. */
+  earlySessionMs?: number;
   /** Grace window before an orphan is reaped; defaults to `DEFAULT_GC_GRACE_MS`. */
   gcGraceMs?: number;
   /** How long a record may sit in `provisioning` before its crashed wake is reverted
@@ -163,12 +169,17 @@ export interface MaintenanceResult {
 export class Reconciler {
   private readonly idleThresholdMs: number;
   private readonly snapshotIntervalMs: number;
+  private readonly earlySnapshotIntervalMs: number;
+  private readonly earlySessionMs: number;
   private readonly gcGraceMs: number;
   private readonly provisioningTimeoutMs: number;
 
   constructor(private readonly deps: ReconcilerDeps) {
     this.idleThresholdMs = deps.idleThresholdMs ?? DEFAULT_IDLE_THRESHOLD_MS;
     this.snapshotIntervalMs = deps.snapshotIntervalMs ?? DEFAULT_SNAPSHOT_INTERVAL_MS;
+    this.earlySnapshotIntervalMs =
+      deps.earlySnapshotIntervalMs ?? DEFAULT_EARLY_SNAPSHOT_INTERVAL_MS;
+    this.earlySessionMs = deps.earlySessionMs ?? DEFAULT_EARLY_SESSION_MS;
     this.gcGraceMs = deps.gcGraceMs ?? DEFAULT_GC_GRACE_MS;
     this.provisioningTimeoutMs = deps.provisioningTimeoutMs ?? DEFAULT_PROVISIONING_TIMEOUT_MS;
   }
@@ -234,7 +245,10 @@ export class Reconciler {
   /** Take scheduled point-in-time snapshots of workspaces past the interval. */
   async snapshotDue(): Promise<SnapshotResult> {
     const candidates = await this.deps.service.listSnapshotCandidates();
-    const due = selectDueForSnapshot(candidates, this.now(), this.snapshotIntervalMs);
+    const due = selectDueForSnapshot(candidates, this.now(), this.snapshotIntervalMs, {
+      intervalMs: this.earlySnapshotIntervalMs,
+      sessionMs: this.earlySessionMs,
+    });
     let snapshotted = 0;
     let skipped = 0;
     for (const id of due) {

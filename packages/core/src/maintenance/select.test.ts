@@ -91,6 +91,42 @@ describe("selectDueForSnapshot", () => {
     ];
     expect(selectDueForSnapshot(candidates, now, ONE_HOUR)).toEqual([workspaceId("ws-edge")]);
   });
+
+  it("snapshots a YOUNG workspace on the shorter early cadence, an established one on the normal interval", () => {
+    const TEN_MIN = 10 * 60 * 1000;
+    const TWO_HOURS = 2 * 60 * 60 * 1000;
+    const fifteenMinAgo = isoTimestamp("2026-06-01T11:45:00.000Z"); // > 10m, < 1h
+    const candidates: SnapshotCandidate[] = [
+      // created 1m ago (young) + last snapshot 15m ago → due on the 10m early cadence
+      { id: workspaceId("ws-young"), createdAt: recent, latestSnapshotAt: fifteenMinAgo },
+      // created 12h ago (established) + last snapshot 15m ago → NOT due on the 1h interval
+      { id: workspaceId("ws-old"), createdAt: old, latestSnapshotAt: fifteenMinAgo },
+    ];
+    expect(
+      selectDueForSnapshot(candidates, now, ONE_HOUR, {
+        intervalMs: TEN_MIN,
+        sessionMs: TWO_HOURS,
+      }),
+    ).toEqual([workspaceId("ws-young")]);
+  });
+
+  it("never-snapshotted is due even when young (first recoverable point ASAP)", () => {
+    const candidates: SnapshotCandidate[] = [{ id: workspaceId("ws-new"), createdAt: recent }];
+    expect(
+      selectDueForSnapshot(candidates, now, ONE_HOUR, {
+        intervalMs: 10 * 60 * 1000,
+        sessionMs: 2 * 60 * 60 * 1000,
+      }),
+    ).toEqual([workspaceId("ws-new")]);
+  });
+
+  it("without an early cadence, a young workspace uses the single interval (back-compat)", () => {
+    const fifteenMinAgo = isoTimestamp("2026-06-01T11:45:00.000Z");
+    const candidates: SnapshotCandidate[] = [
+      { id: workspaceId("ws-young"), createdAt: recent, latestSnapshotAt: fifteenMinAgo },
+    ];
+    expect(selectDueForSnapshot(candidates, now, ONE_HOUR)).toEqual([]);
+  });
 });
 
 describe("selectOrphanTasks", () => {
