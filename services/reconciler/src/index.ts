@@ -21,6 +21,7 @@ import {
   type ReferencedStorage,
   type Result,
   type SnapshotCandidate,
+  type SnapshotId,
   type StorageProvider,
   type TaskId,
   type WorkspaceId,
@@ -76,6 +77,13 @@ export interface ReconcilerService {
   listRecoverableErrors(): Promise<readonly { readonly id: WorkspaceId }[]>;
   /** Move a recoverable `error` workspace back to `stopped` (wake-able). */
   recoverError(id: WorkspaceId): Promise<Result<unknown, DomainError>>;
+  /** Stopped/error workspaces and the snapshot they'd restore from — reverse-drift
+   * checks each still exists (a missing one was deleted out-of-band). */
+  listSnapshotReferences(): Promise<
+    readonly { readonly id: WorkspaceId; readonly snapshotId: SnapshotId }[]
+  >;
+  /** Mark a workspace `error` (unrecoverable) because its referenced snapshot is gone. */
+  markSnapshotLostFor(id: WorkspaceId): Promise<Result<unknown, DomainError>>;
 }
 
 /** Pure: the ids of workspaces idle for at least `idleThresholdMs`. */
@@ -186,6 +194,7 @@ export interface ReapResult {
 export interface MaintenanceResult {
   provisioning: ProvisioningResult;
   drift: DriftResult;
+  storageDrift: DriftResult;
   recovered: RecoveryResult;
   deletions: RecoveryResult;
   idle: ReconcileResult;
@@ -242,6 +251,28 @@ export class Reconciler {
       else if (result.value.lost) lost += 1;
     }
     return { scanned: active.length, lost, skipped };
+  }
+
+  /**
+   * Reverse drift: a `stopped`/`error` workspace claims a snapshot it would restore
+   * from, but the snapshot was deleted out-of-band (manually). Such a workspace can
+   * never wake, so mark it unrecoverable `error` (surfaced + deletable) rather than a
+   * record that silently fails every wake. Uses the same enumeration as orphan-snapshot
+   * GC (one `listSnapshots`): GC reaps existing-but-unreferenced; this catches
+   * referenced-but-missing — the inverse.
+   */
+  async detectStorageDrift(): Promise<DriftResult> {
+    const refs = await this.deps.service.listSnapshotReferences();
+    if (refs.length === 0) return { scanned: 0, lost: 0, skipped: 0 };
+    const existing = new Set((await this.deps.storage.listSnapshots()).map((s) => s.id));
+    let lost = 0;
+    let skipped = 0;
+    for (const ref of refs) {
+      if (existing.has(ref.snapshotId)) continue;
+      if ((await this.deps.service.markSnapshotLostFor(ref.id)).ok) lost += 1;
+      else skipped += 1;
+    }
+    return { scanned: refs.length, lost, skipped };
   }
 
   /**
@@ -493,6 +524,9 @@ export class Reconciler {
     // Drift next: stop() on a record whose task died out-of-band would try
     // to snapshot a volume the platform already released.
     const drift = await this.detectDrift();
+    // Reverse drift: a stopped/error workspace whose snapshot was deleted out-of-band
+    // becomes unrecoverable error (so it isn't a false recover candidate below).
+    const storageDrift = await this.detectStorageDrift();
     // Converge desired-state intent: recover recoverable `error` workspaces forward
     // (toward working), and finish tearing down `deleting` tombstones (toward gone).
     // Both before the orphan reapers/GC so a finished delete's now-orphan resources
@@ -512,6 +546,7 @@ export class Reconciler {
     return {
       provisioning,
       drift,
+      storageDrift,
       recovered,
       deletions,
       idle,

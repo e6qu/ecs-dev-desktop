@@ -16,6 +16,7 @@ import {
   markDeleting,
   markProvisioned,
   markRecovered,
+  markSnapshotLost,
   markStopped,
   markTaskLost,
   markWaking,
@@ -861,6 +862,43 @@ export class WorkspaceService {
    * interval) — used to decide a final snapshot before delete. */
   private snapshotStale(ws: Workspace): boolean {
     return ws.latestSnapshotId === undefined;
+  }
+
+  /** Stopped/error workspaces that reference a snapshot they would restore from — the
+   * reverse-drift keep-set (a referenced snapshot missing from storage was deleted
+   * out-of-band, leaving the workspace un-wakeable). */
+  async listSnapshotReferences(): Promise<readonly { id: WorkspaceId; snapshotId: SnapshotId }[]> {
+    const records = await this.recordsByStates(["stopped", "error"]);
+    const refs: { id: WorkspaceId; snapshotId: SnapshotId }[] = [];
+    for (const r of records) {
+      if (r.latestSnapshotId !== undefined) {
+        refs.push({ id: workspaceId(r.id), snapshotId: snapshotId(r.latestSnapshotId) });
+      }
+    }
+    return refs;
+  }
+
+  /** Reverse drift: the snapshot a stopped/error workspace would restore from has been
+   * deleted out-of-band, so mark it `error` with the dangling reference cleared
+   * (honestly unrecoverable + deletable, not a record that silently fails every wake). */
+  async markSnapshotLostFor(id: WorkspaceId): Promise<Result<void, DomainError>> {
+    const found = await this.find(id);
+    if (found === null) return ok(undefined);
+    const { ws, version } = found;
+    const lost = markSnapshotLost(ws, isoTimestamp(this.deps.clock.now()));
+    if (!lost.ok) return ok(undefined); // changed since listed (e.g. woken) — skip, not an error
+    try {
+      await this.persistTransition(lost.value, version, {
+        action: "session.snapshot_lost",
+        target: id,
+        actor: SYSTEM_ACTOR,
+        detail: "referenced snapshot missing; marked unrecoverable",
+      });
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+      return ok(undefined); // benign race
+    }
+    return ok(undefined);
   }
 
   private async find(id: WorkspaceId): Promise<LoadedWorkspace | null> {

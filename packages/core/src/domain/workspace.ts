@@ -234,3 +234,26 @@ export function markRecovered(ws: Workspace, at: IsoTimestamp): Result<Workspace
 export function isUnrecoverable(ws: Workspace): boolean {
   return ws.state === "error" && ws.latestSnapshotId === undefined;
 }
+
+/**
+ * Reverse drift: the snapshot a `stopped`/`error` workspace would restore from has
+ * vanished out-of-band (manually deleted). The workspace can never wake, so move it
+ * to `error` and clear the dangling snapshot reference — honestly unrecoverable
+ * (surfaced + deletable) rather than a `stopped` record that silently fails every
+ * wake. Only meaningful for a stopped/error workspace that claims a snapshot.
+ */
+export function markSnapshotLost(ws: Workspace, at: IsoTimestamp): Result<Workspace, DomainError> {
+  if (ws.state !== "stopped" && ws.state !== "error") {
+    return err(conflictError(`cannot mark snapshot lost for ${ws.id}: workspace is ${ws.state}`));
+  }
+  if (ws.latestSnapshotId === undefined) {
+    return err(conflictError(`cannot mark snapshot lost for ${ws.id}: no snapshot referenced`));
+  }
+  return ok({
+    ...ws,
+    state: "error",
+    lastActivity: at,
+    latestSnapshotId: undefined,
+    latestSnapshotAt: undefined,
+  });
+}

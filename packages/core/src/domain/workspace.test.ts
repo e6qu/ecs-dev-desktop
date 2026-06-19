@@ -9,6 +9,7 @@ import {
   markDeleting,
   markProvisioned,
   markRecovered,
+  markSnapshotLost,
   markStopped,
   markTaskLost,
   markWaking,
@@ -162,5 +163,17 @@ describe("workspace domain (functional core)", () => {
   it("isUnrecoverable is false for an error that still has a snapshot", () => {
     const errored = { ...base, state: "error" as const, latestSnapshotId: snapshotId("snap-1") };
     expect(isUnrecoverable(errored)).toBe(false);
+  });
+
+  it("markSnapshotLost moves a stopped workspace → unrecoverable error, clearing the ref", () => {
+    const stopped = unwrap(markStopped(base, { id: snapshotId("snap-1"), at: t1 }, t1));
+    const lost = unwrap(markSnapshotLost(stopped, t1));
+    expect(lost.state).toBe("error");
+    expect(lost.latestSnapshotId).toBeUndefined();
+    expect(isUnrecoverable(lost)).toBe(true);
+  });
+
+  it("markSnapshotLost refuses a running workspace (only stopped/error reference a snapshot)", () => {
+    expect(markSnapshotLost(base, t1).ok).toBe(false);
   });
 });

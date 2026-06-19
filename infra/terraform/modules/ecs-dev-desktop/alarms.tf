@@ -121,6 +121,45 @@ resource "aws_cloudwatch_metric_alarm" "reconciler_not_running" {
 }
 
 # Reconciler self-healing FAILURES — a delete/stop the sweep retried still failed.
+# A workspace stuck in `error` (unrecoverable — no snapshot, or one deleted out-of-band)
+# can't be self-healed forward; it needs a human to recreate or delete it. Sustained
+# above the threshold across the window = page someone.
+resource "aws_cloudwatch_metric_alarm" "workspaces_stuck_error" {
+  count               = var.enable_metric_alarms ? 1 : 0
+  alarm_name          = "${var.name}-workspaces-stuck-error"
+  alarm_description   = "Workspaces stuck in unrecoverable `error` (self-recovery can't move them forward; needs a human)."
+  namespace           = local.metric_namespace
+  metric_name         = "reconciler.workspaces.error"
+  statistic           = "Maximum"
+  period              = 300
+  evaluation_periods  = 3
+  threshold           = var.stuck_error_alarm_threshold
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = var.alarm_sns_topic_arns
+  ok_actions          = var.alarm_sns_topic_arns
+  tags                = local.tags
+}
+
+# A finish-delete that keeps failing (e.g. a persistent final-snapshot error) leaves a
+# `deleting` tombstone that never converges — investigate.
+resource "aws_cloudwatch_metric_alarm" "reconciler_deletions_failed" {
+  count               = var.enable_metric_alarms ? 1 : 0
+  alarm_name          = "${var.name}-reconciler-deletions-failed"
+  alarm_description   = "Reconciler could not finish tearing down a deleting workspace (stuck tombstone)."
+  namespace           = local.metric_namespace
+  metric_name         = "reconciler.deletions.failed"
+  statistic           = "Sum"
+  period              = 3600
+  evaluation_periods  = 1
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+  treat_missing_data  = "notBreaching"
+  alarm_actions       = var.alarm_sns_topic_arns
+  ok_actions          = var.alarm_sns_topic_arns
+  tags                = local.tags
+}
+
 # A non-zero count means an orphan volume (gc.failed) or task (tasks.reap_failed) is
 # stuck and leaking cost; the sweep keeps running (best-effort) but a human is needed.
 resource "aws_cloudwatch_metric_alarm" "reconciler_gc_failed" {

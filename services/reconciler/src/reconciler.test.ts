@@ -6,7 +6,9 @@ import {
   fixedClock,
   isoTimestamp,
   ok,
+  snapshotId,
   taskId,
+  volumeId,
   workspaceId,
   type ComputeProvider,
   type StorageProvider,
@@ -38,6 +40,8 @@ function fakeService(overrides: Partial<ReconcilerService> = {}): ReconcilerServ
     finishDeleting: () => Promise.reject(new Error("finishDeleting not expected")),
     listRecoverableErrors: () => Promise.resolve([]),
     recoverError: () => Promise.reject(new Error("recoverError not expected")),
+    listSnapshotReferences: () => Promise.resolve([]),
+    markSnapshotLostFor: () => Promise.reject(new Error("markSnapshotLostFor not expected")),
     ...overrides,
   };
 }
@@ -494,6 +498,40 @@ describe("Reconciler.pruneTaskDefinitions", () => {
     });
     expect(await reconciler.pruneTaskDefinitions()).toEqual({ deregistered: 0 });
     expect(warnings).toHaveLength(1);
+  });
+});
+
+describe("Reconciler.detectStorageDrift (reverse drift: manually-deleted snapshot)", () => {
+  it("marks a workspace error when its referenced snapshot is gone, spares present ones", async () => {
+    const marked: string[] = [];
+    const storage: StorageProvider = {
+      ...(await emptyStorage()),
+      listSnapshots: () =>
+        Promise.resolve([
+          {
+            id: snapshotId("snap-present"),
+            createdAt: isoTimestamp("2026-06-01T00:00:00.000Z"),
+            sourceVolumeId: volumeId("vol-1"),
+          },
+        ]),
+    };
+    const reconciler = new Reconciler({
+      service: fakeService({
+        listSnapshotReferences: () =>
+          Promise.resolve([
+            { id: workspaceId("ws-ok"), snapshotId: snapshotId("snap-present") },
+            { id: workspaceId("ws-gone"), snapshotId: snapshotId("snap-deleted") },
+          ]),
+        markSnapshotLostFor: (id) => {
+          marked.push(id);
+          return Promise.resolve({ ok: true as const, value: undefined });
+        },
+      }),
+      storage,
+      clock: fixedClock("2026-06-01T02:00:00.000Z"),
+    });
+    expect(await reconciler.detectStorageDrift()).toEqual({ scanned: 2, lost: 1, skipped: 0 });
+    expect(marked).toEqual([workspaceId("ws-gone")]);
   });
 });
 

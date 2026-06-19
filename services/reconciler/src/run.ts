@@ -37,6 +37,12 @@ import {
   METRIC_RECONCILER_TASKS_REAPED,
   METRIC_RECONCILER_TASKS_REAP_FAILED,
   METRIC_RECONCILER_SKIPPED,
+  METRIC_RECONCILER_RECOVERED,
+  METRIC_RECONCILER_DELETIONS_FINISHED,
+  METRIC_RECONCILER_DELETIONS_FAILED,
+  METRIC_RECONCILER_SNAPSHOT_LOST,
+  METRIC_RECONCILER_ERROR_GAUGE,
+  METRIC_RECONCILER_DELETING_GAUGE,
   METRIC_RECONCILER_SNAPSHOTTED,
   METRIC_RECONCILER_STOPPED,
   METRIC_RECONCILER_SWEEP,
@@ -132,6 +138,10 @@ try {
   metrics.count(METRIC_RECONCILER_SWEEP);
   metrics.count(METRIC_RECONCILER_PROVISIONING_RECOVERED, result.provisioning.recovered);
   metrics.count(METRIC_RECONCILER_DRIFT_LOST, result.drift.lost);
+  metrics.count(METRIC_RECONCILER_SNAPSHOT_LOST, result.storageDrift.lost);
+  metrics.count(METRIC_RECONCILER_RECOVERED, result.recovered.acted);
+  metrics.count(METRIC_RECONCILER_DELETIONS_FINISHED, result.deletions.acted);
+  metrics.count(METRIC_RECONCILER_DELETIONS_FAILED, result.deletions.failed);
   metrics.count(METRIC_RECONCILER_STOPPED, result.idle.stopped);
   metrics.count(METRIC_RECONCILER_SNAPSHOTTED, result.snapshots.snapshotted);
   metrics.count(
@@ -180,6 +190,11 @@ try {
     metrics.gauge(METRIC_FLEET_RUNNING, stats.byState.running);
     metrics.gauge(METRIC_FLEET_STOPPED, stats.byState.stopped);
     metrics.gauge(METRIC_FLEET_ACTIVE, stats.active);
+    // Convergence-health gauges: workspaces that couldn't move forward (error) or are
+    // mid-teardown (deleting). A sustained non-zero error gauge is the "needs a human"
+    // signal (the alarm in alarms.tf watches it).
+    metrics.gauge(METRIC_RECONCILER_ERROR_GAUGE, stats.byState.error);
+    metrics.gauge(METRIC_RECONCILER_DELETING_GAUGE, stats.byState.deleting);
     metrics.gauge(METRIC_FLEET_COST_USD, (await cost.report()).total.totalUsd);
     await heartbeat
       .put({ id: RECONCILER_HEARTBEAT_ID, lastRunAt: isoTimestamp(systemClock.now()) })
