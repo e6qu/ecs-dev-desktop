@@ -1719,3 +1719,19 @@ listStuckProvisioning` + `recoverStuckProvisioning` revert provisioning→stoppe
   (CloudTrail `LookupEvents` absolute-offset `NextToken` over a newest-first list → overlapping/
   duplicate pages; our audit-source pagination loop collects duplicates and misses entries). Recorded
   in `BUGS.md` → External blockers.
+- **2026-06-19 — Adopted sockerless #607 (re-pin); confirmed all 5 fixes downstream; surfaced + filed
+  2 more (#608/#609).** Upstream #607 (merge `74c0a3d2`) fixed all five gaps from the two fidelity
+  passes (#602 CopySnapshot, #603 alarm API, #604 EMF extraction, #605 `FilterLogEvents` prefix, #606
+  CloudTrail cursor). Re-pinned the `third_party/sockerless` submodule `fcb58281 → 74c0a3d2`, rebuilt
+  the process-mode sim, and **confirmed each fix downstream** by re-probing (copy-snapshot returns a
+  new id; alarm CRUD + live `ALARM` state; an EMF log doc round-trips through `get-metric-statistics`;
+  `FilterLogEvents` honours `logStreamNamePrefix` + mutual-exclusion; CloudTrail pages no longer
+  overlap on a growing trail). Then exercised the module's alarm/dashboard resources against the sim
+  via `terraform apply` on `tests/sim`, which surfaced two residual gaps, both filed upstream with
+  reproductions: **#608** (`PutDashboard` unimplemented → 404) and **#609** (alarms drop a percentile
+  `ExtendedStatistic`, so the wake-latency p99 alarm shows a perpetual `plan` diff / fails the
+  idempotency gate). Split the CloudWatch dashboard onto its own `enable_cloudwatch_dashboard` toggle
+  (decoupled from `enable_metric_alarms`) so each can be enabled the moment its upstream gap closes;
+  both stay `false` for the sim fixture until #608/#609 land. `terraform fmt`/`validate` clean; the
+  sim apply (alarms+dashboard off) is idempotent (`plan -detailed-exitcode` = 0). Tracked in `BUGS.md`
+  → External blockers (#602–#606 moved to fixed-confirmed; #608/#609 added as open).

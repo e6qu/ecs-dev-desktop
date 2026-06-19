@@ -37,6 +37,7 @@ provider "aws" {
     elbv2          = var.sim_endpoint
     route53        = var.sim_endpoint
     acm            = var.sim_endpoint
+    cloudwatch     = var.sim_endpoint
     cloudwatchlogs = var.sim_endpoint
     secretsmanager = var.sim_endpoint
     scheduler      = var.sim_endpoint
@@ -81,9 +82,18 @@ module "edd" {
 
   nat_mode = var.nat_mode
 
-  # The simulator exposes no CloudWatch metrics/alarms endpoint (the EMF metrics
-  # resolve only against real AWS), so the alarm resources are off for the sim apply.
+  # The sim implements the CloudWatch alarm API (PutMetricAlarm/DescribeAlarms/
+  # DeleteAlarms) and EMF metric extraction as of sockerless #607. The alarm
+  # resources all apply + round-trip EXCEPT the wake-latency p99 alarm: the sim
+  # doesn't persist a percentile `ExtendedStatistic` (sockerless#609), so that one
+  # alarm shows a perpetual `plan` diff and fails the idempotency gate. Off until
+  # #609 lands; flip true (independently of the dashboard) once it does.
   enable_metric_alarms = false
+
+  # The CloudWatch ops dashboard needs PutDashboard, which the sim does not yet
+  # implement (sockerless#608). Gated separately from the alarms so each can be
+  # turned on the moment its upstream gap closes.
+  enable_cloudwatch_dashboard = false
 
   # TLS + workspace-wildcard routing (ACM cert, DNS validation, HTTPS listener).
   domain_name     = var.enable_dns ? "edd-sim.example.com" : ""
