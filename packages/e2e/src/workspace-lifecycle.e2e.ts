@@ -88,7 +88,12 @@ describe("workspace lifecycle through WorkspaceService on the sim (real ECS + EB
     const again = unwrap(await service.connect(workspaceId(ws.id)));
     expect(again.state).toBe("running");
 
+    // Delete is async now: remove() tombstones (state → `deleting`); the reconciler's
+    // finishDeleting converges teardown and removes the record. Drive both to prove the
+    // full create→…→remove lifecycle reaches a clean end.
     expect((await service.remove(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.get(workspaceId(ws.id)))?.state).toBe("deleting");
+    expect((await service.finishDeleting(workspaceId(ws.id))).ok).toBe(true);
     expect(await service.get(workspaceId(ws.id))).toBeNull();
   });
 
