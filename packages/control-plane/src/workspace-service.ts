@@ -58,7 +58,12 @@ import {
   type WorkspaceId,
   type WorkspaceState,
 } from "@edd/core";
-import { writeTransaction, type AuditEventEntity, type WorkspaceEntity } from "@edd/db";
+import {
+  writeTransaction,
+  type AuditEventEntity,
+  type OwnerWorkspaceCountEntity,
+  type WorkspaceEntity,
+} from "@edd/db";
 
 import { toWorkspaceDetail, toWorkspaceDto } from "./dto";
 
@@ -90,6 +95,16 @@ export class ComputeUnavailableError extends Error {
   }
 }
 
+/** Thrown when a create is refused because the owner is at their per-user workspace
+ * quota — detected ATOMICALLY (the create transaction's conditional counter increment
+ * canceled), so concurrent creates can't race past the cap. The route maps it to 409. */
+export class QuotaExceededError extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = "QuotaExceededError";
+  }
+}
+
 /** A lifecycle event to record atomically with its state transition. */
 interface LifecycleAudit {
   action: string;
@@ -116,6 +131,14 @@ export interface WorkspaceServiceDeps {
   /** Optional metric sink (CloudWatch EMF on AWS; no-op otherwise). Used to time
    * wake-on-connect cold starts — a core SLO. Absent → no metrics emitted. */
   metrics?: MetricSink;
+  /**
+   * Optional per-owner workspace-count entity. When present (and `create` is given a
+   * `quotaLimit`), the per-user quota is enforced ATOMICALLY: the create transaction
+   * conditionally increments this owner's count, and `finishDeleting` decrements it,
+   * so concurrent creates can't race past the cap. Absent → no atomic enforcement
+   * (the route's read-check still applies, but the race is not closed).
+   */
+  ownerCounts?: OwnerWorkspaceCountEntity;
 }
 
 /** A synthetic version-conflict error so a canceled transaction flows through the
@@ -157,6 +180,29 @@ function throwForCanceledTransaction(result: CanceledTransaction): never {
   if (fatal !== undefined) {
     throw new Error(
       `workspace write transaction failed (DynamoDB ${fatal}) — not a concurrency conflict`,
+    );
+  }
+  throw transactionCanceledAsConflict();
+}
+
+/** Like {@link throwForCanceledTransaction}, but for the quota-enforcing create: if the
+ * counter op at `quotaIndex` is the one whose condition failed, the owner is at their
+ * cap → {@link QuotaExceededError}; otherwise defer to the normal handling. */
+function throwForCanceledCreate(
+  result: CanceledTransaction,
+  quotaIndex: number,
+  ownerId: string,
+  limit: number,
+): never {
+  const fatal = fatalTransactionCode(result);
+  if (fatal !== undefined) {
+    throw new Error(
+      `workspace write transaction failed (DynamoDB ${fatal}) — not a concurrency conflict`,
+    );
+  }
+  if ((result.data ?? [])[quotaIndex]?.code === "ConditionalCheckFailed") {
+    throw new QuotaExceededError(
+      `workspace quota reached for ${ownerId} (limit ${limit.toString()})`,
     );
   }
   throw transactionCanceledAsConflict();
@@ -262,6 +308,10 @@ export class WorkspaceService {
     baseImage: BaseImage;
     repoUrl?: string;
     repoRef?: string;
+    /** The owner's per-role workspace cap. When given (and `ownerCounts` is wired),
+     * the cap is enforced atomically in the persist transaction — a concurrent create
+     * past the cap cancels and throws {@link QuotaExceededError}. */
+    quotaLimit?: number;
   }): Promise<WorkspaceDto> {
     const id = newWorkspaceId();
     const at = isoTimestamp(this.deps.clock.now());
@@ -291,12 +341,16 @@ export class WorkspaceService {
       sshHost: task.sshHost,
     });
     try {
-      await this.persistNew(ws, {
-        action: "session.create",
-        target: id,
-        actor: input.ownerEmail ?? input.ownerId,
-        detail: input.repoUrl === undefined ? "blank session" : `repo ${input.repoUrl}`,
-      });
+      await this.persistNew(
+        ws,
+        {
+          action: "session.create",
+          target: id,
+          actor: input.ownerEmail ?? input.ownerId,
+          detail: input.repoUrl === undefined ? "blank session" : `repo ${input.repoUrl}`,
+        },
+        input.quotaLimit,
+      );
     } catch (err) {
       // Crash-consistency: the task launched but the record never landed — stop the
       // task so nothing real leaks. The stop is best-effort (the orphan-task reaper is
@@ -854,11 +908,32 @@ export class WorkspaceService {
         /* reaper backstop */
       }
     }
+    const oc = this.deps.ownerCounts;
     try {
-      await this.deps.workspaces
-        .delete({ id })
-        .where(({ version: v }, { eq }) => eq(v, version))
-        .go();
+      if (oc !== undefined) {
+        // Free the owner's quota slot in the SAME transaction as the hard-delete. The
+        // decrement is UNCONDITIONAL (no `where`): it must never block the delete — a
+        // counter drift would only weaken enforcement, self-correcting on the next
+        // create — so the delete's own version condition is the only cancel source.
+        const result = await writeTransaction(
+          { ws: this.deps.workspaces, oc },
+          ({ ws: wsE, oc: ocE }) => [
+            wsE
+              .delete({ id })
+              .where(({ version: v }, { eq }) => eq(v, version))
+              .commit(),
+            ocE.update({ ownerId: ws.ownerId }).subtract({ count: 1 }).commit(),
+          ],
+        ).go();
+        if (result.canceled) {
+          return err(conflictError(`finishDeleting ${id} lost a concurrent update`));
+        }
+      } else {
+        await this.deps.workspaces
+          .delete({ id })
+          .where(({ version: v }, { eq }) => eq(v, version))
+          .go();
+      }
     } catch (e) {
       if (!isVersionConflict(e)) throw e;
       return err(conflictError(`finishDeleting ${id} lost a concurrent update`));
@@ -995,13 +1070,40 @@ export class WorkspaceService {
     };
   }
 
-  /** Insert a brand-new workspace record (fails if the id already exists),
-   * recording its `session.create` event in the same transaction. */
-  private async persistNew(ws: Workspace, audit: LifecycleAudit): Promise<void> {
+  /** Insert a brand-new workspace record (fails if the id already exists), recording
+   * its `session.create` event in the same transaction — and, when quota enforcement
+   * is wired (`ownerCounts` + `quotaLimit`), an ATOMIC per-owner counter increment
+   * guarded by `attribute_not_exists(count) OR count < limit` in that SAME transaction,
+   * so a create past the cap cancels (→ {@link QuotaExceededError}) instead of racing
+   * past a read-then-create check. */
+  private async persistNew(
+    ws: Workspace,
+    audit: LifecycleAudit,
+    quotaLimit?: number,
+  ): Promise<void> {
     const item = { ...toWorkspaceDetail(ws), version: 0 };
     const auditItem = this.auditItem(audit);
     if (auditItem === undefined) {
       await this.deps.workspaces.create(item).go();
+      return;
+    }
+    const oc = this.deps.ownerCounts;
+    if (oc !== undefined && quotaLimit !== undefined) {
+      const result = await writeTransaction(
+        { ws: this.deps.workspaces, ev: auditItem.entity, oc },
+        ({ ws: wsE, ev, oc: ocE }) => [
+          wsE.create(item).commit(),
+          ev.put(auditItem.attrs).commit(),
+          ocE
+            .update({ ownerId: ws.ownerId })
+            .add({ count: 1 })
+            .where((attr, op) => `${op.notExists(attr.count)} OR ${op.lt(attr.count, quotaLimit)}`)
+            .commit(),
+        ],
+      ).go();
+      // The counter op is the 3rd item; if it (and only it) failed its condition, the
+      // owner is at their cap — a quota rejection, not a generic conflict.
+      if (result.canceled) throwForCanceledCreate(result, 2, ws.ownerId, quotaLimit);
       return;
     }
     const result = await writeTransaction(

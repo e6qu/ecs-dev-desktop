@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 import { createWorkspaceRequest } from "@edd/api-contracts";
 import { defineAbilityFor } from "@edd/authz";
-import { ComputeUnavailableError } from "@edd/control-plane";
+import { ComputeUnavailableError, QuotaExceededError } from "@edd/control-plane";
 import { baseImage, ownerId, unavailableError, withinWorkspaceQuota } from "@edd/core";
 
 import {
@@ -83,14 +83,29 @@ async function handlePOST(req: Request) {
       ...(parsed.data.repoUrl === undefined ? {} : { repoUrl: parsed.data.repoUrl }),
       ...(parsed.data.repoRef === undefined ? {} : { repoRef: parsed.data.repoRef }),
       baseImage: image,
+      // Authoritative cap: enforced ATOMICALLY in the create transaction (the read
+      // check above is only a fast UX gate). Concurrent creates past `limit` cancel.
+      // `null` = unlimited → no counter condition.
+      ...(limit === null ? {} : { quotaLimit: limit }),
     });
   } catch (e) {
     // The compute backend couldn't launch the task — a handled, retryable failure
-    // (→ 503), not an unexpected 500. Anything else is genuinely unexpected: rethrow.
+    // (→ 503), not an unexpected 500.
     if (e instanceof ComputeUnavailableError) {
       return domainErrorResponse(unavailableError(e.message));
     }
-    throw e;
+    // The atomic quota counter rejected a concurrent create that raced past the read
+    // check — surface the same 409 the read check would have (closes the TOCTOU race).
+    if (e instanceof QuotaExceededError) {
+      recordQuotaUsage(getMetrics(), {
+        owned: limit ?? 0,
+        limit,
+        role: principal.role,
+        allowed: false,
+      });
+      return conflict(e.message);
+    }
+    throw e; // genuinely unexpected
   }
   // The control plane records `session.create` to the audit ledger (attributed
   // to the owner), so the cost model and admin feed see it without a route-level

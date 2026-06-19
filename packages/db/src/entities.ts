@@ -329,3 +329,35 @@ export type ReconcilerHeartbeatEntity = ReturnType<typeof makeReconcilerHeartbea
 
 /** The fixed primary-key id of the singleton reconciler-heartbeat record. */
 export const RECONCILER_HEARTBEAT_ID = "reconciler";
+
+/**
+ * ElectroDB per-owner workspace-count entity over the same single table: one record
+ * per owner holding their live workspace count, so the create path can enforce the
+ * per-user quota ATOMICALLY. A read-then-create check is racy (concurrent creates all
+ * pass the read and all create → quota bypass). Instead `WorkspaceService.create`
+ * issues, in ONE `writeTransaction` with the workspace insert, an atomic `ADD count 1`
+ * guarded by `attribute_not_exists(count) OR count < limit` — so the (limit+1)th
+ * concurrent create's transaction cancels and exactly `limit` can ever exist.
+ * `finishDeleting` decrements it when a record is actually removed. One item per owner
+ * keyed by `ownerId` — a plain conditional update, no secondary index.
+ */
+export function makeOwnerWorkspaceCountEntity(client: DynamoDBClient, table = TABLE) {
+  return new Entity(
+    {
+      model: { entity: "ownerWorkspaceCount", version: "1", service: "edd" },
+      attributes: {
+        ownerId: { type: "string", required: true },
+        count: { type: "number", required: true },
+      },
+      indexes: {
+        primary: {
+          pk: { field: "PK", composite: ["ownerId"] },
+          sk: { field: "SK", composite: [] },
+        },
+      },
+    },
+    { client, table },
+  );
+}
+
+export type OwnerWorkspaceCountEntity = ReturnType<typeof makeOwnerWorkspaceCountEntity>;

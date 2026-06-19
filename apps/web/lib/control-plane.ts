@@ -31,6 +31,7 @@ import {
 import {
   createDynamoClient,
   makeAuditEventEntity,
+  makeOwnerWorkspaceCountEntity,
   makeBaseImageEntity,
   makeCostRollupEntity,
   makeReconcilerHeartbeatEntity,
@@ -54,6 +55,7 @@ let catalog: CatalogService | undefined;
 let sshKeys: SshKeyService | undefined;
 let auditLog: StoredAuditSource | undefined;
 let auditEvents: ReturnType<typeof makeAuditEventEntity> | undefined;
+let ownerCounts: ReturnType<typeof makeOwnerWorkspaceCountEntity> | undefined;
 
 /** The shared `auditEvent` entity over the single table. `WorkspaceService`
  * writes lifecycle events to it atomically with each transition; the audit log
@@ -61,6 +63,14 @@ let auditEvents: ReturnType<typeof makeAuditEventEntity> | undefined;
 function getAuditEntity(): ReturnType<typeof makeAuditEventEntity> {
   auditEvents ??= makeAuditEventEntity(createDynamoClient(), tableName());
   return auditEvents;
+}
+
+/** The shared per-owner workspace-count entity. `WorkspaceService` increments it
+ * (guarded by the quota) atomically with each create and decrements it on delete —
+ * so the per-user cap can't be raced past. */
+function getOwnerCountEntity(): ReturnType<typeof makeOwnerWorkspaceCountEntity> {
+  ownerCounts ??= makeOwnerWorkspaceCountEntity(createDynamoClient(), tableName());
+  return ownerCounts;
 }
 
 /** The first-class, append-only audit log (actor-attributed control-plane
@@ -286,6 +296,7 @@ async function build(): Promise<WorkspaceService> {
       compute,
       clock: systemClock,
       audit: getAuditEntity(),
+      ownerCounts: getOwnerCountEntity(),
       // Wake cold-start latency → CloudWatch EMF when LOG_PROVIDER=cloudwatch.
       metrics: metricSinkFromEnv(),
     });
@@ -305,5 +316,6 @@ async function build(): Promise<WorkspaceService> {
     ),
     clock: systemClock,
     audit: getAuditEntity(),
+    ownerCounts: getOwnerCountEntity(),
   });
 }

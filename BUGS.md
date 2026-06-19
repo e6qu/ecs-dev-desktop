@@ -32,12 +32,15 @@ queued in priority order:
   name join is re-done in 3 pages (`lib/catalog-details.ts`); the SSH connect command + `canCreate` +
   `availableActions` (the lifecycle state machine) are computed client-side. Fix template: return
   ready-to-render DTOs from contracts + thin client pollers (mirror `InfrastructureView`).
-- **[idempotency] quota check is a TOCTOU race** (`apps/web/app/api/workspaces/route.ts:63`) — concurrent
-  creates each read `owned < limit` and all pass → quota bypass → unbounded Fargate launches. Needs an
-  atomic per-owner counter (conditional `ADD count 1` guarded by `count < limit`) in the create
-  transaction. Also: billing stops at delete-_request_ not teardown (cost under-counts during teardown
-  lag); `finishDeleting`'s data-safety snapshot is discarded then GC'd (documented protection not
-  delivered); `recordSecurityEvent` is non-idempotent (retry → duplicate audit rows + double metric).
+- **[idempotency] quota TOCTOU race — FIXED (batch 3, atomic counter).** The create transaction now
+  conditionally increments a per-owner `ownerWorkspaceCount` item (`ADD count 1` guarded by
+  `attribute_not_exists(count) OR count < limit`) atomically with the workspace insert, and
+  `finishDeleting` decrements it — so concurrent creates can never race past the cap (proven by a
+  concurrent-burst integ test). Remaining idempotency follow-ups: billing stops at delete-_request_ not
+  teardown (cost under-counts during teardown lag); `finishDeleting`'s data-safety snapshot is discarded
+  then GC'd (documented protection not delivered); `recordSecurityEvent` is non-idempotent (retry →
+  duplicate audit rows + double metric). A counter-vs-actual drift-reconciliation sweep is a noted
+  belt-and-suspenders follow-up.
 - **[UX]** destructive actions (delete workspace/SSH key/base image) have **no confirmation** → data
   loss on a mis-click; the workspace card shows stale state + raw 409 error strings under scale-to-zero
   state drift; a GitHub repo-load failure leaves an eternal spinner; a single poll failure blanks the

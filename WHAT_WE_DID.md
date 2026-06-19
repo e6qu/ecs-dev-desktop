@@ -1884,3 +1884,19 @@ listStuckProvisioning` + `recoverStuckProvisioning` revert provisioning→stoppe
   window→days test derives from the enum (exhaustive) instead of restating the impl literal. Remaining
   test-fidelity follow-up (noted): wire `storageProviderContract` into the storage-ec2 integ tier + add
   a `computeProviderContract` (fake `taskState`/snapshot-hydration parity).
+
+- **2026-06-20 — Sweep batch 3: atomic per-user quota (closes the TOCTOU race).** The create path read
+  the owner's count, checked `count < limit`, then created — so concurrent creates (double-click / retry
+  storm) all passed the read and all created, bypassing the cap → unbounded Fargate launches. Replaced
+  with a true atomic guard (user chose this over a reconciler backstop): a new per-owner
+  `ownerWorkspaceCount` entity (`@edd/db`); `WorkspaceService.create` takes a `quotaLimit` and, in the
+  SAME `writeTransaction` as the workspace insert + audit event, conditionally increments the counter
+  (`ADD count 1` guarded by `attribute_not_exists(count) OR count < limit`) — the (limit+1)th concurrent
+  create's transaction cancels and throws the new `QuotaExceededError` (route → 409). `finishDeleting`
+  decrements the counter (UNCONDITIONALLY, in the same transaction as the hard-delete, so a counter drift
+  can never block a delete). Wired `ownerCounts` into BOTH the web app AND the reconciler's
+  `WorkspaceService` (the reconciler is what hard-deletes, so it must decrement — else the counter only
+  ever grows). The route's read-check stays as a fast UX gate; the counter is the authoritative
+  enforcement. Tests: control-plane integ proves exactly-`limit` sequential creates + a concurrent burst
+  that can NEVER exceed the cap + decrement-frees-a-slot; all 46 cp integ + 30 unit green. Follow-up
+  noted: a counter-vs-actual drift-reconciliation sweep.
