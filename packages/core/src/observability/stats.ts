@@ -12,7 +12,15 @@ export interface WorkspaceStats {
 /** A fresh all-zero tally. The `Record<WorkspaceState, number>` literal must list
  * every state, so adding a state is a compile error here (no silent drift, no cast). */
 function zeroByState(): Record<WorkspaceState, number> {
-  return { provisioning: 0, running: 0, idle: 0, stopped: 0, terminated: 0, error: 0 };
+  return {
+    provisioning: 0,
+    running: 0,
+    idle: 0,
+    stopped: 0,
+    deleting: 0,
+    terminated: 0,
+    error: 0,
+  };
 }
 
 /** Pure: tally a list of workspace states for the admin Overview. */

@@ -20,10 +20,15 @@ export const workspaceState = z.enum([
   "running",
   "idle",
   "stopped",
+  "deleting",
   "terminated",
   "error",
 ]);
 export type WorkspaceStateDto = z.infer<typeof workspaceState>;
+
+/** Durable convergence intent (independent of the observed `state`). */
+export const desiredState = z.enum(["present", "deleted"]);
+export type DesiredStateDto = z.infer<typeof desiredState>;
 
 export const workspace = z.object({
   id: z.string(),
@@ -64,6 +69,11 @@ export const workspaceDetail = z.object({
   repoUrl: z.string().optional(),
   baseImage: z.string(),
   state: workspaceState,
+  /** Durable intent: should this workspace exist (`present`) or be torn down
+   * (`deleted`). Absent on records predating the field ⇒ treated `present`. */
+  desiredState: desiredState.optional(),
+  /** When a delete was requested (the `deleting` tombstone began), if any. */
+  deleteRequestedAt: z.iso.datetime().optional(),
   createdAt: z.iso.datetime(),
   lastActivity: z.iso.datetime(),
   volumeId: z.string().optional(),

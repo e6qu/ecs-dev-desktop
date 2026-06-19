@@ -11,6 +11,7 @@ const STATUS: Record<WorkspaceStateDto, StatusMeta> = {
   running: { label: "running", pulse: true },
   idle: { label: "idle", pulse: false },
   stopped: { label: "stopped", pulse: false },
+  deleting: { label: "deleting", pulse: true },
   error: { label: "error", pulse: false },
   terminated: { label: "terminated", pulse: false },
 };
@@ -34,7 +35,10 @@ export function availableActions(state: WorkspaceStateDto): readonly WorkspaceAc
       return ["start", "delete"];
     case "provisioning":
     case "error":
-    case "terminated":
       return ["delete"];
+    case "deleting":
+    case "terminated":
+      // Already being torn down / gone — no further user actions.
+      return [];
   }
 }

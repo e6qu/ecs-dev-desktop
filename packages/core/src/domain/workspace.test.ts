@@ -4,8 +4,11 @@ import { describe, expect, it } from "vitest";
 import { unwrap } from "../result";
 import { baseImage, isoTimestamp, ownerId, snapshotId, taskId, volumeId, workspaceId } from "./ids";
 import {
+  isUnrecoverable,
   markActivity,
+  markDeleting,
   markProvisioned,
+  markRecovered,
   markStopped,
   markTaskLost,
   markWaking,
@@ -122,5 +125,42 @@ describe("workspace domain (functional core)", () => {
     const result = markTaskLost(stopped, t1);
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.kind).toBe("conflict");
+  });
+
+  // ── Self-recovery: desired-state, tombstone, error recovery ──────────────────
+
+  it("markDeleting tombstones the workspace with desiredState=deleted", () => {
+    const deleting = unwrap(markDeleting(base, t1));
+    expect(deleting.state).toBe("deleting");
+    expect(deleting.desiredState).toBe("deleted");
+    expect(deleting.deleteRequestedAt).toBe(t1);
+  });
+
+  it("markDeleting is idempotent on an already-deleting workspace", () => {
+    const deleting = unwrap(markDeleting(base, t1));
+    expect(unwrap(markDeleting(deleting, t1))).toEqual(deleting);
+  });
+
+  it("markRecovered moves a recoverable error → stopped and clears live bindings", () => {
+    // error WITH a snapshot is recoverable
+    const lost = unwrap(markTaskLost(recordSnapshot(base, snapshotId("snap-1"), t0), t1));
+    const errored = { ...lost, state: "error" as const, latestSnapshotId: snapshotId("snap-1") };
+    const recovered = unwrap(markRecovered(errored, t1));
+    expect(recovered.state).toBe("stopped");
+    expect(recovered.taskId).toBeUndefined();
+    expect(recovered.latestSnapshotId).toBe("snap-1");
+  });
+
+  it("markRecovered refuses an error with no snapshot (unrecoverable)", () => {
+    const errored = { ...base, state: "error" as const, latestSnapshotId: undefined };
+    expect(isUnrecoverable(errored)).toBe(true);
+    const result = markRecovered(errored, t1);
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe("conflict");
+  });
+
+  it("isUnrecoverable is false for an error that still has a snapshot", () => {
+    const errored = { ...base, state: "error" as const, latestSnapshotId: snapshotId("snap-1") };
+    expect(isUnrecoverable(errored)).toBe(false);
   });
 });

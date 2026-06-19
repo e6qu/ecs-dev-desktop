@@ -24,9 +24,23 @@ export function makeWorkspaceEntity(client: DynamoDBClient, table = TABLE) {
         repoUrl: { type: "string", required: false },
         baseImage: { type: "string", required: true },
         state: {
-          type: ["provisioning", "running", "idle", "stopped", "terminated", "error"] as const,
+          type: [
+            "provisioning",
+            "running",
+            "idle",
+            "stopped",
+            "deleting",
+            "terminated",
+            "error",
+          ] as const,
           required: true,
         },
+        // Durable convergence intent: whether this workspace should exist
+        // (`present`) or be torn down (`deleted`). Optional: records predating the
+        // field are treated `present`. Drives the reconciler's recover-vs-finish-delete.
+        desiredState: { type: ["present", "deleted"] as const, required: false },
+        // When a delete was requested (the `deleting` tombstone began).
+        deleteRequestedAt: { type: "string", required: false },
         lastActivity: { type: "string", required: true },
         createdAt: { type: "string", required: true },
         // Runtime bindings (absent while stopped/scaled-to-zero).

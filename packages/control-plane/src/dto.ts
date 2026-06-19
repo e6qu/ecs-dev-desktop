@@ -22,6 +22,8 @@ export function toWorkspaceDetail(ws: Workspace): WorkspaceDetailDto {
     ...(ws.repoUrl === undefined ? {} : { repoUrl: ws.repoUrl }),
     baseImage: ws.baseImage,
     state: ws.state,
+    ...(ws.desiredState === undefined ? {} : { desiredState: ws.desiredState }),
+    ...(ws.deleteRequestedAt === undefined ? {} : { deleteRequestedAt: ws.deleteRequestedAt }),
     createdAt: ws.createdAt,
     lastActivity: ws.lastActivity,
     ...(ws.volumeId === undefined ? {} : { volumeId: ws.volumeId }),

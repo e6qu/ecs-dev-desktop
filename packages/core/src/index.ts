@@ -69,10 +69,13 @@ export {
 } from "./domain/constants";
 
 // Workspace domain object + pure lifecycle functions (functional core).
-export type { ProvisionParams, Workspace } from "./domain/workspace";
+export type { DesiredState, ProvisionParams, Workspace } from "./domain/workspace";
 export {
   assertTerminable,
+  isUnrecoverable,
   markActivity,
+  markDeleting,
+  markRecovered,
   markWaking,
   markProvisioned,
   markStopped,

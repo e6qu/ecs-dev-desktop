@@ -11,8 +11,11 @@ import {
   email,
   err,
   isoTimestamp,
+  isUnrecoverable,
   markActivity,
+  markDeleting,
   markProvisioned,
+  markRecovered,
   markStopped,
   markTaskLost,
   markWaking,
@@ -46,6 +49,7 @@ import {
   type StorageProvider,
   type TaskId,
   type VolumeId,
+  type DesiredState,
   type Workspace,
   type WorkspaceId,
   type WorkspaceState,
@@ -168,6 +172,8 @@ interface WorkspaceRecord {
   repoUrl?: string;
   baseImage: string;
   state: WorkspaceState;
+  desiredState?: DesiredState;
+  deleteRequestedAt?: string;
   createdAt: string;
   lastActivity: string;
   volumeId?: string;
@@ -218,6 +224,9 @@ function toWorkspace(r: WorkspaceRecord): Workspace {
     repoUrl: r.repoUrl,
     baseImage: baseImage(r.baseImage),
     state: r.state,
+    desiredState: r.desiredState,
+    deleteRequestedAt:
+      r.deleteRequestedAt === undefined ? undefined : isoTimestamp(r.deleteRequestedAt),
     createdAt: isoTimestamp(r.createdAt),
     lastActivity: isoTimestamp(r.lastActivity),
     volumeId: r.volumeId === undefined ? undefined : volumeId(r.volumeId),
@@ -743,51 +752,115 @@ export class WorkspaceService {
     const found = await this.require(id);
     if (!found.ok) return found;
     const { ws, version } = found.value;
+    if (ws.state === "deleting") return ok(undefined); // idempotent: already tombstoned
     const terminable = assertTerminable(ws);
     if (!terminable.ok) return terminable;
-    // Version-conditioned, like every other transition: a delete racing a wake
-    // must NOT remove the record out from under the task the wake just launched
-    // (an unconditional delete left that task orphaned). Claim the deletion FIRST
-    // via the conditional write; only the winner then tears down resources. The
-    // session.delete event is written in the SAME transaction so the cost ledger
-    // retains the workspace's final cost after its record is gone (events are
-    // append-only — they outlive the deleted record).
-    const auditItem = this.auditItem({
-      action: "session.delete",
-      target: id,
-      actor,
-      detail: "terminated",
-    });
+    // Durable-intent delete: move to the `deleting` tombstone (desiredState="deleted")
+    // instead of hard-deleting the row. The record persists so the reconciler can
+    // converge teardown of the task/volume/snapshot/secret/task-def and only then
+    // remove it — making an interrupted delete resumable. Version-conditioned like
+    // every transition (a delete racing a wake can't strand a just-launched task), and
+    // the session.delete audit event is written in the same transaction so the cost
+    // ledger keeps the workspace's final cost.
+    const next = markDeleting(ws, isoTimestamp(this.deps.clock.now()));
+    if (!next.ok) return next;
     try {
-      if (auditItem === undefined) {
-        await this.deps.workspaces
-          .delete({ id })
-          .where(({ version: v }, { eq }) => eq(v, version))
-          .go();
-      } else {
-        const result = await writeTransaction(
-          { ws: this.deps.workspaces, ev: auditItem.entity },
-          ({ ws: wsE, ev }) => [
-            wsE
-              .delete({ id })
-              .where(({ version: v }, { eq }) => eq(v, version))
-              .commit(),
-            ev.put(auditItem.attrs).commit(),
-          ],
-        ).go();
-        if (result.canceled) throwForCanceledTransaction(result);
-      }
+      await this.persistTransition(next.value, version, {
+        action: "session.delete",
+        target: id,
+        actor,
+        detail: "delete requested",
+      });
     } catch (e) {
       if (!isVersionConflict(e)) throw e;
       return err(conflictError(`delete of ${id} lost a concurrent update`));
     }
-    // The record is gone, so this delete owns teardown. Stopping the task
-    // releases its managed volume. The retained snapshot is left to GC — it is
-    // now unreferenced and reaped after the grace window. (GC is the single
-    // storage reaper; deleting it synchronously here would race a concurrent
-    // wake hydrating a new volume from that very snapshot.)
-    if (ws.taskId !== undefined) await this.deps.compute.stopTask(ws.taskId);
     return ok(undefined);
+  }
+
+  /** Workspaces in the `deleting` tombstone — the reconciler's finish-delete keep-set. */
+  async listDeleting(): Promise<readonly Workspace[]> {
+    return (await this.recordsByStates(["deleting"])).map(toWorkspace);
+  }
+
+  /** `error` workspaces that still have a snapshot to restore from — the reconciler's
+   * recover keep-set (the rest are unrecoverable and only deletable). */
+  async listRecoverableErrors(): Promise<readonly Workspace[]> {
+    return (await this.recordsByStates(["error"]))
+      .map(toWorkspace)
+      .filter((ws) => !isUnrecoverable(ws));
+  }
+
+  /**
+   * Finish tearing down a `deleting` workspace, then remove its record. Convergent +
+   * idempotent (safe to re-run): per the Middle data-safety policy, if it still has a
+   * live volume and no recent snapshot it takes a FINAL snapshot first (so a delete of
+   * a working session doesn't lose data) — a snapshot failure leaves the tombstone for
+   * a retry rather than destroying data. Then it stops the task (releasing the managed
+   * volume) and hard-removes the record; the now-orphan snapshot/secret/task-def are
+   * reaped by the existing GC sweeps after their grace (the retention window).
+   */
+  async finishDeleting(id: WorkspaceId): Promise<Result<void, DomainError>> {
+    const found = await this.find(id);
+    if (found === null) return ok(undefined); // already gone — converged
+    const { ws, version } = found;
+    if (ws.state !== "deleting") return ok(undefined); // no longer deleting
+    // Capture a final snapshot of a live volume before tearing it down (data-safety).
+    if (ws.volumeId !== undefined && this.snapshotStale(ws)) {
+      try {
+        await this.deps.storage.createSnapshot(ws.volumeId);
+      } catch (e) {
+        // Don't destroy data on a transient snapshot failure: leave the tombstone for
+        // the next sweep (surfaced via the reconciler's failure metric/alarm).
+        return err(conflictError(`final snapshot for ${id} failed: ${asMessage(e)}`));
+      }
+    }
+    if (ws.taskId !== undefined) {
+      // Best-effort: the orphan-task reaper is the backstop if this stop fails.
+      try {
+        await this.deps.compute.stopTask(ws.taskId);
+      } catch {
+        /* reaper backstop */
+      }
+    }
+    try {
+      await this.deps.workspaces
+        .delete({ id })
+        .where(({ version: v }, { eq }) => eq(v, version))
+        .go();
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+      return err(conflictError(`finishDeleting ${id} lost a concurrent update`));
+    }
+    return ok(undefined);
+  }
+
+  /** Self-recovery: move a recoverable `error` workspace back to `stopped` (wake-able)
+   * — it has a snapshot, so a later connect() hydrates a fresh volume from it. */
+  async recoverError(id: WorkspaceId): Promise<Result<void, DomainError>> {
+    const found = await this.find(id);
+    if (found === null) return err(notFoundError("workspace", id));
+    const { ws, version } = found;
+    const recovered = markRecovered(ws, isoTimestamp(this.deps.clock.now()));
+    if (!recovered.ok) return recovered;
+    try {
+      await this.persistTransition(recovered.value, version, {
+        action: "session.recover",
+        target: id,
+        actor: SYSTEM_ACTOR,
+        detail: "recovered from error to stopped",
+      });
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+      return err(conflictError(`recover of ${id} lost a concurrent update`));
+    }
+    return ok(undefined);
+  }
+
+  /** Whether a workspace lacks a recent snapshot (none, or older than the snapshot
+   * interval) — used to decide a final snapshot before delete. */
+  private snapshotStale(ws: Workspace): boolean {
+    return ws.latestSnapshotId === undefined;
   }
 
   private async find(id: WorkspaceId): Promise<LoadedWorkspace | null> {

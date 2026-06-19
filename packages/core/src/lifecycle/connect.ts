@@ -25,6 +25,7 @@ export function planConnect(state: WorkspaceState): ConnectAction {
       return "wake";
     case "provisioning":
       return "pending";
+    case "deleting":
     case "terminated":
     case "error":
       return "unavailable";

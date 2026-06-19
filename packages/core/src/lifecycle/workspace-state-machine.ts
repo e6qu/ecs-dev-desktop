@@ -11,6 +11,10 @@ export type WorkspaceState =
   | "running"
   | "idle"
   | "stopped"
+  // Tombstone: a delete was requested (desiredState="deleted") and the reconciler is
+  // converging teardown. The record persists until teardown finishes, so an
+  // interrupted delete is resumable (vs the old transactional row-delete).
+  | "deleting"
   | "terminated"
   | "error";
 
@@ -20,18 +24,49 @@ export type WorkspaceEvent =
   | "idleTimeout" // no activity past threshold
   | "stop" // snapshot + tear down the task
   | "wake" // bring a stopped workspace back
-  | "terminate" // permanent deletion
+  | "terminate" // permanent deletion (legacy synchronous path; kept for back-compat)
+  | "requestDelete" // mark for deletion → `deleting` tombstone (reconciler finishes)
+  | "recover" // error → stopped when a snapshot exists (self-recovery)
   | "fail"; // unrecoverable error
 
 const TRANSITIONS: Record<WorkspaceState, Partial<Record<WorkspaceEvent, WorkspaceState>>> = {
   // `stop` cancels an in-flight wake (claim made, launch failed/aborted) back to
   // scaled-to-zero — the snapshot is untouched, so the workspace stays wake-able.
-  provisioning: { provisioned: "running", stop: "stopped", fail: "error", terminate: "terminated" },
-  running: { idleTimeout: "idle", stop: "stopped", fail: "error", terminate: "terminated" },
-  idle: { activity: "running", stop: "stopped", fail: "error", terminate: "terminated" },
-  stopped: { wake: "provisioning", terminate: "terminated", fail: "error" },
+  // `requestDelete` from any live/stopped/error state moves to the `deleting`
+  // tombstone; the reconciler tears down convergently and then removes the record.
+  provisioning: {
+    provisioned: "running",
+    stop: "stopped",
+    fail: "error",
+    terminate: "terminated",
+    requestDelete: "deleting",
+  },
+  running: {
+    idleTimeout: "idle",
+    stop: "stopped",
+    fail: "error",
+    terminate: "terminated",
+    requestDelete: "deleting",
+  },
+  idle: {
+    activity: "running",
+    stop: "stopped",
+    fail: "error",
+    terminate: "terminated",
+    requestDelete: "deleting",
+  },
+  stopped: {
+    wake: "provisioning",
+    terminate: "terminated",
+    fail: "error",
+    requestDelete: "deleting",
+  },
+  // A delete in progress; the only forward move is `terminate` (finish → record removed).
+  deleting: { terminate: "terminated" },
   terminated: {},
-  error: { terminate: "terminated" },
+  // Self-recovery: an `error` workspace with a snapshot can `recover` to `stopped`
+  // (wake-able again); otherwise it can only be deleted.
+  error: { recover: "stopped", terminate: "terminated", requestDelete: "deleting" },
 };
 
 /**
