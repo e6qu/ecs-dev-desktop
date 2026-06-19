@@ -4,61 +4,13 @@
 
 ## Open
 
-### Code-review findings (codex, 2026-06-19) — being remediated in PLAN.md Phase 9
-
-All actionable now (no AWS-account gate); ✓ = independently re-verified against the code.
-
-- **[Critical] Silent fake-provider fallback in production.** `apps/web/lib/control-plane.ts:135`
-  (+ `build()`) instantiate `FakeStorageProvider`/`FakeComputeProvider` whenever `COMPUTE_PROVIDER!=ecs`,
-  with no `NODE_ENV=production` guard. A misconfigured prod deploy reports workspaces "running" without
-  launching ECS/EBS (a §6.5 silent-fallback). ✓ Fix: require a real provider in production.
-- **[Critical] Terraform IAM doesn't allow the per-workspace agent-secret path.** Adapter does
-  `CreateSecret`/`PutSecretValue`/tag under `edd/workspace/*/agent`
-  (`packages/compute-ecs/src/ecs-compute-provider.ts:327`) + injects via task-def `secrets` (:297), but
-  `infra/terraform/modules/ecs-dev-desktop/iam.tf:136` grants only `GetSecretValue` on configured
-  secrets and the execution role (`iam.tf:35`) reads only `var.secret_environment`. Real launch with
-  `EDD_AGENT_SECRET` fails / can't resolve `EDD_AGENT_TOKEN`. Fix: scoped create/put/tag + execution-role
-  read for `edd/workspace/*/agent`; validate via the `terraform-sim` IAM simulation.
-- **[Critical] Workspace exec/task role ARNs never passed to the control plane.** `fromEnv()` reads
-  `ECS_EXECUTION_ROLE_ARN`/`ECS_TASK_ROLE_ARN` (`ecs-compute-provider.ts:626`) but `ecs.tf:38`
-  (`local.base_environment`) omits both → real task defs lack roles for private-ECR pulls, awslogs,
-  secret injection, runtime AWS. Fix: least-privilege workspace task role, set both env vars, add both
-  to `iam:PassRole`.
-- **[Critical] SSH-key fingerprint uniqueness is race-prone.** `register()` reads `findByFingerprint`
-  (`packages/control-plane/src/ssh-key-service.ts:88`) then does an unconditional `put` (:112); the
-  `byFingerprint` GSI (`packages/db/src/entities.ts:161`) is not a uniqueness constraint, so two users
-  can concurrently register the same key → ambiguous gateway lookup. ✓ Fix: transactional fingerprint
-  sentinel with `attribute_not_exists`.
-- **[High] No early snapshot → fresh-workspace data loss.** `provision()` records no `latestSnapshotId`
-  (`packages/core/src/domain/workspace.ts:60`); drift recovery marks `error` (:150); default snapshot
-  interval is 6h (`packages/core/src/domain/constants.ts:21`). Early Fargate eviction/crash loses all
-  workspace state. Fix: initial snapshot soon after bootstrap/repo-clone + a shorter early-session cadence.
-- **[High] Repo-clone + git-credential failures are silently hidden.** Golden image continues past a
-  failed `git clone` (`infra/images/base/entrypoint.sh:50`/`:55`); the credential helper exits 0 on
-  missing/failed creds (`infra/images/base/git-credential-helper.sh:13`/`:21`). A non-dev lands in an
-  empty workspace with only a container log. Fix: fail loud into a visible bootstrap status (portal) for
-  configured session repos; silent unauthenticated fallback only for public/no-session paths.
-- **[High] Per-workspace agent secrets are never deleted.** Created at `edd/workspace/${wsId}/agent`
-  (`ecs-compute-provider.ts:329`); `remove()` only stops the task
-  (`packages/control-plane/src/workspace-service.ts:781`); reconciler GC covers storage/tasks only
-  (`services/reconciler/src/index.ts:345`). Stale machine tokens accumulate. Fix: tag secrets by
-  workspace; delete on terminate + periodic secret GC.
-- **[Medium] ECS task-definition revision sprawl.** Cache key is per-image+workspace
-  (`ecs-compute-provider.ts:258`) but the family is image-only (:263) → unbounded revisions per
-  user/wake/restart, slowing provisioning and risking quotas. Fix: deregister old revisions or share
-  stable task definitions.
-- **[Medium] Missing owner email creates an inaccessible workspace.** Create route catches a malformed
-  email and sets `ownerEmail=undefined` (`apps/web/app/api/workspaces/route.ts:69`); proxy-authz then
-  denies non-admins when owner email is missing (`packages/core/src/domain/proxy-authz.ts:54`). Fix:
-  require a valid owner identity at create, or authorize by a stable subject claim.
-- **[Medium] `/api/admin/costs?window=bad` silently becomes `all`.** `costReportQuery` uses
-  `costWindow.catch("all")` (`packages/api-contracts/src/index.ts:289`), so `safeParse` never fails and
-  the route's `badRequest` branch (`apps/web/app/api/admin/costs/route.ts:21`) is dead — an operator typo
-  shows lifetime cost. ✓ (the #127 route change is defeated by the schema). Fix: reject invalid explicit
-  values while still defaulting an absent param.
-- **[Low] Topology graph documents removed SSH CA behavior.** `packages/core/src/observability/topology.ts:121`
-  still says control plane → SSH gateway "issues CA certs". Fix: registered-key authorization /
-  `ssh-authorize` (CA removed in #111).
+The codex code-review findings (2026-06-19) that were tracked here are **all remediated and merged
+in #129** (Phase 9; "12 findings, none deferred") — moved to _Resolved (repo)_ below, re-verified
+against the merged code (e.g. `assertFakeProvidersAllowed` prod guard; IAM `CreateSecret`/`PutSecretValue`/
+`TagResource` + `ECS_TASK_ROLE_ARN`/`ECS_EXECUTION_ROLE_ARN` + `iam:PassRole`; the fingerprint sentinel;
+`DEFAULT_EARLY_SNAPSHOT_INTERVAL_MS`; `.edd-bootstrap-status`; `deleteAgentSecret` + reconciler secret GC;
+`DeregisterTaskDefinition` revision GC; `resolveOwnerEmail`; `costWindow` enum without `.catch`; topology
+registered-key text).
 
 - **`concurrency-pairs.integ.ts` "delete vs wake" — rare DynamoDB-Local flake (2026-06-18).**
   The test fires `remove` + `start` concurrently and asserts exactly one wins. Both methods use
@@ -209,6 +161,27 @@ Two would-be findings were discarded as probe errors, not sim bugs (`CreateSnaps
 has no `ClientToken` idempotency in AWS; `DescribeSnapshots MaxResults` min is 5) — a
 reminder to validate each probe against the AWS spec before filing.
 
+- **sockerless#618/#619 (open — non-blocking conformance gaps, filed 2026-06-19)** — a second
+  focused fidelity slice (probed against `322d16ad`, `SIM_RUNTIME=process`, standard AWS SDK v3)
+  adversarially checked ECS request-validation, EventBridge Scheduler, CloudWatch Logs pagination,
+  and Secrets Manager error shapes against documented AWS behaviour. Two genuine **under-validation**
+  gaps filed: the sim is _more lenient_ than real AWS, so neither blocks our flows (we never send
+  these malformed requests) but each lets a downstream regression pass sim-backed CI that real AWS
+  would reject 400:
+  - **#618 — ECS under-validates request constraints.** `RegisterTaskDefinition` with
+    `requiresCompatibilities:["FARGATE"]` but **no** task-level `cpu`/`memory` is accepted (AWS:
+    `ClientException` — Fargate requires task-level cpu+memory; a control with cpu+mem confirms the
+    sole diff); `RunTask count:11` starts 11 tasks (AWS caps `count` at 10); `DescribeTasks` with an
+    empty `tasks:[]` returns 200 (AWS: `InvalidParameterException` — `tasks` is Required:Yes).
+  - **#619 — Scheduler `CreateSchedule` accepts an invalid `ScheduleExpression`.** A non
+    `at()`/`rate()`/`cron()` expression is stored without error (AWS: `ValidationException`); distinct
+    from the closed cron-_evaluation_ gaps (#489/#493) — this is input validation at create time.
+    Conformant on this pass (locked-in, no action): ECS `RunTask` unknown-taskdef → `ClientException`
+    and `ListTasks` `maxResults`+`nextToken` pagination; Scheduler `GetSchedule` unknown →
+    `ResourceNotFoundException`; CWL `GetLogEvents` `limit`+`nextForwardToken` pagination and
+    `DescribeLogStreams` unknown-group → `ResourceNotFoundException`; Secrets Manager `GetSecretValue`
+    unknown → `ResourceNotFoundException` and duplicate `CreateSecret` → `ResourceExistsException`.
+
 Earlier full simulator pass (2026-06-12, submodule `9d43f3d` / PR #550) found no
 sockerless fidelity bugs across all live surfaces (real-CP wake chain, live
 user journey, reconciler scale-to-zero + drift, Auth.js callback routes,
@@ -216,6 +189,23 @@ concurrent-wake race, TLS storage adapter). PR #550 is bleephub-Actions-only;
 no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
+
+- **Code-review findings (codex, 2026-06-19) — all 12 fixed, merged #129 (Phase 9).** The deep
+  `codex` review's findings, re-verified against the merged code: **[Critical]** silent prod
+  fake-provider fallback → `assertFakeProvidersAllowed()` requires a real provider unless
+  `NODE_ENV!=production` + dev-auth; terraform IAM agent-secret path → `iam.tf` grants scoped
+  `CreateSecret`/`PutSecretValue`/`TagResource` (+ execution-role read) under `edd/workspace/*`;
+  workspace exec/task role ARNs → `ecs.tf` sets `ECS_EXECUTION_ROLE_ARN`/`ECS_TASK_ROLE_ARN` with a
+  least-privilege workspace role + `iam:PassRole`; SSH-key fingerprint race → transactional
+  fingerprint-sentinel entity (`attribute_not_exists`). **[High]** no early snapshot →
+  `DEFAULT_EARLY_SNAPSHOT_INTERVAL_MS` + reconciler early-session cadence; hidden repo-clone/git-cred
+  failures → `.edd-bootstrap-status` surfaced in the portal; un-GC'd agent secrets → `deleteAgentSecret`
+  on terminate + reconciler secret GC. **[Medium]** task-def revision sprawl → `DeregisterTaskDefinition`
+  keep-newest GC; missing owner email → `resolveOwnerEmail` rejects at create; `?window=bad` →
+  `costWindow` is a plain enum (no `.catch`) so `badRequest` fires. **[Low]** topology text → registered-key
+  `ssh-authorize` (no CA). The deferred cross-region EBS DR flow was pulled in (sim-validatable via
+  sockerless#602); `CONNECTION_TOKEN` stays correctly coupled to the future DYNAMIC wake gate (building
+  it now = dead code, §6.5).
 
 - **Portal IA/UI inconsistencies around catalog + creation flow (2026-06-16)** — the
   admin catalog lived outside the admin shell (`/base-images`), the top nav had no active
