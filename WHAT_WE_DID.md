@@ -1817,3 +1817,17 @@ listStuckProvisioning` + `recoverStuckProvisioning` revert provisioning→stoppe
     next re-pin once fixed upstream. **Boy-scout:** also reconciled `BUGS.md` — the codex Phase-9 findings
     (merged #129) were still listed as Open "being remediated"; re-verified all 12 against the merged code
     and moved them to Resolved (repo).
+
+- **2026-06-20 — Adopted sockerless #621 (re-pin `322d16ad` → `47b6a2a`); #618/#619 fixed, confirmed
+  downstream.** Upstream #621 landed validation for both gaps from fidelity slice 2. Re-pinned the
+  submodule to the #621 merge, rebuilt the process-mode sim from source, and re-probed all four cases —
+  each now rejects with the AWS-spec error (`RegisterTaskDefinition` Fargate-without-cpu/mem →
+  `ClientException`; `RunTask count:11` → `InvalidParameterException` "count cannot be greater than 10";
+  empty `DescribeTasks` → `InvalidParameterException` "Tasks cannot be empty."; Scheduler bad
+  `ScheduleExpression` → `ValidationException`), while the valid-form control cases (a cpu+mem Fargate td
+  and a `rate(5 minutes)` schedule) still pass. The re-pin also picks up #612–#620 (CloudWatch Logs
+  Insights, Docker-faithfulness + concurrency fixes, a cross-cloud behavioural audit) — consumed
+  endpoint-only; the integration + e2e CI tiers rebuild the sim from this pin and validate the rest.
+  Closed #618 (auto) and #619 (manually, with a confirmed-downstream note). `BUGS.md` → External
+  blockers updated to fixed-confirmed; **no open sockerless blockers remain** (aside from the deliberate
+  #583 memory-sizing gate).

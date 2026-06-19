@@ -2,19 +2,27 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-19 (#129 + self-recovery #130 merged; sockerless fidelity slice 2 in progress — ECS/Scheduler validation gaps filed #618/#619)
+**Last updated:** 2026-06-20 (slice-2 gaps fixed upstream by sockerless #621; re-pinned `322d16ad` → `47b6a2a`, confirmed downstream — no open sockerless blockers)
 
-## Active — Sockerless fidelity slice 2 (`feat/sockerless-fidelity-slice-2`)
+## Active — Adopt sockerless #621 (`feat/adopt-sockerless-621`)
+
+Sockerless **#621** (merge `47b6a2a`) landed validation for both fidelity-slice-2 gaps. Re-pinned the
+submodule (`322d16ad` → `47b6a2a`), rebuilt the process-mode sim, and **confirmed downstream**: each of
+the four cases now rejects with the AWS-spec error (Fargate-without-cpu/mem → `ClientException`; `RunTask
+count:11` → `InvalidParameterException`; empty `DescribeTasks` → `InvalidParameterException`; bad
+`ScheduleExpression` → `ValidationException`), valid-form controls still pass. #618/#619 closed upstream;
+`BUGS.md` updated to fixed-confirmed. The re-pin also picks up #612–#620 (consumed endpoint-only; the
+integration + e2e tiers rebuild the sim from this pin). **No open sockerless blockers remain** (aside from
+the deliberate #583 memory-sizing gate).
+
+## Prior — Sockerless fidelity slice 2 (PR #131, merged)
 
 A second adversarial conformance sweep (process-mode sim `322d16ad`, standard AWS SDK v3, judged vs the
 documented AWS spec) of the surfaces our code drives but slice 1 (#590/#591/#592) hadn't reached: ECS
 `RegisterTaskDefinition`/`RunTask`/`DescribeTasks` validation, EventBridge Scheduler `CreateSchedule`,
-CloudWatch Logs pagination, Secrets Manager error shapes. Filed two genuine (non-blocking)
-under-validation gaps upstream — **#618** (ECS: Fargate task def w/o cpu+mem accepted; `RunTask count>10`;
-empty `DescribeTasks`) and **#619** (Scheduler accepts an invalid `ScheduleExpression`); the rest
-conformant. Recorded in `BUGS.md` → External blockers. Also reconciled `BUGS.md`: moved the codex Phase-9
-findings (merged #129) from Open → Resolved after re-verifying all 12 against the merged code. Docs-only
-PR (file-upstream + record).
+CloudWatch Logs pagination, Secrets Manager error shapes. Filed two genuine under-validation gaps upstream
+(**#618**, **#619**; both now fixed by #621). Also reconciled `BUGS.md`: moved the codex Phase-9 findings
+(merged #129) from Open → Resolved after re-verifying all 12 against the merged code.
 
 ## Prior focus — Self-recovery + monitoring (PR #130, merged, codex-advised)
 
