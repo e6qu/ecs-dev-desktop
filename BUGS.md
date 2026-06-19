@@ -17,13 +17,14 @@ queued in priority order:
   site. Brand once at the identity edge (`apps/web/lib/principal.ts`). Also `SshKeyService` /
   `GitCredentialService` public methods take bare `string` for branded ids; `WorkspaceAuditEvent.action`
   should be a literal union; `ownerEmail` contract is `z.string()` not `z.email()`.
-- **[fake tests] real AWS adapters don't assert request shape** —
-  `ec2-storage-provider.test.ts` / `ecs-compute-provider.test.ts` switch on `command instanceof` but
-  never inspect `command.input`, so the security-critical `edd:managed` tag / `edd:workspace-id` tag /
-  `deleteOnTermination` / snapshot-hydration branch are unverified. Also the storage fidelity contract
-  runs only against the fake (never wired into `storage-ec2`), and there is no compute contract at all
-  (fake `taskState`/snapshot-hydration untested). Plus tautological tests (`pricing.test.ts:37`,
-  `contracts.test.ts:111`) and the `role-mapping.test.ts` missing `member`/precedence cases.
+- **[fake tests] — request-shape assertions + anemic tests FIXED (batch 2); port contracts remain.**
+  Done: `ec2-storage-provider.test.ts` / `ecs-compute-provider.test.ts` now assert `command.input` (the
+  `edd:managed` tag, `edd:workspace-id` tag, `deleteOnTermination`, the Size↔snapshot branch, the `tag:`
+  filters with `OwnerIds:self`, `copySnapshot` destination region); `role-mapping.test.ts` covers the
+  `member` branch and admin precedence; the `pricing.test.ts` / `contracts.test.ts` tautologies were
+  replaced with real/derived assertions. Remaining: the storage fidelity contract runs only against the
+  fake (never wired into the `storage-ec2` integ tier), and there is no `computeProviderContract` at all
+  (fake `taskState`/snapshot-hydration parity untested).
 - **[API-first / thin UI]** several SSR admin pages bypass the API and embed view logic: **Costs**
   (`admin/costs/page.tsx`) ignores the existing `costReport` contract + `GET /api/admin/costs` route and
   re-derives tiles/formatting (and uses `costWindow.catch("all")` → silently shows all-time on a typo);
