@@ -6,8 +6,9 @@ import {
   RegisterTaskDefinitionCommand,
   RunTaskCommand,
   StopTaskCommand,
+  type RunTaskCommandInput,
 } from "@aws-sdk/client-ecs";
-import { baseImage, workspaceId } from "@edd/core";
+import { baseImage, snapshotId, workspaceId } from "@edd/core";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -217,6 +218,68 @@ describe("EcsComputeProvider.runTask cleanup on a failed launch", () => {
     // The launched task was stopped exactly once — the failed launch left nothing
     // running (its managed EBS volume is reaped by deleteOnTermination).
     expect(stops).toEqual([LAUNCHED_ARN]);
+  });
+});
+
+// Assert the actual RunTask request shape — the security-critical bits a regression
+// could silently drop: the `edd:workspace-id` tag (the orphan-task reaper enumerates
+// + reads it back), FARGATE launch type, and the managed-EBS volume's
+// `deleteOnTermination` + the fresh-vs-hydrate (sizeInGiB ↔ snapshotId) branch.
+describe("EcsComputeProvider.runTask request shape (workspace tag + managed EBS + FARGATE)", () => {
+  const ARN = "arn:aws:ecs:us-east-1:123456789012:task/edd/run1";
+
+  function capturingClient(runInputs: RunTaskCommandInput[]): ECSClient {
+    const send = (command: unknown): Promise<unknown> => {
+      if (command instanceof RegisterTaskDefinitionCommand) {
+        return Promise.resolve({
+          taskDefinition: { taskDefinitionArn: "arn:aws:ecs:::task-definition/edd:1" },
+        });
+      }
+      if (command instanceof RunTaskCommand) {
+        runInputs.push(command.input);
+        return Promise.resolve({ tasks: [{ taskArn: ARN }] });
+      }
+      if (command instanceof DescribeTasksCommand) {
+        return Promise.resolve({
+          tasks: [{ taskArn: ARN, lastStatus: "RUNNING", attachments: [eni, ebs] }],
+        });
+      }
+      return Promise.reject(new Error("unexpected command"));
+    };
+    return { send } as unknown as ECSClient;
+  }
+
+  const config = { subnets: ["subnet-1"], ebsRoleArn: "arn:aws:iam::123456789012:role/ebs" };
+
+  it("tags edd:workspace-id, runs FARGATE, sizes a fresh managed volume w/ deleteOnTermination", async () => {
+    const runInputs: RunTaskCommandInput[] = [];
+    const provider = new EcsComputeProvider({ client: capturingClient(runInputs), config });
+    await provider.runTask({
+      workspaceId: workspaceId("ws-1"),
+      baseImage: baseImage("edd-workspace:e2e"),
+    });
+    const input = runInputs[0];
+    expect(input?.launchType).toBe("FARGATE");
+    expect(input?.tags).toContainEqual({ key: "edd:workspace-id", value: "ws-1" });
+    expect(input?.networkConfiguration?.awsvpcConfiguration?.subnets).toEqual(["subnet-1"]);
+    const vol = input?.volumeConfigurations?.[0]?.managedEBSVolume;
+    expect(vol?.roleArn).toBe("arn:aws:iam::123456789012:role/ebs");
+    expect(vol?.terminationPolicy?.deleteOnTermination).toBe(true);
+    expect(vol?.sizeInGiB).toBeGreaterThan(0);
+    expect(vol?.snapshotId).toBeUndefined();
+  });
+
+  it("hydrates the managed volume from a snapshot (snapshotId set, no sizeInGiB)", async () => {
+    const runInputs: RunTaskCommandInput[] = [];
+    const provider = new EcsComputeProvider({ client: capturingClient(runInputs), config });
+    await provider.runTask({
+      workspaceId: workspaceId("ws-2"),
+      baseImage: baseImage("edd-workspace:e2e"),
+      fromSnapshot: snapshotId("snap-xyz"),
+    });
+    const vol = runInputs[0]?.volumeConfigurations?.[0]?.managedEBSVolume;
+    expect(vol?.snapshotId).toBe("snap-xyz");
+    expect(vol?.sizeInGiB).toBeUndefined();
   });
 });
 

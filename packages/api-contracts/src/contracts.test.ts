@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   COST_WINDOW_DAYS,
   costReportQuery,
+  costWindow,
   createWorkspaceRequest,
   infrastructureReport,
   registerSshKeyRequest,
@@ -108,7 +109,15 @@ describe("api-contracts", () => {
     expect(costReportQuery.safeParse({ window: "bogus" }).success).toBe(false);
   });
 
-  it("maps every cost window to its day span (all = lifetime)", () => {
-    expect(COST_WINDOW_DAYS).toEqual({ all: null, "1d": 1, "7d": 7, "30d": 30 });
+  it("maps every cost window to its day span exhaustively (all = lifetime; Nd = N days)", () => {
+    // Derived from the enum, not a verbatim copy of the impl literal: a new window
+    // added without a day-span mapping fails the exhaustiveness check, and each `Nd`
+    // window must map to N (parsed from the key), catching a wrong span.
+    expect(Object.keys(COST_WINDOW_DAYS).sort()).toEqual([...costWindow.options].sort());
+    expect(COST_WINDOW_DAYS.all).toBeNull();
+    for (const w of costWindow.options) {
+      if (w === "all") continue;
+      expect(COST_WINDOW_DAYS[w]).toBe(Number(w.replace("d", "")));
+    }
   });
 });

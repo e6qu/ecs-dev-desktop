@@ -1869,3 +1869,18 @@ listStuckProvisioning` + `recoverStuckProvisioning` revert provisioning→stoppe
   AWS-adapter request-shape test fidelity + port contracts, the API-first thin-UI refactor, the quota
   TOCTOU atomic counter, and the UX confirmations/stale-state handling) are recorded in `BUGS.md` →
   Open (Code-quality sweep) for follow-up batches.
+
+- **2026-06-20 — Sweep batch 2: test fidelity (AWS-adapter request shapes + anemic-test fixes).** The
+  real EBS/Fargate adapters' tests switched on `command instanceof` but never inspected `command.input`,
+  so the security-critical request fields were unverified. Added request-shape assertions: EC2
+  (`ec2-storage-provider.test.ts`) — every created volume/snapshot carries the `edd:managed=true` tag
+  (the tag that scopes ALL GC), the fresh-vs-hydrate `Size`↔`SnapshotId` branch, list enumeration's
+  server-side `tag:` filters + `OwnerIds:self`, and `copySnapshot` issuing against the destination
+  region; ECS (`ecs-compute-provider.test.ts`) — `RunTask` carries the `edd:workspace-id` tag (the
+  orphan-task reaper reads it back), `launchType:FARGATE`, and the managed-EBS volume's
+  `deleteOnTermination` + the snapshot-hydration branch. Also fixed anemic/tautological tests: the role
+  mapper (`role-mapping.test.ts`) now covers the `member` branch + admin-beats-member precedence (was
+  admin-only); `pricing.test.ts` pins the actual rate literals instead of `=== DEFAULT_*`; the cost
+  window→days test derives from the enum (exhaustive) instead of restating the impl literal. Remaining
+  test-fidelity follow-up (noted): wire `storageProviderContract` into the storage-ec2 integ tier + add
+  a `computeProviderContract` (fake `taskState`/snapshot-hydration parity).

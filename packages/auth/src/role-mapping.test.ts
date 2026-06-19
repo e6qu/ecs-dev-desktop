@@ -22,6 +22,21 @@ describe("mapClaimsToRole", () => {
     ).toBe("admin");
   });
 
+  it("maps a member group to member", () => {
+    expect(
+      mapClaimsToRole({ idp: "github", subject: "u", groups: ["acme/engineers"] }, config),
+    ).toBe("member");
+  });
+
+  it("admin takes precedence when a user is in both an admin and a member group", () => {
+    expect(
+      mapClaimsToRole(
+        { idp: "github", subject: "u", groups: ["acme/engineers", "acme/platform-admins"] },
+        config,
+      ),
+    ).toBe("admin");
+  });
+
   it("falls back to the default role when no group matches", () => {
     expect(mapClaimsToRole({ idp: "github", subject: "u", groups: [] }, config)).toBe("viewer");
   });

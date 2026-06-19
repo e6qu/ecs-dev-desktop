@@ -34,8 +34,14 @@ afterEach(() => {
 
 describe("workspacePricing", () => {
   it("uses the us-east-1 on-demand defaults when unset", () => {
-    expect(workspacePricing().fargateVcpuHourUsd).toBe(DEFAULT_FARGATE_VCPU_HOUR_USD);
-    expect(workspacePricing().ebsGbMonthUsd).toBe(DEFAULT_EBS_GB_MONTH_USD);
+    // Pin the actual rates (not just `=== DEFAULT_*`, which is tautological) so a
+    // typo'd default rate fails loudly. Keep in sync with the documented us-east-1
+    // on-demand prices in `@edd/config`; the constants are asserted so a drift there
+    // also trips this.
+    expect(DEFAULT_FARGATE_VCPU_HOUR_USD).toBe(0.04048);
+    expect(DEFAULT_EBS_GB_MONTH_USD).toBe(0.08);
+    expect(workspacePricing().fargateVcpuHourUsd).toBe(0.04048);
+    expect(workspacePricing().ebsGbMonthUsd).toBe(0.08);
   });
 
   it("honours an EDD_PRICE_* override", () => {
