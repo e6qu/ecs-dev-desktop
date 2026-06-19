@@ -54,6 +54,7 @@ import {
   createDynamoClient,
   makeAuditEventEntity,
   makeCostRollupEntity,
+  makeOwnerWorkspaceCountEntity,
   makeReconcilerHeartbeatEntity,
   makeWorkspaceEntity,
   RECONCILER_HEARTBEAT_ID,
@@ -97,6 +98,10 @@ const service = new WorkspaceService({
   // first-class ledger as user actions (atomically with the transition), so the
   // cost model accounts for them.
   audit: auditEntity,
+  // The reconciler is what hard-deletes records (finishDeletions), so it MUST carry
+  // the per-owner counter — otherwise the quota counter increments on create (web app)
+  // but never decrements, drifting up until every owner is permanently at their cap.
+  ownerCounts: makeOwnerWorkspaceCountEntity(dynamo, table),
 });
 const heartbeat = makeReconcilerHeartbeatEntity(dynamo, table);
 // Cost at config-default rates (live AWS pricing is a web-app opt-in) — enough to

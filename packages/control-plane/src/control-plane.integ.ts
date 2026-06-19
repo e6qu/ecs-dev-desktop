@@ -22,7 +22,9 @@ import {
   dropTable,
   dynamodb,
   ensureTable,
+  makeAuditEventEntity,
   makeBaseImageEntity,
+  makeOwnerWorkspaceCountEntity,
   makeWorkspaceEntity,
   pingTable,
 } from "@edd/db";
@@ -34,6 +36,7 @@ import {
   DerivedAuditSource,
   DerivedLogSource,
   HealthService,
+  QuotaExceededError,
   WorkspaceService,
 } from "./index";
 
@@ -426,5 +429,90 @@ describe("DerivedAuditSource + DerivedLogSource (DynamoDB Local)", () => {
     expect(container.available).toBe(false);
     expect(container.lines).toHaveLength(0);
     expect(container.note).toMatch(/CloudWatch/);
+  });
+});
+
+describe("WorkspaceService quota enforcement (atomic, DynamoDB Local)", () => {
+  const QUOTA_TABLE = "ecs-dev-desktop-cp-quota-integ";
+  const LIMIT = 3;
+  let client: ReturnType<typeof createDynamoClient>;
+
+  // A service wired with BOTH the audit ledger and the per-owner counter — the
+  // combination that activates the atomic quota path in `create`.
+  function quotaService(): WorkspaceService {
+    // Each call shares the table; storage is per-service (in-memory fake).
+    return new WorkspaceService({
+      workspaces: makeWorkspaceEntity(client, QUOTA_TABLE),
+      storage: fakeStorageHolder,
+      compute: fakeComputeHolder,
+      clock: fixedClock(),
+      audit: makeAuditEventEntity(client, QUOTA_TABLE),
+      ownerCounts: makeOwnerWorkspaceCountEntity(client, QUOTA_TABLE),
+    });
+  }
+  let fakeStorageHolder: FakeStorageProvider;
+  let fakeComputeHolder: FakeComputeProvider;
+  let service: WorkspaceService;
+
+  beforeAll(async () => {
+    client = createDynamoClient();
+    await dropTable(client, QUOTA_TABLE);
+    await ensureTable(client, QUOTA_TABLE);
+  });
+  afterAll(async () => {
+    await dropTable(client, QUOTA_TABLE);
+  });
+  beforeEach(async () => {
+    fakeStorageHolder = await FakeStorageProvider.create();
+    fakeComputeHolder = new FakeComputeProvider(fakeStorageHolder);
+    service = quotaService();
+  });
+
+  const create = (owner: string): Promise<unknown> =>
+    service.create({ ownerId: ownerId(owner), baseImage: baseImage("img"), quotaLimit: LIMIT });
+
+  it("allows exactly `limit` sequential creates, then rejects with QuotaExceededError", async () => {
+    for (let i = 0; i < LIMIT; i++) await create("seq-user");
+    await expect(create("seq-user")).rejects.toBeInstanceOf(QuotaExceededError);
+    // A DIFFERENT owner is unaffected (the counter is per-owner).
+    await expect(create("other-user")).resolves.toBeDefined();
+  });
+
+  it("closes the TOCTOU race: concurrent creates can NEVER exceed the cap", async () => {
+    const results = await Promise.allSettled(
+      Array.from({ length: LIMIT + 4 }, () => create("race-user")),
+    );
+    const ok = results.filter((r) => r.status === "fulfilled").length;
+    const rejected = results.filter((r) => r.status === "rejected");
+    // The security property: the cap is NEVER exceeded by a concurrent burst.
+    expect(ok).toBeLessThanOrEqual(LIMIT);
+    expect(ok).toBeGreaterThan(0);
+    // Every rejection is the quota error (not an unexpected failure).
+    for (const r of rejected) {
+      expect(r.reason).toBeInstanceOf(QuotaExceededError);
+    }
+    // The persisted reality matches: at most `limit` workspaces exist for the owner.
+    expect((await service.list({ ownerId: ownerId("race-user") })).length).toBeLessThanOrEqual(
+      LIMIT,
+    );
+  });
+
+  it("finishDeleting decrements the counter, freeing a slot", async () => {
+    const made: string[] = [];
+    for (let i = 0; i < LIMIT; i++) {
+      const ws = (await service.create({
+        ownerId: ownerId("del-user"),
+        baseImage: baseImage("img"),
+        quotaLimit: LIMIT,
+      })) as { id: string };
+      made.push(ws.id);
+    }
+    // At the cap → the next create is refused.
+    await expect(create("del-user")).rejects.toBeInstanceOf(QuotaExceededError);
+    // Fully remove one workspace (tombstone → finishDeleting hard-delete + decrement).
+    expect((await service.remove(workspaceId(made[0] ?? ""))).ok).toBe(true);
+    expect((await service.finishDeleting(workspaceId(made[0] ?? ""))).ok).toBe(true);
+    // The freed slot lets a new create succeed.
+    await expect(create("del-user")).resolves.toBeDefined();
   });
 });
