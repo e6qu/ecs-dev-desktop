@@ -40,21 +40,44 @@ gosu workspace edd-idle-agent &
 # Clone the session repo on first boot ("one repo per session"). Idempotent: on
 # wake the snapshot already contains the clone, so skip when the dir exists. The
 # git credential for private repos is brokered by the idle-agent over its
-# authenticated channel (not injected here); public repos clone as-is. A clone
-# failure is non-fatal — the session still starts (the user can retry).
+# authenticated channel (not injected here); public repos clone as-is.
+#
+# A clone failure is non-fatal — the workspace still starts so the user can fix it
+# (link a private repo, then clone manually) rather than losing the session. But it
+# is NOT silent: an ERROR line goes to stderr (→ CloudWatch → the portal
+# per-workspace log view) with git's own reason, and a marker file is written into
+# the workspace so the user sees it in the IDE explorer.
 if [ -n "${EDD_REPO_URL:-}" ]; then
   _repo_name="$(basename "${EDD_REPO_URL%.git}")"
   _repo_dest="/home/workspace/${_repo_name}"
+  _boot_status="/home/workspace/.edd-bootstrap-status"
   if [ ! -e "${_repo_dest}" ]; then
-    echo "edd: cloning ${EDD_REPO_URL} into ${_repo_dest}" >&2
+    echo "edd-bootstrap: cloning ${EDD_REPO_URL} into ${_repo_dest}" >&2
     if [ -n "${EDD_REPO_REF:-}" ]; then
-      gosu workspace env HOME=/home/workspace GIT_TERMINAL_PROMPT=0 \
-        git clone --branch "${EDD_REPO_REF}" "${EDD_REPO_URL}" "${_repo_dest}" ||
-        echo "edd: repo clone failed (continuing)" >&2
+      _clone_err="$(gosu workspace env HOME=/home/workspace GIT_TERMINAL_PROMPT=0 \
+        git clone --branch "${EDD_REPO_REF}" "${EDD_REPO_URL}" "${_repo_dest}" 2>&1)" &&
+        _clone_ok=1 || _clone_ok=0
     else
-      gosu workspace env HOME=/home/workspace GIT_TERMINAL_PROMPT=0 \
-        git clone "${EDD_REPO_URL}" "${_repo_dest}" ||
-        echo "edd: repo clone failed (continuing)" >&2
+      _clone_err="$(gosu workspace env HOME=/home/workspace GIT_TERMINAL_PROMPT=0 \
+        git clone "${EDD_REPO_URL}" "${_repo_dest}" 2>&1)" &&
+        _clone_ok=1 || _clone_ok=0
+    fi
+    if [ "${_clone_ok}" = "1" ]; then
+      rm -f "${_boot_status}"
+      echo "edd-bootstrap: cloned ${EDD_REPO_URL}" >&2
+    else
+      echo "edd-bootstrap: ERROR repo clone failed for ${EDD_REPO_URL}: ${_clone_err}" >&2
+      {
+        echo "Workspace bootstrap could not clone the requested repository:"
+        echo "  ${EDD_REPO_URL}${EDD_REPO_REF:+ (ref ${EDD_REPO_REF})}"
+        echo
+        echo "Reason:"
+        echo "  ${_clone_err}"
+        echo
+        echo "The workspace is running. For a private repo, link your Git account in"
+        echo "the portal, then clone manually from the terminal."
+      } >"${_boot_status}"
+      chown workspace:workspace "${_boot_status}" 2>/dev/null || true
     fi
   fi
 fi
