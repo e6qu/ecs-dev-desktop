@@ -2,9 +2,21 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-19 (Phase 9 remediation merged via #129; self-recovery + monitoring opened as #130, driving the e2e VS Code flake to green)
+**Last updated:** 2026-06-19 (#129 + self-recovery #130 merged; sockerless fidelity slice 2 in progress — ECS/Scheduler validation gaps filed #618/#619)
 
-## Current focus — Self-recovery + monitoring (PR #130, codex-advised)
+## Active — Sockerless fidelity slice 2 (`feat/sockerless-fidelity-slice-2`)
+
+A second adversarial conformance sweep (process-mode sim `322d16ad`, standard AWS SDK v3, judged vs the
+documented AWS spec) of the surfaces our code drives but slice 1 (#590/#591/#592) hadn't reached: ECS
+`RegisterTaskDefinition`/`RunTask`/`DescribeTasks` validation, EventBridge Scheduler `CreateSchedule`,
+CloudWatch Logs pagination, Secrets Manager error shapes. Filed two genuine (non-blocking)
+under-validation gaps upstream — **#618** (ECS: Fargate task def w/o cpu+mem accepted; `RunTask count>10`;
+empty `DescribeTasks`) and **#619** (Scheduler accepts an invalid `ScheduleExpression`); the rest
+conformant. Recorded in `BUGS.md` → External blockers. Also reconciled `BUGS.md`: moved the codex Phase-9
+findings (merged #129) from Open → Resolved after re-verifying all 12 against the merged code. Docs-only
+PR (file-upstream + record).
+
+## Prior focus — Self-recovery + monitoring (PR #130, merged, codex-advised)
 
 Four user-requested themes built together on `feat/self-recovery-and-monitoring` (PR #130), after a
 codex self-recovery review synthesised with our own analysis and four design decisions confirmed with

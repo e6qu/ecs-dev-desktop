@@ -1793,3 +1793,27 @@ listStuckProvisioning` + `recoverStuckProvisioning` revert provisioning→stoppe
     it (surfaced as a `usable` row in admin Inspect). The create→clone→build→run→delete journey
     (user-journey + workspace-toolchain e2e) is the synthetic canary. Each theme unit/integ-tested;
     full build + lint + tf validate clean.
+
+- **2026-06-19 — Sockerless fidelity slice 2 (ECS/Scheduler request-validation); filed #618/#619.**
+  A second focused, adversarial conformance sweep of the AWS surfaces our code drives but the first
+  slice (#590/#591/#592) hadn't reached — ECS `RegisterTaskDefinition`/`RunTask`/`DescribeTasks`
+  request-validation, EventBridge Scheduler `CreateSchedule`, CloudWatch Logs pagination, and Secrets
+  Manager error shapes — probed endpoint-only against the process-mode sim (`322d16ad`) with the
+  standard AWS SDK v3 and judged against the documented AWS spec (each behaviour confirmed via the AWS
+  API reference before filing; one Fargate finding carries a control case to isolate the cause). Found
+  **two genuine under-validation gaps** and filed them upstream:
+  - **sockerless#618 (ECS)** — a Fargate task def with no task-level `cpu`/`memory` is accepted (AWS:
+    `ClientException`); `RunTask count:11` starts 11 (AWS caps `count` at 10); `DescribeTasks` with an
+    empty `tasks:[]` returns 200 (AWS: `InvalidParameterException`).
+  - **sockerless#619 (Scheduler)** — `CreateSchedule` stores an invalid `ScheduleExpression` (non
+    `at()`/`rate()`/`cron()`) without error (AWS: `ValidationException`); distinct from the closed cron
+    _evaluation_ gaps #489/#493.
+    Both are **non-blocking** — the sim is more lenient than AWS, so our flows (which never send these
+    malformed requests) are unaffected, but each lets a downstream regression slip past sim-backed CI.
+    Many behaviours were **confirmed conformant** and recorded as locked-in (ECS unknown-taskdef →
+    `ClientException` + `ListTasks` pagination; Scheduler `GetSchedule` unknown → `ResourceNotFoundException`;
+    CWL `GetLogEvents` pagination + unknown-group → `ResourceNotFoundException`; SM unknown → RNF +
+    duplicate-create → `ResourceExistsException`). Recorded in `BUGS.md` → External blockers; adopt on the
+    next re-pin once fixed upstream. **Boy-scout:** also reconciled `BUGS.md` — the codex Phase-9 findings
+    (merged #129) were still listed as Open "being remediated"; re-verified all 12 against the merged code
+    and moved them to Resolved (repo).
