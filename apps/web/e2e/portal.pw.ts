@@ -102,10 +102,11 @@ test("member creates, stops, and deletes a workspace from the catalog", async ({
   await card.getByRole("button", { name: "stop" }).click();
   await expect(card).toHaveAttribute("data-status", "stopped");
 
+  // Delete is async now: it tombstones the workspace (state → `deleting`) and the
+  // reconciler converges teardown + removal. So the card transitions to `deleting`
+  // (and offers no further actions) rather than vanishing instantly.
   await card.getByRole("button", { name: "delete" }).click();
-  await expect(page.locator(sel(TESTID.workspaceCard, { "data-image": NODE_IMAGE }))).toHaveCount(
-    0,
-  );
+  await expect(card).toHaveAttribute("data-status", "deleting");
 });
 
 test("admin sees the system health board with a live DynamoDB check", async ({ page, context }) => {
