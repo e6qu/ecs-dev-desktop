@@ -48,6 +48,11 @@ locals {
     ECS_SUBNETS         = join(",", aws_subnet.private[*].id)
     ECS_SECURITY_GROUPS = aws_security_group.tasks.id
     ECS_EBS_ROLE_ARN    = aws_iam_role.ecs_infrastructure.arn
+    # Roles for the per-workspace task definitions the control plane registers:
+    # execution (ECR pull, awslogs, agent-secret injection) + the workspace runtime
+    # task role. Without these the registered workspace task defs have no roles.
+    ECS_EXECUTION_ROLE_ARN = aws_iam_role.execution.arn
+    ECS_TASK_ROLE_ARN      = aws_iam_role.workspace.arn
     # Phase 8C: CloudTrail audit + CloudWatch Logs adapters (endpoint-only swap).
     AUDIT_PROVIDER = "cloudtrail"
     LOG_PROVIDER   = "cloudwatch"

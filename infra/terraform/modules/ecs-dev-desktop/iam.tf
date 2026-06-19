@@ -40,6 +40,15 @@ data "aws_iam_policy_document" "execution_extra" {
       resources = values(var.secret_environment)
     }
   }
+
+  # The same execution role backs the per-workspace task definitions (the control
+  # plane passes it as their executionRoleArn), so it must read the runtime-created
+  # agent secret to inject EDD_AGENT_TOKEN into the workspace container at launch.
+  statement {
+    sid       = "ReadWorkspaceAgentSecrets"
+    actions   = ["secretsmanager:GetSecretValue"]
+    resources = [local.workspace_agent_secret_arns]
+  }
 }
 
 resource "aws_iam_role_policy" "execution_extra" {
@@ -113,12 +122,27 @@ data "aws_iam_policy_document" "control_plane" {
   statement {
     sid       = "PassTaskRoles"
     actions   = ["iam:PassRole"]
-    resources = [aws_iam_role.execution.arn, aws_iam_role.ecs_infrastructure.arn]
+    resources = [aws_iam_role.execution.arn, aws_iam_role.ecs_infrastructure.arn, aws_iam_role.workspace.arn]
     condition {
       test     = "StringEquals"
       variable = "iam:PassedToService"
       values   = ["ecs-tasks.amazonaws.com", "ecs.amazonaws.com"]
     }
+  }
+
+  # The control plane creates a per-workspace agent-token secret at launch
+  # (CreateSecret/PutSecretValue), tags it for GC, and deletes it on terminate —
+  # scoped to the edd/workspace/* name prefix, never all secrets.
+  statement {
+    sid = "ManageWorkspaceAgentSecrets"
+    actions = [
+      "secretsmanager:CreateSecret",
+      "secretsmanager:PutSecretValue",
+      "secretsmanager:TagResource",
+      "secretsmanager:DescribeSecret",
+      "secretsmanager:DeleteSecret",
+    ]
+    resources = [local.workspace_agent_secret_arns]
   }
 
   statement {
@@ -153,6 +177,19 @@ resource "aws_iam_role_policy" "control_plane" {
   name   = "${var.name}-control-plane"
   role   = aws_iam_role.control_plane.id
   policy = data.aws_iam_policy_document.control_plane.json
+}
+
+# ---- Workspace task role (the per-workspace container's runtime identity) ----
+# The control plane passes this as each workspace task definition's task_role_arn.
+# The workspace container reaches the control plane over HMAC-authenticated HTTP
+# (idle-agent heartbeats, the git-credential broker) and makes no direct AWS calls,
+# so the role carries NO permissions by design — least privilege. It still exists so
+# tasks run under a distinct, auditable identity (CloudTrail attribution) and so the
+# executionRoleArn (ECR pull / log / secret injection) stays separate from runtime.
+resource "aws_iam_role" "workspace" {
+  name               = "${var.name}-workspace"
+  assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume.json
+  tags               = local.tags
 }
 
 # ---- Reconciler task role (idle stop, scheduled snapshots, orphan GC) ----
