@@ -54,6 +54,19 @@ export const configSyncReport = z.object({
 });
 export type ConfigSyncReportDto = z.infer<typeof configSyncReport>;
 
+/** Optional functional self-report carried on a heartbeat (in-workspace agent). */
+export const heartbeatRequest = z.object({
+  functional: z
+    .object({
+      /** OpenVSCode reachable on the workspace port. */
+      ide: z.boolean(),
+      /** The workspace home directory is writable. */
+      workspace: z.boolean(),
+    })
+    .optional(),
+});
+export type HeartbeatRequest = z.infer<typeof heartbeatRequest>;
+
 /** A security event reported by the in-workspace guard (agent machine-auth). */
 export const securityEventRequest = z.object({
   kind: z.enum(["privilege_attempt"]),
@@ -106,6 +119,11 @@ export const workspaceDetail = z.object({
   latestSnapshotAt: z.iso.datetime().optional(),
   /** Private IP of the running task's ENI; absent when stopped/scaled-to-zero. */
   sshHost: z.string().optional(),
+  /** Functional usability self-report from the in-workspace agent (is the desktop
+   * actually usable, not just running): `ok` / `degraded` + detail + when. */
+  functional: z.enum(["ok", "degraded"]).optional(),
+  functionalDetail: z.string().optional(),
+  functionalAt: z.iso.datetime().optional(),
 });
 export type WorkspaceDetailDto = z.infer<typeof workspaceDetail>;
 

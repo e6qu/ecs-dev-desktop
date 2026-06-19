@@ -54,7 +54,17 @@ export interface Workspace {
   readonly latestSnapshotAt?: IsoTimestamp;
   /** Private IP of the running task's ENI — used by the SSH gateway to forward. Absent when stopped. */
   readonly sshHost?: string;
+  /** Last functional self-report from the in-workspace agent: is the desktop actually
+   * USABLE (the IDE reachable, the workspace writable), beyond merely "task running".
+   * `ok` = all probes passed; `degraded` = at least one failed (detail says which).
+   * Absent until the first report. */
+  readonly functional?: FunctionalStatus;
+  readonly functionalDetail?: string;
+  readonly functionalAt?: IsoTimestamp;
 }
+
+/** Functional usability of a running workspace, self-reported by the in-workspace agent. */
+export type FunctionalStatus = "ok" | "degraded";
 
 export interface ProvisionParams {
   id: WorkspaceId;
@@ -183,6 +193,28 @@ export function markActivity(ws: Workspace, at: IsoTimestamp): Result<Workspace,
     return map(transition(ws.state, "activity"), (state) => ({ ...ws, state, lastActivity: at }));
   }
   return ok({ ...ws, state: ws.state, lastActivity: at });
+}
+
+/**
+ * Record the in-workspace agent's functional self-report — whether the desktop is
+ * actually usable (IDE reachable on :3000, workspace dir writable), not merely that the
+ * task is running. Pure: derives an `ok`/`degraded` status + a human detail from the
+ * probe booleans. The caller (heartbeat) only invokes this on a running/idle workspace.
+ */
+export function recordFunctional(
+  ws: Workspace,
+  probes: { ide: boolean; workspace: boolean },
+  at: IsoTimestamp,
+): Workspace {
+  const failures: string[] = [];
+  if (!probes.ide) failures.push("IDE unreachable on :3000");
+  if (!probes.workspace) failures.push("workspace not writable");
+  return {
+    ...ws,
+    functional: failures.length === 0 ? "ok" : "degraded",
+    functionalDetail: failures.length === 0 ? "IDE + workspace healthy" : failures.join("; "),
+    functionalAt: at,
+  };
 }
 
 /** Ok if the workspace may be terminated; a conflict domain error otherwise. */

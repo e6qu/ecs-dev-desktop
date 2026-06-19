@@ -11,6 +11,7 @@ import {
   markRecovered,
   markSnapshotLost,
   markStopped,
+  recordFunctional,
   markTaskLost,
   markWaking,
   provision,
@@ -175,5 +176,20 @@ describe("workspace domain (functional core)", () => {
 
   it("markSnapshotLost refuses a running workspace (only stopped/error reference a snapshot)", () => {
     expect(markSnapshotLost(base, t1).ok).toBe(false);
+  });
+
+  it("recordFunctional reports ok when the IDE + workspace probes pass", () => {
+    const r = recordFunctional(base, { ide: true, workspace: true }, t1);
+    expect(r.functional).toBe("ok");
+    expect(r.functionalAt).toBe(t1);
+  });
+
+  it("recordFunctional reports degraded with the specific failures", () => {
+    const r = recordFunctional(base, { ide: false, workspace: true }, t1);
+    expect(r.functional).toBe("degraded");
+    expect(r.functionalDetail).toContain("IDE unreachable");
+    const r2 = recordFunctional(base, { ide: false, workspace: false }, t1);
+    expect(r2.functionalDetail).toContain("IDE unreachable");
+    expect(r2.functionalDetail).toContain("not writable");
   });
 });

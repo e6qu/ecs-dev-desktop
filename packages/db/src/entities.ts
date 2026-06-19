@@ -51,6 +51,11 @@ export function makeWorkspaceEntity(client: DynamoDBClient, table = TABLE) {
         latestSnapshotAt: { type: "string", required: false },
         // Private IP of the running task's ENI; absent when stopped/scaled-to-zero.
         sshHost: { type: "string", required: false },
+        // Functional self-report from the in-workspace agent (is the desktop usable:
+        // IDE reachable + workspace writable). Absent until the first report.
+        functional: { type: ["ok", "degraded"] as const, required: false },
+        functionalDetail: { type: "string", required: false },
+        functionalAt: { type: "string", required: false },
         // Optimistic-concurrency version: every lifecycle write is conditioned
         // on the version it read, so concurrent transitions (e.g. two wakes
         // racing) cannot both win and leak a real ECS task.

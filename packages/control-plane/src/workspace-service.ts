@@ -19,6 +19,7 @@ import {
   markSnapshotLost,
   markStopped,
   markTaskLost,
+  recordFunctional,
   markWaking,
   METRIC_SECURITY_PRIVILEGE_ATTEMPT,
   METRIC_WORKSPACE_WAKE_LATENCY_MS,
@@ -52,6 +53,7 @@ import {
   type TaskId,
   type VolumeId,
   type DesiredState,
+  type FunctionalStatus,
   type Workspace,
   type WorkspaceId,
   type WorkspaceState,
@@ -183,6 +185,9 @@ interface WorkspaceRecord {
   latestSnapshotId?: string;
   latestSnapshotAt?: string;
   sshHost?: string;
+  functional?: FunctionalStatus;
+  functionalDetail?: string;
+  functionalAt?: string;
   version: number;
 }
 
@@ -237,6 +242,9 @@ function toWorkspace(r: WorkspaceRecord): Workspace {
     latestSnapshotAt:
       r.latestSnapshotAt === undefined ? undefined : isoTimestamp(r.latestSnapshotAt),
     sshHost: r.sshHost,
+    functional: r.functional,
+    functionalDetail: r.functionalDetail,
+    functionalAt: r.functionalAt === undefined ? undefined : isoTimestamp(r.functionalAt),
   };
 }
 
@@ -671,12 +679,21 @@ export class WorkspaceService {
   /** Idle-agent heartbeat: record activity so the reconciler doesn't scale the
    * workspace to zero (and wake it from idle). Heartbeats are frequent and
    * harmless, so a lost write race retries once before reporting conflict. */
-  async heartbeat(id: WorkspaceId): Promise<Result<WorkspaceDto, DomainError>> {
+  async heartbeat(
+    id: WorkspaceId,
+    functional?: { ide: boolean; workspace: boolean },
+  ): Promise<Result<WorkspaceDto, DomainError>> {
     for (let attempt = 0; ; attempt++) {
       const found = await this.require(id);
       if (!found.ok) return found;
-      const next = markActivity(found.value.ws, isoTimestamp(this.deps.clock.now()));
-      if (!next.ok) return next;
+      const at = isoTimestamp(this.deps.clock.now());
+      const active = markActivity(found.value.ws, at);
+      if (!active.ok) return active;
+      // Fold in the in-workspace agent's functional self-report (IDE reachable +
+      // workspace writable), so the admin sees whether the desktop is actually usable.
+      const next = ok(
+        functional === undefined ? active.value : recordFunctional(active.value, functional, at),
+      );
       try {
         await this.persistTransition(next.value, found.value.version);
       } catch (e) {

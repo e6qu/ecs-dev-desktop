@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { NextResponse } from "next/server";
 
+import { heartbeatRequest } from "@edd/api-contracts";
 import { workspaceId } from "@edd/core";
 
 import { checkAgentAuth } from "../../../../../lib/machine-auth";
@@ -34,7 +35,15 @@ async function handlePOST(req: Request, { params }: Ctx) {
     const cp = await getControlPlane();
     const ws = await cp.get(workspaceId(id));
     if (!ws) return notFound();
-    const result = await cp.heartbeat(workspaceId(id));
+    // Optional functional self-report (IDE reachable + workspace writable). Best-effort:
+    // a missing/malformed body just means a plain liveness heartbeat.
+    let functional: { ide: boolean; workspace: boolean } | undefined;
+    try {
+      functional = heartbeatRequest.parse(await req.json()).functional;
+    } catch {
+      functional = undefined;
+    }
+    const result = await cp.heartbeat(workspaceId(id), functional);
     return result.ok ? NextResponse.json(result.value) : domainErrorResponse(result.error);
   }
 

@@ -31,5 +31,8 @@ export function toWorkspaceDetail(ws: Workspace): WorkspaceDetailDto {
     ...(ws.latestSnapshotId === undefined ? {} : { latestSnapshotId: ws.latestSnapshotId }),
     ...(ws.latestSnapshotAt === undefined ? {} : { latestSnapshotAt: ws.latestSnapshotAt }),
     ...(ws.sshHost === undefined ? {} : { sshHost: ws.sshHost }),
+    ...(ws.functional === undefined ? {} : { functional: ws.functional }),
+    ...(ws.functionalDetail === undefined ? {} : { functionalDetail: ws.functionalDetail }),
+    ...(ws.functionalAt === undefined ? {} : { functionalAt: ws.functionalAt }),
   };
 }
