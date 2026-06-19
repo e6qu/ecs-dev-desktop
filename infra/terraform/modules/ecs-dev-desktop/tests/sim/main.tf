@@ -83,17 +83,15 @@ module "edd" {
   nat_mode = var.nat_mode
 
   # The sim implements the CloudWatch alarm API (PutMetricAlarm/DescribeAlarms/
-  # DeleteAlarms) and EMF metric extraction as of sockerless #607. The alarm
-  # resources all apply + round-trip EXCEPT the wake-latency p99 alarm: the sim
-  # doesn't persist a percentile `ExtendedStatistic` (sockerless#609), so that one
-  # alarm shows a perpetual `plan` diff and fails the idempotency gate. Off until
-  # #609 lands; flip true (independently of the dashboard) once it does.
-  enable_metric_alarms = false
+  # DeleteAlarms) + EMF extraction (sockerless #607) and the percentile
+  # `ExtendedStatistic` round-trip (sockerless #609), so all alarm resources —
+  # including the wake-latency p99 alarm — apply + plan idempotently against the sim.
+  enable_metric_alarms = true
 
-  # The CloudWatch ops dashboard needs PutDashboard, which the sim does not yet
-  # implement (sockerless#608). Gated separately from the alarms so each can be
-  # turned on the moment its upstream gap closes.
-  enable_cloudwatch_dashboard = false
+  # The CloudWatch dashboard API (PutDashboard/GetDashboard/ListDashboards/
+  # DeleteDashboards) is implemented as of sockerless #611, so the ops dashboard
+  # applies + round-trips against the sim.
+  enable_cloudwatch_dashboard = true
 
   # TLS + workspace-wildcard routing (ACM cert, DNS validation, HTTPS listener).
   domain_name     = var.enable_dns ? "edd-sim.example.com" : ""

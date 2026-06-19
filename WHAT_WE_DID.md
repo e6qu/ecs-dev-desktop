@@ -1735,3 +1735,17 @@ listStuckProvisioning` + `recoverStuckProvisioning` revert provisioning→stoppe
   both stay `false` for the sim fixture until #608/#609 land. `terraform fmt`/`validate` clean; the
   sim apply (alarms+dashboard off) is idempotent (`plan -detailed-exitcode` = 0). Tracked in `BUGS.md`
   → External blockers (#602–#606 moved to fixed-confirmed; #608/#609 added as open).
+- **2026-06-19 — Adopted sockerless #611 (re-pin); confirmed #608/#609 fixed; enabled the sim's
+  alarm + dashboard validation. No open sockerless blockers remain.** Upstream #611 (merge `322d16ad`)
+  implemented the CloudWatch dashboard API (#608, new `cloudwatch_dashboards.go`) and the alarm
+  percentile `ExtendedStatistic` round-trip (#609). Verified first at the source level (the handlers
+  / struct field now exist at the tip), then **confirmed downstream**: re-pinned `third_party/sockerless`
+  `74c0a3d2 → 322d16ad`, rebuilt the process-mode sim, and probed — dashboard CRUD round-trips
+  (put→`[]`, get echoes body, list→`["ops"]`, delete clears) and a `p99` alarm round-trips
+  `ExtendedStatistic=p99`/`Statistic=null`. Flipped **both** sim-fixture gates on
+  (`enable_metric_alarms=true`, `enable_cloudwatch_dashboard=true`): `terraform apply` lands all 9
+  alarms + the ops dashboard and `plan -detailed-exitcode` = 0 (idempotent), clean destroy of 66
+  resources; `fmt` clean. Earlier (before the fix landed) I also posted source-level "still
+  reproduces" evidence comments on #608/#609. Net: the full EMF→metrics→alarms→dashboard observability
+  path is now sim-CI-validatable, and **no sockerless gap blocks us** — `BUGS.md` → External blockers
+  has #602–#606 and #608/#609 all fixed-confirmed.
