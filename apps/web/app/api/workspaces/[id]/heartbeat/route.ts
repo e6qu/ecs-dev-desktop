@@ -18,6 +18,18 @@ interface Ctx {
   params: Promise<{ id: string }>;
 }
 
+/** Optional functional self-report (IDE reachable + workspace writable). Best-effort
+ * on BOTH auth paths: a missing/malformed body just means a plain liveness heartbeat. */
+async function parseFunctional(
+  req: Request,
+): Promise<{ ide: boolean; workspace: boolean } | undefined> {
+  try {
+    return heartbeatRequest.parse(await req.json()).functional;
+  } catch {
+    return undefined;
+  }
+}
+
 // POST /api/workspaces/:id/heartbeat — reports in-workspace activity so the
 // reconciler keeps the workspace running. Accepts two auth paths:
 //   1. Session auth (browser / API client with Auth.js session cookie)
@@ -35,22 +47,15 @@ async function handlePOST(req: Request, { params }: Ctx) {
     const cp = await getControlPlane();
     const ws = await cp.get(workspaceId(id));
     if (!ws) return notFound();
-    // Optional functional self-report (IDE reachable + workspace writable). Best-effort:
-    // a missing/malformed body just means a plain liveness heartbeat.
-    let functional: { ide: boolean; workspace: boolean } | undefined;
-    try {
-      functional = heartbeatRequest.parse(await req.json()).functional;
-    } catch {
-      functional = undefined;
-    }
-    const result = await cp.heartbeat(workspaceId(id), functional);
+    const result = await cp.heartbeat(workspaceId(id), await parseFunctional(req));
     return result.ok ? NextResponse.json(result.value) : domainErrorResponse(result.error);
   }
 
-  // agentResult === "absent" — fall through to session auth.
+  // agentResult === "absent" — fall through to session auth. The functional self-report
+  // is honoured here too (a browser/API client may send it), not only on the agent path.
   const ctx = await loadOwnedWorkspace(req, params, "update");
   if (isResponse(ctx)) return ctx;
-  const result = await ctx.cp.heartbeat(ctx.id);
+  const result = await ctx.cp.heartbeat(ctx.id, await parseFunctional(req));
   return result.ok ? NextResponse.json(result.value) : domainErrorResponse(result.error);
 }
 

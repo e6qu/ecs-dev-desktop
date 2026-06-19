@@ -298,9 +298,15 @@ export class WorkspaceService {
         detail: input.repoUrl === undefined ? "blank session" : `repo ${input.repoUrl}`,
       });
     } catch (err) {
-      // Crash-consistency: the task launched but the record never landed —
-      // stop the task so nothing real leaks, then surface the original error.
-      await this.deps.compute.stopTask(task.id);
+      // Crash-consistency: the task launched but the record never landed — stop the
+      // task so nothing real leaks. The stop is best-effort (the orphan-task reaper is
+      // the backstop if it fails); either way surface the ORIGINAL error, never let a
+      // cleanup failure mask the real cause or swallow it.
+      try {
+        await this.deps.compute.stopTask(task.id);
+      } catch {
+        /* reaper backstop reaps the leaked RUNNING task by its workspace tag */
+      }
       throw err;
     }
     return toWorkspaceDto(ws);
@@ -711,6 +717,12 @@ export class WorkspaceService {
     const found = await this.require(id);
     if (!found.ok) return found;
     const { ws, version } = found.value;
+    // Snapshot is only meaningful for a live session. Without this guard a `deleting`
+    // tombstone (which keeps its `volumeId` until teardown) could be snapshotted,
+    // writing a fresh `latestSnapshotId` onto the record the reconciler is removing.
+    if (ws.state !== "running" && ws.state !== "idle") {
+      return err(conflictError(`cannot snapshot ${id}: not running (state=${ws.state})`));
+    }
     if (ws.volumeId === undefined) {
       return err(conflictError(`cannot snapshot ${id}: no active volume`));
     }

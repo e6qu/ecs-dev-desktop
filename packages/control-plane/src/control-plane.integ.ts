@@ -233,6 +233,18 @@ describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
     expect(await service.get(workspaceId(ws.id))).toBeNull();
   });
 
+  it("rejects snapshot of a deleting tombstone (it still has a volume) with a conflict", async () => {
+    const ws = await service.create({ ownerId: ownerId("heidi"), baseImage: baseImage("img") });
+    expect((await service.remove(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.get(workspaceId(ws.id)))?.state).toBe("deleting");
+    // A `deleting` workspace keeps its volumeId until teardown; without the state guard
+    // a racing snapshot would write a fresh latestSnapshotId onto the tombstone the
+    // reconciler is removing. It must be refused as a conflict, not silently succeed.
+    const snap = await service.snapshot(workspaceId(ws.id));
+    expect(snap.ok).toBe(false);
+    if (!snap.ok) expect(snap.error.kind).toBe("conflict");
+  });
+
   it("remove() of an absent workspace returns a not_found domain error", async () => {
     // The DELETE route relies on this to map the concurrent double-delete race to
     // 404 (via the central mapper) instead of a 500.

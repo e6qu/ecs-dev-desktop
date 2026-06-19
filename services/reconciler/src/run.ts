@@ -36,6 +36,8 @@ import {
   METRIC_RECONCILER_PROVISIONING_RECOVERED,
   METRIC_RECONCILER_TASKS_REAPED,
   METRIC_RECONCILER_TASKS_REAP_FAILED,
+  METRIC_RECONCILER_TASKDEFS_PRUNED,
+  METRIC_RECONCILER_TASKDEFS_PRUNE_FAILED,
   METRIC_RECONCILER_SKIPPED,
   METRIC_RECONCILER_RECOVERED,
   METRIC_RECONCILER_DELETIONS_FINISHED,
@@ -151,6 +153,8 @@ try {
   metrics.count(METRIC_RECONCILER_GC_FAILED, result.gc.volumesFailed + result.gc.snapshotsFailed);
   metrics.count(METRIC_RECONCILER_TASKS_REAPED, result.tasks.reaped);
   metrics.count(METRIC_RECONCILER_TASKS_REAP_FAILED, result.tasks.failed);
+  metrics.count(METRIC_RECONCILER_TASKDEFS_PRUNED, result.taskDefs.deregistered);
+  metrics.count(METRIC_RECONCILER_TASKDEFS_PRUNE_FAILED, result.taskDefs.failed);
   metrics.count(
     METRIC_RECONCILER_SKIPPED,
     result.provisioning.skipped +
@@ -174,6 +178,8 @@ try {
     tasksScanned: result.tasks.scanned,
     tasksReaped: result.tasks.reaped,
     tasksReapFailed: result.tasks.failed,
+    taskDefsPruned: result.taskDefs.deregistered,
+    taskDefsPruneFailed: result.taskDefs.failed,
     skipped:
       result.provisioning.skipped +
       result.drift.skipped +
@@ -181,9 +187,23 @@ try {
       result.snapshots.skipped,
   });
 
-  // Post-sweep observability (best-effort — a gauge/heartbeat hiccup must not turn
-  // a good sweep into a failure): fleet gauges, a priced spend gauge, and the
-  // heartbeat the Health board reads for reconciler staleness.
+  // Heartbeat FIRST: the sweep above completed, and that — not the gauge/cost steps
+  // below — is the fact the Health board's reconciler-staleness check records. Gating
+  // the heartbeat behind a flaky `cost.report()`/gauge would make a healthy reconciler
+  // report `degraded`. Its own try/catch so a heartbeat hiccup can't fail a good sweep.
+  try {
+    await heartbeat
+      .put({ id: RECONCILER_HEARTBEAT_ID, lastRunAt: isoTimestamp(systemClock.now()) })
+      .go();
+  } catch (err) {
+    log.warn("reconciler heartbeat write failed", {
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+
+  // Post-sweep gauges (best-effort, separately): fleet gauges + a priced spend gauge.
+  // A gauge/cost hiccup must not turn a good sweep into a failure — and must not block
+  // the heartbeat (above), which is why this is its own try after the heartbeat.
   try {
     const stats = tallyWorkspaceStates((await service.list()).map((w) => w.state));
     metrics.gauge(METRIC_FLEET_TOTAL, stats.total);
@@ -196,9 +216,6 @@ try {
     metrics.gauge(METRIC_RECONCILER_ERROR_GAUGE, stats.byState.error);
     metrics.gauge(METRIC_RECONCILER_DELETING_GAUGE, stats.byState.deleting);
     metrics.gauge(METRIC_FLEET_COST_USD, (await cost.report()).total.totalUsd);
-    await heartbeat
-      .put({ id: RECONCILER_HEARTBEAT_ID, lastRunAt: isoTimestamp(systemClock.now()) })
-      .go();
   } catch (err) {
     log.warn("post-sweep observability step failed", {
       error: err instanceof Error ? err.message : String(err),

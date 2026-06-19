@@ -2,11 +2,15 @@
 import type { WorkspaceDetailDto, WorkspaceDto } from "@edd/api-contracts";
 import type { Workspace } from "@edd/core";
 
-/** Map the Workspace domain object to the public API DTO (drops runtime bindings). */
+/** Map the Workspace domain object to the public API DTO (drops runtime bindings).
+ * `repoUrl` is part of the public contract (the in-workspace git-credential broker
+ * reads it back via `get()` to scope the provider token to the repo's owner), so it
+ * must round-trip here — not only on the admin projection below. */
 export function toWorkspaceDto(ws: Workspace): WorkspaceDto {
   return {
     id: ws.id,
     ownerId: ws.ownerId,
+    ...(ws.repoUrl === undefined ? {} : { repoUrl: ws.repoUrl }),
     baseImage: ws.baseImage,
     state: ws.state,
     createdAt: ws.createdAt,

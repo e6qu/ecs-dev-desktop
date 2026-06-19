@@ -4,6 +4,46 @@
 
 ## Open
 
+### Code-quality sweep (2026-06-20) — multi-dimension audit findings
+
+A broad 6-agent sweep (API-first/thin-UI, fake telemetry/monitoring, weak types, fake/anemic tests,
+idempotency/self-heal/fail-loud, correctness/UX), each finding traced to the code. The codebase is
+high-quality overall (no fabricated metrics, no `any`/`@ts-ignore` in src, strong authz/cost tests).
+**Batch 1 (correctness + fail-loud + telemetry honesty) is FIXED** (see _Resolved_); the rest are
+queued in priority order:
+
+- **[weak types] `Principal.id`/`email` are bare `string`** (`packages/authz/src/index.ts:23`) — the
+  root of owner-identity primitive obsession, forcing `ownerId(principal.id)` re-brands at every call
+  site. Brand once at the identity edge (`apps/web/lib/principal.ts`). Also `SshKeyService` /
+  `GitCredentialService` public methods take bare `string` for branded ids; `WorkspaceAuditEvent.action`
+  should be a literal union; `ownerEmail` contract is `z.string()` not `z.email()`.
+- **[fake tests] real AWS adapters don't assert request shape** —
+  `ec2-storage-provider.test.ts` / `ecs-compute-provider.test.ts` switch on `command instanceof` but
+  never inspect `command.input`, so the security-critical `edd:managed` tag / `edd:workspace-id` tag /
+  `deleteOnTermination` / snapshot-hydration branch are unverified. Also the storage fidelity contract
+  runs only against the fake (never wired into `storage-ec2`), and there is no compute contract at all
+  (fake `taskState`/snapshot-hydration untested). Plus tautological tests (`pricing.test.ts:37`,
+  `contracts.test.ts:111`) and the `role-mapping.test.ts` missing `member`/precedence cases.
+- **[API-first / thin UI]** several SSR admin pages bypass the API and embed view logic: **Costs**
+  (`admin/costs/page.tsx`) ignores the existing `costReport` contract + `GET /api/admin/costs` route and
+  re-derives tiles/formatting (and uses `costWindow.catch("all")` → silently shows all-time on a typo);
+  **Quotas**/**Overview** have no route/contract (usage tallied in the page); the catalog→workspace
+  name join is re-done in 3 pages (`lib/catalog-details.ts`); the SSH connect command + `canCreate` +
+  `availableActions` (the lifecycle state machine) are computed client-side. Fix template: return
+  ready-to-render DTOs from contracts + thin client pollers (mirror `InfrastructureView`).
+- **[idempotency] quota check is a TOCTOU race** (`apps/web/app/api/workspaces/route.ts:63`) — concurrent
+  creates each read `owned < limit` and all pass → quota bypass → unbounded Fargate launches. Needs an
+  atomic per-owner counter (conditional `ADD count 1` guarded by `count < limit`) in the create
+  transaction. Also: billing stops at delete-_request_ not teardown (cost under-counts during teardown
+  lag); `finishDeleting`'s data-safety snapshot is discarded then GC'd (documented protection not
+  delivered); `recordSecurityEvent` is non-idempotent (retry → duplicate audit rows + double metric).
+- **[UX]** destructive actions (delete workspace/SSH key/base image) have **no confirmation** → data
+  loss on a mis-click; the workspace card shows stale state + raw 409 error strings under scale-to-zero
+  state drift; a GitHub repo-load failure leaves an eternal spinner; a single poll failure blanks the
+  whole Health/Infra board (should keep stale data + a "stale" banner); no "Open/Connect" affordance for
+  a running workspace; degraded-`functional` not shown on the owner card; a11y gaps (no `aria-pressed`
+  / glyph labels).
+
 The codex code-review findings (2026-06-19) that were tracked here are **all remediated and merged
 in #129** (Phase 9; "12 findings, none deferred") — moved to _Resolved (repo)_ below, re-verified
 against the merged code (e.g. `assertFakeProvidersAllowed` prod guard; IAM `CreateSecret`/`PutSecretValue`/
@@ -186,6 +226,22 @@ concurrent-wake race, TLS storage adapter). PR #550 is bleephub-Actions-only;
 no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
+
+- **Code-quality sweep batch 1 (2026-06-20) — correctness + fail-loud + telemetry honesty.** Fixed +
+  tested: (A1) `toWorkspaceDto` dropped `repoUrl` though the contract declares it and the in-workspace
+  git-credential broker reads it back via `get()` → private-repo tokens were mis-scoped; now round-trips.
+  (A2) the heartbeat `functional` self-report was applied on the agent path but silently dropped on the
+  session path; now honoured on both (proven via admin Inspect). (A3) `snapshot()` had no lifecycle
+  guard, so a `deleting` tombstone (keeps its volume) could be snapshotted onto the record being torn
+  down; now rejected as a conflict. (A4) `/api/admin/logs` silently fell through to the unfiltered
+  all-container stream on an unknown `workspaceId`; now 404 (unknown) / empty (no running task). (H2)
+  `create()` compensation masked the original error and leaked the task if the cleanup `stopTask` threw;
+  now the stop is best-effort (reaper backstop) and the ORIGINAL error always propagates. (MED-1) the
+  reconciler heartbeat was written last, after `cost.report()`, so a flaky cost/gauge step made a
+  healthy reconciler report `degraded`; the heartbeat is now written first in its own try. (L1)
+  `pruneTaskDefinitions` returned a success-shaped `{deregistered:0}` on failure; now surfaces
+  `failed` + new metrics `reconciler.taskdefs.pruned`/`.prune_failed` so a persistent failure is
+  observable instead of silently growing revisions.
 
 - **Code-review findings (codex, 2026-06-19) — all 12 fixed, merged #129 (Phase 9).** The deep
   `codex` review's findings, re-verified against the merged code: **[Critical]** silent prod
