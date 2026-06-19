@@ -161,26 +161,23 @@ Two would-be findings were discarded as probe errors, not sim bugs (`CreateSnaps
 has no `ClientToken` idempotency in AWS; `DescribeSnapshots MaxResults` min is 5) — a
 reminder to validate each probe against the AWS spec before filing.
 
-- **sockerless#618/#619 (open — non-blocking conformance gaps, filed 2026-06-19)** — a second
-  focused fidelity slice (probed against `322d16ad`, `SIM_RUNTIME=process`, standard AWS SDK v3)
-  adversarially checked ECS request-validation, EventBridge Scheduler, CloudWatch Logs pagination,
-  and Secrets Manager error shapes against documented AWS behaviour. Two genuine **under-validation**
-  gaps filed: the sim is _more lenient_ than real AWS, so neither blocks our flows (we never send
-  these malformed requests) but each lets a downstream regression pass sim-backed CI that real AWS
-  would reject 400:
-  - **#618 — ECS under-validates request constraints.** `RegisterTaskDefinition` with
-    `requiresCompatibilities:["FARGATE"]` but **no** task-level `cpu`/`memory` is accepted (AWS:
-    `ClientException` — Fargate requires task-level cpu+memory; a control with cpu+mem confirms the
-    sole diff); `RunTask count:11` starts 11 tasks (AWS caps `count` at 10); `DescribeTasks` with an
-    empty `tasks:[]` returns 200 (AWS: `InvalidParameterException` — `tasks` is Required:Yes).
-  - **#619 — Scheduler `CreateSchedule` accepts an invalid `ScheduleExpression`.** A non
-    `at()`/`rate()`/`cron()` expression is stored without error (AWS: `ValidationException`); distinct
-    from the closed cron-_evaluation_ gaps (#489/#493) — this is input validation at create time.
-    Conformant on this pass (locked-in, no action): ECS `RunTask` unknown-taskdef → `ClientException`
-    and `ListTasks` `maxResults`+`nextToken` pagination; Scheduler `GetSchedule` unknown →
-    `ResourceNotFoundException`; CWL `GetLogEvents` `limit`+`nextForwardToken` pagination and
-    `DescribeLogStreams` unknown-group → `ResourceNotFoundException`; Secrets Manager `GetSecretValue`
-    unknown → `ResourceNotFoundException` and duplicate `CreateSecret` → `ResourceExistsException`.
+- **sockerless#618/#619 (fixed upstream — confirmed downstream 2026-06-20)** — the two
+  under-validation gaps from the second fidelity slice (filed against `322d16ad`), both fixed by
+  sockerless **#621** (merge `47b6a2a`) and **confirmed downstream** after re-pinning the submodule to
+  it (from `322d16ad`) and re-probing the rebuilt process-mode sim — each now rejects with the correct
+  AWS-spec error, and the valid-form control cases still pass:
+  - **#618 — ECS request validation.** `RegisterTaskDefinition` with `requiresCompatibilities:["FARGATE"]`
+    and no task-level `cpu`/`memory` now → `ClientException` ("Task definition does not support launch
+    type FARGATE: task-level memory and cpu are required"); `RunTask count:11` → `InvalidParameterException`
+    ("count cannot be greater than 10"); `DescribeTasks` with an empty `tasks:[]` →
+    `InvalidParameterException` ("Tasks cannot be empty.").
+  - **#619 — Scheduler `CreateSchedule`** now rejects a non-`at()`/`rate()`/`cron()` `ScheduleExpression`
+    with `ValidationException` ("Invalid Schedule Expression …"); a valid `rate(5 minutes)` is still
+    accepted. Distinct from the closed cron-_evaluation_ gaps (#489/#493) — input validation at create time.
+    The behaviours the slice recorded as conformant (ECS unknown-taskdef → `ClientException` + `ListTasks`
+    pagination; Scheduler `GetSchedule` unknown → `ResourceNotFoundException`; CWL `GetLogEvents` pagination +
+    unknown-group → `ResourceNotFoundException`; Secrets Manager unknown → `ResourceNotFoundException` +
+    duplicate-create → `ResourceExistsException`) are untouched by #621.
 
 Earlier full simulator pass (2026-06-12, submodule `9d43f3d` / PR #550) found no
 sockerless fidelity bugs across all live surfaces (real-CP wake chain, live
