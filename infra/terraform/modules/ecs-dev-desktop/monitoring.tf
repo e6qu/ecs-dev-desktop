@@ -39,9 +39,10 @@ resource "aws_budgets_budget" "monthly" {
 
 # A single ops pane: fleet size + cost, the wake SLO, control-plane availability +
 # errors, the reconciler's self-healing actions and failures, and DynamoDB throttling.
-# Gated like the alarms — the EMF metrics resolve only against real CloudWatch.
+# Gated on its own toggle: it needs the CloudWatch PutDashboard API specifically
+# (distinct from the alarm API), so it can be disabled independently of the alarms.
 resource "aws_cloudwatch_dashboard" "ops" {
-  count          = var.enable_metric_alarms ? 1 : 0
+  count          = var.enable_cloudwatch_dashboard ? 1 : 0
   dashboard_name = "${var.name}-ops"
 
   dashboard_body = jsonencode({

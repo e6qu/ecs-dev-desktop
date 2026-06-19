@@ -1694,3 +1694,44 @@ listStuckProvisioning` + `recoverStuckProvisioning` revert provisioning→stoppe
   on). `terraform fmt`+`validate` clean; web unit 64; tsc/eslint/knip clean. **Deferred (AWS-gated /
   larger):** full X-Ray/OTel distributed tracing, a synthetic create→wake→connect canary, EBS AZ/region
   DR, and real-time per-workspace status — all want the account to build+validate against real AWS.
+- **2026-06-19 — Sockerless fidelity pass on the "AWS-gated" ops/DR surfaces; filed 3 upstream gaps.**
+  Probed how much of the AWS-gated work (alarms, EMF metrics, EBS DR) could run on sockerless instead
+  of needing the account. Rigorously (probe + sim-source verified, catching two of my own CLI
+  false-positives) found: the sim DOES implement CloudWatch metrics (`PutMetricData`/`GetMetricStatistics`/
+  `GetMetricData`/`ListMetrics`) and the full EBS create/snapshot/restore lifecycle, and the
+  create→wake→connect journey already runs (the `user-journey` e2e) — but three genuine gaps remain,
+  each filed upstream with a reproduction + AWS-spec reference: **sockerless#602** (EC2 `CopySnapshot`
+  unimplemented → blocks cross-region EBS DR), **#603** (CloudWatch alarm API unimplemented — metrics
+  but no `PutMetricAlarm`/`DescribeAlarms` → why `enable_metric_alarms=false` for the sim), **#604**
+  (CloudWatch Logs doesn't extract EMF → our EMF-over-logs metrics path can't be sim-validated).
+  Recorded in `BUGS.md` → External blockers; cross-referenced from `observability-gaps.md`. Once these
+  land upstream (cf. the #593/#590-#592 cycle), our alarms, EMF metrics, and EBS DR become
+  sim-CI-validatable rather than real-AWS-only.
+- **2026-06-19 — Deeper call-shape fidelity pass; filed 2 more sockerless gaps (#605/#606).** Followed
+  the first pass by inventorying every AWS API _call shape_ our code issues (EC2 paginators/waiters/tag
+  filters, ECS `RunTask`+tags/`ListTasks`/`DescribeTasks include:TAGS`, Secrets Manager idempotent
+  upsert, CloudWatch Logs `FilterLogEvents`, CloudTrail `LookupEvents` pagination, DynamoDB
+  transactions) and probed each against the process-mode sim, cross-checking the Go source (and
+  correcting one false-positive — a process-mode task stopping immediately, not a `ListTasks` filter
+  bug). Most surfaces were faithful; two genuine gaps, both hitting our code, were filed upstream with
+  deterministic reproductions: **sockerless#605** (`FilterLogEvents` ignores `logStreamNamePrefix` →
+  our per-workspace log view leaks every workspace's container events) and **sockerless#606**
+  (CloudTrail `LookupEvents` absolute-offset `NextToken` over a newest-first list → overlapping/
+  duplicate pages; our audit-source pagination loop collects duplicates and misses entries). Recorded
+  in `BUGS.md` → External blockers.
+- **2026-06-19 — Adopted sockerless #607 (re-pin); confirmed all 5 fixes downstream; surfaced + filed
+  2 more (#608/#609).** Upstream #607 (merge `74c0a3d2`) fixed all five gaps from the two fidelity
+  passes (#602 CopySnapshot, #603 alarm API, #604 EMF extraction, #605 `FilterLogEvents` prefix, #606
+  CloudTrail cursor). Re-pinned the `third_party/sockerless` submodule `fcb58281 → 74c0a3d2`, rebuilt
+  the process-mode sim, and **confirmed each fix downstream** by re-probing (copy-snapshot returns a
+  new id; alarm CRUD + live `ALARM` state; an EMF log doc round-trips through `get-metric-statistics`;
+  `FilterLogEvents` honours `logStreamNamePrefix` + mutual-exclusion; CloudTrail pages no longer
+  overlap on a growing trail). Then exercised the module's alarm/dashboard resources against the sim
+  via `terraform apply` on `tests/sim`, which surfaced two residual gaps, both filed upstream with
+  reproductions: **#608** (`PutDashboard` unimplemented → 404) and **#609** (alarms drop a percentile
+  `ExtendedStatistic`, so the wake-latency p99 alarm shows a perpetual `plan` diff / fails the
+  idempotency gate). Split the CloudWatch dashboard onto its own `enable_cloudwatch_dashboard` toggle
+  (decoupled from `enable_metric_alarms`) so each can be enabled the moment its upstream gap closes;
+  both stay `false` for the sim fixture until #608/#609 land. `terraform fmt`/`validate` clean; the
+  sim apply (alarms+dashboard off) is idempotent (`plan -detailed-exitcode` = 0). Tracked in `BUGS.md`
+  → External blockers (#602–#606 moved to fixed-confirmed; #608/#609 added as open).

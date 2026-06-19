@@ -115,8 +115,15 @@ active}` and a priced `fleet.cost.usd` once per sweep.
   role; 0 when unlimited) and a `quota.denied` count on rejection — the create path is
   the one place that knows both the owner's count and their role-derived limit.
 - Real-AWS verification that EMF stdout lands as CloudWatch metrics + alarms fire
-  (only the JSON shape is unit-tested; the sim has no metrics endpoint). _Tracked
-  under `e2e-aws`._
+  (only the JSON shape is unit-tested). _Tracked under `e2e-aws`._ As of the
+  2026-06-19 fidelity passes the sim now supports the CloudWatch metric read/write
+  APIs, **EMF extraction** (sockerless#604), the **alarm API** (sockerless#603), and
+  EC2 `CopySnapshot` (sockerless#602) — all adopted by re-pinning the submodule to
+  #607. Two residual gaps keep the module's alarm/dashboard resources off for the sim
+  terraform apply: `PutDashboard` (sockerless#608) and percentile `ExtendedStatistic`
+  round-trip for the wake-latency p99 alarm (sockerless#609). Once those land, the
+  alarm + dashboard resources become sim-CI-validatable, not just real-AWS (see
+  `BUGS.md` → External blockers).
 
 ## Audit
 

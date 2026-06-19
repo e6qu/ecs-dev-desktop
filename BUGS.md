@@ -46,6 +46,46 @@ active breakage):
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
+- **sockerless#602/#603/#604/#605/#606 (fixed upstream — confirmed downstream 2026-06-19)** —
+  the five observability/DR fidelity gaps from the two fidelity passes, all fixed by sockerless
+  **#607** (merge `74c0a3d2`) and **confirmed downstream** after re-pinning the submodule to it
+  (from `fcb58281`) and re-probing the rebuilt process-mode sim:
+  - **#602 — EC2 `CopySnapshot`** — `copy-snapshot --source-snapshot-id …` now returns a new
+    `snapshotId` (cross-region EBS **DR** flow snapshot→copy→restore is exercisable).
+  - **#603 — CloudWatch alarm API** — `PutMetricAlarm`/`DescribeAlarms`/`DeleteAlarms` work across
+    all three CW wire protocols; `DescribeAlarms` evaluates `StateValue` live from metric data
+    honouring `TreatMissingData` (probed: a `sweep.count < 1` alarm reads `ALARM`). The module's
+    9 alarm resources apply + round-trip via terraform — **except** the wake-latency p99 alarm,
+    blocked by #609 below.
+  - **#604 — CloudWatch Logs EMF extraction** — an EMF `PutLogEvents` doc is now queryable through
+    the metric APIs (`get-metric-statistics`/`list-metrics`) with no `PutMetricData` call (probed:
+    `quota.utilization=42` round-tripped).
+  - **#605 — `FilterLogEvents` `logStreamNamePrefix`** — now scopes to the prefix and rejects
+    `logStreamNames`+`logStreamNamePrefix` together (`InvalidParameterException`).
+  - **#606 — CloudTrail `LookupEvents` pagination** — the `NextToken` is now an opaque
+    `(EventTime, EventId)` cursor (no page overlap on a growing trail; probed with a mid-walk
+    mutation → zero duplicate `EventId`s); read-only `LookupEvents` is no longer self-recorded.
+
+- **sockerless#608/#609 (open — filed 2026-06-19)** — two further gaps surfaced when flipping the
+  module's `enable_metric_alarms` on against the rebuilt sim (so the alarm/dashboard resources now
+  apply through terraform). Both keep the alarms + dashboard `false` for the sim apply until fixed:
+  - **#608 — CloudWatch `PutDashboard` not implemented** (404 / unrouted; the sim's `dashboard.go`
+    is its own `/sim/v1/*` operator console, not the AWS API). Blocks applying `aws_cloudwatch_dashboard`
+    against the sim → `enable_cloudwatch_dashboard=false` for the sim fixture.
+  - **#609 — CloudWatch alarms drop a percentile `ExtendedStatistic`** (e.g. `p99`): `PutMetricAlarm`
+    accepts it, `DescribeAlarms` returns neither `Statistic` nor `ExtendedStatistic`, so it never
+    round-trips → our wake-latency p99 alarm shows a **perpetual `plan` diff** and fails the
+    `plan -detailed-exitcode` idempotency gate. Keeps `enable_metric_alarms=false` for the sim
+    fixture; flip it true (independently of the dashboard) once #609 lands. The other 8 module
+    alarms are idempotent — only the p99 one is blocked.
+
+  Confirmed faithful on the sim across both passes (so the above are the only gaps): CloudWatch
+  metric write/read + EMF, the full EBS create/snapshot/restore **and copy** lifecycle, alarm
+  CRUD + state evaluation, EC2 `tag:` filters + `OwnerIds:self` + pagination + the volume/snapshot
+  waiters, Secrets Manager `CreateSecret`→`ResourceExistsException`→`PutSecretValue` upsert, ECS
+  `RunTask --tags` → `DescribeTasks include:TAGS` / `ListTasks --desired-status` / `DescribeClusters`
+  counts, and the `create→wake→connect→delete` journey (the container-mode `user-journey` e2e).
+
 - **sockerless#569 (fixed upstream — confirmed downstream 2026-06-16)** —
   process-mode (`SIM_RUNTIME=process`) `ecs:RunTask` with a managed-EBS volume used
   to **panic** the sim (nil Docker client in the async transition: `ec2.go:3800` ←

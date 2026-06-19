@@ -228,6 +228,12 @@ variable "enable_metric_alarms" {
   default     = true
 }
 
+variable "enable_cloudwatch_dashboard" {
+  description = "Create the CloudWatch ops dashboard (aws_cloudwatch_dashboard). Separate from enable_metric_alarms because it needs the CloudWatch PutDashboard API specifically; disable where PutDashboard is unavailable."
+  type        = bool
+  default     = true
+}
+
 variable "alarm_sns_topic_arns" {
   description = "SNS topic ARNs notified on alarm/OK transitions. Empty = alarms still evaluate and show in the console, but send no notifications."
   type        = list(string)
