@@ -157,6 +157,16 @@ data "aws_iam_policy_document" "control_plane" {
     resources = ["*"]
   }
 
+  # Read-only IAM self-check: the control plane asks whether its own identity is
+  # actually allowed each action its components need (the IAM_REQUIREMENTS manifest),
+  # surfaced in the config-sync report. Introspection only — neither action can
+  # modify anything, and both are inherently account-scoped ("*").
+  statement {
+    sid       = "IamSelfCheck"
+    actions   = ["iam:SimulatePrincipalPolicy", "sts:GetCallerIdentity"]
+    resources = ["*"]
+  }
+
   dynamic "statement" {
     for_each = length(var.secret_environment) > 0 ? [1] : []
     content {

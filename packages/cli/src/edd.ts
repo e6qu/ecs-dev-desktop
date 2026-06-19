@@ -31,8 +31,12 @@ function makeClient(env: NodeJS.ProcessEnv): ApiClient {
 
 function printConfigSync(report: ConfigSyncReportDto): void {
   process.stdout.write(`config-sync: ${report.inSync ? "IN SYNC ✓" : "DRIFT ✗"}\n`);
+  if (report.identity !== undefined) {
+    const who = report.identity.principalArn ?? (report.identity.callerArn || "—");
+    process.stdout.write(`  identity: account ${report.identity.account || "—"} · ${who}\n`);
+  }
   for (const c of report.checks) {
-    process.stdout.write(`  ${sym(c.status)} ${c.name.padEnd(22)} ${c.detail}\n`);
+    process.stdout.write(`  ${sym(c.status)} ${c.name.padEnd(26)} ${c.detail}\n`);
   }
 }
 

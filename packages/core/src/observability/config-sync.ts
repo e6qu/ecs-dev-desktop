@@ -13,6 +13,12 @@
  * Pure: data in (env snapshot + dependency statuses) → a report out. No I/O.
  */
 
+import {
+  evaluateIamPermissions,
+  type IamIdentity,
+  type IamPreflightSignal,
+} from "./iam-requirements";
+
 /** A live dependency signal the shell gathers (health checks). */
 export type DependencyStatus = "ok" | "down" | "unknown";
 
@@ -29,6 +35,8 @@ export interface ConfigSyncReport {
   /** True iff no check is in `drift` (the deployment matches its expected config). */
   readonly inSync: boolean;
   readonly checks: readonly ConfigCheck[];
+  /** The resolved AWS caller identity, when known (real deployment). */
+  readonly identity?: IamIdentity;
 }
 
 export interface ConfigSyncInput {
@@ -38,6 +46,14 @@ export interface ConfigSyncInput {
   readonly dynamodb: DependencyStatus;
   /** Compute cluster reachability/ACTIVE (from the health board). */
   readonly compute: DependencyStatus;
+  /**
+   * Live IAM preflight for the control plane's own identity (the shell runs
+   * `iam:SimulatePrincipalPolicy` over {@link IAM_REQUIREMENTS}). Omitted in
+   * dev/fakes; classifies as `unknown` when the check can't run.
+   */
+  readonly iam?: IamPreflightSignal;
+  /** The resolved AWS caller identity (from the same preflight), surfaced verbatim. */
+  readonly iamIdentity?: IamIdentity;
 }
 
 /** Coordinates the real ECS/EBS adapters require to launch + manage workspaces. A
@@ -121,5 +137,15 @@ export function evaluateConfigSync(input: ConfigSyncInput): ConfigSyncReport {
   checks.push(dependencyCheck("dynamodb", input.dynamodb, "DynamoDB"));
   checks.push(dependencyCheck("compute-cluster", input.compute, "ECS cluster"));
 
-  return { inSync: checks.every((c) => c.status !== "drift"), checks };
+  // 4) IAM preflight: does the control plane's own identity actually hold the
+  //    permissions its components need? Only meaningful where a real role+policy is
+  //    deployed; `unknown` otherwise (the shell omits the signal off real AWS).
+  if (input.iam !== undefined) {
+    checks.push(evaluateIamPermissions("control-plane", input.iam));
+  }
+
+  const inSync = checks.every((c) => c.status !== "drift");
+  return input.iamIdentity !== undefined
+    ? { inSync, checks, identity: input.iamIdentity }
+    : { inSync, checks };
 }

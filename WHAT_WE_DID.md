@@ -1831,3 +1831,25 @@ listStuckProvisioning` + `recoverStuckProvisioning` revert provisioning→stoppe
   Closed #618 (auto) and #619 (manually, with a confirmed-downstream note). `BUGS.md` → External
   blockers updated to fixed-confirmed; **no open sockerless blockers remain** (aside from the deliberate
   #583 memory-sizing gate).
+
+- **2026-06-20 — IAM permission self-check + identity surfacing (config-sync extension).** The app now
+  understands the IAM actions each runtime component needs and checks it actually holds them, per the
+  user's request (hybrid verification + a CI drift gate, both confirmed). New pure core
+  (`@edd/core` `iam-requirements.ts`): `IAM_REQUIREMENTS` — the per-component (control-plane, reconciler)
+  required-action manifest, the single source of truth derived from `iam.tf`, with the condition context
+  scoped grants need (`ecs:cluster`, `aws:ResourceTag/edd:managed`, `iam:PassedToService`); plus pure
+  `evaluateIamPermissions` (fold a live simulate signal → ok/drift/unknown). Shell adapter
+  (`apps/web/lib/iam-preflight.ts`): `sts:GetCallerIdentity` + `iam:SimulatePrincipalPolicy` over the
+  control plane's OWN identity, resolving representative resource ARNs from coordinates + the caller
+  account; endpoint-only (§6.9), fail-fast (`maxAttempts:2`), degrades to `unknown` (never a false
+  drift) off real AWS / when simulate isn't permitted. Folded into the config-sync report as an
+  `iam-permissions:control-plane` check. **Identity surfacing:** the resolved caller identity
+  (account + principal/caller ARN) rides the same report → admin Infrastructure card, the
+  `/api/admin/config-sync` contract, the api-client, and the `edd config-sync`/`doctor` CLI.
+  **CI drift gate:** a static test (`iam-policy-drift.test.ts`) asserts the terraform policy grants ⊇ the
+  manifest per role (manifest is SSOT, so IaC and the app can't silently diverge), and the terraform-sim
+  job gained a live `iam:SimulatePrincipalPolicy` self-check assertion. Terraform: the control-plane role
+  gained read-only `iam:SimulatePrincipalPolicy` + `sts:GetCallerIdentity` (introspection only). Tests:
+  core 14 (manifest + eval + config-sync passthrough), web 16 (preflight helpers + drift gate +
+  config-sync route integ); full lint/build/typecheck green. Reconciler runtime preflight (it has no
+  UI/API) left as a noted follow-up — its grants are covered by the manifest + CI drift gate.

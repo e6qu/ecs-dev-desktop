@@ -44,6 +44,12 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
+- **Reconciler runtime IAM preflight (follow-up to the IAM self-check).** The control plane runs a live
+  IAM permission preflight on its own identity; the reconciler's grants are covered by the shared
+  `IAM_REQUIREMENTS` manifest + the CI drift gate, but it has no runtime self-check (no UI/API). To add
+  one, lift the preflight adapter out of `apps/web/lib/iam-preflight.ts` into a shared package and have
+  the reconciler emit an IAM-preflight metric/log at startup. Decision-free; small.
+
 - **User-registered SSH keys + per-workspace subdomain — IN PROGRESS (Phase 4b).**
   Design confirmed with the user (registered-key human auth + ownership authz at connect
   time; wildcard-DNS routing). **Slices 1+2 landed** on `feat/ssh-key-registration`:

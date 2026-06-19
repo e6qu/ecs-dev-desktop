@@ -15,6 +15,7 @@ import {
 import { workspaceSizing } from "@edd/config";
 
 import { resolveWorkspacePricing } from "./aws-pricing";
+import { iamPreflight } from "./iam-preflight";
 import {
   CatalogService,
   CostService,
@@ -190,10 +191,13 @@ export async function getConfigSyncReport(): Promise<ConfigSyncReport> {
     if (c === undefined || c.status === "unknown") return "unknown";
     return c.status === "ok" ? "ok" : "down";
   };
+  const { signal, identity } = await iamPreflight();
   return evaluateConfigSync({
     env: process.env,
     dynamodb: statusOf("dynamodb"),
     compute: statusOf("compute"),
+    iam: signal,
+    ...(identity !== null ? { iamIdentity: identity } : {}),
   });
 }
 

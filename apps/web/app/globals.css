@@ -1179,3 +1179,21 @@ main {
     gap: 2px;
   }
 }
+
+.iam-identity {
+  margin: 0 0 0.75rem;
+  font-size: 0.9rem;
+}
+
+.iam-identity dt {
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.iam-identity dd {
+  margin: 0.15rem 0 0;
+}
+
+.iam-identity code {
+  word-break: break-all;
+}

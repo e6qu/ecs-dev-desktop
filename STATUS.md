@@ -2,18 +2,30 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-20 (slice-2 gaps fixed upstream by sockerless #621; re-pinned `322d16ad` → `47b6a2a`, confirmed downstream — no open sockerless blockers)
+**Last updated:** 2026-06-20 (IAM permission self-check + identity surfacing on `feat/iam-permission-self-check`; adopt-#621 merged #132; starting a broad bug/quality sweep)
 
-## Active — Adopt sockerless #621 (`feat/adopt-sockerless-621`)
+## Active — IAM permission self-check + identity (`feat/iam-permission-self-check`)
+
+The app now understands the IAM actions each component needs and checks it holds them (user request).
+`@edd/core` carries `IAM_REQUIREMENTS` — the per-component (control-plane, reconciler) required-action
+manifest (single source of truth, derived from `iam.tf`, with the `ecs:cluster`/`ResourceTag`/
+`PassedToService` condition context) — plus pure `evaluateIamPermissions`. The control plane runs a live
+`sts:GetCallerIdentity` + `iam:SimulatePrincipalPolicy` preflight over its OWN identity (endpoint-only,
+fail-fast, degrades to `unknown` off real AWS), folded into the config-sync report as an
+`iam-permissions:control-plane` check. The resolved **caller identity** (account + principal ARN) is
+surfaced via the report → admin Infrastructure card, `/api/admin/config-sync`, the api-client, and the
+`edd config-sync`/`doctor` CLI. A **CI drift gate** (static test) asserts the terraform policy grants ⊇
+the manifest per role; terraform-sim gained a live self-check assertion. Terraform: control-plane role
+gained read-only `iam:SimulatePrincipalPolicy` + `sts:GetCallerIdentity`. Reconciler runtime preflight
+(no UI/API) is a noted follow-up — its grants are covered by the manifest + CI gate. The user confirmed
+both the hybrid verification approach and the CI drift gate.
+
+## Prior — Adopt sockerless #621 (merged #132)
 
 Sockerless **#621** (merge `47b6a2a`) landed validation for both fidelity-slice-2 gaps. Re-pinned the
-submodule (`322d16ad` → `47b6a2a`), rebuilt the process-mode sim, and **confirmed downstream**: each of
-the four cases now rejects with the AWS-spec error (Fargate-without-cpu/mem → `ClientException`; `RunTask
-count:11` → `InvalidParameterException`; empty `DescribeTasks` → `InvalidParameterException`; bad
-`ScheduleExpression` → `ValidationException`), valid-form controls still pass. #618/#619 closed upstream;
-`BUGS.md` updated to fixed-confirmed. The re-pin also picks up #612–#620 (consumed endpoint-only; the
-integration + e2e tiers rebuild the sim from this pin). **No open sockerless blockers remain** (aside from
-the deliberate #583 memory-sizing gate).
+submodule (`322d16ad` → `47b6a2a`), rebuilt the process-mode sim, and **confirmed downstream** (all four
+cases now reject with the AWS-spec error; valid-form controls still pass). #618/#619 closed upstream;
+**no open sockerless blockers remain** (aside from the deliberate #583 memory-sizing gate).
 
 ## Prior — Sockerless fidelity slice 2 (PR #131, merged)
 

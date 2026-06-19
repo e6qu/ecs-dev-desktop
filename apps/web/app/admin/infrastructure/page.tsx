@@ -20,9 +20,21 @@ async function ConfigSync() {
         Is the running deployment wired the way it should be? Live app-level self-check;
         terraform-plan drift is a separate deploy-time gate.
       </p>
+      {report.identity !== undefined && (
+        <dl className="iam-identity" data-testid="iam-identity">
+          <dt>AWS identity</dt>
+          <dd>
+            account <code data-field="account">{report.identity.account || "—"}</code>
+            {" · "}
+            <code data-field="principal" title={report.identity.callerArn}>
+              {report.identity.principalArn ?? report.identity.callerArn}
+            </code>
+          </dd>
+        </dl>
+      )}
       <ul className="config-sync-checks">
         {report.checks.map((c) => (
-          <li key={c.name}>
+          <li key={c.name} data-check={c.name} data-status={c.status}>
             <span title={c.status}>{GLYPH[c.status]}</span> <strong>{c.name}</strong> — {c.detail}
           </li>
         ))}
