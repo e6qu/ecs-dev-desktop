@@ -172,6 +172,40 @@ export function makeSshKeyEntity(client: DynamoDBClient, table = TABLE) {
 export type SshKeyEntity = ReturnType<typeof makeSshKeyEntity>;
 
 /**
+ * Fingerprint-claim sentinel that enforces GLOBAL SSH-key uniqueness. A DynamoDB
+ * GSI is not a uniqueness constraint, so the `byFingerprint` index on `sshKey`
+ * alone is racy (two concurrent registrations of the same key both pass a read and
+ * both write). This entity keys a single item by `fingerprint` on the table's
+ * primary key, so a conditional `create()` (`attribute_not_exists`) is the
+ * uniqueness lock: `SshKeyService.register` writes the claim and the key in one
+ * `writeTransaction`, and a second writer's claim fails the condition — exactly one
+ * registration can ever own a fingerprint. Stores the owning `ownerId`/`keyId` so a
+ * conflict can report whether the existing key is the caller's own.
+ */
+export function makeSshKeyFingerprintEntity(client: DynamoDBClient, table = TABLE) {
+  return new Entity(
+    {
+      model: { entity: "sshKeyFingerprint", version: "1", service: "edd" },
+      attributes: {
+        fingerprint: { type: "string", required: true },
+        ownerId: { type: "string", required: true },
+        keyId: { type: "string", required: true },
+        createdAt: { type: "string", required: true },
+      },
+      indexes: {
+        primary: {
+          pk: { field: "PK", composite: ["fingerprint"] },
+          sk: { field: "SK", composite: [] },
+        },
+      },
+    },
+    { client, table },
+  );
+}
+
+export type SshKeyFingerprintEntity = ReturnType<typeof makeSshKeyFingerprintEntity>;
+
+/**
  * ElectroDB append-only audit-event entity over the same single table: one
  * record per control-plane action (actor + action + target + when). `byTime`
  * lists newest-first from one static partition (mirrors the base-image catalog

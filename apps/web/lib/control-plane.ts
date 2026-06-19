@@ -31,6 +31,7 @@ import {
   makeCostRollupEntity,
   makeReconcilerHeartbeatEntity,
   makeSshKeyEntity,
+  makeSshKeyFingerprintEntity,
   makeWorkspaceEntity,
   pingTable,
   RECONCILER_HEARTBEAT_ID,
@@ -106,6 +107,7 @@ export function getCatalog(): CatalogService {
 export function getSshKeyService(): SshKeyService {
   sshKeys ??= new SshKeyService({
     keys: makeSshKeyEntity(createDynamoClient(), tableName()),
+    fingerprints: makeSshKeyFingerprintEntity(createDynamoClient(), tableName()),
     clock: systemClock,
   });
   return sshKeys;

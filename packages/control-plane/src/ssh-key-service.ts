@@ -7,7 +7,7 @@ import {
   type SshKeyFingerprint,
 } from "@edd/core";
 import type { SshKeyDto } from "@edd/api-contracts";
-import type { SshKeyEntity } from "@edd/db";
+import { writeTransaction, type SshKeyEntity, type SshKeyFingerprintEntity } from "@edd/db";
 
 /**
  * Account-level SSH public keys a user registers for SSH access to their
@@ -22,6 +22,8 @@ import type { SshKeyEntity } from "@edd/db";
  */
 export interface SshKeyServiceDeps {
   keys: SshKeyEntity;
+  /** Fingerprint-claim sentinel enforcing global uniqueness (see the entity doc). */
+  fingerprints: SshKeyFingerprintEntity;
   clock: Clock;
 }
 
@@ -85,18 +87,9 @@ export class SshKeyService {
   async register(ownerId: string, publicKey: string, label?: string): Promise<SshKeyDto> {
     const normalized = publicKey.trim();
     const fingerprint = fingerprintPublicKey(normalized);
-    const existing = await this.findByFingerprint(fingerprint);
-    if (existing !== null) {
-      const ownedByCaller = existing.ownerId === ownerId;
-      throw new SshKeyConflictError(
-        ownedByCaller
-          ? "this SSH key is already registered to your account"
-          : "this SSH key is already registered to another account",
-        ownedByCaller,
-      );
-    }
     const keyType = sshKeyType(normalized);
     const trimmedLabel = label?.trim();
+    const now = this.deps.clock.now();
     const record: SshKeyRecord = {
       id: newSshKeyId(),
       ownerId,
@@ -107,9 +100,32 @@ export class SshKeyService {
       keyType,
       fingerprint,
       publicKey: normalized,
-      createdAt: this.deps.clock.now(),
+      createdAt: now,
     };
-    await this.deps.keys.put(record).go();
+    // Atomically claim the fingerprint (conditional create → the uniqueness lock)
+    // and write the key. Two concurrent registrations of the same key race on the
+    // claim's `attribute_not_exists`; exactly one transaction commits — there is no
+    // read-then-write window (the prior GSI-read-then-put was racy: a GSI is not a
+    // uniqueness constraint).
+    const result = await writeTransaction(
+      { keys: this.deps.keys, fp: this.deps.fingerprints },
+      ({ keys, fp }) => [
+        fp.create({ fingerprint, ownerId, keyId: record.id, createdAt: now }).commit(),
+        keys.put(record).commit(),
+      ],
+    ).go();
+    if (result.canceled) {
+      // The fingerprint is already claimed — report whether it is the caller's own
+      // key (idempotent re-register) or another account's (security-relevant).
+      const { data } = await this.deps.fingerprints.get({ fingerprint }).go();
+      const ownedByCaller = data?.ownerId === ownerId;
+      throw new SshKeyConflictError(
+        ownedByCaller
+          ? "this SSH key is already registered to your account"
+          : "this SSH key is already registered to another account",
+        ownedByCaller,
+      );
+    }
     return toDto(record);
   }
 
@@ -129,7 +145,12 @@ export class SshKeyService {
   async remove(ownerId: string, id: string): Promise<boolean> {
     const { data } = await this.deps.keys.get({ ownerId, id }).go();
     if (data === null) return false;
-    await this.deps.keys.delete({ ownerId, id }).go();
+    // Delete the key AND release its fingerprint claim in one transaction, so the
+    // fingerprint is free to register again and no orphan claim is left behind.
+    await writeTransaction({ keys: this.deps.keys, fp: this.deps.fingerprints }, ({ keys, fp }) => [
+      keys.delete({ ownerId, id }).commit(),
+      fp.delete({ fingerprint: data.fingerprint }).commit(),
+    ]).go();
     return true;
   }
 

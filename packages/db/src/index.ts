@@ -29,6 +29,7 @@ export {
   makeGitCredentialEntity,
   makeReconcilerHeartbeatEntity,
   makeSshKeyEntity,
+  makeSshKeyFingerprintEntity,
   makeWorkspaceEntity,
   RECONCILER_HEARTBEAT_ID,
   type AuditEventEntity,
@@ -37,5 +38,6 @@ export {
   type GitCredentialEntity,
   type ReconcilerHeartbeatEntity,
   type SshKeyEntity,
+  type SshKeyFingerprintEntity,
   type WorkspaceEntity,
 } from "./entities";
