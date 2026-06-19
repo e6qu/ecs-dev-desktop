@@ -172,6 +172,18 @@ describe.skipIf(!HAVE_VARIANT_IMAGES)(
           "anthropic.claude-code",
         );
 
+        // Privilege guard (base): a tool needing privileges the sandbox doesn't grant
+        // (docker, sudo, …) is BLOCKED + warned + recorded, not silently run. The
+        // wrapper sits ahead of any real binary on PATH and exits 126.
+        const guarded = sh("docker ps 2>&1; echo EXIT=$?").trim();
+        expect(guarded, `${v.name}: docker should be privilege-guarded`).toContain(
+          "not available in this workspace",
+        );
+        expect(guarded, `${v.name}: guard should emit a structured security line`).toContain(
+          "privilege_attempt",
+        );
+        expect(guarded, `${v.name}: guard should block (exit 126)`).toContain("EXIT=126");
+
         // Shared base behaviour: Node (base), the cross-cutting Trivy security
         // scanner (#95, from base — every variant inherits it), a user-writable npm
         // global prefix (#90), user-CLI dirs on PATH (#91), and Dark mode (#94).

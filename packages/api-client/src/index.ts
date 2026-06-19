@@ -5,6 +5,7 @@ import {
   createBaseImageRequest,
   createWorkspaceRequest,
   errorResponse,
+  configSyncReport,
   healthReport,
   infrastructureReport,
   listBaseImagesResponse,
@@ -22,6 +23,7 @@ import {
   type CreateBaseImageRequest,
   type CreateWorkspaceRequest,
   type HealthReportDto,
+  type ConfigSyncReportDto,
   type InfrastructureReportDto,
   type ListBaseImagesResponse,
   type ListWorkspacesResponse,
@@ -220,6 +222,13 @@ export class ApiClient {
   async adminInfrastructure(): Promise<InfrastructureReportDto> {
     const res = await this.send("/api/admin/infrastructure");
     return infrastructureReport.parse(await res.json());
+  }
+
+  /** Config-sync self-check: is the deployment wired the way it should be (real
+   * providers, ECS/EBS + observability coordinates, DynamoDB + cluster reachable)? */
+  async adminConfigSync(): Promise<ConfigSyncReportDto> {
+    const res = await this.send("/api/admin/config-sync");
+    return configSyncReport.parse(await res.json());
   }
 
   async adminWorkspaces(): Promise<ListWorkspacesResponse> {

@@ -93,6 +93,22 @@ describe("POST /api/workspaces/:id/heartbeat (DynamoDB Local)", () => {
       expect((await agentBeat(id)).status).toBe(401);
     });
 
+    it("accepts a heartbeat carrying a functional self-report (200)", async () => {
+      const id = await createWorkspaceFor("agent-user-4");
+      const res = await heartbeat(
+        new Request(`${apiBase}/${id}/heartbeat`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${agentToken(id)}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ functional: { ide: true, workspace: true } }),
+        }),
+        routeCtx(id),
+      );
+      expect(res.status).toBe(200);
+    });
+
     it("returns 404 for an unknown workspace id", async () => {
       expect((await agentBeat("ws-does-not-exist")).status).toBe(404);
     });

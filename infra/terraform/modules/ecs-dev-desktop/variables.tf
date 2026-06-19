@@ -258,6 +258,18 @@ variable "reconciler_liveness_period" {
   default     = 900
 }
 
+variable "privilege_attempt_alarm_threshold" {
+  description = "Blocked privileged-tool attempts (per 5-min period) above which the security alarm fires. 0 = alarm on any."
+  type        = number
+  default     = 5
+}
+
+variable "stuck_error_alarm_threshold" {
+  description = "Workspaces in unrecoverable `error` (over a 15-min window) above which the stuck-error alarm fires (needs a human). 0 = alarm on any."
+  type        = number
+  default     = 0
+}
+
 variable "dynamodb_throttle_threshold" {
   description = "Read+write throttle events (per 5-minute period) above which the DynamoDB throttling alarm fires."
   type        = number

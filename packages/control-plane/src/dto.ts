@@ -22,6 +22,8 @@ export function toWorkspaceDetail(ws: Workspace): WorkspaceDetailDto {
     ...(ws.repoUrl === undefined ? {} : { repoUrl: ws.repoUrl }),
     baseImage: ws.baseImage,
     state: ws.state,
+    ...(ws.desiredState === undefined ? {} : { desiredState: ws.desiredState }),
+    ...(ws.deleteRequestedAt === undefined ? {} : { deleteRequestedAt: ws.deleteRequestedAt }),
     createdAt: ws.createdAt,
     lastActivity: ws.lastActivity,
     ...(ws.volumeId === undefined ? {} : { volumeId: ws.volumeId }),
@@ -29,5 +31,8 @@ export function toWorkspaceDetail(ws: Workspace): WorkspaceDetailDto {
     ...(ws.latestSnapshotId === undefined ? {} : { latestSnapshotId: ws.latestSnapshotId }),
     ...(ws.latestSnapshotAt === undefined ? {} : { latestSnapshotAt: ws.latestSnapshotAt }),
     ...(ws.sshHost === undefined ? {} : { sshHost: ws.sshHost }),
+    ...(ws.functional === undefined ? {} : { functional: ws.functional }),
+    ...(ws.functionalDetail === undefined ? {} : { functionalDetail: ws.functionalDetail }),
+    ...(ws.functionalAt === undefined ? {} : { functionalAt: ws.functionalAt }),
   };
 }

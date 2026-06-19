@@ -2,21 +2,43 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-19 (codex code-review run → Phase 9 remediation opened; all sockerless fidelity blockers closed via #607/#611)
+**Last updated:** 2026-06-19 (Phase 9 remediation merged via #129; self-recovery + monitoring opened as #130, driving the e2e VS Code flake to green)
 
-## Current focus — Phase 9: code-review remediation (codex 2026-06-19)
+## Current focus — Self-recovery + monitoring (PR #130, codex-advised)
 
-A deep `codex` review (read-only; model `gpt-5.5`; full log `~/codex-review.log`, summary
-`~/codex-review-summary.md`) produced 12 findings, 4 independently re-verified. **All are actionable
-now without the AWS account decision** and are tracked in `BUGS.md` → Open and `PLAN.md` Phase 9 — 4
-Critical (silent prod fake-provider fallback; terraform IAM missing the agent-secret create/inject
-path; workspace exec/task role ARNs never passed; SSH-key uniqueness race), 3 High (no early snapshot →
-fresh-workspace data loss; hidden repo-clone/git-credential failures; un-GC'd per-workspace secrets),
-4 Medium/Low. **Nothing actionable is deferred:** the previously-parked `CONNECTION_TOKEN` injection and
-the cross-region EBS snapshot DR flow (now sim-validatable via sockerless#602) are pulled into Phase 9;
-only genuine real-AWS work (apply, DNS/ACM, federation, 200+ load, `e2e-aws` enforcement) stays under
-open decision #1. Two recent sim-fidelity efforts (#127, #128) closed **all** sockerless blockers
-(#602–#606 via #607; #608/#609 via #611), so the EMF→metrics→alarms→dashboard path is sim-CI-validatable.
+Four user-requested themes built together on `feat/self-recovery-and-monitoring` (PR #130), after a
+codex self-recovery review synthesised with our own analysis and four design decisions confirmed with
+the user (one bundled PR; desired-state + tombstone async delete; Middle data-safety; live config
+self-check now):
+
+1. **Self-recovery / convergence.** Durable intent (`desiredState` present/deleted) + a `deleting`
+   tombstone makes an interrupted delete resumable. New pure fns `markDeleting` / `markRecovered`
+   (error→stopped only with a snapshot) / `markSnapshotLost` / `isUnrecoverable`. `remove()` CAS-marks
+   the tombstone (DELETE → **202**); the reconciler's `finishDeletions` / `recoverErrors` /
+   `detectStorageDrift` sweeps (budget-bounded, `DEFAULT_CONVERGE_BUDGET=50`) converge toward intent,
+   snapshot-before-destroy in `finishDeleting`.
+2. **Functional usability checks.** idle-agent `functional_body()` probes the IDE port + a writable
+   HOME, folded into the heartbeat → `functional` ok/degraded surfaced in admin Inspect + a metric.
+3. **Privilege/security warnings.** In-image `edd-privilege-guard.sh` shims docker/sudo/etc. → friendly
+   message, structured stderr log, best-effort POST → first-class audit event + `security.privilege_attempt`
+   metric; alarm `security-privilege-attempts`.
+4. **Config-sync self-check.** Pure `evaluateConfigSync` → `/api/admin/config-sync`,
+   `api-client.adminConfigSync`, an Infrastructure-page card, and a new thin **`@edd/cli` `edd` CLI**
+   (`edd config-sync` / `doctor`) over the SDK.
+
+**Status:** all CI jobs green except `e2e`, whose only failure is the known heavy `pw:vscode`
+keystroke-landing flake (the keyboard burst dropped before xterm attached; unrelated to these changes —
+the privilege-guard shims cover docker/sudo, not the Go toolchain). Re-triggered the `e2e` job.
+
+## Prior focus — Phase 9: code-review remediation (codex 2026-06-19, merged #129)
+
+A deep `codex` review (read-only; model `gpt-5.5`) produced 12 findings, 4 independently re-verified,
+all actionable without the AWS account decision — 4 Critical (silent prod fake-provider fallback;
+terraform IAM missing the agent-secret create/inject path; workspace exec/task role ARNs never passed;
+SSH-key uniqueness race), 3 High (no early snapshot → fresh-workspace data loss; hidden
+repo-clone/git-credential failures; un-GC'd per-workspace secrets), 4 Medium/Low. The previously-parked
+cross-region EBS snapshot DR flow was pulled in (sim-validatable via sockerless#602); only genuine
+real-AWS work stays under open decision #1. Merged as **#129**.
 
 ## Prior phase — user-registered SSH keys + per-workspace SSH subdomain (Phase 4b)
 

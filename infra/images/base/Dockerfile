@@ -127,6 +127,16 @@ COPY --chmod=0755 authorized-keys.sh /usr/local/bin/edd-authorized-keys
 COPY --chmod=0755 git-credential-helper.sh /usr/local/bin/edd-git-credential
 RUN git config --system credential.helper /usr/local/bin/edd-git-credential
 
+# Privilege guard: stands in (on PATH, ahead of /usr/bin) for tools that need
+# privileges this sandboxed workspace intentionally does not grant. Running one is
+# blocked + warned + recorded (admin monitoring), instead of failing opaquely. The
+# task is already non-root/unprivileged — this makes the WHY visible and auditable.
+COPY --chmod=0755 edd-privilege-guard.sh /usr/local/bin/edd-privilege-guard
+RUN for tool in docker docker-compose podman nerdctl sudo su mount umount \
+      nsenter unshare setcap chroot modprobe insmod; do \
+      ln -sf edd-privilege-guard "/usr/local/bin/${tool}"; \
+    done
+
 WORKDIR /home/workspace
 
 EXPOSE 22 3000

@@ -57,6 +57,7 @@ export {
 // Domain constants.
 export {
   DEFAULT_AUDIT_FEED_LIMIT,
+  DEFAULT_CONVERGE_BUDGET,
   DEFAULT_EARLY_SESSION_MS,
   DEFAULT_EARLY_SNAPSHOT_INTERVAL_MS,
   DEFAULT_GC_GRACE_MS,
@@ -69,15 +70,25 @@ export {
 } from "./domain/constants";
 
 // Workspace domain object + pure lifecycle functions (functional core).
-export type { ProvisionParams, Workspace } from "./domain/workspace";
+export type {
+  DesiredState,
+  FunctionalStatus,
+  ProvisionParams,
+  Workspace,
+} from "./domain/workspace";
 export {
   assertTerminable,
+  isUnrecoverable,
   markActivity,
+  markDeleting,
+  markRecovered,
+  markSnapshotLost,
   markWaking,
   markProvisioned,
   markStopped,
   provision,
   markTaskLost,
+  recordFunctional,
   recordSnapshot,
 } from "./domain/workspace";
 
@@ -170,6 +181,15 @@ export { deriveWorkspaceTimeline } from "./observability/timeline";
 export type { WorkspaceStats } from "./observability/stats";
 export { tallyWorkspaceStates } from "./observability/stats";
 
+// Config-sync self-check (pure): is the deployment wired as expected?
+export type {
+  ConfigCheck,
+  ConfigSyncInput,
+  ConfigSyncReport,
+  DependencyStatus,
+} from "./observability/config-sync";
+export { evaluateConfigSync } from "./observability/config-sync";
+
 // Observability — derived audit feed (admin Logs/Audit; CloudTrail on AWS).
 export type { AuditEvent, AuditSource, FleetAuditInput } from "./observability/audit";
 export { deriveFleetAudit } from "./observability/audit";
@@ -192,6 +212,13 @@ export {
   METRIC_RECONCILER_TASKS_REAP_FAILED,
   METRIC_RECONCILER_PROVISIONING_RECOVERED,
   METRIC_RECONCILER_SKIPPED,
+  METRIC_RECONCILER_RECOVERED,
+  METRIC_RECONCILER_DELETIONS_FINISHED,
+  METRIC_RECONCILER_DELETIONS_FAILED,
+  METRIC_RECONCILER_SNAPSHOT_LOST,
+  METRIC_RECONCILER_ERROR_GAUGE,
+  METRIC_RECONCILER_DELETING_GAUGE,
+  METRIC_SECURITY_PRIVILEGE_ATTEMPT,
   METRIC_API_REQUEST,
   METRIC_API_LATENCY_MS,
   METRIC_API_ERROR,

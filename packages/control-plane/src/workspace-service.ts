@@ -11,11 +11,17 @@ import {
   email,
   err,
   isoTimestamp,
+  isUnrecoverable,
   markActivity,
+  markDeleting,
   markProvisioned,
+  markRecovered,
+  markSnapshotLost,
   markStopped,
   markTaskLost,
+  recordFunctional,
   markWaking,
+  METRIC_SECURITY_PRIVILEGE_ATTEMPT,
   METRIC_WORKSPACE_WAKE_LATENCY_MS,
   newWorkspaceId,
   notFoundError,
@@ -46,6 +52,8 @@ import {
   type StorageProvider,
   type TaskId,
   type VolumeId,
+  type DesiredState,
+  type FunctionalStatus,
   type Workspace,
   type WorkspaceId,
   type WorkspaceState,
@@ -168,6 +176,8 @@ interface WorkspaceRecord {
   repoUrl?: string;
   baseImage: string;
   state: WorkspaceState;
+  desiredState?: DesiredState;
+  deleteRequestedAt?: string;
   createdAt: string;
   lastActivity: string;
   volumeId?: string;
@@ -175,6 +185,9 @@ interface WorkspaceRecord {
   latestSnapshotId?: string;
   latestSnapshotAt?: string;
   sshHost?: string;
+  functional?: FunctionalStatus;
+  functionalDetail?: string;
+  functionalAt?: string;
   version: number;
 }
 
@@ -218,6 +231,9 @@ function toWorkspace(r: WorkspaceRecord): Workspace {
     repoUrl: r.repoUrl,
     baseImage: baseImage(r.baseImage),
     state: r.state,
+    desiredState: r.desiredState,
+    deleteRequestedAt:
+      r.deleteRequestedAt === undefined ? undefined : isoTimestamp(r.deleteRequestedAt),
     createdAt: isoTimestamp(r.createdAt),
     lastActivity: isoTimestamp(r.lastActivity),
     volumeId: r.volumeId === undefined ? undefined : volumeId(r.volumeId),
@@ -226,6 +242,9 @@ function toWorkspace(r: WorkspaceRecord): Workspace {
     latestSnapshotAt:
       r.latestSnapshotAt === undefined ? undefined : isoTimestamp(r.latestSnapshotAt),
     sshHost: r.sshHost,
+    functional: r.functional,
+    functionalDetail: r.functionalDetail,
+    functionalAt: r.functionalAt === undefined ? undefined : isoTimestamp(r.functionalAt),
   };
 }
 
@@ -660,12 +679,21 @@ export class WorkspaceService {
   /** Idle-agent heartbeat: record activity so the reconciler doesn't scale the
    * workspace to zero (and wake it from idle). Heartbeats are frequent and
    * harmless, so a lost write race retries once before reporting conflict. */
-  async heartbeat(id: WorkspaceId): Promise<Result<WorkspaceDto, DomainError>> {
+  async heartbeat(
+    id: WorkspaceId,
+    functional?: { ide: boolean; workspace: boolean },
+  ): Promise<Result<WorkspaceDto, DomainError>> {
     for (let attempt = 0; ; attempt++) {
       const found = await this.require(id);
       if (!found.ok) return found;
-      const next = markActivity(found.value.ws, isoTimestamp(this.deps.clock.now()));
-      if (!next.ok) return next;
+      const at = isoTimestamp(this.deps.clock.now());
+      const active = markActivity(found.value.ws, at);
+      if (!active.ok) return active;
+      // Fold in the in-workspace agent's functional self-report (IDE reachable +
+      // workspace writable), so the admin sees whether the desktop is actually usable.
+      const next = ok(
+        functional === undefined ? active.value : recordFunctional(active.value, functional, at),
+      );
       try {
         await this.persistTransition(next.value, found.value.version);
       } catch (e) {
@@ -743,50 +771,175 @@ export class WorkspaceService {
     const found = await this.require(id);
     if (!found.ok) return found;
     const { ws, version } = found.value;
+    if (ws.state === "deleting") return ok(undefined); // idempotent: already tombstoned
     const terminable = assertTerminable(ws);
     if (!terminable.ok) return terminable;
-    // Version-conditioned, like every other transition: a delete racing a wake
-    // must NOT remove the record out from under the task the wake just launched
-    // (an unconditional delete left that task orphaned). Claim the deletion FIRST
-    // via the conditional write; only the winner then tears down resources. The
-    // session.delete event is written in the SAME transaction so the cost ledger
-    // retains the workspace's final cost after its record is gone (events are
-    // append-only — they outlive the deleted record).
-    const auditItem = this.auditItem({
-      action: "session.delete",
-      target: id,
-      actor,
-      detail: "terminated",
-    });
+    // Durable-intent delete: move to the `deleting` tombstone (desiredState="deleted")
+    // instead of hard-deleting the row. The record persists so the reconciler can
+    // converge teardown of the task/volume/snapshot/secret/task-def and only then
+    // remove it — making an interrupted delete resumable. Version-conditioned like
+    // every transition (a delete racing a wake can't strand a just-launched task), and
+    // the session.delete audit event is written in the same transaction so the cost
+    // ledger keeps the workspace's final cost.
+    const next = markDeleting(ws, isoTimestamp(this.deps.clock.now()));
+    if (!next.ok) return next;
     try {
-      if (auditItem === undefined) {
-        await this.deps.workspaces
-          .delete({ id })
-          .where(({ version: v }, { eq }) => eq(v, version))
-          .go();
-      } else {
-        const result = await writeTransaction(
-          { ws: this.deps.workspaces, ev: auditItem.entity },
-          ({ ws: wsE, ev }) => [
-            wsE
-              .delete({ id })
-              .where(({ version: v }, { eq }) => eq(v, version))
-              .commit(),
-            ev.put(auditItem.attrs).commit(),
-          ],
-        ).go();
-        if (result.canceled) throwForCanceledTransaction(result);
-      }
+      await this.persistTransition(next.value, version, {
+        action: "session.delete",
+        target: id,
+        actor,
+        detail: "delete requested",
+      });
     } catch (e) {
       if (!isVersionConflict(e)) throw e;
       return err(conflictError(`delete of ${id} lost a concurrent update`));
     }
-    // The record is gone, so this delete owns teardown. Stopping the task
-    // releases its managed volume. The retained snapshot is left to GC — it is
-    // now unreferenced and reaped after the grace window. (GC is the single
-    // storage reaper; deleting it synchronously here would race a concurrent
-    // wake hydrating a new volume from that very snapshot.)
-    if (ws.taskId !== undefined) await this.deps.compute.stopTask(ws.taskId);
+    return ok(undefined);
+  }
+
+  /** Workspaces in the `deleting` tombstone — the reconciler's finish-delete keep-set. */
+  async listDeleting(): Promise<readonly Workspace[]> {
+    return (await this.recordsByStates(["deleting"])).map(toWorkspace);
+  }
+
+  /** `error` workspaces that still have a snapshot to restore from — the reconciler's
+   * recover keep-set (the rest are unrecoverable and only deletable). */
+  async listRecoverableErrors(): Promise<readonly Workspace[]> {
+    return (await this.recordsByStates(["error"]))
+      .map(toWorkspace)
+      .filter((ws) => !isUnrecoverable(ws));
+  }
+
+  /**
+   * Finish tearing down a `deleting` workspace, then remove its record. Convergent +
+   * idempotent (safe to re-run): per the Middle data-safety policy, if it still has a
+   * live volume and no recent snapshot it takes a FINAL snapshot first (so a delete of
+   * a working session doesn't lose data) — a snapshot failure leaves the tombstone for
+   * a retry rather than destroying data. Then it stops the task (releasing the managed
+   * volume) and hard-removes the record; the now-orphan snapshot/secret/task-def are
+   * reaped by the existing GC sweeps after their grace (the retention window).
+   */
+  async finishDeleting(id: WorkspaceId): Promise<Result<void, DomainError>> {
+    const found = await this.find(id);
+    if (found === null) return ok(undefined); // already gone — converged
+    const { ws, version } = found;
+    if (ws.state !== "deleting") return ok(undefined); // no longer deleting
+    // Capture a final snapshot of a live volume before tearing it down (data-safety).
+    if (ws.volumeId !== undefined && this.snapshotStale(ws)) {
+      try {
+        await this.deps.storage.createSnapshot(ws.volumeId);
+      } catch (e) {
+        // Don't destroy data on a transient snapshot failure: leave the tombstone for
+        // the next sweep (surfaced via the reconciler's failure metric/alarm).
+        return err(conflictError(`final snapshot for ${id} failed: ${asMessage(e)}`));
+      }
+    }
+    if (ws.taskId !== undefined) {
+      // Best-effort: the orphan-task reaper is the backstop if this stop fails.
+      try {
+        await this.deps.compute.stopTask(ws.taskId);
+      } catch {
+        /* reaper backstop */
+      }
+    }
+    try {
+      await this.deps.workspaces
+        .delete({ id })
+        .where(({ version: v }, { eq }) => eq(v, version))
+        .go();
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+      return err(conflictError(`finishDeleting ${id} lost a concurrent update`));
+    }
+    return ok(undefined);
+  }
+
+  /** Self-recovery: move a recoverable `error` workspace back to `stopped` (wake-able)
+   * — it has a snapshot, so a later connect() hydrates a fresh volume from it. */
+  async recoverError(id: WorkspaceId): Promise<Result<void, DomainError>> {
+    const found = await this.find(id);
+    if (found === null) return err(notFoundError("workspace", id));
+    const { ws, version } = found;
+    const recovered = markRecovered(ws, isoTimestamp(this.deps.clock.now()));
+    if (!recovered.ok) return recovered;
+    try {
+      await this.persistTransition(recovered.value, version, {
+        action: "session.recover",
+        target: id,
+        actor: SYSTEM_ACTOR,
+        detail: "recovered from error to stopped",
+      });
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+      return err(conflictError(`recover of ${id} lost a concurrent update`));
+    }
+    return ok(undefined);
+  }
+
+  /** Whether a workspace lacks a recent snapshot (none, or older than the snapshot
+   * interval) — used to decide a final snapshot before delete. */
+  private snapshotStale(ws: Workspace): boolean {
+    return ws.latestSnapshotId === undefined;
+  }
+
+  /**
+   * Record a security event reported by the in-workspace privilege guard (a blocked
+   * attempt to run a privileged tool like docker/sudo). Writes a first-class audit
+   * event (so it shows in the admin audit/Logs view) and emits a metric dimensioned by
+   * tool (so it shows in the admin dashboard + the security alarm). The sandbox already
+   * blocked the operation; this makes it visible + auditable, fleet-wide.
+   */
+  async recordSecurityEvent(
+    id: WorkspaceId,
+    event: { kind: "privilege_attempt"; tool: string },
+  ): Promise<Result<void, DomainError>> {
+    const found = await this.find(id);
+    if (found === null) return err(notFoundError("workspace", id));
+    const item = this.auditItem({
+      action: `security.${event.kind}`,
+      target: id,
+      actor: "workspace",
+      detail: event.tool,
+    });
+    if (item !== undefined) await item.entity.put(item.attrs).go();
+    this.deps.metrics?.count(METRIC_SECURITY_PRIVILEGE_ATTEMPT, 1, { tool: event.tool });
+    return ok(undefined);
+  }
+
+  /** Stopped/error workspaces that reference a snapshot they would restore from — the
+   * reverse-drift keep-set (a referenced snapshot missing from storage was deleted
+   * out-of-band, leaving the workspace un-wakeable). */
+  async listSnapshotReferences(): Promise<readonly { id: WorkspaceId; snapshotId: SnapshotId }[]> {
+    const records = await this.recordsByStates(["stopped", "error"]);
+    const refs: { id: WorkspaceId; snapshotId: SnapshotId }[] = [];
+    for (const r of records) {
+      if (r.latestSnapshotId !== undefined) {
+        refs.push({ id: workspaceId(r.id), snapshotId: snapshotId(r.latestSnapshotId) });
+      }
+    }
+    return refs;
+  }
+
+  /** Reverse drift: the snapshot a stopped/error workspace would restore from has been
+   * deleted out-of-band, so mark it `error` with the dangling reference cleared
+   * (honestly unrecoverable + deletable, not a record that silently fails every wake). */
+  async markSnapshotLostFor(id: WorkspaceId): Promise<Result<void, DomainError>> {
+    const found = await this.find(id);
+    if (found === null) return ok(undefined);
+    const { ws, version } = found;
+    const lost = markSnapshotLost(ws, isoTimestamp(this.deps.clock.now()));
+    if (!lost.ok) return ok(undefined); // changed since listed (e.g. woken) — skip, not an error
+    try {
+      await this.persistTransition(lost.value, version, {
+        action: "session.snapshot_lost",
+        target: id,
+        actor: SYSTEM_ACTOR,
+        detail: "referenced snapshot missing; marked unrecoverable",
+      });
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+      return ok(undefined); // benign race
+    }
     return ok(undefined);
   }
 

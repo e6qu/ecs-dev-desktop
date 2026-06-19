@@ -68,6 +68,16 @@ export default async function InspectWorkspacePage({
             label="snapshot at"
             value={ws.latestSnapshotAt ? new Date(ws.latestSnapshotAt).toLocaleString() : undefined}
           />
+          <Row
+            label="usable"
+            value={
+              ws.functional === undefined
+                ? undefined
+                : `${ws.functional === "ok" ? "✓" : "✗"} ${ws.functionalDetail ?? ws.functional}${
+                    ws.functionalAt ? ` (${new Date(ws.functionalAt).toLocaleString()})` : ""
+                  }`
+            }
+          />
         </dl>
         {image.tags.length > 0 && (
           <div className="pill-row" style={{ marginTop: 16 }}>

@@ -48,7 +48,15 @@ describe("api-contracts", () => {
       fleet: {
         total: 2,
         active: 2,
-        byState: { provisioning: 0, running: 2, idle: 0, stopped: 0, terminated: 0, error: 0 },
+        byState: {
+          provisioning: 0,
+          running: 2,
+          idle: 0,
+          stopped: 0,
+          deleting: 0,
+          terminated: 0,
+          error: 0,
+        },
       },
       topology: {
         nodes: [{ id: "compute", label: "ECS", kind: "compute", description: "x", status: "ok" }],

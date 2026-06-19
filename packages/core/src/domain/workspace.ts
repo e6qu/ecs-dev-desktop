@@ -13,6 +13,9 @@ import type {
   WorkspaceId,
 } from "./ids";
 
+/** Durable convergence intent (see {@link Workspace.desiredState}). */
+export type DesiredState = "present" | "deleted";
+
 /**
  * The Workspace domain object — the typed value passed across boundaries (never
  * a bare dict). All identifiers are branded. This and the pure functions below
@@ -33,6 +36,15 @@ export interface Workspace {
   readonly repoUrl?: string;
   readonly baseImage: BaseImage;
   readonly state: WorkspaceState;
+  /** Durable intent, independent of the observed `state`: whether this workspace
+   * should exist (`present`) or be torn down (`deleted`). The reconciler converges
+   * toward it — recovering a half-broken `present` workspace forward, or finishing
+   * teardown of a `deleted` one — so a partial create/delete always reaches a
+   * consistent end. Absent on records created before the field ⇒ treated `present`. */
+  readonly desiredState?: DesiredState;
+  /** When a delete was requested (the `deleting` tombstone began) — drives the
+   * retention window and the stuck-delete alarm. */
+  readonly deleteRequestedAt?: IsoTimestamp;
   readonly createdAt: IsoTimestamp;
   readonly lastActivity: IsoTimestamp;
   readonly volumeId?: VolumeId;
@@ -42,7 +54,17 @@ export interface Workspace {
   readonly latestSnapshotAt?: IsoTimestamp;
   /** Private IP of the running task's ENI — used by the SSH gateway to forward. Absent when stopped. */
   readonly sshHost?: string;
+  /** Last functional self-report from the in-workspace agent: is the desktop actually
+   * USABLE (the IDE reachable, the workspace writable), beyond merely "task running".
+   * `ok` = all probes passed; `degraded` = at least one failed (detail says which).
+   * Absent until the first report. */
+  readonly functional?: FunctionalStatus;
+  readonly functionalDetail?: string;
+  readonly functionalAt?: IsoTimestamp;
 }
+
+/** Functional usability of a running workspace, self-reported by the in-workspace agent. */
+export type FunctionalStatus = "ok" | "degraded";
 
 export interface ProvisionParams {
   id: WorkspaceId;
@@ -65,6 +87,7 @@ export function provision(params: ProvisionParams): Workspace {
     repoUrl: params.repoUrl,
     baseImage: params.baseImage,
     state: "running",
+    desiredState: "present",
     createdAt: params.at,
     lastActivity: params.at,
     volumeId: params.volumeId,
@@ -172,7 +195,97 @@ export function markActivity(ws: Workspace, at: IsoTimestamp): Result<Workspace,
   return ok({ ...ws, state: ws.state, lastActivity: at });
 }
 
+/**
+ * Record the in-workspace agent's functional self-report — whether the desktop is
+ * actually usable (IDE reachable on :3000, workspace dir writable), not merely that the
+ * task is running. Pure: derives an `ok`/`degraded` status + a human detail from the
+ * probe booleans. The caller (heartbeat) only invokes this on a running/idle workspace.
+ */
+export function recordFunctional(
+  ws: Workspace,
+  probes: { ide: boolean; workspace: boolean },
+  at: IsoTimestamp,
+): Workspace {
+  const failures: string[] = [];
+  if (!probes.ide) failures.push("IDE unreachable on :3000");
+  if (!probes.workspace) failures.push("workspace not writable");
+  return {
+    ...ws,
+    functional: failures.length === 0 ? "ok" : "degraded",
+    functionalDetail: failures.length === 0 ? "IDE + workspace healthy" : failures.join("; "),
+    functionalAt: at,
+  };
+}
+
 /** Ok if the workspace may be terminated; a conflict domain error otherwise. */
 export function assertTerminable(ws: Workspace): Result<void, DomainError> {
-  return map(transition(ws.state, "terminate"), () => undefined);
+  return map(transition(ws.state, "requestDelete"), () => undefined);
+}
+
+/**
+ * Mark a workspace for deletion: move to the `deleting` tombstone with
+ * `desiredState="deleted"`. The record persists (it is NOT row-deleted here) so the
+ * reconciler can converge teardown of the task/volume/snapshot/secret/task-def and
+ * then hard-remove it — making an interrupted delete resumable. Idempotent: a
+ * workspace already `deleting` is returned unchanged. Err if it can't be deleted.
+ */
+export function markDeleting(ws: Workspace, at: IsoTimestamp): Result<Workspace, DomainError> {
+  if (ws.state === "deleting") return ok(ws);
+  return map(transition(ws.state, "requestDelete"), (state) => ({
+    ...ws,
+    state,
+    desiredState: "deleted",
+    deleteRequestedAt: at,
+  }));
+}
+
+/**
+ * Self-recovery: move an `error` workspace back to `stopped` (wake-able) when it has
+ * a recoverable snapshot. A workspace with no snapshot stays `error` (genuinely
+ * unrecoverable) — never fabricate a recovery without data. Err if not in `error`.
+ */
+export function markRecovered(ws: Workspace, at: IsoTimestamp): Result<Workspace, DomainError> {
+  if (ws.state !== "error") {
+    return err(conflictError(`cannot recover ${ws.id}: workspace is ${ws.state}, not error`));
+  }
+  if (ws.latestSnapshotId === undefined) {
+    return err(conflictError(`cannot recover ${ws.id}: no snapshot to restore from`));
+  }
+  return map(transition(ws.state, "recover"), (state) => ({
+    ...ws,
+    state,
+    lastActivity: at,
+    volumeId: undefined,
+    taskId: undefined,
+    sshHost: undefined,
+  }));
+}
+
+/** A workspace is unrecoverable when it is in `error` with no snapshot to restore
+ * from — it cannot move forward to working, only be deleted. */
+export function isUnrecoverable(ws: Workspace): boolean {
+  return ws.state === "error" && ws.latestSnapshotId === undefined;
+}
+
+/**
+ * Reverse drift: the snapshot a `stopped`/`error` workspace would restore from has
+ * vanished out-of-band (manually deleted). The workspace can never wake, so move it
+ * to `error` and clear the dangling snapshot reference — honestly unrecoverable
+ * (surfaced + deletable) rather than a `stopped` record that silently fails every
+ * wake. Only meaningful for a stopped/error workspace that claims a snapshot.
+ */
+export function markSnapshotLost(ws: Workspace, at: IsoTimestamp): Result<Workspace, DomainError> {
+  if (ws.state !== "stopped" && ws.state !== "error") {
+    return err(conflictError(`cannot mark snapshot lost for ${ws.id}: workspace is ${ws.state}`));
+  }
+  if (ws.latestSnapshotId === undefined) {
+    return err(conflictError(`cannot mark snapshot lost for ${ws.id}: no snapshot referenced`));
+  }
+  return ok({
+    ...ws,
+    state: "error",
+    lastActivity: at,
+    latestSnapshotId: undefined,
+    latestSnapshotAt: undefined,
+  });
 }

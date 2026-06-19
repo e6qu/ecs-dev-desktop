@@ -50,6 +50,26 @@ export const METRIC_RECONCILER_TASKS_REAP_FAILED = "reconciler.tasks.reap_failed
 export const METRIC_RECONCILER_PROVISIONING_RECOVERED = "reconciler.provisioning.recovered";
 /** Actions skipped because a concurrent update won the race (not failures). */
 export const METRIC_RECONCILER_SKIPPED = "reconciler.skipped";
+/** Workspaces recovered `error → stopped` (had a snapshot) — converged toward working. */
+export const METRIC_RECONCILER_RECOVERED = "reconciler.recovered";
+/** `deleting` tombstones whose teardown was finished + record removed this sweep. */
+export const METRIC_RECONCILER_DELETIONS_FINISHED = "reconciler.deletions.finished";
+/** Finish-delete attempts that failed (e.g. a transient final-snapshot error) and
+ * will be retried next sweep — a persistently non-zero value needs a human. */
+export const METRIC_RECONCILER_DELETIONS_FAILED = "reconciler.deletions.failed";
+/** Workspaces marked unrecoverable `error` because a referenced snapshot was deleted
+ * out-of-band (reverse drift). */
+export const METRIC_RECONCILER_SNAPSHOT_LOST = "reconciler.drift.snapshot_lost";
+/** Gauge: workspaces currently stuck in `error` (recovery couldn't move them forward —
+ * unrecoverable, awaiting a human or delete). */
+export const METRIC_RECONCILER_ERROR_GAUGE = "reconciler.workspaces.error";
+/** Gauge: workspaces currently in the `deleting` tombstone (teardown in progress). */
+export const METRIC_RECONCILER_DELETING_GAUGE = "reconciler.workspaces.deleting";
+
+/** A workspace attempted a privileged operation the sandbox blocks (docker, sudo, …) —
+ * reported by the in-image privilege guard. Dimensioned by `tool`. A spike is a signal
+ * worth an operator's eye (curiosity, misunderstanding, or probing). */
+export const METRIC_SECURITY_PRIVILEGE_ATTEMPT = "security.privilege_attempt";
 
 // API request metrics (emitted by the route observability wrapper).
 /** One handled API request (dimensioned by route + status class). */

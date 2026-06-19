@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
+  DEFAULT_CONVERGE_BUDGET,
   DEFAULT_EARLY_SESSION_MS,
   DEFAULT_EARLY_SNAPSHOT_INTERVAL_MS,
   DEFAULT_GC_GRACE_MS,
@@ -20,6 +21,7 @@ import {
   type ReferencedStorage,
   type Result,
   type SnapshotCandidate,
+  type SnapshotId,
   type StorageProvider,
   type TaskId,
   type WorkspaceId,
@@ -64,6 +66,24 @@ export interface ReconcilerService {
    * `stopped`. Returns a Result so a benign race (a slow wake that finally committed)
    * is skipped, not thrown. */
   recoverStuckProvisioning(id: WorkspaceId): Promise<Result<unknown, DomainError>>;
+  /** Workspaces in the `deleting` tombstone — the finish-delete keep-set. */
+  listDeleting(): Promise<readonly { readonly id: WorkspaceId }[]>;
+  /** Finish tearing down a `deleting` workspace and remove its record (convergent,
+   * idempotent; takes a final snapshot of a live volume first per the data-safety
+   * policy). Returns a Result so a benign race / transient snapshot failure is
+   * counted + retried next sweep, not thrown. */
+  finishDeleting(id: WorkspaceId): Promise<Result<unknown, DomainError>>;
+  /** `error` workspaces that still have a snapshot — the recover keep-set. */
+  listRecoverableErrors(): Promise<readonly { readonly id: WorkspaceId }[]>;
+  /** Move a recoverable `error` workspace back to `stopped` (wake-able). */
+  recoverError(id: WorkspaceId): Promise<Result<unknown, DomainError>>;
+  /** Stopped/error workspaces and the snapshot they'd restore from — reverse-drift
+   * checks each still exists (a missing one was deleted out-of-band). */
+  listSnapshotReferences(): Promise<
+    readonly { readonly id: WorkspaceId; readonly snapshotId: SnapshotId }[]
+  >;
+  /** Mark a workspace `error` (unrecoverable) because its referenced snapshot is gone. */
+  markSnapshotLostFor(id: WorkspaceId): Promise<Result<unknown, DomainError>>;
 }
 
 /** Pure: the ids of workspaces idle for at least `idleThresholdMs`. */
@@ -104,6 +124,9 @@ export interface ReconcilerDeps {
   earlySessionMs?: number;
   /** Newest task-def revisions to keep per family when pruning; defaults to `DEFAULT_TASKDEF_KEEP_REVISIONS`. */
   taskDefKeep?: number;
+  /** Max finish-delete / error-recover actions per sweep (blast-radius bound; a mass
+   * event converges over several sweeps). Defaults to `DEFAULT_CONVERGE_BUDGET`. */
+  convergeBudget?: number;
   /** Grace window before an orphan is reaped; defaults to `DEFAULT_GC_GRACE_MS`. */
   gcGraceMs?: number;
   /** How long a record may sit in `provisioning` before its crashed wake is reverted
@@ -126,6 +149,14 @@ export interface ProvisioningResult {
   recovered: number;
   /** Reverts rejected by a concurrent update — a slow wake that finally committed. */
   skipped: number;
+}
+
+/** A convergence sweep (finish-delete or error-recover): how many were found,
+ * acted on this sweep (bounded by the budget), and failed (retried next sweep). */
+export interface RecoveryResult {
+  scanned: number;
+  acted: number;
+  failed: number;
 }
 
 export interface ReconcileResult {
@@ -163,6 +194,9 @@ export interface ReapResult {
 export interface MaintenanceResult {
   provisioning: ProvisioningResult;
   drift: DriftResult;
+  storageDrift: DriftResult;
+  recovered: RecoveryResult;
+  deletions: RecoveryResult;
   idle: ReconcileResult;
   snapshots: SnapshotResult;
   tasks: ReapResult;
@@ -181,6 +215,7 @@ export class Reconciler {
   private readonly earlySnapshotIntervalMs: number;
   private readonly earlySessionMs: number;
   private readonly taskDefKeep: number;
+  private readonly convergeBudget: number;
   private readonly gcGraceMs: number;
   private readonly provisioningTimeoutMs: number;
 
@@ -191,6 +226,7 @@ export class Reconciler {
       deps.earlySnapshotIntervalMs ?? DEFAULT_EARLY_SNAPSHOT_INTERVAL_MS;
     this.earlySessionMs = deps.earlySessionMs ?? DEFAULT_EARLY_SESSION_MS;
     this.taskDefKeep = deps.taskDefKeep ?? DEFAULT_TASKDEF_KEEP_REVISIONS;
+    this.convergeBudget = deps.convergeBudget ?? DEFAULT_CONVERGE_BUDGET;
     this.gcGraceMs = deps.gcGraceMs ?? DEFAULT_GC_GRACE_MS;
     this.provisioningTimeoutMs = deps.provisioningTimeoutMs ?? DEFAULT_PROVISIONING_TIMEOUT_MS;
   }
@@ -218,6 +254,28 @@ export class Reconciler {
   }
 
   /**
+   * Reverse drift: a `stopped`/`error` workspace claims a snapshot it would restore
+   * from, but the snapshot was deleted out-of-band (manually). Such a workspace can
+   * never wake, so mark it unrecoverable `error` (surfaced + deletable) rather than a
+   * record that silently fails every wake. Uses the same enumeration as orphan-snapshot
+   * GC (one `listSnapshots`): GC reaps existing-but-unreferenced; this catches
+   * referenced-but-missing — the inverse.
+   */
+  async detectStorageDrift(): Promise<DriftResult> {
+    const refs = await this.deps.service.listSnapshotReferences();
+    if (refs.length === 0) return { scanned: 0, lost: 0, skipped: 0 };
+    const existing = new Set((await this.deps.storage.listSnapshots()).map((s) => s.id));
+    let lost = 0;
+    let skipped = 0;
+    for (const ref of refs) {
+      if (existing.has(ref.snapshotId)) continue;
+      if ((await this.deps.service.markSnapshotLostFor(ref.id)).ok) lost += 1;
+      else skipped += 1;
+    }
+    return { scanned: refs.length, lost, skipped };
+  }
+
+  /**
    * Self-heal crashed wakes: revert records stuck in `provisioning` past the timeout
    * back to `stopped` so they are wake-able again. A wake claims `stopped →
    * provisioning` then commits `→ running`; if the driving process dies between, the
@@ -236,6 +294,40 @@ export class Reconciler {
       else skipped += 1;
     }
     return { scanned: candidates.length, recovered, skipped };
+  }
+
+  /**
+   * Finish tearing down `deleting`-tombstoned workspaces and remove their records —
+   * the convergent completion of an interrupted/intentional delete. Bounded by the
+   * per-sweep budget so a mass delete converges over several sweeps (no thundering
+   * herd); a finish that fails (e.g. a transient final-snapshot error) is counted and
+   * retried next sweep, never thrown.
+   */
+  async finishDeletions(): Promise<RecoveryResult> {
+    const deleting = await this.deps.service.listDeleting();
+    let acted = 0;
+    let failed = 0;
+    for (const ws of deleting.slice(0, this.convergeBudget)) {
+      if ((await this.deps.service.finishDeleting(ws.id)).ok) acted += 1;
+      else failed += 1;
+    }
+    return { scanned: deleting.length, acted, failed };
+  }
+
+  /**
+   * Recover `error` workspaces that have a snapshot back to `stopped` (wake-able) —
+   * "converge toward working". Unrecoverable errors (no snapshot) are left for a human
+   * (surfaced by the error gauge/alarm) and are only deletable. Budget-bounded.
+   */
+  async recoverErrors(): Promise<RecoveryResult> {
+    const recoverable = await this.deps.service.listRecoverableErrors();
+    let acted = 0;
+    let failed = 0;
+    for (const ws of recoverable.slice(0, this.convergeBudget)) {
+      if ((await this.deps.service.recoverError(ws.id)).ok) acted += 1;
+      else failed += 1;
+    }
+    return { scanned: recoverable.length, acted, failed };
   }
 
   /** Scale idle workspaces to zero (snapshot + tear down). A stop rejected by a
@@ -432,6 +524,15 @@ export class Reconciler {
     // Drift next: stop() on a record whose task died out-of-band would try
     // to snapshot a volume the platform already released.
     const drift = await this.detectDrift();
+    // Reverse drift: a stopped/error workspace whose snapshot was deleted out-of-band
+    // becomes unrecoverable error (so it isn't a false recover candidate below).
+    const storageDrift = await this.detectStorageDrift();
+    // Converge desired-state intent: recover recoverable `error` workspaces forward
+    // (toward working), and finish tearing down `deleting` tombstones (toward gone).
+    // Both before the orphan reapers/GC so a finished delete's now-orphan resources
+    // are cleaned this same sweep.
+    const recovered = await this.recoverErrors();
+    const deletions = await this.finishDeletions();
     const idle = await this.runOnce();
     const snapshots = await this.snapshotDue();
     // Reap orphaned tasks before GC: stopping an orphan releases its managed volume
@@ -442,6 +543,18 @@ export class Reconciler {
     // Bound task-definition revision growth (per-launch secret injection accumulates them).
     const taskDefs = await this.pruneTaskDefinitions();
     const gc = await this.collectGarbage();
-    return { provisioning, drift, idle, snapshots, tasks, secrets, taskDefs, gc };
+    return {
+      provisioning,
+      drift,
+      storageDrift,
+      recovered,
+      deletions,
+      idle,
+      snapshots,
+      tasks,
+      secrets,
+      taskDefs,
+      gc,
+    };
   }
 }

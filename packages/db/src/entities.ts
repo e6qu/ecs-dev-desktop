@@ -24,9 +24,23 @@ export function makeWorkspaceEntity(client: DynamoDBClient, table = TABLE) {
         repoUrl: { type: "string", required: false },
         baseImage: { type: "string", required: true },
         state: {
-          type: ["provisioning", "running", "idle", "stopped", "terminated", "error"] as const,
+          type: [
+            "provisioning",
+            "running",
+            "idle",
+            "stopped",
+            "deleting",
+            "terminated",
+            "error",
+          ] as const,
           required: true,
         },
+        // Durable convergence intent: whether this workspace should exist
+        // (`present`) or be torn down (`deleted`). Optional: records predating the
+        // field are treated `present`. Drives the reconciler's recover-vs-finish-delete.
+        desiredState: { type: ["present", "deleted"] as const, required: false },
+        // When a delete was requested (the `deleting` tombstone began).
+        deleteRequestedAt: { type: "string", required: false },
         lastActivity: { type: "string", required: true },
         createdAt: { type: "string", required: true },
         // Runtime bindings (absent while stopped/scaled-to-zero).
@@ -37,6 +51,11 @@ export function makeWorkspaceEntity(client: DynamoDBClient, table = TABLE) {
         latestSnapshotAt: { type: "string", required: false },
         // Private IP of the running task's ENI; absent when stopped/scaled-to-zero.
         sshHost: { type: "string", required: false },
+        // Functional self-report from the in-workspace agent (is the desktop usable:
+        // IDE reachable + workspace writable). Absent until the first report.
+        functional: { type: ["ok", "degraded"] as const, required: false },
+        functionalDetail: { type: "string", required: false },
+        functionalAt: { type: "string", required: false },
         // Optimistic-concurrency version: every lifecycle write is conditioned
         // on the version it read, so concurrent transitions (e.g. two wakes
         // racing) cannot both win and leak a real ECS task.

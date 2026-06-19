@@ -1,0 +1,22 @@
+{
+  "name": "@edd/cli",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "edd": "dist/edd.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && esbuild src/edd.ts --bundle --platform=node --target=node22 --format=esm --log-level=warning '--banner:js=#!/usr/bin/env node' --outfile=dist/edd.js && chmod +x dist/edd.js",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@edd/api-client": "workspace:*",
+    "@edd/api-contracts": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "esbuild": "^0.28.1"
+  }
+}

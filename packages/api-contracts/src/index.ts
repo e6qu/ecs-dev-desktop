@@ -20,10 +20,15 @@ export const workspaceState = z.enum([
   "running",
   "idle",
   "stopped",
+  "deleting",
   "terminated",
   "error",
 ]);
 export type WorkspaceStateDto = z.infer<typeof workspaceState>;
+
+/** Durable convergence intent (independent of the observed `state`). */
+export const desiredState = z.enum(["present", "deleted"]);
+export type DesiredStateDto = z.infer<typeof desiredState>;
 
 export const workspace = z.object({
   id: z.string(),
@@ -36,6 +41,43 @@ export const workspace = z.object({
   repoUrl: z.string().optional(),
 });
 export type WorkspaceDto = z.infer<typeof workspace>;
+
+/** Config-sync report: is the running deployment wired the way it should be? */
+export const configCheck = z.object({
+  name: z.string(),
+  status: z.enum(["ok", "drift", "unknown"]),
+  detail: z.string(),
+});
+export const configSyncReport = z.object({
+  inSync: z.boolean(),
+  checks: z.array(configCheck),
+});
+export type ConfigSyncReportDto = z.infer<typeof configSyncReport>;
+
+/** Optional functional self-report carried on a heartbeat (in-workspace agent). */
+export const heartbeatRequest = z.object({
+  functional: z
+    .object({
+      /** OpenVSCode reachable on the workspace port. */
+      ide: z.boolean(),
+      /** The workspace home directory is writable. */
+      workspace: z.boolean(),
+    })
+    .optional(),
+});
+export type HeartbeatRequest = z.infer<typeof heartbeatRequest>;
+
+/** A security event reported by the in-workspace guard (agent machine-auth). */
+export const securityEventRequest = z.object({
+  kind: z.enum(["privilege_attempt"]),
+  /** The guarded tool the workspace tried to run (e.g. "docker", "sudo"). */
+  tool: z
+    .string()
+    .min(1)
+    .max(64)
+    .regex(/^[a-zA-Z0-9._-]+$/),
+});
+export type SecurityEventRequest = z.infer<typeof securityEventRequest>;
 
 export const createWorkspaceRequest = z.object({
   baseImage: z.string().min(1),
@@ -64,6 +106,11 @@ export const workspaceDetail = z.object({
   repoUrl: z.string().optional(),
   baseImage: z.string(),
   state: workspaceState,
+  /** Durable intent: should this workspace exist (`present`) or be torn down
+   * (`deleted`). Absent on records predating the field ⇒ treated `present`. */
+  desiredState: desiredState.optional(),
+  /** When a delete was requested (the `deleting` tombstone began), if any. */
+  deleteRequestedAt: z.iso.datetime().optional(),
   createdAt: z.iso.datetime(),
   lastActivity: z.iso.datetime(),
   volumeId: z.string().optional(),
@@ -72,6 +119,11 @@ export const workspaceDetail = z.object({
   latestSnapshotAt: z.iso.datetime().optional(),
   /** Private IP of the running task's ENI; absent when stopped/scaled-to-zero. */
   sshHost: z.string().optional(),
+  /** Functional usability self-report from the in-workspace agent (is the desktop
+   * actually usable, not just running): `ok` / `degraded` + detail + when. */
+  functional: z.enum(["ok", "degraded"]).optional(),
+  functionalDetail: z.string().optional(),
+  functionalAt: z.iso.datetime().optional(),
 });
 export type WorkspaceDetailDto = z.infer<typeof workspaceDetail>;
 
