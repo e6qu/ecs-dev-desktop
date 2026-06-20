@@ -254,6 +254,7 @@ export {
   METRIC_FLEET_COST_USD,
   METRIC_QUOTA_UTILIZATION,
   METRIC_QUOTA_DENIED,
+  METRIC_RECONCILER_QUOTA_DRIFT_CORRECTED,
 } from "./observability/metrics";
 
 // Observability — cost model (admin Costs; prices the lifecycle audit ledger).

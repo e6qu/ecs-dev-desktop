@@ -509,6 +509,49 @@ export class WorkspaceService {
     return data.map((r: WorkspaceRecord) => workspaceId(r.id));
   }
 
+  /**
+   * Self-heal the per-owner quota counters against the actual workspace records.
+   * `create` increments the counter atomically, but `finishDeleting` decrements it
+   * UNCONDITIONALLY (a teardown must never block on a counter condition), so a
+   * lost-race delete or an out-of-band record removal can leave a counter drifted —
+   * which would weaken quota enforcement permanently. This sweep recomputes each
+   * owner's true live count (a record exists from `create` until `finishDeleting`)
+   * and corrects any counter that disagrees. Each correction is conditioned on the
+   * value observed, so a create/delete that raced the scan is never clobbered (that
+   * owner just re-converges next sweep). Returns the number of counters corrected;
+   * a no-op (0) when quota counters aren't wired. */
+  async reconcileOwnerCounts(): Promise<number> {
+    const oc = this.deps.ownerCounts;
+    if (oc === undefined) return 0;
+    const actual = new Map<string, number>();
+    const { data: records } = await this.deps.workspaces.scan.go({ pages: "all" });
+    records.forEach((r: WorkspaceRecord) => {
+      actual.set(r.ownerId, (actual.get(r.ownerId) ?? 0) + 1);
+    });
+    const { data: counters } = await oc.scan.go({ pages: "all" });
+    const stored = new Map(counters.map((c) => [c.ownerId, c.count] as const));
+    const owners = new Set<string>([...actual.keys(), ...stored.keys()]);
+    let corrected = 0;
+    for (const owner of owners) {
+      const want = actual.get(owner) ?? 0;
+      const have = stored.get(owner);
+      if (have === want) continue;
+      try {
+        await oc
+          .update({ ownerId: owner })
+          .set({ count: want })
+          .where((attr, op) =>
+            have === undefined ? op.notExists(attr.count) : op.eq(attr.count, have),
+          )
+          .go();
+        corrected += 1;
+      } catch (e) {
+        if (!isVersionConflict(e)) throw e; // raced a live mutation — corrects next sweep
+      }
+    }
+    return corrected;
+  }
+
   /** Fetch all workspace records in the given lifecycle states (fully paginated). */
   private async recordsByStates(states: readonly WorkspaceState[]): Promise<WorkspaceRecord[]> {
     const pages = await Promise.all(

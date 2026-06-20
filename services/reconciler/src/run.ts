@@ -38,6 +38,7 @@ import {
   METRIC_RECONCILER_TASKS_REAP_FAILED,
   METRIC_RECONCILER_TASKDEFS_PRUNED,
   METRIC_RECONCILER_TASKDEFS_PRUNE_FAILED,
+  METRIC_RECONCILER_QUOTA_DRIFT_CORRECTED,
   METRIC_RECONCILER_SKIPPED,
   METRIC_RECONCILER_RECOVERED,
   METRIC_RECONCILER_DELETIONS_FINISHED,
@@ -160,6 +161,7 @@ try {
   metrics.count(METRIC_RECONCILER_TASKS_REAP_FAILED, result.tasks.failed);
   metrics.count(METRIC_RECONCILER_TASKDEFS_PRUNED, result.taskDefs.deregistered);
   metrics.count(METRIC_RECONCILER_TASKDEFS_PRUNE_FAILED, result.taskDefs.failed);
+  metrics.count(METRIC_RECONCILER_QUOTA_DRIFT_CORRECTED, result.quotaDriftCorrected);
   metrics.count(
     METRIC_RECONCILER_SKIPPED,
     result.provisioning.skipped +
@@ -185,6 +187,7 @@ try {
     tasksReapFailed: result.tasks.failed,
     taskDefsPruned: result.taskDefs.deregistered,
     taskDefsPruneFailed: result.taskDefs.failed,
+    quotaDriftCorrected: result.quotaDriftCorrected,
     skipped:
       result.provisioning.skipped +
       result.drift.skipped +

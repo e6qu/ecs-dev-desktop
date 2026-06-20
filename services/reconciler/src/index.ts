@@ -84,6 +84,9 @@ export interface ReconcilerService {
   >;
   /** Mark a workspace `error` (unrecoverable) because its referenced snapshot is gone. */
   markSnapshotLostFor(id: WorkspaceId): Promise<Result<unknown, DomainError>>;
+  /** Self-heal the per-owner quota counters against actual records; returns the
+   * number corrected (0 when quota counters aren't wired). */
+  reconcileOwnerCounts(): Promise<number>;
 }
 
 /** Pure: the ids of workspaces idle for at least `idleThresholdMs`. */
@@ -203,6 +206,8 @@ export interface MaintenanceResult {
   secrets: ReapResult;
   taskDefs: { deregistered: number; failed: number };
   gc: GcResult;
+  /** Per-owner quota counters corrected against actual records this sweep. */
+  quotaDriftCorrected: number;
 }
 
 /**
@@ -546,6 +551,10 @@ export class Reconciler {
     // Bound task-definition revision growth (per-launch secret injection accumulates them).
     const taskDefs = await this.pruneTaskDefinitions();
     const gc = await this.collectGarbage();
+    // Self-heal per-owner quota counters against actual records (the unconditional
+    // decrement on teardown can drift them); cheap full-table tally, last so it sees
+    // this sweep's finished deletes.
+    const quotaDriftCorrected = await this.reconcileOwnerCounts();
     return {
       provisioning,
       drift,
@@ -558,6 +567,17 @@ export class Reconciler {
       secrets,
       taskDefs,
       gc,
+      quotaDriftCorrected,
     };
+  }
+
+  /** Self-heal the per-owner quota counters (delegates to the control plane); a
+   * persistent non-zero correction count signals counters diverging from reality. */
+  async reconcileOwnerCounts(): Promise<number> {
+    const corrected = await this.deps.service.reconcileOwnerCounts();
+    if (corrected > 0) {
+      this.deps.logger?.warn("quota: corrected drifted per-owner counters", { corrected });
+    }
+    return corrected;
   }
 }

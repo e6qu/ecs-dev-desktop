@@ -42,6 +42,7 @@ function fakeService(overrides: Partial<ReconcilerService> = {}): ReconcilerServ
     recoverError: () => Promise.reject(new Error("recoverError not expected")),
     listSnapshotReferences: () => Promise.resolve([]),
     markSnapshotLostFor: () => Promise.reject(new Error("markSnapshotLostFor not expected")),
+    reconcileOwnerCounts: () => Promise.resolve(0),
     ...overrides,
   };
 }
@@ -642,5 +643,41 @@ describe("Reconciler.recoverProvisioning", () => {
       recovered: 0,
       skipped: 1,
     });
+  });
+});
+
+describe("Reconciler.reconcileOwnerCounts (quota drift self-heal)", () => {
+  it("delegates to the control plane, returns the count, and warns when nonzero", async () => {
+    const warnings: { message: string; fields?: Record<string, unknown> }[] = [];
+    const reconciler = new Reconciler({
+      service: fakeService({ reconcileOwnerCounts: () => Promise.resolve(3) }),
+      storage: await emptyStorage(),
+      clock: fixedClock("2026-06-01T02:00:00.000Z"),
+      logger: { warn: (message, fields) => warnings.push({ message, fields }) },
+    });
+    expect(await reconciler.reconcileOwnerCounts()).toBe(3);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]?.fields).toMatchObject({ corrected: 3 });
+  });
+
+  it("is silent when there is no drift (returns 0, no warning)", async () => {
+    const warnings: unknown[] = [];
+    const reconciler = new Reconciler({
+      service: fakeService({ reconcileOwnerCounts: () => Promise.resolve(0) }),
+      storage: await emptyStorage(),
+      clock: fixedClock("2026-06-01T02:00:00.000Z"),
+      logger: { warn: (_m, fields) => warnings.push(fields) },
+    });
+    expect(await reconciler.reconcileOwnerCounts()).toBe(0);
+    expect(warnings).toHaveLength(0);
+  });
+
+  it("runMaintenance surfaces the corrected count", async () => {
+    const reconciler = new Reconciler({
+      service: fakeService({ reconcileOwnerCounts: () => Promise.resolve(2) }),
+      storage: await emptyStorage(),
+      clock: fixedClock("2026-06-01T02:00:00.000Z"),
+    });
+    expect((await reconciler.runMaintenance()).quotaDriftCorrected).toBe(2);
   });
 });
