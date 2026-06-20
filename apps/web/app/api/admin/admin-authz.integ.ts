@@ -11,6 +11,7 @@ import { GET as auditGet } from "./audit/route";
 import { GET as configSyncGet } from "./config-sync/route";
 import { GET as healthGet } from "./health/route";
 import { GET as logsGet } from "./logs/route";
+import { GET as overviewGet } from "./overview/route";
 import { GET as quotasGet } from "./quotas/route";
 import { GET as inspectGet } from "./workspaces/[id]/route";
 import { GET as workspacesGet } from "./workspaces/route";
@@ -33,6 +34,7 @@ const ENDPOINTS: { name: string; call: (req: Request) => Promise<Response> }[] =
   { name: "logs", call: (req) => logsGet(req) },
   { name: "config-sync", call: (req) => configSyncGet(req) },
   { name: "quotas", call: (req) => quotasGet(req) },
+  { name: "overview", call: (req) => overviewGet(req) },
 ];
 
 function asRole(role: string): Request {

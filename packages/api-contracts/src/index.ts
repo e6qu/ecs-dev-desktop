@@ -364,6 +364,25 @@ export const quotaReport = z.object({
 });
 export type QuotaReportDto = z.infer<typeof quotaReport>;
 
+// --- Admin: overview (at-a-glance fleet + catalog counts) ---
+
+export const overviewReport = z.object({
+  workspaces: z.object({
+    total: z.number().int().nonnegative(),
+    active: z.number().int().nonnegative(),
+    stopped: z.number().int().nonnegative(),
+  }),
+  /** Distinct owners with at least one workspace. */
+  activeUsers: z.number().int().nonnegative(),
+  baseImages: z.object({
+    total: z.number().int().nonnegative(),
+    enabled: z.number().int().nonnegative(),
+  }),
+  /** Per-state counts, non-zero states only (busiest breakdown). */
+  byState: z.array(z.object({ state: workspaceState, count: z.number().int().nonnegative() })),
+});
+export type OverviewReportDto = z.infer<typeof overviewReport>;
+
 /** Time window for the cost report: `all` = full lifetime, the rest = last N days. */
 export const costWindow = z.enum(["all", "1d", "7d", "30d"]);
 export type CostWindow = z.infer<typeof costWindow>;

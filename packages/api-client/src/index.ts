@@ -4,6 +4,7 @@ import {
   baseImageEntry,
   costReport,
   quotaReport,
+  overviewReport,
   createBaseImageRequest,
   createWorkspaceRequest,
   errorResponse,
@@ -27,6 +28,7 @@ import {
   type CostReport,
   type CostWindow,
   type QuotaReportDto,
+  type OverviewReportDto,
   type HealthReportDto,
   type ConfigSyncReportDto,
   type InfrastructureReportDto,
@@ -264,6 +266,12 @@ export class ApiClient {
   async adminQuotas(): Promise<QuotaReportDto> {
     const res = await this.send("/api/admin/quotas");
     return quotaReport.parse(await res.json());
+  }
+
+  /** The overview report: at-a-glance fleet + catalog counts. */
+  async adminOverview(): Promise<OverviewReportDto> {
+    const res = await this.send("/api/admin/overview");
+    return overviewReport.parse(await res.json());
   }
 
   /** Read one admin log stream; CloudWatch-backed on AWS. An optional
