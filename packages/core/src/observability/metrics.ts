@@ -71,6 +71,12 @@ export const METRIC_RECONCILER_ERROR_GAUGE = "reconciler.workspaces.error";
 /** Gauge: workspaces currently in the `deleting` tombstone (teardown in progress). */
 export const METRIC_RECONCILER_DELETING_GAUGE = "reconciler.workspaces.deleting";
 
+/** Count of required IAM actions a component's live preflight found DENIED (0 = all
+ * allowed; emitted only when the simulate actually ran). A sustained non-zero value
+ * means the runtime identity is missing a grant it needs — alarm-worthy. Dimensioned
+ * by `component` (control-plane / reconciler). */
+export const METRIC_IAM_PREFLIGHT_DENIED = "iam.preflight.denied";
+
 /** A workspace attempted a privileged operation the sandbox blocks (docker, sudo, …) —
  * reported by the in-image privilege guard. Dimensioned by `tool`. A spike is a signal
  * worth an operator's eye (curiosity, misunderstanding, or probing). */

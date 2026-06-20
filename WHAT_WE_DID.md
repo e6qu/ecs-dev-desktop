@@ -2060,3 +2060,49 @@ listStuckProvisioning` + `recoverStuckProvisioning` revert provisioning→stoppe
   e2e, not Pomerium — only the Pomerium-specific SANs were trimmed from the cert; the tier stays). Verified at
   close: `pnpm build`, `pnpm test`, `pnpm lint` all green; `actionlint` + `shellcheck` clean;
   `pnpm install --frozen-lockfile` passes.
+
+- **2026-06-20 — Finished the editor-proxy story (end-to-end connection token, workspace-isolating SG) +
+  lifted IAM preflight into a shared package with a reconciler startup self-check.** Two tracks landed in
+  one PR (later than, and separate from, the Pomerium-removal entry above).
+  - **Editor reach now authenticates end-to-end ("Open editor" → workbench).** The in-app path-based proxy
+    (`app.<domain>/w/<id>/`) now hands the editor a **defence-in-depth connection token**. A shared
+    per-workspace HMAC derivation was centralized in `@edd/core`
+    (`deriveWorkspaceToken`/`verifyWorkspaceToken`, `packages/core/src/domain/machine-token.ts`); the
+    previously-duplicated derivations in `@edd/compute-ecs` (`agentToken`) and `apps/web` (`machine-auth`)
+    now call it. The compute provider (`@edd/compute-ecs`) injects each workspace task's OpenVSCode
+    **connection token** = `HMAC(EDD_CONNECTION_SECRET, workspaceId)` via Secrets Manager (secret
+    `edd/workspace/<wsId>/connection`), mirroring the existing agent-token path (plaintext-env fallback when
+    no secrets client); new config `connectionSecret`, with `EcsComputeProvider.fromEnv(agentSecret,
+connectionSecret)` reading `EDD_CONNECTION_SECRET`. The golden image already runs OpenVSCode under
+    `--server-base-path /w/<id>/` and consumes `CONNECTION_TOKEN`. The proxy
+    (`apps/web/lib/workspace-proxy.ts` `editorTokenRedirect` + `apps/web/server.ts`) hands the
+    **already session-authorized** browser the token: on the initial document navigation lacking it, a 302 to
+    `…?tkn=<token>` (derived from the same `EDD_CONNECTION_SECRET`); the user never sees or handles it (new
+    env constant `EDD_CONNECTION_SECRET` / `CONNECTION_SECRET_ENV`). **Network hardening (terraform module):**
+    workspace tasks moved to a dedicated `workspaces` security group whose editor port (`workspace_port`,
+    default 3000) + sshd (22) are reachable ONLY from the control-plane security group — never
+    workspace-to-workspace (defence-in-depth alongside the token); new `workspace_port` variable +
+    `workspaces_security_group_id` output, with the control plane pointing workspace tasks at it via
+    `ECS_SECURITY_GROUPS`, and `EDD_CONNECTION_SECRET` added to the deployer-supplied secrets list. **Tested:**
+    core machine-token unit tests; compute-ecs connection-token env tests; proxy `editorTokenRedirect` unit
+    tests (redirect on document nav, skip when token/cookie present, skip sub-resources/non-GET, no-secret =
+    tokenless); `packages/e2e/src/agent-secret.e2e.ts` extended to assert the `CONNECTION_TOKEN`
+    Secrets-Manager injection against the container-mode sim; `packages/e2e/src/live-ide-flow.e2e.ts` reaches
+    the real OpenVSCode workbench through the IDE bridge and asserts the token the running editor uses (its
+    `--connection-token`) equals the injected per-workspace `HMAC(EDD_CONNECTION_SECRET, id)` — the workbench
+    serves only with it — proving the handoff against real sim compute; and the LIVE portal e2e
+    (`apps/web/e2e/portal-live.pwlive.ts`) asserts the **Open editor** affordance. `apps/web/e2e/start-live-app.sh`
+    was switched from `next start` to the production custom server (`tsx server.ts`), so the live browser job
+    now exercises the real production entrypoint + the `/w/` proxy routing, which `next start` never did. (The
+    host-process proxy → in-VPC workspace ENI hop itself is the e2e-aws tier: the sim runs each task in an
+    awsvpc netns the host cannot route to — see `packages/e2e/src/ide-bridge.ts`.)
+  - **IAM preflight lifted into a shared package + reconciler startup self-check.**
+    `apps/web/lib/iam-preflight.ts` (+ test) moved to a new package `@edd/iam-preflight`
+    (`packages/iam-preflight`); `apps/web` imports from it and dropped its now-unused
+    `@aws-sdk/client-iam`/`@aws-sdk/client-sts` direct deps. `@edd/core` gained pure
+    `summarizeIamPreflight(signal)` + `IamPreflightSummary` + metric `METRIC_IAM_PREFLIGHT_DENIED`. The
+    reconciler (`services/reconciler`) now runs `iamPreflight(env, "reconciler")` at startup, emitting the
+    denied-action-count metric + a structured log (non-fatal; degrades to unknown), factored into a
+    unit-tested `reportIamPreflight`.
+
+  Verified at close: `pnpm build`/`test`/`lint` green; `shellcheck` + `terraform fmt`/`validate` clean.

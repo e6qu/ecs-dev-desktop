@@ -2,14 +2,38 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-20 (removed Pomerium + the standalone `workspace-gate`; folded the browser→editor proxy into the Next.js app — path-based single domain, single Auth.js session authz)
+**Last updated:** 2026-06-20 (finished the editor-proxy story — "Open editor" now reaches the workbench end-to-end via a defence-in-depth connection token + a workspace-isolating security group; lifted IAM preflight into `@edd/iam-preflight` with a reconciler startup self-check)
 
-## Active — In-app path-based editor proxy (Pomerium + `workspace-gate` removed)
+## Active — Editor reachable end-to-end through the in-app proxy + reconciler IAM self-check
 
-The browser→VS Code editor reach now lives **in the control-plane app**, not in an external
-identity-aware proxy. A custom Next.js server (`apps/web/server.ts`, run via `tsx` in dev AND prod —
-replaced `next start`) serves the portal/admin/API and proxies the per-user editor at
-`app.<domain>/w/<id>/` (HTTP + WebSocket upgrade; logic in `apps/web/lib/workspace-proxy.ts`):
+The browser→VS Code editor reach is now **fully authenticated end-to-end**: clicking **Open editor**
+lands on the OpenVSCode workbench through the in-app path-based proxy (`app.<domain>/w/<id>/`). On top of
+the Auth.js session that authorizes the proxy, the editor task is handed a **per-workspace connection token**
+(defence-in-depth) and is reachable only from the control plane:
+
+- **Connection token (defence-in-depth).** `@edd/compute-ecs` injects each workspace task's OpenVSCode
+  connection token = `HMAC(EDD_CONNECTION_SECRET, workspaceId)` via Secrets Manager
+  (`edd/workspace/<id>/connection`), mirroring the agent-token path (plaintext-env fallback when no secrets
+  client). The proxy hands the **already session-authorized** browser the token on the initial document
+  navigation (a 302 to `…?tkn=<token>`, `editorTokenRedirect` in `apps/web/lib/workspace-proxy.ts` +
+  `apps/web/server.ts`); the user never sees or handles it. The HMAC derivation is centralized once in
+  `@edd/core` (`deriveWorkspaceToken`/`verifyWorkspaceToken`); the compute + web call sites now share it.
+- **Workspace-isolating security group.** The terraform module places workspace tasks in a dedicated
+  `workspaces` security group whose editor port (`workspace_port`, default 3000) + sshd (22) are reachable
+  **only from the control-plane SG** — never workspace-to-workspace. New `workspace_port` var +
+  `workspaces_security_group_id` output; the control plane points workspace tasks at it via
+  `ECS_SECURITY_GROUPS`, and `EDD_CONNECTION_SECRET` joined the deployer-supplied secrets list.
+- **Reconciler IAM self-check.** IAM preflight moved out of `apps/web` into the shared `@edd/iam-preflight`
+  package (`apps/web` imports it, dropping its now-unused IAM/STS SDK deps); the reconciler now runs
+  `iamPreflight(env, "reconciler")` at startup and emits a denied-action-count metric
+  (`METRIC_IAM_PREFLIGHT_DENIED`) + a structured log (non-fatal; degrades to unknown). `@edd/core` carries the
+  pure `summarizeIamPreflight`/`IamPreflightSummary`.
+
+This sits on top of the proxy foundation laid earlier today (Pomerium + the standalone `workspace-gate`
+removed; the browser→editor reach folded into the control-plane app). A custom Next.js server
+(`apps/web/server.ts`, run via `tsx` in dev AND prod — replaced `next start`) serves the portal/admin/API and
+proxies the per-user editor at `app.<domain>/w/<id>/` (HTTP + WebSocket upgrade; logic in
+`apps/web/lib/workspace-proxy.ts`):
 
 - **Path-based routing on a single domain** (`/w/<workspace-id>/`) replaced wildcard-subdomain routing for
   the browser/HTTP path — no wildcard DNS, no wildcard TLS cert, no cross-subdomain cookie. SSH still uses
@@ -30,9 +54,17 @@ replaced `next start`) serves the portal/admin/API and proxies the per-user edit
   were trimmed).
 
 Tests: `apps/web/lib/workspace-proxy.test.ts` (authz glue — unauthenticated→login, unknown-ws→forbidden,
-owner→allow, other→forbidden, admin→allow, no-subject→forbidden); the vscode browser e2e (`test:pw:vscode`)
-drives the editor under the `/w/<id>/` base path. Verified at close: `pnpm build`/`test`/`lint` green;
-`actionlint` + `shellcheck` clean; `pnpm install --frozen-lockfile` passes.
+owner→allow, other→forbidden, admin→allow, no-subject→forbidden) + `editorTokenRedirect` unit tests (redirect
+on document nav, skip when token/cookie present, skip sub-resources/non-GET, no-secret = tokenless); core
+machine-token + compute-ecs connection-token env tests; `packages/e2e/src/agent-secret.e2e.ts` asserts the
+`CONNECTION_TOKEN` Secrets-Manager injection; `packages/e2e/src/live-ide-flow.e2e.ts` reaches the real
+OpenVSCode workbench through the IDE bridge and asserts the token the running editor uses equals the injected
+per-workspace `HMAC(EDD_CONNECTION_SECRET, id)` (workbench serves only with it); the LIVE portal e2e
+(`apps/web/e2e/portal-live.pwlive.ts`) asserts the **Open editor** affordance and now boots the production
+custom server (`tsx server.ts`, not `next start`); the vscode browser e2e (`test:pw:vscode`) drives the
+editor under the `/w/<id>/` base path. (The host-process proxy → in-VPC workspace ENI hop itself is the
+e2e-aws tier — the sim runs tasks in an awsvpc netns the host can't route to.) Verified at close:
+`pnpm build`/`test`/`lint` green; `actionlint` + `shellcheck` + `terraform fmt`/`validate` clean.
 
 ## Prior — UI/contract/perf/gate sweep (`feat/sweep-ui-contracts-perf`)
 

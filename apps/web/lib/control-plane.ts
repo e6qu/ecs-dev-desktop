@@ -13,9 +13,9 @@ import {
   type DependencyStatus,
 } from "@edd/core";
 import { workspaceSizing } from "@edd/config";
+import { iamPreflight } from "@edd/iam-preflight";
 
 import { resolveWorkspacePricing } from "./aws-pricing";
-import { iamPreflight } from "./iam-preflight";
 import {
   CatalogService,
   CostService,
@@ -43,6 +43,8 @@ import {
   TABLE,
 } from "@edd/db";
 import { Ec2StorageProvider } from "@edd/storage-ec2";
+
+import { AGENT_SECRET_ENV, CONNECTION_SECRET_ENV } from "./constants";
 
 /**
  * Process-wide control plane. Persistence is always real DynamoDB.
@@ -245,7 +247,10 @@ export function getLogSource(): CloudWatchLogSource | DerivedLogSource {
 
 function buildRealProviders(): { storage: Ec2StorageProvider; compute: EcsComputeProvider } {
   const storage = Ec2StorageProvider.fromEnv();
-  const compute = EcsComputeProvider.fromEnv(process.env.EDD_AGENT_SECRET);
+  const compute = EcsComputeProvider.fromEnv(
+    process.env[AGENT_SECRET_ENV],
+    process.env[CONNECTION_SECRET_ENV],
+  );
   return { storage, compute };
 }
 

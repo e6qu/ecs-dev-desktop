@@ -23,7 +23,7 @@ import {
 } from "@aws-sdk/client-ecs";
 import { GetSecretValueCommand, SecretsManagerClient } from "@aws-sdk/client-secrets-manager";
 import { agentToken, EcsComputeProvider } from "@edd/compute-ecs";
-import { baseImage, workspaceId } from "@edd/core";
+import { baseImage, deriveWorkspaceToken, workspaceId } from "@edd/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -44,6 +44,7 @@ const WORKSPACE_CONTAINER = "workspace";
 const WS_ID = `ws-secret-${RUN_ID}`;
 const EBS_ROLE = e2eEbsRoleArn();
 const AGENT_SECRET = "a".repeat(64); // 32-byte hex master HMAC key (test value)
+const CONNECTION_SECRET = "b".repeat(64); // editor connection-token master key (test value)
 const CONTROL_PLANE_URL = "http://127.0.0.1:3000";
 const LOG_GROUP = `/edd/e2e/agent-secret-${RUN_ID}`;
 
@@ -80,6 +81,7 @@ describe(
           containerName: WORKSPACE_CONTAINER,
           controlPlaneUrl: CONTROL_PLANE_URL,
           agentSecret: AGENT_SECRET,
+          connectionSecret: CONNECTION_SECRET,
           logGroupName: LOG_GROUP,
         },
       });
@@ -114,6 +116,20 @@ describe(
       const container = td.taskDefinition?.containerDefinitions?.[0];
       expect((container?.secrets ?? []).map((s) => s.name)).toContain("EDD_AGENT_TOKEN");
       expect((container?.environment ?? []).map((e) => e.name)).not.toContain("EDD_AGENT_TOKEN");
+    });
+
+    it("stores the editor connection token in Secrets Manager with the correct HMAC value", async () => {
+      const secret = await sm.send(
+        new GetSecretValueCommand({ SecretId: `edd/workspace/${WS_ID}/connection` }),
+      );
+      expect(secret.SecretString).toBe(deriveWorkspaceToken(CONNECTION_SECRET, WS_ID));
+    });
+
+    it("references the connection-token secret from the task def, never as plaintext env", async () => {
+      const td = await ecs.send(new DescribeTaskDefinitionCommand({ taskDefinition: taskDefArn }));
+      const container = td.taskDefinition?.containerDefinitions?.[0];
+      expect((container?.secrets ?? []).map((s) => s.name)).toContain("CONNECTION_TOKEN");
+      expect((container?.environment ?? []).map((e) => e.name)).not.toContain("CONNECTION_TOKEN");
     });
   },
 );

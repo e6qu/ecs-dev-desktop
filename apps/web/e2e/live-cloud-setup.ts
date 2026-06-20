@@ -28,6 +28,10 @@ const LOG_GROUP = `/edd/e2e/pw-live-${RUN_ID}`;
 const WORKSPACE_IMAGE = "edd-workspace:e2e";
 const EBS_ROLE = "arn:aws:iam::123456789012:role/ecsInfrastructureRole";
 const AGENT_SECRET = "d".repeat(64);
+// 32-byte hex master key for the editor connection token. With it set, the compute
+// provider injects each task's CONNECTION_TOKEN and the in-app proxy derives the same
+// value to hand the browser its `?tkn=` — so "Open editor" reaches the workbench.
+const CONNECTION_SECRET = "c".repeat(64);
 const ENV_FILE = join(import.meta.dirname, "../temp/live-pw.env");
 
 const dynamoEndpoint = process.env.DYNAMODB_ENDPOINT ?? dynamodb.endpoint;
@@ -82,6 +86,7 @@ const lines = [
   exportLine("ECS_LOG_GROUP_WORKSPACES", LOG_GROUP),
   exportLine("CONTROL_PLANE_URL", `http://${hostAlias}:${String(PORT)}`),
   exportLine("EDD_AGENT_SECRET", AGENT_SECRET),
+  exportLine("EDD_CONNECTION_SECRET", CONNECTION_SECRET),
 ];
 mkdirSync(dirname(ENV_FILE), { recursive: true });
 writeFileSync(ENV_FILE, lines.join("\n") + "\n");

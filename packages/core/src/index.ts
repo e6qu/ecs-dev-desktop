@@ -101,6 +101,9 @@ export {
   workspaceIdFromPath,
 } from "./domain/proxy-authz";
 
+// Per-workspace machine token derivation (pure): idle-agent, SSH gateway, editor.
+export { deriveWorkspaceToken, verifyWorkspaceToken } from "./domain/machine-token";
+
 // Per-role workspace quota gate (pure).
 export { withinWorkspaceQuota } from "./domain/quota";
 
@@ -208,12 +211,14 @@ export type {
   IamActionDecision,
   IamPreflightSignal,
   IamIdentity,
+  IamPreflightSummary,
 } from "./observability/iam-requirements";
 export {
   IAM_REQUIREMENTS,
   IAM_CONTEXT_TOKENS,
   requiredActions,
   evaluateIamPermissions,
+  summarizeIamPreflight,
 } from "./observability/iam-requirements";
 
 // Observability — derived audit feed (admin Logs/Audit; CloudTrail on AWS).
@@ -246,6 +251,7 @@ export {
   METRIC_RECONCILER_SNAPSHOT_LOST,
   METRIC_RECONCILER_ERROR_GAUGE,
   METRIC_RECONCILER_DELETING_GAUGE,
+  METRIC_IAM_PREFLIGHT_DENIED,
   METRIC_SECURITY_PRIVILEGE_ATTEMPT,
   METRIC_API_REQUEST,
   METRIC_API_LATENCY_MS,

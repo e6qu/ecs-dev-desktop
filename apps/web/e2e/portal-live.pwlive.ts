@@ -68,6 +68,16 @@ test("member lifecycle in the browser acts on real ECS tasks (create → stop �
   expect(created.volumeId).toMatch(/^vol-/);
   expect(created.sshHost).toMatch(SUBNET_PREFIX);
 
+  // The "Open editor" affordance points at the in-app path-based proxy (`/w/<id>/`)
+  // for a running workspace. (The full browser→proxy→editor workbench reach is
+  // exercised through the IDE bridge in `live-ide-flow.e2e.ts` and on real cloud:
+  // the sim runs each task in an awsvpc netns the host can't route to, so the
+  // host-process proxy can't reach the ENI here — that hop is the e2e-aws tier.)
+  await expect(card.locator(sel(TESTID.workspaceOpen))).toHaveAttribute(
+    "href",
+    `/w/${created.id}/`,
+  );
+
   // Stop: snapshot + real task teardown.
   await card.getByRole("button", { name: "stop" }).click();
   await expect(card).toHaveAttribute("data-status", "stopped");

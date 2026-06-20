@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { verifyWorkspaceToken } from "@edd/core";
 
 import { AGENT_SECRET_ENV, GATEWAY_SECRET_ENV, MACHINE_AUTH_HEADER } from "./constants";
 
@@ -12,8 +12,8 @@ import { AGENT_SECRET_ENV, GATEWAY_SECRET_ENV, MACHINE_AUTH_HEADER } from "./con
  *   "invalid" — header present but token does not match; reject 401.
  *   "valid"   — HMAC matches; proceed without session auth.
  *
- * Token derivation: HMAC-SHA256(hex(secret), workspaceId) → hex. Per-workspace,
- * so a token observed for one workspace cannot act on another.
+ * Token derivation is the shared per-workspace HMAC (`@edd/core`
+ * `verifyWorkspaceToken`): the same value the compute provider injects into the task.
  */
 function checkMachineAuth(
   req: Request,
@@ -33,12 +33,7 @@ function checkMachineAuth(
   const candidate = authHeader.slice(spaceIdx + 1);
   if (scheme.toLowerCase() !== "bearer" || candidate.length === 0) return "invalid";
 
-  const expected = createHmac("sha256", Buffer.from(secret, "hex"))
-    .update(workspaceId)
-    .digest("hex");
-
-  if (expected.length !== candidate.length) return "invalid";
-  return timingSafeEqual(Buffer.from(expected), Buffer.from(candidate)) ? "valid" : "invalid";
+  return verifyWorkspaceToken(secret, workspaceId, candidate) ? "valid" : "invalid";
 }
 
 /**

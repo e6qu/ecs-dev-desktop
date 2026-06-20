@@ -15,6 +15,7 @@ import next from "next";
 
 import {
   authorizeWorkspace,
+  editorTokenRedirect,
   proxyWorkspaceHttp,
   proxyWorkspaceUpgrade,
   resolveWorkspaceUpstream,
@@ -47,6 +48,14 @@ const server = createServer((req, res) => {
     if (authz.kind === "forbidden") {
       res.writeHead(403, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: "forbidden" }));
+      return;
+    }
+    // Defence-in-depth: hand the authorized browser the editor's connection token on
+    // the initial navigation, so the workbench loads without the user ever seeing it.
+    const tokenRedirect = editorTokenRedirect(req, wsId);
+    if (tokenRedirect !== undefined) {
+      res.writeHead(302, { location: tokenRedirect });
+      res.end();
       return;
     }
     try {

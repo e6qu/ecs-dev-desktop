@@ -100,8 +100,13 @@ output "alb_security_group_id" {
 }
 
 output "tasks_security_group_id" {
-  description = "ID of the ECS tasks security group."
+  description = "ID of the control-plane + reconciler ECS tasks security group."
   value       = aws_security_group.tasks.id
+}
+
+output "workspaces_security_group_id" {
+  description = "ID of the per-user workspace tasks security group (editor/sshd from the control plane only)."
+  value       = aws_security_group.workspaces.id
 }
 
 output "nat_mode" {

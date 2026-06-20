@@ -5,6 +5,7 @@ import {
   evaluateIamPermissions,
   IAM_REQUIREMENTS,
   requiredActions,
+  summarizeIamPreflight,
   type IamActionDecision,
 } from "./iam-requirements";
 
@@ -78,5 +79,44 @@ describe("evaluateIamPermissions", () => {
     const check = evaluateIamPermissions("control-plane", { kind: "checked", decisions });
     expect(check.status).toBe("drift");
     expect(check.detail).toContain("cloudtrail:LookupEvents");
+  });
+});
+
+describe("summarizeIamPreflight", () => {
+  it("→ ok with no denied actions when every decision is allowed", () => {
+    const summary = summarizeIamPreflight({
+      kind: "checked",
+      decisions: [
+        { action: "ecs:StopTask", allowed: true },
+        { action: "ec2:CreateSnapshot", allowed: true },
+      ],
+    });
+    expect(summary.ok).toBe(true);
+    expect(summary.deniedActions).toEqual([]);
+    expect(summary.reason).toBeUndefined();
+  });
+
+  it("→ not ok, naming exactly the denied actions", () => {
+    const summary = summarizeIamPreflight({
+      kind: "checked",
+      decisions: [
+        { action: "ecs:StopTask", allowed: false },
+        { action: "ec2:CreateSnapshot", allowed: true },
+        { action: "ec2:DeleteVolume", allowed: false },
+      ],
+    });
+    expect(summary.ok).toBe(false);
+    expect(summary.deniedActions).toEqual(["ecs:StopTask", "ec2:DeleteVolume"]);
+    expect(summary.reason).toBeUndefined();
+  });
+
+  it("→ ok (degrades to unknown, never a false failure) when unavailable, carrying the reason", () => {
+    const summary = summarizeIamPreflight({
+      kind: "unavailable",
+      reason: "dev/fakes (COMPUTE_PROVIDER!=ecs)",
+    });
+    expect(summary.ok).toBe(true);
+    expect(summary.deniedActions).toEqual([]);
+    expect(summary.reason).toBe("dev/fakes (COMPUTE_PROVIDER!=ecs)");
   });
 });

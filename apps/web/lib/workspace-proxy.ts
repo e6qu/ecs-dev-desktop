@@ -8,10 +8,71 @@ import {
 import type { Duplex } from "node:stream";
 
 import { DEFAULT_WORKSPACE_PORT, WORKSPACE_PROXY_UPSTREAM_TIMEOUT_MS } from "@edd/config";
-import { decideWorkspaceAccessBySubject, type WorkspaceId } from "@edd/core";
+import { decideWorkspaceAccessBySubject, deriveWorkspaceToken, type WorkspaceId } from "@edd/core";
 import { getToken } from "next-auth/jwt";
 
+import { CONNECTION_SECRET_ENV } from "./constants";
 import { getControlPlane } from "./control-plane";
+
+/** The OpenVSCode query param that carries the connection token, and the cookie it
+ * sets once validated — so the proxy injects the token exactly once per session. */
+const EDITOR_TOKEN_PARAM = "tkn";
+const EDITOR_TOKEN_COOKIE = "vscode-tkn";
+
+/**
+ * Defence-in-depth: when the editor runs with a connection token, hand the
+ * **already session-authorized** browser its token by redirecting the initial
+ * navigation to `…?tkn=<token>`. Returns the redirect target, or `undefined` to
+ * forward the request unchanged. Only fires for a top-level document GET that does
+ * not already carry the token (query or cookie), and only when a connection secret is
+ * configured (otherwise the editor is tokenless/dev and nothing needs injecting). The
+ * token is the same per-workspace HMAC the compute provider injected as
+ * `CONNECTION_TOKEN`, so no shared state is needed — both sides derive it.
+ */
+export function editorTokenRedirect(
+  req: {
+    readonly method?: string;
+    readonly url?: string;
+    readonly headers: IncomingMessage["headers"];
+  },
+  wsId: WorkspaceId,
+): string | undefined {
+  const secret = process.env[CONNECTION_SECRET_ENV] ?? "";
+  if (secret.length === 0) return undefined; // tokenless / dev — nothing to inject
+  if ((req.method ?? "GET").toUpperCase() !== "GET") return undefined;
+  if (req.url === undefined) return undefined;
+
+  // Only redirect a top-level browser navigation (the workbench document), never the
+  // editor's own sub-resource/API/WS requests — they ride the cookie once set.
+  const dest = headerValue(req.headers["sec-fetch-dest"]);
+  const accept = headerValue(req.headers.accept) ?? "";
+  const isDocumentNav = dest === "document" || (dest === undefined && accept.includes("text/html"));
+  if (!isDocumentNav) return undefined;
+
+  const url = new URL(req.url, "http://internal");
+  if (url.searchParams.has(EDITOR_TOKEN_PARAM)) return undefined; // already has the token
+  if (cookiePresent(req.headers.cookie, EDITOR_TOKEN_COOKIE)) return undefined; // session established
+
+  url.searchParams.set(EDITOR_TOKEN_PARAM, deriveWorkspaceToken(secret, wsId));
+  // Return a path-absolute URL (the dummy origin is dropped) the browser resolves
+  // against the real host.
+  return `${url.pathname}${url.search}`;
+}
+
+/** First value of a possibly-array header. */
+function headerValue(v: string | string[] | undefined): string | undefined {
+  return Array.isArray(v) ? v[0] : v;
+}
+
+/** Whether a `Cookie` header contains a cookie named `name` with a non-empty value. */
+function cookiePresent(cookieHeader: string | undefined, name: string): boolean {
+  if (cookieHeader === undefined) return false;
+  return cookieHeader.split(";").some((part) => {
+    const eq = part.indexOf("=");
+    if (eq === -1) return false;
+    return part.slice(0, eq).trim() === name && part.slice(eq + 1).trim().length > 0;
+  });
+}
 
 /**
  * In-app, path-based workspace editor proxy (`/w/<id>/…`). The single Next.js

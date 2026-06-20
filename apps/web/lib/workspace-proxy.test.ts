@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { workspaceId } from "@edd/core";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { randomBytes } from "node:crypto";
+import type { IncomingHttpHeaders } from "node:http";
+
+import { deriveWorkspaceToken, workspaceId } from "@edd/core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { CookieBearingRequest } from "./workspace-proxy";
 
@@ -19,7 +22,7 @@ vi.mock("./control-plane", () => ({
   getControlPlane: vi.fn(() => Promise.resolve({ inspect: inspectMock })),
 }));
 
-const { authorizeWorkspace } = await import("./workspace-proxy");
+const { authorizeWorkspace, editorTokenRedirect } = await import("./workspace-proxy");
 
 const WS = workspaceId("ws-abc123");
 const req = (cookie = "session=x"): CookieBearingRequest => ({ headers: { cookie } });
@@ -64,5 +67,92 @@ describe("authorizeWorkspace (in-app proxy authz glue)", () => {
     getTokenMock.mockResolvedValue({ role: "member" });
     inspectMock.mockResolvedValue({ workspace: { ownerId: "u-1" } });
     expect(await authorizeWorkspace(req(), WS)).toEqual({ kind: "forbidden" });
+  });
+});
+
+// The connection-token handoff: behind the session-authorizing proxy, the browser's
+// initial navigation to the editor is redirected to carry the per-workspace token, so
+// the workbench loads without the user ever handling it. Exercises every gate that
+// decides whether to inject (secret configured, document nav, no token yet).
+describe("editorTokenRedirect (editor connection-token handoff)", () => {
+  const SECRET = randomBytes(16).toString("hex");
+  const expectedTkn = deriveWorkspaceToken(SECRET, WS);
+  const docHeaders = (extra: IncomingHttpHeaders = {}): IncomingHttpHeaders => ({
+    "sec-fetch-dest": "document",
+    ...extra,
+  });
+
+  beforeEach(() => {
+    vi.stubEnv("EDD_CONNECTION_SECRET", SECRET);
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("redirects a top-level document navigation to carry ?tkn=<per-workspace token>", () => {
+    const out = editorTokenRedirect({ method: "GET", url: `/w/${WS}/`, headers: docHeaders() }, WS);
+    expect(out).toBe(`/w/${WS}/?tkn=${expectedTkn}`);
+  });
+
+  it("preserves an existing query when appending the token", () => {
+    const out = editorTokenRedirect(
+      { method: "GET", url: `/w/${WS}/?folder=/home/workspace`, headers: docHeaders() },
+      WS,
+    );
+    expect(out).toBe(`/w/${WS}/?folder=%2Fhome%2Fworkspace&tkn=${expectedTkn}`);
+  });
+
+  it("treats an HTML Accept (no Sec-Fetch-Dest) as a document navigation", () => {
+    const out = editorTokenRedirect(
+      { method: "GET", url: `/w/${WS}/`, headers: { accept: "text/html,application/xhtml+xml" } },
+      WS,
+    );
+    expect(out).toBe(`/w/${WS}/?tkn=${expectedTkn}`);
+  });
+
+  it("does not redirect when the request already carries the token (no loop)", () => {
+    const out = editorTokenRedirect(
+      { method: "GET", url: `/w/${WS}/?tkn=${expectedTkn}`, headers: docHeaders() },
+      WS,
+    );
+    expect(out).toBeUndefined();
+  });
+
+  it("does not redirect once the editor token cookie is established", () => {
+    const out = editorTokenRedirect(
+      {
+        method: "GET",
+        url: `/w/${WS}/`,
+        headers: docHeaders({ cookie: `vscode-tkn=${expectedTkn}` }),
+      },
+      WS,
+    );
+    expect(out).toBeUndefined();
+  });
+
+  it("does not redirect the editor's own sub-resource/API requests", () => {
+    const out = editorTokenRedirect(
+      {
+        method: "GET",
+        url: `/w/${WS}/static/out/main.js`,
+        headers: { "sec-fetch-dest": "script" },
+      },
+      WS,
+    );
+    expect(out).toBeUndefined();
+  });
+
+  it("does not redirect a non-GET request", () => {
+    const out = editorTokenRedirect(
+      { method: "POST", url: `/w/${WS}/`, headers: docHeaders() },
+      WS,
+    );
+    expect(out).toBeUndefined();
+  });
+
+  it("forwards as-is (no token) when no connection secret is configured — tokenless/dev", () => {
+    vi.stubEnv("EDD_CONNECTION_SECRET", "");
+    const out = editorTokenRedirect({ method: "GET", url: `/w/${WS}/`, headers: docHeaders() }, WS);
+    expect(out).toBeUndefined();
   });
 });

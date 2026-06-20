@@ -18,8 +18,6 @@
     "screenshot": "tsx scripts/screenshot-ui.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-iam": "^3.1072.0",
-    "@aws-sdk/client-sts": "^3.1072.0",
     "@edd/api-client": "workspace:*",
     "@edd/api-contracts": "workspace:*",
     "@edd/auth": "workspace:*",
@@ -32,6 +30,7 @@
     "@edd/control-plane": "workspace:*",
     "@edd/core": "workspace:*",
     "@edd/db": "workspace:*",
+    "@edd/iam-preflight": "workspace:*",
     "@edd/storage-ec2": "workspace:*",
     "jose": "^6.2.3",
     "next": "^16.2.9",
@@ -41,11 +40,11 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@aws-sdk/client-cloudwatch-logs": "^3.1072.0",
-    "@aws-sdk/client-dynamodb": "^3.1072.0",
-    "@aws-sdk/client-ec2": "^3.1072.0",
-    "@aws-sdk/client-ecs": "^3.1072.0",
-    "@aws-sdk/client-pricing": "^3.1072.0",
+    "@aws-sdk/client-cloudwatch-logs": "^3.1073.0",
+    "@aws-sdk/client-dynamodb": "^3.1073.0",
+    "@aws-sdk/client-ec2": "^3.1073.0",
+    "@aws-sdk/client-ecs": "^3.1073.0",
+    "@aws-sdk/client-pricing": "^3.1073.0",
     "@edd/e2e": "workspace:*",
     "@playwright/test": "^1.61.0",
     "@types/node": "^26.0.0",

@@ -115,19 +115,10 @@ single-flight memo on the admin Overview); **per-user quota gauges done**
 the only observability item left is the AWS-gated `e2e-aws` tier. See
 [`docs/observability-gaps.md`](./docs/observability-gaps.md).
 
-ECS compute hardening follow-ups (from the 2026-06-13 gap audit; the impactful
-ones were fixed — see Resolved — these remain as deliberate follow-ups, not
-active breakage):
-
-- **`CONNECTION_TOKEN` (OpenVSCode) not yet injected by the provider** — a random
-  per-boot token today. On the Phase-9 review this is **correctly coupled to the future
-  DYNAMIC wake-on-connect gate**, not a free-standing fix: the golden image already
-  consumes `CONNECTION_TOKEN` when injected (`entrypoint.sh`), but the current STATIC
-  gate model runs the IDE **tokenless behind the gate** (`EDD_DISABLE_CONNECTION_TOKEN=1`;
-  the gate is the PEP). The control plane generating/persisting/injecting a token has no
-  consumer until the gate forwards it to the authenticated user — building it now would
-  be dead code (§6.5), so it lands with that gate extension (the image side is ready).
-  The agent-token plaintext exposure is **fixed** (see Resolved).
+The ECS compute hardening follow-ups (from the 2026-06-13 gap audit) are **all fixed** —
+see Resolved. The last one, `CONNECTION_TOKEN` injection, shipped 2026-06-20: the
+in-app path-based proxy hands the session-authorized browser the token, superseding the
+old STATIC-gate "tokenless behind the gate" framing (see _Resolved (repo)_).
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
@@ -305,6 +296,38 @@ concurrent-wake race, TLS storage adapter). PR #550 is bleephub-Actions-only;
 no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
+
+- **Editor reach now authenticates end-to-end + reconciler IAM self-check (2026-06-20).** Two follow-ups
+  that closed the last items on the editor-proxy + IAM tracks (landed after, and separate from, the
+  Pomerium-removal entry below):
+  - **`CONNECTION_TOKEN` injection — DONE.** `@edd/compute-ecs` injects each workspace task's OpenVSCode
+    connection token = `HMAC(EDD_CONNECTION_SECRET, workspaceId)` via Secrets Manager
+    (`edd/workspace/<id>/connection`), mirroring the agent-token path (plaintext-env fallback when no
+    secrets client); new config `connectionSecret`, `EcsComputeProvider.fromEnv(agentSecret,
+connectionSecret)` reads `EDD_CONNECTION_SECRET`. The in-app proxy (`apps/web/lib/workspace-proxy.ts`
+    `editorTokenRedirect` + `apps/web/server.ts`) hands the **already session-authorized** browser the
+    token on the initial document navigation (302 → `…?tkn=<token>`); the user never sees/handles it. The
+    HMAC derivation was centralized once in `@edd/core`
+    (`deriveWorkspaceToken`/`verifyWorkspaceToken`, `packages/core/src/domain/machine-token.ts`), replacing
+    the duplicated `@edd/compute-ecs` `agentToken` + `apps/web` `machine-auth` copies. This supersedes the
+    old STATIC-gate "tokenless behind the gate" framing — the in-app path-based proxy is the PEP and the
+    token is now defence-in-depth, not the sole control. **Network hardening:** the terraform module places
+    workspace tasks in a dedicated `workspaces` security group whose editor port (`workspace_port`, default 3000) + sshd (22) are reachable only from the control-plane SG (never workspace-to-workspace); new
+    `workspace_port` var + `workspaces_security_group_id` output; `EDD_CONNECTION_SECRET` added to the
+    deployer-supplied secrets list. Tested: core machine-token + compute-ecs connection-token env tests;
+    proxy `editorTokenRedirect` unit tests; `agent-secret.e2e.ts` asserts the Secrets-Manager injection;
+    `live-ide-flow.e2e.ts` reaches the real OpenVSCode workbench through the IDE bridge and asserts the token
+    the running editor uses equals the injected per-workspace `HMAC(EDD_CONNECTION_SECRET, id)` (workbench
+    serves only with it); the LIVE portal e2e (`portal-live.pwlive.ts`) asserts the **Open editor** affordance
+    and now boots the production custom server (`tsx server.ts`). (The host-process proxy → in-VPC workspace
+    ENI hop is the e2e-aws tier: the sim task netns is not host-routable — `ide-bridge.ts`.)
+  - **Reconciler runtime IAM preflight — DONE.** `apps/web/lib/iam-preflight.ts` (+ test) moved to a new
+    `@edd/iam-preflight` package (`packages/iam-preflight`); `apps/web` imports it and dropped its
+    now-unused `@aws-sdk/client-iam`/`@aws-sdk/client-sts` direct deps. `@edd/core` gained pure
+    `summarizeIamPreflight`/`IamPreflightSummary` + metric `METRIC_IAM_PREFLIGHT_DENIED`. The reconciler
+    (`services/reconciler`) now runs `iamPreflight(env, "reconciler")` at startup, emitting the
+    denied-action-count metric + a structured log (non-fatal; degrades to unknown), factored into a
+    unit-tested `reportIamPreflight`.
 
 - **Pomerium + the standalone `workspace-gate` removed; editor proxy folded into the Next.js app
   (2026-06-20).** The browser→VS Code editor reach moved out of the external identity-aware proxy (Pomerium)

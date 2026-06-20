@@ -36,9 +36,10 @@ wildcard DNS/TLS, no PDP round-trip, no gate machine-auth (`apps/web/server.ts` 
 The deep `codex` review surfaced 12 findings (4 Critical, 3 High, 4 Medium/Low) — **all remediated and
 merged in #129**, re-verified against the merged code. Detail now lives in `BUGS.md` → Resolved (repo).
 The previously-deferred cross-region EBS snapshot DR flow was pulled in (sim-validatable via
-sockerless#602). `CONNECTION_TOKEN` injection stays correctly coupled to the future DYNAMIC
-wake-on-connect gate (the image already consumes it; the STATIC gate runs tokenless, so building a
-control-plane token now would be dead code, §6.5) — it lands with that gate extension.
+sockerless#602). `CONNECTION_TOKEN` injection — once parked on the future DYNAMIC wake-on-connect gate —
+**shipped 2026-06-20** with the in-app path-based editor proxy: the control plane injects the per-workspace
+connection token via Secrets Manager and the proxy hands the session-authorized browser the token on the
+initial document navigation (see `BUGS.md` → Resolved + `WHAT_WE_DID.md` 2026-06-20).
 
 Only genuinely AWS-account-gated work (real `terraform apply`, real DNS/ACM, real IdP federation, 200+
 load, live `e2e-aws` enforcement) stays under decision #1 above — that is an external decision, not a
@@ -46,11 +47,14 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **Reconciler runtime IAM preflight (follow-up to the IAM self-check).** The control plane runs a live
-  IAM permission preflight on its own identity; the reconciler's grants are covered by the shared
-  `IAM_REQUIREMENTS` manifest + the CI drift gate, but it has no runtime self-check (no UI/API). To add
-  one, lift the preflight adapter out of `apps/web/lib/iam-preflight.ts` into a shared package and have
-  the reconciler emit an IAM-preflight metric/log at startup. Decision-free; small.
+- **Reconciler runtime IAM preflight (follow-up to the IAM self-check) — DONE (2026-06-20).** The
+  preflight adapter was lifted out of `apps/web/lib/iam-preflight.ts` into a shared package
+  `@edd/iam-preflight` (`packages/iam-preflight`); `apps/web` imports it and dropped its now-unused
+  `@aws-sdk/client-iam`/`@aws-sdk/client-sts` direct deps. `@edd/core` gained pure
+  `summarizeIamPreflight`/`IamPreflightSummary` + metric `METRIC_IAM_PREFLIGHT_DENIED`. The reconciler
+  (`services/reconciler`) now runs `iamPreflight(env, "reconciler")` at startup and emits the
+  denied-action-count metric + a structured log (non-fatal; degrades to unknown), factored into a
+  unit-tested `reportIamPreflight`.
 
 - **User-registered SSH keys + per-workspace subdomain — IN PROGRESS (Phase 4b).**
   Design confirmed with the user (registered-key human auth + ownership authz at connect
@@ -127,9 +131,16 @@ deferral by choice.
 - **ECS compute hardening follow-ups** (from the 2026-06-13 gap audit) — mostly
   **done** (see `BUGS.md` → Resolved): `runTask` readiness gating; `EDD_AGENT_TOKEN`
   → Secrets Manager (no plaintext); real `EcsComputeProvider.health()`; ECS Exec on
-  the launch path. Remaining: `CONNECTION_TOKEN` injection — **now actionable** (Phase 9):
-  generate + persist the token in the control plane and hand it to the authenticated user
-  via the proxy; no longer parked on the future DYNAMIC wake-on-connect gate.
+  the launch path. `CONNECTION_TOKEN` injection — **DONE (2026-06-20)**: `@edd/compute-ecs` injects each
+  workspace task's OpenVSCode connection token = `HMAC(EDD_CONNECTION_SECRET, workspaceId)` via Secrets
+  Manager (`edd/workspace/<id>/connection`), and the in-app proxy hands the already-session-authorized
+  browser the token on the initial document navigation (`editorTokenRedirect` → 302 `…?tkn=<token>`); the
+  HMAC derivation is centralized in `@edd/core` (`deriveWorkspaceToken`/`verifyWorkspaceToken`). Tasks are
+  also isolated to a dedicated `workspaces` security group (editor port + sshd reachable only from the
+  control plane). Sim coverage: `live-ide-flow.e2e.ts` proves the injected token is the one the real editor
+  runs with (workbench serves only with it) via the IDE bridge, and `agent-secret.e2e.ts` proves the
+  Secrets-Manager injection; the host-process-proxy → in-VPC ENI hop is the e2e-aws tier (the sim task netns
+  is not host-routable).
 - **Cost — done.** Figure-exact rollups (O(recent) report) + live AWS Price List
   rate sourcing (`EDD_AWS_PRICING=1`, region-accurate, config fallback); both in
   `BUGS.md` → Resolved. The live-rate fetch is real-AWS-validated (`e2e-aws`); CI

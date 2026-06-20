@@ -130,6 +130,12 @@ variable "control_plane_port" {
   default     = 3000
 }
 
+variable "workspace_port" {
+  description = "Port the per-user workspace editor (OpenVSCode) listens on. The control plane proxies to it; only the control-plane security group may reach it."
+  type        = number
+  default     = 3000
+}
+
 variable "control_plane_min_count" {
   description = "Autoscaling floor for the control-plane service."
   type        = number
@@ -155,8 +161,9 @@ variable "secret_environment" {
     read access to every referenced ARN. Provide the auth + crypto secrets here
     (never as plain env vars): AUTH_SECRET, AUTH_GITHUB_ID/SECRET,
     AUTH_MICROSOFT_ENTRA_ID_ID/SECRET, EDD_TOKEN_ENC_KEY, EDD_GATEWAY_SECRET,
-    EDD_AGENT_SECRET. Non-secret config (RBAC groups, AUTH_TRUST_HOST, base domain,
-    JWKS) goes in extra_environment.
+    EDD_AGENT_SECRET, EDD_CONNECTION_SECRET (the editor connection-token secret).
+    Non-secret config (RBAC groups, AUTH_TRUST_HOST, base domain, JWKS) goes in
+    extra_environment.
   EOT
   type        = map(string)
   default     = {}

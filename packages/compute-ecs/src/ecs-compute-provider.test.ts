@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { randomBytes } from "node:crypto";
+
 import {
   DescribeTasksCommand,
   ECSClient,
@@ -8,7 +10,7 @@ import {
   StopTaskCommand,
   type RunTaskCommandInput,
 } from "@aws-sdk/client-ecs";
-import { baseImage, snapshotId, workspaceId } from "@edd/core";
+import { baseImage, deriveWorkspaceToken, snapshotId, workspaceId } from "@edd/core";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -169,6 +171,46 @@ describe("workspaceEnvironment", () => {
     );
     expect(env.map((e) => e.name)).not.toContain("EDD_REPO_URL");
     expect(env.map((e) => e.name)).not.toContain("EDD_REPO_REF");
+  });
+
+  it("injects the editor connection token (plaintext fallback) when a connection secret is set", () => {
+    const secret = randomBytes(16).toString("hex");
+    const env = workspaceEnvironment(
+      {
+        subnets: ["subnet-1"],
+        ebsRoleArn: "arn:aws:iam::123456789012:role/x",
+        connectionSecret: secret,
+      },
+      "ws-6",
+    );
+    expect(env).toContainEqual({
+      name: "CONNECTION_TOKEN",
+      value: deriveWorkspaceToken(secret, "ws-6"),
+    });
+  });
+
+  it("omits each token from plaintext env when it is delivered via Secrets Manager", () => {
+    const env = workspaceEnvironment(
+      {
+        subnets: ["subnet-1"],
+        ebsRoleArn: "arn:aws:iam::123456789012:role/x",
+        agentSecret: randomBytes(16).toString("hex"),
+        connectionSecret: randomBytes(16).toString("hex"),
+      },
+      "ws-7",
+      undefined,
+      { omitAgentToken: true, omitConnectionToken: true },
+    );
+    expect(env.map((e) => e.name)).not.toContain("EDD_AGENT_TOKEN");
+    expect(env.map((e) => e.name)).not.toContain("CONNECTION_TOKEN");
+  });
+
+  it("omits the connection token entirely when no connection secret is set (tokenless/dev)", () => {
+    const env = workspaceEnvironment(
+      { subnets: ["subnet-1"], ebsRoleArn: "arn:aws:iam::123456789012:role/x" },
+      "ws-8",
+    );
+    expect(env.map((e) => e.name)).not.toContain("CONNECTION_TOKEN");
   });
 });
 
