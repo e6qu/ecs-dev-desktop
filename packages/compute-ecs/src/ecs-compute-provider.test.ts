@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { randomBytes } from "node:crypto";
+
 import {
   DescribeTasksCommand,
   ECSClient,
@@ -172,7 +174,7 @@ describe("workspaceEnvironment", () => {
   });
 
   it("injects the editor connection token (plaintext fallback) when a connection secret is set", () => {
-    const secret = "00112233445566778899aabbccddeeff";
+    const secret = randomBytes(16).toString("hex");
     const env = workspaceEnvironment(
       {
         subnets: ["subnet-1"],
@@ -192,8 +194,8 @@ describe("workspaceEnvironment", () => {
       {
         subnets: ["subnet-1"],
         ebsRoleArn: "arn:aws:iam::123456789012:role/x",
-        agentSecret: "00112233445566778899aabbccddeeff",
-        connectionSecret: "ffeeddccbbaa99887766554433221100",
+        agentSecret: randomBytes(16).toString("hex"),
+        connectionSecret: randomBytes(16).toString("hex"),
       },
       "ws-7",
       undefined,

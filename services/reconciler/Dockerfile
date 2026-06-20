@@ -28,6 +28,7 @@ COPY packages/control-plane/package.json               packages/control-plane/
 COPY packages/core/package.json                        packages/core/
 COPY packages/db/package.json                          packages/db/
 COPY packages/e2e/package.json                         packages/e2e/
+COPY packages/iam-preflight/package.json               packages/iam-preflight/
 COPY packages/storage-ec2/package.json                 packages/storage-ec2/
 COPY services/reconciler/package.json                  services/reconciler/
 COPY services/ssh-gateway/package.json                 services/ssh-gateway/
@@ -44,6 +45,7 @@ COPY packages/cloudwatch-metrics/src packages/cloudwatch-metrics/src
 COPY packages/compute-ecs/src      packages/compute-ecs/src
 COPY packages/control-plane/src    packages/control-plane/src
 COPY packages/db/src               packages/db/src
+COPY packages/iam-preflight/src    packages/iam-preflight/src
 COPY packages/storage-ec2/src      packages/storage-ec2/src
 COPY services/reconciler/src       services/reconciler/src
 COPY services/reconciler/tsconfig.json services/reconciler/

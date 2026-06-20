@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { randomBytes } from "node:crypto";
 import type { IncomingHttpHeaders } from "node:http";
 
 import { deriveWorkspaceToken, workspaceId } from "@edd/core";
@@ -74,7 +75,7 @@ describe("authorizeWorkspace (in-app proxy authz glue)", () => {
 // the workbench loads without the user ever handling it. Exercises every gate that
 // decides whether to inject (secret configured, document nav, no token yet).
 describe("editorTokenRedirect (editor connection-token handoff)", () => {
-  const SECRET = "00112233445566778899aabbccddeeff";
+  const SECRET = randomBytes(16).toString("hex");
   const expectedTkn = deriveWorkspaceToken(SECRET, WS);
   const docHeaders = (extra: IncomingHttpHeaders = {}): IncomingHttpHeaders => ({
     "sec-fetch-dest": "document",

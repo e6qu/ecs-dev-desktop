@@ -1,10 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { randomBytes } from "node:crypto";
+
 import { describe, expect, it } from "vitest";
 
 import { deriveWorkspaceToken, verifyWorkspaceToken } from "./machine-token";
 
-// A fixed hex secret used as an inert input (never compared against the real clock).
-const SECRET = "00112233445566778899aabbccddeeff";
+// A random 16-byte hex secret (generated, not a committed literal — keeps the SAST
+// secret scanner happy); used only as an inert input to the pure derivation.
+const SECRET = randomBytes(16).toString("hex");
 
 describe("deriveWorkspaceToken", () => {
   it("is deterministic for a (secret, workspaceId) pair", () => {
