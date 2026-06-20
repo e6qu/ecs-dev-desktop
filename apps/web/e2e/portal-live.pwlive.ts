@@ -68,6 +68,20 @@ test("member lifecycle in the browser acts on real ECS tasks (create → stop �
   expect(created.volumeId).toMatch(/^vol-/);
   expect(created.sshHost).toMatch(SUBNET_PREFIX);
 
+  // Open editor: the in-app path-based proxy. The card's link points at /w/<id>/;
+  // opening it (same Auth.js session) authorizes ownership in-process, hands the
+  // browser the per-workspace connection token (?tkn=, derived from the same secret
+  // the task's CONNECTION_TOKEN was), and proxies HTTP+WS to the real golden-image
+  // OpenVSCode — which serves under --server-base-path /w/<id>/. The workbench
+  // rendering proves the whole chain end to end (a wrong/absent token → 401, no
+  // workbench). Opened in its own page so the lifecycle card stays put.
+  const openLink = card.locator(sel(TESTID.workspaceOpen));
+  await expect(openLink).toHaveAttribute("href", `/w/${created.id}/`);
+  const editor = await context.newPage();
+  await editor.goto(`${BASE_URL}/w/${created.id}/`);
+  await expect(editor.locator(".monaco-workbench")).toBeVisible({ timeout: 60_000 });
+  await editor.close();
+
   // Stop: snapshot + real task teardown.
   await card.getByRole("button", { name: "stop" }).click();
   await expect(card).toHaveAttribute("data-status", "stopped");

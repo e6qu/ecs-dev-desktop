@@ -60,8 +60,10 @@ import {
   makeWorkspaceEntity,
   RECONCILER_HEARTBEAT_ID,
 } from "@edd/db";
+import { iamPreflight } from "@edd/iam-preflight";
 import { Ec2StorageProvider } from "@edd/storage-ec2";
 
+import { reportIamPreflight } from "./iam-preflight-report.js";
 import { Reconciler } from "./index.js";
 
 const table = process.env.DYNAMODB_TABLE;
@@ -121,6 +123,18 @@ const log = createLogger({
   write: (line) => void process.stdout.write(`${line}\n`),
 });
 const metrics = metricSinkFromEnv();
+
+// Startup IAM self-check: does the reconciler's OWN identity actually hold the actions
+// it needs? The control plane already preflights itself; the reconciler had none. Emits a
+// denied-count metric + one structured log line. Non-fatal by design — a failed/unavailable
+// preflight self-reports `unavailable` and must NOT stop the sweep below.
+try {
+  reportIamPreflight(await iamPreflight(process.env, "reconciler"), { logger: log, metrics });
+} catch (err) {
+  log.warn("IAM preflight self-check failed to run", {
+    error: err instanceof Error ? err.message : String(err),
+  });
+}
 
 const reconciler = new Reconciler({
   service,

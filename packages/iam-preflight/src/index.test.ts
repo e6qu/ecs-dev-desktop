@@ -9,7 +9,7 @@ import {
   resolveCoordinates,
   resourceArnsForScope,
   type PreflightCoordinates,
-} from "./iam-preflight";
+} from "./index";
 
 const COORDS: PreflightCoordinates = {
   account: "123456789012",

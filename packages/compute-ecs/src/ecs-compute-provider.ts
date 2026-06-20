@@ -1,5 +1,4 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { createHmac, timingSafeEqual } from "node:crypto";
 import {
   DeregisterTaskDefinitionCommand,
   DescribeClustersCommand,
@@ -34,8 +33,10 @@ import {
   DEFAULT_WORKSPACE_VOLUME_GIB,
 } from "@edd/config";
 import {
+  deriveWorkspaceToken,
   isoTimestamp,
   taskId,
+  verifyWorkspaceToken,
   volumeId,
   workspaceId,
   type BaseImage,
@@ -99,6 +100,16 @@ export interface EcsComputeConfig {
    * env var; the heartbeat route verifies the same HMAC server-side.
    */
   agentSecret?: string;
+  /**
+   * 32-byte hex secret used to derive each workspace's OpenVSCode **connection
+   * token** = HMAC-SHA256(connectionSecret, workspaceId). When present, the task
+   * receives it as `CONNECTION_TOKEN` (so the editor requires `?tkn=`), and the
+   * in-app proxy derives the same value to hand the authenticated browser the token
+   * — defence-in-depth behind the session-authorizing proxy. Absent → the editor
+   * falls back to its own random per-boot token (dev) or tokenless if explicitly
+   * disabled.
+   */
+  connectionSecret?: string;
   /** Idle-agent heartbeat interval (seconds) injected into the workspace
    * container as EDD_HEARTBEAT_INTERVAL_S; the image defaults to
    * DEFAULT_HEARTBEAT_INTERVAL_S when absent (scale-to-zero tuning knob). */
@@ -150,23 +161,21 @@ export function taskDefinitionFamily(image: BaseImage): string {
   return `${WORKSPACE_TASKDEF_FAMILY_PREFIX}${image.replace(/[^a-zA-Z0-9-]/g, "-").slice(0, 200)}`;
 }
 
-/** Derive the per-workspace idle-agent token: HMAC-SHA256(secret, workspaceId). */
+/** Derive the per-workspace idle-agent token (the shared per-workspace HMAC). */
 export function agentToken(secret: string, wsId: string): string {
-  return createHmac("sha256", Buffer.from(secret, "hex")).update(wsId).digest("hex");
+  return deriveWorkspaceToken(secret, wsId);
 }
 
 /** Constant-time equality for HMAC verification (prevents timing attacks). */
 export function verifyAgentToken(secret: string, wsId: string, candidate: string): boolean {
-  const expected = agentToken(secret, wsId);
-  if (expected.length !== candidate.length) return false;
-  return timingSafeEqual(Buffer.from(expected), Buffer.from(candidate));
+  return verifyWorkspaceToken(secret, wsId, candidate);
 }
 
 export function workspaceEnvironment(
   config: EcsComputeConfig,
   workspaceId: string,
   repo?: { url?: string; ref?: string },
-  opts?: { omitAgentToken?: boolean },
+  opts?: { omitAgentToken?: boolean; omitConnectionToken?: boolean },
 ): EnvironmentEntry[] {
   const env: EnvironmentEntry[] = [{ name: "EDD_WORKSPACE_ID", value: workspaceId }];
   if (config.controlPlaneUrl !== undefined)
@@ -177,6 +186,14 @@ export function workspaceEnvironment(
     env.push({
       name: "EDD_AGENT_TOKEN",
       value: agentToken(config.agentSecret, workspaceId),
+    });
+  // The editor connection token — same Secrets-Manager-vs-plaintext split as the
+  // agent token. When set, the editor requires `?tkn=`; the in-app proxy derives the
+  // same value to hand the authenticated browser the token.
+  if (config.connectionSecret !== undefined && opts?.omitConnectionToken !== true)
+    env.push({
+      name: "CONNECTION_TOKEN",
+      value: deriveWorkspaceToken(config.connectionSecret, workspaceId),
     });
   if (config.heartbeatIntervalS !== undefined)
     env.push({ name: "EDD_HEARTBEAT_INTERVAL_S", value: String(config.heartbeatIntervalS) });
@@ -251,23 +268,17 @@ export class EcsComputeProvider implements ComputeProvider {
     this.secrets = deps.secretsClient;
   }
 
-  /** Whether the per-workspace agent token is delivered via Secrets Manager
-   * (rather than plaintext env): a secrets client + an agent secret are present. */
-  private get usesSecretInjection(): boolean {
-    return this.secrets !== undefined && this.config.agentSecret !== undefined;
-  }
-
   private cluster(): string {
     return this.config.cluster ?? DEFAULT_ECS_CLUSTER;
   }
 
   private async ensureTaskDef(
     image: BaseImage,
-    agentSecret?: { arn: string; wsId: string },
+    injected?: { wsId: string; entries: { name: string; valueFrom: string }[] },
   ): Promise<string> {
     // A secret ARN is per-workspace, so the task def referencing it must be too;
     // cache by (image, workspace). The plaintext-env path stays cached per image.
-    const cacheKey = agentSecret !== undefined ? `${image}::${agentSecret.wsId}` : image;
+    const cacheKey = injected !== undefined ? `${image}::${injected.wsId}` : image;
     const cached = this.registered.get(cacheKey);
     if (cached !== undefined) return cached;
     const out = await this.client.send(
@@ -301,11 +312,12 @@ export class EcsComputeProvider implements ComputeProvider {
                 containerPath: this.config.mountPath ?? DEFAULT_WORKSPACE_MOUNT_PATH,
               },
             ],
-            // Deliver the agent token via ECS `secrets` (Secrets Manager) — ECS
-            // resolves it into the container env at launch, never exposing it in
-            // DescribeTasks/CloudTrail the way plaintext `environment` would.
-            ...(agentSecret !== undefined
-              ? { secrets: [{ name: "EDD_AGENT_TOKEN", valueFrom: agentSecret.arn }] }
+            // Deliver per-workspace tokens (idle-agent, editor connection) via ECS
+            // `secrets` (Secrets Manager) — ECS resolves them into the container env
+            // at launch, never exposing them in DescribeTasks/CloudTrail the way
+            // plaintext `environment` would.
+            ...(injected !== undefined && injected.entries.length > 0
+              ? { secrets: injected.entries }
               : {}),
             ...(this.config.logGroupName !== undefined
               ? {
@@ -330,13 +342,20 @@ export class EcsComputeProvider implements ComputeProvider {
   }
 
   /**
-   * Ensure a per-workspace Secrets Manager secret holds the agent token, and
-   * return its ARN. The token is deterministic (HMAC(agentSecret, wsId)) so the
-   * value is stable across wakes; create it once, update idempotently otherwise.
+   * Ensure a per-workspace Secrets Manager secret (named
+   * `edd/workspace/<wsId>/<purpose>`) holds `value`, and return its ARN. The value is
+   * deterministic (a per-workspace HMAC) so it is stable across wakes; create it once,
+   * update idempotently otherwise. Tagged so the reconciler's orphan-secret GC finds
+   * every per-workspace secret (agent + connection) by the same workspace tag.
    */
-  private async ensureAgentSecret(client: SecretsManagerClient, wsId: string): Promise<string> {
-    const token = agentToken(required(this.config.agentSecret, "agentSecret"), wsId);
-    const name = `edd/workspace/${wsId}/agent`;
+  private async ensureWorkspaceSecret(
+    client: SecretsManagerClient,
+    wsId: string,
+    purpose: "agent" | "connection",
+    value: string,
+  ): Promise<string> {
+    const token = value;
+    const name = `edd/workspace/${wsId}/${purpose}`;
     try {
       const out = await client.send(
         new CreateSecretCommand({
@@ -434,22 +453,43 @@ export class EcsComputeProvider implements ComputeProvider {
   }
 
   async runTask(input: RunTaskInput): Promise<ComputeTask> {
-    // Secure path: stash the agent token in Secrets Manager and reference it from
-    // a per-workspace task def, so it is never injected as plaintext env.
-    let agentSecret: { arn: string; wsId: string } | undefined;
-    if (this.usesSecretInjection && this.secrets !== undefined) {
-      agentSecret = {
-        arn: await this.ensureAgentSecret(this.secrets, input.workspaceId),
-        wsId: input.workspaceId,
-      };
+    // Secure path: stash the per-workspace tokens (idle-agent + editor connection)
+    // in Secrets Manager and reference them from a per-workspace task def, so they
+    // are never injected as plaintext env.
+    const wsId = input.workspaceId;
+    const entries: { name: string; valueFrom: string }[] = [];
+    let agentViaSecret = false;
+    let connectionViaSecret = false;
+    if (this.secrets !== undefined) {
+      if (this.config.agentSecret !== undefined) {
+        const arn = await this.ensureWorkspaceSecret(
+          this.secrets,
+          wsId,
+          "agent",
+          agentToken(this.config.agentSecret, wsId),
+        );
+        entries.push({ name: "EDD_AGENT_TOKEN", valueFrom: arn });
+        agentViaSecret = true;
+      }
+      if (this.config.connectionSecret !== undefined) {
+        const arn = await this.ensureWorkspaceSecret(
+          this.secrets,
+          wsId,
+          "connection",
+          deriveWorkspaceToken(this.config.connectionSecret, wsId),
+        );
+        entries.push({ name: "CONNECTION_TOKEN", valueFrom: arn });
+        connectionViaSecret = true;
+      }
     }
-    const taskDef = await this.ensureTaskDef(input.baseImage, agentSecret);
+    const injected = entries.length > 0 ? { wsId, entries } : undefined;
+    const taskDef = await this.ensureTaskDef(input.baseImage, injected);
 
     const workspaceEnv = workspaceEnvironment(
       this.config,
-      input.workspaceId,
+      wsId,
       { url: input.repoUrl, ref: input.repoRef },
-      { omitAgentToken: agentSecret !== undefined },
+      { omitAgentToken: agentViaSecret, omitConnectionToken: connectionViaSecret },
     );
 
     const out = await this.client.send(
@@ -695,9 +735,9 @@ export class EcsComputeProvider implements ComputeProvider {
    * Reads: AWS_REGION, AWS_ENDPOINT_URL, ECS_CLUSTER, ECS_SUBNETS (comma-separated),
    * ECS_SECURITY_GROUPS (comma-separated), ECS_EBS_ROLE_ARN, ECS_EXECUTION_ROLE_ARN,
    * ECS_TASK_ROLE_ARN, ECS_TASK_CPU, ECS_TASK_MEMORY, ECS_VOLUME_GIB, CONTROL_PLANE_URL,
-   * EDD_AGENT_SECRET. Throws loudly if required vars are absent.
+   * EDD_AGENT_SECRET, EDD_CONNECTION_SECRET. Throws loudly if required vars are absent.
    */
-  static fromEnv(agentSecret?: string): EcsComputeProvider {
+  static fromEnv(agentSecret?: string, connectionSecret?: string): EcsComputeProvider {
     const subnets = process.env.ECS_SUBNETS?.split(",").filter(Boolean) ?? [];
     const securityGroups = process.env.ECS_SECURITY_GROUPS?.split(",").filter(Boolean);
     const ebsRoleArn = process.env.ECS_EBS_ROLE_ARN;
@@ -707,9 +747,11 @@ export class EcsComputeProvider implements ComputeProvider {
     const volumeSizeGiB = positiveIntEnv("ECS_VOLUME_GIB");
     return new EcsComputeProvider({
       client: EcsComputeProvider.client(),
-      // The agent token goes into Secrets Manager (not plaintext env) whenever an
-      // agent secret is configured — the production/e2e path always does.
-      ...(agentSecret !== undefined ? { secretsClient: EcsComputeProvider.secretsClient() } : {}),
+      // Per-workspace tokens go into Secrets Manager (not plaintext env) whenever a
+      // secret is configured — the production/e2e path always does.
+      ...(agentSecret !== undefined || connectionSecret !== undefined
+        ? { secretsClient: EcsComputeProvider.secretsClient() }
+        : {}),
       config: {
         cluster: process.env.ECS_CLUSTER,
         subnets,
@@ -727,6 +769,7 @@ export class EcsComputeProvider implements ComputeProvider {
         assignPublicIp: process.env.ECS_ASSIGN_PUBLIC_IP === "1",
         controlPlaneUrl: process.env.CONTROL_PLANE_URL,
         agentSecret,
+        connectionSecret,
         logGroupName: process.env.ECS_LOG_GROUP_WORKSPACES,
         ...(heartbeatIntervalS !== undefined ? { heartbeatIntervalS } : {}),
       },

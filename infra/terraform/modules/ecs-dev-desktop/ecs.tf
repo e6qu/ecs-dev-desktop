@@ -43,10 +43,12 @@ locals {
     ECS_CLUSTER     = aws_ecs_cluster.this.name
     EDD_KMS_KEY_ARN = aws_kms_key.this.arn
     # Real adapter selection: tells apps/web to use EcsComputeProvider + Ec2StorageProvider.
-    COMPUTE_PROVIDER    = "ecs"
-    CONTROL_PLANE_URL   = local.dns_enabled ? "https://${local.control_plane_fqdn}" : "http://${aws_lb.this.dns_name}"
-    ECS_SUBNETS         = join(",", aws_subnet.private[*].id)
-    ECS_SECURITY_GROUPS = aws_security_group.tasks.id
+    COMPUTE_PROVIDER  = "ecs"
+    CONTROL_PLANE_URL = local.dns_enabled ? "https://${local.control_plane_fqdn}" : "http://${aws_lb.this.dns_name}"
+    ECS_SUBNETS       = join(",", aws_subnet.private[*].id)
+    # Workspace tasks the control plane launches get the dedicated workspaces SG
+    # (editor/sshd reachable only from the control plane), NOT the control-plane SG.
+    ECS_SECURITY_GROUPS = aws_security_group.workspaces.id
     ECS_EBS_ROLE_ARN    = aws_iam_role.ecs_infrastructure.arn
     # Roles for the per-workspace task definitions the control plane registers:
     # execution (ECR pull, awslogs, agent-secret injection) + the workspace runtime

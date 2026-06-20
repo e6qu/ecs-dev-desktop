@@ -42,6 +42,11 @@ export const GITHUB_APP_KEY_ENV = "EDD_GITHUB_APP_KEY";
  */
 /** Env var on the control plane: 32-byte hex secret used to generate agent tokens. */
 export const AGENT_SECRET_ENV = "EDD_AGENT_SECRET";
+/** Env var on the control plane: 32-byte hex secret used to derive each workspace's
+ * OpenVSCode connection token. The compute provider injects the per-workspace token
+ * into the task (`CONNECTION_TOKEN`); the in-app editor proxy derives the same value
+ * to hand the authenticated browser its `?tkn=`. */
+export const CONNECTION_SECRET_ENV = "EDD_CONNECTION_SECRET";
 /** Env var on the control plane AND the SSH gateway: 32-byte hex secret the
  * gateway derives per-workspace wake-on-connect tokens from. */
 export const GATEWAY_SECRET_ENV = "EDD_GATEWAY_SECRET";

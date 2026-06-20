@@ -101,6 +101,7 @@ Secrets (`secret_environment`):
 | Crypto       | `EDD_TOKEN_ENC_KEY`                                            | 32-byte hex AES key — gates git-credential storage                     |
 | Crypto       | `EDD_GATEWAY_SECRET`                                           | gateway↔control-plane machine-auth HMAC (connect/wake + ssh-authorize) |
 | Crypto       | `EDD_AGENT_SECRET`                                             | idle-agent heartbeat + workspace ssh-authorize HMAC                    |
+| Crypto       | `EDD_CONNECTION_SECRET`                                        | per-workspace OpenVSCode connection token HMAC (editor-proxy handoff)  |
 
 Non-secret config (`extra_environment`):
 
@@ -143,6 +144,17 @@ in-workspace authorizer with its injected agent token (derived from
   proxy authorizes in-process by **uid-based ownership** (`session.uid ===
 workspace.ownerId`) or admin. There is no separate proxy, no Pomerium, no PDP
   round-trip, and no email bridge.
+- **Defence-in-depth connection token.** On top of the session check, each
+  workspace task runs OpenVSCode behind a **per-workspace connection token** =
+  `HMAC(EDD_CONNECTION_SECRET, workspace-id)`, injected via Secrets Manager
+  (`edd/workspace/<id>/connection`). The proxy hands the already-session-authorized
+  browser this token on the first document navigation (a 302 to `…?tkn=<token>`); the
+  user never sees or supplies it.
+- **Network isolation.** Workspace tasks run in a **dedicated `workspaces` security
+  group** whose editor port (`workspace_port`, default 3000) and sshd (22) are
+  reachable **only from the control-plane security group** — never
+  workspace-to-workspace. The module exposes `workspaces_security_group_id`; the
+  control plane points workspace tasks at it via `ECS_SECURITY_GROUPS`.
 - The app runs as **one process** in dev/prod (`apps/web` is started via the
   custom server, not `next start`); no extra service to deploy in front of
   workspaces.

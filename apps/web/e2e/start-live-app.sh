@@ -15,4 +15,7 @@ pnpm run test:pw:live:provision
 . ./temp/live-pw.env
 
 pnpm exec next build
-exec pnpm exec next start -p 3220
+# The custom server (server.ts) is the production entrypoint — it serves the app AND
+# the path-based `/w/<id>/` editor proxy, so the live browser test exercises the real
+# proxy path. Bind 0.0.0.0 (workspace containers reach it over the host network).
+exec env NODE_ENV=production PORT=3220 HOSTNAME=0.0.0.0 pnpm exec tsx server.ts

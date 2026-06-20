@@ -276,3 +276,28 @@ export function evaluateIamPermissions(
     detail: `${denied.length.toString()}/${required.length.toString()} required actions denied: ${denied.join(", ")}`,
   };
 }
+
+/** A flat, log/metric-friendly summary of a component's live IAM preflight. */
+export interface IamPreflightSummary {
+  /** True when the identity holds every checked action — or when the check could
+   * not run (degrades to unknown, never a false failure). */
+  readonly ok: boolean;
+  /** The denied action names (empty when ok or when the check was unavailable). */
+  readonly deniedActions: string[];
+  /** Why the check could not run, when the signal was `unavailable`. */
+  readonly reason?: string;
+}
+
+/**
+ * Pure: reduce a live preflight {@link IamPreflightSignal} to a flat summary the
+ * imperative shell can log and emit a metric from. A `checked` signal is `ok` iff no
+ * decision was denied, with the denied action names listed. An `unavailable` signal
+ * degrades to `ok: true` (unknown, never a false failure) carrying its `reason`.
+ */
+export function summarizeIamPreflight(signal: IamPreflightSignal): IamPreflightSummary {
+  if (signal.kind === "unavailable") {
+    return { ok: true, deniedActions: [], reason: signal.reason };
+  }
+  const deniedActions = signal.decisions.filter((d) => !d.allowed).map((d) => d.action);
+  return { ok: deniedActions.length === 0, deniedActions };
+}

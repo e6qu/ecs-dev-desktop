@@ -44,12 +44,6 @@ importers:
 
   apps/web:
     dependencies:
-      '@aws-sdk/client-iam':
-        specifier: ^3.1072.0
-        version: 3.1072.0
-      '@aws-sdk/client-sts':
-        specifier: ^3.1072.0
-        version: 3.1072.0
       '@edd/api-client':
         specifier: workspace:*
         version: link:../../packages/api-client
@@ -86,6 +80,9 @@ importers:
       '@edd/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@edd/iam-preflight':
+        specifier: workspace:*
+        version: link:../../packages/iam-preflight
       '@edd/storage-ec2':
         specifier: workspace:*
         version: link:../../packages/storage-ec2
@@ -359,6 +356,25 @@ importers:
         specifier: ^26.0.0
         version: 26.0.0
 
+  packages/iam-preflight:
+    dependencies:
+      '@aws-sdk/client-iam':
+        specifier: ^3.1072.0
+        version: 3.1072.0
+      '@aws-sdk/client-sts':
+        specifier: ^3.1072.0
+        version: 3.1072.0
+      '@edd/config':
+        specifier: workspace:*
+        version: link:../config
+      '@edd/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@types/node':
+        specifier: ^26.0.0
+        version: 26.0.0
+
   packages/storage-ec2:
     dependencies:
       '@aws-sdk/client-ec2':
@@ -395,6 +411,9 @@ importers:
       '@edd/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@edd/iam-preflight':
+        specifier: workspace:*
+        version: link:../../packages/iam-preflight
       '@edd/storage-ec2':
         specifier: workspace:*
         version: link:../../packages/storage-ec2

@@ -1,0 +1,23 @@
+{
+  "name": "@edd/iam-preflight",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aws-sdk/client-iam": "^3.1072.0",
+    "@aws-sdk/client-sts": "^3.1072.0",
+    "@edd/config": "workspace:*",
+    "@edd/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0"
+  }
+}

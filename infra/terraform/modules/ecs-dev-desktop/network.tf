@@ -13,6 +13,9 @@ locals {
   # routing in instance mode (see nat_instance.tf).
   use_managed_nat = var.nat_mode == "gateway"
   nat_count       = local.use_managed_nat ? (var.single_nat_gateway ? 1 : local.az_count) : 0
+
+  # Workspace sshd port (OpenSSH, fixed) — the SG ingress from the control plane.
+  workspace_ssh_port = 22
 }
 
 resource "aws_vpc" "this" {
@@ -135,7 +138,7 @@ resource "aws_vpc_security_group_egress_rule" "alb_all" {
 
 resource "aws_security_group" "tasks" {
   name        = "${var.name}-tasks"
-  description = "ECS tasks (control plane, workspaces, reconciler)."
+  description = "Control-plane + reconciler ECS tasks."
   vpc_id      = aws_vpc.this.id
   tags        = merge(local.tags, { Name = "${var.name}-tasks" })
 }
@@ -153,6 +156,43 @@ resource "aws_vpc_security_group_ingress_rule" "tasks_from_alb" {
 resource "aws_vpc_security_group_egress_rule" "tasks_all" {
   security_group_id = aws_security_group.tasks.id
   description       = "Allow all egress (NAT to AWS APIs, Open VSX, IdPs)."
+  ip_protocol       = "-1"
+  cidr_ipv4         = "0.0.0.0/0"
+}
+
+# Per-user workspace tasks live in their OWN security group so the editor/sshd ports
+# are reachable ONLY from the control plane (which proxies the editor and fronts SSH),
+# never workspace-to-workspace. Defence-in-depth alongside the editor connection token
+# + registered-key SSH: a workspace cannot reach another workspace's editor or sshd.
+resource "aws_security_group" "workspaces" {
+  name        = "${var.name}-workspaces"
+  description = "Per-user workspace tasks (editor + sshd), reachable only from the control plane."
+  vpc_id      = aws_vpc.this.id
+  tags        = merge(local.tags, { Name = "${var.name}-workspaces" })
+}
+
+resource "aws_vpc_security_group_ingress_rule" "workspaces_editor_from_control_plane" {
+  security_group_id            = aws_security_group.workspaces.id
+  description                  = "OpenVSCode editor port from the control plane (in-app proxy) only."
+  ip_protocol                  = "tcp"
+  from_port                    = var.workspace_port
+  to_port                      = var.workspace_port
+  referenced_security_group_id = aws_security_group.tasks.id
+}
+
+resource "aws_vpc_security_group_ingress_rule" "workspaces_ssh_from_control_plane" {
+  security_group_id            = aws_security_group.workspaces.id
+  description                  = "sshd from the control plane / SSH gateway only (registered-key auth)."
+  ip_protocol                  = "tcp"
+  from_port                    = local.workspace_ssh_port
+  to_port                      = local.workspace_ssh_port
+  referenced_security_group_id = aws_security_group.tasks.id
+}
+
+# trivy:ignore:AVD-AWS-0104 Workspaces need egress (via NAT) for image pulls, Open VSX, git, and the control-plane callbacks; pinning every endpoint CIDR is impractical and brittle.
+resource "aws_vpc_security_group_egress_rule" "workspaces_all" {
+  security_group_id = aws_security_group.workspaces.id
+  description       = "Allow all egress (NAT to AWS APIs, Open VSX, git, control-plane)."
   ip_protocol       = "-1"
   cidr_ipv4         = "0.0.0.0/0"
 }

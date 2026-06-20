@@ -19,6 +19,7 @@
     "@edd/control-plane": "workspace:*",
     "@edd/core": "workspace:*",
     "@edd/db": "workspace:*",
+    "@edd/iam-preflight": "workspace:*",
     "@edd/storage-ec2": "workspace:*"
   },
   "devDependencies": {
