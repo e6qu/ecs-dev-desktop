@@ -6,5 +6,12 @@
 # the container's environment from ForceCommand sessions.
 set -eu
 unset CDPATH
-printenv | grep '^EDD_' >/run/edd-env || true
+# Persist EDD_* (incl. the raw EDD_GATEWAY_SECRET) for the env-stripped AuthorizedKeysCommand
+# + ForceCommand. Restrict it to root + the `edd` group (its only readers: `nobody` and the
+# login principal) — never world-readable, so no other container principal can read the secret.
+(
+  umask 077
+  printenv | grep '^EDD_' >/run/edd-env
+) || true
+chgrp edd /run/edd-env && chmod 0640 /run/edd-env
 exec /usr/sbin/sshd -D -e "$@"

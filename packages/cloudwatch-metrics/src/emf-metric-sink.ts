@@ -37,6 +37,12 @@ export function buildEmfDocument(
   namespace: string,
   dimensions: MetricDimensions,
 ): EmfDocument {
+  // A dimension named like the metric (or `_aws`) would silently overwrite the metric
+  // value / metadata block in the merged document, shipping a malformed metric. That can
+  // only be a programming error (dimension keys are fixed literals) — fail loud (§6.5).
+  if (name in dimensions || "_aws" in dimensions) {
+    throw new Error(`EMF dimension key collides with the metric name or '_aws': ${name}`);
+  }
   return {
     _aws: {
       Timestamp: timestampMs,

@@ -26,11 +26,13 @@ const SSH_PORT = 22;
 // host is the task ENI's private IPv4, routable within the VPC. Accepts the
 // gateway's machine-auth token as well as a user session.
 async function handleGET(req: Request, { params }: Ctx) {
-  const protocol = new URL(req.url).searchParams.get("protocol") ?? "ssh";
-  if (protocol !== "ssh" && protocol !== "http") return badRequest("protocol must be ssh or http");
-
+  // Authenticate FIRST: an unauthenticated caller must get 401 regardless of the query,
+  // never a pre-auth 400-vs-401 that distinguishes a valid from an invalid protocol.
   const ctx = await loadConnectableWorkspace(req, params, "read");
   if (isResponse(ctx)) return ctx;
+
+  const protocol = new URL(req.url).searchParams.get("protocol") ?? "ssh";
+  if (protocol !== "ssh" && protocol !== "http") return badRequest("protocol must be ssh or http");
 
   if (ctx.ws.state !== "running" && ctx.ws.state !== "idle") {
     return conflict(`workspace ${ctx.id} is ${ctx.ws.state} — call POST /connect to wake it first`);
@@ -41,7 +43,12 @@ async function handleGET(req: Request, { params }: Ctx) {
   if (!detail) return notFound();
 
   const { sshHost } = detail.workspace;
-  if (!sshHost) return notFound();
+  // The workspace exists and is running, but the task ENI's private IP isn't bound yet
+  // (a transient window right after wake) — a retry-able 409, NOT a 404 (which reads as
+  // "wrong id" to a polling gateway).
+  if (!sshHost) {
+    return conflict(`workspace ${ctx.id} host not yet assigned — retry shortly`);
+  }
 
   const port = protocol === "http" ? DEFAULT_WORKSPACE_PORT : SSH_PORT;
   return NextResponse.json({ host: sshHost, port });

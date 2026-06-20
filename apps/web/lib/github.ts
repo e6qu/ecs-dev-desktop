@@ -19,6 +19,19 @@ function apiBase(): string {
   return process.env[GITHUB_API_URL_ENV] ?? DEFAULT_GITHUB_API_URL;
 }
 
+/** A non-OK GitHub API response, carrying the HTTP status so callers can map a
+ * user-correctable condition (e.g. 422 "name already exists / invalid") to a 409,
+ * distinct from a transient/server failure that should surface as a 500. */
+export class GitHubApiError extends Error {
+  constructor(
+    readonly status: number,
+    what: string,
+  ) {
+    super(`GitHub ${what} failed: ${String(status)}`);
+    this.name = "GitHubApiError";
+  }
+}
+
 function ghHeaders(token: string): Record<string, string> {
   return {
     Authorization: `Bearer ${token}`,
@@ -151,6 +164,6 @@ export async function createRepo(
       auto_init: true,
     }),
   });
-  if (!res.ok) throw new Error(`GitHub create repo failed: ${String(res.status)}`);
+  if (!res.ok) throw new GitHubApiError(res.status, "create repo");
   return toRepoSummary(repoSchema.parse(await res.json()));
 }

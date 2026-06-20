@@ -16,6 +16,11 @@ import { authHeaders, sym } from "./helpers";
 
 const DEFAULT_API_URL = "http://edd.localhost:3700";
 
+/** Cluster statuses that count as healthy for the `status` command's exit code:
+ * `ACTIVE` (real ECS DescribeClusters) and `local` (the in-memory fake / dev). Anything
+ * else (`not found`, `degraded`, …) exits non-zero so a script can gate on it. */
+const HEALTHY_CLUSTER_STATUSES: ReadonlySet<string> = new Set(["ACTIVE", "local"]);
+
 function makeClient(env: NodeJS.ProcessEnv): ApiClient {
   const auth = authHeaders(env);
   const baseUrl = env.EDD_API_URL ?? DEFAULT_API_URL;
@@ -81,7 +86,9 @@ async function main(argv: readonly string[], env: NodeJS.ProcessEnv): Promise<nu
       process.stdout.write(
         `fleet: ${infra.fleet.total.toString()} total, ${infra.fleet.active.toString()} active\n`,
       );
-      return 0;
+      // Gate the exit code on cluster health so `edd status` is usable in a script (like
+      // `health`/`doctor`) rather than a false-green: a non-healthy cluster status → non-zero.
+      return HEALTHY_CLUSTER_STATUSES.has(infra.cluster.status) ? 0 : 1;
     }
     case "workspaces":
     case "ls": {

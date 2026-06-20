@@ -75,7 +75,14 @@ export function withObservability<A extends unknown[]>(
     const requestId = deps.id();
     try {
       const res = await handler(...args);
-      res.headers.set(REQUEST_ID_HEADER, requestId);
+      // Best-effort: a handler that returns a Response with immutable/guarded headers
+      // (the wrapper is generic over any Response) must not have a clean 2xx turned into a
+      // 500 by a throwing `.set`. The correlation id is still in the access + error logs.
+      try {
+        res.headers.set(REQUEST_ID_HEADER, requestId);
+      } catch {
+        /* immutable headers — id stays in the logs only */
+      }
       record(deps, route, method, res.status, deps.now() - startedMs, requestId);
       return res;
     } catch (err) {

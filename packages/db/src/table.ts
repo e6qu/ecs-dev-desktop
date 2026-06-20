@@ -5,6 +5,7 @@ import {
   type DynamoDBClient,
   ResourceInUseException,
   ResourceNotFoundException,
+  waitUntilTableExists,
 } from "@aws-sdk/client-dynamodb";
 
 import { TABLE } from "./index";
@@ -54,6 +55,9 @@ export function tableDefinition(table = TABLE) {
   };
 }
 
+/** Max seconds to wait for a newly-created table to reach ACTIVE. */
+const TABLE_READY_WAIT_SECONDS = 60;
+
 /** Create the table; no-op if it already exists. Waits for DynamoDB to be ready
  * first, so the integration bootstrap can't race a still-starting container. */
 export async function ensureTable(client: DynamoDBClient, table = TABLE): Promise<void> {
@@ -63,6 +67,14 @@ export async function ensureTable(client: DynamoDBClient, table = TABLE): Promis
   } catch (err) {
     if (!(err instanceof ResourceInUseException)) throw err;
   }
+  // On real AWS, CreateTable returns while the table is still CREATING — the next
+  // write/query would throw ResourceNotFound until it's ACTIVE. Wait for ACTIVE (also
+  // covers the already-exists path). DynamoDB Local returns ACTIVE immediately, so this
+  // is a no-op there.
+  await waitUntilTableExists(
+    { client, maxWaitTime: TABLE_READY_WAIT_SECONDS },
+    { TableName: table },
+  );
 }
 
 /** Drop the table; no-op if absent. (Test helper.) Waits for readiness first so a

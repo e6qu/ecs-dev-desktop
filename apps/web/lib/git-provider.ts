@@ -13,6 +13,7 @@ import {
 import { getGitCredentials, gitCredentialsEnabled } from "./git-credentials";
 import {
   createRepo,
+  GitHubApiError,
   listNamespaces,
   listRepos,
   repoSchema,
@@ -149,7 +150,7 @@ class InstallationGitProvider implements GitProvider {
         auto_init: true,
       }),
     });
-    if (!res.ok) throw new Error(`GitHub App create repo failed: ${String(res.status)}`);
+    if (!res.ok) throw new GitHubApiError(res.status, "App create repo");
     return toRepoSummary(repoSchema.parse(await res.json()));
   }
 

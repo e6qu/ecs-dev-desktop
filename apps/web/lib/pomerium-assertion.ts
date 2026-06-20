@@ -21,6 +21,10 @@ import type { KeyObject } from "node:crypto";
  * Pomerium can't itself enforce DynamoDB-backed ownership).
  */
 
+/** Clock-skew tolerance (seconds) when validating the assertion's `exp` — absorbs
+ * small gateway/PDP clock drift without widening the window meaningfully. */
+const ASSERTION_CLOCK_TOLERANCE_SEC = 60;
+
 /** Identity claims trusted after a successful assertion verification. */
 export interface AssertedIdentity {
   readonly subject: string;
@@ -64,7 +68,16 @@ export async function verifyAssertion(
   expectedHost: string,
   key: AssertionKey = defaultKey(),
 ): Promise<AssertedIdentity> {
-  const options = { algorithms: ["ES256"], audience: expectedHost };
+  // `requiredClaims: ["exp"]` — jose only checks `exp` when present, so without this a
+  // token that omits `exp` would verify and be trusted forever; require it so every
+  // accepted assertion is bounded. A small `clockTolerance` absorbs gateway/PDP clock
+  // skew (a token minted "now" mustn't be rejected as not-yet-valid; §6.10).
+  const options = {
+    algorithms: ["ES256"],
+    audience: expectedHost,
+    requiredClaims: ["exp"],
+    clockTolerance: ASSERTION_CLOCK_TOLERANCE_SEC,
+  };
   const { payload } =
     typeof key === "function"
       ? await jwtVerify(token, key, options)

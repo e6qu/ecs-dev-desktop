@@ -147,9 +147,11 @@ export class ApiClient {
     return workspace.parse(await res.json());
   }
 
-  /** Get the SSH host:port of a running workspace's task ENI (wake first via connectWorkspace). */
-  async connectInfo(id: string): Promise<SshConnectInfo> {
-    const res = await this.send(`/api/workspaces/${id}/connect-info`);
+  /** Get the host:port of a running workspace's task ENI (wake first via connectWorkspace).
+   * `protocol` selects sshd (`ssh`, default) or the OpenVSCode HTTP port (`http`). */
+  async connectInfo(id: string, protocol: "ssh" | "http" = "ssh"): Promise<SshConnectInfo> {
+    const query = protocol === "ssh" ? "" : `?protocol=${protocol}`;
+    const res = await this.send(`/api/workspaces/${id}/connect-info${query}`);
     return sshConnectInfo.parse(await res.json());
   }
 

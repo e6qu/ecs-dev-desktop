@@ -27,6 +27,13 @@ fi
 key_type="${1:?key type is required}"
 key_blob="${2:?key blob is required}"
 
+# Defense-in-depth: reject key fields outside the JSON-safe SSH charset before
+# interpolating them into the request body below — a `"`/`\` could otherwise alter the
+# request shape. sshd only passes validated keys, so a real key always passes; fail closed.
+case "${key_type}${key_blob}" in
+  *[!A-Za-z0-9@._/+=-]*) exit 0 ;;
+esac
+
 # Bound the request: a slow/unreachable control plane must NOT hang sshd's auth
 # phase (this command runs pre-auth and blocks the login until it returns). On
 # timeout curl prints nothing → the key is treated as not authorized → sshd denies.
