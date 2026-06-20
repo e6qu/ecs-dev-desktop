@@ -2,9 +2,29 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-20 (resiliency+correctness sweep merged #139; breadth sweep — gateway/auth/DB-adapter/route/shell fixes — on `feat/sweep-breadth-resiliency`)
+**Last updated:** 2026-06-20 (breadth sweep merged #140; UI/contract/perf/gate sweep + type-safety hardening on `feat/sweep-ui-contracts-perf`)
 
-## Active — Breadth sweep (`feat/sweep-breadth-resiliency`)
+## Active — UI/contract/perf/gate sweep (`feat/sweep-ui-contracts-perf`)
+
+A 4-agent audit of the still-under-covered surface (UI/React, Zod contract tightness, 200+ scale,
+gate/harness) + a type-safety pass making bad states non-representable. All fixed, no deferrals:
+
+- **Type-safety:** tightened contracts (`quotaReport` limit→int/nonneg, role→enum; `costBreakdown`→nonneg/int;
+  `sshConnectInfo.host`→min 1); `workspaceLimit` throws on a bad `EDD_QUOTA_*` override (was silent).
+- **Gate (HIGH):** PDP-fetch + upstream + upgrade timeouts; upgrade-path client-close teardown before the
+  upstream upgrades — closes socket-leak vectors (one PEP fronts every workspace).
+- **Scale:** cost rollup is now regenerated on a cadence each sweep (`rollupIfStale`) so cost reads stay
+  O(recent) instead of full-scanning the ledger; quota report shares the cached fleet scan.
+- **Correctness:** `finishDeleting` uses `deleteRequestedAt` (not age) to decide a fresh teardown snapshot —
+  no >6h stuck-teardown leak; `NewSession`/`BaseImageActions`/`usePoll` UI fixes; the ssh-authorize e2e stub
+  verifies the HMAC bearer.
+- **API-first:** off-contract `POST /admin/costs/rollup` now has a contract + client method.
+
+Green through build + all unit suites + lint + shellcheck + the db/control-plane integ tiers; gate e2e + the
+golden-ssh e2e (stub HMAC verify) run in CI on the PR. Noted (optimizations of correct code, not bugs):
+per-sweep reconciler re-scans, the drift sweep's serial `DescribeTasks`, and the single-partition audit GSI.
+
+## Prior — Breadth sweep (merged #140)
 
 A 5-agent audit of the under-covered surface (gateway/proxy/auth chain, DB + cloud-adapter layer, HTTP
 route surface, shell/IaC/config) — prior sweeps went deep on control-plane/cost/reconciler/storage. No

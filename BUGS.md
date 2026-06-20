@@ -301,6 +301,36 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **UI/contract/perf/gate sweep (2026-06-20) — 4-agent audit + type-safety hardening, all fixed.** Targeted
+  the still-under-covered surface (UI/React, Zod contract tightness, 200+ scale, gate/harness + an
+  adversarial re-check of #138/#139/#140). Genuine bugs fixed, with type-safety changes that make whole
+  classes non-representable (the user's directive): **contracts** — `quotaReport.limit` →
+  `int().nonnegative().nullable()`, `quotaReport.role` → a closed enum (was a bare string), `costBreakdown`
+  USD/Ms → `nonnegative()`/`int()`, `sshConnectInfo.host` → `min(1)`; **`workspaceLimit`** now THROWS on a
+  negative/fractional/non-numeric `EDD_QUOTA_*` override (a negative would lock the role out of creating)
+  rather than silently driving quota — keeping the stricter contract invariant true at the source.
+  **Gate (HIGH — one PEP fronts every workspace)**: added a PDP-fetch timeout (fails closed 502), upstream
+  HTTP + upgrade timeouts, and registered the upgrade-path client-close teardown BEFORE the upstream
+  upgrades — closing socket/fd-leak vectors a slow PDP/upstream could exploit (named timeouts in
+  `@edd/config`). **Scale**: the cost rollup was wired but NEVER regenerated, so every cost read full-scanned
+  the whole append-only ledger O(history) — added `CostService.rollupIfStale(cadence)` called each reconciler
+  sweep so `report()` (+ the fleet-cost gauge + `/admin/costs`) stay O(recent), figures unchanged; the quota
+  report now shares the short-TTL cached fleet scan instead of re-scanning per load. **Correctness**:
+  `finishDeleting` now uses a `deleteRequestedAt`-based `needsFreshTeardownSnapshot` (replacing the age-based
+  heuristic from #139) so a stuck-teardown retry can never re-create the retained snapshot — the prior >6h
+  leak window is gone, and it's more data-safe; `NewSession` surfaces a failed namespaces fetch instead of a
+  false "no permission"; `BaseImageActions` re-syncs on error like `WorkspaceActions`; `usePoll` applies only
+  the latest-started run (a slow earlier poll can't overwrite newer data). **Harness**: the `ssh-authorize`
+  e2e stub now verifies the per-workspace HMAC bearer (derived from the secret + the workspace id in the
+  path), so an `authorized-keys.sh` HMAC regression fails the e2e instead of passing silently. **API-first**:
+  the off-contract `POST /admin/costs/rollup` gained a `costRollupResponse` contract + `adminCostsRollup()`
+  client method. Verified clean: machine-auth, token-crypto, the gate auth ordering, the cost walkers, DTO
+  faithfulness, branded ids. NOTED as optimizations-of-correct-code (not bugs; not done to avoid regression
+  risk for speculative >200 scale): the per-sweep reconciler re-scans of the workspace table (correct +
+  paginated), the drift sweep's per-workspace `DescribeTasks` (works, just serial), and the single-partition
+  `auditEvent.byTime` GSI (DynamoDB on-demand adaptive capacity handles 200-scale bursts; sharding is a
+  risky data-model change touching the figure-equivalence invariant — would need a deliberate decision).
+
 - **Breadth sweep (2026-06-20) — 5-agent audit of the under-covered surface, all fixed (no deferrals).**
   Prior sweeps went deep on control-plane/cost/reconciler/storage; this one targeted the gateway/proxy/auth
   chain, the DB + cloud-adapter layer, the HTTP route surface, and shell/IaC/config. No critical bypass (the
