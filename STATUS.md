@@ -2,9 +2,31 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-20 (big combined sweep PR merged #137; deferred-cleanup PR — service-signature branding + port contracts + snapshot retention + quota-drift self-heal + billing-to-teardown — on `feat/deferred-cleanup-fat-pr`)
+**Last updated:** 2026-06-20 (deferred-cleanup PR merged #138; resiliency+correctness sweep + sockerless #629/#630 re-pin/confirm on `feat/sweep-resiliency-correctness`)
 
-## Active — Deferred-cleanup PR (`feat/deferred-cleanup-fat-pr`)
+## Active — Resiliency + correctness sweep (`feat/sweep-resiliency-correctness`)
+
+A 5-agent audit (resiliency/concurrency, correctness/cost-model, types/fail-loud/telemetry,
+test-fidelity, security/data-safety) found a tight set of genuine bugs — all fixed (no deferrals),
+each with tests; plus this PR folds in the sockerless #629/#630 fidelity record + the submodule re-pin to
+`693b39a7` (confirmed downstream):
+
+- **HIGH data-loss on delete:** `snapshotStale` ignored snapshot age, so deleting a `running` workspace
+  with a stale snapshot lost the live volume's newer work; now age-aware → `finishDeleting` takes a fresh
+  retained snapshot of the live volume.
+- **HIGH retained-snapshot leak:** `finishDeleting` re-created (never-GC'd) retained snapshots on a
+  transaction-cancel retry; now records the snapshot id on the tombstone → idempotent re-run.
+- **HIGH credential over-scoping:** GitHub-App `gitCredential` fell back to an unrelated org's installation
+  when the repo owner had none; now fails closed.
+- **MEDIUM retain-tag race:** `tagSnapshotRetained` confirms tag visibility before unreferencing the
+  snapshot, closing the GC eventual-consistency window.
+- **sockerless fidelity:** #629 (`ListSecrets` tag-key) + #630 (`ListTaskDefinitions` sort/status) filed,
+  fixed upstream (#631), re-pinned + confirmed (integ green); IAM/STS/ECS surfaces verified conformant.
+
+Green through build + all unit suites + lint + the control-plane/storage-ec2/compute-ecs integ tiers; the
+container-mode e2e runs in CI on the PR.
+
+## Prior — Deferred-cleanup PR (merged #138)
 
 Closes the remaining deferred items from the code-quality sweep in one PR (built as committed chunks,
 green through build + all unit suites + lint; integ/e2e run in CI). The user chose "bill until teardown

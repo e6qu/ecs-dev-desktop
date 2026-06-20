@@ -301,6 +301,29 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **Resiliency + correctness sweep (2026-06-20) — 5-agent audit, all fixed (no deferrals).** The audit
+  (resiliency/concurrency, correctness/cost-model, types/fail-loud/telemetry, test-fidelity,
+  security/data-safety) confirmed the codebase is high-quality and converged on a tight set of genuine
+  bugs — all remediated + tested: **(1) HIGH data-loss on delete** — `snapshotStale` checked only snapshot
+  _absence_, so deleting a `running` workspace with a stale prior snapshot retained the OLD snapshot while
+  the live volume (newer work) was destroyed; now age-aware (`>= DEFAULT_SNAPSHOT_INTERVAL_MS`), so
+  `finishDeleting` takes a FRESH retained snapshot of the live volume when the existing one is stale.
+  **(2) HIGH retained-snapshot leak** — `finishDeleting` created a fresh retained snapshot but never
+  recorded it, so a transaction-cancel retry (e.g. a `TransactionConflict` on the owner-count item from a
+  concurrent same-owner create) created another each sweep — and retained snapshots are never GC'd; now
+  the snapshot id is recorded on the tombstone (version-conditioned), so a re-run re-tags it instead
+  (idempotent). **(3) HIGH credential over-scoping** — GitHub-App `gitCredential` fell back to
+  `installs[0]` when the repo owner had no matching installation, minting a token for an UNRELATED org;
+  now fails closed (→ 404). **(4) MEDIUM retain-tag eventual-consistency window** — `tagSnapshotRetained`
+  now confirms the tag is durably visible (strongly-consistent by-id `DescribeSnapshots`) before
+  `finishDeleting` unreferences the snapshot, closing the GC window (fail-loud → safe retry; the
+  `createSnapshot({retain})` path already had no window — the tag is applied at creation). Tests added for
+  every fix + adjacent gaps the audit named (stale-snapshot data-loss, stopped-delete tag branch,
+  idempotent re-run, GC keep-set spares retained, start-during-teardown, terminate-without-delete,
+  teardown-nonzero sentinel, credential fail-closed). Everything else the agents probed (the two cost
+  walkers' figure-equivalence brute-forced to length-4 sequences, the lifecycle state machine, DTO
+  faithfulness, authz/secret-handling, telemetry honesty) verified clean.
+
 - **Code-quality sweep batch 1 (2026-06-20) — correctness + fail-loud + telemetry honesty.** Fixed +
   tested: (A1) `toWorkspaceDto` dropped `repoUrl` though the contract declares it and the in-workspace
   git-credential broker reads it back via `get()` → private-repo tokens were mis-scoped; now round-trips.
