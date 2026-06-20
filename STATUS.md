@@ -2,9 +2,29 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-20 (deferred-cleanup PR merged #138; resiliency+correctness sweep + sockerless #629/#630 re-pin/confirm on `feat/sweep-resiliency-correctness`)
+**Last updated:** 2026-06-20 (resiliency+correctness sweep merged #139; breadth sweep — gateway/auth/DB-adapter/route/shell fixes — on `feat/sweep-breadth-resiliency`)
 
-## Active — Resiliency + correctness sweep (`feat/sweep-resiliency-correctness`)
+## Active — Breadth sweep (`feat/sweep-breadth-resiliency`)
+
+A 5-agent audit of the under-covered surface (gateway/proxy/auth chain, DB + cloud-adapter layer, HTTP
+route surface, shell/IaC/config) — prior sweeps went deep on control-plane/cost/reconciler/storage. No
+critical bypass; a set of genuine MEDIUM/LOW bugs, all fixed (no deferrals), each tested where applicable:
+
+- **auth:** `mapClaimsToRole` now matches groups case-insensitively (a casing mismatch silently downgraded
+  roles); `github-teams` follows all `/user/teams` pages (a later-page admin team was dropped).
+- **routes:** `base-images` POST no longer masks 500s as 409 / leaks the error message; `github/repos` POST
+  maps a 422 name-collision to 409 (was a bodiless 500); `connect-info` authenticates before validating +
+  returns 409 (not 404) for an unbound-host running workspace; `pomerium-assertion` requires `exp`.
+- **adapters (fail-loud):** `toLogLine` throws on a missing timestamp (no epoch mis-date); EMF guards a
+  dimension/metric-name collision; `db.ensureTable` waits for ACTIVE.
+- **misc:** `api-client.connectInfo` gained the `protocol` arg; `cli status` gates its exit code on cluster
+  health; `withObservability` guards the header set; gateway `/run/edd-env` secret file is group-restricted;
+  both `authorized-keys.sh` hops gained a charset guard before JSON interpolation.
+
+Green through build + all unit suites + lint + shellcheck + the db/control-plane integ tiers; the gateway
+e2e + route integ run in CI on the PR.
+
+## Prior — Resiliency + correctness sweep (merged #139)
 
 A 5-agent audit (resiliency/concurrency, correctness/cost-model, types/fail-loud/telemetry,
 test-fidelity, security/data-safety) found a tight set of genuine bugs — all fixed (no deferrals),
