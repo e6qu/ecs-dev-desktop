@@ -9,14 +9,17 @@
 A broad 6-agent sweep (API-first/thin-UI, fake telemetry/monitoring, weak types, fake/anemic tests,
 idempotency/self-heal/fail-loud, correctness/UX), each finding traced to the code. The codebase is
 high-quality overall (no fabricated metrics, no `any`/`@ts-ignore` in src, strong authz/cost tests).
-**Batch 1 (correctness + fail-loud + telemetry honesty) is FIXED** (see _Resolved_); the rest are
-queued in priority order:
+Batch 1 (correctness + fail-loud + telemetry honesty), batch 2 (test fidelity), batch 3 (atomic quota),
+and the big combined PR (API-first thin-UI, weak-type branding, UX, idempotency follow-ups) have landed
+**most** of these — the bullets below record what's FIXED and the small set deliberately deferred:
 
-- **[weak types] `Principal.id`/`email` are bare `string`** (`packages/authz/src/index.ts:23`) — the
-  root of owner-identity primitive obsession, forcing `ownerId(principal.id)` re-brands at every call
-  site. Brand once at the identity edge (`apps/web/lib/principal.ts`). Also `SshKeyService` /
-  `GitCredentialService` public methods take bare `string` for branded ids; `WorkspaceAuditEvent.action`
-  should be a literal union; `ownerEmail` contract is `z.string()` not `z.email()`.
+- **[weak types] — `Principal.id` + `ownerEmail` + `AuditAction` FIXED (big PR); service signatures remain.**
+  Done: `Principal.id` → `OwnerId` (branded once at the identity edge — the per-call `ownerId(principal.id)`
+  re-brands are gone); `ownerEmail` contract → `z.email()`; the audit-action vocabulary is now a typed
+  `AuditAction` union (a typo'd action is a compile error, protecting the cost ledger's exact-string
+  filter). Remaining (deferred — lower value, `OwnerId` already flows safely as a string-brand):
+  `SshKeyService`/`GitCredentialService` public methods still take bare `string` for branded ids, and a
+  `GitProvider` union for the credential provider.
 - **[fake tests] — request-shape assertions + anemic tests FIXED (batch 2); port contracts remain.**
   Done: `ec2-storage-provider.test.ts` / `ecs-compute-provider.test.ts` now assert `command.input` (the
   `edd:managed` tag, `edd:workspace-id` tag, `deleteOnTermination`, the Size↔snapshot branch, the `tag:`
@@ -25,28 +28,34 @@ queued in priority order:
   replaced with real/derived assertions. Remaining: the storage fidelity contract runs only against the
   fake (never wired into the `storage-ec2` integ tier), and there is no `computeProviderContract` at all
   (fake `taskState`/snapshot-hydration parity untested).
-- **[API-first / thin UI]** several SSR admin pages bypass the API and embed view logic: **Costs**
-  (`admin/costs/page.tsx`) ignores the existing `costReport` contract + `GET /api/admin/costs` route and
-  re-derives tiles/formatting (and uses `costWindow.catch("all")` → silently shows all-time on a typo);
-  **Quotas**/**Overview** have no route/contract (usage tallied in the page); the catalog→workspace
-  name join is re-done in 3 pages (`lib/catalog-details.ts`); the SSH connect command + `canCreate` +
-  `availableActions` (the lifecycle state machine) are computed client-side. Fix template: return
-  ready-to-render DTOs from contracts + thin client pollers (mirror `InfrastructureView`).
+- **[API-first / thin UI] — FIXED (big PR).** The workspace DTO is now self-rendering:
+  `availableActions` (from the core state machine), the catalog `imageName`/description/tags/tools join,
+  and the `sshCommand` are all server-computed and ride the contract (`toWorkspaceDto` + a shared
+  `enrichWorkspace` shell helper); the client-side state-machine mirror (`lib/workspace-view.availableActions`)
+  and the per-page catalog join (`lib/catalog-details.ts`) are **deleted**, and `WorkspaceCard` is a pure
+  renderer. The two admin views that had no API now do: `quotaReport` + `overviewReport` contracts,
+  `GET /api/admin/quotas` + `/api/admin/overview` routes, `adminQuotas()`/`adminOverview()` client
+  methods + shared report builders (pages render them, no in-page tally). Costs uses the route's
+  `costReportQuery` validation (the silent `.catch` is gone) + an `adminCosts()` client method.
 - **[idempotency] quota TOCTOU race — FIXED (batch 3, atomic counter).** The create transaction now
   conditionally increments a per-owner `ownerWorkspaceCount` item (`ADD count 1` guarded by
   `attribute_not_exists(count) OR count < limit`) atomically with the workspace insert, and
   `finishDeleting` decrements it — so concurrent creates can never race past the cap (proven by a
-  concurrent-burst integ test). Remaining idempotency follow-ups: billing stops at delete-_request_ not
-  teardown (cost under-counts during teardown lag); `finishDeleting`'s data-safety snapshot is discarded
-  then GC'd (documented protection not delivered); `recordSecurityEvent` is non-idempotent (retry →
-  duplicate audit rows + double metric). A counter-vs-actual drift-reconciliation sweep is a noted
-  belt-and-suspenders follow-up.
-- **[UX]** destructive actions (delete workspace/SSH key/base image) have **no confirmation** → data
-  loss on a mis-click; the workspace card shows stale state + raw 409 error strings under scale-to-zero
-  state drift; a GitHub repo-load failure leaves an eternal spinner; a single poll failure blanks the
-  whole Health/Infra board (should keep stale data + a "stale" banner); no "Open/Connect" affordance for
-  a running workspace; degraded-`functional` not shown on the owner card; a11y gaps (no `aria-pressed`
-  / glyph labels).
+  concurrent-burst integ test). **`recordSecurityEvent` idempotency FIXED (big PR)** — a deterministic
+  event id per (workspace, tool, time bucket) + conditional `create` dedupes the in-workspace guard's
+  `curl --retry`, so a retry writes no duplicate audit row and no double metric (proven by an integ test).
+  Remaining idempotency follow-ups (deferred — involved + a product call): billing stops at delete-_request_
+  not teardown (cost under-counts during teardown lag — the fix rewires `session.delete` → a teardown
+  terminate event and risks the cost-equivalence invariant); `finishDeleting`'s data-safety snapshot is
+  GC'd after the grace window rather than retained per the chosen "Middle" policy (needs a retain-tag
+  mechanism through the storage port + GC keep-set); a counter-vs-actual drift-reconciliation sweep.
+- **[UX] — FIXED (big PR).** Workspace delete now takes a **two-step confirm** (a mis-click can't destroy
+  the EBS volume/snapshot) + auto-refresh-on-409 so scale-to-zero state drift re-syncs the offered
+  actions; the Health/Infra boards **keep the last-known state** on a transient poll error (a "stale"
+  banner, not a blank); the GitHub repo-load failure resolves to an empty list (no eternal spinner); the
+  owner card shows a **degraded** indicator when `functional !== ok`; the environment picker has
+  `aria-pressed`. Remaining (deferred): per-row SSH-key/base-image delete confirms; an Open/Connect
+  affordance (needs the proxy-domain config wired).
 
 The codex code-review findings (2026-06-19) that were tracked here are **all remediated and merged
 in #129** (Phase 9; "12 findings, none deferred") — moved to _Resolved (repo)_ below, re-verified

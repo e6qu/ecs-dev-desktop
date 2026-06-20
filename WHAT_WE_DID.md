@@ -1900,3 +1900,24 @@ listStuckProvisioning` + `recoverStuckProvisioning` revert provisioning→stoppe
   enforcement. Tests: control-plane integ proves exactly-`limit` sequential creates + a concurrent burst
   that can NEVER exceed the cap + decrement-frees-a-slot; all 46 cp integ + 30 unit green. Follow-up
   noted: a counter-vs-actual drift-reconciliation sweep.
+
+- **2026-06-20 — Big combined PR: API-first thin-UI + weak-type branding + UX + idempotency follow-ups.**
+  One large PR completing the bulk of the code-quality sweep's remaining workstreams (built incrementally
+  on `feat/sweep-ux-apifirst-types`). **API-first (the reskinnability goal):** the workspace DTO is now
+  self-rendering — `availableActions` (moved to `@edd/core` `workspaceActions`, deleting the client-side
+  state-machine mirror), the catalog `imageName`/description/tags/tools join, and the `sshCommand` are all
+  server-computed and ride the contract (`toWorkspaceDto` + a shared `enrichWorkspace` shell helper, used
+  by the route AND the pages); `WorkspaceCard` is a pure renderer; `lib/catalog-details.ts` deleted. The
+  two admin views that had no API now do: `quotaReport` + `overviewReport` contracts, `GET
+/api/admin/quotas` + `/api/admin/overview` routes, `adminQuotas()`/`adminOverview()` client methods +
+  shared builders; Costs got an `adminCosts()` client + the route's `costReportQuery` validation (silent
+  `.catch` gone). **Weak-types:** `Principal.id` → `OwnerId` (branded at the identity edge, re-brands
+  removed; authz now depends on `@edd/core`); `ownerEmail` → `z.email()`; a typed `AuditAction` union
+  (protects the cost ledger's exact-string filter). **UX:** two-step workspace-delete confirm
+  (data-loss guard) + auto-refresh-on-409; keep-stale-data Health/Infra boards; repo-load spinner
+  resolves; degraded indicator on the owner card; `aria-pressed` picker. **Idempotency:**
+  `recordSecurityEvent` is idempotent (deterministic id per workspace/tool/bucket dedupes guard retries).
+  Each chunk green through full pre-commit (tsc, turbo test, knip, lint) + targeted integ tests.
+  Deliberately deferred (involved / needs a product call, tracked in `BUGS.md`): `SshKeyService`/
+  `GitCredentialService` signature branding; billing-at-teardown (rewires the cost model); the
+  `finishDeleting` snapshot-retention mechanism; storage/compute port contracts.
