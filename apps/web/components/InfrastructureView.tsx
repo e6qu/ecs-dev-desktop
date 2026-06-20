@@ -17,14 +17,17 @@ const load = (): Promise<InfrastructureReportDto> => api.adminInfrastructure();
 export function InfrastructureView() {
   const { data: report, error } = usePoll(load, POLL_MS, "infrastructure check failed");
 
-  if (error !== null) return <div className="notice">infrastructure check failed: {error}</div>;
-  if (report === null)
+  // Keep the last-known view on a transient poll error (don't blank it); only show a
+  // bare error before the first successful load.
+  if (report === null) {
+    if (error !== null) return <div className="notice">infrastructure check failed: {error}</div>;
     return (
       <StateBlock
         title="Loading infrastructure"
         detail="Fetching live cluster, health, and topology data."
       />
     );
+  }
 
   const { health, cluster, fleet, topology } = report;
   const clusterStats: { metric: string; value: number }[] = [
@@ -42,6 +45,11 @@ export function InfrastructureView() {
 
   return (
     <>
+      {error !== null && (
+        <div className="notice" data-testid="stale-banner">
+          last refresh failed ({error}) — showing the last known state
+        </div>
+      )}
       <HealthHead status={health.status} checkedAt={health.checkedAt} />
 
       <h2 className="infra-h">Status checks</h2>

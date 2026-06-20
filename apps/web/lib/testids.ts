@@ -11,6 +11,7 @@
 export const TESTID = {
   /** Workspace card on the portal grid. Attrs: `data-image`, `data-status` (state). */
   workspaceCard: "workspace-card",
+  workspaceDegraded: "workspace-degraded",
   /** Workspace row in the admin all-workspaces table. Attrs: `data-id`, `data-status`. */
   workspaceRow: "workspace-row",
   /** Base-image card in the catalog. Attrs: `data-image`, `data-enabled`. */

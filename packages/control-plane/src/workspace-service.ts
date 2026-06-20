@@ -78,6 +78,11 @@ const SYSTEM_ACTOR = "system";
 const WAKE_WAIT_TIMEOUT_MS = 180_000;
 const WAKE_POLL_INTERVAL_MS = 250;
 
+/** Idempotency window for security events: the in-workspace guard retries a blocked
+ * attempt within seconds, so bucketing the deterministic event id to this window
+ * dedupes those retries while still recording genuinely-distinct later attempts. */
+const SECURITY_EVENT_BUCKET_MS = 60_000;
+
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 const asMessage = (e: unknown): string => (e instanceof Error ? e.message : String(e));
@@ -105,9 +110,24 @@ export class QuotaExceededError extends Error {
   }
 }
 
+/**
+ * The fixed audit-action vocabulary. Typed as a union (not a bare string) so a typo'd
+ * action is a compile error — the cost ledger filters by exact action string
+ * (`=== "session.create"`, the `session.` prefix), so a wrong value would silently
+ * mis-attribute billing / drop a session from the report.
+ */
+type AuditAction =
+  | "session.create"
+  | "session.start"
+  | "session.stop"
+  | "session.delete"
+  | "session.recover"
+  | "session.snapshot_lost"
+  | "security.privilege_attempt";
+
 /** A lifecycle event to record atomically with its state transition. */
 interface LifecycleAudit {
-  action: string;
+  action: AuditAction;
   target: WorkspaceId;
   actor: string;
   detail: string;
@@ -982,13 +1002,33 @@ export class WorkspaceService {
   ): Promise<Result<void, DomainError>> {
     const found = await this.find(id);
     if (found === null) return err(notFoundError("workspace", id));
-    const item = this.auditItem({
-      action: `security.${event.kind}`,
-      target: id,
-      actor: "workspace",
-      detail: event.tool,
-    });
-    if (item !== undefined) await item.entity.put(item.attrs).go();
+    const audit = this.deps.audit;
+    if (audit !== undefined) {
+      // Idempotent: a DETERMINISTIC event id per (workspace, tool, time bucket) +
+      // conditional `create` dedupes the in-workspace guard's `curl --retry` of the SAME
+      // blocked attempt, so a retry writes no duplicate audit row and (below) no double
+      // metric. Distinct attempts (a later bucket) still record separately.
+      const bucket = Math.floor(
+        Date.parse(this.deps.clock.now()) / SECURITY_EVENT_BUCKET_MS,
+      ).toString();
+      try {
+        await audit
+          .create({
+            id: `sec-${id}-${event.tool}-${bucket}`,
+            at: this.deps.clock.now(),
+            actor: "workspace",
+            action: `security.${event.kind}`,
+            target: id,
+            detail: event.tool,
+          })
+          .go();
+      } catch (e) {
+        // The deterministic id already exists → this is a retry of an already-recorded
+        // attempt. Idempotent success: don't double-count the metric below.
+        if (isVersionConflict(e)) return ok(undefined);
+        throw e;
+      }
+    }
     this.deps.metrics?.count(METRIC_SECURITY_PRIVILEGE_ATTEMPT, 1, { tool: event.tool });
     return ok(undefined);
   }

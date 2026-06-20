@@ -2,26 +2,26 @@
 import Link from "next/link";
 
 import { StatTile } from "../../../components/StatTile";
-import { getCatalog } from "../../../lib/control-plane";
-import { getFleetStatus } from "../../../lib/fleet-status";
+import { getOverviewReport } from "../../../lib/overview-report";
 import { TESTID } from "../../../lib/testids";
 
 export const dynamic = "force-dynamic";
 
-// Admin-only (the /admin layout gates it). At-a-glance fleet + catalog state.
+// Admin-only (the /admin layout gates it). Renders the overview report (fleet + catalog
+// counts) from the shared builder — the same data `GET /api/admin/overview` serves.
 export default async function AdminOverviewPage() {
-  // The fleet aggregate is cached for a short TTL (see `getFleetStatus`) so this
-  // page doesn't re-scan the whole fleet on every load at 200+ workspaces.
-  const [{ stats, owners }, catalog] = await Promise.all([getFleetStatus(), getCatalog().list()]);
-  const enabled = catalog.filter((c) => c.enabled).length;
+  const { workspaces, activeUsers, baseImages, byState } = await getOverviewReport();
 
   const tiles = [
-    { label: "workspaces", value: stats.total, sub: `${stats.active.toString()} active` },
-    { label: "stopped", value: stats.byState.stopped, sub: "scaled to zero" },
-    { label: "active users", value: owners, sub: "with a workspace" },
-    { label: "base images", value: catalog.length, sub: `${enabled.toString()} enabled` },
+    { label: "workspaces", value: workspaces.total, sub: `${workspaces.active.toString()} active` },
+    { label: "stopped", value: workspaces.stopped, sub: "scaled to zero" },
+    { label: "active users", value: activeUsers, sub: "with a workspace" },
+    {
+      label: "base images",
+      value: baseImages.total,
+      sub: `${baseImages.enabled.toString()} enabled`,
+    },
   ];
-  const byState = Object.entries(stats.byState).filter(([, n]) => n > 0);
 
   return (
     <>
@@ -53,13 +53,13 @@ export default async function AdminOverviewPage() {
         <p className="state-note">no workspaces yet</p>
       ) : (
         <div className="health-rows">
-          {byState.map(([state, n]) => (
+          {byState.map(({ state, count }) => (
             <div key={state} className="health-row" data-status={state}>
               <span className="badge" data-status={state}>
                 <span className="dot" />
                 {state}
               </span>
-              <span className="detail">{n}</span>
+              <span className="detail">{count}</span>
             </div>
           ))}
         </div>

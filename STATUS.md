@@ -2,9 +2,28 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-20 (IAM permission self-check + identity surfacing on `feat/iam-permission-self-check`; adopt-#621 merged #132; starting a broad bug/quality sweep)
+**Last updated:** 2026-06-20 (code-quality sweep: batches 1–3 merged #134/#135/#136; big combined PR — API-first thin-UI + weak-types + UX + idempotency — on `feat/sweep-ux-apifirst-types`)
 
-## Active — IAM permission self-check + identity (`feat/iam-permission-self-check`)
+## Active — Big combined sweep PR (`feat/sweep-ux-apifirst-types`)
+
+The final, large code-quality-sweep PR, bundling four workstreams (built incrementally as committed
+chunks, all green through full pre-commit + integ tests):
+
+- **API-first thin-UI (the reskinnability goal):** the workspace DTO is self-rendering — `availableActions`
+  (core `workspaceActions`), the catalog `imageName`/tags/tools join, and `sshCommand` are server-computed
+  and ride the contract (shared `enrichWorkspace`); `WorkspaceCard` is a pure renderer; both
+  `catalog-details.ts` and the client state-machine mirror are deleted. New `quotaReport`/`overviewReport`
+  contracts + routes + client methods + pages; Costs uses `adminCosts()` + the route's window validation.
+- **Weak-types:** `Principal.id` → `OwnerId`; `ownerEmail` → `z.email()`; typed `AuditAction` union.
+- **UX:** two-step delete confirm + auto-refresh-on-409; keep-stale-data boards; repo-spinner fix;
+  degraded indicator on the owner card; `aria-pressed` picker.
+- **Idempotency:** idempotent `recordSecurityEvent`.
+
+Deferred (tracked in `BUGS.md`, involved / need a product call): `SshKeyService`/`GitCredentialService`
+signature branding; billing-at-teardown; `finishDeleting` snapshot-retention; storage/compute port
+contracts.
+
+## Prior — IAM permission self-check + identity (merged #133)
 
 The app now understands the IAM actions each component needs and checks it holds them (user request).
 `@edd/core` carries `IAM_REQUIREMENTS` — the per-component (control-plane, reconciler) required-action

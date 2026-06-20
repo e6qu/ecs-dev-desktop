@@ -2,6 +2,9 @@
 import {
   auditFeedResponse,
   baseImageEntry,
+  costReport,
+  quotaReport,
+  overviewReport,
   createBaseImageRequest,
   createWorkspaceRequest,
   errorResponse,
@@ -22,6 +25,10 @@ import {
   type BaseImageEntryDto,
   type CreateBaseImageRequest,
   type CreateWorkspaceRequest,
+  type CostReport,
+  type CostWindow,
+  type QuotaReportDto,
+  type OverviewReportDto,
   type HealthReportDto,
   type ConfigSyncReportDto,
   type InfrastructureReportDto,
@@ -245,6 +252,26 @@ export class ApiClient {
   async adminAudit(): Promise<AuditFeedResponse> {
     const res = await this.send("/api/admin/audit");
     return auditFeedResponse.parse(await res.json());
+  }
+
+  /** The fleet cost report (priced lifecycle ledger), per session + per user +
+   * fleet total. `window` scopes it to the last N days (default `all` = lifetime). */
+  async adminCosts(window?: CostWindow): Promise<CostReport> {
+    const qs = window === undefined ? "" : `?window=${window}`;
+    const res = await this.send(`/api/admin/costs${qs}`);
+    return costReport.parse(await res.json());
+  }
+
+  /** The quota report: per-role workspace limits + current per-user usage. */
+  async adminQuotas(): Promise<QuotaReportDto> {
+    const res = await this.send("/api/admin/quotas");
+    return quotaReport.parse(await res.json());
+  }
+
+  /** The overview report: at-a-glance fleet + catalog counts. */
+  async adminOverview(): Promise<OverviewReportDto> {
+    const res = await this.send("/api/admin/overview");
+    return overviewReport.parse(await res.json());
   }
 
   /** Read one admin log stream; CloudWatch-backed on AWS. An optional

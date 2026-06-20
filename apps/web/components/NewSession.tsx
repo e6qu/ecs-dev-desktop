@@ -56,7 +56,13 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
           setRepos([]);
           return;
         }
-        if (reposRes.ok) setRepos(reposResponse.parse(await reposRes.json()).repos);
+        if (reposRes.ok) {
+          setRepos(reposResponse.parse(await reposRes.json()).repos);
+        } else {
+          // Resolve the list to empty (not a permanent spinner) + surface the error.
+          setRepos([]);
+          setError("failed to load GitHub repositories");
+        }
         const nsRes = await fetch("/api/github/namespaces");
         if (nsRes.ok) {
           const list = namespacesResponse.parse(await nsRes.json()).namespaces;
@@ -64,6 +70,9 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
           if (list.length > 0) setNs((list.find((n) => n.canCreate) ?? list[0]).login);
         }
       } catch {
+        // A network/parse failure must still resolve the loading state, or the list
+        // shows a spinner forever next to the error.
+        setRepos([]);
         setError("failed to load GitHub repositories");
       }
     })();
@@ -143,6 +152,7 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
               <button
                 key={opt.image}
                 type="button"
+                aria-pressed={selected}
                 className={`picker-card${selected ? " on" : ""}`}
                 data-testid={TESTID.catalogPickerOption}
                 data-image={opt.image}

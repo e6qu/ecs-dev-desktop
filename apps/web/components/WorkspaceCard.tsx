@@ -11,20 +11,17 @@ export function WorkspaceCard({
   ws,
   index,
   showOwner,
-  imageName,
-  imageDescription,
-  imageTags,
-  sshCommand,
 }: {
+  /** A workspace DTO already enriched (catalog image fields + ssh command) by the
+   * server / `enrichWorkspace`, so the card is a pure renderer. */
   ws: WorkspaceDto;
   index: number;
   showOwner: boolean;
-  imageName: string;
-  imageDescription: string;
-  imageTags: readonly string[];
-  /** Per-workspace `ssh …` connect command, when the SSH subdomain is configured. */
-  sshCommand?: string;
 }) {
+  const imageName = ws.imageName ?? ws.baseImage;
+  const imageDescription = ws.imageDescription ?? "";
+  const imageTags = ws.imageTags ?? [];
+  const sshCommand = ws.sshCommand;
   return (
     <article
       className="card"
@@ -36,6 +33,18 @@ export function WorkspaceCard({
       <div className="row">
         <span className="wid">{imageName}</span>
         <StatusBadge state={ws.state} />
+        {ws.functional === "degraded" && (
+          <span
+            className="badge"
+            data-status="degraded"
+            data-testid={TESTID.workspaceDegraded}
+            title="The desktop is running but not fully usable (IDE or workspace storage)."
+            aria-label="degraded — running but not fully usable"
+          >
+            <span className="dot" />
+            degraded
+          </span>
+        )}
       </div>
       <div className="subhead mono">{ws.id}</div>
       <div className="img">{ws.baseImage}</div>
@@ -63,7 +72,7 @@ export function WorkspaceCard({
           </code>
         </div>
       )}
-      <WorkspaceActions id={ws.id} state={ws.state} />
+      <WorkspaceActions id={ws.id} actions={ws.availableActions} />
     </article>
   );
 }

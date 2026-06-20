@@ -30,6 +30,10 @@ export type WorkspaceStateDto = z.infer<typeof workspaceState>;
 export const desiredState = z.enum(["present", "deleted"]);
 export type DesiredStateDto = z.infer<typeof desiredState>;
 
+/** A user-initiated lifecycle operation the UI may offer for a workspace. */
+export const workspaceAction = z.enum(["start", "stop", "snapshot", "delete"]);
+export type WorkspaceActionDto = z.infer<typeof workspaceAction>;
+
 export const workspace = z.object({
   id: z.string(),
   ownerId: z.string(),
@@ -39,6 +43,21 @@ export const workspace = z.object({
   // The repo cloned into the session ("one repo per session"), when any. Lets
   // the credential broker pick the right GitHub App installation by repo owner.
   repoUrl: z.string().optional(),
+  // The lifecycle actions valid from this state — server-computed (from the core
+  // state machine) so the UI renders buttons from data, not a client-side mirror.
+  availableActions: z.array(workspaceAction),
+  // Resolved catalog presentation for `baseImage` (joined server-side so the UI
+  // doesn't re-fetch + join the catalog). Absent when the image isn't in the catalog.
+  imageName: z.string().optional(),
+  imageDescription: z.string().optional(),
+  imageTags: z.array(z.string()).optional(),
+  imageTools: z.array(z.string()).optional(),
+  // The ready-to-run `ssh …` connect command, when the SSH subdomain is configured —
+  // built server-side from deployment config so a reskin needn't know the convention.
+  sshCommand: z.string().optional(),
+  // Functional usability self-report (is the desktop actually usable, not just
+  // "running"): surfaced on the owner's card so a degraded-but-running workspace shows.
+  functional: z.enum(["ok", "degraded"]).optional(),
 });
 export type WorkspaceDto = z.infer<typeof workspace>;
 
@@ -109,8 +128,10 @@ export const workspaceDetail = z.object({
   id: z.string(),
   ownerId: z.string(),
   /** Owner's email — the identity the proxy matches a caller against for
-   * per-workspace access. Absent on records created without a session email. */
-  ownerEmail: z.string().optional(),
+   * per-workspace access. Absent on records created without a session email.
+   * Validated as an email (not a bare string) so a malformed value is rejected at
+   * the wire boundary, matching `@edd/core`'s `email()` smart constructor. */
+  ownerEmail: z.email().optional(),
   /** Git repo cloned into the session, if any ("one repo per session"). */
   repoUrl: z.string().optional(),
   baseImage: z.string(),
@@ -133,6 +154,8 @@ export const workspaceDetail = z.object({
   functional: z.enum(["ok", "degraded"]).optional(),
   functionalDetail: z.string().optional(),
   functionalAt: z.iso.datetime().optional(),
+  /** Lifecycle actions valid from this state (server-computed; see {@link workspace}). */
+  availableActions: z.array(workspaceAction),
 });
 export type WorkspaceDetailDto = z.infer<typeof workspaceDetail>;
 
@@ -333,6 +356,35 @@ export const costReport = z.object({
   bySession: z.array(sessionCost),
 });
 export type CostReport = z.infer<typeof costReport>;
+
+// --- Admin: quota report (per-role limits + per-user usage) ---
+
+export const quotaReport = z.object({
+  /** Per-role workspace caps (`limit: null` = unlimited). */
+  limits: z.array(z.object({ role: z.string(), limit: z.number().nullable() })),
+  /** Current workspace count per owner, busiest first. */
+  usage: z.array(z.object({ owner: z.string(), count: z.number().int().nonnegative() })),
+});
+export type QuotaReportDto = z.infer<typeof quotaReport>;
+
+// --- Admin: overview (at-a-glance fleet + catalog counts) ---
+
+export const overviewReport = z.object({
+  workspaces: z.object({
+    total: z.number().int().nonnegative(),
+    active: z.number().int().nonnegative(),
+    stopped: z.number().int().nonnegative(),
+  }),
+  /** Distinct owners with at least one workspace. */
+  activeUsers: z.number().int().nonnegative(),
+  baseImages: z.object({
+    total: z.number().int().nonnegative(),
+    enabled: z.number().int().nonnegative(),
+  }),
+  /** Per-state counts, non-zero states only (busiest breakdown). */
+  byState: z.array(z.object({ state: workspaceState, count: z.number().int().nonnegative() })),
+});
+export type OverviewReportDto = z.infer<typeof overviewReport>;
 
 /** Time window for the cost report: `all` = full lifetime, the rest = last N days. */
 export const costWindow = z.enum(["all", "1d", "7d", "30d"]);

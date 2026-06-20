@@ -6,6 +6,7 @@ import {
   FakeStorageProvider,
   fixedClock,
   InMemoryMetricSink,
+  METRIC_SECURITY_PRIVILEGE_ATTEMPT,
   METRIC_WORKSPACE_WAKE_LATENCY_MS,
   ownerId,
   unwrap,
@@ -514,5 +515,39 @@ describe("WorkspaceService quota enforcement (atomic, DynamoDB Local)", () => {
     expect((await service.finishDeleting(workspaceId(made[0] ?? ""))).ok).toBe(true);
     // The freed slot lets a new create succeed.
     await expect(create("del-user")).resolves.toBeDefined();
+  });
+});
+
+describe("WorkspaceService.recordSecurityEvent idempotency (DynamoDB Local)", () => {
+  const SEC_TABLE = "ecs-dev-desktop-cp-sec-integ";
+  let client: ReturnType<typeof createDynamoClient>;
+
+  beforeAll(async () => {
+    client = createDynamoClient();
+    await dropTable(client, SEC_TABLE);
+    await ensureTable(client, SEC_TABLE);
+  });
+  afterAll(async () => {
+    await dropTable(client, SEC_TABLE);
+  });
+
+  it("dedupes a retried privilege attempt — one metric, not two", async () => {
+    const storage = await FakeStorageProvider.create();
+    const metrics = new InMemoryMetricSink();
+    const service = new WorkspaceService({
+      workspaces: makeWorkspaceEntity(client, SEC_TABLE),
+      storage,
+      compute: new FakeComputeProvider(storage),
+      clock: fixedClock(), // constant time → both calls land in the same idempotency bucket
+      audit: makeAuditEventEntity(client, SEC_TABLE),
+      metrics,
+    });
+    const ws = await service.create({ ownerId: ownerId("sec-user"), baseImage: baseImage("img") });
+    const evt = { kind: "privilege_attempt", tool: "docker" } as const;
+    // The in-workspace guard's curl --retry can deliver the SAME attempt twice.
+    expect((await service.recordSecurityEvent(workspaceId(ws.id), evt)).ok).toBe(true);
+    expect((await service.recordSecurityEvent(workspaceId(ws.id), evt)).ok).toBe(true);
+    const counted = metrics.recorded.filter((m) => m.name === METRIC_SECURITY_PRIVILEGE_ATTEMPT);
+    expect(counted).toHaveLength(1); // the retry deduped — counted exactly once
   });
 });

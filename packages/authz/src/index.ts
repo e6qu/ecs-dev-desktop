@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { AbilityBuilder, createMongoAbility, type MongoAbility } from "@casl/ability";
+import type { OwnerId } from "@edd/core";
 
 /**
  * RBAC, defined once and enforced in both the API and the UI.
@@ -20,10 +21,14 @@ export type Subject = "Workspace" | "User" | "BaseImage" | "all";
 export type AppAbility = MongoAbility<[Action, Subject]>;
 
 export interface Principal {
-  id: string;
+  /** The caller's owner id (branded once at the identity edge, so every owner-scoped
+   * service receives an `OwnerId` without per-call-site re-branding). */
+  id: OwnerId;
   role: Role;
   /** Caller's email, when the identity source provides it. Carried so a created
-   * workspace records its owner's email for per-workspace proxy authorization. */
+   * workspace records its owner's email for per-workspace proxy authorization. It
+   * stays a bare string here — validation into a branded `Email` happens at the create
+   * boundary (`resolveOwnerEmail`), which is where a malformed IdP email is rejected. */
   email?: string;
 }
 

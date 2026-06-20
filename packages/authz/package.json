@@ -12,6 +12,10 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@edd/core": "workspace:*",
     "@casl/ability": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3"
   }
 }

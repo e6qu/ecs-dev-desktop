@@ -1,15 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { WorkspaceDto } from "@edd/api-contracts";
 import { defineAbilityFor } from "@edd/authz";
-import { SSH_BASE_DOMAIN } from "@edd/config";
-import { isWorkspaceLabel, ownerId, workspacePrincipal, workspaceSshHost } from "@edd/core";
 import Link from "next/link";
 
 import { StateBlock } from "../../components/StateBlock";
 import { WorkspaceCard } from "../../components/WorkspaceCard";
-import { catalogDetailsByImage, lookupCatalogDetails } from "../../lib/catalog-details";
 import { getCatalog, getControlPlane } from "../../lib/control-plane";
 import { getPagePrincipal } from "../../lib/principal";
+import { catalogByImage, enrichWorkspace } from "../../lib/workspace-enrich";
 
 export const dynamic = "force-dynamic";
 
@@ -34,22 +32,15 @@ export default async function WorkspacesPage({
   const viewAll = view === "all" && isAdmin;
 
   const cp = await getControlPlane();
-  const workspaces: WorkspaceDto[] = viewAll
-    ? await cp.list()
-    : await cp.list({ ownerId: ownerId(principal.id) });
-  workspaces.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const raw: WorkspaceDto[] = viewAll ? await cp.list() : await cp.list({ ownerId: principal.id });
 
   const canCreate = defineAbilityFor(principal).can("create", "Workspace");
-  const catalog = await getCatalog().list();
-  const details = catalogDetailsByImage(catalog);
-
-  // The per-workspace SSH command, shown only once a deployment has provisioned
-  // the SSH subdomain zone (EDD_SSH_BASE_DOMAIN); otherwise there's no address to
-  // advertise. Single-gateway routing carries the workspace id in the username.
-  const sshCommandFor = (id: string): string | undefined =>
-    SSH_BASE_DOMAIN !== "" && isWorkspaceLabel(id)
-      ? `ssh ${workspacePrincipal(id)}@${workspaceSshHost(id, SSH_BASE_DOMAIN)}`
-      : undefined;
+  // Enrich each workspace with its catalog image + ssh command (the same join the
+  // API route does), then sort — so the card is a pure renderer of the DTO.
+  const byImage = catalogByImage(await getCatalog().list());
+  const workspaces = raw
+    .map((ws) => enrichWorkspace(ws, byImage))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   return (
     <>
@@ -96,19 +87,7 @@ export default async function WorkspacesPage({
       ) : (
         <div className="grid">
           {workspaces.map((ws, i) => {
-            const image = lookupCatalogDetails(details, ws.baseImage);
-            return (
-              <WorkspaceCard
-                key={ws.id}
-                ws={ws}
-                index={i}
-                showOwner={viewAll}
-                imageName={image.name}
-                imageDescription={image.description}
-                imageTags={image.tags}
-                sshCommand={sshCommandFor(ws.id)}
-              />
-            );
+            return <WorkspaceCard key={ws.id} ws={ws} index={i} showOwner={viewAll} />;
           })}
         </div>
       )}
