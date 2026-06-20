@@ -71,7 +71,10 @@ export async function startWebApp(
       ...process.env,
       NODE_ENV: "production",
       PORT: String(port),
-      HOSTNAME: "127.0.0.1",
+      // Bind all interfaces (as `next start` did): the workspace containers reach
+      // this control plane over the host network, so loopback-only would be
+      // unreachable from them (idle-agent heartbeats + SSH wake-on-connect).
+      HOSTNAME: "0.0.0.0",
       EDD_DEV_AUTH: "1",
       AUTH_SECRET: "e2e-secret",
       ...env,
