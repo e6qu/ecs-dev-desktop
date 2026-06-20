@@ -4,7 +4,7 @@ import { workspacePricing, workspaceSizing } from "@edd/config";
 import { isoTimestamp, type AuditEvent, type Clock } from "@edd/core";
 import { describe, expect, it } from "vitest";
 
-import { CostService } from "./cost-service";
+import { CostService, type CostRollupRecord, type CostRollupStore } from "./cost-service";
 
 // The real @edd/config defaults (us-east-1 on-demand; 0.5 vCPU / 1 GiB / 8 GiB),
 // so the service test is pinned to the rates the app actually charges.
@@ -147,5 +147,71 @@ describe("CostService.report windowing", () => {
     const report = await winService(events, workspaces).report();
     expect(report.bySession.map((s) => s.workspaceId).sort()).toEqual(["ws-old", "ws-recent"]);
     expect(report.windowStart).toBe(day(0)); // earliest event
+  });
+});
+
+describe("CostService.rollupIfStale", () => {
+  const events = [evt("session.create", 0, "ws-r", "alice@example.com")];
+
+  function fakeStore(initial: CostRollupRecord[] = []) {
+    let records = [...initial];
+    const store: CostRollupStore = {
+      list: () => Promise.resolve(records),
+      replaceAll: (next) => {
+        records = [...next];
+        return Promise.resolve();
+      },
+    };
+    return {
+      store,
+      get records() {
+        return records;
+      },
+    };
+  }
+
+  function svc(nowIso: string, store: CostRollupStore): CostService {
+    return new CostService({
+      audit: {
+        all: () => Promise.resolve(events),
+        since: (from: string) =>
+          Promise.resolve(events.filter((e) => e.at.localeCompare(from) > 0)),
+      },
+      workspaces: { list: () => Promise.resolve([]) },
+      clock: { now: () => isoTimestamp(nowIso) },
+      pricing: PRICING,
+      sizing: SIZING,
+      rollups: store,
+    });
+  }
+
+  const checkpoint = (checkpointAt: string): CostRollupRecord => ({
+    workspaceId: "ws-r",
+    owner: "alice@example.com",
+    checkpointAt,
+    windowStart: at(0),
+    runningMs: 0,
+    stoppedMs: 0,
+    teardownMs: 0,
+    phase: "running",
+  });
+
+  it("regenerates the checkpoints when none exist", async () => {
+    const f = fakeStore([]);
+    await svc(at(4), f.store).rollupIfStale(2 * 3_600_000);
+    expect(f.records.length).toBeGreaterThan(0);
+    expect(f.records[0]?.checkpointAt).toBe(at(4));
+  });
+
+  it("no-ops when the newest checkpoint is within the cadence", async () => {
+    const f = fakeStore([checkpoint(at(3.5))]); // 0.5h old at now=4h
+    await svc(at(4), f.store).rollupIfStale(2 * 3_600_000); // 2h cadence → fresh
+    expect(f.records[0]?.checkpointAt).toBe(at(3.5)); // untouched
+  });
+
+  it("regenerates when the newest checkpoint is older than the cadence", async () => {
+    const f = fakeStore([checkpoint(at(0))]); // 4h old at now=4h
+    await svc(at(4), f.store).rollupIfStale(1 * 3_600_000); // 1h cadence → stale
+    expect(f.records[0]?.checkpointAt).toBe(at(4)); // regenerated to now
   });
 });

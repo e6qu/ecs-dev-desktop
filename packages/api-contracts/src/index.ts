@@ -308,14 +308,16 @@ export type AuditFeedResponse = z.infer<typeof auditFeedResponse>;
 // --- Admin: cost report (prices the lifecycle audit ledger) ---
 
 export const costBreakdown = z.object({
-  computeUsd: z.number(),
-  volumeUsd: z.number(),
-  snapshotUsd: z.number(),
-  totalUsd: z.number(),
-  runningMs: z.number(),
-  stoppedMs: z.number(),
+  // Costs and durations are domain-nonnegative; a negative value from a buggy pricer
+  // is non-representable (fails the contract) rather than silently surfacing in a report.
+  computeUsd: z.number().nonnegative(),
+  volumeUsd: z.number().nonnegative(),
+  snapshotUsd: z.number().nonnegative(),
+  totalUsd: z.number().nonnegative(),
+  runningMs: z.number().int().nonnegative(),
+  stoppedMs: z.number().int().nonnegative(),
   /** Teardown-window ms (delete request → termination); bills volume + snapshot. */
-  teardownMs: z.number(),
+  teardownMs: z.number().int().nonnegative(),
 });
 export type CostBreakdownDto = z.infer<typeof costBreakdown>;
 
@@ -361,9 +363,17 @@ export type CostReport = z.infer<typeof costReport>;
 
 // --- Admin: quota report (per-role limits + per-user usage) ---
 
+/** The RBAC roles (mirrors `@edd/authz` `ROLES` — kept here so the contract has no
+ * dep on authz; the role-mapping test pins them in sync). A closed enum, not a bare
+ * string, so a typo'd/unknown role can't ride a DTO. */
+export const role = z.enum(["viewer", "member", "admin"]);
+export type RoleDto = z.infer<typeof role>;
+
 export const quotaReport = z.object({
-  /** Per-role workspace caps (`limit: null` = unlimited). */
-  limits: z.array(z.object({ role: z.string(), limit: z.number().nullable() })),
+  /** Per-role workspace caps (`limit: null` = unlimited). A negative or fractional
+   * cap is non-representable — a misconfigured limit fails the contract, not silently
+   * drives quota enforcement. */
+  limits: z.array(z.object({ role, limit: z.number().int().nonnegative().nullable() })),
   /** Current workspace count per owner, busiest first. */
   usage: z.array(z.object({ owner: z.string(), count: z.number().int().nonnegative() })),
 });
@@ -399,6 +409,10 @@ export const COST_WINDOW_DAYS: Record<CostWindow, number | null> = {
   "7d": 7,
   "30d": 30,
 };
+
+/** Response of `POST /api/admin/costs/rollup` (regenerate the cost checkpoints). */
+export const costRollupResponse = z.object({ ok: z.literal(true) });
+export type CostRollupResponse = z.infer<typeof costRollupResponse>;
 
 /** Parse a possibly-absent `?window=` value to a valid window: an absent param
  * defaults to `all`, but an explicit invalid value is rejected (`.default` not
@@ -516,8 +530,9 @@ export type SshAuthorizeResponse = z.infer<typeof sshAuthorizeResponse>;
 
 /** GET /api/workspaces/:id/connect-info — response body. */
 export const sshConnectInfo = z.object({
-  /** Private IP of the workspace task's ENI (routable within the VPC). */
-  host: z.string(),
+  /** Private IPv4 of the workspace task's ENI (routable within the VPC). Non-empty —
+   * the route returns 409 before this, but an empty host is non-representable here too. */
+  host: z.string().min(1),
   /** SSH port on the workspace container (always 22 in production). */
   port: z.number().int().min(1).max(65535),
 });

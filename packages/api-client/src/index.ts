@@ -3,6 +3,7 @@ import {
   auditFeedResponse,
   baseImageEntry,
   costReport,
+  costRollupResponse,
   quotaReport,
   overviewReport,
   createBaseImageRequest,
@@ -262,6 +263,13 @@ export class ApiClient {
     const qs = window === undefined ? "" : `?window=${window}`;
     const res = await this.send(`/api/admin/costs${qs}`);
     return costReport.parse(await res.json());
+  }
+
+  /** Regenerate the per-workspace cost checkpoints (a scheduled/cron admin call) so the
+   * cost report stays O(recent). Same figures — just refreshes the rollup. */
+  async adminCostsRollup(): Promise<void> {
+    const res = await this.send("/api/admin/costs/rollup", { method: "POST" });
+    costRollupResponse.parse(await res.json());
   }
 
   /** The quota report: per-role workspace limits + current per-user usage. */
