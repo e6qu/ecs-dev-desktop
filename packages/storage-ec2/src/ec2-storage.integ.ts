@@ -16,9 +16,13 @@ process.env.AWS_SECRET_ACCESS_KEY ??= "test";
 // `dataIo: false` because EBS file contents aren't reachable over the EC2 API
 // (§6.8; the data-fidelity cases run on the fake + the real-AWS tier). This is what
 // keeps the fake honest against real EBS over the standard API.
-storageProviderContract("Ec2StorageProvider (sim)", () => Promise.resolve(Ec2StorageProvider.fromEnv()), {
-  dataIo: false,
-});
+storageProviderContract(
+  "Ec2StorageProvider (sim)",
+  () => Promise.resolve(Ec2StorageProvider.fromEnv()),
+  {
+    dataIo: false,
+  },
+);
 
 describe("Ec2StorageProvider against the sockerless AWS sim", () => {
   const sp = Ec2StorageProvider.fromEnv();

@@ -56,7 +56,11 @@ export function computeProviderContract(
     it("hydrates a fresh task from a snapshot (the wake path)", async () => {
       const { compute, baseImage, makeSnapshot } = await makeHarness();
       const fromSnapshot = await makeSnapshot();
-      const task = await compute.runTask({ workspaceId: newWorkspaceId(), baseImage, fromSnapshot });
+      const task = await compute.runTask({
+        workspaceId: newWorkspaceId(),
+        baseImage,
+        fromSnapshot,
+      });
       try {
         expect(task.volumeId).toBeTruthy();
         expect(await compute.taskState(task.id)).toBe("running");

@@ -1921,3 +1921,30 @@ listStuckProvisioning` + `recoverStuckProvisioning` revert provisioning→stoppe
   Deliberately deferred (involved / needs a product call, tracked in `BUGS.md`): `SshKeyService`/
   `GitCredentialService` signature branding; billing-at-teardown (rewires the cost model); the
   `finishDeleting` snapshot-retention mechanism; storage/compute port contracts.
+
+- **Deferred-cleanup PR (2026-06-20, `feat/deferred-cleanup-fat-pr`) — closed the last deferred sweep
+  items in one PR.** **Weak-type service signatures:** `SshKeyService`/`GitCredentialService` public
+  methods take branded ids (`OwnerId`/`SshKeyId`/`SshPublicKey`); `ownerForKey` returns branded ids; a
+  closed `GitProviderId` union replaces the bare credential-provider string (named `GitProviderId` to
+  avoid the unrelated `GitProvider` app interface). **Port contracts:** `storageProviderContract` gained a
+  `{dataIo}` gate so its control-plane subset (volume/snapshot lifecycle + snapshot-hydration lineage +
+  retain) runs against the REAL `Ec2StorageProvider` in the integ tier (`dataIo:false`; EBS file bytes
+  stay §6.8 — fake/real-AWS only); a new `computeProviderContract` runs against the fake (tier-1) AND the
+  real `EcsComputeProvider` in container-mode e2e (the only tier where `runTask` reaches RUNNING), proving
+  task-lifecycle + snapshot-hydration parity. **Snapshot retention (Middle policy):** the data-safety
+  snapshot taken at teardown is RETAINED via an `edd:retain` tag through the storage port
+  (`createSnapshot({retain})` + `tagSnapshotRetained`, read back on `SnapshotRef.retained`) and a GC
+  keep-set (`selectOrphanSnapshots` never reaps a retained snapshot); `finishDeleting` takes a fresh
+  retained snapshot of a live volume, else tags the existing latest snapshot retained. **Quota-drift
+  self-heal:** `WorkspaceService.reconcileOwnerCounts()` recomputes each owner's true live count and
+  corrects a drifted per-owner quota counter (the unconditional teardown decrement can drift it), each
+  correction conditioned on the observed value so a racing create/delete is never clobbered; wired as a
+  reconciler sweep step emitting `reconciler.quota.drift_corrected`. **Billing-to-teardown** (user chose
+  "bill until teardown completes"): the cost model gained a fourth **teardown** phase — `session.delete`
+  is the delete REQUEST that opens it (compute stops; volume + snapshot keep billing), a new
+  `session.terminated` (emitted by `finishDeleting` atomically with the hard-delete + quota decrement)
+  closes it and ends billing; threaded through `BillingIntervals`/`BillingState`/`CostBreakdown`, both
+  walkers, the cost-rollup record + `costRollup` DB entity + `costBreakdown` contract. The figure-
+  equivalence invariant (rollup == full-scan) is preserved (same walker both paths) and extended with
+  teardown/terminate checkpoint cases. Green through build + all unit suites + lint; integ/e2e in CI. One
+  item still deferred (in `BUGS.md`): a UI Open/Connect affordance (gated on the proxy-domain config).

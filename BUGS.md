@@ -10,24 +10,32 @@ A broad 6-agent sweep (API-first/thin-UI, fake telemetry/monitoring, weak types,
 idempotency/self-heal/fail-loud, correctness/UX), each finding traced to the code. The codebase is
 high-quality overall (no fabricated metrics, no `any`/`@ts-ignore` in src, strong authz/cost tests).
 Batch 1 (correctness + fail-loud + telemetry honesty), batch 2 (test fidelity), batch 3 (atomic quota),
-and the big combined PR (API-first thin-UI, weak-type branding, UX, idempotency follow-ups) have landed
-**most** of these — the bullets below record what's FIXED and the small set deliberately deferred:
+the big combined PR (API-first thin-UI, weak-type branding, UX, idempotency follow-ups), and the
+**deferred-cleanup PR** (`feat/deferred-cleanup-fat-pr` — service-signature branding, port contracts,
+snapshot retention, quota-drift self-heal, billing-to-teardown) have landed **all** of these. The bullets
+below record what's FIXED; only one sub-item (a UI Open/Connect affordance) stays deferred, gated on the
+proxy-domain config:
 
-- **[weak types] — `Principal.id` + `ownerEmail` + `AuditAction` FIXED (big PR); service signatures remain.**
-  Done: `Principal.id` → `OwnerId` (branded once at the identity edge — the per-call `ownerId(principal.id)`
-  re-brands are gone); `ownerEmail` contract → `z.email()`; the audit-action vocabulary is now a typed
-  `AuditAction` union (a typo'd action is a compile error, protecting the cost ledger's exact-string
-  filter). Remaining (deferred — lower value, `OwnerId` already flows safely as a string-brand):
-  `SshKeyService`/`GitCredentialService` public methods still take bare `string` for branded ids, and a
-  `GitProvider` union for the credential provider.
-- **[fake tests] — request-shape assertions + anemic tests FIXED (batch 2); port contracts remain.**
-  Done: `ec2-storage-provider.test.ts` / `ecs-compute-provider.test.ts` now assert `command.input` (the
-  `edd:managed` tag, `edd:workspace-id` tag, `deleteOnTermination`, the Size↔snapshot branch, the `tag:`
-  filters with `OwnerIds:self`, `copySnapshot` destination region); `role-mapping.test.ts` covers the
-  `member` branch and admin precedence; the `pricing.test.ts` / `contracts.test.ts` tautologies were
-  replaced with real/derived assertions. Remaining: the storage fidelity contract runs only against the
-  fake (never wired into the `storage-ec2` integ tier), and there is no `computeProviderContract` at all
-  (fake `taskState`/snapshot-hydration parity untested).
+- **[weak types] — FIXED (big PR + deferred-cleanup PR).**
+  Done (big PR): `Principal.id` → `OwnerId` (branded once at the identity edge — the per-call
+  `ownerId(principal.id)` re-brands are gone); `ownerEmail` contract → `z.email()`; the audit-action
+  vocabulary is now a typed `AuditAction` union (a typo'd action is a compile error, protecting the cost
+  ledger's exact-string filter — and now includes `session.terminated`). Done (deferred-cleanup PR):
+  `SshKeyService`/`GitCredentialService` public methods take branded ids (`OwnerId`/`SshKeyId`/
+  `SshPublicKey`); `ownerForKey` returns branded ids; a closed `GitProviderId` union replaces the bare
+  provider string (a typo is a compile error; named `GitProviderId` to avoid the existing `GitProvider`
+  app-interface clash).
+- **[fake tests] — FIXED (batch 2 + deferred-cleanup PR).**
+  Done (batch 2): `ec2-storage-provider.test.ts` / `ecs-compute-provider.test.ts` assert `command.input`
+  (the `edd:managed` tag, `edd:workspace-id` tag, `deleteOnTermination`, the Size↔snapshot branch, the
+  `tag:` filters with `OwnerIds:self`, `copySnapshot` destination region); `role-mapping.test.ts` covers
+  the `member` branch and admin precedence; the `pricing.test.ts` / `contracts.test.ts` tautologies were
+  replaced with real assertions. Done (deferred-cleanup PR): `storageProviderContract` gained a `{dataIo}`
+  gate so its control-plane subset (lifecycle + snapshot-hydration lineage + retain) runs against the REAL
+  `Ec2StorageProvider` in the integ tier (`dataIo:false`; EBS file bytes stay §6.8); a new
+  `computeProviderContract` runs against the fake (tier-1) AND the real `EcsComputeProvider`
+  (container-mode e2e — the tier where `runTask` reaches RUNNING), proving task-lifecycle +
+  snapshot-hydration parity.
 - **[API-first / thin UI] — FIXED (big PR).** The workspace DTO is now self-rendering:
   `availableActions` (from the core state machine), the catalog `imageName`/description/tags/tools join,
   and the `sshCommand` are all server-computed and ride the contract (`toWorkspaceDto` + a shared
@@ -44,18 +52,26 @@ and the big combined PR (API-first thin-UI, weak-type branding, UX, idempotency 
   concurrent-burst integ test). **`recordSecurityEvent` idempotency FIXED (big PR)** — a deterministic
   event id per (workspace, tool, time bucket) + conditional `create` dedupes the in-workspace guard's
   `curl --retry`, so a retry writes no duplicate audit row and no double metric (proven by an integ test).
-  Remaining idempotency follow-ups (deferred — involved + a product call): billing stops at delete-_request_
-  not teardown (cost under-counts during teardown lag — the fix rewires `session.delete` → a teardown
-  terminate event and risks the cost-equivalence invariant); `finishDeleting`'s data-safety snapshot is
-  GC'd after the grace window rather than retained per the chosen "Middle" policy (needs a retain-tag
-  mechanism through the storage port + GC keep-set); a counter-vs-actual drift-reconciliation sweep.
-- **[UX] — FIXED (big PR).** Workspace delete now takes a **two-step confirm** (a mis-click can't destroy
-  the EBS volume/snapshot) + auto-refresh-on-409 so scale-to-zero state drift re-syncs the offered
-  actions; the Health/Infra boards **keep the last-known state** on a transient poll error (a "stale"
-  banner, not a blank); the GitHub repo-load failure resolves to an empty list (no eternal spinner); the
-  owner card shows a **degraded** indicator when `functional !== ok`; the environment picker has
-  `aria-pressed`. Remaining (deferred): per-row SSH-key/base-image delete confirms; an Open/Connect
-  affordance (needs the proxy-domain config wired).
+  Idempotency follow-ups — FIXED (deferred-cleanup PR): (a) **billing-to-teardown** — billing ran only to
+  the delete _request_, so the EBS volume + retained snapshot cost money through teardown for free; the
+  cost model gained a fourth **teardown** phase (`session.delete` opens it billing volume+snapshot, no
+  compute; a new `session.terminated` emitted by `finishDeleting` closes it), threaded through
+  `BillingState`/`CostBreakdown`/the rollup record + DB entity + contract, with the figure-equivalence
+  invariant preserved + extended (user-chosen policy: "bill until teardown completes"). (b) **snapshot
+  retention** — `finishDeleting`'s data-safety snapshot is now RETAINED per the Middle policy via an
+  `edd:retain` tag through the storage port (`createSnapshot({retain})` + `tagSnapshotRetained`) and a GC
+  keep-set (`selectOrphanSnapshots` never reaps a retained snapshot). (c) **counter-vs-actual
+  drift-reconciliation** — a reconciler sweep step (`reconcileOwnerCounts`) recomputes each owner's true
+  live count and corrects a drifted quota counter (conditioned on the observed value so a racing
+  create/delete is never clobbered), emitting `reconciler.quota.drift_corrected`.
+- **[UX] — FIXED (big PR + deferred-cleanup PR).** Workspace delete takes a **two-step confirm** (a
+  mis-click can't destroy the EBS volume/snapshot) + auto-refresh-on-409; the Health/Infra boards **keep
+  the last-known state** on a transient poll error (a "stale" banner, not a blank); the GitHub repo-load
+  failure resolves to an empty list (no eternal spinner); the owner card shows a **degraded** indicator
+  when `functional !== ok`; the environment picker has `aria-pressed`. Done (deferred-cleanup PR): the
+  per-row **SSH-key** and **base-image** deletes now take the same two-step confirm (SSH-key confirm keyed
+  by id so arming one row doesn't arm the rest). Remaining (deferred): an Open/Connect affordance (needs
+  the proxy-domain config wired — DYNAMIC wake-gate territory).
 
 The codex code-review findings (2026-06-19) that were tracked here are **all remediated and merged
 in #129** (Phase 9; "12 findings, none deferred") — moved to _Resolved (repo)_ below, re-verified
