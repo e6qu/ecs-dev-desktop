@@ -62,6 +62,7 @@ const TEST_TABLE = "ecs-dev-desktop-cp-integ";
 describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
   let client: ReturnType<typeof createDynamoClient>;
   let service: WorkspaceService;
+  let storage: FakeStorageProvider;
 
   beforeAll(async () => {
     client = createDynamoClient();
@@ -70,7 +71,7 @@ describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
   });
 
   beforeEach(async () => {
-    const storage = await FakeStorageProvider.create();
+    storage = await FakeStorageProvider.create();
     service = new WorkspaceService({
       workspaces: makeWorkspaceEntity(client, TEST_TABLE),
       storage,
@@ -235,6 +236,18 @@ describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
     // The reconciler's finishDeleting converges teardown and removes the record.
     expect((await service.finishDeleting(workspaceId(ws.id))).ok).toBe(true);
     expect(await service.get(workspaceId(ws.id))).toBeNull();
+  });
+
+  it("finishDeleting retains a final data-safety snapshot (Middle policy)", async () => {
+    // A working session (live volume, no prior snapshot) is deleted: finishDeleting
+    // must capture a RETAINED final snapshot so the data survives the teardown and the
+    // orphan-GC keep-set never reaps it.
+    const ws = await service.create({ ownerId: ownerId("retain"), baseImage: baseImage("img") });
+    expect((await service.remove(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.finishDeleting(workspaceId(ws.id))).ok).toBe(true);
+
+    const snaps = await storage.listSnapshots();
+    expect(snaps.some((s) => s.retained === true)).toBe(true);
   });
 
   it("rejects snapshot of a deleting tombstone (it still has a volume) with a conflict", async () => {
@@ -515,6 +528,27 @@ describe("WorkspaceService quota enforcement (atomic, DynamoDB Local)", () => {
     expect((await service.finishDeleting(workspaceId(made[0] ?? ""))).ok).toBe(true);
     // The freed slot lets a new create succeed.
     await expect(create("del-user")).resolves.toBeDefined();
+  });
+
+  it("reconcileOwnerCounts self-heals counters drifted from the actual records", async () => {
+    const counts = makeOwnerWorkspaceCountEntity(client, QUOTA_TABLE);
+    // Owner A: 2 real workspaces, but the counter drifted HIGH (e.g. an out-of-band
+    // record removal that never decremented) — which would wrongly block new creates.
+    await create("drift-a");
+    await create("drift-a");
+    await counts.update({ ownerId: "drift-a" }).add({ count: 5 }).go(); // 7, actual 2
+    // Owner B: 1 real workspace, counter drifted LOW (a lost-race decrement) — which
+    // would wrongly let creates slip past the cap.
+    await create("drift-b");
+    await counts.update({ ownerId: "drift-b" }).subtract({ count: 1 }).go(); // 0, actual 1
+
+    const corrected = await service.reconcileOwnerCounts();
+    expect(corrected).toBeGreaterThanOrEqual(2);
+    expect((await counts.get({ ownerId: "drift-a" }).go()).data?.count).toBe(2);
+    expect((await counts.get({ ownerId: "drift-b" }).go()).data?.count).toBe(1);
+
+    // Convergent: a second pass finds nothing to correct (all counters now match).
+    expect(await service.reconcileOwnerCounts()).toBe(0);
   });
 });
 

@@ -44,7 +44,12 @@ export function selectOrphanVolumes(
     .map((v) => v.id);
 }
 
-/** Snapshots safe to delete — the snapshot analogue of {@link selectOrphanVolumes}. */
+/**
+ * Snapshots safe to delete — the snapshot analogue of {@link selectOrphanVolumes},
+ * with one extra guard: a snapshot marked `retained` (the Middle policy's
+ * data-safety keep taken at teardown) is NEVER reaped, regardless of the grace
+ * window, so a deleted workspace's final snapshot survives orphan GC.
+ */
 export function selectOrphanSnapshots(
   existing: readonly SnapshotRef[],
   referenced: ReadonlySet<SnapshotId>,
@@ -52,7 +57,9 @@ export function selectOrphanSnapshots(
   graceMs: number,
 ): SnapshotId[] {
   return existing
-    .filter((s) => !referenced.has(s.id) && olderThan(s.createdAt, now, graceMs))
+    .filter(
+      (s) => s.retained !== true && !referenced.has(s.id) && olderThan(s.createdAt, now, graceMs),
+    )
     .map((s) => s.id);
 }
 

@@ -102,6 +102,10 @@ export const METRIC_FLEET_COST_USD = "fleet.cost.usd";
 export const METRIC_QUOTA_UTILIZATION = "quota.utilization";
 /** A create rejected because the per-role workspace quota was reached. */
 export const METRIC_QUOTA_DENIED = "quota.denied";
+/** Per-owner quota counters corrected to match actual records in a reconciler
+ * sweep (drift self-heal). A persistently non-zero value means counters are
+ * diverging from reality (e.g. an unconditional decrement losing races). */
+export const METRIC_RECONCILER_QUOTA_DRIFT_CORRECTED = "reconciler.quota.drift_corrected";
 
 /** Sink that drops every metric — the default when no real sink is wired. */
 export class NoopMetricSink implements MetricSink {

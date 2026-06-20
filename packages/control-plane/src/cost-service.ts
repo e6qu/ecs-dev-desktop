@@ -47,6 +47,7 @@ export interface CostRollupRecord {
   readonly windowStart: string;
   readonly runningMs: number;
   readonly stoppedMs: number;
+  readonly teardownMs: number;
   readonly phase: string;
 }
 
@@ -97,7 +98,7 @@ function earliestAt(events: readonly AuditEvent[], now: string): string {
   return earliest;
 }
 
-const PHASES = new Set(["running", "stopped", "none", "terminated"]);
+const PHASES = new Set(["running", "stopped", "teardown", "none", "terminated"]);
 function asPhase(value: string): BillingState["phase"] {
   return PHASES.has(value) ? (value as BillingState["phase"]) : "none";
 }
@@ -150,6 +151,7 @@ export class CostService {
         windowStart,
         runningMs: state.runningMs,
         stoppedMs: state.stoppedMs,
+        teardownMs: state.teardownMs,
         phase: state.phase,
       };
     });
@@ -204,6 +206,7 @@ export class CostService {
       const state: BillingState = {
         runningMs: r.runningMs,
         stoppedMs: r.stoppedMs,
+        teardownMs: r.teardownMs,
         phase: asPhase(r.phase),
       };
       const resumed = resumeBilling(state, checkpoint, tailEvents, now);
@@ -213,7 +216,7 @@ export class CostService {
         owner: r.owner,
         state: record?.state ?? (resumed.terminated ? "terminated" : "unknown"),
         terminated: resumed.terminated,
-        ...priceDurations(resumed.runningMs, resumed.stoppedMs, pricing, sizing),
+        ...priceDurations(resumed.runningMs, resumed.stoppedMs, resumed.teardownMs, pricing, sizing),
       });
     }
 
@@ -252,6 +255,7 @@ export class StoredCostRollupStore implements CostRollupStore {
       windowStart: r.windowStart,
       runningMs: r.runningMs,
       stoppedMs: r.stoppedMs,
+      teardownMs: r.teardownMs,
       phase: r.phase,
     }));
   }

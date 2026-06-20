@@ -13,6 +13,9 @@ export function BaseImageActions({ id, enabled }: { id: string; enabled: boolean
   const router = useRouter();
   const [busy, setBusy] = useState<Pending>(null);
   const [error, setError] = useState<string | null>(null);
+  // Deleting a base image is destructive (workspaces can no longer be created from it),
+  // so it takes a second click to confirm — a mis-click can't remove a catalog entry.
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   async function run(action: Exclude<Pending, null>): Promise<void> {
     setBusy(action);
@@ -25,6 +28,7 @@ export function BaseImageActions({ id, enabled }: { id: string; enabled: boolean
       setError(e instanceof Error ? e.message : "action failed");
     } finally {
       setBusy(null);
+      setConfirmingDelete(false);
     }
   }
 
@@ -44,12 +48,29 @@ export function BaseImageActions({ id, enabled }: { id: string; enabled: boolean
         type="button"
         className="btn danger"
         disabled={busy !== null}
+        aria-label={confirmingDelete ? "confirm delete — removes this base image" : "delete"}
+        title="Removes this base image from the catalog"
         onClick={() => {
+          if (!confirmingDelete) {
+            setConfirmingDelete(true);
+            return;
+          }
           void run("delete");
         }}
       >
-        {busy === "delete" ? "…" : "delete"}
+        {busy === "delete" ? "…" : confirmingDelete ? "confirm delete?" : "delete"}
       </button>
+      {confirmingDelete && busy === null && (
+        <button
+          type="button"
+          className="btn"
+          onClick={() => {
+            setConfirmingDelete(false);
+          }}
+        >
+          cancel
+        </button>
+      )}
       {error !== null && (
         <span className="mono" style={{ color: "var(--st-error)", fontSize: 11 }}>
           {error}

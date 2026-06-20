@@ -12,10 +12,18 @@ import type { AuditEvent } from "./audit";
  *
  * Cost has three components, matching how the platform actually bills on AWS:
  *  - **compute** — Fargate vCPU + memory, billed only while a task runs;
- *  - **volume** — the live EBS gp3 volume, present only while running
- *    (scale-to-zero snapshots then *releases* it — see `AGENTS.md` §1);
+ *  - **volume** — the live EBS gp3 volume, present while running AND through
+ *    teardown until the task is stopped (scale-to-zero snapshots then *releases*
+ *    it — see `AGENTS.md` §1);
  *  - **snapshot** — EBS snapshot storage, the unit of persistence that holds a
- *    scaled-to-zero workspace, billed while it is stopped.
+ *    scaled-to-zero workspace, billed while it is stopped AND through teardown.
+ *
+ * A workspace's lifecycle has a fourth billable phase, **teardown**: the window
+ * between the delete *request* (`session.delete`) and teardown *completion*
+ * (`session.terminated`, emitted by `finishDeleting` once the task is stopped and
+ * the record removed). The EBS volume and its data-safety snapshot keep costing
+ * real money through that window, so it bills volume + snapshot (no compute) —
+ * otherwise teardown lag would be silently free (an under-count).
  */
 
 /** Milliseconds in one hour. */
@@ -35,8 +43,12 @@ const MS_PER_MONTH = HOURS_PER_MONTH * MS_PER_HOUR;
 const RUNNING_START_ACTIONS: ReadonlySet<string> = new Set(["session.create", "session.start"]);
 /** Audit action that scales a workspace to zero (running → stopped/snapshot). */
 const STOP_ACTION = "session.stop";
-/** Audit action that terminates a workspace (ends all billing). */
-const TERMINATE_ACTION = "session.delete";
+/** Audit action for the delete *request* — compute stops, but the volume + snapshot
+ * keep billing through the teardown window (it opens the `teardown` phase). */
+const TEARDOWN_START_ACTION = "session.delete";
+/** Audit action for teardown *completion* (finishDeleting stopped the task and
+ * removed the record) — ends all billing. */
+const TERMINATE_ACTION = "session.terminated";
 
 /**
  * Per-hour / per-month USD rates the cost model applies. Every rate is supplied
@@ -76,7 +88,10 @@ export interface BillingIntervals {
   readonly running: readonly Interval[];
   /** Windows the workspace was scaled to zero, held by a snapshot (snapshot cost). */
   readonly stopped: readonly Interval[];
-  /** True once the workspace was deleted — no interval is left open to `now`. */
+  /** Windows between the delete request and teardown completion — the volume +
+   * snapshot still exist and bill (no compute). */
+  readonly teardown: readonly Interval[];
+  /** True once the workspace finished teardown — no interval is left open to `now`. */
   readonly terminated: boolean;
 }
 
@@ -88,6 +103,8 @@ export interface CostBreakdown {
   readonly totalUsd: number;
   readonly runningMs: number;
   readonly stoppedMs: number;
+  /** Teardown-window ms (delete request → termination); bills volume + snapshot. */
+  readonly teardownMs: number;
 }
 
 /** One workspace's events plus the attribution the shell resolved (owner +
@@ -142,12 +159,16 @@ export function deriveBillingIntervals(
   const sorted = [...events].sort((a, b) => a.at.localeCompare(b.at));
   const running: Interval[] = [];
   const stopped: Interval[] = [];
-  let phase: "none" | "running" | "stopped" = "none";
+  const teardown: Interval[] = [];
+  let phase: "none" | "running" | "stopped" | "teardown" = "none";
   let openSince = 0;
   let terminated = false;
 
-  const close = (bucket: Interval[], toMs: number): void => {
-    bucket.push({ fromMs: openSince, toMs: Math.max(openSince, toMs) });
+  const bucketFor = (p: typeof phase): Interval[] | null =>
+    p === "running" ? running : p === "stopped" ? stopped : p === "teardown" ? teardown : null;
+  const closeOpen = (toMs: number): void => {
+    const bucket = bucketFor(phase);
+    if (bucket !== null) bucket.push({ fromMs: openSince, toMs: Math.max(openSince, toMs) });
   };
 
   for (const event of sorted) {
@@ -155,28 +176,34 @@ export function deriveBillingIntervals(
     const atMs = Date.parse(event.at);
     if (Number.isNaN(atMs)) continue;
     if (RUNNING_START_ACTIONS.has(event.action)) {
-      if (phase === "stopped") close(stopped, atMs);
-      if (phase !== "running") {
+      // A start during teardown is impossible (a deleting workspace can't wake), so
+      // only re-open from none/stopped — never reverse a committed teardown.
+      if (phase === "stopped") closeOpen(atMs);
+      if (phase === "none" || phase === "stopped") {
         phase = "running";
         openSince = atMs;
       }
     } else if (event.action === STOP_ACTION) {
       if (phase === "running") {
-        close(running, atMs);
+        closeOpen(atMs);
         phase = "stopped";
         openSince = atMs;
       }
+    } else if (event.action === TEARDOWN_START_ACTION) {
+      if (phase === "running" || phase === "stopped") {
+        closeOpen(atMs);
+        phase = "teardown";
+        openSince = atMs;
+      }
     } else if (event.action === TERMINATE_ACTION) {
-      if (phase === "running") close(running, atMs);
-      else if (phase === "stopped") close(stopped, atMs);
+      closeOpen(atMs);
       terminated = true;
       phase = "none";
     }
   }
 
-  if (!terminated && phase === "running") close(running, nowMs);
-  if (!terminated && phase === "stopped") close(stopped, nowMs);
-  return { running, stopped, terminated };
+  if (!terminated) closeOpen(nowMs);
+  return { running, stopped, teardown, terminated };
 }
 
 function totalMs(intervals: readonly Interval[]): number {
@@ -205,6 +232,7 @@ export function clipIntervals(intervals: BillingIntervals, window: Interval): Bi
   return {
     running: clip(intervals.running),
     stopped: clip(intervals.stopped),
+    teardown: clip(intervals.teardown),
     terminated: intervals.terminated,
   };
 }
@@ -221,7 +249,13 @@ export function priceIntervals(
   pricing: Pricing,
   sizing: WorkspaceSizing,
 ): CostBreakdown {
-  return priceDurations(totalMs(intervals.running), totalMs(intervals.stopped), pricing, sizing);
+  return priceDurations(
+    totalMs(intervals.running),
+    totalMs(intervals.stopped),
+    totalMs(intervals.teardown),
+    pricing,
+    sizing,
+  );
 }
 
 /**
@@ -233,6 +267,7 @@ export function priceIntervals(
 export function priceDurations(
   runningMs: number,
   stoppedMs: number,
+  teardownMs: number,
   pricing: Pricing,
   sizing: WorkspaceSizing,
 ): CostBreakdown {
@@ -240,8 +275,13 @@ export function priceDurations(
   const computeUsd =
     runningHours *
     (sizing.vcpu * pricing.fargateVcpuHourUsd + sizing.memoryGib * pricing.fargateGbHourUsd);
-  const volumeUsd = (runningMs / MS_PER_MONTH) * sizing.volumeGib * pricing.ebsGbMonthUsd;
-  const snapshotUsd = (stoppedMs / MS_PER_MONTH) * sizing.volumeGib * pricing.snapshotGbMonthUsd;
+  // The live EBS volume bills while running AND through teardown (until the task is
+  // stopped); the snapshot bills while stopped AND through teardown (the data-safety
+  // snapshot exists). Teardown therefore accrues both, but no compute.
+  const volumeUsd =
+    ((runningMs + teardownMs) / MS_PER_MONTH) * sizing.volumeGib * pricing.ebsGbMonthUsd;
+  const snapshotUsd =
+    ((stoppedMs + teardownMs) / MS_PER_MONTH) * sizing.volumeGib * pricing.snapshotGbMonthUsd;
   return {
     computeUsd,
     volumeUsd,
@@ -249,6 +289,7 @@ export function priceDurations(
     totalUsd: computeUsd + volumeUsd + snapshotUsd,
     runningMs,
     stoppedMs,
+    teardownMs,
   };
 }
 
@@ -262,7 +303,8 @@ export function priceDurations(
 export interface BillingState {
   readonly runningMs: number;
   readonly stoppedMs: number;
-  readonly phase: "running" | "stopped" | "none" | "terminated";
+  readonly teardownMs: number;
+  readonly phase: "running" | "stopped" | "teardown" | "none" | "terminated";
 }
 
 /** The lifecycle transition walk, shared by the checkpoint helpers so they price
@@ -275,24 +317,27 @@ function walkBilling(
   afterMs: number,
   throughMs: number,
   init: {
-    phase: "running" | "stopped" | "none";
+    phase: "running" | "stopped" | "teardown" | "none";
     openSince: number;
     runningMs: number;
     stoppedMs: number;
+    teardownMs: number;
   },
 ): {
-  phase: "running" | "stopped" | "none";
+  phase: "running" | "stopped" | "teardown" | "none";
   openSince: number;
   runningMs: number;
   stoppedMs: number;
+  teardownMs: number;
   terminated: boolean;
 } {
-  let { phase, openSince, runningMs, stoppedMs } = init;
+  let { phase, openSince, runningMs, stoppedMs, teardownMs } = init;
   let terminated = false;
   const add = (toMs: number): void => {
     const d = Math.max(0, toMs - openSince);
     if (phase === "running") runningMs += d;
     else if (phase === "stopped") stoppedMs += d;
+    else if (phase === "teardown") teardownMs += d;
   };
   const sorted = [...events]
     .filter((e) => {
@@ -304,7 +349,7 @@ function walkBilling(
     if (terminated) break;
     const atMs = Date.parse(event.at);
     if (RUNNING_START_ACTIONS.has(event.action)) {
-      if (phase !== "running") {
+      if (phase === "none" || phase === "stopped") {
         add(atMs);
         phase = "running";
         openSince = atMs;
@@ -315,13 +360,19 @@ function walkBilling(
         phase = "stopped";
         openSince = atMs;
       }
+    } else if (event.action === TEARDOWN_START_ACTION) {
+      if (phase === "running" || phase === "stopped") {
+        add(atMs);
+        phase = "teardown";
+        openSince = atMs;
+      }
     } else if (event.action === TERMINATE_ACTION) {
       add(atMs);
       terminated = true;
       phase = "none";
     }
   }
-  return { phase, openSince, runningMs, stoppedMs, terminated };
+  return { phase, openSince, runningMs, stoppedMs, teardownMs, terminated };
 }
 
 /**
@@ -341,13 +392,18 @@ export function deriveBillingState(
     openSince: 0,
     runningMs: 0,
     stoppedMs: 0,
+    teardownMs: 0,
   });
   // Close the still-open interval at the checkpoint (fold through-checkpoint time
   // in); the phase is retained so the resume re-opens from here.
-  let { runningMs, stoppedMs } = w;
-  if (!w.terminated && w.phase === "running") runningMs += Math.max(0, cutMs - w.openSince);
-  else if (!w.terminated && w.phase === "stopped") stoppedMs += Math.max(0, cutMs - w.openSince);
-  return { runningMs, stoppedMs, phase: w.terminated ? "terminated" : w.phase };
+  let { runningMs, stoppedMs, teardownMs } = w;
+  if (!w.terminated) {
+    const d = Math.max(0, cutMs - w.openSince);
+    if (w.phase === "running") runningMs += d;
+    else if (w.phase === "stopped") stoppedMs += d;
+    else if (w.phase === "teardown") teardownMs += d;
+  }
+  return { runningMs, stoppedMs, teardownMs, phase: w.terminated ? "terminated" : w.phase };
 }
 
 /**
@@ -363,9 +419,14 @@ export function resumeBilling(
   checkpointAt: IsoTimestamp,
   eventsAfter: readonly AuditEvent[],
   now: IsoTimestamp,
-): { runningMs: number; stoppedMs: number; terminated: boolean } {
+): { runningMs: number; stoppedMs: number; teardownMs: number; terminated: boolean } {
   if (state.phase === "terminated") {
-    return { runningMs: state.runningMs, stoppedMs: state.stoppedMs, terminated: true };
+    return {
+      runningMs: state.runningMs,
+      stoppedMs: state.stoppedMs,
+      teardownMs: state.teardownMs,
+      terminated: true,
+    };
   }
   const cutMs = Date.parse(checkpointAt);
   const nowMs = Date.parse(now);
@@ -374,11 +435,16 @@ export function resumeBilling(
     openSince: cutMs,
     runningMs: state.runningMs,
     stoppedMs: state.stoppedMs,
+    teardownMs: state.teardownMs,
   });
-  let { runningMs, stoppedMs } = w;
-  if (!w.terminated && w.phase === "running") runningMs += Math.max(0, nowMs - w.openSince);
-  else if (!w.terminated && w.phase === "stopped") stoppedMs += Math.max(0, nowMs - w.openSince);
-  return { runningMs, stoppedMs, terminated: w.terminated };
+  let { runningMs, stoppedMs, teardownMs } = w;
+  if (!w.terminated) {
+    const d = Math.max(0, nowMs - w.openSince);
+    if (w.phase === "running") runningMs += d;
+    else if (w.phase === "stopped") stoppedMs += d;
+    else if (w.phase === "teardown") teardownMs += d;
+  }
+  return { runningMs, stoppedMs, teardownMs, terminated: w.terminated };
 }
 
 function addBreakdowns(a: CostBreakdown, b: CostBreakdown): CostBreakdown {
@@ -389,6 +455,7 @@ function addBreakdowns(a: CostBreakdown, b: CostBreakdown): CostBreakdown {
     totalUsd: a.totalUsd + b.totalUsd,
     runningMs: a.runningMs + b.runningMs,
     stoppedMs: a.stoppedMs + b.stoppedMs,
+    teardownMs: a.teardownMs + b.teardownMs,
   };
 }
 
@@ -399,6 +466,7 @@ const ZERO_COST: CostBreakdown = {
   totalUsd: 0,
   runningMs: 0,
   stoppedMs: 0,
+  teardownMs: 0,
 };
 
 /**
@@ -423,8 +491,8 @@ export function computeFleetCost(
     const lifetime = deriveBillingIntervals(w.events, now);
     const intervals = window ? clipIntervals(lifetime, window) : lifetime;
     const cost = priceIntervals(intervals, pricing, sizing);
-    // In a windowed view, omit sessions with no run-time inside the window.
-    if (window && cost.runningMs + cost.stoppedMs === 0) continue;
+    // In a windowed view, omit sessions with no billable time inside the window.
+    if (window && cost.runningMs + cost.stoppedMs + cost.teardownMs === 0) continue;
     bySession.push({
       workspaceId: w.workspaceId,
       owner: w.owner,

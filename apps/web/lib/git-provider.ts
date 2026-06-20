@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { DEFAULT_GITHUB_API_URL } from "@edd/config";
+import type { OwnerId } from "@edd/core";
 import { z } from "zod";
 
 import { GITHUB_API_URL_ENV, GITHUB_APP_ID_ENV, GITHUB_APP_KEY_ENV } from "./constants";
@@ -194,7 +195,7 @@ export function githubAppEnabled(): boolean {
  * GitHub App mode (when configured) ignores the per-user token; user-OAuth mode
  * reads the owner's stored token (null ⇒ the caller returns 409 "not connected").
  */
-export async function getGitProvider(ownerId: string): Promise<GitProvider | null> {
+export async function getGitProvider(ownerId: OwnerId): Promise<GitProvider | null> {
   const appCfg = githubAppConfig();
   if (appCfg !== null) return new InstallationGitProvider(appCfg);
   if (!gitCredentialsEnabled()) return null;

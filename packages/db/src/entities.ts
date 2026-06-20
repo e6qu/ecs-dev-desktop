@@ -279,6 +279,7 @@ export function makeCostRollupEntity(client: DynamoDBClient, table = TABLE) {
         windowStart: { type: "string", required: true },
         runningMs: { type: "number", required: true },
         stoppedMs: { type: "number", required: true },
+        teardownMs: { type: "number", required: true, default: 0 },
         phase: { type: "string", required: true },
       },
       indexes: {

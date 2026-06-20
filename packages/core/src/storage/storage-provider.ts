@@ -31,13 +31,21 @@ export interface SnapshotRef {
   readonly id: SnapshotId;
   readonly createdAt: IsoTimestamp;
   readonly sourceVolumeId: VolumeId;
+  /** Marked retained (the data-safety snapshot kept past delete per the Middle
+   * policy). Orphan-GC must keep these regardless of the grace window. */
+  readonly retained?: boolean;
 }
 
 export interface StorageProvider {
   createVolume(opts?: { fromSnapshot?: SnapshotId }): Promise<Volume>;
   readFile(volumeId: VolumeId, path: string): Promise<Buffer | null>;
   writeFile(volumeId: VolumeId, path: string, data: Buffer): Promise<void>;
-  createSnapshot(volumeId: VolumeId): Promise<Snapshot>;
+  /** Snapshot a volume. `retain: true` tags the snapshot as a data-safety keep
+   * (the Middle policy's final snapshot at teardown) so orphan-GC never reaps it. */
+  createSnapshot(volumeId: VolumeId, opts?: { retain?: boolean }): Promise<Snapshot>;
+  /** Mark an existing snapshot retained — used when a workspace being torn down has
+   * no live volume to re-snapshot but a prior snapshot already holds its data. */
+  tagSnapshotRetained(snapshotId: SnapshotId): Promise<void>;
   deleteVolume(volumeId: VolumeId): Promise<void>;
   deleteSnapshot(snapshotId: SnapshotId): Promise<void>;
   /** Enumerate existing volumes (for orphan GC). */

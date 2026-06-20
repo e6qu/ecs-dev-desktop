@@ -2,26 +2,31 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-20 (code-quality sweep: batches 1–3 merged #134/#135/#136; big combined PR — API-first thin-UI + weak-types + UX + idempotency — on `feat/sweep-ux-apifirst-types`)
+**Last updated:** 2026-06-20 (big combined sweep PR merged #137; deferred-cleanup PR — service-signature branding + port contracts + snapshot retention + quota-drift self-heal + billing-to-teardown — on `feat/deferred-cleanup-fat-pr`)
 
-## Active — Big combined sweep PR (`feat/sweep-ux-apifirst-types`)
+## Active — Deferred-cleanup PR (`feat/deferred-cleanup-fat-pr`)
 
-The final, large code-quality-sweep PR, bundling four workstreams (built incrementally as committed
-chunks, all green through full pre-commit + integ tests):
+Closes the remaining deferred items from the code-quality sweep in one PR (built as committed chunks,
+green through build + all unit suites + lint; integ/e2e run in CI). The user chose "bill until teardown
+completes" for the billing-semantics decision:
 
-- **API-first thin-UI (the reskinnability goal):** the workspace DTO is self-rendering — `availableActions`
-  (core `workspaceActions`), the catalog `imageName`/tags/tools join, and `sshCommand` are server-computed
-  and ride the contract (shared `enrichWorkspace`); `WorkspaceCard` is a pure renderer; both
-  `catalog-details.ts` and the client state-machine mirror are deleted. New `quotaReport`/`overviewReport`
-  contracts + routes + client methods + pages; Costs uses `adminCosts()` + the route's window validation.
-- **Weak-types:** `Principal.id` → `OwnerId`; `ownerEmail` → `z.email()`; typed `AuditAction` union.
-- **UX:** two-step delete confirm + auto-refresh-on-409; keep-stale-data boards; repo-spinner fix;
-  degraded indicator on the owner card; `aria-pressed` picker.
-- **Idempotency:** idempotent `recordSecurityEvent`.
+- **Weak-type service signatures:** `SshKeyService`/`GitCredentialService` public methods take branded
+  ids (`OwnerId`/`SshKeyId`/`SshPublicKey`); `ownerForKey` returns branded ids; a closed `GitProviderId`
+  union replaces the bare provider string (named to avoid the existing `GitProvider` interface clash).
+- **Port contracts:** `storageProviderContract` gained a `{dataIo}` gate so its control-plane subset runs
+  against the real `Ec2StorageProvider` (integ); a new `computeProviderContract` runs against the fake
+  (tier-1) and the real `EcsComputeProvider` (container-mode e2e).
+- **Snapshot retention (Middle policy):** the teardown data-safety snapshot is RETAINED via an
+  `edd:retain` tag (storage port `createSnapshot({retain})` + `tagSnapshotRetained`) and a GC keep-set
+  (`selectOrphanSnapshots` spares retained snapshots).
+- **Quota-drift self-heal:** a reconciler sweep (`reconcileOwnerCounts`) corrects a drifted per-owner
+  counter against actual records, emitting `reconciler.quota.drift_corrected`.
+- **Billing-to-teardown:** the cost model gained a fourth **teardown** phase — `session.delete` opens it
+  (volume+snapshot bill, no compute), a new `session.terminated` (emitted atomically by `finishDeleting`)
+  closes it; threaded through the rollup + DB entity + contract, figure-equivalence preserved + extended.
 
-Deferred (tracked in `BUGS.md`, involved / need a product call): `SshKeyService`/`GitCredentialService`
-signature branding; billing-at-teardown; `finishDeleting` snapshot-retention; storage/compute port
-contracts.
+Deferred (one item, tracked in `BUGS.md`): a UI Open/Connect affordance — gated on the proxy-domain config
+(DYNAMIC wake-gate territory).
 
 ## Prior — IAM permission self-check + identity (merged #133)
 

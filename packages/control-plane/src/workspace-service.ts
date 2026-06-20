@@ -121,6 +121,7 @@ type AuditAction =
   | "session.start"
   | "session.stop"
   | "session.delete"
+  | "session.terminated"
   | "session.recover"
   | "session.snapshot_lost"
   | "security.privilege_attempt";
@@ -507,6 +508,49 @@ export class WorkspaceService {
   async listWorkspaceIds(): Promise<readonly WorkspaceId[]> {
     const { data } = await this.deps.workspaces.scan.go({ pages: "all" });
     return data.map((r: WorkspaceRecord) => workspaceId(r.id));
+  }
+
+  /**
+   * Self-heal the per-owner quota counters against the actual workspace records.
+   * `create` increments the counter atomically, but `finishDeleting` decrements it
+   * UNCONDITIONALLY (a teardown must never block on a counter condition), so a
+   * lost-race delete or an out-of-band record removal can leave a counter drifted —
+   * which would weaken quota enforcement permanently. This sweep recomputes each
+   * owner's true live count (a record exists from `create` until `finishDeleting`)
+   * and corrects any counter that disagrees. Each correction is conditioned on the
+   * value observed, so a create/delete that raced the scan is never clobbered (that
+   * owner just re-converges next sweep). Returns the number of counters corrected;
+   * a no-op (0) when quota counters aren't wired. */
+  async reconcileOwnerCounts(): Promise<number> {
+    const oc = this.deps.ownerCounts;
+    if (oc === undefined) return 0;
+    const actual = new Map<string, number>();
+    const { data: records } = await this.deps.workspaces.scan.go({ pages: "all" });
+    records.forEach((r: WorkspaceRecord) => {
+      actual.set(r.ownerId, (actual.get(r.ownerId) ?? 0) + 1);
+    });
+    const { data: counters } = await oc.scan.go({ pages: "all" });
+    const stored = new Map(counters.map((c) => [c.ownerId, c.count] as const));
+    const owners = new Set<string>([...actual.keys(), ...stored.keys()]);
+    let corrected = 0;
+    for (const owner of owners) {
+      const want = actual.get(owner) ?? 0;
+      const have = stored.get(owner);
+      if (have === want) continue;
+      try {
+        await oc
+          .update({ ownerId: owner })
+          .set({ count: want })
+          .where((attr, op) =>
+            have === undefined ? op.notExists(attr.count) : op.eq(attr.count, have),
+          )
+          .go();
+        corrected += 1;
+      } catch (e) {
+        if (!isVersionConflict(e)) throw e; // raced a live mutation — corrects next sweep
+      }
+    }
+    return corrected;
   }
 
   /** Fetch all workspace records in the given lifecycle states (fully paginated). */
@@ -898,27 +942,35 @@ export class WorkspaceService {
 
   /**
    * Finish tearing down a `deleting` workspace, then remove its record. Convergent +
-   * idempotent (safe to re-run): per the Middle data-safety policy, if it still has a
-   * live volume and no recent snapshot it takes a FINAL snapshot first (so a delete of
-   * a working session doesn't lose data) — a snapshot failure leaves the tombstone for
-   * a retry rather than destroying data. Then it stops the task (releasing the managed
-   * volume) and hard-removes the record; the now-orphan snapshot/secret/task-def are
-   * reaped by the existing GC sweeps after their grace (the retention window).
+   * idempotent (safe to re-run): per the Middle data-safety policy it ensures a
+   * RETAINED final snapshot survives the delete — if it still has a live volume and
+   * no recent snapshot it takes a fresh retained snapshot; otherwise it marks the
+   * existing latest snapshot retained — so a delete of a working session never loses
+   * data. A snapshot/tag failure leaves the tombstone for a retry rather than
+   * destroying data. Then it stops the task (releasing the managed volume) and
+   * hard-removes the record. The retained snapshot is kept by the GC keep-set
+   * (orphan-GC reaps the volume/secret/task-def after their grace, but never a
+   * retained snapshot).
    */
   async finishDeleting(id: WorkspaceId): Promise<Result<void, DomainError>> {
     const found = await this.find(id);
     if (found === null) return ok(undefined); // already gone — converged
     const { ws, version } = found;
     if (ws.state !== "deleting") return ok(undefined); // no longer deleting
-    // Capture a final snapshot of a live volume before tearing it down (data-safety).
-    if (ws.volumeId !== undefined && this.snapshotStale(ws)) {
-      try {
-        await this.deps.storage.createSnapshot(ws.volumeId);
-      } catch (e) {
-        // Don't destroy data on a transient snapshot failure: leave the tombstone for
-        // the next sweep (surfaced via the reconciler's failure metric/alarm).
-        return err(conflictError(`final snapshot for ${id} failed: ${asMessage(e)}`));
+    // Ensure a retained data-safety snapshot survives the teardown. Live volume with
+    // no usable prior snapshot → take a fresh retained one; otherwise retain the
+    // existing latest snapshot that already holds the data (a stopped workspace has
+    // no live volume to re-snapshot).
+    try {
+      if (ws.volumeId !== undefined && this.snapshotStale(ws)) {
+        await this.deps.storage.createSnapshot(ws.volumeId, { retain: true });
+      } else if (ws.latestSnapshotId !== undefined) {
+        await this.deps.storage.tagSnapshotRetained(ws.latestSnapshotId);
       }
+    } catch (e) {
+      // Don't destroy data on a transient snapshot/tag failure: leave the tombstone
+      // for the next sweep (surfaced via the reconciler's failure metric/alarm).
+      return err(conflictError(`final snapshot for ${id} failed: ${asMessage(e)}`));
     }
     if (ws.taskId !== undefined) {
       // Best-effort: the orphan-task reaper is the backstop if this stop fails.
@@ -929,12 +981,49 @@ export class WorkspaceService {
       }
     }
     const oc = this.deps.ownerCounts;
+    // Record teardown COMPLETION (ends billing — the volume + snapshot stopped costing
+    // money) atomically with the hard-delete, so a delete that loses the version race
+    // records no terminate event. Absent only when no audit ledger is wired.
+    const term = this.auditItem({
+      action: "session.terminated",
+      target: id,
+      actor: SYSTEM_ACTOR,
+      detail: "teardown complete",
+    });
+    // The quota decrement is UNCONDITIONAL (no `where`): it must never block the delete
+    // — a counter drift only weakens enforcement and self-heals (create path +
+    // reconcileOwnerCounts) — so the delete's own version condition is the only cancel.
     try {
-      if (oc !== undefined) {
-        // Free the owner's quota slot in the SAME transaction as the hard-delete. The
-        // decrement is UNCONDITIONAL (no `where`): it must never block the delete — a
-        // counter drift would only weaken enforcement, self-correcting on the next
-        // create — so the delete's own version condition is the only cancel source.
+      if (term !== undefined && oc !== undefined) {
+        const result = await writeTransaction(
+          { ws: this.deps.workspaces, oc, ev: term.entity },
+          ({ ws: wsE, oc: ocE, ev }) => [
+            wsE
+              .delete({ id })
+              .where(({ version: v }, { eq }) => eq(v, version))
+              .commit(),
+            ocE.update({ ownerId: ws.ownerId }).subtract({ count: 1 }).commit(),
+            ev.put(term.attrs).commit(),
+          ],
+        ).go();
+        if (result.canceled) {
+          return err(conflictError(`finishDeleting ${id} lost a concurrent update`));
+        }
+      } else if (term !== undefined) {
+        const result = await writeTransaction(
+          { ws: this.deps.workspaces, ev: term.entity },
+          ({ ws: wsE, ev }) => [
+            wsE
+              .delete({ id })
+              .where(({ version: v }, { eq }) => eq(v, version))
+              .commit(),
+            ev.put(term.attrs).commit(),
+          ],
+        ).go();
+        if (result.canceled) {
+          return err(conflictError(`finishDeleting ${id} lost a concurrent update`));
+        }
+      } else if (oc !== undefined) {
         const result = await writeTransaction(
           { ws: this.deps.workspaces, oc },
           ({ ws: wsE, oc: ocE }) => [

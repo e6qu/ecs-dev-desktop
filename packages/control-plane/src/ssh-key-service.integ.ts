@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { fingerprintPublicKey } from "@edd/core";
+import { fingerprintPublicKey, ownerId, sshKeyId, sshPublicKey } from "@edd/core";
 import {
   createDynamoClient,
   dropTable,
@@ -49,7 +49,7 @@ describe("SshKeyService against DynamoDB Local", () => {
   });
 
   it("registers a key, derives its fingerprint + type, and defaults the label to the comment", async () => {
-    const dto = await svc.register("alice", KEY_A);
+    const dto = await svc.register(ownerId("alice"), sshPublicKey(KEY_A));
     expect(dto.fingerprint).toBe(fingerprintPublicKey(KEY_A));
     expect(dto.keyType).toBe("ssh-ed25519");
     expect(dto.label).toBe("alice@laptop");
@@ -57,30 +57,30 @@ describe("SshKeyService against DynamoDB Local", () => {
   });
 
   it("honors an explicit label", async () => {
-    const dto = await svc.register("alice", KEY_B, "  work key  ");
+    const dto = await svc.register(ownerId("alice"), sshPublicKey(KEY_B), "  work key  ");
     expect(dto.label).toBe("work key");
   });
 
   it("lists the caller's keys newest-first", async () => {
-    const keys = await svc.list("alice");
+    const keys = await svc.list(ownerId("alice"));
     expect(keys.map((k) => k.label)).toEqual(["work key", "alice@laptop"]);
   });
 
   it("rejects re-registering the same key for the same owner (idempotency)", async () => {
-    await expect(svc.register("alice", KEY_A)).rejects.toBeInstanceOf(SshKeyConflictError);
-    await expect(svc.register("alice", KEY_A)).rejects.toMatchObject({ ownedByCaller: true });
+    await expect(svc.register(ownerId("alice"), sshPublicKey(KEY_A))).rejects.toBeInstanceOf(SshKeyConflictError);
+    await expect(svc.register(ownerId("alice"), sshPublicKey(KEY_A))).rejects.toMatchObject({ ownedByCaller: true });
   });
 
   it("rejects registering a key already owned by another account (global uniqueness)", async () => {
-    await expect(svc.register("mallory", KEY_A)).rejects.toMatchObject({ ownedByCaller: false });
+    await expect(svc.register(ownerId("mallory"), sshPublicKey(KEY_A))).rejects.toMatchObject({ ownedByCaller: false });
   });
 
   it("admits exactly one winner when two accounts register the same key concurrently", async () => {
     // The pre-fix read-then-put let both writers pass the GSI read and both commit;
     // the fingerprint-claim transaction makes exactly one win and the other conflict.
     const results = await Promise.allSettled([
-      svc.register("dana", KEY_C),
-      svc.register("erin", KEY_C),
+      svc.register(ownerId("dana"), sshPublicKey(KEY_C)),
+      svc.register(ownerId("erin"), sshPublicKey(KEY_C)),
     ]);
     expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
     const rejected = results.find((r) => r.status === "rejected");
@@ -89,32 +89,32 @@ describe("SshKeyService against DynamoDB Local", () => {
       expect(rejected.reason).toBeInstanceOf(SshKeyConflictError);
     }
     // Exactly one owner record exists for that fingerprint (no duplicate).
-    const winner = await svc.ownerForKey(KEY_C);
+    const winner = await svc.ownerForKey(sshPublicKey(KEY_C));
     expect(winner).not.toBeNull();
     expect(["dana", "erin"]).toContain(winner?.ownerId);
   });
 
   it("resolves a presented public key to its owner (gateway lookup)", async () => {
-    const match = await svc.ownerForKey(KEY_A);
+    const match = await svc.ownerForKey(sshPublicKey(KEY_A));
     expect(match?.ownerId).toBe("alice");
-    expect(await svc.ownerForKey(KEY_B)).toMatchObject({ ownerId: "alice" });
+    expect(await svc.ownerForKey(sshPublicKey(KEY_B))).toMatchObject({ ownerId: "alice" });
   });
 
   it("returns null for an unregistered key", async () => {
     const unknown =
       "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIE3Qm0m5l5p5h7Vd2yq0a8t8m8m8m8m8m8m8m8m8m8m nobody@x";
-    expect(await svc.ownerForKey(unknown)).toBeNull();
+    expect(await svc.ownerForKey(sshPublicKey(unknown))).toBeNull();
   });
 
   it("deletes only the caller's own key", async () => {
-    const [first] = await svc.list("alice");
+    const [first] = await svc.list(ownerId("alice"));
     if (first === undefined) throw new Error("expected at least one key");
     // Another user cannot delete it (ownership-scoped).
-    expect(await svc.remove("mallory", first.id)).toBe(false);
-    expect(await svc.remove("alice", first.id)).toBe(true);
-    expect((await svc.list("alice")).some((k) => k.id === first.id)).toBe(false);
+    expect(await svc.remove(ownerId("mallory"), sshKeyId(first.id))).toBe(false);
+    expect(await svc.remove(ownerId("alice"), sshKeyId(first.id))).toBe(true);
+    expect((await svc.list(ownerId("alice"))).some((k) => k.id === first.id)).toBe(false);
     // Its fingerprint is now free to register again.
-    const freed = await svc.register("carol", first.publicKey);
+    const freed = await svc.register(ownerId("carol"), sshPublicKey(first.publicKey));
     expect(freed.fingerprint).toBe(first.fingerprint);
   });
 });

@@ -66,6 +66,24 @@ describe("selectOrphanSnapshots", () => {
       snapshotId("snap-superseded"),
     ]);
   });
+
+  it("never reaps a retained snapshot, even unreferenced and past grace (Middle policy)", () => {
+    const existing: SnapshotRef[] = [
+      // The teardown data-safety keep: unreferenced (its workspace record is gone)
+      // and old, but retained — must survive GC.
+      {
+        id: snapshotId("snap-retained"),
+        createdAt: old,
+        sourceVolumeId: volumeId("vol-1"),
+        retained: true,
+      },
+      { id: snapshotId("snap-orphan"), createdAt: old, sourceVolumeId: volumeId("vol-2") },
+    ];
+
+    expect(selectOrphanSnapshots(existing, new Set(), now, ONE_HOUR)).toEqual([
+      snapshotId("snap-orphan"),
+    ]);
+  });
 });
 
 describe("selectDueForSnapshot", () => {

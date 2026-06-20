@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { ownerId } from "@edd/core";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { listAppInstallations, mintInstallationToken, type GitHubAppConfig } from "./git-app-auth";
@@ -47,7 +48,7 @@ suite("GitHub App flow (app JWT → installation token → REST), coordinate-dri
   });
 
   it("drives InstallationGitProvider end-to-end (installation-scoped REST + git credential)", async () => {
-    const provider = await getGitProvider("ignored-in-app-mode");
+    const provider = await getGitProvider(ownerId("ignored-in-app-mode"));
     expect(provider).not.toBeNull();
 
     // listRepos goes through the full chain: app JWT → installation token →

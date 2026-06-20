@@ -88,6 +88,7 @@ describe("CostService.report", () => {
       [
         evt("session.create", 0, "ws-gone", "carol@example.com"),
         evt("session.delete", 2, "ws-gone", "carol@example.com"),
+        evt("session.terminated", 2, "ws-gone", "carol@example.com"),
       ],
       [], // record already removed
     ).report();
@@ -125,10 +126,12 @@ describe("CostService.report windowing", () => {
     });
   }
 
-  // An old (days 0-1) session and a recent (day 9 → still running at day 10) one.
+  // An old (days 0-1) session, fully torn down early, and a recent (day 9 → still
+  // running at day 10) one.
   const events: AuditEvent[] = [
     ev("session.create", 0, "ws-old"),
     ev("session.delete", 1, "ws-old"),
+    ev("session.terminated", 1, "ws-old"),
     ev("session.create", 9, "ws-recent"),
   ];
   const workspaces = [dto("ws-recent", "alice", "running")]; // ws-old's record is gone

@@ -60,13 +60,25 @@ describe("deriveBillingIntervals", () => {
     ]);
   });
 
-  it("ends all billing at delete (no interval left open to `now`)", () => {
+  it("opens a teardown interval at the delete request (volume+snapshot keep billing)", () => {
+    // session.delete is the delete REQUEST: compute stops but the volume + snapshot
+    // bill on through teardown — the interval stays open to `now`, NOT terminated.
     const intervals = deriveBillingIntervals(
       [evt("session.create", 0), evt("session.delete", 1)],
       at(10),
     );
     expect(intervals.running).toEqual([{ fromMs: T0, toMs: T0 + HOUR }]);
-    expect(intervals.stopped).toEqual([]);
+    expect(intervals.teardown).toEqual([{ fromMs: T0 + HOUR, toMs: T0 + 10 * HOUR }]);
+    expect(intervals.terminated).toBe(false);
+  });
+
+  it("ends all billing at teardown completion (session.terminated)", () => {
+    const intervals = deriveBillingIntervals(
+      [evt("session.create", 0), evt("session.delete", 1), evt("session.terminated", 2)],
+      at(10),
+    );
+    expect(intervals.running).toEqual([{ fromMs: T0, toMs: T0 + HOUR }]);
+    expect(intervals.teardown).toEqual([{ fromMs: T0 + HOUR, toMs: T0 + 2 * HOUR }]);
     expect(intervals.terminated).toBe(true);
   });
 
@@ -99,7 +111,7 @@ describe("deriveBillingIntervals", () => {
 describe("priceIntervals", () => {
   it("prices one running hour as Fargate compute + a live-volume slice", () => {
     const cost = priceIntervals(
-      { running: [{ fromMs: T0, toMs: T0 + HOUR }], stopped: [], terminated: false },
+      { running: [{ fromMs: T0, toMs: T0 + HOUR }], stopped: [], teardown: [], terminated: false },
       PRICING,
       SIZING,
     );
@@ -114,7 +126,7 @@ describe("priceIntervals", () => {
 
   it("prices a stopped hour as snapshot storage only (no compute, no live volume)", () => {
     const cost = priceIntervals(
-      { running: [], stopped: [{ fromMs: T0, toMs: T0 + HOUR }], terminated: false },
+      { running: [], stopped: [{ fromMs: T0, toMs: T0 + HOUR }], teardown: [], terminated: false },
       PRICING,
       SIZING,
     );
@@ -122,6 +134,19 @@ describe("priceIntervals", () => {
     expect(cost.volumeUsd).toBe(0);
     expect(cost.snapshotUsd).toBeCloseTo((1 / 730) * 8 * 0.05, 8);
     expect(cost.stoppedMs).toBe(HOUR);
+  });
+
+  it("prices a teardown hour as live volume + snapshot, no compute", () => {
+    const cost = priceIntervals(
+      { running: [], stopped: [], teardown: [{ fromMs: T0, toMs: T0 + HOUR }], terminated: false },
+      PRICING,
+      SIZING,
+    );
+    expect(cost.computeUsd).toBe(0);
+    // The volume is still live AND a data-safety snapshot exists during teardown.
+    expect(cost.volumeUsd).toBeCloseTo((1 / 730) * 8 * 0.08, 8);
+    expect(cost.snapshotUsd).toBeCloseTo((1 / 730) * 8 * 0.05, 8);
+    expect(cost.teardownMs).toBe(HOUR);
   });
 });
 
@@ -163,13 +188,17 @@ describe("computeFleetCost", () => {
     expect(report.generatedAt).toBe(at(2));
   });
 
-  it("labels a workspace whose record is gone but had a delete as terminated", () => {
+  it("labels a workspace whose record is gone and teardown completed as terminated", () => {
     const report = computeFleetCost(
       [
         {
           workspaceId: "ws-9",
           owner: "carol",
-          events: [evt("session.create", 0, "ws-9"), evt("session.delete", 1, "ws-9")],
+          events: [
+            evt("session.create", 0, "ws-9"),
+            evt("session.delete", 1, "ws-9"),
+            evt("session.terminated", 1, "ws-9"),
+          ],
         },
       ],
       PRICING,
@@ -205,8 +234,18 @@ describe("deriveBillingState + resumeBilling (rollup figure-equivalence)", () =>
     },
     {
       name: "terminated",
-      events: [evt("session.create", 0), evt("session.stop", 1), evt("session.delete", 2)],
+      events: [
+        evt("session.create", 0),
+        evt("session.stop", 1),
+        evt("session.delete", 2),
+        evt("session.terminated", 3),
+      ],
       nowH: 9,
+    },
+    {
+      name: "teardown open",
+      events: [evt("session.create", 0), evt("session.delete", 2)],
+      nowH: 6,
     },
     {
       name: "idempotent start ignored",
@@ -226,6 +265,7 @@ describe("deriveBillingState + resumeBilling (rollup figure-equivalence)", () =>
         const resumed = resumeBilling(state, at(cpH), sc.events, at(sc.nowH));
         expect(resumed.runningMs).toBe(sumMs(full.running));
         expect(resumed.stoppedMs).toBe(sumMs(full.stopped));
+        expect(resumed.teardownMs).toBe(sumMs(full.teardown));
       });
     }
   }
@@ -234,7 +274,7 @@ describe("deriveBillingState + resumeBilling (rollup figure-equivalence)", () =>
 describe("clipIntervals", () => {
   it("keeps only the part of each interval inside the window", () => {
     const clipped = clipIntervals(
-      { running: [{ fromMs: T0, toMs: T0 + 4 * HOUR }], stopped: [], terminated: false },
+      { running: [{ fromMs: T0, toMs: T0 + 4 * HOUR }], stopped: [], teardown: [], terminated: false },
       { fromMs: T0 + HOUR, toMs: T0 + 3 * HOUR },
     );
     expect(clipped.running).toEqual([{ fromMs: T0 + HOUR, toMs: T0 + 3 * HOUR }]);
@@ -246,6 +286,7 @@ describe("clipIntervals", () => {
       {
         running: [{ fromMs: T0, toMs: T0 + HOUR }],
         stopped: [{ fromMs: T0 + 5 * HOUR, toMs: T0 + 6 * HOUR }],
+        teardown: [],
         terminated: true,
       },
       { fromMs: T0 + 2 * HOUR, toMs: T0 + 4 * HOUR },
@@ -275,7 +316,12 @@ describe("computeFleetCost windowing", () => {
       workspaceId: "ws-old",
       owner: "bob",
       state: "deleted",
-      events: [evt("session.create", 0, "ws-old"), evt("session.delete", 2, "ws-old")],
+      // Created and fully torn down early (terminated) — no in-window activity.
+      events: [
+        evt("session.create", 0, "ws-old"),
+        evt("session.delete", 2, "ws-old"),
+        evt("session.terminated", 2, "ws-old"),
+      ],
     },
   ];
 

@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { aws, DEFAULT_AWS_REGION } from "@edd/config";
+import { storageProviderContract } from "@edd/core/storage/storage-provider-contract";
 import { describe, expect, it } from "vitest";
 
 import { Ec2StorageProvider } from "./index";
@@ -9,6 +10,19 @@ process.env.AWS_ENDPOINT_URL ??= aws.endpoint;
 process.env.AWS_REGION ??= DEFAULT_AWS_REGION;
 process.env.AWS_ACCESS_KEY_ID ??= "test";
 process.env.AWS_SECRET_ACCESS_KEY ??= "test";
+
+// The shared StorageProvider port contract against the REAL EBS adapter — the
+// control-plane subset (volume/snapshot lifecycle + snapshot-hydration lineage),
+// `dataIo: false` because EBS file contents aren't reachable over the EC2 API
+// (§6.8; the data-fidelity cases run on the fake + the real-AWS tier). This is what
+// keeps the fake honest against real EBS over the standard API.
+storageProviderContract(
+  "Ec2StorageProvider (sim)",
+  () => Promise.resolve(Ec2StorageProvider.fromEnv()),
+  {
+    dataIo: false,
+  },
+);
 
 describe("Ec2StorageProvider against the sockerless AWS sim", () => {
   const sp = Ec2StorageProvider.fromEnv();

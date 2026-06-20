@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 
 import { sshAuthorizeRequest } from "@edd/api-contracts";
-import { workspaceId, workspacePrincipal } from "@edd/core";
+import { sshPublicKey, workspaceId, workspacePrincipal } from "@edd/core";
 
 import { badRequest, notFound } from "../../../../../lib/api";
 import { getControlPlane, getSshKeyService } from "../../../../../lib/control-plane";
@@ -40,7 +40,7 @@ async function handlePOST(req: Request, { params }: Ctx) {
   const ws = await (await getControlPlane()).get(workspaceId(id));
   if (!ws) return notFound();
 
-  const match = await getSshKeyService().ownerForKey(body.data.publicKey);
+  const match = await getSshKeyService().ownerForKey(sshPublicKey(body.data.publicKey));
   const authorized = match !== null && match.ownerId === ws.ownerId;
   return NextResponse.json(
     authorized ? { authorized: true, principal: workspacePrincipal(id) } : { authorized: false },

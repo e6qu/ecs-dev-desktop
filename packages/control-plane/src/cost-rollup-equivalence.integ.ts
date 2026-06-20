@@ -3,8 +3,9 @@
 // This proves it against DynamoDB Local: for the same ledger, the rollup report
 // (price each workspace by resuming its persisted checkpoint + replaying only the
 // events since it) is byte-identical to the full-ledger scan — across a checkpoint
-// that falls mid-open-interval, a terminate after the checkpoint, a workspace
-// terminated before it, and a workspace born after it (the recent-only path).
+// that falls mid-open-interval, a teardown+terminate after the checkpoint, a
+// workspace whose teardown spans and terminates before it, and a workspace born
+// after it (the recent-only path).
 import type { WorkspaceDto } from "@edd/api-contracts";
 import { workspacePricing, workspaceSizing } from "@edd/config";
 import { isoTimestamp, type Clock } from "@edd/core";
@@ -81,10 +82,12 @@ describe("cost rollup report == full-scan report (figure-equivalence)", () => {
     await seed("session.stop", 1, "ws-a", "alice");
     await seed("session.start", 2, "ws-a", "alice"); // open running interval spans h=3
     await seed("session.stop", 4, "ws-a", "alice"); // (after checkpoint)
-    await seed("session.create", 0.5, "ws-b", "alice"); // running, deleted AFTER checkpoint
-    await seed("session.delete", 5, "ws-b", "alice"); // (after checkpoint)
-    await seed("session.create", 0, "ws-d", "bob"); // terminated BEFORE checkpoint
-    await seed("session.delete", 1, "ws-d", "bob");
+    await seed("session.create", 0.5, "ws-b", "alice"); // running, torn down AFTER checkpoint
+    await seed("session.delete", 5, "ws-b", "alice"); // teardown opens (after checkpoint)
+    await seed("session.terminated", 5.5, "ws-b", "alice"); // teardown ends (after checkpoint)
+    await seed("session.create", 0, "ws-d", "bob"); // teardown spans + terminates BEFORE checkpoint
+    await seed("session.delete", 1, "ws-d", "bob"); // teardown opens at h=1
+    await seed("session.terminated", 2, "ws-d", "bob"); // terminated at h=2 (≤ checkpoint h=3)
 
     // Generate the checkpoint as of h=3 (prices only events ≤ h=3).
     nowValue = at(3);

@@ -31,7 +31,10 @@ function isFileNotFound(err: unknown): boolean {
  */
 export class FakeStorageProvider implements StorageProvider {
   private readonly volumes = new Map<VolumeId, IsoTimestamp>();
-  private readonly snapshots = new Map<SnapshotId, { createdAt: IsoTimestamp; source: VolumeId }>();
+  private readonly snapshots = new Map<
+    SnapshotId,
+    { createdAt: IsoTimestamp; source: VolumeId; retained: boolean }
+  >();
 
   private constructor(
     private readonly root: string,
@@ -79,11 +82,21 @@ export class FakeStorageProvider implements StorageProvider {
     await writeFile(full, data);
   }
 
-  async createSnapshot(volumeId: VolumeId): Promise<Snapshot> {
+  async createSnapshot(volumeId: VolumeId, opts?: { retain?: boolean }): Promise<Snapshot> {
     const id = newSnapshotId();
     await cp(this.volumeDir(volumeId), this.snapshotDir(id), { recursive: true });
-    this.snapshots.set(id, { createdAt: isoTimestamp(this.clock.now()), source: volumeId });
+    this.snapshots.set(id, {
+      createdAt: isoTimestamp(this.clock.now()),
+      source: volumeId,
+      retained: opts?.retain ?? false,
+    });
     return { id, sourceVolumeId: volumeId };
+  }
+
+  tagSnapshotRetained(snapshotId: SnapshotId): Promise<void> {
+    const meta = this.snapshots.get(snapshotId);
+    if (meta !== undefined) this.snapshots.set(snapshotId, { ...meta, retained: true });
+    return Promise.resolve();
   }
 
   async deleteVolume(volumeId: VolumeId): Promise<void> {
@@ -106,6 +119,7 @@ export class FakeStorageProvider implements StorageProvider {
         id,
         createdAt: meta.createdAt,
         sourceVolumeId: meta.source,
+        ...(meta.retained ? { retained: true } : {}),
       })),
     );
   }
