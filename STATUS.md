@@ -2,9 +2,39 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-20 (breadth sweep merged #140; UI/contract/perf/gate sweep + type-safety hardening on `feat/sweep-ui-contracts-perf`)
+**Last updated:** 2026-06-20 (removed Pomerium + the standalone `workspace-gate`; folded the browser→editor proxy into the Next.js app — path-based single domain, single Auth.js session authz)
 
-## Active — UI/contract/perf/gate sweep (`feat/sweep-ui-contracts-perf`)
+## Active — In-app path-based editor proxy (Pomerium + `workspace-gate` removed)
+
+The browser→VS Code editor reach now lives **in the control-plane app**, not in an external
+identity-aware proxy. A custom Next.js server (`apps/web/server.ts`, run via `tsx` in dev AND prod —
+replaced `next start`) serves the portal/admin/API and proxies the per-user editor at
+`app.<domain>/w/<id>/` (HTTP + WebSocket upgrade; logic in `apps/web/lib/workspace-proxy.ts`):
+
+- **Path-based routing on a single domain** (`/w/<workspace-id>/`) replaced wildcard-subdomain routing for
+  the browser/HTTP path — no wildcard DNS, no wildcard TLS cert, no cross-subdomain cookie. SSH still uses
+  its own `<ws-id>.<ssh-base-domain>` zone (unchanged).
+- **Single auth system:** the same Auth.js (NextAuth) session authorizes the proxy, with **uid-based
+  ownership** (`session.uid === workspace.ownerId`) or admin checked **in-process** — no Pomerium JWT
+  assertion, no PDP `/api/internal/authz` round-trip, no gate machine-auth token, no email bridge. The
+  decision is a pure pair in `@edd/core` (`decideWorkspaceAccessBySubject` + `workspaceIdFromPath`).
+- The golden workspace image runs OpenVSCode with `--server-base-path /w/<id>/`; a path-based **Open editor**
+  link rides the workspace card (running/idle/stopped — stopped wakes on connect). `connect-info` is now
+  **SSH-only** (the in-app proxy resolves the editor upstream in-process; the SSH gateway is its only caller).
+- **Removed** (clean break, no users/legacy): Pomerium (`infra/proxy/`), the `services/workspace-gate` PEP,
+  the `/api/internal/authz` PDP, `pomerium-assertion.*`, the gate/Pomerium e2e + compose + the `e2e-gate` CI
+  job, and the `POMERIUM_*`/`WORKSPACE_HOST_HEADER`/`WORKSPACE_AUTHZ_PATH`/`GATE_PDP_TIMEOUT_MS`/
+  `workspaceGate`/`WORKSPACE_BASE_DOMAIN` config (`GATE_UPSTREAM_TIMEOUT_MS` → `WORKSPACE_PROXY_UPSTREAM_TIMEOUT_MS`).
+- **Kept** (these serve the Entra-over-TLS + EBS-over-TLS e2e, not Pomerium): the SSH gateway, the
+  `e2e-https` job + `gen-sim-tls-cert.sh` + `docker-compose.https.yml` (only the Pomerium-specific cert SANs
+  were trimmed).
+
+Tests: `apps/web/lib/workspace-proxy.test.ts` (authz glue — unauthenticated→login, unknown-ws→forbidden,
+owner→allow, other→forbidden, admin→allow, no-subject→forbidden); the vscode browser e2e (`test:pw:vscode`)
+drives the editor under the `/w/<id>/` base path. Verified at close: `pnpm build`/`test`/`lint` green;
+`actionlint` + `shellcheck` clean; `pnpm install --frozen-lockfile` passes.
+
+## Prior — UI/contract/perf/gate sweep (`feat/sweep-ui-contracts-perf`)
 
 A 4-agent audit of the still-under-covered surface (UI/React, Zod contract tightness, 200+ scale,
 gate/harness) + a type-safety pass making bad states non-representable. All fixed, no deferrals:
@@ -12,7 +42,9 @@ gate/harness) + a type-safety pass making bad states non-representable. All fixe
 - **Type-safety:** tightened contracts (`quotaReport` limit→int/nonneg, role→enum; `costBreakdown`→nonneg/int;
   `sshConnectInfo.host`→min 1); `workspaceLimit` throws on a bad `EDD_QUOTA_*` override (was silent).
 - **Gate (HIGH):** PDP-fetch + upstream + upgrade timeouts; upgrade-path client-close teardown before the
-  upstream upgrades — closes socket-leak vectors (one PEP fronts every workspace).
+  upstream upgrades — closes socket-leak vectors (one PEP fronts every workspace). _(Superseded 2026-06-20:
+  the standalone gate/Pomerium were removed — the editor proxy is now in-process in the Next.js app; see the
+  Active section above.)_
 - **Scale:** cost rollup is now regenerated on a cadence each sweep (`rollupIfStale`) so cost reads stay
   O(recent) instead of full-scanning the ledger; quota report shares the cached fleet scan.
 - **Correctness:** `finishDeleting` uses `deleteRequestedAt` (not age) to decide a fresh teardown snapshot —
@@ -801,17 +833,18 @@ and the submodule pin bumped to `9d43f3d`; none of it touches our surfaces
   stopped) → nc → workspace node; the stub-CP variant remains as a component test.
 - **Workspace CloudWatch log shipping**: `EcsComputeProvider` adds `awslogs` `logConfiguration`
   to every task definition; `ECS_LOG_GROUP_WORKSPACES` injected by Terraform.
-- **Pomerium routing** (`infra/proxy`): identity-aware wildcard routing + authenticated
-  proxy-pass (`X-Pomerium-Jwt-Assertion`) — both proven mock-free against azure-sim,
-  over real TLS (Pomerium forces https in all absolute URLs), incl. a real-browser
-  OIDC login (`test:pw:pomerium`).
+- **In-app editor proxy** (`apps/web/server.ts` + `apps/web/lib/workspace-proxy.ts`): the custom
+  Next.js server proxies the per-user editor at the path-based `app.<domain>/w/<id>/` (HTTP + WS
+  upgrade), authorized in-process by the Auth.js session (uid-ownership/admin) — single domain, no
+  wildcard DNS/TLS. The vscode browser e2e drives the editor under the `/w/<id>/` base path.
+  (Pomerium + the standalone `workspace-gate` were removed 2026-06-20.)
 - **Phase 8 (8A+8B+8C)**: admin console (health board, all-workspaces, Inspect, Overview,
   quotas, Logs/Audit); `@edd/cloudtrail-audit` + `@edd/cloudwatch-logs` endpoint-only
   adapters, integration-tested against the sim.
 - **Test tiers**: unit/contract · integration (DynamoDB Local + process sim;
   route-level lifecycle/gateway-auth/admin-data suites) · e2e (data-fidelity,
   LIVE user journey through the real API on container-mode adapters, lifecycle,
-  auth incl. Auth.js callback routes, Pomerium, OpenSSH gateway + real-CP wake
+  auth incl. Auth.js callback routes, the in-app path-based editor proxy, OpenSSH gateway + real-CP wake
   chain, overlapping-CIDR awsvpc, reconciler container incl. real scale-to-zero,
   managed-EBS golden workspace SSH, ECS Exec smoke) · live admin observability
   route tests against sockerless AWS CloudTrail/CloudWatch · portal e2e
@@ -829,8 +862,7 @@ Nothing on AWS — no cloud infrastructure provisioned.
 
 1. **AWS account/region decision** (`DO_NEXT` #1) — the top blocker; unlocks
    everything real.
-2. **Live-test candidates exhausted** (`docs/simulator-live-coverage.md`):
-   browser Pomerium OIDC login landed as `test:pw:pomerium` (real-TLS Pomerium
-   harness; Chromium completes gate → IdP → callback → workspace), after
-   `test:pw:live` (browser lifecycle on real ECS compute). Only the optional
-   ECS Exec workspace probe remains, gated on a product decision.
+2. **Live-test candidates exhausted** (`docs/simulator-live-coverage.md`): the
+   in-app path-based editor proxy is browser-covered by the vscode e2e (Chromium drives
+   the editor under `/w/<id>/`), alongside `test:pw:live` (browser lifecycle on real ECS
+   compute). Only the optional ECS Exec workspace probe remains, gated on a product decision.

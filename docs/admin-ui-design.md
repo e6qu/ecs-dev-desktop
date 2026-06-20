@@ -28,7 +28,7 @@ A separate admin section with a left **sidebar**, distinct from the user portal:
 /admin
   Overview      counts by state, totals, active users, catalog size, reconciler freshness, (cost→AWS)
   Workspaces    all workspaces across users; filter by state/owner/image; row actions + Inspect →
-  Health        component status board (control-plane, DynamoDB, compute, storage, reconciler, auth; proxy/SSH→AWS)
+  Health        component status board (control-plane, DynamoDB, compute, storage, reconciler, auth; SSH→AWS)
   Inspect/:id   one workspace: state + derived lifecycle timeline + runtime bindings + snapshots + logs pane
   Logs          control-plane events + reconciler runs + audit (CloudWatch/CloudTrail slot in on AWS)
   Catalog       existing /base-images, folded in
@@ -40,7 +40,7 @@ A separate admin section with a left **sidebar**, distinct from the user portal:
 
 | Port            | `query`/shape                              | Local adapter                                                                  | AWS adapter                                            |
 | --------------- | ------------------------------------------ | ------------------------------------------------------------------------------ | ------------------------------------------------------ |
-| `HealthChecker` | `check() → ComponentHealth[]`              | DynamoDB ping; compute/storage `health()`; reconciler freshness (derived)      | + ECS/EBS/SSH/Pomerium real checks                     |
+| `HealthChecker` | `check() → ComponentHealth[]`              | DynamoDB ping; compute/storage `health()`; reconciler freshness (derived)      | + ECS/EBS/SSH real checks                              |
 | `AuditSource`   | `query(filter) → AuditEvent[]`             | **derive** per-workspace timeline from records + in-process recent-action ring | **CloudTrail** `LookupEvents` (our roles/resources)    |
 | `LogSource`     | `read(target, filter) → LogLine[]`         | reconciler run summaries + control-plane structured events (derived)           | **CloudWatch Logs** (app/reconciler/container streams) |
 | `MetricsSource` | `read(metric, range) → Point[]` (deferred) | n/a (cost/utilization need the cloud)                                          | **CloudWatch Metrics** + Cost Explorer/CUR             |
@@ -97,7 +97,7 @@ All gated by CASL `manage` (admin). Contracts in `@edd/api-contracts`; client in
 - 🟡 **Phase C — Metrics/cost + deploy health:** the metrics **emission** layer now
   exists (`@edd/cloudwatch-metrics`, EMF-over-stdout — wake latency, reconciler
   counts, API latency/error, fleet + quota gauges; 2026-06-14/17). What remains is
-  the CloudWatch Metrics + Cost Explorer/CUR dashboard and real ECS/EBS/SSH/Pomerium
+  the CloudWatch Metrics + Cost Explorer/CUR dashboard and real ECS/EBS/SSH
   health — validated at `e2e-aws` (the EMF→CloudWatch landing is only unit-tested
   for shape so far).
 

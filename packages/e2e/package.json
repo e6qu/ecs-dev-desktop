@@ -5,8 +5,7 @@
   "type": "module",
   "exports": {
     "./aws-sim": "./src/aws-sim.ts",
-    "./docker-host": "./src/docker-host.ts",
-    "./pomerium": "./src/pomerium-auth-flow.ts"
+    "./docker-host": "./src/docker-host.ts"
   },
   "scripts": {
     "lint": "eslint .",

@@ -1,15 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { NextResponse } from "next/server";
 
-import { DEFAULT_WORKSPACE_PORT } from "@edd/config";
-
-import {
-  badRequest,
-  conflict,
-  isResponse,
-  loadConnectableWorkspace,
-  notFound,
-} from "../../../../../lib/api";
+import { conflict, isResponse, loadConnectableWorkspace, notFound } from "../../../../../lib/api";
 import { withObservability } from "../../../../../lib/observability";
 
 interface Ctx {
@@ -18,21 +10,16 @@ interface Ctx {
 
 const SSH_PORT = 22;
 
-// GET /api/workspaces/:id/connect-info[?protocol=ssh|http] — returns the
-// host:port for a running workspace's task ENI so a gateway proxy can forward to
-// it. `protocol=ssh` (default) → sshd (the SSH gateway); `protocol=http` → the
-// OpenVSCode HTTP port (the workspace gate fronting browser VS Code). The
-// workspace must be running or idle; call POST /connect to wake it first. The
-// host is the task ENI's private IPv4, routable within the VPC. Accepts the
-// gateway's machine-auth token as well as a user session.
+// GET /api/workspaces/:id/connect-info — returns the host:port for a running
+// workspace's task ENI so the SSH gateway can forward to its sshd. The workspace
+// must be running or idle; call POST /connect to wake it first. The host is the
+// task ENI's private IPv4, routable within the VPC. Accepts the gateway's
+// machine-auth token as well as a user session. (Browser VS Code is served by the
+// control-plane app's own in-app proxy, which resolves the editor upstream in
+// process — it does not use this endpoint.)
 async function handleGET(req: Request, { params }: Ctx) {
-  // Authenticate FIRST: an unauthenticated caller must get 401 regardless of the query,
-  // never a pre-auth 400-vs-401 that distinguishes a valid from an invalid protocol.
   const ctx = await loadConnectableWorkspace(req, params, "read");
   if (isResponse(ctx)) return ctx;
-
-  const protocol = new URL(req.url).searchParams.get("protocol") ?? "ssh";
-  if (protocol !== "ssh" && protocol !== "http") return badRequest("protocol must be ssh or http");
 
   if (ctx.ws.state !== "running" && ctx.ws.state !== "idle") {
     return conflict(`workspace ${ctx.id} is ${ctx.ws.state} — call POST /connect to wake it first`);
@@ -50,8 +37,7 @@ async function handleGET(req: Request, { params }: Ctx) {
     return conflict(`workspace ${ctx.id} host not yet assigned — retry shortly`);
   }
 
-  const port = protocol === "http" ? DEFAULT_WORKSPACE_PORT : SSH_PORT;
-  return NextResponse.json({ host: sshHost, port });
+  return NextResponse.json({ host: sshHost, port: SSH_PORT });
 }
 
 export const GET = withObservability("workspaces.connectInfo", handleGET);

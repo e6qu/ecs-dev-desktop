@@ -45,19 +45,19 @@ The engineering standards in §6 are also hard rules.
 
 ## 1. Architecture (locked)
 
-| Dimension      | Decision                                                                                                           |
-| -------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Compute        | AWS **ECS Fargate** (light editor + build workloads), **200+** scale                                               |
-| Persistence    | **EBS snapshot = unit of persistence** (state + snapshot + scale-to-zero)                                          |
-| Idle policy    | **Scale-to-zero**: stop idle task → snapshot → hydrate on wake                                                     |
-| Auth / RBAC    | **Auth.js** (GitHub OAuth + Azure Entra), groups→roles; **CASL** abilities                                         |
-| SSH            | **OpenSSH** (`sshd`); registered-key auth — gateway + workspace dual-trust via the control plane's `ssh-authorize` |
-| Web / API      | **Next.js** — login + admin UI + control-plane API, **API-first**                                                  |
-| State store    | **DynamoDB** single-table + **ElectroDB**                                                                          |
-| Images         | Curated **golden base images** in ECR; extensions via **Open VSX**                                                 |
-| IaC / monorepo | **Terraform** · **Turborepo + pnpm**                                                                               |
-| Proxy          | Identity-aware proxy (Pomerium) for wildcard workspace routing                                                     |
-| License        | **AGPL-3.0-or-later** (SPDX header on new files)                                                                   |
+| Dimension      | Decision                                                                                                                                                                                          |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Compute        | AWS **ECS Fargate** (light editor + build workloads), **200+** scale                                                                                                                              |
+| Persistence    | **EBS snapshot = unit of persistence** (state + snapshot + scale-to-zero)                                                                                                                         |
+| Idle policy    | **Scale-to-zero**: stop idle task → snapshot → hydrate on wake                                                                                                                                    |
+| Auth / RBAC    | **Auth.js** (GitHub OAuth + Azure Entra), groups→roles; **CASL** abilities                                                                                                                        |
+| SSH            | **OpenSSH** (`sshd`); registered-key auth — gateway + workspace dual-trust via the control plane's `ssh-authorize`                                                                                |
+| Web / API      | **Next.js** — login + admin UI + control-plane API, **API-first**                                                                                                                                 |
+| State store    | **DynamoDB** single-table + **ElectroDB**                                                                                                                                                         |
+| Images         | Curated **golden base images** in ECR; extensions via **Open VSX**                                                                                                                                |
+| IaC / monorepo | **Terraform** · **Turborepo + pnpm**                                                                                                                                                              |
+| Editor proxy   | **Folded into the Next.js app** (custom server): path-based `app.<domain>/w/<id>/` → workspace editor, authorized off the Auth.js session (uid-ownership/admin). No Pomerium, no wildcard DNS/TLS |
+| License        | **AGPL-3.0-or-later** (SPDX header on new files)                                                                                                                                                  |
 
 VS Code distro: **code-server / OpenVSCode Server** (MIT), not MS's server.
 

@@ -12,7 +12,7 @@ import type { ComponentHealth, HealthStatus } from "./health";
 /** What a node is, for grouping/iconography on the diagram. */
 export type TopologyKind =
   | "client" // an external actor (a user/browser/CLI), not a system we run
-  | "edge" // identity-aware proxy / gateway at the network boundary
+  | "edge" // a gateway at the network boundary (e.g. the SSH gateway)
   | "compute" // a container/task runtime
   | "data" // a persistence store
   | "storage" // block storage / snapshots
@@ -60,12 +60,6 @@ export const SYSTEM_TOPOLOGY: Topology = {
       description: "Developer's browser / SSH client / CLI.",
     },
     {
-      id: "proxy",
-      label: "Identity-aware proxy",
-      kind: "edge",
-      description: "Pomerium: authenticates and routes admin/login and wildcard workspace traffic.",
-    },
-    {
       id: "ssh-gateway",
       label: "SSH gateway",
       kind: "edge",
@@ -77,7 +71,7 @@ export const SYSTEM_TOPOLOGY: Topology = {
       label: "Control plane (web)",
       kind: "compute",
       description:
-        "Next.js login + admin UI + API; authorizes registered SSH keys and drives the lifecycle.",
+        "Next.js login + admin UI + API; authenticates the browser, proxies the per-user editor at /w/<id>/, authorizes registered SSH keys, and drives the lifecycle.",
     },
     {
       id: "reconciler",
@@ -111,10 +105,9 @@ export const SYSTEM_TOPOLOGY: Topology = {
     },
   ],
   edges: [
-    { from: "user", to: "proxy", label: "HTTPS" },
+    { from: "user", to: "control-plane", label: "HTTPS (login / admin / API / editor)" },
     { from: "user", to: "ssh-gateway", label: "SSH" },
-    { from: "proxy", to: "control-plane", label: "admin / login / API" },
-    { from: "proxy", to: "workspace", label: "wildcard workspace routing" },
+    { from: "control-plane", to: "workspace", label: "editor proxy (/w/<id>/)" },
     { from: "control-plane", to: "dynamodb", label: "state (ElectroDB)" },
     { from: "control-plane", to: "compute", label: "RunTask / StopTask" },
     { from: "control-plane", to: "storage", label: "snapshot / restore" },

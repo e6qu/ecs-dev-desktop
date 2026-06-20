@@ -14,9 +14,8 @@ export type VolumeId = Brand<string, "VolumeId">;
 export type SnapshotId = Brand<string, "SnapshotId">;
 export type TaskId = Brand<string, "TaskId">;
 export type IsoTimestamp = Brand<string, "IsoTimestamp">;
-/** A user's email — the provider-agnostic identity used to match a proxy-
- * authenticated caller to a workspace owner (IdP `sub`/`oid` differ across the
- * Auth.js portal IdP and the Pomerium proxy IdP; the email claim is shared). */
+/** A user's email — the human-facing identity shown for a workspace's owner.
+ * (Authorization keys off the stable Auth.js session `uid`, not the email.) */
 export type Email = Brand<string, "Email">;
 /** A registered SSH key's record id. */
 export type SshKeyId = Brand<string, "SshKeyId">;

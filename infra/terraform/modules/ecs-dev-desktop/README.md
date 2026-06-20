@@ -36,8 +36,9 @@ log groups.
 
 What it does **not** do (app/runtime layer, by design): build/push the
 control-plane image or golden images; create the auth secrets (you pass their
-ARNs); deploy the SSH gateway or Pomerium (identity-aware `*.devbox` routing) —
-those run behind this ALB and are configured at the app layer.
+ARNs); deploy the SSH gateway — it runs behind this ALB and is configured at the
+app layer. The browser→VS Code workspace proxy is served by the control-plane app
+itself (`/w/<id>/`), not a separate service.
 
 ## Private networking & NAT
 

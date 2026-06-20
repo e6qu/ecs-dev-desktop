@@ -93,9 +93,13 @@ export {
   recordSnapshot,
 } from "./domain/workspace";
 
-// Per-workspace proxy authorization (pure): host→id + access decision.
-export type { WorkspaceAccessInput } from "./domain/proxy-authz";
-export { decideWorkspaceAccess, workspaceIdFromHost } from "./domain/proxy-authz";
+// In-app path-based proxy authorization (pure): path→id + access decision.
+export type { WorkspaceAccessBySubjectInput } from "./domain/proxy-authz";
+export {
+  decideWorkspaceAccessBySubject,
+  WORKSPACE_PATH_PREFIX,
+  workspaceIdFromPath,
+} from "./domain/proxy-authz";
 
 // Per-role workspace quota gate (pure).
 export { withinWorkspaceQuota } from "./domain/quota";

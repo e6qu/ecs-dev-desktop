@@ -4,9 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "next dev",
+    "dev": "tsx watch server.ts",
     "build": "next build",
-    "start": "next start",
+    "start": "NODE_ENV=production tsx server.ts",
     "lint": "eslint .",
     "test": "vitest run",
     "test:integ": "vitest run --config vitest.integ.config.ts",
@@ -14,8 +14,6 @@
     "test:pw": "playwright test",
     "test:pw:live": "playwright test --config playwright.live.config.ts",
     "test:pw:live:provision": "tsx e2e/live-cloud-setup.ts",
-    "test:pw:pomerium": "playwright test --config playwright.pomerium.config.ts",
-    "test:pw:gate": "playwright test --config playwright.gate.config.ts",
     "test:pw:vscode": "playwright test --config playwright.vscode.config.ts",
     "screenshot": "tsx scripts/screenshot-ui.ts"
   },

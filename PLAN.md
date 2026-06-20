@@ -37,24 +37,26 @@ sim writes to ECS-managed EBS → snapshot → new task restores → data presen
 route handlers + CASL RBAC, `@edd/api-client`, endpoint-only `Ec2StorageProvider` +
 `EcsComputeProvider`. **Gate:** contract + integration + e2e lifecycle green.
 
-## Phase 3 — Auth + RBAC + workspace routing — 🟡
+## Phase 3 — Auth + RBAC + editor routing — 🟡
 
 ✅ Auth.js (GitHub + Entra), CASL, group→role; **both logins proven mock-free &
-swappable** (bleephub conformant OAuth; azure sim Graph + ROPC). ✅ **Pomerium**
-identity-aware `*.devbox.<domain>` wildcard routing proven mock-free (`infra/proxy`).
-✅ **Authenticated proxy-pass with identity headers** — full OIDC flow via azure-sim
-(code issued immediately, no browser required); `X-Pomerium-Jwt-Assertion` present
-in proxied response; `_pomerium` session cookie set. (`packages/e2e/src/pomerium-authed.e2e.ts`)
+swappable** (bleephub conformant OAuth; azure sim Graph + ROPC). ✅ **Path-based
+editor proxy folded into the control-plane app** — the browser reaches the editor at
+`app.<domain>/w/<workspace-id>/` (no wildcard DNS/TLS, no cross-subdomain cookie),
+served by the custom server (`apps/web/server.ts` + `apps/web/lib/workspace-proxy.ts`).
+✅ **Single-system authorization** — the proxy authorizes off the **same Auth.js
+session** that protects the portal, by uid-based ownership (`session.uid ===
+workspace.ownerId`) or admin, checked in-process; no Pomerium, no PDP round-trip, no
+email bridge. (`apps/web/lib/workspace-proxy.e2e.ts`)
 
 ✅ **Auth.js callback routes** proven against the sims: the real NextAuth handlers
 driven csrf → signin → IdP → callback → session (bleephub team→admin role; Entra
 leg over TLS in `e2e-https`; sockerless#547 gates Entra group→role interactively).
 
-- ⬜ **Remaining:** real DNS/TLS/ACM (needs DNS #2); full GitHub OAuth browser login
-  (requires Playwright + DNS).
-- **Gate:** CASL ✅; both group→role on the sim ✅; wildcard routing + gate ✅;
-  authenticated proxy-pass with identity headers ✅; Auth.js callback wiring ✅;
-  real DNS ⬜.
+- ⬜ **Remaining:** real DNS/TLS/ACM for `app.<domain>` (needs DNS #2); full GitHub
+  OAuth browser login (requires Playwright + DNS).
+- **Gate:** CASL ✅; both group→role on the sim ✅; path-based `/w/<id>/` editor
+  proxy + uid-ownership authz ✅; Auth.js callback wiring ✅; real DNS ⬜.
 
 ## Phase 4 — SSH gateway — 🟡
 
@@ -202,18 +204,21 @@ prioritized in `DO_NEXT.md`. **Deliverables (do not defer any actionable item):*
 - **High** — (5) early/initial snapshot so a fresh workspace is recoverable before the 6h cadence;
   (6) fail-loud + portal-visible bootstrap status for repo-clone / git-credential failures (non-dev
   safety); (7) GC per-workspace Secrets Manager agent secrets on terminate + periodic secret GC.
-- **Medium / Low** — (8) bound ECS task-definition revision growth; (9) require a valid owner identity
-  for proxy-routed workspaces (or authorize by a stable subject claim); (10) reject invalid `?window=`
-  instead of coercing to `all`; (11) fix the stale topology CA-cert edge text.
+- **Medium / Low** — (8) bound ECS task-definition revision growth; (9) editor-proxy ownership is now
+  by a stable subject (the Auth.js session `uid` vs `workspace.ownerId`), not a fragile email match —
+  the former "require a valid owner identity for proxy-routed workspaces" concern is closed by the
+  path-based in-app proxy; (10) reject invalid `?window=` instead of coercing to `all`; (11) fix the
+  stale topology CA-cert edge text.
 - **Deferred → now actionable:** **cross-region EBS snapshot DR** (snapshot → `CopySnapshot` →
   restore) — **DONE**: `StorageProvider.copySnapshot` + the EC2 adapter (cross-region client by
   coordinates alone, §6.9), proven by a sim integ (snapshot→copy→restore) now that **sockerless#602**
-  landed. `CONNECTION_TOKEN` — on review this is **correctly coupled to the future DYNAMIC
-  wake-on-connect gate**, NOT a free-standing fix: the image already consumes `CONNECTION_TOKEN` when
-  injected (`entrypoint.sh`), but the current STATIC gate model runs the IDE **tokenless behind the
-  gate** (`EDD_DISABLE_CONNECTION_TOKEN=1` — the gate is the PEP). Generating/persisting/injecting a
-  token has no consumer until the gate forwards it (the dynamic-gate extension), so building it now
-  would be dead code (§6.5). It stays with that extension; the image side is already ready.
+  landed. `CONNECTION_TOKEN` — on review this is **correctly coupled to a future DYNAMIC
+  per-connection token**, NOT a free-standing fix: the image already consumes `CONNECTION_TOKEN` when
+  injected (`entrypoint.sh`), but the current model runs the IDE **tokenless behind the in-app
+  `/w/<id>/` proxy** (`EDD_DISABLE_CONNECTION_TOKEN=1` — the control-plane app's path proxy is the
+  authorization point, gating each request on the Auth.js session/ownership). Generating/persisting/
+  injecting a token has no consumer until the proxy forwards it, so building it now would be dead
+  code (§6.5). It stays with that extension; the image side is already ready.
 
 - **Gate:** each item proven by a unit/integ/e2e test on fakes / DynamoDB-Local / the sim (incl. the
   `terraform-sim` IAM simulation for the IAM/role items + a sim DR copy e2e); real-enforcement checks

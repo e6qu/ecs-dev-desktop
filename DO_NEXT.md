@@ -9,10 +9,11 @@
 1. **AWS account/region & data-residency** — **the top blocker.** Gates real Terraform
    apply, Phase 1 deploy, SSH/proxy real federation, reconciler cron, real CloudTrail/
    CloudWatch, Phase 7, `e2e-aws`.
-2. **Domain & DNS owner** — base domain for `*.devbox.<domain>` + cert/DNS delegation.
-   Gates the identity-aware proxy + ACM cert issuance.
-3. **Identity-aware proxy** — confirm Pomerium (sim-proven; vs Authentik/in-house).
-4. **Heartbeat interval & idle threshold** — scale-to-zero tuning. The knobs
+2. **Domain & DNS owner** — base domain + cert/DNS delegation. The browser editor proxy is now
+   **path-based on a single domain** (`app.<domain>/w/<id>/`), so it no longer needs wildcard DNS
+   or a wildcard TLS cert (a single-host ACM cert suffices); the SSH gateway still wants its own
+   `<ws-id>.<ssh-base-domain>` zone. Gates ACM cert issuance + the SSH zone.
+3. **Heartbeat interval & idle threshold** — scale-to-zero tuning. The knobs
    now exist (`EDD_HEARTBEAT_INTERVAL_S` injected into workspace tasks;
    `EDD_IDLE_THRESHOLD_MS`/`EDD_SNAPSHOT_INTERVAL_MS`/`EDD_EARLY_SNAPSHOT_INTERVAL_MS`/
    `EDD_EARLY_SESSION_MS`/`EDD_GC_GRACE_MS` on the reconciler) — the open decision is
@@ -21,11 +22,12 @@
 Resolved: DynamoDB+ElectroDB · sockerless from source · Fargate managed-EBS ·
 manual real-AWS on `main` · AGPL-3.0-or-later · Turborepo+pnpm · CASL · dep floor
 1440 · admin observability = derive-now + CloudTrail/CloudWatch · OpenVSCode Server ·
-OpenSSH registered-key auth (no CA) · **per-workspace proxy authorization** (decision #5: chose
-external-authz → control plane; built the workspace gate PEP + `/api/internal/authz`
-PDP, ownership by owner email; **now proven live end-to-end** — browser → Pomerium →
-gate **container** → PDP container → upstream (`docker-compose.gate.yml`, CI `e2e-gate`,
-`apps/web/e2e/workspace-gate.pwgate.ts`); see `BUGS.md` Resolved + `docs/simulator-live-coverage.md`).
+OpenSSH registered-key auth (no CA) · **identity-aware proxy — decided 2026-06-20: Pomerium
+DROPPED.** The external Pomerium proxy + the standalone `workspace-gate` PEP/PDP were removed and the
+browser→editor proxy was **folded into the Next.js control-plane app** — path-based single domain
+(`app.<domain>/w/<id>/`), authorized in-process by the Auth.js session (uid-ownership/admin); no
+wildcard DNS/TLS, no PDP round-trip, no gate machine-auth (`apps/web/server.ts` +
+`apps/web/lib/workspace-proxy.ts`; see `WHAT_WE_DID.md` 2026-06-20 + `BUGS.md`).
 
 ---
 
@@ -148,9 +150,10 @@ deferral by choice.
   install it on a test org with a repo, and set `EDD_GITHUB_APP_ID` /
   `EDD_GITHUB_APP_KEY` / `EDD_GITHUB_TEST_ORG` / `EDD_GITHUB_TEST_REPO` /
   `AUTH_GITHUB_API_URL`.
-- **Remaining product tracks:** increment-2 deployment wiring is **done** (#77 merged:
-  Pomerium wildcard→gate route + live browser→Pomerium→gate→PDP authz; the DYNAMIC
-  full-ECS-wake gate variant remains a future extension). Sim-probe/coverage pass is
+- **Remaining product tracks:** the browser→editor proxy is **done and simplified** — the
+  external Pomerium + standalone `workspace-gate` deployment wiring (#77) was **removed 2026-06-20**
+  in favor of the in-app path-based proxy (`/w/<id>/`, Auth.js session authz in-process); the
+  DYNAMIC full-ECS-wake variant remains a future extension. Sim-probe/coverage pass is
   largely landed — CloudTrail for our EBS/ECS ops (#74) and the multi-generation EBS
   snapshot chain (sim handles it, none filed). ECS Exec now has a real data-channel
   proof: standard `OpenDataChannel` handshake → command output streamed from the task;
@@ -178,9 +181,9 @@ count>10`; `DescribeTasks` empty `tasks`) and **#619** (Scheduler accepts an inv
     against the AWS spec first, and file genuine gaps only in `e6qu/sockerless` (§0.9).
 - Covered (see `docs/simulator-live-coverage.md`): the real VS Code workspace
   (OpenVSCode browser proof + polyglot toolchain compiles + OpenVSCode :3000 inside
-  the sim ECS task), browser Pomerium OIDC login, portal browser lifecycle on real
-  ECS compute, the live user journey, Auth.js callback routes, the real-CP wake
-  chain, idle-agent heartbeat, reconciler scale-to-zero, per-workspace proxy authz.
+  the sim ECS task), the in-app path-based editor proxy (vscode browser e2e under `/w/<id>/`),
+  portal browser lifecycle on real ECS compute, the live user journey, Auth.js callback routes,
+  the real-CP wake chain, idle-agent heartbeat, reconciler scale-to-zero, per-workspace proxy authz.
 
 ---
 
@@ -189,7 +192,7 @@ count>10`; `DescribeTasks` empty `tasks`) and **#619** (Scheduler accepts an inv
 - **On AWS (#1):** Terraform module is **built and sim-apply-proven** (full stack incl.
   DNS/TLS: VPC/ECS/ECR/DynamoDB+GSIs/KMS/IAM/ALB+ACM/Route53). Blocked: real apply
   (account + remote state backend), golden image real Fargate deploy, wiring `apps/web`
-  to real adapters, Pomerium real federation + DNS, reconciler cron, CloudTrail/
+  to real adapters, real DNS + single-host ACM for the app/editor domain, reconciler cron, CloudTrail/
   CloudWatch/Cost observability, Phase 7, `e2e-aws`.
   - **`e2e-aws` first slice is BUILT (2026-06-17), gated only on the role/secrets.** The
     workflow (`.github/workflows/e2e-aws.yml`) wires OIDC → role, a self-contained real-EBS
@@ -268,4 +271,5 @@ count>10`; `DescribeTasks` empty `tasks`) and **#619** (Scheduler accepts an inv
 - **Golden image SSH:** the `infra/images` collection (shared `base`) includes
   `sshd`/CA/principal wiring and is covered through the AWS container-mode simulator
   with `EcsComputeProvider` managed EBS. Real deploy remains AWS-account gated.
-- **Pinned versions:** Pomerium `0.32.2`, `@playwright/test` ^1.60.
+- **Pinned versions:** `@playwright/test` ^1.60. (Pomerium was removed 2026-06-20 — the editor
+  proxy is now in-process in the Next.js app.)

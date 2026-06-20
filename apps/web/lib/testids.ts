@@ -62,6 +62,8 @@ export const TESTID = {
   sshKeyAdd: "ssh-key-add",
   /** The per-workspace `ssh` connect command on a workspace card. Attr: `data-host`. */
   workspaceSshCommand: "workspace-ssh-command",
+  /** The "Open editor" link on a workspace card (path-based `/w/<id>/` proxy). Attr: `data-href`. */
+  workspaceOpen: "workspace-open",
   /** Dev-login form (EDD_DEV_AUTH=1) controls + error. */
   loginUser: "login-user",
   loginPassword: "login-password",

@@ -26,5 +26,4 @@ availability_zones = ["us-east-1a", "us-east-1b"]
 #   EDD_MEMBER_GROUPS         = "engineering"
 #   AUTH_TRUST_HOST           = "true"
 #   EDD_WORKSPACE_BASE_DOMAIN = "devbox.dev.example.com"
-#   EDD_POMERIUM_JWKS_URL     = "https://authenticate.dev.example.com/.well-known/pomerium/jwks.json"
 # }

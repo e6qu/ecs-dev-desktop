@@ -64,15 +64,23 @@ export async function startWebApp(
   ensureWebBuilt();
   const port = await freePort();
   const env = makeEnv(port);
-  const child: ChildProcess = spawn(
-    join(WEB_DIR, "node_modules", ".bin", "next"),
-    ["start", "-p", String(port)],
-    {
-      cwd: WEB_DIR,
-      env: { ...process.env, EDD_DEV_AUTH: "1", AUTH_SECRET: "e2e-secret", ...env },
-      stdio: ["ignore", "pipe", "pipe"],
+  // The custom server (server.ts) serves the app AND the /w/<id>/ workspace proxy.
+  const child: ChildProcess = spawn(join(WEB_DIR, "node_modules", ".bin", "tsx"), ["server.ts"], {
+    cwd: WEB_DIR,
+    env: {
+      ...process.env,
+      NODE_ENV: "production",
+      PORT: String(port),
+      // Bind all interfaces (as `next start` did): the workspace containers reach
+      // this control plane over the host network, so loopback-only would be
+      // unreachable from them (idle-agent heartbeats + SSH wake-on-connect).
+      HOSTNAME: "0.0.0.0",
+      EDD_DEV_AUTH: "1",
+      AUTH_SECRET: "e2e-secret",
+      ...env,
     },
-  );
+    stdio: ["ignore", "pipe", "pipe"],
+  });
   let output = "";
   child.stdout?.on("data", (d: Buffer) => (output += d.toString()));
   child.stderr?.on("data", (d: Buffer) => (output += d.toString()));
@@ -81,7 +89,7 @@ export async function startWebApp(
   const deadline = Date.now() + HEALTHZ_TIMEOUT_MS;
   for (;;) {
     if (child.exitCode !== null) {
-      throw new Error(`next start exited (${String(child.exitCode)}):\n${output}`);
+      throw new Error(`custom server exited (${String(child.exitCode)}):\n${output}`);
     }
     try {
       const res = await fetch(`${baseUrl}/api/healthz`);

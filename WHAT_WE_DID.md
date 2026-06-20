@@ -9,8 +9,10 @@
 
 - **Architecture (locked, `AGENTS.md` §1):** ECS Fargate; DynamoDB single-table +
   ElectroDB (over Aurora); OpenSSH registered-key auth (no CA — dual-trust via
-  `ssh-authorize`); identity-aware proxy + wildcard DNS (over the
-  ~100-rule ALB cap); EBS-snapshot-as-persistence + scale-to-zero; Auth.js + CASL.
+  `ssh-authorize`); the browser→editor proxy is **in-process in the Next.js app** at a
+  **path-based single domain** (`app.<domain>/w/<id>/`), authorized by the Auth.js session
+  (uid-ownership/admin) — Pomerium + the standalone `workspace-gate` were removed 2026-06-20
+  (no wildcard DNS/TLS); EBS-snapshot-as-persistence + scale-to-zero; Auth.js + CASL.
   Workspace runtime = **ECS-managed EBS** (compute creates/releases the task's volume;
   storage owns snapshot/restore/GC).
 - **Engineering charter (`AGENTS.md` §6, CI-enforced):** strong typing + branded types;
@@ -2026,3 +2028,35 @@ listStuckProvisioning` + `recoverStuckProvisioning` revert provisioning→stoppe
   optimizations of correct code rather than bugs — the per-sweep reconciler table re-scans, the drift
   sweep's serial per-workspace `DescribeTasks`, and the single-partition `auditEvent.byTime` GSI (sharding
   would risk the figure-equivalence invariant; on-demand adaptive capacity covers the 200 target).
+
+- **2026-06-20 — Removed Pomerium + the standalone workspace-gate; folded the editor proxy into the
+  Next.js app (path-based, single-domain, single-auth).** Clean break — no production users, no legacy
+  shim (`AGENTS.md` §0). The browser→VS Code editor reach moved out of the external identity-aware proxy
+  (Pomerium) + the separate `workspace-gate` PEP/PDP chain and INTO the control-plane app itself. **Custom
+  Next.js server** (`apps/web/server.ts`, run via `tsx` in dev AND prod — replaced `next start`) serves the
+  portal/admin/API and proxies the per-user editor at `app.<domain>/w/<id>/` (HTTP + WebSocket upgrade), the
+  proxy logic living in `apps/web/lib/workspace-proxy.ts`. **Path-based routing on a single domain**
+  (`/w/<workspace-id>/`) replaced wildcard-subdomain routing for the browser/HTTP path — no wildcard DNS, no
+  wildcard TLS cert, no cross-subdomain cookie (SSH keeps its own `<ws-id>.<ssh-base-domain>` zone,
+  unchanged). **Single auth system:** the same Auth.js (NextAuth) session authorizes the proxy, with
+  **uid-based ownership** (`session.uid === workspace.ownerId`) or admin checked **in-process** — no
+  Pomerium JWT assertion, no PDP `/api/internal/authz` round-trip, no gate machine-auth token, no email
+  bridge. The decision is a pure pair in `@edd/core` (`decideWorkspaceAccessBySubject` +
+  `workspaceIdFromPath`); the old email-based `decideWorkspaceAccess`/`workspaceIdFromHost` were deleted. The
+  golden workspace image now runs OpenVSCode with `--server-base-path /w/<id>/`; a path-based **Open editor**
+  link was added to `WorkspaceCard` (shown for running/idle/stopped — stopped wakes on connect). `connect-info`
+  was simplified to **SSH-only** (the in-app proxy resolves the editor upstream in-process; the SSH gateway
+  remains its only caller). **Tests:** added `apps/web/lib/workspace-proxy.test.ts` (authz glue:
+  unauthenticated→login, unknown-ws→forbidden, owner→allow, other→forbidden, admin→allow, no-subject→forbidden);
+  the vscode browser e2e (`test:pw:vscode`) now drives the editor under the `/w/<id>/` base path. **Deleted:**
+  `services/workspace-gate/` (whole), `infra/proxy/` (Pomerium yaml), `apps/web/app/api/internal/authz/`,
+  `apps/web/lib/pomerium-assertion.*`, the `pomerium-*`/`workspace-gate.pwgate`/`gate-global-setup` e2e +
+  playwright configs, `packages/e2e/src/pomerium-*` + `proxy-routing.e2e.ts`, `docker-compose.gate.yml`,
+  `scripts/test-gate-e2e.sh`, the `e2e-gate` CI job, and the config constants
+  `POMERIUM_*`/`WORKSPACE_HOST_HEADER`/`WORKSPACE_AUTHZ_PATH`/`GATE_PDP_TIMEOUT_MS`/`workspaceGate`/
+  `WORKSPACE_BASE_DOMAIN` (`GATE_UPSTREAM_TIMEOUT_MS` was renamed `WORKSPACE_PROXY_UPSTREAM_TIMEOUT_MS`).
+  **Kept** (NOT Pomerium): the SSH gateway (`services/ssh-gateway`), `scripts/gen-sim-tls-cert.sh` + the
+  `e2e-https` CI job + `docker-compose.https.yml` (these serve the Entra/Azure auth-over-TLS + EBS-over-TLS
+  e2e, not Pomerium — only the Pomerium-specific SANs were trimmed from the cert; the tier stays). Verified at
+  close: `pnpm build`, `pnpm test`, `pnpm lint` all green; `actionlint` + `shellcheck` clean;
+  `pnpm install --frozen-lockfile` passes.

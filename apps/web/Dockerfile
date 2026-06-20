@@ -1,9 +1,9 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Next.js control-plane image for the live Pomerium→gate→ECS e2e harness: runs the
-# production `next start` build in the compose network so the gate's PDP + the
-# wake/connect-info routes are reachable, and the real EBS/ECS adapters target the
-# sim by coordinates (COMPUTE_PROVIDER=ecs + AWS_ENDPOINT_URL). Build context is the
-# repo root; apps/web/Dockerfile.dockerignore keeps it lean.
+# Next.js control-plane image: runs the production build via the custom server
+# (server.ts, launched with tsx) so the app serves the portal/admin/API AND the
+# in-app path-based `/w/<id>/` workspace editor proxy. The real EBS/ECS adapters
+# target the sim by coordinates (COMPUTE_PROVIDER=ecs + AWS_ENDPOINT_URL). Build
+# context is the repo root; apps/web/Dockerfile.dockerignore keeps it lean.
 FROM node:22-bookworm-slim AS builder
 WORKDIR /repo
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
@@ -34,6 +34,8 @@ COPY --from=builder --chown=node:node /repo /repo
 USER node
 WORKDIR /repo/apps/web
 # Port 3700 (not 3000 — which collides with countless local dev servers). Bind
-# 0.0.0.0 (not the default localhost) so the gate/Pomerium reach it in-network.
+# 0.0.0.0 so it is reachable in-network. The custom server (server.ts, run via tsx)
+# serves the app AND the path-based `/w/<id>/` workspace editor proxy.
 EXPOSE 3700
-CMD ["pnpm", "exec", "next", "start", "-p", "3700", "-H", "0.0.0.0"]
+ENV NODE_ENV=production PORT=3700 HOSTNAME=0.0.0.0
+CMD ["pnpm", "exec", "tsx", "server.ts"]
