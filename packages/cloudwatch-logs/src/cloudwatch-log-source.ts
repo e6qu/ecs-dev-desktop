@@ -103,8 +103,15 @@ export class CloudWatchLogSource implements LogSource {
 }
 
 export function toLogLine(e: FilteredLogEvent, stream: LogStream): LogLine {
+  // Fail loud on a missing timestamp rather than coercing it to the Unix epoch
+  // (1970) — a `?? 0` fallback would silently mis-date the line (§6.5). CloudWatch
+  // always sets it; an absent one is a contract violation worth surfacing. An empty
+  // `message` is legitimate (a blank log line), so it keeps its `?? ""`.
+  if (e.timestamp === undefined) {
+    throw new Error("CloudWatch FilteredLogEvent missing required `timestamp`");
+  }
   return {
-    at: isoTimestamp(new Date(e.timestamp ?? 0).toISOString()),
+    at: isoTimestamp(new Date(e.timestamp).toISOString()),
     level: parseLevel(e.message ?? ""),
     source: stream,
     message: e.message ?? "",

@@ -31,6 +31,12 @@ describe("buildEmfDocument", () => {
     const doc = buildEmfDocument("reconciler.sweep.count", 1, "Count", Date.parse(AT), "ns", {});
     expect(doc._aws.CloudWatchMetrics[0]?.Dimensions).toEqual([[]]);
   });
+
+  it("throws if a dimension key collides with the metric name or `_aws`", () => {
+    const at = Date.parse(AT);
+    expect(() => buildEmfDocument("dup", 1, "Count", at, "ns", { dup: "x" })).toThrow(/collide/);
+    expect(() => buildEmfDocument("m", 1, "Count", at, "ns", { _aws: "x" })).toThrow(/collide/);
+  });
 });
 
 describe("EmfMetricSink", () => {

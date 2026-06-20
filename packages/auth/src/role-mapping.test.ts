@@ -22,6 +22,17 @@ describe("mapClaimsToRole", () => {
     ).toBe("admin");
   });
 
+  it("matches groups case-insensitively (config vs claim casing must not silently downgrade)", () => {
+    // Config has `acme/platform-admins`; the claim arrives with different casing.
+    expect(
+      mapClaimsToRole({ idp: "github", subject: "u", groups: ["Acme/Platform-Admins"] }, config),
+    ).toBe("admin");
+    // And the reverse (Entra GUIDs are case-insensitive hex).
+    expect(
+      mapClaimsToRole({ idp: "entra", subject: "u", groups: ["ENTRA-GROUP-ADMIN-GUID"] }, config),
+    ).toBe("admin");
+  });
+
   it("maps a member group to member", () => {
     expect(
       mapClaimsToRole({ idp: "github", subject: "u", groups: ["acme/engineers"] }, config),

@@ -46,19 +46,37 @@ interface FetchTeamsDeps {
  * a non-OK response — a teams-fetch failure must not silently downgrade the
  * user's role (a security-relevant silent fallback, see `AGENTS.md` §6.5).
  */
+/** Teams per page (GitHub's max). */
+const TEAMS_PER_PAGE = 100;
+/** Hard page cap so we never loop forever — fail loud past it rather than silently
+ * truncating the team list (which would downgrade a role granted by a later page). */
+const MAX_TEAM_PAGES = 20;
+
 export async function fetchGithubTeamGroups(deps: FetchTeamsDeps): Promise<string[]> {
   const { accessToken, baseUrl = githubApiBaseUrl(), fetchImpl = fetch } = deps;
-  // per_page=100 covers all but pathological membership; a user in >100 teams
-  // would have additional pages we don't follow (acceptable for role mapping).
-  const res = await fetchImpl(`${baseUrl}/user/teams?per_page=100`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-    },
-  });
-  if (!res.ok) {
-    throw new Error(`GitHub /user/teams failed: ${res.status.toString()} ${res.statusText}`);
+  const headers = {
+    Authorization: `Bearer ${accessToken}`,
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+  // Follow ALL pages: a role-granting team on page 2+ must not be silently dropped
+  // (a security-relevant truncation, §6.5). A page shorter than the page size is the
+  // last; exceeding the hard cap throws rather than under-reporting the user's teams.
+  const groups: string[] = [];
+  for (let page = 1; page <= MAX_TEAM_PAGES; page++) {
+    const res = await fetchImpl(
+      `${baseUrl}/user/teams?per_page=${String(TEAMS_PER_PAGE)}&page=${String(page)}`,
+      { headers },
+    );
+    if (!res.ok) {
+      throw new Error(`GitHub /user/teams failed: ${res.status.toString()} ${res.statusText}`);
+    }
+    const teams = teamsSchema.parse(await res.json());
+    groups.push(...teams.map(teamGroupId));
+    if (teams.length < TEAMS_PER_PAGE) return groups;
   }
-  return teamsSchema.parse(await res.json()).map(teamGroupId);
+  throw new Error(
+    `GitHub /user/teams exceeded ${String(MAX_TEAM_PAGES)} pages — refusing to silently ` +
+      `truncate the team list (role mapping)`,
+  );
 }

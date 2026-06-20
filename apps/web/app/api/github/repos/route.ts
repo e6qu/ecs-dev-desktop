@@ -6,7 +6,12 @@ import { z } from "zod";
 
 import { authenticate, badRequest, conflict, forbidden, isResponse } from "../../../../lib/api";
 import { auditActor, recordAudit } from "../../../../lib/audit";
+import { GitHubApiError } from "../../../../lib/github";
 import { getGitProvider } from "../../../../lib/git-provider";
+
+/** GitHub returns 422 when a repo name already exists on the account or is otherwise
+ * invalid — a user-correctable condition, not a server failure. */
+const GITHUB_UNPROCESSABLE = 422;
 import { withObservability } from "../../../../lib/observability";
 
 /**
@@ -60,7 +65,18 @@ async function handlePOST(req: Request) {
   const provider = await getGitProvider(principal.id);
   if (provider === null) return conflict(NOT_CONNECTED);
 
-  const repo = await provider.createRepo(parsed.data);
+  let repo;
+  try {
+    repo = await provider.createRepo(parsed.data);
+  } catch (err) {
+    // A name collision / validation error (422) is user-correctable → 409 (not a
+    // bodiless 500). Any other failure (auth, transient, server) propagates to
+    // withObservability → logged + 500.
+    if (err instanceof GitHubApiError && err.status === GITHUB_UNPROCESSABLE) {
+      return conflict("repository name unavailable (already exists or invalid)");
+    }
+    throw err;
+  }
   await recordAudit({
     actor: auditActor(principal),
     action: "repo.create",

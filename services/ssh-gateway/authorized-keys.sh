@@ -30,6 +30,14 @@ login_user="${1:?login user is required}"
 key_type="${2:?key type is required}"
 key_blob="${3:?key blob is required}"
 
+# Defense-in-depth: these sshd-supplied fields are interpolated into a JSON request body
+# below. sshd only passes validated keys (type from a known set, blob base64), but reject
+# anything outside the JSON-safe SSH charset rather than risk a malformed/forged body — fail
+# closed (deny). A `"` or `\` could otherwise alter the request shape.
+case "${key_type}${key_blob}" in
+  *[!A-Za-z0-9@._/+=-]*) exit 0 ;;
+esac
+
 # "dev-abc123" -> "abc123"; reject a login that is not a dev-* principal.
 workspace_id="${login_user#dev-}"
 if [ "$workspace_id" = "$login_user" ]; then

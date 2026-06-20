@@ -89,10 +89,8 @@ describe("toLogLine", () => {
     });
   });
 
-  it("defaults to epoch when timestamp is absent", () => {
-    const line = toLogLine({ message: "warn: something" }, "reconciler");
-    expect(line.at).toBe("1970-01-01T00:00:00.000Z");
-    expect(line.level).toBe("warn");
+  it("throws on a missing timestamp rather than mis-dating the line to the epoch", () => {
+    expect(() => toLogLine({ message: "warn: something" }, "reconciler")).toThrow(/timestamp/);
   });
 
   it("defaults to empty string when message is absent", () => {

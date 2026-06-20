@@ -29,8 +29,14 @@ export interface RoleMappingConfig {
 }
 
 export function mapClaimsToRole(claims: IdentityClaims, config: RoleMappingConfig): Role {
-  const groups = new Set(claims.groups);
-  if (config.adminGroups.some((g) => groups.has(g))) return "admin";
-  if (config.memberGroups.some((g) => groups.has(g))) return "member";
+  // Group identifiers are case-insensitive on both IdPs — GitHub `org/team` slugs are
+  // lowercased by GitHub, Entra group object-ids are hex GUIDs — but operators configure
+  // `EDD_ADMIN_GROUPS`/`EDD_MEMBER_GROUPS` with arbitrary casing. Match case-insensitively
+  // so a casing mismatch can't silently downgrade an admin/member to the default role.
+  const groups = new Set(claims.groups.map((g) => g.toLowerCase()));
+  const granted = (configured: string[]): boolean =>
+    configured.some((g) => groups.has(g.toLowerCase()));
+  if (granted(config.adminGroups)) return "admin";
+  if (granted(config.memberGroups)) return "member";
   return config.defaultRole;
 }

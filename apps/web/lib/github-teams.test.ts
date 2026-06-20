@@ -60,6 +60,28 @@ describe("fetchGithubTeamGroups", () => {
     ).rejects.toThrow(/403/);
   });
 
+  it("follows pagination so a role-granting team on a later page is not dropped", async () => {
+    const page1 = Array.from({ length: 100 }, (_, i) => ({
+      slug: `t${String(i)}`,
+      organization: { login: "acme" },
+    }));
+    const page2 = [{ slug: "platform-admins", organization: { login: "acme" } }];
+    const pageAware: FetchLike = (url) =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        statusText: "OK",
+        json: () => Promise.resolve(url.includes("page=2") ? page2 : page1),
+      });
+    const groups = await fetchGithubTeamGroups({
+      accessToken: "t",
+      baseUrl: "https://api.example",
+      fetchImpl: pageAware,
+    });
+    expect(groups).toHaveLength(101); // page 1 (100, full → continue) + page 2 (1, partial → stop)
+    expect(groups).toContain("acme/platform-admins");
+  });
+
   it("calls /user/teams with the bearer token", async () => {
     let calledUrl = "";
     let authHeader = "";

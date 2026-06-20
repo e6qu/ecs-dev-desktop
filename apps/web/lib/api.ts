@@ -23,11 +23,6 @@ export const badRequest = (message = "invalid request") =>
   NextResponse.json({ error: message }, { status: 400 });
 export const conflict = (message: string) => NextResponse.json({ error: message }, { status: 409 });
 
-/** Narrow an unknown thrown value to a message without an assertion. */
-export function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
-}
-
 // The ONE place a domain failure becomes an HTTP status. `Record<…kind, number>`
 // is total, so adding a `DomainError` kind without a status here is a compile
 // error — routes never hand-map errors, and none can be forgotten.

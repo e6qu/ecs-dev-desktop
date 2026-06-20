@@ -301,6 +301,37 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **Breadth sweep (2026-06-20) — 5-agent audit of the under-covered surface, all fixed (no deferrals).**
+  Prior sweeps went deep on control-plane/cost/reconciler/storage; this one targeted the gateway/proxy/auth
+  chain, the DB + cloud-adapter layer, the HTTP route surface, and shell/IaC/config. No critical bypass (the
+  auth chain fails closed); a set of genuine MEDIUM/LOW bugs, all remediated + tested: **(auth)**
+  `mapClaimsToRole` matched groups case-SENSITIVELY → an admin-group config/claim casing mismatch (GitHub
+  slugs are lowercased) silently downgraded the role; now case-insensitive. **(github-teams)** `/user/teams`
+  fetched only page 1 → a role-granting team on a later page was dropped; now follows all pages, fails loud
+  past a hard cap. **(routes)** `base-images` POST caught EVERY error → 409 + leaked the raw message (no
+  conflict condition exists; removed the catch so genuine errors surface as a logged 500); `github/repos`
+  POST surfaced a 422 name-collision as a bodiless 500 (typed `GitHubApiError` → 409, re-throw the rest);
+  `connect-info` validated the query before authenticating (pre-auth 400-vs-401 leak) and returned 404 for a
+  running workspace whose ENI host wasn't bound yet (now auth-first + a retry-able 409). **(auth hardening)**
+  `pomerium-assertion` didn't require `exp` present (a token without it was valid forever) → `requiredClaims:
+['exp']` + `clockTolerance`. **(adapters, §6.5 fail-loud)** `cloudwatch-logs` `toLogLine` coerced a missing
+  timestamp to the Unix epoch → now throws; the EMF sink now throws on a dimension key colliding with the
+  metric name / `_aws`; `db.ensureTable` now waits for the table to reach ACTIVE (real-AWS `CreateTable`
+  returns CREATING). **(misc)** `api-client.connectInfo` gained the `protocol` arg (the `?protocol=http`
+  branch was unreachable — API-first drift); `cli status` gates its exit code on cluster health (was always
+  0); `withObservability` guards the request-id header set against an immutable Response. **(gateway)**
+  Both `authorized-keys.sh` hops gained a fail-closed charset guard on the sshd-supplied key fields before
+  JSON interpolation. (A `/run/edd-env` group-restriction was attempted but **reverted**: its two readers —
+  `nobody` for AuthorizedKeysCommand and the dev-\* login for ForceCommand — are distinct system users, and
+  sshd's command sessions don't reliably carry a shared supplementary group, so restricting the file broke
+  the wake chain. The file stays world-readable in this single-purpose proxy, where the only principal is a
+  forced TCP-proxy ForceCommand — never a shell; the larger-blast-radius inner hop already stores only the
+  per-workspace derived token under `umask 077`.) Verified clean: machine-auth
+  (timing-safe, fail-closed), token-crypto (AES-256-GCM, pinned tag), the PDP/gate fail-closed paths, IAM
+  least-privilege (tag/`PassedToService` conditions), config validation, the golden-image entrypoint, and
+  time handling (§6.10). One agent note dismissed after verification: `nc -q0` in `wake-and-forward.sh` is
+  fine — Debian's `netcat-openbsd` supports `-q` (a Debian addition).
+
 - **Resiliency + correctness sweep (2026-06-20) — 5-agent audit, all fixed (no deferrals).** The audit
   (resiliency/concurrency, correctness/cost-model, types/fail-loud/telemetry, test-fidelity,
   security/data-safety) confirmed the codebase is high-quality and converged on a tight set of genuine

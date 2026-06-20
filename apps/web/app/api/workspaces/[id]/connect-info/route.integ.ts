@@ -70,7 +70,9 @@ describe("GET /api/workspaces/:id/connect-info (DynamoDB Local)", () => {
     expect(res.status).toBe(409);
   });
 
-  it("returns 404 when workspace is running but has no sshHost", async () => {
+  it("returns 409 when the workspace is running but its ENI host isn't bound yet", async () => {
+    // The workspace exists and is running — a transient "host not yet assigned" window is a
+    // retry-able 409, NOT a 404 (which a polling gateway reads as "wrong id").
     const service = await makeService();
     const ws = await service.create({
       ownerId: ownerId("alice"),
@@ -78,7 +80,7 @@ describe("GET /api/workspaces/:id/connect-info (DynamoDB Local)", () => {
     });
 
     const res = await get("alice", ws.id);
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(409);
   });
 
   it("returns 404 for an unknown workspace", async () => {
