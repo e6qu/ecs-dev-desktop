@@ -110,14 +110,6 @@ export const entra = {
 } as const;
 
 /**
- * Base domain under which every workspace is reached as
- * `<ws-id>.<baseDomain>` through the identity-aware proxy. The harness default
- * is `devbox.localhost`; real deployments set `EDD_WORKSPACE_BASE_DOMAIN`
- * (e.g. `devbox.example.com`). Endpoint/base-domain-only config (§6.8).
- */
-export const WORKSPACE_BASE_DOMAIN = process.env.EDD_WORKSPACE_BASE_DOMAIN ?? "devbox.localhost";
-
-/**
  * Base domain under which a running workspace is reachable over SSH as
  * `<ws-id>.<baseDomain>` through the SSH gateway. Empty (the default) until a
  * deployment provisions the public SSH ingress + wildcard DNS (Phase 4b); the
@@ -127,58 +119,15 @@ export const WORKSPACE_BASE_DOMAIN = process.env.EDD_WORKSPACE_BASE_DOMAIN ?? "d
  */
 export const SSH_BASE_DOMAIN = process.env.EDD_SSH_BASE_DOMAIN ?? "";
 
-/** Control-plane path the workspace gate (PEP) consults for a per-request
- * access decision (PDP). Mounted under the Next.js app router. */
-export const WORKSPACE_AUTHZ_PATH = "/api/internal/authz";
-
-/** Header the gate uses to tell the PDP which workspace host it is fronting
- * (the PDP also requires the proxy JWT's `aud` to equal this host). */
-export const WORKSPACE_HOST_HEADER = "x-edd-workspace-host";
-
-/** Pomerium signs the identity assertion injected as this header; the PDP
- * verifies it against Pomerium's JWKS. Lowercase per the HTTP/2 convention the
- * proxy emits. */
-export const POMERIUM_ASSERTION_HEADER = "x-pomerium-jwt-assertion";
-
-const WORKSPACE_GATE_PORT = 8080;
-
 /** How stale the cost-rollup checkpoints may get before the reconciler regenerates them.
  * Bounds the report's replay tail (so a cost read stays O(recent) instead of full-scanning
  * the whole append-only ledger) without pricing the entire ledger every single sweep. */
 export const COST_ROLLUP_CADENCE_MS = 15 * 60 * 1000;
 
-/** Max ms the gate waits on the PDP authorization call before failing closed (502).
- * Bounds a stalled/overloaded control plane so a hung PDP can't leak a gate socket
- * per request (one gate fronts every workspace). */
-export const GATE_PDP_TIMEOUT_MS = 5000;
-/** Max ms the gate waits for the workspace upstream to respond/upgrade before tearing
- * down — a just-woken editor that accepts the connection but never serves must not
- * leave the client socket hung open indefinitely. */
-export const GATE_UPSTREAM_TIMEOUT_MS = 30000;
-
-/** Env var holding Pomerium's JWKS URL the PDP verifies assertions against. Read
- * at verification time (not module load) so a test can point it at a dynamically
- * bound JWKS server, and production injects the real proxy URL. */
-export const POMERIUM_JWKS_URL_ENV = "EDD_POMERIUM_JWKS_URL";
-
-/**
- * Workspace authorization gate (PEP) wiring. `port` is where the thin gate
- * listens; `pdpUrl` is the control-plane decision endpoint it consults;
- * `upstreamUrl` is a STATIC workspace target (single-workspace/tests);
- * `controlPlaneUrl` is the control-plane base the gate calls to wake + resolve a
- * workspace's live address (dynamic per-workspace routing). All overridable via
- * env so the same code runs in the harness and real cloud.
- */
-export const workspaceGate = {
-  port: WORKSPACE_GATE_PORT,
-  pdpUrl: process.env.EDD_WORKSPACE_PDP_URL ?? `http://127.0.0.1:3000${WORKSPACE_AUTHZ_PATH}`,
-  upstreamUrl: process.env.EDD_WORKSPACE_UPSTREAM_URL,
-  controlPlaneUrl: process.env.EDD_CONTROL_PLANE_URL,
-} as const;
-
-/** Env var holding the gate's machine-auth secret (hex) — used to derive the
- * per-workspace HMAC token for the control-plane wake/connect-info calls. */
-export const GATEWAY_SECRET_ENV = "EDD_GATEWAY_SECRET";
+/** Max ms the in-app workspace proxy waits for the workspace upstream to respond/upgrade
+ * before tearing down — a just-woken editor that accepts the connection but never serves
+ * must not leave the client socket hung open indefinitely. */
+export const WORKSPACE_PROXY_UPSTREAM_TIMEOUT_MS = 30000;
 
 /**
  * Cost model rates (USD), as published for **us-east-1 on-demand** at the time

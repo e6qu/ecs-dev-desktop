@@ -16,9 +16,11 @@ configuration alone — no real-vs-sim branches (`AGENTS.md` §6.8/§6.9).
 
 - An AWS account + region, and credentials with permission to create the module's
   resources (VPC, ECS, DynamoDB, ECR, KMS, IAM, ALB, Route 53/ACM).
-- A registered domain you can delegate (`*.devbox.<domain>` for workspaces,
-  `app.<domain>` for the control plane). Required for the ALB cert + wildcard
-  workspace routing.
+- A registered domain you can delegate: `app.<domain>` for the control plane
+  (which also serves the editor at `app.<domain>/w/<workspace-id>/`) and
+  `*.<ssh-base-domain>` for per-workspace SSH. Required for the ALB cert. **No
+  wildcard DNS or wildcard TLS is needed for the browser/editor path** — it is
+  path-based on the single control-plane domain.
 - Terraform (`>=` the pin in [`infra/terraform/versions.tf`](../infra/terraform/versions.tf)),
   Docker/podman (to build & push images), and the AWS CLI.
 - IdP app registrations: a **GitHub OAuth app** (and/or **GitHub App**) and/or an
@@ -33,7 +35,7 @@ a runnable composition is in [`infra/terraform/examples/complete`](../infra/terr
    the Terraform `backend` — do this before the first `apply` so state is never
    local. (The module README lists this as prerequisite #1.)
 2. Set the module inputs: `name`, `domain_name` (enables ACM +
-   Route 53 + the `*.devbox` wildcard), the optional `nat_mode` (`gateway` —
+   Route 53 for `app.<domain>`), the optional `nat_mode` (`gateway` —
    AWS-managed NAT Gateway, or `instance` — a cost-optimized fck-nat EC2
    instance), task sizing, and `secret_environment` (see Step 3). The AWS region
    comes from the configured AWS provider (the module derives it via
@@ -65,8 +67,10 @@ Two images go to the ECR repos the module created:
 2. **A golden workspace image** (the [`infra/images`](../infra/images/README.md)
    collection — a shared `base` plus the `omnibus`/per-language variants; build a
    variant `FROM base`) → the matching entry in `golden_repository_urls`. These bake
-   OpenVSCode Server, the toolchains, and `sshd` + its registered-key authorizer
-   (there is no separate "SSH proxy" image — SSH is served from the workspace task).
+   OpenVSCode Server (served under `--server-base-path /w/<id>/` so the editor mounts
+   under the control-plane path proxy), the toolchains, and `sshd` + its
+   registered-key authorizer (there is no separate "SSH proxy" image — SSH is served
+   from the workspace task).
 
 ```sh
 aws ecr get-login-password --region <region> \
@@ -100,12 +104,11 @@ Secrets (`secret_environment`):
 
 Non-secret config (`extra_environment`):
 
-| Group       | Variable                                             | Purpose                                            |
-| ----------- | ---------------------------------------------------- | -------------------------------------------------- |
-| Auth.js     | `AUTH_URL` or `AUTH_TRUST_HOST=true`                 | correct callback/redirect behind the ALB           |
-| IdP (Entra) | `AUTH_MICROSOFT_ENTRA_ID_ISSUER`                     | Entra OIDC issuer URL                              |
-| RBAC        | `EDD_ADMIN_GROUPS`, `EDD_MEMBER_GROUPS`              | IdP group → role mapping (**see admin bootstrap**) |
-| Proxy       | `EDD_WORKSPACE_BASE_DOMAIN`, `EDD_POMERIUM_JWKS_URL` | workspace routing + proxy JWT verification         |
+| Group       | Variable                                | Purpose                                            |
+| ----------- | --------------------------------------- | -------------------------------------------------- |
+| Auth.js     | `AUTH_URL` or `AUTH_TRUST_HOST=true`    | correct callback/redirect behind the ALB           |
+| IdP (Entra) | `AUTH_MICROSOFT_ENTRA_ID_ISSUER`        | Entra OIDC issuer URL                              |
+| RBAC        | `EDD_ADMIN_GROUPS`, `EDD_MEMBER_GROUPS` | IdP group → role mapping (**see admin bootstrap**) |
 
 > **Admin bootstrap (important).** RBAC is purely IdP-group-driven: the default
 > role is `viewer`, and an account is an admin **only** if its IdP groups intersect
@@ -126,16 +129,23 @@ the gateway authenticates to `ssh-authorize` with `EDD_GATEWAY_SECRET`, and the
 in-workspace authorizer with its injected agent token (derived from
 `EDD_AGENT_SECRET`). Users self-serve key registration after first sign-in.
 
-## Step 5 — DNS/TLS + identity-aware proxy
+## Step 5 — DNS/TLS + editor routing
 
-- The module provisions the ACM cert + Route 53 records for `app.<domain>` and the
-  `*.devbox.<domain>` wildcard when `domain_name` is set.
-- Deploy **Pomerium** ([`infra/proxy`](../infra/proxy/README.md)) and the
-  **workspace gate** (PEP, `services/workspace-gate`) in front of workspaces:
-  browser → Pomerium (OIDC) → gate (per-workspace authz via the control-plane PDP
-  `/api/internal/authz`) → the workspace. The gate consumes `EDD_CONTROL_PLANE_URL`,
-  `EDD_GATEWAY_SECRET`, `EDD_POMERIUM_JWKS_URL`, and `EDD_WORKSPACE_BASE_DOMAIN`.
-  This whole chain is proven live in CI (`e2e-gate`).
+- The module provisions the ACM cert + Route 53 records for `app.<domain>` when
+  `domain_name` is set. **No wildcard cert or wildcard DNS is required** for the
+  browser/editor path — there is a single control-plane domain.
+- The browser→editor proxy is **folded into the Next.js control-plane app** (a
+  custom server, `apps/web/server.ts` + `apps/web/lib/workspace-proxy.ts`): the
+  editor is reached at **`app.<domain>/w/<workspace-id>/`**, path-based on the one
+  domain. Routing is:
+  browser → control-plane app (`/w/<id>/` proxy) → the workspace.
+- **Authorization is the same Auth.js session that protects the portal** — the
+  proxy authorizes in-process by **uid-based ownership** (`session.uid ===
+workspace.ownerId`) or admin. There is no separate proxy, no Pomerium, no PDP
+  round-trip, and no email bridge.
+- The app runs as **one process** in dev/prod (`apps/web` is started via the
+  custom server, not `next start`); no extra service to deploy in front of
+  workspaces.
 
 ## Step 6 — Seed the base-image catalog
 
@@ -169,8 +179,9 @@ API/UI (the local `scripts/dev.sh` seeds one for dev; production has no auto-see
 
 The `e2e-aws` tier (real account/region/IdP) has not run — it is gated on the AWS
 account decision. So real EBS durability/latency, Fargate cold-start, 200+ load,
-IAM enforcement, ACM/DNS issuance, KMS/DR, and live GitHub/Entra federation are
-**unverified end-to-end**. See [`TESTING.md`](../TESTING.md) (real-AWS tier) and
+IAM enforcement, ACM/DNS issuance (only `app.<domain>`, no wildcard), KMS/DR, and
+live GitHub/Entra federation are **unverified end-to-end**. See
+[`TESTING.md`](../TESTING.md) (real-AWS tier) and
 [`docs/observability-gaps.md`](./observability-gaps.md) for the full gap list.
 
 ## See also

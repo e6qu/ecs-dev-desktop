@@ -416,22 +416,6 @@ importers:
         specifier: ^26.0.0
         version: 26.0.0
 
-  services/workspace-gate:
-    dependencies:
-      '@edd/config':
-        specifier: workspace:*
-        version: link:../../packages/config
-      '@edd/core':
-        specifier: workspace:*
-        version: link:../../packages/core
-    devDependencies:
-      '@types/node':
-        specifier: ^26.0.0
-        version: 26.0.0
-      esbuild:
-        specifier: ^0.28.1
-        version: 0.28.1
-
 packages:
 
   '@auth/core@0.41.2':

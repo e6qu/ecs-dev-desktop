@@ -105,14 +105,18 @@ fi
 # Base server args. --disable-workspace-trust: a per-user workspace contains the
 # user's own files, so the Workspace Trust prompt is pure friction (a modal that
 # blocks the UI); hosted dev environments disable it.
+# --server-base-path: the control-plane app proxies this editor at the path
+# `/w/<workspace-id>/`, so the server must emit all its URLs under that prefix
+# (the proxy forwards paths unrewritten). Mirrors the in-app `WORKSPACE_PATH_PREFIX`.
 set -- --host 0.0.0.0 --port 3000 --disable-workspace-trust \
+  --server-base-path "/w/${EDD_WORKSPACE_ID}/" \
   --extensions-dir /home/workspace/.openvscode-server/extensions \
   --user-data-dir /home/workspace/.openvscode-server/data \
   --default-folder /home/workspace
 
-# Auth: behind the workspace gate (Pomerium identity + gate ownership +
-# network isolation) the OpenVSCode connection token is redundant, so a gated
-# deployment sets EDD_DISABLE_CONNECTION_TOKEN=1 for a tokenless browser URL.
+# Auth: behind the in-app workspace proxy (Auth.js session + per-workspace
+# ownership + network isolation) the OpenVSCode connection token is redundant, so a
+# proxied deployment sets EDD_DISABLE_CONNECTION_TOKEN=1 for a tokenless browser URL.
 # Otherwise (standalone/dev) require a connection token — from ECS secrets, or a
 # random one if unset.
 if [ "${EDD_DISABLE_CONNECTION_TOKEN:-}" = "1" ]; then

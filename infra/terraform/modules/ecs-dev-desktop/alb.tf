@@ -1,8 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Application Load Balancer fronting the control plane. HTTP→HTTPS redirect plus
 # an HTTPS listener when TLS is enabled (a domain is set); HTTP-only otherwise
-# (dev). The identity-aware proxy (Pomerium) for `*.devbox` workspace routing
-# sits behind this — see the module README.
+# (dev). The control-plane app serves everything behind this listener, including
+# the in-app browser→VS Code workspace proxy (`/w/<id>/`).
 
 # trivy:ignore:AVD-AWS-0053 This ALB is the platform's public front door — internet-facing is intended.
 resource "aws_lb" "this" {

@@ -31,8 +31,9 @@ export function workspacePrincipal(workspaceId: string): string {
  * The per-workspace SSH hostname under the SSH subdomain zone:
  * `<workspaceId>.<baseDomain>` (e.g. `ws-abc123.ssh.example.com`). Each running
  * workspace is reachable at its own subdomain; the gateway behind the wildcard
- * resolves the workspace from this label. Mirrors the HTTP wildcard charset
- * (`workspaceIdFromHost`) so the SSH and HTTP subdomains stay in lockstep.
+ * resolves the workspace from this label. The label is a single valid DNS label
+ * (see {@link isWorkspaceLabel}), the same charset the in-app HTTP proxy path
+ * segment (`/w/<id>/`) accepts, so SSH host and HTTP path stay in lockstep.
  */
 export function workspaceSshHost(workspaceId: string, baseDomain: string): string {
   if (!isWorkspaceLabel(workspaceId)) {

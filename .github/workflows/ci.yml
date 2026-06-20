@@ -123,9 +123,6 @@ jobs:
         run: docker build -f services/reconciler/Dockerfile -t edd-reconciler:e2e .
       - name: Build SSH proxy Docker image
         run: docker build -f services/ssh-gateway/Dockerfile.proxy -t edd-ssh-proxy:e2e .
-      # Pomerium serves real TLS; the cert must exist before compose mounts it.
-      - name: Generate the sim TLS cert (Pomerium harness)
-        run: sh scripts/gen-sim-tls-cert.sh
       # Seed a GitHub App into bleephub (coordinate-only App e2e): the seed file +
       # key must exist before compose mounts ./temp/github-app into bleephub.
       - name: Generate the GitHub App seed (bleephub)
@@ -175,18 +172,67 @@ jobs:
         run: pnpm --filter web exec playwright install --with-deps chromium
       - name: Portal browser lifecycle on real ECS compute
         run: pnpm --filter web test:pw:live
-      # Browser OIDC login through Pomerium (real TLS; SPKI-pinned trust).
-      - name: Browser OIDC login through Pomerium
-        run: pnpm --filter web test:pw:pomerium
       # Real VS Code in the golden image: load the workbench, compile from the
       # integrated terminal, verify the build artifact (uses edd-workspace:e2e).
       - name: VS Code workspace browser proof
         run: pnpm --filter web test:pw:vscode
       - if: always()
-        name: Dump Pomerium logs on failure
-        run: docker logs ecs-dev-desktop-pomerium-1 2>&1 || true
-      - if: always()
         run: docker compose -f docker-compose.e2e.yml down
+
+  # The same auth + SSH paths, but with the simulators served over TLS (the way
+  # real cloud always is). Proves the stack is correct end-to-end over HTTPS with
+  # real certificate trust (NODE_EXTRA_CA_CERTS — no --insecure, no skipped verify).
+  e2e-https:
+    name: e2e-https
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+        with:
+          submodules: recursive # third_party/sockerless — the sims are built from source
+      - uses: pnpm/action-setup@v6.0.8
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      # Fresh self-signed CA + server cert into ./temp/sim-tls (gitignored); the
+      # sims mount it and the test trusts the CA. No key is committed.
+      - name: Generate the sim TLS cert
+        run: sh scripts/gen-sim-tls-cert.sh
+      # Retry bring-up: image pulls can transiently hit registry rate limits
+      # (public.ecr.aws / Docker Hub) on shared runner IPs.
+      - name: Build & start the sockerless sims over TLS (HTTPS harness)
+        run: |
+          for attempt in 1 2 3; do
+            if docker compose -f docker-compose.https.yml up -d --build --wait; then
+              exit 0
+            fi
+            echo "::warning::HTTPS sim bring-up failed (attempt ${attempt}); retrying"
+            docker compose -f docker-compose.https.yml down -v || true
+            sleep "$((attempt * 20))"
+          done
+          exit 1
+      # Entra login → group → role over HTTPS: Graph provisioning + ROPC against
+      # the TLS azure-sim, with the CA trusted (EDD_SIM_SCHEME=https flips the
+      # @edd/config sim base URLs to https). The Auth.js callback-route e2e also
+      # runs here: its Entra leg is HTTPS-only (Auth.js re-discovers the issuer
+      # for the id_token tid without oauth4webapi's allowInsecureRequests).
+      - name: Entra + Auth.js callback routes over HTTPS (mock-free; real CA trust)
+        env:
+          EDD_SIM_SCHEME: https
+          NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/temp/sim-tls/ca.pem
+        run: pnpm --filter @edd/web exec vitest run --config vitest.e2e.config.ts lib/entra-auth.e2e.ts lib/nextauth-callback.e2e.ts
+      # The real EBS StorageProvider over the AWS SDK against the TLS aws-sim,
+      # CA trusted (no --insecure) — the storage/compute SDK path the plain-HTTP
+      # tiers exercise, now proven the way real cloud always runs.
+      - name: EBS storage adapter over HTTPS (real CA trust)
+        env:
+          EDD_SIM_SCHEME: https
+          NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/temp/sim-tls/ca.pem
+        run: pnpm --filter @edd/storage-ec2 test:integ
+      - if: always()
+        run: docker compose -f docker-compose.https.yml down
 
   # Build BOTH images the macOS job needs ONCE on Linux (native BuildKit, fast) and
   # publish them to GHCR, so the macOS job pulls instead of building under colima —
@@ -299,7 +345,7 @@ jobs:
           docker pull "${SIM}:ci-${{ github.run_id }}"
           docker tag "${SIM}:ci-${{ github.run_id }}" edd-sim-aws-exec:e2e
       # Only the two services the IDE flow needs: DynamoDB Local + the container-mode
-      # AWS sim (no Pomerium/bleephub/azure). `--no-build` uses the pulled sim image.
+      # AWS sim (no bleephub/azure). `--no-build` uses the pulled sim image.
       - name: Start container-mode sim + DynamoDB Local (prebuilt)
         run: |
           for attempt in 1 2 3; do
@@ -339,113 +385,6 @@ jobs:
           done
       - if: always()
         run: docker compose -f docker-compose.e2e.yml down -v || true
-
-  # The same auth + SSH paths, but with the simulators served over TLS (the way
-  # real cloud always is). Proves the stack is correct end-to-end over HTTPS with
-  # real certificate trust (NODE_EXTRA_CA_CERTS — no --insecure, no skipped verify).
-  e2e-https:
-    name: e2e-https
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6.0.2
-        with:
-          submodules: recursive # third_party/sockerless — the sims are built from source
-      - uses: pnpm/action-setup@v6.0.8
-      - uses: actions/setup-node@v6.4.0
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      # Fresh self-signed CA + server cert into ./temp/sim-tls (gitignored); the
-      # sims mount it and the test trusts the CA. No key is committed.
-      - name: Generate the sim TLS cert
-        run: sh scripts/gen-sim-tls-cert.sh
-      # Retry bring-up: image pulls can transiently hit registry rate limits
-      # (public.ecr.aws / Docker Hub) on shared runner IPs.
-      - name: Build & start the sockerless sims over TLS (HTTPS harness)
-        run: |
-          for attempt in 1 2 3; do
-            if docker compose -f docker-compose.https.yml up -d --build --wait; then
-              exit 0
-            fi
-            echo "::warning::HTTPS sim bring-up failed (attempt ${attempt}); retrying"
-            docker compose -f docker-compose.https.yml down -v || true
-            sleep "$((attempt * 20))"
-          done
-          exit 1
-      # Entra login → group → role over HTTPS: Graph provisioning + ROPC against
-      # the TLS azure-sim, with the CA trusted (EDD_SIM_SCHEME=https flips the
-      # @edd/config sim base URLs to https). The Auth.js callback-route e2e also
-      # runs here: its Entra leg is HTTPS-only (Auth.js re-discovers the issuer
-      # for the id_token tid without oauth4webapi's allowInsecureRequests).
-      - name: Entra + Auth.js callback routes over HTTPS (mock-free; real CA trust)
-        env:
-          EDD_SIM_SCHEME: https
-          NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/temp/sim-tls/ca.pem
-        run: pnpm --filter @edd/web exec vitest run --config vitest.e2e.config.ts lib/entra-auth.e2e.ts lib/nextauth-callback.e2e.ts
-      # The real EBS StorageProvider over the AWS SDK against the TLS aws-sim,
-      # CA trusted (no --insecure) — the storage/compute SDK path the plain-HTTP
-      # tiers exercise, now proven the way real cloud always runs.
-      - name: EBS storage adapter over HTTPS (real CA trust)
-        env:
-          EDD_SIM_SCHEME: https
-          NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/temp/sim-tls/ca.pem
-        run: pnpm --filter @edd/storage-ec2 test:integ
-      - if: always()
-        run: docker compose -f docker-compose.https.yml down
-
-  # Live per-workspace authorization through the gate (DO_NEXT #5 / increment-2):
-  # the PEP→PDP chain enforced in the real Pomerium routing path — a browser drives
-  # Pomerium OIDC, the gate (PEP) authorizes each request against the control-plane
-  # PDP (assertion vs Pomerium's JWKS + DynamoDB ownership), and forwards only the
-  # owner. Self-contained harness (docker-compose.gate.yml) in its own job because
-  # it publishes Pomerium on :8443 like the e2e job's.
-  e2e-gate:
-    name: e2e-gate
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6.0.2
-        with:
-          submodules: recursive # third_party/sockerless — azure-sim is built from source
-      - uses: pnpm/action-setup@v6.0.8
-      - uses: actions/setup-node@v6.4.0
-        with:
-          node-version: 22
-          cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      # Pomerium serves real TLS; the cert must exist before compose mounts it.
-      - name: Generate the sim TLS cert (Pomerium harness)
-        run: sh scripts/gen-sim-tls-cert.sh
-      # Build the web (PDP) + gate images and bring up the harness. Retry: image
-      # pulls can transiently hit registry rate limits on shared runner IPs.
-      - name: Build & start the gate harness (Pomerium → gate → PDP → upstream)
-        run: |
-          for attempt in 1 2 3; do
-            if docker compose -f docker-compose.gate.yml up -d --build --wait; then
-              exit 0
-            fi
-            echo "::warning::gate harness bring-up failed (attempt ${attempt}); retrying"
-            docker compose -f docker-compose.gate.yml down -v || true
-            sleep "$((attempt * 20))"
-          done
-          exit 1
-      - name: Install Playwright browser
-        run: pnpm --filter web exec playwright install --with-deps chromium
-      - name: Live per-workspace authz through the gate (browser → Pomerium → gate → PDP)
-        env:
-          DYNAMODB_ENDPOINT: http://127.0.0.1:8000
-          DYNAMODB_TABLE: edd-gate-e2e
-          AWS_REGION: us-east-1
-          AWS_ACCESS_KEY_ID: dummy
-          AWS_SECRET_ACCESS_KEY: dummy
-        run: pnpm --filter web test:pw:gate
-      - if: always()
-        name: Dump gate + Pomerium logs on failure
-        run: docker compose -f docker-compose.gate.yml logs pomerium workspace-gate web 2>&1 | tail -200 || true
-      - if: always()
-        run: docker compose -f docker-compose.gate.yml down -v
 
   playwright:
     name: playwright

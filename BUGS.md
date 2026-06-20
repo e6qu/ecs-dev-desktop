@@ -13,8 +13,11 @@ Batch 1 (correctness + fail-loud + telemetry honesty), batch 2 (test fidelity), 
 the big combined PR (API-first thin-UI, weak-type branding, UX, idempotency follow-ups), and the
 **deferred-cleanup PR** (`feat/deferred-cleanup-fat-pr` — service-signature branding, port contracts,
 snapshot retention, quota-drift self-heal, billing-to-teardown) have landed **all** of these. The bullets
-below record what's FIXED; only one sub-item (a UI Open/Connect affordance) stays deferred, gated on the
-proxy-domain config:
+below record what's FIXED. The one sub-item that had stayed deferred (a UI Open/Connect affordance, gated
+on the proxy-domain config) was **delivered on 2026-06-20**: a path-based **Open editor** link on the
+workspace card now opens the in-app editor proxy at `app.<domain>/w/<id>/` (running/idle/stopped — stopped
+wakes on connect), after Pomerium + the standalone `workspace-gate` were removed and the editor proxy was
+folded into the Next.js app (see _Resolved (repo)_ + `WHAT_WE_DID.md` 2026-06-20):
 
 - **[weak types] — FIXED (big PR + deferred-cleanup PR).**
   Done (big PR): `Principal.id` → `OwnerId` (branded once at the identity edge — the per-call
@@ -70,8 +73,10 @@ proxy-domain config:
   failure resolves to an empty list (no eternal spinner); the owner card shows a **degraded** indicator
   when `functional !== ok`; the environment picker has `aria-pressed`. Done (deferred-cleanup PR): the
   per-row **SSH-key** and **base-image** deletes now take the same two-step confirm (SSH-key confirm keyed
-  by id so arming one row doesn't arm the rest). Remaining (deferred): an Open/Connect affordance (needs
-  the proxy-domain config wired — DYNAMIC wake-gate territory).
+  by id so arming one row doesn't arm the rest). The previously-deferred Open/Connect affordance is
+  **DONE (2026-06-20)** — the path-based **Open editor** link on the workspace card opens the in-app editor
+  proxy (`app.<domain>/w/<id>/`), now that the proxy is in-process in the Next.js app (no external
+  proxy-domain config to wire). See _Resolved (repo)_.
 
 The codex code-review findings (2026-06-19) that were tracked here are **all remediated and merged
 in #129** (Phase 9; "12 findings, none deferred") — moved to _Resolved (repo)_ below, re-verified
@@ -300,6 +305,35 @@ concurrent-wake race, TLS storage adapter). PR #550 is bleephub-Actions-only;
 no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
+
+- **Pomerium + the standalone `workspace-gate` removed; editor proxy folded into the Next.js app
+  (2026-06-20).** The browser→VS Code editor reach moved out of the external identity-aware proxy (Pomerium)
+  and the separate `workspace-gate` PEP/PDP chain and INTO the control-plane app (clean break — no
+  production users/legacy). A custom Next.js server (`apps/web/server.ts`, run via `tsx` in dev AND prod —
+  replaced `next start`) proxies the per-user editor at the **path-based single domain** `app.<domain>/w/<id>/`
+  (HTTP + WS upgrade; `apps/web/lib/workspace-proxy.ts`), authorized **in-process** by the Auth.js session —
+  **uid-based ownership** (`session.uid === workspace.ownerId`) or admin — via the pure
+  `decideWorkspaceAccessBySubject` + `workspaceIdFromPath` (`@edd/core`; the old email-based
+  `decideWorkspaceAccess`/`workspaceIdFromHost` were deleted). No more wildcard DNS/TLS, no cross-subdomain
+  cookie, no Pomerium JWT assertion, no PDP `/api/internal/authz` round-trip, no gate machine-auth token, no
+  email bridge. The golden image runs OpenVSCode with `--server-base-path /w/<id>/`; the path-based **Open
+  editor** link landed on the workspace card (closing the long-deferred Open/Connect affordance);
+  `connect-info` is now SSH-only (the SSH gateway is its only caller). **Removed:** `services/workspace-gate/`,
+  `infra/proxy/`, `apps/web/app/api/internal/authz/`, `apps/web/lib/pomerium-assertion.*`, the
+  `pomerium-*`/`workspace-gate.pwgate`/`gate-global-setup` e2e + playwright configs,
+  `packages/e2e/src/pomerium-*` + `proxy-routing.e2e.ts`, `docker-compose.gate.yml`,
+  `scripts/test-gate-e2e.sh`, the `e2e-gate` CI job, and the
+  `POMERIUM_*`/`WORKSPACE_HOST_HEADER`/`WORKSPACE_AUTHZ_PATH`/`GATE_PDP_TIMEOUT_MS`/`workspaceGate`/
+  `WORKSPACE_BASE_DOMAIN` config (`GATE_UPSTREAM_TIMEOUT_MS` → `WORKSPACE_PROXY_UPSTREAM_TIMEOUT_MS`).
+  **Kept** (these serve the Entra-over-TLS + EBS-over-TLS e2e, NOT Pomerium): the SSH gateway, the
+  `e2e-https` CI job + `gen-sim-tls-cert.sh` + `docker-compose.https.yml` (only the Pomerium-specific cert
+  SANs were trimmed). New test `apps/web/lib/workspace-proxy.test.ts` (authz glue: unauthenticated→login,
+  unknown-ws→forbidden, owner→allow, other→forbidden, admin→allow, no-subject→forbidden); the vscode browser
+  e2e (`test:pw:vscode`) drives the editor under `/w/<id>/`. Green at close: `pnpm build`/`test`/`lint`,
+  `actionlint`, `shellcheck`, `pnpm install --frozen-lockfile`. **The earlier gate-as-current notes (e.g. the
+  "Gate (HIGH) — one PEP fronts every workspace" hardening, the `pomerium-assertion exp` fix, the 2026-06-12
+  per-workspace proxy authorization) are now history** — the gate they hardened no longer exists; those
+  entries remain below as the record of work that was done.
 
 - **UI/contract/perf/gate sweep (2026-06-20) — 4-agent audit + type-safety hardening, all fixed.** Targeted
   the still-under-covered surface (UI/React, Zod contract tightness, 200+ scale, gate/harness + an

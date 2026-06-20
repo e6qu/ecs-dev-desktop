@@ -8,11 +8,18 @@ import { execFileSync } from "node:child_process";
 export const VSCODE_IMAGE = process.env.WORKSPACE_IMAGE ?? "edd-workspace:e2e";
 export const VSCODE_CONTAINER = "edd-vscode-pw";
 export const VSCODE_HOST_PORT = 13000;
+/** The workspace id the container runs as; the golden image serves OpenVSCode under
+ * `--server-base-path /w/<id>/` (the same prefix the in-app proxy uses), so the image
+ * is exercised exactly as the control plane reaches it. */
+export const VSCODE_WORKSPACE_ID = "ws-vscode";
+const VSCODE_BASE_PATH = `/w/${VSCODE_WORKSPACE_ID}`;
 /** A known connection token so the test can open the workbench (OpenVSCode
  * requires `?tkn=`); a random per-boot token would be unreachable. */
 export const VSCODE_TOKEN = "edd-vscode-e2e-token";
-export const VSCODE_BASE_URL = `http://127.0.0.1:${String(VSCODE_HOST_PORT)}`;
-export const VSCODE_URL = `${VSCODE_BASE_URL}/?tkn=${VSCODE_TOKEN}`;
+const VSCODE_BASE_URL = `http://127.0.0.1:${String(VSCODE_HOST_PORT)}`;
+/** The workbench root (under the server base path) and the token-bearing open URL. */
+export const VSCODE_ROOT_URL = `${VSCODE_BASE_URL}${VSCODE_BASE_PATH}/`;
+export const VSCODE_URL = `${VSCODE_ROOT_URL}?tkn=${VSCODE_TOKEN}`;
 
 /** Run a login-shell command inside the workspace container as the `workspace`
  * user (login shell ⇒ the toolchain PATH from /etc/profile.d is present), return

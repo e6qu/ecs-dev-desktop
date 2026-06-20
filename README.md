@@ -18,7 +18,7 @@ UI, and an admin control plane. Think self-hosted Coder / GitHub Codespaces.
 - [`docs/runbook.md`](./docs/runbook.md) — operations runbook: incident response
   (alarms → diagnosis → remediation), the ops dashboard, and where to look.
 - [`docs/deploying.md`](./docs/deploying.md) — the AWS deployment runbook
-  (Terraform → images → env/secrets → SSH access → DNS/proxy → seed) — see
+  (Terraform → images → env/secrets → SSH access → DNS/TLS → seed) — see
   [Deploying](#deploying).
 - [`PLAN.md`](./PLAN.md) — phased roadmap with per-phase deliverables + testing.
 - [`TESTING.md`](./TESTING.md) — unit, integration, e2e, HTTPS, Terraform, and
@@ -31,7 +31,6 @@ UI, and an admin control plane. Think self-hosted Coder / GitHub Codespaces.
   module (inputs, outputs, prerequisites, deploy flow) — see [Deploying](#deploying).
 - **Component docs:**
   [`infra/images/README.md`](./infra/images/README.md) (golden workspace image) ·
-  [`infra/proxy/README.md`](./infra/proxy/README.md) (Pomerium identity-aware proxy) ·
   [`services/ssh-gateway/README.md`](./services/ssh-gateway/README.md) (OpenSSH, registered-key auth).
 - [`docs/simulator-live-coverage.md`](./docs/simulator-live-coverage.md) — live
   coverage and next test candidates against the sockerless AWS/Azure simulators.
@@ -43,17 +42,17 @@ UI, and an admin control plane. Think self-hosted Coder / GitHub Codespaces.
 
 ## Architecture at a glance
 
-| Dimension   | Decision                                                                               |
-| ----------- | -------------------------------------------------------------------------------------- |
-| Compute     | AWS ECS Fargate (200+ workspaces)                                                      |
-| Persistence | EBS snapshot as the unit of state (stateful + snapshot + scale-to-zero)                |
-| Auth        | GitHub OAuth + Azure Entra ID, groups → roles                                          |
-| RBAC        | CASL (shared by API and UI)                                                            |
-| SSH         | OpenSSH (`sshd`); registered-key auth via the control plane (dual-trust ssh-authorize) |
-| Web + API   | Next.js, API-first (UI consumes the same API)                                          |
-| State store | DynamoDB single-table + ElectroDB                                                      |
-| Simulators  | sockerless AWS + Azure/Entra + bleephub, built from source                             |
-| IaC         | Terraform · Monorepo: Turborepo + pnpm                                                 |
+| Dimension   | Decision                                                                                                       |
+| ----------- | -------------------------------------------------------------------------------------------------------------- |
+| Compute     | AWS ECS Fargate (200+ workspaces)                                                                              |
+| Persistence | EBS snapshot as the unit of state (stateful + snapshot + scale-to-zero)                                        |
+| Auth        | GitHub OAuth + Azure Entra ID, groups → roles                                                                  |
+| RBAC        | CASL (shared by API and UI)                                                                                    |
+| SSH         | OpenSSH (`sshd`); registered-key auth via the control plane (dual-trust ssh-authorize)                         |
+| Web + API   | Next.js, API-first (UI consumes the same API); custom server also proxies the editor at `app.<domain>/w/<id>/` |
+| State store | DynamoDB single-table + ElectroDB                                                                              |
+| Simulators  | sockerless AWS + Azure/Entra + bleephub, built from source                                                     |
+| IaC         | Terraform · Monorepo: Turborepo + pnpm                                                                         |
 
 ## Running the app
 
@@ -92,7 +91,7 @@ Nothing is provisioned on AWS yet — the Terraform module is built and
 **simulator-apply-proven** every PR, with real `apply` gated on an AWS account +
 domain (see [`DO_NEXT.md`](./DO_NEXT.md) open decisions). The full runbook —
 Terraform backend, the module, the **two** images, every required env var/secret,
-SSH access, DNS/TLS + proxy, and seeding — is in
+SSH access, DNS/TLS, and seeding — is in
 **[`docs/deploying.md`](./docs/deploying.md)**. In short:
 
 1. **Provision infra** with the Terraform module
@@ -105,7 +104,8 @@ SSH access, DNS/TLS + proxy, and seeding — is in
    (`apps/web` — the control-plane service _and_ the reconciler run it, via a
    command override) and a **golden workspace image** (the
    [`infra/images`](infra/images/README.md) collection — a shared `base` plus
-   `omnibus`/per-language variants; all bake `sshd` + its registered-key authorizer, no separate proxy image).
+   `omnibus`/per-language variants; all bake OpenVSCode under `--server-base-path /w/<id>/`
+   plus `sshd` + its registered-key authorizer, no separate proxy image).
 3. **Configure secrets** the module does not inject — Auth.js (`AUTH_SECRET`,
    `AUTH_URL`/`AUTH_TRUST_HOST`) + IdP creds, RBAC groups (`EDD_ADMIN_GROUPS` — set
    this or no one is an admin), and crypto (`EDD_TOKEN_ENC_KEY`, `EDD_GATEWAY_SECRET`,
@@ -114,9 +114,10 @@ SSH access, DNS/TLS + proxy, and seeding — is in
    The infra coordinates (`COMPUTE_PROVIDER`, `AUDIT_PROVIDER`, `LOG_PROVIDER`,
    cluster/subnets/roles, …) are injected by the module. Same code, real cloud by
    coordinates alone (`AGENTS.md` §6.8/§6.9).
-4. **Wire DNS/TLS + the identity-aware proxy** (`*.devbox.<domain>` via Pomerium →
-   the workspace gate → workspaces; ACM cert + Route 53), then **seed the
-   base-image catalog** so workspaces can launch.
+4. **Wire DNS/TLS** (`app.<domain>` ACM cert + Route 53; no wildcard — the editor
+   is path-based at `app.<domain>/w/<id>/`, proxied in-process by the control-plane
+   app and authorized off the Auth.js session), then **seed the base-image catalog**
+   so workspaces can launch.
 
 ## Contributing
 

@@ -81,24 +81,3 @@ services:
       interval: 3s
       timeout: 3s
       retries: 30
-
-  # workspace-upstream: a stand-in workspace HTTP endpoint behind the proxy.
-  workspace-upstream:
-    image: docker.io/traefik/whoami:v1.10.2
-    command: ["--port", "80"]
-
-  # pomerium: the real identity-aware proxy for wildcard workspace routing. Its OIDC
-  # IdP is the azure sim above; the e2e asserts wildcard routing + the identity gate.
-  # Serves real TLS (Pomerium builds all absolute URLs as https — see
-  # infra/proxy/pomerium.yaml): run scripts/gen-sim-tls-cert.sh BEFORE bring-up
-  # so ./temp/sim-tls exists (its SANs cover *.devbox.localhost).
-  pomerium:
-    image: docker.io/pomerium/pomerium:v0.32.2
-    volumes:
-      - ./infra/proxy/pomerium.yaml:/pomerium/config.yaml:ro
-      - ./temp/sim-tls:/pomerium/tls:ro
-    ports:
-      - "8443:443"
-    depends_on:
-      azure-sim:
-        condition: service_healthy

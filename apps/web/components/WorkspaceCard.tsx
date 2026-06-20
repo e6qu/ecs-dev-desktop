@@ -1,11 +1,17 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { WorkspaceDto } from "@edd/api-contracts";
+import type { WorkspaceDto, WorkspaceStateDto } from "@edd/api-contracts";
+import { WORKSPACE_PATH_PREFIX } from "@edd/core";
 
 import { TESTID } from "../lib/testids";
 import { StatusBadge } from "./StatusBadge";
 import { WorkspaceActions } from "./WorkspaceActions";
 
 const STAGGER_MS = 40;
+
+/** States from which the editor is reachable through the in-app `/w/<id>/` proxy:
+ * running/idle serve immediately; a stopped workspace wakes on connect. The other
+ * states (provisioning/deleting/terminated/error) have no editor to open. */
+const OPENABLE_STATES: ReadonlySet<WorkspaceStateDto> = new Set(["running", "idle", "stopped"]);
 
 export function WorkspaceCard({
   ws,
@@ -22,6 +28,9 @@ export function WorkspaceCard({
   const imageDescription = ws.imageDescription ?? "";
   const imageTags = ws.imageTags ?? [];
   const sshCommand = ws.sshCommand;
+  // Path-based editor URL served by the control-plane app's in-app proxy.
+  const editorHref = `${WORKSPACE_PATH_PREFIX}${ws.id}/`;
+  const canOpen = OPENABLE_STATES.has(ws.state);
   return (
     <article
       className="card"
@@ -70,6 +79,18 @@ export function WorkspaceCard({
           >
             {sshCommand}
           </code>
+        </div>
+      )}
+      {canOpen && (
+        <div className="meta-line">
+          <a
+            className="btn primary"
+            href={editorHref}
+            data-testid={TESTID.workspaceOpen}
+            data-href={editorHref}
+          >
+            Open editor
+          </a>
         </div>
       )}
       <WorkspaceActions id={ws.id} actions={ws.availableActions} />

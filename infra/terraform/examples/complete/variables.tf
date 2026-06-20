@@ -37,7 +37,7 @@ variable "auth_secret_arns" {
 }
 
 variable "extra_environment" {
-  description = "Plain (non-secret) control-plane env vars — RBAC groups (EDD_ADMIN_GROUPS/EDD_MEMBER_GROUPS), AUTH_TRUST_HOST/AUTH_URL, EDD_WORKSPACE_BASE_DOMAIN, EDD_POMERIUM_JWKS_URL, AUTH_MICROSOFT_ENTRA_ID_ISSUER."
+  description = "Plain (non-secret) control-plane env vars — RBAC groups (EDD_ADMIN_GROUPS/EDD_MEMBER_GROUPS), AUTH_TRUST_HOST/AUTH_URL, EDD_WORKSPACE_BASE_DOMAIN, AUTH_MICROSOFT_ENTRA_ID_ISSUER."
   type        = map(string)
   default     = {}
 }

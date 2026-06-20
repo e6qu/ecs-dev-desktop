@@ -22,10 +22,8 @@ unset CDPATH
 out_dir="${1:-./temp/sim-tls}"
 mkdir -p "$out_dir"
 
-# Loopback (host -> sim) + the compose service names (container -> container)
-# + the Pomerium route hosts (browser -> proxy; *.devbox.localhost covers the
-# workspace wildcard and the authenticate virtual host).
-san="IP:127.0.0.1,DNS:localhost,DNS:azure-sim,DNS:aws-sim,DNS:bleephub,DNS:host.docker.internal,DNS:devbox.localhost,DNS:*.devbox.localhost"
+# Loopback (host -> sim) + the compose service names (container -> container).
+san="IP:127.0.0.1,DNS:localhost,DNS:azure-sim,DNS:aws-sim,DNS:bleephub,DNS:host.docker.internal"
 
 # 1. Certificate authority (its cert is what clients trust).
 openssl req -x509 -newkey rsa:2048 -nodes -days 3650 -sha256 \
