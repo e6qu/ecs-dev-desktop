@@ -126,22 +126,25 @@ active breakage):
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-- **sockerless#629/#630 (OPEN — filed 2026-06-20)** — two GC-safety filter/ordering gaps found in a
-  deeper fidelity pass that adversarially probed the AWS call shapes our reaper/prune paths depend on
-  (probed against `47b6a2a1`, `SIM_RUNTIME=process`; standard SDK, endpoint-only). Both are the same bug
-  class as the already-fixed EC2 `tag:` filter — a server-side filter the sim doesn't apply — so production
-  (real AWS) is unaffected but the sim under-validates:
-  - **#629 — Secrets Manager `ListSecrets` ignores the `tag-key` Filter.** `ListSecrets({Filters:[{Key:
-"tag-key", Values:[…]}]})` returns **all** secrets (a `tag-key` matching nothing still returns
-    everything). Real AWS filters server-side. Our orphan-secret reaper enumerates with this filter; it has
-    a tag-VALUE backstop (checks `edd:workspace-id` == the workspace id) so reaping stays correct, but the
-    sim doesn't model the scoping the real cloud provides.
-  - **#630 — ECS `ListTaskDefinitions` ignores `sort` and `status`.** `sort:"DESC"` returns ascending
-    (identical to `ASC`); `status:"ACTIVE"` still lists a deregistered (`INACTIVE`) revision. Note
-    `DeregisterTaskDefinition` DOES set the revision `INACTIVE` (a later `DescribeTaskDefinition` reports
-    it, and `status:"INACTIVE"` lists it) — only `ListTaskDefinitions`' own `sort`/`status` handling is the
-    gap. Our `pruneTaskDefinitions` lists `familyPrefix` + `status:ACTIVE` + `sort:DESC` to keep the newest
-    N; against the sim it would keep the oldest and never see a deregistration drop out of ACTIVE.
+- **sockerless#629/#630 (fixed upstream — confirmed downstream 2026-06-20)** — two GC-safety
+  filter/ordering gaps found in a deeper fidelity pass that adversarially probed the AWS call shapes our
+  reaper/prune paths depend on (filed against `47b6a2a1`, `SIM_RUNTIME=process`; standard SDK,
+  endpoint-only). Both are the same bug class as the already-fixed EC2 `tag:` filter — a server-side filter
+  the sim doesn't apply — so production (real AWS) was unaffected, only the sim under-validated. **Both
+  fixed by sockerless #631** and **confirmed downstream** after re-pinning the submodule to `693b39a7`
+  (from `47b6a2a1`; the pin also adopts the #632 audit/fuzz sweep) and re-probing the rebuilt process-mode
+  sim — each now behaves to AWS spec, and our `storage-ec2` (9/9) + `compute-ecs` (4/4) integ tiers pass
+  unchanged against the new pin:
+  - **#629 — Secrets Manager `ListSecrets` `tag-key` Filter.** Was: returned **all** secrets (a `tag-key`
+    matching nothing still returned everything). Now (re-probed): `Filters:[{Key:"tag-key",Values:[…]}]`
+    returns only secrets bearing that tag key, and a no-match value returns `[]`. Our orphan-secret reaper
+    enumerates with this filter (it also has a tag-VALUE backstop, so reaping was always correct).
+  - **#630 — ECS `ListTaskDefinitions` `sort` + `status`.** Was: `sort:"DESC"` returned ascending
+    (identical to `ASC`); `status:"ACTIVE"` still listed a deregistered (`INACTIVE`) revision. Now
+    (re-probed): `sort:"DESC"` returns newest-first (the reverse of `ASC`), and `status:"ACTIVE"` excludes
+    a deregistered revision (it appears in `status:"INACTIVE"`; `DescribeTaskDefinition` reports
+    `INACTIVE`). Our `pruneTaskDefinitions` (lists `familyPrefix` + `status:ACTIVE` + `sort:DESC` to keep
+    the newest N) is now correctly modelled by the sim.
 
   The same pass **confirmed conformant** (previously unprobed surfaces, no issue needed): **STS
   `GetCallerIdentity`** returns a well-formed `arn:aws:iam::<acct>:user/simulator` (our
@@ -200,7 +203,8 @@ ForceDeleteWithoutRecovery` reclaims the name immediately; **CloudTrail `LookupE
   `enable_cloudwatch_dashboard=true`: all 9 alarm resources + the ops dashboard apply against the sim
   and `plan -detailed-exitcode` is **0 (idempotent)** — confirmed locally (apply + clean destroy of
   66 resources). As of that pass there were no open sockerless blockers (the 2026-06-20 deeper fidelity
-  pass since found two non-blocking GC-safety filter gaps, #629/#630 above — neither blocks any flow); the
+  pass since found two non-blocking GC-safety filter gaps, #629/#630 above — both now fixed upstream
+  (#631) and confirmed downstream); the
   AWS surface our code/terraform drives is sim-validatable: CloudWatch metric write/read + EMF + \*\*alarms
   - dashboards**, the
     full EBS create/snapshot/restore **and copy\*\* lifecycle, EC2 `tag:` filters + `OwnerIds:self` +
