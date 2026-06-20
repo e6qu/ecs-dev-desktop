@@ -23,12 +23,6 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/* \
   && useradd --create-home --shell /bin/bash "${GATEWAY_PRINCIPAL}" \
   && usermod -p '*' "${GATEWAY_PRINCIPAL}" \
-  # A shared `edd` group for the two non-root readers of /run/edd-env (the machine-auth
-  # secret): `nobody` (AuthorizedKeysCommand) and the login principal (ForceCommand). The
-  # entrypoint restricts the file to root + this group so it isn't world-readable.
-  && groupadd edd \
-  && usermod -aG edd "${GATEWAY_PRINCIPAL}" \
-  && usermod -aG edd nobody \
   && ssh-keygen -A \
   && mkdir -p /run/sshd
 COPY services/ssh-gateway/sshd_config.proxy /etc/ssh/sshd_config

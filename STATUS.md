@@ -18,8 +18,9 @@ critical bypass; a set of genuine MEDIUM/LOW bugs, all fixed (no deferrals), eac
 - **adapters (fail-loud):** `toLogLine` throws on a missing timestamp (no epoch mis-date); EMF guards a
   dimension/metric-name collision; `db.ensureTable` waits for ACTIVE.
 - **misc:** `api-client.connectInfo` gained the `protocol` arg; `cli status` gates its exit code on cluster
-  health; `withObservability` guards the header set; gateway `/run/edd-env` secret file is group-restricted;
-  both `authorized-keys.sh` hops gained a charset guard before JSON interpolation.
+  health; `withObservability` guards the header set; both `authorized-keys.sh` hops gained a charset guard
+  before JSON interpolation (a `/run/edd-env` group-restriction was reverted — sshd command sessions don't
+  carry a shared supplementary group, so it broke the gateway wake).
 
 Green through build + all unit suites + lint + shellcheck + the db/control-plane integ tiers; the gateway
 e2e + route integ run in CI on the PR.

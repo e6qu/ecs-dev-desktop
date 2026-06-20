@@ -63,10 +63,9 @@ describe("SSH gateway machine-auth on the wake-on-connect routes (DynamoDB Local
   it("gateway token can read connect-info for a running workspace", async () => {
     const id = await createWorkspaceFor("gw-user-3");
     const res = await connectInfo(asGateway(id, "/connect-info", "GET"), routeCtx(id));
-    // FakeComputeProvider sets no sshHost → 404; the route still authenticated
-    // the gateway (otherwise it would be 401). State checks come first: a
-    // running workspace without an sshHost is "no host recorded", not conflict.
-    expect(res.status).toBe(404);
+    // FakeComputeProvider sets no sshHost → 409 (host not yet assigned, retry-able); the
+    // route still AUTHENTICATED the gateway (otherwise it would be 401, not 409).
+    expect(res.status).toBe(409);
   });
 
   it("rejects a wrong gateway token with 401 on all three routes", async () => {

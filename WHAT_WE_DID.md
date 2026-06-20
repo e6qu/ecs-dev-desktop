@@ -1991,9 +1991,12 @@ listStuckProvisioning` + `recoverStuckProvisioning` revert provisioning→stoppe
   `toLogLine` coerced a missing timestamp to epoch → throws; the EMF sink now throws on a
   dimension/metric-name collision; `db.ensureTable` waits for ACTIVE (real-AWS CreateTable returns CREATING);
   `api-client.connectInfo` gained the `protocol` arg; `cli status` gates its exit code on cluster health;
-  `withObservability` guards the request-id header set; the gateway `/run/edd-env` secret file is now
-  root + a shared `edd` group (not world-readable); both `authorized-keys.sh` hops gained a fail-closed
-  charset guard on sshd-supplied key fields before JSON interpolation. Tests: case-insensitive role mapping,
+  `withObservability` guards the request-id header set; both `authorized-keys.sh` hops gained a fail-closed
+  charset guard on sshd-supplied key fields before JSON interpolation. (A `/run/edd-env` group-restriction
+  was attempted but reverted after the ssh-wake-chain e2e failed — its two readers, `nobody` and the dev-\*
+  login, are distinct users and sshd command sessions don't reliably carry a shared supplementary group, so
+  restricting the file broke the wake; it stays world-readable in this single-purpose proxy.) Tests:
+  case-insensitive role mapping,
   teams pagination, EMF collision throw, toLogLine throw. Verified clean: machine-auth, token-crypto, the
   PDP/gate fail-closed paths, IAM least-privilege, config validation, golden-image entrypoint, time handling
   (§6.10). Dismissed after verification: `nc -q0` is fine (Debian netcat-openbsd supports `-q`).

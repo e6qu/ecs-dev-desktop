@@ -320,9 +320,13 @@ no downstream impact (we consume bleephub for OAuth).
   returns CREATING). **(misc)** `api-client.connectInfo` gained the `protocol` arg (the `?protocol=http`
   branch was unreachable — API-first drift); `cli status` gates its exit code on cluster health (was always
   0); `withObservability` guards the request-id header set against an immutable Response. **(gateway)**
-  `/run/edd-env` (holds the raw `EDD_GATEWAY_SECRET`) is now root + a shared `edd` group (its only readers:
-  `nobody` + the login principal), not world-readable; both `authorized-keys.sh` hops gained a fail-closed
-  charset guard on the sshd-supplied key fields before JSON interpolation. Verified clean: machine-auth
+  Both `authorized-keys.sh` hops gained a fail-closed charset guard on the sshd-supplied key fields before
+  JSON interpolation. (A `/run/edd-env` group-restriction was attempted but **reverted**: its two readers —
+  `nobody` for AuthorizedKeysCommand and the dev-\* login for ForceCommand — are distinct system users, and
+  sshd's command sessions don't reliably carry a shared supplementary group, so restricting the file broke
+  the wake chain. The file stays world-readable in this single-purpose proxy, where the only principal is a
+  forced TCP-proxy ForceCommand — never a shell; the larger-blast-radius inner hop already stores only the
+  per-workspace derived token under `umask 077`.) Verified clean: machine-auth
   (timing-safe, fail-closed), token-crypto (AES-256-GCM, pinned tag), the PDP/gate fail-closed paths, IAM
   least-privilege (tag/`PassedToService` conditions), config validation, the golden-image entrypoint, and
   time handling (§6.10). One agent note dismissed after verification: `nc -q0` in `wake-and-forward.sh` is
