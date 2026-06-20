@@ -55,6 +55,9 @@ export const workspace = z.object({
   // The ready-to-run `ssh …` connect command, when the SSH subdomain is configured —
   // built server-side from deployment config so a reskin needn't know the convention.
   sshCommand: z.string().optional(),
+  // Functional usability self-report (is the desktop actually usable, not just
+  // "running"): surfaced on the owner's card so a degraded-but-running workspace shows.
+  functional: z.enum(["ok", "degraded"]).optional(),
 });
 export type WorkspaceDto = z.infer<typeof workspace>;
 

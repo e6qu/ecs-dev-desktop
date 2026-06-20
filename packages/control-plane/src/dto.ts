@@ -15,6 +15,7 @@ export function toWorkspaceDto(ws: Workspace): WorkspaceDto {
     state: ws.state,
     createdAt: ws.createdAt,
     availableActions: [...workspaceActions(ws.state)],
+    ...(ws.functional === undefined ? {} : { functional: ws.functional }),
   };
 }
 

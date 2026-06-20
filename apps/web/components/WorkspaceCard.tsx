@@ -33,6 +33,18 @@ export function WorkspaceCard({
       <div className="row">
         <span className="wid">{imageName}</span>
         <StatusBadge state={ws.state} />
+        {ws.functional === "degraded" && (
+          <span
+            className="badge"
+            data-status="degraded"
+            data-testid={TESTID.workspaceDegraded}
+            title="The desktop is running but not fully usable (IDE or workspace storage)."
+            aria-label="degraded — running but not fully usable"
+          >
+            <span className="dot" />
+            degraded
+          </span>
+        )}
       </div>
       <div className="subhead mono">{ws.id}</div>
       <div className="img">{ws.baseImage}</div>

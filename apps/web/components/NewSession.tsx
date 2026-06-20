@@ -152,6 +152,7 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
               <button
                 key={opt.image}
                 type="button"
+                aria-pressed={selected}
                 className={`picker-card${selected ? " on" : ""}`}
                 data-testid={TESTID.catalogPickerOption}
                 data-image={opt.image}
