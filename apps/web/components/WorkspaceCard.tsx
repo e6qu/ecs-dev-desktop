@@ -63,7 +63,7 @@ export function WorkspaceCard({
           </code>
         </div>
       )}
-      <WorkspaceActions id={ws.id} state={ws.state} />
+      <WorkspaceActions id={ws.id} actions={ws.availableActions} />
     </article>
   );
 }

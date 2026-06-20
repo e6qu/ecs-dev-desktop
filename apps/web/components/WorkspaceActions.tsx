@@ -2,29 +2,34 @@
 "use client";
 
 import { ApiClient } from "@edd/api-client";
-import type { WorkspaceStateDto } from "@edd/api-contracts";
+import type { WorkspaceActionDto } from "@edd/api-contracts";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
-import { availableActions, type WorkspaceAction } from "../lib/workspace-view";
-
 const api = new ApiClient({ baseUrl: "" });
 
-function classFor(action: WorkspaceAction): string {
+function classFor(action: WorkspaceActionDto): string {
   if (action === "start") return "btn primary";
   if (action === "delete") return "btn danger";
   return "btn";
 }
 
-export function WorkspaceActions({ id, state }: { id: string; state: WorkspaceStateDto }) {
+export function WorkspaceActions({
+  id,
+  actions,
+}: {
+  id: string;
+  /** The valid actions for this state — server-computed, carried on the DTO. */
+  actions: readonly WorkspaceActionDto[];
+}) {
   const router = useRouter();
-  const [busy, setBusy] = useState<WorkspaceAction | null>(null);
+  const [busy, setBusy] = useState<WorkspaceActionDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   // Delete is irreversible (the workspace AND its EBS volume/snapshot are lost), so it
   // takes a second click to confirm — a mis-click on the wrong card can't destroy data.
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
-  async function run(action: WorkspaceAction): Promise<void> {
+  async function run(action: WorkspaceActionDto): Promise<void> {
     setBusy(action);
     setError(null);
     try {
@@ -55,7 +60,7 @@ export function WorkspaceActions({ id, state }: { id: string; state: WorkspaceSt
     }
   }
 
-  function onClick(action: WorkspaceAction): void {
+  function onClick(action: WorkspaceActionDto): void {
     if (action === "delete" && !confirmingDelete) {
       setConfirmingDelete(true);
       return;
@@ -65,7 +70,7 @@ export function WorkspaceActions({ id, state }: { id: string; state: WorkspaceSt
 
   return (
     <div className="foot">
-      {availableActions(state).map((action) => {
+      {actions.map((action) => {
         const isConfirming = action === "delete" && confirmingDelete;
         return (
           <button

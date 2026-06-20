@@ -5,6 +5,7 @@ import { ok } from "../result";
 import {
   can,
   transition,
+  workspaceActions,
   type WorkspaceEvent,
   type WorkspaceState,
 } from "./workspace-state-machine";
@@ -86,5 +87,23 @@ describe("workspace state machine", () => {
 
   it("leaves terminated with no outgoing transitions", () => {
     for (const event of EVENTS) expect(can("terminated", event)).toBe(false);
+  });
+});
+
+describe("workspaceActions", () => {
+  it("offers snapshot/stop/delete while running or idle", () => {
+    expect(workspaceActions("running")).toEqual(["snapshot", "stop", "delete"]);
+    expect(workspaceActions("idle")).toEqual(["snapshot", "stop", "delete"]);
+  });
+  it("offers start/delete while stopped", () => {
+    expect(workspaceActions("stopped")).toEqual(["start", "delete"]);
+  });
+  it("offers delete from provisioning/error (recoverable or abandonable)", () => {
+    expect(workspaceActions("provisioning")).toEqual(["delete"]);
+    expect(workspaceActions("error")).toEqual(["delete"]);
+  });
+  it("offers no actions while deleting/terminated (already torn down)", () => {
+    expect(workspaceActions("deleting")).toEqual([]);
+    expect(workspaceActions("terminated")).toEqual([]);
   });
 });

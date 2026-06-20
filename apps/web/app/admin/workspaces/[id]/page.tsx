@@ -88,7 +88,7 @@ export default async function InspectWorkspacePage({
             ))}
           </div>
         )}
-        <WorkspaceActions id={ws.id} state={ws.state} />
+        <WorkspaceActions id={ws.id} actions={ws.availableActions} />
       </div>
 
       <h2 style={{ fontSize: 16, marginBottom: 4 }}>Lifecycle</h2>

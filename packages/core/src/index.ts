@@ -112,8 +112,12 @@ export {
 } from "./domain/base-image-catalog";
 
 // Lifecycle state machine.
-export type { WorkspaceEvent, WorkspaceState } from "./lifecycle/workspace-state-machine";
-export { can, transition } from "./lifecycle/workspace-state-machine";
+export type {
+  WorkspaceAction,
+  WorkspaceEvent,
+  WorkspaceState,
+} from "./lifecycle/workspace-state-machine";
+export { can, transition, workspaceActions } from "./lifecycle/workspace-state-machine";
 
 // Connect-time wake decision (wake-on-connect).
 export type { ConnectAction } from "./lifecycle/connect";

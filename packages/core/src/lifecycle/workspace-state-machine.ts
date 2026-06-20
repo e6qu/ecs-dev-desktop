@@ -86,3 +86,30 @@ export function transition(
 export function can(state: WorkspaceState, event: WorkspaceEvent): boolean {
   return TRANSITIONS[state][event] !== undefined;
 }
+
+/** A user-initiated lifecycle operation offered for a workspace in the UI. */
+export type WorkspaceAction = "start" | "stop" | "snapshot" | "delete";
+
+/**
+ * The lifecycle actions valid from a state — the single source of truth for which
+ * buttons the UI may offer. Lives in the core (not mirrored client-side) so it rides
+ * the workspace DTO and a reskinned frontend renders actions from data rather than
+ * re-implementing the state machine. The exhaustive switch makes a new state a compile
+ * error here.
+ */
+export function workspaceActions(state: WorkspaceState): readonly WorkspaceAction[] {
+  switch (state) {
+    case "running":
+    case "idle":
+      return ["snapshot", "stop", "delete"];
+    case "stopped":
+      return ["start", "delete"];
+    case "provisioning":
+    case "error":
+      return ["delete"];
+    case "deleting":
+    case "terminated":
+      // Already being torn down / gone — no further user actions.
+      return [];
+  }
+}

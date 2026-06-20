@@ -54,6 +54,7 @@ describe("ApiClient", () => {
             baseImage: "img",
             state: "stopped",
             createdAt: "2026-06-01T00:00:00.000Z",
+            availableActions: ["start", "delete"],
           }),
           { status: 200 },
         ),

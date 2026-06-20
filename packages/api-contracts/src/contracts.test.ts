@@ -23,8 +23,10 @@ describe("api-contracts", () => {
       baseImage: "golden/node:20",
       state: "running",
       createdAt: "2026-06-01T00:00:00.000Z",
+      availableActions: ["snapshot", "stop", "delete"],
     });
     expect(parsed.state).toBe("running");
+    expect(parsed.availableActions).toContain("stop");
   });
 
   it("rejects an empty baseImage on create", () => {

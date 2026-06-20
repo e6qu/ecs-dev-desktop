@@ -30,6 +30,10 @@ export type WorkspaceStateDto = z.infer<typeof workspaceState>;
 export const desiredState = z.enum(["present", "deleted"]);
 export type DesiredStateDto = z.infer<typeof desiredState>;
 
+/** A user-initiated lifecycle operation the UI may offer for a workspace. */
+export const workspaceAction = z.enum(["start", "stop", "snapshot", "delete"]);
+export type WorkspaceActionDto = z.infer<typeof workspaceAction>;
+
 export const workspace = z.object({
   id: z.string(),
   ownerId: z.string(),
@@ -39,6 +43,9 @@ export const workspace = z.object({
   // The repo cloned into the session ("one repo per session"), when any. Lets
   // the credential broker pick the right GitHub App installation by repo owner.
   repoUrl: z.string().optional(),
+  // The lifecycle actions valid from this state — server-computed (from the core
+  // state machine) so the UI renders buttons from data, not a client-side mirror.
+  availableActions: z.array(workspaceAction),
 });
 export type WorkspaceDto = z.infer<typeof workspace>;
 
@@ -135,6 +142,8 @@ export const workspaceDetail = z.object({
   functional: z.enum(["ok", "degraded"]).optional(),
   functionalDetail: z.string().optional(),
   functionalAt: z.iso.datetime().optional(),
+  /** Lifecycle actions valid from this state (server-computed; see {@link workspace}). */
+  availableActions: z.array(workspaceAction),
 });
 export type WorkspaceDetailDto = z.infer<typeof workspaceDetail>;
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { WorkspaceDetailDto, WorkspaceDto } from "@edd/api-contracts";
-import type { Workspace } from "@edd/core";
+import { workspaceActions, type Workspace } from "@edd/core";
 
 /** Map the Workspace domain object to the public API DTO (drops runtime bindings).
  * `repoUrl` is part of the public contract (the in-workspace git-credential broker
@@ -14,6 +14,7 @@ export function toWorkspaceDto(ws: Workspace): WorkspaceDto {
     baseImage: ws.baseImage,
     state: ws.state,
     createdAt: ws.createdAt,
+    availableActions: [...workspaceActions(ws.state)],
   };
 }
 
@@ -38,5 +39,6 @@ export function toWorkspaceDetail(ws: Workspace): WorkspaceDetailDto {
     ...(ws.functional === undefined ? {} : { functional: ws.functional }),
     ...(ws.functionalDetail === undefined ? {} : { functionalDetail: ws.functionalDetail }),
     ...(ws.functionalAt === undefined ? {} : { functionalAt: ws.functionalAt }),
+    availableActions: [...workspaceActions(ws.state)],
   };
 }

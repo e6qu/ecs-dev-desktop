@@ -43,6 +43,7 @@ describe("cost rollup report == full-scan report (figure-equivalence)", () => {
       baseImage: "golden/node:20",
       state: "stopped",
       createdAt: isoTimestamp(at(0)),
+      availableActions: [],
     },
     {
       id: "ws-c",
@@ -50,6 +51,7 @@ describe("cost rollup report == full-scan report (figure-equivalence)", () => {
       baseImage: "golden/node:20",
       state: "running",
       createdAt: isoTimestamp(at(4)),
+      availableActions: [],
     },
   ];
   const workspaceSource = { list: () => Promise.resolve(workspaces) };

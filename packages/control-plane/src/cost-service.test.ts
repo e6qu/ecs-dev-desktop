@@ -31,6 +31,7 @@ const dto = (id: string, ownerId: string, state: WorkspaceDto["state"]): Workspa
   baseImage: "golden/node:20",
   state,
   createdAt: at(0),
+  availableActions: [],
 });
 
 function service(events: AuditEvent[], workspaces: WorkspaceDto[]): CostService {
