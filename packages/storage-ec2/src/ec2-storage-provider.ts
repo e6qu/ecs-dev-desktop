@@ -2,6 +2,7 @@
 import {
   CopySnapshotCommand,
   CreateSnapshotCommand,
+  CreateTagsCommand,
   CreateVolumeCommand,
   DeleteSnapshotCommand,
   DeleteVolumeCommand,
@@ -43,6 +44,10 @@ const MANAGED_TAG_KEY = "edd:managed";
 const MANAGED_TAG_VALUE = "true";
 /** Optional partition within managed resources (e.g. environment, or test run). */
 const SCOPE_TAG_KEY = "edd:scope";
+/** Marks a data-safety snapshot kept past delete (the Middle retention policy);
+ * orphan-GC keeps any snapshot carrying it regardless of the grace window. */
+const RETAIN_TAG_KEY = "edd:retain";
+const RETAIN_TAG_VALUE = "true";
 
 export interface Ec2StorageProviderDeps {
   client: EC2Client;
@@ -152,11 +157,15 @@ export class Ec2StorageProvider implements StorageProvider {
     return opts?.fromSnapshot ? { id, hydratedFrom: opts.fromSnapshot } : { id };
   }
 
-  async createSnapshot(volume: VolumeId): Promise<Snapshot> {
+  async createSnapshot(volume: VolumeId, opts?: { retain?: boolean }): Promise<Snapshot> {
+    const tags =
+      opts?.retain === true
+        ? [...this.managedTags(), { Key: RETAIN_TAG_KEY, Value: RETAIN_TAG_VALUE }]
+        : this.managedTags();
     const out = await this.client.send(
       new CreateSnapshotCommand({
         VolumeId: volume,
-        TagSpecifications: [{ ResourceType: "snapshot", Tags: this.managedTags() }],
+        TagSpecifications: [{ ResourceType: "snapshot", Tags: tags }],
       }),
     );
     const id = snapshotId(required(out.SnapshotId, "SnapshotId"));
@@ -169,6 +178,16 @@ export class Ec2StorageProvider implements StorageProvider {
       return await this.deleteOrSurfaceLeak(() => this.deleteSnapshot(id), `snapshot ${id}`, err);
     }
     return { id, sourceVolumeId: volume };
+  }
+
+  /** Tag an existing snapshot retained (idempotent — CreateTags is upsert). */
+  async tagSnapshotRetained(snapshot: SnapshotId): Promise<void> {
+    await this.client.send(
+      new CreateTagsCommand({
+        Resources: [snapshot],
+        Tags: [{ Key: RETAIN_TAG_KEY, Value: RETAIN_TAG_VALUE }],
+      }),
+    );
   }
 
   /**
@@ -266,10 +285,14 @@ export class Ec2StorageProvider implements StorageProvider {
       { OwnerIds: ["self"], Filters: this.managedFilters() },
     )) {
       for (const s of page.Snapshots ?? []) {
+        const retained = (s.Tags ?? []).some(
+          (t) => t.Key === RETAIN_TAG_KEY && t.Value === RETAIN_TAG_VALUE,
+        );
         refs.push({
           id: snapshotId(required(s.SnapshotId, "SnapshotId")),
           createdAt: isoTimestamp(required(s.StartTime, "StartTime").toISOString()),
           sourceVolumeId: volumeId(required(s.VolumeId, "VolumeId")),
+          ...(retained ? { retained: true } : {}),
         });
       }
     }

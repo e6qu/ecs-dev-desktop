@@ -77,6 +77,23 @@ export function storageProviderContract(
       expect(restored.hydratedFrom).toBe(snap.id);
     });
 
+    it("flags retained snapshots (create-time and after-the-fact) for the GC keep-set", async () => {
+      const sp = await makeProvider();
+      const v = await sp.createVolume();
+
+      const retainedAtCreate = await sp.createSnapshot(v.id, { retain: true });
+      const retainedLater = await sp.createSnapshot(v.id);
+      const plain = await sp.createSnapshot(v.id);
+      await sp.tagSnapshotRetained(retainedLater.id);
+
+      const retainedById = new Map(
+        (await sp.listSnapshots()).map((s) => [s.id, s.retained === true]),
+      );
+      expect(retainedById.get(retainedAtCreate.id)).toBe(true);
+      expect(retainedById.get(retainedLater.id)).toBe(true);
+      expect(retainedById.get(plain.id)).toBe(false);
+    });
+
     it("enumerates volumes and snapshots, dropping deleted ones", async () => {
       const sp = await makeProvider();
       const v = await sp.createVolume();

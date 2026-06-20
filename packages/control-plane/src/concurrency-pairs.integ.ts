@@ -58,11 +58,15 @@ class BarrierSnapshotStorage implements StorageProvider {
     });
   }
 
-  async createSnapshot(volumeId: VolumeId): Promise<Snapshot> {
+  async createSnapshot(volumeId: VolumeId, opts?: { retain?: boolean }): Promise<Snapshot> {
     this.arrived += 1;
     if (this.arrived >= this.parties) this.resolveGate();
     await this.gate;
-    return this.inner.createSnapshot(volumeId);
+    return this.inner.createSnapshot(volumeId, opts);
+  }
+
+  tagSnapshotRetained(snapshotId: SnapshotId): Promise<void> {
+    return this.inner.tagSnapshotRetained(snapshotId);
   }
 
   createVolume(opts?: { fromSnapshot?: SnapshotId }): Promise<Volume> {

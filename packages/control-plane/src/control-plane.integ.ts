@@ -62,6 +62,7 @@ const TEST_TABLE = "ecs-dev-desktop-cp-integ";
 describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
   let client: ReturnType<typeof createDynamoClient>;
   let service: WorkspaceService;
+  let storage: FakeStorageProvider;
 
   beforeAll(async () => {
     client = createDynamoClient();
@@ -70,7 +71,7 @@ describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
   });
 
   beforeEach(async () => {
-    const storage = await FakeStorageProvider.create();
+    storage = await FakeStorageProvider.create();
     service = new WorkspaceService({
       workspaces: makeWorkspaceEntity(client, TEST_TABLE),
       storage,
@@ -235,6 +236,18 @@ describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
     // The reconciler's finishDeleting converges teardown and removes the record.
     expect((await service.finishDeleting(workspaceId(ws.id))).ok).toBe(true);
     expect(await service.get(workspaceId(ws.id))).toBeNull();
+  });
+
+  it("finishDeleting retains a final data-safety snapshot (Middle policy)", async () => {
+    // A working session (live volume, no prior snapshot) is deleted: finishDeleting
+    // must capture a RETAINED final snapshot so the data survives the teardown and the
+    // orphan-GC keep-set never reaps it.
+    const ws = await service.create({ ownerId: ownerId("retain"), baseImage: baseImage("img") });
+    expect((await service.remove(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.finishDeleting(workspaceId(ws.id))).ok).toBe(true);
+
+    const snaps = await storage.listSnapshots();
+    expect(snaps.some((s) => s.retained === true)).toBe(true);
   });
 
   it("rejects snapshot of a deleting tombstone (it still has a volume) with a conflict", async () => {

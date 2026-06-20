@@ -257,7 +257,8 @@ describe("Reconciler.collectGarbage", () => {
       createVolume: (opts) => inner.createVolume(opts),
       readFile: (v, p) => inner.readFile(v, p),
       writeFile: (v, p, d) => inner.writeFile(v, p, d),
-      createSnapshot: (v) => inner.createSnapshot(v),
+      createSnapshot: (v, opts) => inner.createSnapshot(v, opts),
+      tagSnapshotRetained: (id) => inner.tagSnapshotRetained(id),
       deleteVolume: (id) =>
         id === stuck.id
           ? Promise.reject(new Error("VolumeInUse: volume is still attached"))

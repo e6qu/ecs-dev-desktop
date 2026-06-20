@@ -898,27 +898,35 @@ export class WorkspaceService {
 
   /**
    * Finish tearing down a `deleting` workspace, then remove its record. Convergent +
-   * idempotent (safe to re-run): per the Middle data-safety policy, if it still has a
-   * live volume and no recent snapshot it takes a FINAL snapshot first (so a delete of
-   * a working session doesn't lose data) — a snapshot failure leaves the tombstone for
-   * a retry rather than destroying data. Then it stops the task (releasing the managed
-   * volume) and hard-removes the record; the now-orphan snapshot/secret/task-def are
-   * reaped by the existing GC sweeps after their grace (the retention window).
+   * idempotent (safe to re-run): per the Middle data-safety policy it ensures a
+   * RETAINED final snapshot survives the delete — if it still has a live volume and
+   * no recent snapshot it takes a fresh retained snapshot; otherwise it marks the
+   * existing latest snapshot retained — so a delete of a working session never loses
+   * data. A snapshot/tag failure leaves the tombstone for a retry rather than
+   * destroying data. Then it stops the task (releasing the managed volume) and
+   * hard-removes the record. The retained snapshot is kept by the GC keep-set
+   * (orphan-GC reaps the volume/secret/task-def after their grace, but never a
+   * retained snapshot).
    */
   async finishDeleting(id: WorkspaceId): Promise<Result<void, DomainError>> {
     const found = await this.find(id);
     if (found === null) return ok(undefined); // already gone — converged
     const { ws, version } = found;
     if (ws.state !== "deleting") return ok(undefined); // no longer deleting
-    // Capture a final snapshot of a live volume before tearing it down (data-safety).
-    if (ws.volumeId !== undefined && this.snapshotStale(ws)) {
-      try {
-        await this.deps.storage.createSnapshot(ws.volumeId);
-      } catch (e) {
-        // Don't destroy data on a transient snapshot failure: leave the tombstone for
-        // the next sweep (surfaced via the reconciler's failure metric/alarm).
-        return err(conflictError(`final snapshot for ${id} failed: ${asMessage(e)}`));
+    // Ensure a retained data-safety snapshot survives the teardown. Live volume with
+    // no usable prior snapshot → take a fresh retained one; otherwise retain the
+    // existing latest snapshot that already holds the data (a stopped workspace has
+    // no live volume to re-snapshot).
+    try {
+      if (ws.volumeId !== undefined && this.snapshotStale(ws)) {
+        await this.deps.storage.createSnapshot(ws.volumeId, { retain: true });
+      } else if (ws.latestSnapshotId !== undefined) {
+        await this.deps.storage.tagSnapshotRetained(ws.latestSnapshotId);
       }
+    } catch (e) {
+      // Don't destroy data on a transient snapshot/tag failure: leave the tombstone
+      // for the next sweep (surfaced via the reconciler's failure metric/alarm).
+      return err(conflictError(`final snapshot for ${id} failed: ${asMessage(e)}`));
     }
     if (ws.taskId !== undefined) {
       // Best-effort: the orphan-task reaper is the backstop if this stop fails.
