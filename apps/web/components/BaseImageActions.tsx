@@ -25,7 +25,10 @@ export function BaseImageActions({ id, enabled }: { id: string; enabled: boolean
       else await api.deleteBaseImage(id);
       router.refresh();
     } catch (e) {
+      // Re-sync to actual server state (another admin may have already deleted/disabled
+      // this image), like WorkspaceActions — so a failed action doesn't leave a stale row.
       setError(e instanceof Error ? e.message : "action failed");
+      router.refresh();
     } finally {
       setBusy(null);
       setConfirmingDelete(false);

@@ -9,7 +9,12 @@ import {
 } from "node:http";
 import type { Duplex } from "node:stream";
 
-import { POMERIUM_ASSERTION_HEADER, WORKSPACE_HOST_HEADER } from "@edd/config";
+import {
+  GATE_PDP_TIMEOUT_MS,
+  GATE_UPSTREAM_TIMEOUT_MS,
+  POMERIUM_ASSERTION_HEADER,
+  WORKSPACE_HOST_HEADER,
+} from "@edd/config";
 
 /**
  * Workspace authorization gate (PEP) for the identity-aware proxy (DO_NEXT #5).
@@ -67,6 +72,9 @@ async function authorize(
     const res = await doFetch(opts.pdpUrl, {
       method: "GET",
       headers: { [WORKSPACE_HOST_HEADER]: host, [POMERIUM_ASSERTION_HEADER]: token },
+      // Bound a stalled PDP: on timeout the fetch aborts → caught below → 502 (fail closed),
+      // so a hung control plane can't leave the gate request (and its socket) hanging.
+      signal: AbortSignal.timeout(GATE_PDP_TIMEOUT_MS),
     });
     return res.status;
   } catch {
@@ -114,6 +122,11 @@ function proxyHttp(upstream: URL, req: IncomingMessage, res: ServerResponse): vo
     if (!res.headersSent) res.writeHead(502);
     res.end();
   });
+  // Bound a hung upstream (accepts the connection but never responds): destroy the
+  // request on timeout → the `error` handler closes the client response (no hung request).
+  proxyReq.setTimeout(GATE_UPSTREAM_TIMEOUT_MS, () => {
+    proxyReq.destroy(new Error("upstream timeout"));
+  });
   // If the client goes away mid-exchange, abort the upstream request so its socket
   // doesn't linger (a no-op once the response has already completed normally).
   res.on("close", () => {
@@ -130,6 +143,17 @@ function proxyUpgrade(
   head: Buffer,
 ): void {
   const proxyReq = httpRequest(upstreamOptions(upstream, req));
+  // Tear down the upstream request if the client disconnects BEFORE the upstream
+  // upgrades (tab closed mid-handshake) — without this, the proxyReq + its socket leak
+  // until the upstream timeout below. (Once upgraded, the per-socket teardown takes over.)
+  clientSocket.once("close", () => {
+    proxyReq.destroy();
+  });
+  // Bound a hung upstream (accepts but never upgrades/responds) so the client socket
+  // can't hang open indefinitely — the `error` handler then destroys it.
+  proxyReq.setTimeout(GATE_UPSTREAM_TIMEOUT_MS, () => {
+    proxyReq.destroy(new Error("upstream timeout"));
+  });
   proxyReq.on("upgrade", (proxyRes, upstreamSocket, upstreamHead) => {
     const statusLine = `HTTP/1.1 ${String(proxyRes.statusCode ?? 101)} ${proxyRes.statusMessage ?? "Switching Protocols"}`;
     const headerLines = Object.entries(proxyRes.headers).map(

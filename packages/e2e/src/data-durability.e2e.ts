@@ -93,7 +93,11 @@ describe(
       // authorizes it via the golden image's AuthorizedKeysCommand → ssh-authorize.
       const key = generateUserKey(USER_KEY, `durable-${RUN_ID}`);
       privateKeyBase64 = key.privateKeyBase64;
-      stub = await startSshAuthorizeStub(key.publicKey, hostReachableTarget(WORKSPACE_IMAGE).host);
+      stub = await startSshAuthorizeStub(
+        key.publicKey,
+        hostReachableTarget(WORKSPACE_IMAGE).host,
+        AGENT_SECRET,
+      );
 
       dynamo = createDynamoClient();
       await dropTable(dynamo, TABLE);

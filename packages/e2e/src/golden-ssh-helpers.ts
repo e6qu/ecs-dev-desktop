@@ -10,6 +10,8 @@ import { createServer } from "node:http";
 import { dirname } from "node:path";
 import { spawnSync } from "node:child_process";
 
+import { agentToken } from "@edd/compute-ecs";
+
 import {
   DescribeTasksCommand,
   type ECSClient,
@@ -81,12 +83,26 @@ function presentedKey(body: string): string {
 export function startSshAuthorizeStub(
   publicKey: string,
   hostAlias: string,
+  /** The per-workspace agent HMAC secret. The stub derives the expected bearer
+   * `agentToken(secret, <workspaceId from the request path>)` and verifies it — exactly
+   * like the real route's machine-auth — so a regression in authorized-keys.sh that drops
+   * or mis-derives the HMAC token now fails here instead of silently passing. */
+  agentSecret: string,
 ): Promise<SshAuthorizeStub> {
   const want = publicKey.trim().split(/\s+/).slice(0, 2).join(" "); // "<type> <blob>"
   return new Promise((resolve) => {
     const server = createServer((req, res) => {
       res.setHeader("content-type", "application/json");
-      if (req.method === "POST" && (req.url ?? "").includes("/ssh-authorize")) {
+      const wsMatch = /\/api\/workspaces\/([^/]+)\/ssh-authorize/.exec(req.url ?? "");
+      if (req.method === "POST" && wsMatch !== null) {
+        // Machine-auth first (fail closed), exactly as the real route does: the bearer must
+        // be the per-workspace HMAC token derived from the workspace id in the path.
+        const expected = `Bearer ${agentToken(agentSecret, wsMatch[1] ?? "")}`;
+        if (req.headers.authorization !== expected) {
+          res.writeHead(401);
+          res.end(JSON.stringify({ error: "unauthorized" }));
+          return;
+        }
         const chunks: Buffer[] = [];
         req.on("data", (c: Buffer) => chunks.push(c));
         req.on("end", () => {

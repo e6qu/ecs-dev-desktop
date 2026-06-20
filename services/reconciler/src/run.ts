@@ -19,7 +19,7 @@ import {
   StoredCostRollupStore,
   WorkspaceService,
 } from "@edd/control-plane";
-import { workspacePricing, workspaceSizing } from "@edd/config";
+import { COST_ROLLUP_CADENCE_MS, workspacePricing, workspaceSizing } from "@edd/config";
 import {
   createLogger,
   isoTimestamp,
@@ -223,6 +223,9 @@ try {
     // signal (the alarm in alarms.tf watches it).
     metrics.gauge(METRIC_RECONCILER_ERROR_GAUGE, stats.byState.error);
     metrics.gauge(METRIC_RECONCILER_DELETING_GAUGE, stats.byState.deleting);
+    // Keep the cost checkpoints fresh on a cadence so this gauge's report() — and the
+    // admin /costs route — stay O(recent) instead of full-scanning the whole ledger.
+    await cost.rollupIfStale(COST_ROLLUP_CADENCE_MS);
     metrics.gauge(METRIC_FLEET_COST_USD, (await cost.report()).total.totalUsd);
   } catch (err) {
     log.warn("post-sweep observability step failed", {

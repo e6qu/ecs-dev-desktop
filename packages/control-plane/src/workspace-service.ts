@@ -7,7 +7,6 @@ import {
   assertTerminable,
   baseImage,
   conflictError,
-  DEFAULT_SNAPSHOT_INTERVAL_MS,
   deriveWorkspaceTimeline,
   email,
   err,
@@ -966,7 +965,7 @@ export class WorkspaceService {
     // no leaked retained snapshots (which orphan-GC never reaps). A stopped workspace has no
     // live volume, so its existing snapshot (the data) is tagged retained instead.
     try {
-      if (ws.volumeId !== undefined && this.snapshotStale(ws, now)) {
+      if (ws.volumeId !== undefined && this.needsFreshTeardownSnapshot(ws)) {
         const snap = await this.deps.storage.createSnapshot(ws.volumeId, { retain: true });
         // The tombstone's version is stable (only finishDeleting writes it), so this
         // version-conditioned patch records the snapshot without spuriously conflicting.
@@ -1086,15 +1085,21 @@ export class WorkspaceService {
     return ok(undefined);
   }
 
-  /** Whether a workspace lacks a recent snapshot (none, or older than the snapshot
-   * interval) — used to decide a final snapshot before delete. */
-  private snapshotStale(ws: Workspace, now: IsoTimestamp): boolean {
+  /**
+   * Whether `finishDeleting` must take a FRESH snapshot of the live volume, vs. retain
+   * an existing one. True when the latest snapshot is ABSENT or PREDATES this teardown
+   * (a stale, pre-delete scheduled snapshot — the live volume holds newer work that a
+   * delete-from-running must not lose). False when the latest snapshot was taken DURING
+   * this teardown (`latestSnapshotAt >= deleteRequestedAt`) — i.e. it's the retained
+   * snapshot a prior `finishDeleting` pass already captured, which a retry must merely
+   * re-tag (idempotent), never re-create. Using `deleteRequestedAt` (always set on a
+   * `deleting` tombstone) as the boundary makes "already captured" non-representable as
+   * "needs capture", so a stuck teardown can never leak a second retained snapshot.
+   */
+  private needsFreshTeardownSnapshot(ws: Workspace): boolean {
     if (ws.latestSnapshotId === undefined || ws.latestSnapshotAt === undefined) return true;
-    // Age-aware (not merely "absent"): a workspace with a LIVE volume and a snapshot
-    // older than the snapshot interval has un-captured work — finishDeleting must take a
-    // fresh snapshot of the live volume rather than retain the stale one (else a delete
-    // from `running` would lose everything since the last scheduled snapshot).
-    return Date.parse(now) - Date.parse(ws.latestSnapshotAt) >= DEFAULT_SNAPSHOT_INTERVAL_MS;
+    if (ws.deleteRequestedAt === undefined) return false;
+    return Date.parse(ws.latestSnapshotAt) < Date.parse(ws.deleteRequestedAt);
   }
 
   /**

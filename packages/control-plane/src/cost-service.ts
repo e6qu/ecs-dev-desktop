@@ -158,6 +158,23 @@ export class CostService {
     await this.deps.rollups.replaceAll(out);
   }
 
+  /**
+   * Regenerate the checkpoints only if the newest is older than `maxAgeMs` (or none
+   * exist), so `report()` stays O(recent) — replaying only the tail since the last
+   * checkpoint — instead of full-scanning the whole append-only ledger on every read.
+   * The reconciler calls this each sweep; the cadence bounds the replay tail without
+   * pricing the entire ledger every sweep. No-op when no rollup store is wired.
+   * Figures are unchanged (the rollup is byte-equivalent to the full scan — proven by
+   * the figure-equivalence integ); this only controls WHEN checkpoints are refreshed.
+   */
+  async rollupIfStale(maxAgeMs: number): Promise<void> {
+    if (this.deps.rollups === undefined) return;
+    const existing = await this.deps.rollups.list();
+    const newest = existing[0]?.checkpointAt; // all checkpoints in a generation share `checkpointAt`
+    if (newest !== undefined && Date.parse(this.now()) - Date.parse(newest) < maxAgeMs) return;
+    await this.rollup();
+  }
+
   /** The exact full-ledger scan (also the rollup-absent fallback). With `window`
    * each session is priced over only its in-window run-time. */
   private async fullScanReport(now: IsoTimestamp, window?: Interval): Promise<FleetCostReport> {
@@ -216,7 +233,13 @@ export class CostService {
         owner: r.owner,
         state: record?.state ?? (resumed.terminated ? "terminated" : "unknown"),
         terminated: resumed.terminated,
-        ...priceDurations(resumed.runningMs, resumed.stoppedMs, resumed.teardownMs, pricing, sizing),
+        ...priceDurations(
+          resumed.runningMs,
+          resumed.stoppedMs,
+          resumed.teardownMs,
+          pricing,
+          sizing,
+        ),
       });
     }
 

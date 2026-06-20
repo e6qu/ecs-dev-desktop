@@ -68,6 +68,11 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
           const list = namespacesResponse.parse(await nsRes.json()).namespaces;
           setNamespaces(list);
           if (list.length > 0) setNs((list.find((n) => n.canCreate) ?? list[0]).login);
+        } else {
+          // Surface the real failure — leaving `namespaces` empty would otherwise tell the
+          // user "you do not have permission to create repositories", misattributing a
+          // server error as a permission denial (§6.5 — no silent, misleading fallback).
+          setError("failed to load GitHub namespaces");
         }
       } catch {
         // A network/parse failure must still resolve the loading state, or the list

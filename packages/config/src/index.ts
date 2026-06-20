@@ -142,6 +142,20 @@ export const POMERIUM_ASSERTION_HEADER = "x-pomerium-jwt-assertion";
 
 const WORKSPACE_GATE_PORT = 8080;
 
+/** How stale the cost-rollup checkpoints may get before the reconciler regenerates them.
+ * Bounds the report's replay tail (so a cost read stays O(recent) instead of full-scanning
+ * the whole append-only ledger) without pricing the entire ledger every single sweep. */
+export const COST_ROLLUP_CADENCE_MS = 15 * 60 * 1000;
+
+/** Max ms the gate waits on the PDP authorization call before failing closed (502).
+ * Bounds a stalled/overloaded control plane so a hung PDP can't leak a gate socket
+ * per request (one gate fronts every workspace). */
+export const GATE_PDP_TIMEOUT_MS = 5000;
+/** Max ms the gate waits for the workspace upstream to respond/upgrade before tearing
+ * down — a just-woken editor that accepts the connection but never serves must not
+ * leave the client socket hung open indefinitely. */
+export const GATE_UPSTREAM_TIMEOUT_MS = 30000;
+
 /** Env var holding Pomerium's JWKS URL the PDP verifies assertions against. Read
  * at verification time (not module load) so a test can point it at a dynamically
  * bound JWKS server, and production injects the real proxy URL. */

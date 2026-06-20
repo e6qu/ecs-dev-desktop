@@ -8,6 +8,9 @@ export interface FleetStatus {
   readonly stats: WorkspaceStats;
   /** Distinct workspace owners (active users). */
   readonly owners: number;
+  /** Workspace count per owner, busiest first (feeds the admin quota report so it
+   * shares this one cached scan instead of re-scanning the fleet itself). */
+  readonly usage: readonly { readonly owner: string; readonly count: number }[];
 }
 
 /** TTL for the cached fleet aggregate. The admin Overview is at-a-glance and
@@ -18,9 +21,14 @@ const FLEET_STATUS_TTL_MS = 10_000;
 
 const cachedFleetStatus = ttlCache<FleetStatus>(async () => {
   const workspaces = await (await getControlPlane()).list();
+  const perOwner = new Map<string, number>();
+  for (const w of workspaces) perOwner.set(w.ownerId, (perOwner.get(w.ownerId) ?? 0) + 1);
   return {
     stats: tallyWorkspaceStates(workspaces.map((w) => w.state)),
-    owners: new Set(workspaces.map((w) => w.ownerId)).size,
+    owners: perOwner.size,
+    usage: [...perOwner.entries()]
+      .map(([owner, count]) => ({ owner, count }))
+      .sort((a, b) => b.count - a.count),
   };
 }, FLEET_STATUS_TTL_MS);
 

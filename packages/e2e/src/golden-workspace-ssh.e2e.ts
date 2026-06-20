@@ -291,7 +291,7 @@ describe(
       // AuthorizedKeysCommand → ssh-authorize.
       const { privateKeyBase64, publicKey } = generateUserKey(USER_KEY, "edd-golden-workspace-e2e");
       const hostAlias = hostReachableTarget(WORKSPACE_IMAGE).host;
-      const stub = await startSshAuthorizeStub(publicKey, hostAlias);
+      const stub = await startSshAuthorizeStub(publicKey, hostAlias, AGENT_SECRET);
       const { taskArn: workspaceTaskArn, sshHost } = await runWorkspaceTask(stub.controlPlaneUrl);
       try {
         await waitForTask(ecs, workspaceTaskArn, "RUNNING");

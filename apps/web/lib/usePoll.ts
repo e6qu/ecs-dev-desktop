@@ -19,15 +19,25 @@ export function usePoll<T>(
 
   useEffect(() => {
     let active = true;
+    // When a `load()` is slower than the interval, requests overlap and can resolve out of
+    // order. Apply a result only if it belongs to the latest-STARTED run (monotonic seq),
+    // so a slow earlier poll can never overwrite the data/error from a newer one.
+    let started = 0;
+    let applied = 0;
     async function run(): Promise<void> {
+      const seq = ++started;
       try {
         const r = await load();
-        if (active) {
+        if (active && seq > applied) {
+          applied = seq;
           setData(r);
           setError(null);
         }
       } catch (e) {
-        if (active) setError(e instanceof Error ? e.message : fallbackError);
+        if (active && seq > applied) {
+          applied = seq;
+          setError(e instanceof Error ? e.message : fallbackError);
+        }
       }
     }
     void run();
