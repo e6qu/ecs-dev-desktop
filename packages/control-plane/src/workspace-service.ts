@@ -7,6 +7,7 @@ import {
   assertTerminable,
   baseImage,
   conflictError,
+  DEFAULT_SNAPSHOT_INTERVAL_MS,
   deriveWorkspaceTimeline,
   email,
   err,
@@ -955,21 +956,34 @@ export class WorkspaceService {
   async finishDeleting(id: WorkspaceId): Promise<Result<void, DomainError>> {
     const found = await this.find(id);
     if (found === null) return ok(undefined); // already gone — converged
-    const { ws, version } = found;
+    let { ws, version } = found;
     if (ws.state !== "deleting") return ok(undefined); // no longer deleting
-    // Ensure a retained data-safety snapshot survives the teardown. Live volume with
-    // no usable prior snapshot → take a fresh retained one; otherwise retain the
-    // existing latest snapshot that already holds the data (a stopped workspace has
-    // no live volume to re-snapshot).
+    const now = isoTimestamp(this.deps.clock.now());
+    // Ensure a retained data-safety snapshot capturing the FRESHEST data survives the
+    // teardown. Live volume with no recent snapshot → take a fresh retained one and RECORD
+    // it on the tombstone, so a re-run (after a transient delete-transaction conflict) sees
+    // the recent snapshot and just re-tags it rather than taking ANOTHER one — idempotent,
+    // no leaked retained snapshots (which orphan-GC never reaps). A stopped workspace has no
+    // live volume, so its existing snapshot (the data) is tagged retained instead.
     try {
-      if (ws.volumeId !== undefined && this.snapshotStale(ws)) {
-        await this.deps.storage.createSnapshot(ws.volumeId, { retain: true });
+      if (ws.volumeId !== undefined && this.snapshotStale(ws, now)) {
+        const snap = await this.deps.storage.createSnapshot(ws.volumeId, { retain: true });
+        // The tombstone's version is stable (only finishDeleting writes it), so this
+        // version-conditioned patch records the snapshot without spuriously conflicting.
+        const next = recordSnapshot(ws, snap.id, now);
+        await this.persistTransition(next, version);
+        ws = next;
+        version += 1;
       } else if (ws.latestSnapshotId !== undefined) {
         await this.deps.storage.tagSnapshotRetained(ws.latestSnapshotId);
       }
     } catch (e) {
-      // Don't destroy data on a transient snapshot/tag failure: leave the tombstone
-      // for the next sweep (surfaced via the reconciler's failure metric/alarm).
+      // Don't destroy data on a transient snapshot/tag/record failure: leave the tombstone
+      // for the next sweep (surfaced via the reconciler's failure metric/alarm). The fresh
+      // snapshot, if taken, is already retain-tagged so it survives until then.
+      if (isVersionConflict(e)) {
+        return err(conflictError(`finishDeleting ${id} lost a concurrent update`));
+      }
       return err(conflictError(`final snapshot for ${id} failed: ${asMessage(e)}`));
     }
     if (ws.taskId !== undefined) {
@@ -1074,8 +1088,13 @@ export class WorkspaceService {
 
   /** Whether a workspace lacks a recent snapshot (none, or older than the snapshot
    * interval) — used to decide a final snapshot before delete. */
-  private snapshotStale(ws: Workspace): boolean {
-    return ws.latestSnapshotId === undefined;
+  private snapshotStale(ws: Workspace, now: IsoTimestamp): boolean {
+    if (ws.latestSnapshotId === undefined || ws.latestSnapshotAt === undefined) return true;
+    // Age-aware (not merely "absent"): a workspace with a LIVE volume and a snapshot
+    // older than the snapshot interval has un-captured work — finishDeleting must take a
+    // fresh snapshot of the live volume rather than retain the stale one (else a delete
+    // from `running` would lose everything since the last scheduled snapshot).
+    return Date.parse(now) - Date.parse(ws.latestSnapshotAt) >= DEFAULT_SNAPSHOT_INTERVAL_MS;
   }
 
   /**

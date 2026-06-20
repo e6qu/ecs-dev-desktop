@@ -154,12 +154,14 @@ class InstallationGitProvider implements GitProvider {
   }
 
   async gitCredential(repoOwner?: string): Promise<{ username: string; token: string } | null> {
-    const installs = await this.listInstallations();
-    if (installs.length === 0) return null;
-    const matched =
-      repoOwner === undefined ? undefined : installs.find((i) => i.account?.login === repoOwner);
-    const inst = matched ?? installs[0];
-    return { username: GIT_USERNAME, token: await this.token(inst.id) };
+    // No repo context (a blank session) → no credential is needed.
+    if (repoOwner === undefined) return null;
+    const matched = (await this.listInstallations()).find((i) => i.account?.login === repoOwner);
+    // Fail closed: a repo whose owner has no matching App installation gets NO token. Never
+    // fall back to another installation — that would mint a token scoped to an UNRELATED org
+    // (over-scoped credential issuance + a §6.5 silent fallback). The broker route → 404.
+    if (matched === undefined) return null;
+    return { username: GIT_USERNAME, token: await this.token(matched.id) };
   }
 
   private async installationFor(owner: string): Promise<AppInstallation> {

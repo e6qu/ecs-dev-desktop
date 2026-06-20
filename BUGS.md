@@ -126,6 +126,48 @@ active breakage):
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
+- **sockerless#629/#630 (fixed upstream — confirmed downstream 2026-06-20)** — two GC-safety
+  filter/ordering gaps found in a deeper fidelity pass that adversarially probed the AWS call shapes our
+  reaper/prune paths depend on (filed against `47b6a2a1`, `SIM_RUNTIME=process`; standard SDK,
+  endpoint-only). Both are the same bug class as the already-fixed EC2 `tag:` filter — a server-side filter
+  the sim doesn't apply — so production (real AWS) was unaffected, only the sim under-validated. **Both
+  fixed by sockerless #631** and **confirmed downstream** after re-pinning the submodule to `693b39a7`
+  (from `47b6a2a1`; the pin also adopts the #632 audit/fuzz sweep) and re-probing the rebuilt process-mode
+  sim — each now behaves to AWS spec, and our `storage-ec2` (9/9) + `compute-ecs` (4/4) integ tiers pass
+  unchanged against the new pin:
+  - **#629 — Secrets Manager `ListSecrets` `tag-key` Filter.** Was: returned **all** secrets (a `tag-key`
+    matching nothing still returned everything). Now (re-probed): `Filters:[{Key:"tag-key",Values:[…]}]`
+    returns only secrets bearing that tag key, and a no-match value returns `[]`. Our orphan-secret reaper
+    enumerates with this filter (it also has a tag-VALUE backstop, so reaping was always correct).
+  - **#630 — ECS `ListTaskDefinitions` `sort` + `status`.** Was: `sort:"DESC"` returned ascending
+    (identical to `ASC`); `status:"ACTIVE"` still listed a deregistered (`INACTIVE`) revision. Now
+    (re-probed): `sort:"DESC"` returns newest-first (the reverse of `ASC`), and `status:"ACTIVE"` excludes
+    a deregistered revision (it appears in `status:"INACTIVE"`; `DescribeTaskDefinition` reports
+    `INACTIVE`). Our `pruneTaskDefinitions` (lists `familyPrefix` + `status:ACTIVE` + `sort:DESC` to keep
+    the newest N) is now correctly modelled by the sim.
+
+  The same pass **confirmed conformant** (previously unprobed surfaces, no issue needed): **STS
+  `GetCallerIdentity`** returns a well-formed `arn:aws:iam::<acct>:user/simulator` (our
+  `callerToPrincipalArn` regex accepts it); **IAM `SimulatePrincipalPolicy`** genuinely evaluates identity
+  policy — a granted action → `allowed`, an ungranted action → `implicitDeny`, AND **condition keys are
+  honored** (a `Condition` on `ecs:cluster`: matching `ContextEntries` → `allowed`, non-matching →
+  `implicitDeny`, omitted → `implicitDeny` + `MissingContextValues:["ecs:cluster"]`) — so the IAM
+  self-check / drift preflight is NOT false-green against the sim; **ECS `RunTask`** managed-EBS + awsvpc
+  `DescribeTasks` read-back exposes the exact attachment detail names `taskReady` blocks on
+  (`AmazonElasticBlockStorage`→`volumeId`/`deleteOnTermination`, `ElasticNetworkInterface`→
+  `privateIPv4Address`), plus `enableExecuteCommand`, `stoppedReason`, and `include:TAGS` round-trip;
+  **Secrets Manager** `SecretListEntry.Tags`/`CreatedDate` populate and `DeleteSecret
+ForceDeleteWithoutRecovery` reclaims the name immediately; **CloudTrail `LookupEvents`** populates
+  `Username` + `Resources[].ResourceName` + `EventSource` + `EventId`/`EventTime` (what `mapEvent`
+  reads); **CloudWatch Logs `FilterLogEvents`** honors `limit` and round-trips `timestamp`/`message`/
+  `logStreamName`; **EventBridge Scheduler** `CreateSchedule`→`GetSchedule` round-trips the full
+  `EcsParameters` Target (`LaunchType`/`TaskCount`/`TaskDefinitionArn`/awsvpc `Subnets`/`AssignPublicIp`/
+  `ActionAfterCompletion`); **EC2 `CreateSnapshot`** models the `pending`→`completed` transition (the
+  `waitUntilSnapshotCompleted` waiter, incl. the cross-region copy path, sees it). One benign
+  simplification (NOT a bug, not filed): `CreateVolume` returns `available` immediately with no
+  intermediate `creating` state — the `waitUntilVolumeAvailable` waiter still terminates correctly and no
+  code path depends on observing `creating`.
+
 - **sockerless#602/#603/#604/#605/#606 (fixed upstream — confirmed downstream 2026-06-19)** —
   the five observability/DR fidelity gaps from the two fidelity passes, all fixed by sockerless
   **#607** (merge `74c0a3d2`) and **confirmed downstream** after re-pinning the submodule to it
@@ -160,14 +202,17 @@ active breakage):
   With both fixed, the sim fixture runs `enable_metric_alarms=true` **and**
   `enable_cloudwatch_dashboard=true`: all 9 alarm resources + the ops dashboard apply against the sim
   and `plan -detailed-exitcode` is **0 (idempotent)** — confirmed locally (apply + clean destroy of
-  66 resources). So there are **no open sockerless blockers** — every AWS surface our code/terraform
-  drives is now sim-validatable: CloudWatch metric write/read + EMF + **alarms + dashboards**, the
-  full EBS create/snapshot/restore **and copy** lifecycle, EC2 `tag:` filters + `OwnerIds:self` +
-  pagination + the volume/snapshot waiters, Secrets Manager
-  `CreateSecret`→`ResourceExistsException`→`PutSecretValue` upsert, ECS `RunTask --tags` →
-  `DescribeTasks include:TAGS` / `ListTasks --desired-status` / `DescribeClusters` counts, CloudTrail
-  `LookupEvents` cursor pagination, and the `create→wake→connect→delete` journey (the container-mode
-  `user-journey` e2e).
+  66 resources). As of that pass there were no open sockerless blockers (the 2026-06-20 deeper fidelity
+  pass since found two non-blocking GC-safety filter gaps, #629/#630 above — both now fixed upstream
+  (#631) and confirmed downstream); the
+  AWS surface our code/terraform drives is sim-validatable: CloudWatch metric write/read + EMF + \*\*alarms
+  - dashboards**, the
+    full EBS create/snapshot/restore **and copy\*\* lifecycle, EC2 `tag:` filters + `OwnerIds:self` +
+    pagination + the volume/snapshot waiters, Secrets Manager
+    `CreateSecret`→`ResourceExistsException`→`PutSecretValue` upsert, ECS `RunTask --tags` →
+    `DescribeTasks include:TAGS` / `ListTasks --desired-status` / `DescribeClusters` counts, CloudTrail
+    `LookupEvents` cursor pagination, and the `create→wake→connect→delete` journey (the container-mode
+    `user-journey` e2e).
 
 - **sockerless#569 (fixed upstream — confirmed downstream 2026-06-16)** —
   process-mode (`SIM_RUNTIME=process`) `ecs:RunTask` with a managed-EBS volume used
@@ -255,6 +300,29 @@ concurrent-wake race, TLS storage adapter). PR #550 is bleephub-Actions-only;
 no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
+
+- **Resiliency + correctness sweep (2026-06-20) — 5-agent audit, all fixed (no deferrals).** The audit
+  (resiliency/concurrency, correctness/cost-model, types/fail-loud/telemetry, test-fidelity,
+  security/data-safety) confirmed the codebase is high-quality and converged on a tight set of genuine
+  bugs — all remediated + tested: **(1) HIGH data-loss on delete** — `snapshotStale` checked only snapshot
+  _absence_, so deleting a `running` workspace with a stale prior snapshot retained the OLD snapshot while
+  the live volume (newer work) was destroyed; now age-aware (`>= DEFAULT_SNAPSHOT_INTERVAL_MS`), so
+  `finishDeleting` takes a FRESH retained snapshot of the live volume when the existing one is stale.
+  **(2) HIGH retained-snapshot leak** — `finishDeleting` created a fresh retained snapshot but never
+  recorded it, so a transaction-cancel retry (e.g. a `TransactionConflict` on the owner-count item from a
+  concurrent same-owner create) created another each sweep — and retained snapshots are never GC'd; now
+  the snapshot id is recorded on the tombstone (version-conditioned), so a re-run re-tags it instead
+  (idempotent). **(3) HIGH credential over-scoping** — GitHub-App `gitCredential` fell back to
+  `installs[0]` when the repo owner had no matching installation, minting a token for an UNRELATED org;
+  now fails closed (→ 404). **(4) MEDIUM retain-tag eventual-consistency window** — `tagSnapshotRetained`
+  now confirms the tag is durably visible (strongly-consistent by-id `DescribeSnapshots`) before
+  `finishDeleting` unreferences the snapshot, closing the GC window (fail-loud → safe retry; the
+  `createSnapshot({retain})` path already had no window — the tag is applied at creation). Tests added for
+  every fix + adjacent gaps the audit named (stale-snapshot data-loss, stopped-delete tag branch,
+  idempotent re-run, GC keep-set spares retained, start-during-teardown, terminate-without-delete,
+  teardown-nonzero sentinel, credential fail-closed). Everything else the agents probed (the two cost
+  walkers' figure-equivalence brute-forced to length-4 sequences, the lifecycle state machine, DTO
+  faithfulness, authz/secret-handling, telemetry honesty) verified clean.
 
 - **Code-quality sweep batch 1 (2026-06-20) — correctness + fail-loud + telemetry honesty.** Fixed +
   tested: (A1) `toWorkspaceDto` dropped `repoUrl` though the contract declares it and the in-workspace

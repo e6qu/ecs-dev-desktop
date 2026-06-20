@@ -1948,3 +1948,31 @@ listStuckProvisioning` + `recoverStuckProvisioning` revert provisioning→stoppe
   equivalence invariant (rollup == full-scan) is preserved (same walker both paths) and extended with
   teardown/terminate checkpoint cases. Green through build + all unit suites + lint; integ/e2e in CI. One
   item still deferred (in `BUGS.md`): a UI Open/Connect affordance (gated on the proxy-domain config).
+
+- **Resiliency + correctness sweep (2026-06-20, `feat/sweep-resiliency-correctness`) — 5-agent audit, all
+  fixed, no deferrals.** Parallel agents audited resiliency/concurrency, correctness/cost-model,
+  types/fail-loud/telemetry, test-fidelity, and security/data-safety; they confirmed the codebase is
+  high-quality and converged on a tight set of genuine bugs, all remediated + tested. **(1)** `finishDeleting`
+  data-loss: `snapshotStale` checked only snapshot _absence_, so deleting a `running` workspace with a
+  stale prior snapshot retained the OLD snapshot and let the live volume (newer work) be destroyed by
+  `deleteOnTermination`; made age-aware (`>= DEFAULT_SNAPSHOT_INTERVAL_MS`) so a live volume with a stale
+  snapshot gets a FRESH retained snapshot. **(2)** retained-snapshot leak: `finishDeleting` created a fresh
+  retained snapshot but never recorded it, so a delete-transaction cancel (e.g. `TransactionConflict` on the
+  owner-count item from a concurrent same-owner create) re-created one each retry, and retained snapshots
+  are never GC'd; now records the snapshot id on the tombstone (version-conditioned — the tombstone version
+  is stable, so no spurious conflict), so a re-run re-tags it instead (idempotent). **(3)** git credential
+  over-scoping: GitHub-App `gitCredential` silently fell back to `installs[0]` when the repo owner had no
+  matching App installation, minting a write-capable token for an UNRELATED org; now fails closed (→ 404),
+  fall-back only for the no-repo (blank session) case → null. **(4)** retain-tag eventual-consistency window:
+  `tagSnapshotRetained` now confirms the tag is durably visible via a strongly-consistent by-id
+  `DescribeSnapshots` before `finishDeleting` unreferences the snapshot, closing the window where orphan-GC
+  could reap a just-tagged data-safety snapshot (fail-loud → safe retry; the `createSnapshot({retain})` path
+  already had no window — the tag rides `TagSpecifications` at creation). Tests added for every fix +
+  adjacent gaps (stale-snapshot data-loss, stopped-delete tag branch, idempotent re-run, GC keep-set spares
+  retained, start-during-teardown, terminate-without-delete, teardown-nonzero sentinel, credential
+  fail-closed). The audit verified clean: the two cost walkers' figure-equivalence (brute-forced to length-4
+  event sequences across checkpoints, incl. inside-teardown), the lifecycle state machine + `workspaceActions`,
+  DTO faithfulness, authz/secret-handling (branding is a compile-time phantom — no runtime comparison
+  weakened), and telemetry honesty (every metric/gauge/health value traces to a real measurement). This PR
+  also folds in the sockerless #629/#630 fidelity record + the submodule re-pin to `693b39a7` (#631 fix +
+  #632 sweep; confirmed downstream — integ tiers green).

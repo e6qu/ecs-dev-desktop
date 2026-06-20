@@ -250,6 +250,56 @@ describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
     expect(snaps.some((s) => s.retained === true)).toBe(true);
   });
 
+  it("finishDeleting takes a FRESH snapshot when a running workspace's snapshot is stale (no data loss)", async () => {
+    // A running workspace snapshotted long ago, then deleted, has a LIVE volume holding
+    // newer work than the stale snapshot. finishDeleting must capture that live volume —
+    // NOT just re-tag the stale snapshot (which would lose everything since it).
+    const ws = await service.create({ ownerId: ownerId("stale"), baseImage: baseImage("img") });
+    expect((await service.snapshot(workspaceId(ws.id))).ok).toBe(true); // snapshot at T0, volume kept
+    expect((await storage.listSnapshots()).length).toBe(1);
+
+    // A service whose clock is 7h later → the T0 snapshot is now older than the 6h interval.
+    const later = new WorkspaceService({
+      workspaces: makeWorkspaceEntity(client, TEST_TABLE),
+      storage,
+      compute: new FakeComputeProvider(storage),
+      clock: fixedClock("2026-06-01T07:00:00.000Z"),
+    });
+    expect((await later.remove(workspaceId(ws.id))).ok).toBe(true);
+    expect((await later.finishDeleting(workspaceId(ws.id))).ok).toBe(true);
+
+    const snaps = await storage.listSnapshots();
+    expect(snaps.length).toBe(2); // a FRESH snapshot of the live volume was taken
+    expect(snaps.some((s) => s.retained === true)).toBe(true);
+  });
+
+  it("finishDeleting retains the EXISTING snapshot of a stopped workspace (no live volume to re-snapshot)", async () => {
+    // Scale-to-zero releases the volume and leaves a snapshot (the data). Deleting a stopped
+    // workspace must tag THAT snapshot retained — not take a new one (there's no live volume).
+    const ws = await service.create({ ownerId: ownerId("stopped"), baseImage: baseImage("img") });
+    expect((await service.stop(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.get(workspaceId(ws.id)))?.state).toBe("stopped");
+    const before = (await storage.listSnapshots()).length;
+    expect(before).toBe(1);
+
+    expect((await service.remove(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.finishDeleting(workspaceId(ws.id))).ok).toBe(true);
+
+    const after = await storage.listSnapshots();
+    expect(after.length).toBe(before); // no NEW snapshot — the existing one is reused
+    expect(after.every((s) => s.retained === true)).toBe(true);
+  });
+
+  it("finishDeleting is idempotent on re-run after the tombstone is gone (converged)", async () => {
+    const ws = await service.create({ ownerId: ownerId("idem"), baseImage: baseImage("img") });
+    expect((await service.remove(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.finishDeleting(workspaceId(ws.id))).ok).toBe(true);
+    const after = (await storage.listSnapshots()).filter((s) => s.retained === true).length;
+    // A re-run finds the record already gone → no-op, no second retained snapshot.
+    expect((await service.finishDeleting(workspaceId(ws.id))).ok).toBe(true);
+    expect((await storage.listSnapshots()).filter((s) => s.retained === true).length).toBe(after);
+  });
+
   it("rejects snapshot of a deleting tombstone (it still has a volume) with a conflict", async () => {
     const ws = await service.create({ ownerId: ownerId("heidi"), baseImage: baseImage("img") });
     expect((await service.remove(workspaceId(ws.id))).ok).toBe(true);

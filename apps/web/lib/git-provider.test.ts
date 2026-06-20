@@ -139,4 +139,19 @@ describe("InstallationGitProvider (via getGitProvider in App mode)", () => {
     const cred = await provider?.gitCredential("acme");
     expect(cred).toEqual({ username: "x-access-token", token: "ghs_inst7" });
   });
+
+  it("fails closed: a repo owner with no matching installation gets NO token", async () => {
+    // Must never fall back to another org's installation (over-scoped credential).
+    enableApp();
+    stubGitHubApp();
+    const provider = await getGitProvider(ownerId("x"));
+    expect(await provider?.gitCredential("not-installed-org")).toBeNull();
+  });
+
+  it("returns no credential when there is no repo context (blank session)", async () => {
+    enableApp();
+    stubGitHubApp();
+    const provider = await getGitProvider(ownerId("x"));
+    expect(await provider?.gitCredential()).toBeNull();
+  });
 });
