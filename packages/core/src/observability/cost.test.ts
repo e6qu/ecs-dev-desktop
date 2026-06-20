@@ -82,6 +82,28 @@ describe("deriveBillingIntervals", () => {
     expect(intervals.terminated).toBe(true);
   });
 
+  it("ignores a start during teardown (a deleting workspace can't wake → no phantom compute)", () => {
+    // session.delete opens teardown; a stray session.start must NOT reopen a running
+    // interval (which would bill compute for a workspace being torn down).
+    const intervals = deriveBillingIntervals(
+      [evt("session.create", 0), evt("session.delete", 1), evt("session.start", 2)],
+      at(4),
+    );
+    expect(intervals.running).toEqual([{ fromMs: T0, toMs: T0 + HOUR }]);
+    expect(intervals.teardown).toEqual([{ fromMs: T0 + HOUR, toMs: T0 + 4 * HOUR }]);
+    expect(intervals.terminated).toBe(false);
+  });
+
+  it("terminates directly from running when terminate arrives with no preceding delete", () => {
+    const intervals = deriveBillingIntervals(
+      [evt("session.create", 0), evt("session.terminated", 2)],
+      at(10),
+    );
+    expect(intervals.running).toEqual([{ fromMs: T0, toMs: T0 + 2 * HOUR }]);
+    expect(intervals.teardown).toEqual([]);
+    expect(intervals.terminated).toBe(true);
+  });
+
   it("ignores an idempotent repeated start (no double-open)", () => {
     const intervals = deriveBillingIntervals(
       [evt("session.create", 0), evt("session.start", 1), evt("session.start", 2)],
@@ -269,12 +291,30 @@ describe("deriveBillingState + resumeBilling (rollup figure-equivalence)", () =>
       });
     }
   }
+
+  // Sentinel: at least one scenario/checkpoint must exercise a NONZERO teardown amount,
+  // so the teardownMs equivalence above isn't a vacuous 0===0 across the whole matrix.
+  it("exercises a nonzero teardown amount (the teardown branch actually runs)", () => {
+    const td = scenarios.flatMap((sc) =>
+      [0, 0.5, 1, 1.5, 2, 2.5, 3, 4].map(
+        (cpH) =>
+          resumeBilling(deriveBillingState(sc.events, at(cpH)), at(cpH), sc.events, at(sc.nowH))
+            .teardownMs,
+      ),
+    );
+    expect(Math.max(...td)).toBeGreaterThan(0);
+  });
 });
 
 describe("clipIntervals", () => {
   it("keeps only the part of each interval inside the window", () => {
     const clipped = clipIntervals(
-      { running: [{ fromMs: T0, toMs: T0 + 4 * HOUR }], stopped: [], teardown: [], terminated: false },
+      {
+        running: [{ fromMs: T0, toMs: T0 + 4 * HOUR }],
+        stopped: [],
+        teardown: [],
+        terminated: false,
+      },
       { fromMs: T0 + HOUR, toMs: T0 + 3 * HOUR },
     );
     expect(clipped.running).toEqual([{ fromMs: T0 + HOUR, toMs: T0 + 3 * HOUR }]);

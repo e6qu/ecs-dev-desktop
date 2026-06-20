@@ -227,6 +227,31 @@ describe("Reconciler.collectGarbage", () => {
     expect((await storage.listSnapshots()).map((s) => s.id)).not.toContain(orphanSnap.id);
   });
 
+  it("never reaps a RETAINED snapshot, even unreferenced and past grace (Middle policy)", async () => {
+    // The data-safety snapshot finishDeleting keeps: its workspace record is gone (so it
+    // is unreferenced) and it is old, but the retain tag must keep it through GC.
+    const storage = await FakeStorageProvider.create(fixedClock("2026-06-01T00:00:00.000Z"));
+    const vol = await storage.createVolume();
+    const retained = await storage.createSnapshot(vol.id, { retain: true });
+    const orphan = await storage.createSnapshot(vol.id);
+
+    const reconciler = new Reconciler({
+      // Nothing referenced — both snapshots are unreferenced and past grace.
+      service: fakeService({
+        listReferencedStorage: () => Promise.resolve({ volumeIds: [], snapshotIds: [] }),
+      }),
+      storage,
+      clock: fixedClock("2026-06-01T02:00:00.000Z"), // 2h later — past the grace window
+      gcGraceMs: ONE_HOUR,
+    });
+
+    const result = await reconciler.collectGarbage();
+    expect(result.snapshotsDeleted).toBe(1); // only the plain orphan
+    const remaining = (await storage.listSnapshots()).map((s) => s.id);
+    expect(remaining).toContain(retained.id); // the retained snapshot survives
+    expect(remaining).not.toContain(orphan.id);
+  });
+
   it("spares an unreferenced resource still inside the grace window", async () => {
     const storage = await FakeStorageProvider.create(fixedClock("2026-06-01T00:00:00.000Z"));
     const orphan = await storage.createVolume();

@@ -7,6 +7,7 @@ import {
   DeleteSnapshotCommand,
   DeleteVolumeCommand,
   DescribeAvailabilityZonesCommand,
+  DescribeSnapshotsCommand,
   EC2Client,
   paginateDescribeSnapshots,
   paginateDescribeVolumes,
@@ -180,7 +181,15 @@ export class Ec2StorageProvider implements StorageProvider {
     return { id, sourceVolumeId: volume };
   }
 
-  /** Tag an existing snapshot retained (idempotent — CreateTags is upsert). */
+  /**
+   * Tag an existing snapshot retained (idempotent — CreateTags is upsert), then CONFIRM
+   * the tag is durably visible via a strongly-consistent by-id `DescribeSnapshots` before
+   * returning. `CreateTags` is eventually consistent for read-back, and the caller
+   * (`finishDeleting`) deletes the workspace record — unreferencing the snapshot — right
+   * after this resolves; if orphan-GC then listed the snapshot before the tag propagated it
+   * would reap the data-safety snapshot. Failing loudly here (the snapshot stays referenced
+   * by the live record, so it's safe) makes the caller retry rather than risk that window.
+   */
   async tagSnapshotRetained(snapshot: SnapshotId): Promise<void> {
     await this.client.send(
       new CreateTagsCommand({
@@ -188,6 +197,14 @@ export class Ec2StorageProvider implements StorageProvider {
         Tags: [{ Key: RETAIN_TAG_KEY, Value: RETAIN_TAG_VALUE }],
       }),
     );
+    const out = await this.client.send(new DescribeSnapshotsCommand({ SnapshotIds: [snapshot] }));
+    const tags = out.Snapshots?.[0]?.Tags ?? [];
+    if (!tags.some((t) => t.Key === RETAIN_TAG_KEY && t.Value === RETAIN_TAG_VALUE)) {
+      throw new Error(
+        `retain tag not yet visible on snapshot ${snapshot} after CreateTags (eventual ` +
+          `consistency) — retrying keeps it referenced and safe`,
+      );
+    }
   }
 
   /**
