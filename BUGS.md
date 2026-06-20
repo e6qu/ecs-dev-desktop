@@ -126,6 +126,45 @@ active breakage):
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
+- **sockerless#629/#630 (OPEN — filed 2026-06-20)** — two GC-safety filter/ordering gaps found in a
+  deeper fidelity pass that adversarially probed the AWS call shapes our reaper/prune paths depend on
+  (probed against `47b6a2a1`, `SIM_RUNTIME=process`; standard SDK, endpoint-only). Both are the same bug
+  class as the already-fixed EC2 `tag:` filter — a server-side filter the sim doesn't apply — so production
+  (real AWS) is unaffected but the sim under-validates:
+  - **#629 — Secrets Manager `ListSecrets` ignores the `tag-key` Filter.** `ListSecrets({Filters:[{Key:
+"tag-key", Values:[…]}]})` returns **all** secrets (a `tag-key` matching nothing still returns
+    everything). Real AWS filters server-side. Our orphan-secret reaper enumerates with this filter; it has
+    a tag-VALUE backstop (checks `edd:workspace-id` == the workspace id) so reaping stays correct, but the
+    sim doesn't model the scoping the real cloud provides.
+  - **#630 — ECS `ListTaskDefinitions` ignores `sort` and `status`.** `sort:"DESC"` returns ascending
+    (identical to `ASC`); `status:"ACTIVE"` still lists a deregistered (`INACTIVE`) revision. Note
+    `DeregisterTaskDefinition` DOES set the revision `INACTIVE` (a later `DescribeTaskDefinition` reports
+    it, and `status:"INACTIVE"` lists it) — only `ListTaskDefinitions`' own `sort`/`status` handling is the
+    gap. Our `pruneTaskDefinitions` lists `familyPrefix` + `status:ACTIVE` + `sort:DESC` to keep the newest
+    N; against the sim it would keep the oldest and never see a deregistration drop out of ACTIVE.
+
+  The same pass **confirmed conformant** (previously unprobed surfaces, no issue needed): **STS
+  `GetCallerIdentity`** returns a well-formed `arn:aws:iam::<acct>:user/simulator` (our
+  `callerToPrincipalArn` regex accepts it); **IAM `SimulatePrincipalPolicy`** genuinely evaluates identity
+  policy — a granted action → `allowed`, an ungranted action → `implicitDeny`, AND **condition keys are
+  honored** (a `Condition` on `ecs:cluster`: matching `ContextEntries` → `allowed`, non-matching →
+  `implicitDeny`, omitted → `implicitDeny` + `MissingContextValues:["ecs:cluster"]`) — so the IAM
+  self-check / drift preflight is NOT false-green against the sim; **ECS `RunTask`** managed-EBS + awsvpc
+  `DescribeTasks` read-back exposes the exact attachment detail names `taskReady` blocks on
+  (`AmazonElasticBlockStorage`→`volumeId`/`deleteOnTermination`, `ElasticNetworkInterface`→
+  `privateIPv4Address`), plus `enableExecuteCommand`, `stoppedReason`, and `include:TAGS` round-trip;
+  **Secrets Manager** `SecretListEntry.Tags`/`CreatedDate` populate and `DeleteSecret
+ForceDeleteWithoutRecovery` reclaims the name immediately; **CloudTrail `LookupEvents`** populates
+  `Username` + `Resources[].ResourceName` + `EventSource` + `EventId`/`EventTime` (what `mapEvent`
+  reads); **CloudWatch Logs `FilterLogEvents`** honors `limit` and round-trips `timestamp`/`message`/
+  `logStreamName`; **EventBridge Scheduler** `CreateSchedule`→`GetSchedule` round-trips the full
+  `EcsParameters` Target (`LaunchType`/`TaskCount`/`TaskDefinitionArn`/awsvpc `Subnets`/`AssignPublicIp`/
+  `ActionAfterCompletion`); **EC2 `CreateSnapshot`** models the `pending`→`completed` transition (the
+  `waitUntilSnapshotCompleted` waiter, incl. the cross-region copy path, sees it). One benign
+  simplification (NOT a bug, not filed): `CreateVolume` returns `available` immediately with no
+  intermediate `creating` state — the `waitUntilVolumeAvailable` waiter still terminates correctly and no
+  code path depends on observing `creating`.
+
 - **sockerless#602/#603/#604/#605/#606 (fixed upstream — confirmed downstream 2026-06-19)** —
   the five observability/DR fidelity gaps from the two fidelity passes, all fixed by sockerless
   **#607** (merge `74c0a3d2`) and **confirmed downstream** after re-pinning the submodule to it
@@ -160,14 +199,16 @@ active breakage):
   With both fixed, the sim fixture runs `enable_metric_alarms=true` **and**
   `enable_cloudwatch_dashboard=true`: all 9 alarm resources + the ops dashboard apply against the sim
   and `plan -detailed-exitcode` is **0 (idempotent)** — confirmed locally (apply + clean destroy of
-  66 resources). So there are **no open sockerless blockers** — every AWS surface our code/terraform
-  drives is now sim-validatable: CloudWatch metric write/read + EMF + **alarms + dashboards**, the
-  full EBS create/snapshot/restore **and copy** lifecycle, EC2 `tag:` filters + `OwnerIds:self` +
-  pagination + the volume/snapshot waiters, Secrets Manager
-  `CreateSecret`→`ResourceExistsException`→`PutSecretValue` upsert, ECS `RunTask --tags` →
-  `DescribeTasks include:TAGS` / `ListTasks --desired-status` / `DescribeClusters` counts, CloudTrail
-  `LookupEvents` cursor pagination, and the `create→wake→connect→delete` journey (the container-mode
-  `user-journey` e2e).
+  66 resources). As of that pass there were no open sockerless blockers (the 2026-06-20 deeper fidelity
+  pass since found two non-blocking GC-safety filter gaps, #629/#630 above — neither blocks any flow); the
+  AWS surface our code/terraform drives is sim-validatable: CloudWatch metric write/read + EMF + \*\*alarms
+  - dashboards**, the
+    full EBS create/snapshot/restore **and copy\*\* lifecycle, EC2 `tag:` filters + `OwnerIds:self` +
+    pagination + the volume/snapshot waiters, Secrets Manager
+    `CreateSecret`→`ResourceExistsException`→`PutSecretValue` upsert, ECS `RunTask --tags` →
+    `DescribeTasks include:TAGS` / `ListTasks --desired-status` / `DescribeClusters` counts, CloudTrail
+    `LookupEvents` cursor pagination, and the `create→wake→connect→delete` journey (the container-mode
+    `user-journey` e2e).
 
 - **sockerless#569 (fixed upstream — confirmed downstream 2026-06-16)** —
   process-mode (`SIM_RUNTIME=process`) `ecs:RunTask` with a managed-EBS volume used
