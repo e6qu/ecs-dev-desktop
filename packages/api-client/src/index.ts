@@ -3,6 +3,7 @@ import {
   auditFeedResponse,
   baseImageEntry,
   costReport,
+  quotaReport,
   createBaseImageRequest,
   createWorkspaceRequest,
   errorResponse,
@@ -25,6 +26,7 @@ import {
   type CreateWorkspaceRequest,
   type CostReport,
   type CostWindow,
+  type QuotaReportDto,
   type HealthReportDto,
   type ConfigSyncReportDto,
   type InfrastructureReportDto,
@@ -256,6 +258,12 @@ export class ApiClient {
     const qs = window === undefined ? "" : `?window=${window}`;
     const res = await this.send(`/api/admin/costs${qs}`);
     return costReport.parse(await res.json());
+  }
+
+  /** The quota report: per-role workspace limits + current per-user usage. */
+  async adminQuotas(): Promise<QuotaReportDto> {
+    const res = await this.send("/api/admin/quotas");
+    return quotaReport.parse(await res.json());
   }
 
   /** Read one admin log stream; CloudWatch-backed on AWS. An optional

@@ -354,6 +354,16 @@ export const costReport = z.object({
 });
 export type CostReport = z.infer<typeof costReport>;
 
+// --- Admin: quota report (per-role limits + per-user usage) ---
+
+export const quotaReport = z.object({
+  /** Per-role workspace caps (`limit: null` = unlimited). */
+  limits: z.array(z.object({ role: z.string(), limit: z.number().nullable() })),
+  /** Current workspace count per owner, busiest first. */
+  usage: z.array(z.object({ owner: z.string(), count: z.number().int().nonnegative() })),
+});
+export type QuotaReportDto = z.infer<typeof quotaReport>;
+
 /** Time window for the cost report: `all` = full lifetime, the rest = last N days. */
 export const costWindow = z.enum(["all", "1d", "7d", "30d"]);
 export type CostWindow = z.infer<typeof costWindow>;
