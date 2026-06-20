@@ -57,12 +57,14 @@ Tests: `apps/web/lib/workspace-proxy.test.ts` (authz glue — unauthenticated→
 owner→allow, other→forbidden, admin→allow, no-subject→forbidden) + `editorTokenRedirect` unit tests (redirect
 on document nav, skip when token/cookie present, skip sub-resources/non-GET, no-secret = tokenless); core
 machine-token + compute-ecs connection-token env tests; `packages/e2e/src/agent-secret.e2e.ts` asserts the
-`CONNECTION_TOKEN` Secrets-Manager injection; the LIVE portal browser e2e
-(`apps/web/e2e/portal-live.pwlive.ts`) clicks **Open editor** and asserts the real OpenVSCode
-`.monaco-workbench` loads through `/w/<id>/` (its `start-live-app.sh` now boots the production custom server,
-`tsx server.ts`, not `next start`); the vscode browser e2e (`test:pw:vscode`) drives the editor under the
-`/w/<id>/` base path. Verified at close: `pnpm build`/`test`/`lint` green; `actionlint` + `shellcheck` +
-`terraform fmt`/`validate` clean; `pnpm install --frozen-lockfile` passes.
+`CONNECTION_TOKEN` Secrets-Manager injection; `packages/e2e/src/live-ide-flow.e2e.ts` reaches the real
+OpenVSCode workbench through the IDE bridge and asserts the token the running editor uses equals the injected
+per-workspace `HMAC(EDD_CONNECTION_SECRET, id)` (workbench serves only with it); the LIVE portal e2e
+(`apps/web/e2e/portal-live.pwlive.ts`) asserts the **Open editor** affordance and now boots the production
+custom server (`tsx server.ts`, not `next start`); the vscode browser e2e (`test:pw:vscode`) drives the
+editor under the `/w/<id>/` base path. (The host-process proxy → in-VPC workspace ENI hop itself is the
+e2e-aws tier — the sim runs tasks in an awsvpc netns the host can't route to.) Verified at close:
+`pnpm build`/`test`/`lint` green; `actionlint` + `shellcheck` + `terraform fmt`/`validate` clean.
 
 ## Prior — UI/contract/perf/gate sweep (`feat/sweep-ui-contracts-perf`)
 

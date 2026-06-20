@@ -3,6 +3,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 
 import { workspace } from "@edd/api-contracts";
 import { dynamodb } from "@edd/config";
+import { deriveWorkspaceToken } from "@edd/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { configureAwsSimEnv } from "./aws-sim";
@@ -26,6 +27,11 @@ process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
 const RUN_ID = randomUUID().slice(0, 8);
 const WORKSPACE_IMAGE = process.env.WORKSPACE_IMAGE ?? "edd-workspace:e2e";
 const OWNER = "ide-user";
+// Master key for the editor connection token. With it set, the control plane injects
+// each task's CONNECTION_TOKEN = HMAC(secret, workspaceId) — the same value the in-app
+// proxy would hand the browser. The bridge then reads the token the running editor
+// actually uses, so we can assert the injection end to end.
+const CONNECTION_SECRET = randomBytes(32).toString("hex");
 
 /** Follow OpenVSCode's token redirect with a cookie jar (node fetch has none):
  * `/?tkn=` → 302 (Set-Cookie) → GET the workbench with that cookie. */
@@ -53,6 +59,7 @@ describe(
         vpcCidr: "10.80.0.0/16",
         subnetCidr: "10.80.1.0/24",
         agentSecret: randomBytes(32).toString("hex"),
+        extraEnv: { EDD_CONNECTION_SECRET: CONNECTION_SECRET },
       });
     });
 
@@ -77,6 +84,12 @@ describe(
 
       // Bridge into the task's isolated netns and reach the workbench.
       bridge = await startIdeBridge({ workspaceId: ws.id, image: WORKSPACE_IMAGE });
+
+      // The token the running editor actually uses (read from its --connection-token
+      // process arg) is exactly the per-workspace token the control plane injected as
+      // CONNECTION_TOKEN — i.e. the value the in-app proxy hands the browser. This is
+      // the editor-connection-token handoff proven against real sim compute.
+      expect(bridge.token).toBe(deriveWorkspaceToken(CONNECTION_SECRET, ws.id));
 
       // Without the connection token the server gates the request (proves it's the
       // real OpenVSCode auth, not an open port).

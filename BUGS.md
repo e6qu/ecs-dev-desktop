@@ -316,9 +316,11 @@ connectionSecret)` reads `EDD_CONNECTION_SECRET`. The in-app proxy (`apps/web/li
     `workspace_port` var + `workspaces_security_group_id` output; `EDD_CONNECTION_SECRET` added to the
     deployer-supplied secrets list. Tested: core machine-token + compute-ecs connection-token env tests;
     proxy `editorTokenRedirect` unit tests; `agent-secret.e2e.ts` asserts the Secrets-Manager injection;
-    the LIVE portal browser e2e (`portal-live.pwlive.ts`) clicks **Open editor** and asserts the real
-    OpenVSCode `.monaco-workbench` loads through `/w/<id>/` (its `start-live-app.sh` now boots the
-    production custom server, `tsx server.ts`).
+    `live-ide-flow.e2e.ts` reaches the real OpenVSCode workbench through the IDE bridge and asserts the token
+    the running editor uses equals the injected per-workspace `HMAC(EDD_CONNECTION_SECRET, id)` (workbench
+    serves only with it); the LIVE portal e2e (`portal-live.pwlive.ts`) asserts the **Open editor** affordance
+    and now boots the production custom server (`tsx server.ts`). (The host-process proxy → in-VPC workspace
+    ENI hop is the e2e-aws tier: the sim task netns is not host-routable — `ide-bridge.ts`.)
   - **Reconciler runtime IAM preflight — DONE.** `apps/web/lib/iam-preflight.ts` (+ test) moved to a new
     `@edd/iam-preflight` package (`packages/iam-preflight`); `apps/web` imports it and dropped its
     now-unused `@aws-sdk/client-iam`/`@aws-sdk/client-sts` direct deps. `@edd/core` gained pure

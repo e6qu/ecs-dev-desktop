@@ -137,8 +137,10 @@ deferral by choice.
   browser the token on the initial document navigation (`editorTokenRedirect` → 302 `…?tkn=<token>`); the
   HMAC derivation is centralized in `@edd/core` (`deriveWorkspaceToken`/`verifyWorkspaceToken`). Tasks are
   also isolated to a dedicated `workspaces` security group (editor port + sshd reachable only from the
-  control plane). The full "Open editor → workbench" loop is live-covered by `portal-live.pwlive.ts` and the
-  Secrets-Manager injection by `agent-secret.e2e.ts`.
+  control plane). Sim coverage: `live-ide-flow.e2e.ts` proves the injected token is the one the real editor
+  runs with (workbench serves only with it) via the IDE bridge, and `agent-secret.e2e.ts` proves the
+  Secrets-Manager injection; the host-process-proxy → in-VPC ENI hop is the e2e-aws tier (the sim task netns
+  is not host-routable).
 - **Cost — done.** Figure-exact rollups (O(recent) report) + live AWS Price List
   rate sourcing (`EDD_AWS_PRICING=1`, region-accurate, config fallback); both in
   `BUGS.md` → Resolved. The live-rate fetch is real-AWS-validated (`e2e-aws`); CI

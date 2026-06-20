@@ -2087,12 +2087,15 @@ connectionSecret)` reading `EDD_CONNECTION_SECRET`. The golden image already run
     core machine-token unit tests; compute-ecs connection-token env tests; proxy `editorTokenRedirect` unit
     tests (redirect on document nav, skip when token/cookie present, skip sub-resources/non-GET, no-secret =
     tokenless); `packages/e2e/src/agent-secret.e2e.ts` extended to assert the `CONNECTION_TOKEN`
-    Secrets-Manager injection against the container-mode sim; and the LIVE portal browser e2e
-    (`apps/web/e2e/portal-live.pwlive.ts`) now clicks "Open editor" and asserts the real OpenVSCode
-    `.monaco-workbench` loads through `/w/<id>/` — with `apps/web/e2e/start-live-app.sh` switched from `next
-start` to the production custom server (`tsx server.ts`) and `EDD_CONNECTION_SECRET` added to the live env
-    (so the live browser job now exercises the real production entrypoint + the `/w/` proxy, which `next
-start` never did).
+    Secrets-Manager injection against the container-mode sim; `packages/e2e/src/live-ide-flow.e2e.ts` reaches
+    the real OpenVSCode workbench through the IDE bridge and asserts the token the running editor uses (its
+    `--connection-token`) equals the injected per-workspace `HMAC(EDD_CONNECTION_SECRET, id)` — the workbench
+    serves only with it — proving the handoff against real sim compute; and the LIVE portal e2e
+    (`apps/web/e2e/portal-live.pwlive.ts`) asserts the **Open editor** affordance. `apps/web/e2e/start-live-app.sh`
+    was switched from `next start` to the production custom server (`tsx server.ts`), so the live browser job
+    now exercises the real production entrypoint + the `/w/` proxy routing, which `next start` never did. (The
+    host-process proxy → in-VPC workspace ENI hop itself is the e2e-aws tier: the sim runs each task in an
+    awsvpc netns the host cannot route to — see `packages/e2e/src/ide-bridge.ts`.)
   - **IAM preflight lifted into a shared package + reconciler startup self-check.**
     `apps/web/lib/iam-preflight.ts` (+ test) moved to a new package `@edd/iam-preflight`
     (`packages/iam-preflight`); `apps/web` imports from it and dropped its now-unused
