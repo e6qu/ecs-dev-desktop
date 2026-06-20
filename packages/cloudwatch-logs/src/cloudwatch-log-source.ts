@@ -46,6 +46,16 @@ export function logGroup(stream: LogStream, appName: string): string {
   }
 }
 
+/** Total log lines a single `read()` accumulates across pages. `FilterLogEvents`
+ * caps one page at 10 000 events, but with a stream-name prefix an early page can
+ * come back empty (or short) while more match later — so the loop must follow
+ * `nextToken` until this budget is met, not stop at the first page. */
+const LOG_LINE_BUDGET = 200;
+
+/** Max events requested per `FilterLogEvents` page (the API's hard cap is 10 000;
+ * we never need more than the remaining budget). */
+const FILTER_LOG_EVENTS_PAGE_MAX = 200;
+
 const STREAM_NOTE: Record<LogStream, string> = {
   "control-plane": "CloudWatch Logs — control-plane app stream",
   reconciler: "CloudWatch Logs — reconciler run logs",
@@ -84,14 +94,27 @@ export class CloudWatchLogSource implements LogSource {
         ? workspaceStreamPrefix(filter.taskId)
         : undefined;
     try {
-      const out = await this.client.send(
-        new FilterLogEventsCommand({
-          logGroupName,
-          limit: 200,
-          ...(logStreamNamePrefix === undefined ? {} : { logStreamNamePrefix }),
-        }),
-      );
-      const lines = (out.events ?? []).map((e: FilteredLogEvent) => toLogLine(e, stream));
+      // Follow `nextToken` accumulating events until the line budget is met (or the
+      // group is exhausted). A single page silently truncated the admin log view —
+      // and with a stream prefix an early page can be empty while more events match
+      // later (the same class as the resolved CloudTrail/DynamoDB pagination bugs).
+      const lines: LogLine[] = [];
+      let nextToken: string | undefined;
+      do {
+        const out = await this.client.send(
+          new FilterLogEventsCommand({
+            logGroupName,
+            limit: Math.min(LOG_LINE_BUDGET - lines.length, FILTER_LOG_EVENTS_PAGE_MAX),
+            ...(logStreamNamePrefix === undefined ? {} : { logStreamNamePrefix }),
+            ...(nextToken === undefined ? {} : { nextToken }),
+          }),
+        );
+        for (const e of out.events ?? []) {
+          lines.push(toLogLine(e, stream));
+          if (lines.length >= LOG_LINE_BUDGET) return { stream, available: true, note, lines };
+        }
+        nextToken = out.nextToken;
+      } while (nextToken !== undefined && lines.length < LOG_LINE_BUDGET);
       return { stream, available: true, note, lines };
     } catch (err) {
       if (err instanceof ResourceNotFoundException) {

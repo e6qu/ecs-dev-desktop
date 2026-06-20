@@ -2,9 +2,40 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-20 (finished the editor-proxy story — "Open editor" now reaches the workbench end-to-end via a defence-in-depth connection token + a workspace-isolating security group; lifted IAM preflight into `@edd/iam-preflight` with a reconciler startup self-check)
+**Last updated:** 2026-06-21 (bug / spec-fidelity / fuzz-testing sweep — added fast-check property-based tests across the pure functions, pinning the cost figure-equivalence and GC-never-reaps-referenced safety invariants; fixed a batch of traced bugs; one cost-model teardown-volume approximation recorded as deferred)
 
-## Active — Editor reachable end-to-end through the in-app proxy + reconciler IAM self-check
+## Active — Property/fuzz testing pins the safety-critical invariants; spec-fidelity sweep
+
+The test suite now includes **property-based / fuzz testing** (`fast-check`) alongside the example-based
+unit/contract/integ/e2e tiers: **11 `*.fuzz.test.ts`** files exercise the pure functions over generated
+inputs, so the safety-critical invariants are machine-checked rather than spot-asserted. Headline invariants
+now property-pinned:
+
+- **Cost-model figure-equivalence (metamorphic).** For any split of an event ledger, checkpoint+resume
+  derivation equals full-ledger derivation; billing intervals are non-negative + order-independent; the
+  window-clip is idempotent + bounded; pricing is linear; the relative-window guard holds.
+- **GC selection safety.** The orphan/snapshot selectors NEVER reap a referenced resource, are monotonic in
+  the grace window, never reap a `retained` snapshot, and fail-safe on a malformed timestamp.
+- **State machine.** transition⟺can-transition agreement, `terminated` absorbing, every UI action maps to a
+  legal transition, `planConnect` totality.
+- **Security-relevant parsers (fail-closed, never-throw).** `email`, `workspaceIdFromPath`,
+  `decideWorkspaceAccessBySubject`, `withinWorkspaceQuota`; plus the compute-ecs (`taskDefinitionFamily`,
+  `workspaceEnvironment`, `taskReady`/`taskPrivateIp`), cloudwatch-logs level/stream, apps/web
+  (`parseOnDemandUsd`/`parseUsageType`, `cookieValue`, `repoOwner`), auth (`mapClaimsToRole`), and config
+  numeric-env parsers.
+
+The same sweep fixed a batch of traced bugs (compute-ecs `listWorkspaceTasks` failure-swallow that could
+leak a Fargate task + EBS volume; non-idempotent `stopTask`; `taskDefinitionFamily("")` collision;
+cloudwatch-logs `read()` pagination truncation; core `relativeWindow`/`deriveFleetAudit`/billing-sort
+fail-loud + string-vs-instant ordering; `email` control-char acceptance; catalog `name` trim; ssh-gateway
+shell wake-poll early-exit + authorized-keys HTTP-status gate; apps/web connect-info `protocol` drift,
+honest `session.user.role` default, git-credential Zod contract, admin-list enrichment) — see
+`WHAT_WE_DID.md` 2026-06-21 + `BUGS.md`. One item is recorded as a **deferred known model approximation**:
+the cost model over-bills the live-volume line during a _stopped_-workspace teardown (sub-cent; a precise
+fix needs a persisted `BillingState` schema change — `BUGS.md` → Open). Verified at close: `pnpm
+build`/`test`/`lint`, `check-deps`, and `shellcheck` all green.
+
+## Prior — Editor reachable end-to-end through the in-app proxy + reconciler IAM self-check
 
 The browser→VS Code editor reach is now **fully authenticated end-to-end**: clicking **Open editor**
 lands on the OpenVSCode workbench through the in-app path-based proxy (`app.<domain>/w/<id>/`). On top of

@@ -2,15 +2,20 @@
 import { NextResponse } from "next/server";
 
 import { isResponse, requireAdmin } from "../../../../lib/api";
-import { getControlPlane } from "../../../../lib/control-plane";
+import { getCatalog, getControlPlane } from "../../../../lib/control-plane";
 import { withObservability } from "../../../../lib/observability";
+import { catalogByImage, enrichWorkspace } from "../../../../lib/workspace-enrich";
 
 // GET /api/admin/workspaces — every workspace across all users (admin only).
 async function handleGET(req: Request) {
   const principal = await requireAdmin(req);
   if (isResponse(principal)) return principal;
   const cp = await getControlPlane();
-  return NextResponse.json({ workspaces: await cp.list() });
+  // Enrich identically to GET /api/workspaces (catalog image fields + sshCommand) so
+  // the admin fleet view gets the same server-computed catalog join, not a bare list.
+  const byImage = catalogByImage(await getCatalog().list());
+  const workspaces = (await cp.list()).map((ws) => enrichWorkspace(ws, byImage));
+  return NextResponse.json({ workspaces });
 }
 
 export const GET = withObservability("admin.workspaces.list", handleGET);

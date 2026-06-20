@@ -156,7 +156,13 @@ export function deriveBillingIntervals(
   now: IsoTimestamp,
 ): BillingIntervals {
   const nowMs = Date.parse(now);
-  const sorted = [...events].sort((a, b) => a.at.localeCompare(b.at));
+  // Sort by parsed instant (not string compare): equivalent ISO timestamps in
+  // different formats (`Z` vs `+00:00`, `.000` vs none) must order chronologically,
+  // or a later event could sort before an earlier one and clamp an interval to zero,
+  // silently losing billable time. Drop unparseable timestamps up front.
+  const sorted = [...events]
+    .filter((e) => !Number.isNaN(Date.parse(e.at)))
+    .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
   const running: Interval[] = [];
   const stopped: Interval[] = [];
   const teardown: Interval[] = [];
@@ -237,8 +243,14 @@ export function clipIntervals(intervals: BillingIntervals, window: Interval): Bi
   };
 }
 
-/** Pure: the now-relative report window `[now - days, now)` in epoch ms. */
+/** Pure: the now-relative report window `[now - days, now)` in epoch ms. Fails loud
+ * on a non-positive / non-finite `days` rather than returning an inverted or empty
+ * window that would silently zero every session out of the report (§6.5) — a windowed
+ * report of $0 must mean "no activity", never "bad window". */
 export function relativeWindow(now: IsoTimestamp, days: number): Interval {
+  if (!Number.isFinite(days) || days <= 0) {
+    throw new Error(`relativeWindow: days must be a positive finite number, got ${String(days)}`);
+  }
   const nowMs = Date.parse(now);
   return { fromMs: nowMs - days * MS_PER_DAY, toMs: nowMs };
 }
@@ -344,7 +356,7 @@ function walkBilling(
       const m = Date.parse(e.at);
       return !Number.isNaN(m) && m > afterMs && m <= throughMs;
     })
-    .sort((a, b) => a.at.localeCompare(b.at));
+    .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
   for (const event of sorted) {
     if (terminated) break;
     const atMs = Date.parse(event.at);

@@ -82,9 +82,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     session({ session, token }) {
       const { uid, role } = token;
       if (typeof uid === "string") session.user.id = uid;
-      if (role === "viewer" || role === "member" || role === "admin") {
-        session.user.role = role;
-      }
+      // `Session.user.role` is non-optional, so ALWAYS set a concrete value. A JWT
+      // lacking a valid role defaults to the LEAST-privileged `viewer` (CASL grants
+      // read-only) — explicit least-privilege, never an accidental `undefined` that
+      // would make the non-optional type a lie.
+      session.user.role =
+        role === "viewer" || role === "member" || role === "admin" ? role : "viewer";
       return session;
     },
   },

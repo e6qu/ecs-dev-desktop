@@ -44,13 +44,26 @@ export const sshPublicKey = (value: string): SshPublicKey => brand<"SshPublicKey
 export const sshKeyFingerprint = (value: string): SshKeyFingerprint =>
   brand<"SshKeyFingerprint">(value);
 
+/** Whether a string contains any C0 control character or DEL (indices, not spread, to
+ * avoid iterating Unicode code points where char codes are what we mean to check). */
+function hasControlChar(s: string): boolean {
+  for (let i = 0; i < s.length; i++) {
+    const code = s.charCodeAt(i);
+    if (code <= 0x1f || code === 0x7f) return true;
+  }
+  return false;
+}
+
 /** Smart constructor for {@link Email}: validates a basic `local@domain.tld`
  * shape and normalises to lowercase so owner/caller comparison is
  * case-insensitive (IdPs treat email case-insensitively). Throws (loud) on a
  * malformed value rather than silently branding garbage. */
 export const email = (value: string): Email => {
   const normalized = value.trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
+  // The `[^\s@]` classes below exclude whitespace but NOT C0 control chars / DEL
+  // (NUL is not `\s`), which would otherwise be branded as a valid Email and flow into
+  // ownership/display. Reject any control character explicitly first.
+  if (hasControlChar(normalized) || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) {
     throw new Error(`invalid email: ${value}`);
   }
   return brand<"Email">(normalized);

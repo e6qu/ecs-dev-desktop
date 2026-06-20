@@ -47,6 +47,13 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
+- **Property-based / fuzz testing — ESTABLISHED (2026-06-21).** `fast-check` is now part of the suite
+  (11 `*.fuzz.test.ts` over the pure functions); the **cost figure-equivalence** and
+  **GC-never-reaps-referenced** safety invariants are property-pinned, along with the state machine and the
+  fail-closed/never-throw security parsers (see `WHAT_WE_DID.md` 2026-06-21 + `STATUS.md`). Extend it as new
+  pure logic lands (the natural home for any future invariant); the 2026-06-21 sweep also fixed a batch of
+  traced bugs and recorded one deferred cost-model teardown-volume approximation (`BUGS.md` → Open).
+
 - **Reconciler runtime IAM preflight (follow-up to the IAM self-check) — DONE (2026-06-20).** The
   preflight adapter was lifted out of `apps/web/lib/iam-preflight.ts` into a shared package
   `@edd/iam-preflight` (`packages/iam-preflight`); `apps/web` imports it and dropped its now-unused

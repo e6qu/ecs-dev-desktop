@@ -74,6 +74,17 @@ while true; do
   if [ "$state" = "running" ] || [ "$state" = "idle" ]; then
     break
   fi
+  # A wake that lands in a terminal/failed state will never reach running — stop
+  # polling and fail fast instead of holding the SSH client open until the deadline.
+  # These mirror the control plane's `planConnect` "unavailable" states (error /
+  # terminated / deleting); `stopped` is excluded — it is the pre-wake state POST
+  # /connect transitions out of, so seeing it briefly is normal, not terminal.
+  case "$state" in
+    error | terminated | deleting)
+      echo "error: workspace ${WORKSPACE_ID} entered terminal state '${state}' while waking" >&2
+      exit 1
+      ;;
+  esac
   if [ "$(date +%s)" -ge "$DEADLINE" ]; then
     echo "error: workspace ${WORKSPACE_ID} did not reach running within 60s (state=${state})" >&2
     exit 1

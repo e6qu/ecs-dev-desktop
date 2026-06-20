@@ -18,6 +18,7 @@
     "@edd/core": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.0.0"
+    "@types/node": "^26.0.0",
+    "fast-check": "^4.8.0"
   }
 }

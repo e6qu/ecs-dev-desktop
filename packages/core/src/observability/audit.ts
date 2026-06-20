@@ -39,6 +39,11 @@ export function deriveFleetAudit(
   items: readonly FleetAuditInput[],
   limit: number = DEFAULT_AUDIT_FEED_LIMIT,
 ): AuditEvent[] {
+  // A negative limit would slice from the END (dropping the newest events) and return
+  // a non-empty but wrong feed; fail loud rather than silently mis-slice (§6.5).
+  if (!Number.isInteger(limit) || limit < 0) {
+    throw new Error(`deriveFleetAudit: limit must be a non-negative integer, got ${String(limit)}`);
+  }
   const events = items.flatMap((w) =>
     deriveWorkspaceTimeline({
       createdAt: w.createdAt,
