@@ -121,6 +121,7 @@ type AuditAction =
   | "session.start"
   | "session.stop"
   | "session.delete"
+  | "session.terminated"
   | "session.recover"
   | "session.snapshot_lost"
   | "security.privilege_attempt";
@@ -980,12 +981,49 @@ export class WorkspaceService {
       }
     }
     const oc = this.deps.ownerCounts;
+    // Record teardown COMPLETION (ends billing — the volume + snapshot stopped costing
+    // money) atomically with the hard-delete, so a delete that loses the version race
+    // records no terminate event. Absent only when no audit ledger is wired.
+    const term = this.auditItem({
+      action: "session.terminated",
+      target: id,
+      actor: SYSTEM_ACTOR,
+      detail: "teardown complete",
+    });
+    // The quota decrement is UNCONDITIONAL (no `where`): it must never block the delete
+    // — a counter drift only weakens enforcement and self-heals (create path +
+    // reconcileOwnerCounts) — so the delete's own version condition is the only cancel.
     try {
-      if (oc !== undefined) {
-        // Free the owner's quota slot in the SAME transaction as the hard-delete. The
-        // decrement is UNCONDITIONAL (no `where`): it must never block the delete — a
-        // counter drift would only weaken enforcement, self-correcting on the next
-        // create — so the delete's own version condition is the only cancel source.
+      if (term !== undefined && oc !== undefined) {
+        const result = await writeTransaction(
+          { ws: this.deps.workspaces, oc, ev: term.entity },
+          ({ ws: wsE, oc: ocE, ev }) => [
+            wsE
+              .delete({ id })
+              .where(({ version: v }, { eq }) => eq(v, version))
+              .commit(),
+            ocE.update({ ownerId: ws.ownerId }).subtract({ count: 1 }).commit(),
+            ev.put(term.attrs).commit(),
+          ],
+        ).go();
+        if (result.canceled) {
+          return err(conflictError(`finishDeleting ${id} lost a concurrent update`));
+        }
+      } else if (term !== undefined) {
+        const result = await writeTransaction(
+          { ws: this.deps.workspaces, ev: term.entity },
+          ({ ws: wsE, ev }) => [
+            wsE
+              .delete({ id })
+              .where(({ version: v }, { eq }) => eq(v, version))
+              .commit(),
+            ev.put(term.attrs).commit(),
+          ],
+        ).go();
+        if (result.canceled) {
+          return err(conflictError(`finishDeleting ${id} lost a concurrent update`));
+        }
+      } else if (oc !== undefined) {
         const result = await writeTransaction(
           { ws: this.deps.workspaces, oc },
           ({ ws: wsE, oc: ocE }) => [

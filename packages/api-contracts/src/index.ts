@@ -314,6 +314,8 @@ export const costBreakdown = z.object({
   totalUsd: z.number(),
   runningMs: z.number(),
   stoppedMs: z.number(),
+  /** Teardown-window ms (delete request → termination); bills volume + snapshot. */
+  teardownMs: z.number(),
 });
 export type CostBreakdownDto = z.infer<typeof costBreakdown>;
 

@@ -15,8 +15,9 @@ import type { ComputeProvider } from "./compute-provider";
 export interface ComputeContractHarness {
   readonly compute: ComputeProvider;
   readonly baseImage: BaseImage;
-  /** Produce a valid snapshot id this provider can hydrate a task from. */
-  makeSnapshot(): Promise<SnapshotId>;
+  /** Produce a valid snapshot id this provider can hydrate a task from. A function
+   * property (not a method) so the contract can safely destructure it. */
+  readonly makeSnapshot: () => Promise<SnapshotId>;
 }
 
 /**
