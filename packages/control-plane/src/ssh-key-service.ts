@@ -2,9 +2,14 @@
 import {
   fingerprintPublicKey,
   newSshKeyId,
+  ownerId as toOwnerId,
+  sshKeyId as toSshKeyId,
   sshKeyType,
   type Clock,
+  type OwnerId,
   type SshKeyFingerprint,
+  type SshKeyId,
+  type SshPublicKey,
 } from "@edd/core";
 import type { SshKeyDto } from "@edd/api-contracts";
 import { writeTransaction, type SshKeyEntity, type SshKeyFingerprintEntity } from "@edd/db";
@@ -84,7 +89,7 @@ export class SshKeyService {
    * for shape at the contract boundary; this throws loudly if it can't be
    * fingerprinted at all.
    */
-  async register(ownerId: string, publicKey: string, label?: string): Promise<SshKeyDto> {
+  async register(ownerId: OwnerId, publicKey: SshPublicKey, label?: string): Promise<SshKeyDto> {
     const normalized = publicKey.trim();
     const fingerprint = fingerprintPublicKey(normalized);
     const keyType = sshKeyType(normalized);
@@ -130,7 +135,7 @@ export class SshKeyService {
   }
 
   /** The caller's registered keys, newest first. */
-  async list(ownerId: string): Promise<SshKeyDto[]> {
+  async list(ownerId: OwnerId): Promise<SshKeyDto[]> {
     const { data } = await this.deps.keys.query.primary({ ownerId }).go();
     return data
       .map(toDto)
@@ -142,7 +147,7 @@ export class SshKeyService {
    * can never delete another user's key. Returns false if the caller has no such
    * key (route → 404).
    */
-  async remove(ownerId: string, id: string): Promise<boolean> {
+  async remove(ownerId: OwnerId, id: SshKeyId): Promise<boolean> {
     const { data } = await this.deps.keys.get({ ownerId, id }).go();
     if (data === null) return false;
     // Delete the key AND release its fingerprint claim in one transaction, so the
@@ -160,8 +165,12 @@ export class SshKeyService {
    * authentication step — authorization (does this owner own the target
    * workspace?) is a separate check at connect time.
    */
-  async ownerForKey(publicKey: string): Promise<{ ownerId: string; keyId: string } | null> {
+  async ownerForKey(
+    publicKey: SshPublicKey,
+  ): Promise<{ ownerId: OwnerId; keyId: SshKeyId } | null> {
     const match = await this.findByFingerprint(fingerprintPublicKey(publicKey.trim()));
-    return match === null ? null : { ownerId: match.ownerId, keyId: match.id };
+    return match === null
+      ? null
+      : { ownerId: toOwnerId(match.ownerId), keyId: toSshKeyId(match.id) };
   }
 }

@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 
 import { registerSshKeyRequest } from "@edd/api-contracts";
 import { SshKeyConflictError } from "@edd/control-plane";
+import { sshPublicKey } from "@edd/core";
 
 import { authenticate, badRequest, conflict, isResponse } from "../../../lib/api";
 import { getSshKeyService } from "../../../lib/control-plane";
@@ -34,7 +35,7 @@ async function handlePOST(req: Request) {
   try {
     const key = await getSshKeyService().register(
       principal.id,
-      body.data.publicKey,
+      sshPublicKey(body.data.publicKey),
       body.data.label,
     );
     return NextResponse.json({ key }, { status: 201 });

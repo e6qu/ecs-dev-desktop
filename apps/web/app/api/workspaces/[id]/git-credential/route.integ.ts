@@ -42,7 +42,7 @@ beforeAll(async () => {
   otherWsId = other.id;
 
   // The owner has a stored git credential; the "other" owner does not.
-  await getGitCredentials().store("git-owner", TOKEN);
+  await getGitCredentials().store(ownerId("git-owner"), TOKEN);
 });
 
 afterAll(() => {

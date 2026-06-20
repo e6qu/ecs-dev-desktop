@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { mapClaimsToRole } from "@edd/auth";
+import { ownerId } from "@edd/core";
 import NextAuth from "next-auth";
 import GitHub from "next-auth/providers/github";
 import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
@@ -70,7 +71,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           gitCredentialsEnabled()
         ) {
           try {
-            await getGitCredentials().store(claims.subject, account.access_token);
+            await getGitCredentials().store(ownerId(claims.subject), account.access_token);
           } catch (err) {
             log.error("failed to store git credential at sign-in", { error: errorField(err) });
           }

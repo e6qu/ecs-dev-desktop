@@ -22,6 +22,9 @@ export function SshKeys() {
   const [label, setLabel] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Removing a key is destructive (you lose SSH access from that key), so it takes a
+  // second click to confirm. Keyed by key-id — arming one row must not arm the others.
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   async function refresh(): Promise<void> {
     try {
@@ -65,6 +68,7 @@ export function SshKeys() {
       setError(e instanceof Error ? e.message : "could not remove the key");
     } finally {
       setBusy(false);
+      setConfirmingId(null);
     }
   }
 
@@ -134,14 +138,36 @@ export function SshKeys() {
                     {k.keyType} · {k.fingerprint}
                   </span>
                 </span>
-                <button
-                  type="button"
-                  className="btn danger"
-                  disabled={busy}
-                  onClick={() => void remove(k.id)}
-                >
-                  remove
-                </button>
+                <span className="foot">
+                  <button
+                    type="button"
+                    className="btn danger"
+                    disabled={busy}
+                    aria-label={
+                      confirmingId === k.id ? "confirm delete — removes this SSH key" : "remove"
+                    }
+                    onClick={() => {
+                      if (confirmingId !== k.id) {
+                        setConfirmingId(k.id);
+                        return;
+                      }
+                      void remove(k.id);
+                    }}
+                  >
+                    {confirmingId === k.id ? "confirm delete?" : "remove"}
+                  </button>
+                  {confirmingId === k.id && !busy && (
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={() => {
+                        setConfirmingId(null);
+                      }}
+                    >
+                      cancel
+                    </button>
+                  )}
+                </span>
               </li>
             ))}
           </ul>

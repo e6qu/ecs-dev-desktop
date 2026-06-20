@@ -25,6 +25,11 @@ export type SshPublicKey = Brand<string, "SshPublicKey">;
 /** An OpenSSH SHA256 key fingerprint, e.g. `SHA256:<base64-no-pad>` — the stable
  * identity a key is deduped and looked up by (see `fingerprintPublicKey`). */
 export type SshKeyFingerprint = Brand<string, "SshKeyFingerprint">;
+/** The git hosting provider a stored credential belongs to. A closed union (not a
+ * bare string) so a typo is a compile error and the credential ledger's
+ * `(ownerId, provider)` key can never be mis-scoped. Only providers we actually
+ * support appear here — adding one is a one-line change (and a real integration). */
+export type GitProviderId = "github";
 
 /** Smart constructors (validate/brand an existing string). */
 export const workspaceId = (value: string): WorkspaceId => brand<"WorkspaceId">(value);

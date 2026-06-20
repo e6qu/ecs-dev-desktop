@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { NextResponse } from "next/server";
 
+import { sshKeyId } from "@edd/core";
+
 import { authenticate, isResponse, notFound } from "../../../../lib/api";
 import { getSshKeyService } from "../../../../lib/control-plane";
 import { withObservability } from "../../../../lib/observability";
@@ -15,7 +17,7 @@ async function handleDELETE(req: Request, { params }: Ctx) {
   const principal = await authenticate(req);
   if (isResponse(principal)) return principal;
   const { id } = await params;
-  const removed = await getSshKeyService().remove(principal.id, id);
+  const removed = await getSshKeyService().remove(principal.id, sshKeyId(id));
   if (!removed) return notFound();
   return NextResponse.json({ ok: true });
 }

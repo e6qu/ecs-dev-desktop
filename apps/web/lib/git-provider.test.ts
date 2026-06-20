@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { generateKeyPairSync } from "node:crypto";
 
+import { ownerId } from "@edd/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GITHUB_API_URL_ENV, GITHUB_APP_ID_ENV, GITHUB_APP_KEY_ENV } from "./constants";
@@ -104,7 +105,7 @@ describe("InstallationGitProvider (via getGitProvider in App mode)", () => {
   it("lists repos across the app's installations", async () => {
     enableApp();
     stubGitHubApp();
-    const provider = await getGitProvider("ignored-in-app-mode");
+    const provider = await getGitProvider(ownerId("ignored-in-app-mode"));
     const repos = await provider?.listRepos();
     expect(repos?.map((r) => r.fullName)).toEqual(["acme/web"]);
     expect(repos?.[0]?.private).toBe(true);
@@ -113,7 +114,7 @@ describe("InstallationGitProvider (via getGitProvider in App mode)", () => {
   it("maps installations to namespaces with canCreate from the administration permission", async () => {
     enableApp();
     stubGitHubApp();
-    const provider = await getGitProvider("x");
+    const provider = await getGitProvider(ownerId("x"));
     const ns = await provider?.listNamespaces();
     expect(ns).toEqual([{ login: "acme", kind: "org", canCreate: true }]);
   });
@@ -121,7 +122,7 @@ describe("InstallationGitProvider (via getGitProvider in App mode)", () => {
   it("creates a repo via the installation token", async () => {
     enableApp();
     stubGitHubApp();
-    const provider = await getGitProvider("x");
+    const provider = await getGitProvider(ownerId("x"));
     const created = await provider?.createRepo({
       owner: "acme",
       name: "new",
@@ -134,7 +135,7 @@ describe("InstallationGitProvider (via getGitProvider in App mode)", () => {
   it("yields a git credential scoped to the repo owner's installation", async () => {
     enableApp();
     stubGitHubApp();
-    const provider = await getGitProvider("x");
+    const provider = await getGitProvider(ownerId("x"));
     const cred = await provider?.gitCredential("acme");
     expect(cred).toEqual({ username: "x-access-token", token: "ghs_inst7" });
   });

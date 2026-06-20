@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { NextResponse } from "next/server";
 
-import { workspaceId } from "@edd/core";
+import { ownerId, workspaceId } from "@edd/core";
 
 import { notFound } from "../../../../../lib/api";
 import { getControlPlane } from "../../../../../lib/control-plane";
@@ -43,7 +43,7 @@ async function handleGET(req: Request, { params }: Ctx) {
   const ws = await cp.get(workspaceId(id));
   if (!ws) return notFound();
 
-  const provider = await getGitProvider(ws.ownerId);
+  const provider = await getGitProvider(ownerId(ws.ownerId));
   const credential = provider === null ? null : await provider.gitCredential(repoOwner(ws.repoUrl));
   if (credential === null) {
     return NextResponse.json({ error: "no credential" }, { status: 404 });

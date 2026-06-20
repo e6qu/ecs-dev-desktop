@@ -3,7 +3,25 @@ import { describe, expect, it } from "vitest";
 
 import { baseImage, workspaceId } from "../domain/ids";
 import { FakeStorageProvider } from "../storage/fake-storage-provider";
+import { computeProviderContract } from "./compute-provider-contract";
 import { FakeComputeProvider } from "./fake-compute-provider";
+
+// The shared port contract: the fake must model the same task-lifecycle +
+// snapshot-hydration behaviour the real EcsComputeProvider proves in container-mode
+// e2e — so a divergence in the fake (which most unit tests run against) is caught here.
+computeProviderContract("FakeComputeProvider", async () => {
+  const storage = await FakeStorageProvider.create();
+  return {
+    compute: new FakeComputeProvider(storage),
+    baseImage: baseImage("golden/node:20"),
+    // Snapshot the SAME storage the fake compute hydrates from, so the wake path
+    // (createVolume({fromSnapshot})) finds a real snapshot to restore.
+    makeSnapshot: async () => {
+      const v = await storage.createVolume();
+      return (await storage.createSnapshot(v.id)).id;
+    },
+  };
+});
 
 describe("FakeComputeProvider", () => {
   it("runs a task with a managed volume and releases it on stop", async () => {

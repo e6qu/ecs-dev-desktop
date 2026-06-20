@@ -8,6 +8,7 @@ export type {
   BaseImage,
   BaseImageId,
   Email,
+  GitProviderId,
   IsoTimestamp,
   OwnerId,
   SnapshotId,
