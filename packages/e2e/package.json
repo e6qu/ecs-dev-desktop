@@ -31,6 +31,6 @@
     "@edd/storage-ec2": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^25.9.3"
+    "@types/node": "^26.0.0"
   }
 }
