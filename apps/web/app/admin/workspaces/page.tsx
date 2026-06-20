@@ -3,19 +3,20 @@ import Link from "next/link";
 
 import { StateBlock } from "../../../components/StateBlock";
 import { StatusBadge } from "../../../components/StatusBadge";
-import { catalogDetailsByImage, lookupCatalogDetails } from "../../../lib/catalog-details";
-import { getControlPlane } from "../../../lib/control-plane";
-import { getCatalog } from "../../../lib/control-plane";
+import { getCatalog, getControlPlane } from "../../../lib/control-plane";
 import { TESTID } from "../../../lib/testids";
+import { catalogByImage, enrichWorkspace } from "../../../lib/workspace-enrich";
 
 export const dynamic = "force-dynamic";
 
 // Admin-only (the /admin layout gates it). Every workspace, newest first.
 export default async function AdminWorkspacesPage() {
   const cp = await getControlPlane();
-  const [workspaces, catalog] = await Promise.all([cp.list(), getCatalog().list()]);
-  const details = catalogDetailsByImage(catalog);
-  workspaces.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const [raw, catalog] = await Promise.all([cp.list(), getCatalog().list()]);
+  const byImage = catalogByImage(catalog);
+  const workspaces = raw
+    .map((ws) => enrichWorkspace(ws, byImage))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
   return (
     <>
@@ -32,7 +33,6 @@ export default async function AdminWorkspacesPage() {
       ) : (
         <div className="adm-rows">
           {workspaces.map((ws) => {
-            const image = lookupCatalogDetails(details, ws.baseImage);
             return (
               <Link
                 key={ws.id}
@@ -42,7 +42,7 @@ export default async function AdminWorkspacesPage() {
                 data-id={ws.id}
                 data-status={ws.state}
               >
-                <span className="wid">{image.name}</span>
+                <span className="wid">{ws.imageName ?? ws.baseImage}</span>
                 <StatusBadge state={ws.state} />
                 <div className="meta">
                   <span>workspace · {ws.id}</span>

@@ -16,6 +16,7 @@ import {
 } from "../../../lib/api";
 import { getCatalog, getControlPlane } from "../../../lib/control-plane";
 import { getMetrics } from "../../../lib/metrics";
+import { catalogByImage, enrichWorkspace } from "../../../lib/workspace-enrich";
 import { resolveOwnerEmail } from "../../../lib/owner-email";
 import { devAuthEnabled } from "../../../lib/principal";
 import { withObservability } from "../../../lib/observability";
@@ -28,8 +29,12 @@ async function handleGET(req: Request) {
   if (isResponse(principal)) return principal;
 
   const cp = await getControlPlane();
-  const workspaces =
+  const raw =
     principal.role === "admin" ? await cp.list() : await cp.list({ ownerId: principal.id });
+  // Return ready-to-render DTOs: resolve the catalog image + ssh command server-side so
+  // the UI (and any reskinned/external client) renders without re-joining the catalog.
+  const byImage = catalogByImage(await getCatalog().list());
+  const workspaces = raw.map((ws) => enrichWorkspace(ws, byImage));
   return NextResponse.json({ workspaces });
 }
 

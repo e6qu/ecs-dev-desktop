@@ -46,6 +46,15 @@ export const workspace = z.object({
   // The lifecycle actions valid from this state — server-computed (from the core
   // state machine) so the UI renders buttons from data, not a client-side mirror.
   availableActions: z.array(workspaceAction),
+  // Resolved catalog presentation for `baseImage` (joined server-side so the UI
+  // doesn't re-fetch + join the catalog). Absent when the image isn't in the catalog.
+  imageName: z.string().optional(),
+  imageDescription: z.string().optional(),
+  imageTags: z.array(z.string()).optional(),
+  imageTools: z.array(z.string()).optional(),
+  // The ready-to-run `ssh …` connect command, when the SSH subdomain is configured —
+  // built server-side from deployment config so a reskin needn't know the convention.
+  sshCommand: z.string().optional(),
 });
 export type WorkspaceDto = z.infer<typeof workspace>;
 

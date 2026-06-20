@@ -11,20 +11,17 @@ export function WorkspaceCard({
   ws,
   index,
   showOwner,
-  imageName,
-  imageDescription,
-  imageTags,
-  sshCommand,
 }: {
+  /** A workspace DTO already enriched (catalog image fields + ssh command) by the
+   * server / `enrichWorkspace`, so the card is a pure renderer. */
   ws: WorkspaceDto;
   index: number;
   showOwner: boolean;
-  imageName: string;
-  imageDescription: string;
-  imageTags: readonly string[];
-  /** Per-workspace `ssh …` connect command, when the SSH subdomain is configured. */
-  sshCommand?: string;
 }) {
+  const imageName = ws.imageName ?? ws.baseImage;
+  const imageDescription = ws.imageDescription ?? "";
+  const imageTags = ws.imageTags ?? [];
+  const sshCommand = ws.sshCommand;
   return (
     <article
       className="card"
