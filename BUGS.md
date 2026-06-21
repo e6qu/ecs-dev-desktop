@@ -121,10 +121,12 @@ registered-key text).
   blockers_): **#641** (TransactWriteItems silently ignores the `Update` action — breaks transactional
   CAS/counters), **#642** (TransactionCanceledException omits `CancellationReasons` — conflict→domain-error
   mapping), **#643** (`SET if_not_exists(c,:0) - :v` stores `null`), **#644** (DeleteTable doesn't purge
-  items). Per §6.8 the move is to **wait on the upstream fixes, not work around or switch to a
+  items). **#641/#642/#644 are FIXED (sockerless #646, confirmed downstream 2026-06-22 — 51/52 against the
+  sim); #643 is partially fixed and the remaining parenthesized-RHS form (which ElectroDB emits) is filed
+  as #648.** Per §6.8 the move is to **wait on the upstream fixes, not work around or switch to a
   less-conformant substrate** — so the tier stays on DynamoDB Local for now (the flake is rare +
-  self-healed). Once #641–#644 land + the submodule re-pins, migrate the tier's `DYNAMODB_ENDPOINT` to
-  the sim and drop the `amazon/dynamodb-local` container.
+  self-healed). Once **#648** lands + the submodule re-pins, migrate the tier's `DYNAMODB_ENDPOINT` to
+  the sim and drop the `amazon/dynamodb-local` container (with a full integ + e2e re-validation pass).
 
 **Launch-readiness gaps (logs / health / status / metrics / testing)** are
 inventoried, prioritized, and cross-referenced in
@@ -151,31 +153,32 @@ old STATIC-gate "tokenless behind the gate" framing (see _Resolved (repo)_).
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-- **sockerless#641/#642/#643/#644 (OPEN — DynamoDB conformance, filed 2026-06-21 against `693b39a7`).**
-  We tried to move the control-plane integration tier off **DynamoDB Local** onto the sim's own DynamoDB
-  (endpoint-only, `DYNAMODB_ENDPOINT` → `:4566`) to fix a rare DynamoDB-Local CAS-isolation flake
-  (`concurrency-pairs`, which passes **20/20** against the sim). The sim's DynamoDB is a single
-  global-mutex item store, so it serializes single-item `UpdateItem` CAS correctly — but four genuine
-  conformance gaps (each confirmed with a minimal SDK repro vs DynamoDB Local + the AWS spec, with a
-  `simulators/aws/dynamodb*.go` code pointer) break the rest of the tier and gate the migration:
-  - **#641 (CRITICAL) — `TransactWriteItems` silently ignores the `Update` action.** The
-    `TransactItems[]` struct parses only `Put`/`Delete`/`ConditionCheck` (no `Update` field), so an
-    `Update` member is dropped — no mutation, no `ConditionExpression` eval, still 200 OK. Breaks
-    transactional version-CAS state transitions, atomic quota counters, and atomic audit-ledger writes
-    (two concurrent CAS transitions both "win"; counters/tombstones never apply).
-  - **#642 (HIGH) — `TransactionCanceledException` omits the `CancellationReasons` array.** AWS returns
-    one `{Code}` per item; the sim returns only a message. The SDK/ElectroDB key off
-    `err.CancellationReasons`, so a conditional-check failure can't be mapped to a domain conflict
-    (surfaces as a raw error). Compounds with #641 on the `Update`-condition paths.
-  - **#643 (HIGH) — `SET c = if_not_exists(c,:0) - :v` stores `null`.** `ddbEvalSetRHS` treats any rhs
-    _starting with_ `if_not_exists(` as the whole call, so arithmetic with an `if_not_exists` operand
-    mis-parses to null → a later unmarshal throws. Corrupts atomic counter increment/decrement.
-  - **#644 (MEDIUM) — `DeleteTable` doesn't purge the table's items** (they survive a same-name
-    recreate) → breaks drop-and-recreate test isolation.
+- **sockerless DynamoDB conformance — #641/#642/#644 FIXED (in #646, confirmed downstream 2026-06-22);
+  #643 PARTIAL → #648 OPEN.** We are moving the control-plane integration tier off **DynamoDB Local**
+  onto the sim's own DynamoDB (endpoint-only, `DYNAMODB_ENDPOINT` → `:4566`) to fix a rare DynamoDB-Local
+  CAS-isolation flake (`concurrency-pairs`, which passes **20/20** against the sim — its global-mutex item
+  store serializes single-item `UpdateItem` CAS correctly). Filed 2026-06-21 (against `693b39a7`); each was
+  confirmed with a minimal SDK repro vs DynamoDB Local + the AWS spec + a `simulators/aws/dynamodb*.go` code
+  pointer. **sockerless #646 (merge `65b18e51`, in `9995e4f0`) fixed #641/#642/#644** (re-probed at that pin:
+  the control-plane integ tier goes from 9 failures → **1**, 51/52, against the sim's DynamoDB):
+  - **#641 (CRITICAL) — `TransactWriteItems` ignored the `Update` action** (dropped, 200 OK) → **FIXED**
+    (honours `Update` with exactly-one-op validation + condition eval).
+  - **#642 (HIGH) — `TransactionCanceledException` omitted `CancellationReasons`** → **FIXED** (per-item
+    `{Code}` array + service-prefixed `__type`).
+  - **#644 (MEDIUM) — `DeleteTable` didn't purge items** → **FIXED**.
+  - **#643 (HIGH) — `SET if_not_exists(c,:0) - :v` stored `null`** → **PARTIAL.** #646 fixed the
+    _un-parenthesized_ form, but the evaluator still doesn't strip an enclosing `( ... )`, and ElectroDB
+    ALWAYS parenthesizes `.subtract()` (`SET #c = (if_not_exists(#c,:0) - :v)`) → still stores `null`
+    (re-probed: even `SET #c = (:z)` → null). This is the one remaining failure (`reconcileOwnerCounts
+self-heals`). **Filed as sockerless #648** (follow-up to #643).
 
-  Per §6.8 the move is to **wait for these upstream + re-pin, then migrate the tier and drop the
-  `amazon/dynamodb-local` container** — NOT to work around or switch to a less-conformant substrate. Until
-  then the control-plane integ tier stays on DynamoDB Local (the flake is rare + the orphan self-heals).
+  **Migration status: gated on #648.** Per §6.8 — wait for #648 upstream, then **re-pin the submodule to
+  the fix, migrate the tier's `DYNAMODB_ENDPOINT` to the sim, drop the `amazon/dynamodb-local` container,
+  and re-validate the full integ + e2e surface** (the #646 numeric-key store-format change is sweeping, so
+  the re-pin needs a full-tier pass, not just DynamoDB). NOT a workaround, NOT a switch to a less-conformant
+  substrate. Until #648 lands the tier stays on DynamoDB Local (the flake is rare + the orphan self-heals).
+  The re-pin to `9995e4f0` was deliberately **NOT committed** yet (it doesn't complete the migration and
+  needs the full-surface validation above).
 
 - **sockerless#629/#630 (fixed upstream — confirmed downstream 2026-06-20)** — two GC-safety
   filter/ordering gaps found in a deeper fidelity pass that adversarially probed the AWS call shapes our
