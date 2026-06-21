@@ -53,10 +53,19 @@ describe("parseLevel (property)", () => {
   it("falls back to the heuristic when the JSON level is not a known level", () => {
     fc.assert(
       fc.property(
-        // A level value outside the known set (so structuredLevel returns undefined).
-        fc.string().filter((v) => !KNOWN_LEVELS.has(v as LogLevel)),
+        // A level value outside the known set (so structuredLevel returns undefined) AND
+        // free of any severity-MARKER token. The heuristic scans the WHOLE serialized line
+        // (which embeds `level`), so a non-`info`/`warn`/`error` value that still contains a
+        // marker (`err`/`fatal`/`warning`) would legitimately escalate — excluding markers
+        // here keeps the test's "clean line → info" precondition actually true.
+        fc
+          .string()
+          .filter(
+            (v) =>
+              !KNOWN_LEVELS.has(v as LogLevel) && !/\b(error|fatal|err|warn|warning)\b/i.test(v),
+          ),
         (badLevel) => {
-          // No misleading keywords in msg → heuristic defaults to "info".
+          // No misleading keywords anywhere in the line → heuristic defaults to "info".
           const line = JSON.stringify({ level: badLevel, msg: "all systems nominal" });
           expect(parseLevel(line)).toBe("info");
         },
