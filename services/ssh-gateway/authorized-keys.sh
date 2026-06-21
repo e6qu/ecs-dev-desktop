@@ -55,14 +55,31 @@ fi
 # Bound the request: a slow/unreachable control plane must NOT hang sshd's auth
 # phase (this command runs pre-auth and blocks the login until it returns). On
 # timeout curl prints nothing → the key is treated as not authorized → sshd denies.
-response=$(curl -s --connect-timeout 3 --max-time 8 -X POST \
+#
+# Capture the HTTP status alongside the body (`-w` appends it after the body) and
+# require an explicit 200 before trusting the body — a non-200 (error page, redirect,
+# future response-shape change) must deny (fail closed), never authorize on a body
+# substring alone.
+# A literal newline, used to split curl's body from the appended status line below.
+# (POSIX sh has no `$'\n'`; a quoted real newline is portable.)
+nl='
+'
+http_response=$(curl -s --connect-timeout 3 --max-time 8 -X POST \
+  -w "${nl}%{http_code}" \
   "${EDD_CONTROL_PLANE_URL}/api/workspaces/${workspace_id}/ssh-authorize" \
   -H "Authorization: Bearer ${token}" \
   -H "content-type: application/json" \
   -d "{\"publicKey\":\"${key_type} ${key_blob}\"}")
 
-# Print the authorized_keys line only when the control plane says yes.
-case "$response" in
-  *'"authorized":true'*) printf '%s %s\n' "$key_type" "$key_blob" ;;
-  *) : ;;
-esac
+# `-w` appends the status on a final line; split it off the body. ($status is a
+# read-only special in zsh — use a distinct name so this runs under sh/bash/zsh.)
+http_status="${http_response##*"${nl}"}"
+body="${http_response%"${nl}"*}"
+
+# Deny unless the control plane returned 200 AND said the key is authorized.
+if [ "$http_status" = "200" ]; then
+  case "$body" in
+    *'"authorized":true'*) printf '%s %s\n' "$key_type" "$key_blob" ;;
+    *) : ;;
+  esac
+fi

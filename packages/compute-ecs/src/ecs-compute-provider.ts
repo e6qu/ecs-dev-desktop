@@ -58,6 +58,14 @@ interface EnvironmentEntry {
 
 /** Task-definition volume name; mounted at the configured path in the container. */
 const WORKSPACE_VOLUME = "workspace";
+
+/** ECS error names that mean a `StopTask` target task is already gone — already
+ * in the desired stopped state, so the stop is a no-op success (idempotent).
+ * Anything else is a real error and is rethrown. */
+const STOP_TASK_ALREADY_GONE: ReadonlySet<string> = new Set([
+  "ResourceNotFoundException",
+  "InvalidParameterException",
+]);
 /** ECS task tag carrying the owning workspace id, set on every workspace task at
  * launch. The reconciler's orphan-task reaper enumerates tasks by this tag (so it
  * only ever reaps workspace tasks, never the control-plane/reconciler tasks that
@@ -156,9 +164,16 @@ function positiveIntEnv(name: string): number | undefined {
 const WORKSPACE_TASKDEF_FAMILY_PREFIX = "edd-ws-";
 
 /** A valid ECS task-definition family derived from a base-image reference
- * (ECS families allow letters, numbers, hyphens, underscores). */
+ * (ECS families allow letters, numbers, hyphens, underscores). Fails loudly on an
+ * empty image rather than emitting a bare `edd-ws-` family — an empty ref would
+ * otherwise collide every empty/garbage image onto one degenerate family (§6.5);
+ * `provisionBaseImage` already rejects empty image refs at the source. */
 export function taskDefinitionFamily(image: BaseImage): string {
-  return `${WORKSPACE_TASKDEF_FAMILY_PREFIX}${image.replace(/[^a-zA-Z0-9-]/g, "-").slice(0, 200)}`;
+  const slug = image.replace(/[^a-zA-Z0-9-]/g, "-").slice(0, 200);
+  if (slug === "") {
+    throw new Error("taskDefinitionFamily: image yields an empty family slug (empty image ref)");
+  }
+  return `${WORKSPACE_TASKDEF_FAMILY_PREFIX}${slug}`;
 }
 
 /** Derive the per-workspace idle-agent token (the shared per-workspace HMAC). */
@@ -584,13 +599,24 @@ export class EcsComputeProvider implements ComputeProvider {
   }
 
   async stopTask(id: TaskId): Promise<void> {
-    await this.client.send(
-      new StopTaskCommand({
-        cluster: this.cluster(),
-        task: id,
-        reason: "edd: workspace lifecycle stop (scale-to-zero/delete)",
-      }),
-    );
+    try {
+      await this.client.send(
+        new StopTaskCommand({
+          cluster: this.cluster(),
+          task: id,
+          reason: "edd: workspace lifecycle stop (scale-to-zero/delete)",
+        }),
+      );
+    } catch (err) {
+      // Idempotent: a task ECS already reaped/expired is already in the desired
+      // stopped state, so a retried lifecycle stop or failed-launch cleanup must
+      // not surface a spurious error. ECS reports a missing task as
+      // ResourceNotFoundException, and StopTask on an unknown task id as
+      // InvalidParameterException ("task was not found") — both mean "already
+      // gone". Any other error name is a real failure and is rethrown.
+      if (err instanceof Error && STOP_TASK_ALREADY_GONE.has(err.name)) return;
+      throw err;
+    }
   }
 
   /**
@@ -622,6 +648,17 @@ export class EcsComputeProvider implements ComputeProvider {
       const out = await this.client.send(
         new DescribeTasksCommand({ cluster: this.cluster(), tasks: batch, include: ["TAGS"] }),
       );
+      // A task returned in `failures[]` (throttle/transient MISSING) was NOT
+      // described, so it would be silently dropped from the set the reaper treats
+      // as "existing" — a true orphan could then be missed (leaking a Fargate task
+      // + its EBS volume) while `scanned` undercounts invisibly. Refuse to act on
+      // an incomplete fleet picture: throw so the sweep is counted as failed.
+      if (out.failures !== undefined && out.failures.length > 0) {
+        const detail = out.failures.map((f) => `${f.arn ?? "?"}: ${f.reason ?? "?"}`).join(", ");
+        throw new Error(
+          `DescribeTasks reported ${String(out.failures.length)} failure(s): ${detail}`,
+        );
+      }
       for (const task of out.tasks ?? []) {
         const wsId = task.tags?.find((t) => t.key === WORKSPACE_TAG_KEY)?.value;
         // A workspace task always has the tag, an ARN, and (once launched) a start

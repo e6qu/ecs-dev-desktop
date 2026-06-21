@@ -10,5 +10,8 @@
     "build": "tsc -p tsconfig.json",
     "lint": "eslint .",
     "test": "vitest run"
+  },
+  "devDependencies": {
+    "fast-check": "^4.8.0"
   }
 }

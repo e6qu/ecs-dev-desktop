@@ -2106,3 +2106,56 @@ connectionSecret)` reading `EDD_CONNECTION_SECRET`. The golden image already run
     unit-tested `reportIamPreflight`.
 
   Verified at close: `pnpm build`/`test`/`lint` green; `shellcheck` + `terraform fmt`/`validate` clean.
+
+- **2026-06-21 — Bug / spec-fidelity / fuzz-testing sweep: property-based tests + a batch of traced fixes.**
+  Building on the prior 6-agent sweep (2026-06-20), a focused sweep added a **new property-based / fuzz
+  testing capability** and fixed a batch of genuine bugs, each traced to the code. Verified at close:
+  `pnpm build`/`test`/`lint`, `check-deps`, and `shellcheck` all green.
+  - **New capability — fast-check property/fuzz testing.** Added `fast-check` (devDep) and **11
+    `*.fuzz.test.ts`** files exercising the project's pure functions over generated inputs, pinning the
+    safety-critical invariants:
+    - `@edd/core` — the **cost model** (the **figure-equivalence metamorphic invariant**:
+      checkpoint+resume == full-ledger derivation for any split; billing-interval non-negativity +
+      order-independence; window-clip idempotence/bounds; pricing linearity; `relativeWindow` guard); the
+      **state machine** (transition⟺can-transition agreement, `terminated` absorbing, every UI action maps
+      to a legal transition, `planConnect` totality); **GC selection safety** (NEVER reaps a referenced
+      resource; monotonic in grace; `retained` snapshots never reaped; malformed-timestamp fail-safe;
+      `selectDueForSnapshot`); and the **security-relevant parsers** (`email`, `workspaceIdFromPath`,
+      `decideWorkspaceAccessBySubject`, `withinWorkspaceQuota` — fail-closed, never-throw).
+    - `@edd/compute-ecs` — `taskDefinitionFamily`, `workspaceEnvironment`, `taskReady`/`taskPrivateIp`.
+    - `@edd/cloudwatch-logs` — the level/stream parsers. `apps/web/lib` — `parseOnDemandUsd`/`parseUsageType`,
+      `cookieValue`, `repoOwner`. `@edd/auth` — `mapClaimsToRole`. `@edd/config` — the numeric env parsers.
+  - **Bugs fixed (each traced to code).**
+    - **compute-ecs (data-safety / GC).** `listWorkspaceTasks` ignored `DescribeTasks` `failures[]`, so a
+      failed batch silently dropped tasks from the reaper's "existing" set (a true orphan could leak a
+      Fargate task + EBS volume) — now throws on any failure. `stopTask` wasn't idempotent — now swallows
+      `ResourceNotFound`/`InvalidParameter` (task already gone), mirroring `deleteAgentSecret`.
+      `taskDefinitionFamily("")` produced a degenerate `edd-ws-` colliding all empty/all-special images —
+      now fails loud (surfaced by a fuzz test).
+    - **cloudwatch-logs.** `read()` issued a single-page `FilterLogEvents` and dropped `nextToken` (the
+      admin log view silently truncated) — now paginates to a line budget, mirroring `CloudTrailAuditSource`.
+    - **core (cost / fail-loud).** `relativeWindow` on negative/NaN `days` produced an inverted/empty
+      window that silently zeroed the cost report — now fails loud. `deriveFleetAudit` with a negative
+      `limit` sliced from the end (the wrong feed) — now fails loud. `deriveBillingIntervals`/`walkBilling`
+      sorted timestamps by STRING compare (mixed ISO formats could mis-order and clamp an interval to zero,
+      losing billable time) — now sorts by parsed instant. The `email` smart constructor's regex accepted
+      C0 control chars / DEL (NUL isn't `\s`), branding garbage as an `Email` — now rejects control
+      characters. The base-image catalog stored `name` un-trimmed — now trimmed (consistent with
+      tags/tools).
+    - **ssh-gateway (shell).** `wake-and-forward.sh` polled the full 60s deadline on a terminal wake state —
+      now breaks early on error/terminated/deleting. `authorized-keys.sh` trusted the response body without
+      checking HTTP status — now requires 200 (fail-closed hardening).
+    - **apps/web (contract / authz / API-first).** The api-client offered `connectInfo(id, "http")` but the
+      SSH-only route ignores `protocol` (would silently return sshd port 22) — removed the `protocol` param
+      from the client. `session.user.role` was a non-optional `Role` set only conditionally — the callback
+      now always sets it (default `viewer`, least-privilege) so the type is honest. The git-credential route
+      emitted an unvalidated body — added a `gitCredentialResponse` Zod contract + parse. The admin
+      workspace list was un-enriched vs the enriched member list — now runs through the same
+      `enrichWorkspace`.
+  - **Deferred — recorded as a known model approximation (NOT fixed; `BUGS.md` → Open).** The cost model
+    over-bills the **live-volume** line during a _stopped_-workspace teardown: a stopped workspace has no
+    live EBS volume at delete (it was released at stop), but the single `teardown` bucket bills volume for
+    the whole teardown window. The magnitude is sub-cent (teardown is seconds-to-minutes); a precise fix
+    requires splitting the teardown bucket by its prior phase through the **persisted** `BillingState`
+    rollup schema (a `@edd/db` entity change) and re-proving the figure-equivalence invariant — judged not
+    worth the persisted-schema churn + regression risk for the magnitude.

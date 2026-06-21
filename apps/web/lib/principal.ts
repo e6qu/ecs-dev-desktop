@@ -38,7 +38,9 @@ export function principalFromSession(session: Session | null): Principal | null 
   };
 }
 
-function cookieValue(cookieHeader: string | null, name: string): string | undefined {
+/** Parse one cookie's value out of a `Cookie:` header (URL-decoded), or undefined
+ * when absent. Exported for property testing (never throws on a malformed header). */
+export function cookieValue(cookieHeader: string | null, name: string): string | undefined {
   if (cookieHeader === null) return undefined;
   for (const part of cookieHeader.split(";")) {
     const eq = part.indexOf("=");

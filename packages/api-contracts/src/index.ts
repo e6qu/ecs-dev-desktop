@@ -537,3 +537,13 @@ export const sshConnectInfo = z.object({
   port: z.number().int().min(1).max(65535),
 });
 export type SshConnectInfo = z.infer<typeof sshConnectInfo>;
+
+/** GET /api/workspaces/:id/git-credential — the agent-only HMAC-authed body the
+ * in-workspace git credential helper consumes. A wire-identical
+ * `x-access-token` + bearer pair (user-OAuth token or a GitHub App installation
+ * token). The 404 `{ error: "no credential" }` path uses {@link errorResponse}. */
+export const gitCredentialResponse = z.object({
+  username: z.string().min(1),
+  token: z.string().min(1),
+});
+export type GitCredentialResponse = z.infer<typeof gitCredentialResponse>;

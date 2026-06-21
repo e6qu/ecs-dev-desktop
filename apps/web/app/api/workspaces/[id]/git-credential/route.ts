@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { NextResponse } from "next/server";
 
+import { gitCredentialResponse } from "@edd/api-contracts";
 import { ownerId, workspaceId } from "@edd/core";
 
 import { notFound } from "../../../../../lib/api";
@@ -14,8 +15,9 @@ interface Ctx {
 }
 
 /** The owner login from an `https://host/owner/repo(.git)` URL, for picking the
- * right GitHub App installation; undefined when there is no/odd repo URL. */
-function repoOwner(repoUrl: string | undefined): string | undefined {
+ * right GitHub App installation; undefined when there is no/odd repo URL.
+ * Exported for property testing (never throws on arbitrary input). */
+export function repoOwner(repoUrl: string | undefined): string | undefined {
   if (repoUrl === undefined) return undefined;
   try {
     const segments = new URL(repoUrl).pathname.split("/").filter((s) => s.length > 0);
@@ -48,7 +50,9 @@ async function handleGET(req: Request, { params }: Ctx) {
   if (credential === null) {
     return NextResponse.json({ error: "no credential" }, { status: 404 });
   }
-  return NextResponse.json(credential);
+  // Guarantee the on-the-wire shape against the contract (the one API body that
+  // was emitted unvalidated) before the in-workspace helper consumes it.
+  return NextResponse.json(gitCredentialResponse.parse(credential));
 }
 
 export const GET = withObservability("workspaces.gitCredential", handleGET);

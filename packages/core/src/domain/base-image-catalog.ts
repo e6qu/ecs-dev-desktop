@@ -61,7 +61,10 @@ export function provisionBaseImage(params: ProvisionBaseImageParams): BaseImageE
   if (params.image.trim() === "") throw new Error("base image reference is required");
   return {
     id: params.id,
-    name: params.name,
+    // Store the trimmed name (validation already trims) so a name like "  Node  " is
+    // persisted normalized, consistent with how tags/tools are normalized. (`image` is
+    // an already-validated branded BaseImage — left as-is.)
+    name: params.name.trim(),
     image: params.image,
     description: params.description ?? "",
     tags: normalizeLabels(params.tags),
@@ -78,7 +81,7 @@ export function applyBaseImagePatch(entry: BaseImageEntry, patch: BaseImagePatch
   }
   return {
     ...entry,
-    name: patch.name ?? entry.name,
+    name: patch.name === undefined ? entry.name : patch.name.trim(),
     description: patch.description ?? entry.description,
     tags: patch.tags === undefined ? entry.tags : normalizeLabels(patch.tags),
     tools: patch.tools === undefined ? entry.tools : normalizeLabels(patch.tools),
