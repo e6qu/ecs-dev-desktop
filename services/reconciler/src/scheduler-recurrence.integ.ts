@@ -32,8 +32,11 @@ process.env.AWS_SECRET_ACCESS_KEY ??= "test";
  *
  * Detection is via CloudTrail `LookupEvents` (the scheduler records each RunTask fire,
  * even if the target RunTask itself fails on the fake subnet — we assert the FIRE, not a
- * launched container; a container launch is the e2e tier's job). Uses `rate(1 minute)`,
- * the smallest AWS rate unit, so two fires are observable within the test window.
+ * launched container; a container launch is the e2e tier's job). The lookup is SCOPED to
+ * this cluster's `ResourceName` (one attribute, as real CloudTrail allows) so the count is
+ * immune to the other integ suites hammering the shared sim concurrently — without the
+ * scope, a `MaxResults` page fills with their events and buries this cluster's later fire.
+ * Uses `rate(1 minute)`, the smallest AWS rate unit, so two fires fit the test window.
  */
 const RUN = String(Math.floor(Date.now() / 1000) % 1_000_000);
 const CLUSTER = `edd-cron-recur-${RUN}`;
@@ -113,12 +116,15 @@ describe("recurring rate() schedule fires its ECS target repeatedly (sockerless 
       const deadline = Date.now() + 170_000;
       let fires = 0;
       while (Date.now() < deadline) {
-        const out = await cloudtrail.send(new LookupEventsCommand({ MaxResults: 50 }));
-        fires = (out.Events ?? []).filter(
-          (e) =>
-            e.EventName === "RunTask" &&
-            (e.Resources ?? []).some((r) => r.ResourceName?.includes(CLUSTER)),
-        ).length;
+        // Scope to THIS cluster (the fire records ResourceName = the cluster's short
+        // name); a single LookupAttribute, as real CloudTrail LookupEvents permits.
+        const out = await cloudtrail.send(
+          new LookupEventsCommand({
+            LookupAttributes: [{ AttributeKey: "ResourceName", AttributeValue: CLUSTER }],
+            MaxResults: 50,
+          }),
+        );
+        fires = (out.Events ?? []).filter((e) => e.EventName === "RunTask").length;
         if (fires >= 2) break;
         await new Promise((r) => setTimeout(r, 5_000));
       }
