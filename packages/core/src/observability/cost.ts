@@ -565,10 +565,18 @@ export function aggregateFleetCost(
 /** The earliest audit-event timestamp across all workspaces (the ledger start),
  * or `now` when there are no events. */
 function earliestEventAt(inputs: readonly WorkspaceCostInput[], now: IsoTimestamp): IsoTimestamp {
+  // Compare by parsed INSTANT, not string: a single event in a non-`Z` ISO surface
+  // form must still register as earlier when it truly is (mixing this would clip the
+  // ledger window and silently zero billable time) — the same guard walkBilling uses.
   let earliest: IsoTimestamp = now;
+  let earliestMs = Date.parse(now);
   for (const w of inputs) {
     for (const e of w.events) {
-      if (e.at.localeCompare(earliest) < 0) earliest = e.at;
+      const ms = Date.parse(e.at);
+      if (Number.isFinite(ms) && ms < earliestMs) {
+        earliest = e.at;
+        earliestMs = ms;
+      }
     }
   }
   return earliest;

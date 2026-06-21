@@ -64,6 +64,39 @@ function headerValue(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
 }
 
+/** Auth.js session-cookie name stems (plain + `__Secure-`/`__Host-` prefixes, and the
+ * chunked `.0`/`.1` suffixes Auth.js uses for large JWE sessions). */
+const SESSION_COOKIE_STEM = "authjs.session-token";
+
+/** Whether a single `name=value` cookie pair carries the Auth.js session token. */
+function isSessionCookie(name: string): boolean {
+  // Matches `authjs.session-token`, `__Secure-authjs.session-token`, and any `.<n>` chunk.
+  return (
+    name === SESSION_COOKIE_STEM ||
+    name.endsWith(SESSION_COOKIE_STEM) ||
+    name.includes(`${SESSION_COOKIE_STEM}.`)
+  );
+}
+
+/** Strip the platform Auth.js session cookie from a `Cookie` header before forwarding to
+ * a workspace container. The container runs user-supplied code/extensions and has no need
+ * for the portal session JWT — forwarding it would expose a credential that authorizes
+ * the control-plane/admin API to anything that can read the editor's localhost requests
+ * (defence-in-depth: the session never crosses into the workspace). Other cookies
+ * (notably `vscode-tkn`) pass through. */
+export function stripSessionCookie(cookieHeader: string | undefined): string | undefined {
+  if (cookieHeader === undefined) return undefined;
+  const kept = cookieHeader
+    .split(";")
+    .map((p) => p.trim())
+    .filter((p) => {
+      const eq = p.indexOf("=");
+      const name = eq === -1 ? p : p.slice(0, eq).trim();
+      return !isSessionCookie(name);
+    });
+  return kept.length > 0 ? kept.join("; ") : undefined;
+}
+
 /** Whether a `Cookie` header contains a cookie named `name` with a non-empty value. */
 function cookiePresent(cookieHeader: string | undefined, name: string): boolean {
   if (cookieHeader === undefined) return false;
@@ -110,10 +143,17 @@ export async function authorizeWorkspace(
 ): Promise<WorkspaceAuthz> {
   // getToken reads the Auth.js session cookie; pass just that header (a Node
   // IncomingMessage isn't a web Request, but getToken accepts `{ headers }`).
+  // `secureCookie` selects which cookie name + JWE salt getToken reads
+  // (`__Secure-authjs.session-token` vs `authjs.session-token`). Inferring it from the
+  // AUTH_URL scheme breaks behind a TLS-terminating load balancer when AUTH_URL is unset
+  // (Auth.js writes the secure cookie but getToken would look for the plain one → null →
+  // a login-redirect loop for already-authenticated users). Instead, detect it from the
+  // cookie the browser actually sent, so the read matches whatever Auth.js wrote.
+  const cookieHeader = req.headers.cookie ?? "";
   const token = await getToken({
-    req: { headers: { cookie: req.headers.cookie ?? "" } },
+    req: { headers: { cookie: cookieHeader } },
     secret: process.env.AUTH_SECRET ?? "",
-    secureCookie: (process.env.AUTH_URL ?? "").startsWith("https://"),
+    secureCookie: cookieHeader.includes(`__Secure-${SESSION_COOKIE_STEM}`),
   });
   if (token === null) return { kind: "unauthenticated" };
 
@@ -147,13 +187,18 @@ export async function resolveWorkspaceUpstream(wsId: WorkspaceId): Promise<URL> 
  * the Host header is rewritten). The path is preserved — the editor serves under the
  * same `/w/<id>/` base path, so no URL rewriting is needed. */
 function upstreamOptions(upstream: URL, req: IncomingMessage): RequestOptions {
+  const headers = { ...req.headers, host: upstream.host };
+  // Never forward the portal Auth.js session cookie into the workspace container.
+  const cookie = stripSessionCookie(headerValue(req.headers.cookie));
+  if (cookie === undefined) delete headers.cookie;
+  else headers.cookie = cookie;
   return {
     protocol: upstream.protocol,
     hostname: upstream.hostname,
     port: upstream.port,
     method: req.method,
     path: req.url,
-    headers: { ...req.headers, host: upstream.host },
+    headers,
   };
 }
 
@@ -193,6 +238,12 @@ export function proxyWorkspaceUpgrade(
     proxyReq.destroy(new Error("upstream timeout"));
   });
   proxyReq.on("upgrade", (proxyRes, upstreamSocket, upstreamHead) => {
+    // The timeout above bounds only the connect/handshake window. Once upgraded, the
+    // tunnel is long-lived and mostly idle (editor heartbeats are seconds-to-minutes
+    // apart), so leaving the connect-timeout armed would `destroy()` a healthy live
+    // editor session at the first quiet stretch. Clear it; the per-socket teardown
+    // below now owns the upgraded sockets' lifecycle.
+    proxyReq.setTimeout(0);
     const statusLine = `HTTP/1.1 ${String(proxyRes.statusCode ?? 101)} ${proxyRes.statusMessage ?? "Switching Protocols"}`;
     const headerLines = Object.entries(proxyRes.headers).map(
       ([k, val]) => `${k}: ${Array.isArray(val) ? val.join(", ") : (val ?? "")}`,

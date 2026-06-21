@@ -10,7 +10,7 @@ import {
   StopTaskCommand,
   type RunTaskCommandInput,
 } from "@aws-sdk/client-ecs";
-import { baseImage, deriveWorkspaceToken, snapshotId, workspaceId } from "@edd/core";
+import { baseImage, deriveWorkspaceToken, snapshotId, taskId, workspaceId } from "@edd/core";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -362,5 +362,73 @@ describe("EcsComputeProvider.listWorkspaceTasks", () => {
     expect(await provider.listWorkspaceTasks()).toEqual([
       { id: WS_ARN, workspaceId: "ws-1", startedAt: started.toISOString() },
     ]);
+  });
+});
+
+// RunTask returns HTTP 200 with an EMPTY tasks[] + a populated failures[] when
+// placement fails for a recoverable reason (no Fargate capacity / ENI exhaustion). It
+// does NOT throw, so reading tasks[0].taskArn would raise a misleading "missing taskArn".
+describe("EcsComputeProvider.runTask placement failure (failures[])", () => {
+  function placementFailureClient(reason: string): ECSClient {
+    const send = (command: unknown): Promise<unknown> => {
+      if (command instanceof RegisterTaskDefinitionCommand) {
+        return Promise.resolve({
+          taskDefinition: { taskDefinitionArn: "arn:aws:ecs:::task-definition/edd:1" },
+        });
+      }
+      if (command instanceof RunTaskCommand) {
+        return Promise.resolve({ tasks: [], failures: [{ reason, detail: "no capacity" }] });
+      }
+      return Promise.reject(new Error("unexpected command"));
+    };
+    return { send } as unknown as ECSClient;
+  }
+
+  it("surfaces the placement reason, not a generic 'missing taskArn'", async () => {
+    const provider = new EcsComputeProvider({
+      client: placementFailureClient("RESOURCE:MEMORY"),
+      config: { subnets: ["subnet-1"], ebsRoleArn: "arn:aws:iam::123456789012:role/ebs" },
+    });
+    await expect(
+      provider.runTask({
+        workspaceId: workspaceId("ws-cap"),
+        baseImage: baseImage("edd-workspace:e2e"),
+      }),
+    ).rejects.toThrow(/RESOURCE:MEMORY/);
+  });
+});
+
+// DescribeTasks returns a task either in tasks[] OR in failures[]. MISSING means the
+// task is genuinely gone (the drift-loss condition → stopped); any OTHER failure reason
+// is an API-level problem, not evidence of loss, so taskState must fail loud rather than
+// silently report "stopped" (which would tear down a live workspace).
+describe("EcsComputeProvider.taskState (DescribeTasks failures[])", () => {
+  function describeFailureClient(failure: { reason?: string }): ECSClient {
+    const send = (command: unknown): Promise<unknown> => {
+      if (command instanceof DescribeTasksCommand) {
+        return Promise.resolve({ tasks: [], failures: [failure] });
+      }
+      return Promise.reject(new Error("unexpected command"));
+    };
+    return { send } as unknown as ECSClient;
+  }
+  const config = { subnets: ["subnet-1"], ebsRoleArn: "arn:aws:iam::123456789012:role/ebs" };
+
+  it("treats a MISSING task as stopped (genuine loss)", async () => {
+    const provider = new EcsComputeProvider({
+      client: describeFailureClient({ reason: "MISSING" }),
+      config,
+    });
+    expect(await provider.taskState(taskId("arn:aws:ecs:::task/edd/gone"))).toBe("stopped");
+  });
+
+  it("throws on a non-MISSING failure rather than reporting a live task stopped", async () => {
+    const provider = new EcsComputeProvider({
+      client: describeFailureClient({ reason: "ACCESSDENIED" }),
+      config,
+    });
+    await expect(provider.taskState(taskId("arn:aws:ecs:::task/edd/x"))).rejects.toThrow(
+      /unexpected failure: ACCESSDENIED/,
+    );
   });
 });

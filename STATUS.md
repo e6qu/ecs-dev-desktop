@@ -2,9 +2,36 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-21 (bug / spec-fidelity / fuzz-testing sweep — added fast-check property-based tests across the pure functions, pinning the cost figure-equivalence and GC-never-reaps-referenced safety invariants; fixed a batch of traced bugs; one cost-model teardown-volume approximation recorded as deferred)
+**Last updated:** 2026-06-21 (SECOND bug / spec-fidelity / fuzz sweep — 5-agent read-only audit of the under-covered + newest surfaces (in-app editor proxy, iam-preflight, reconciler convergence, cloud-adapter spec fidelity); fixed every finding incl. two HIGH (a fail-closed machine-token verifier that THREW; a reconciler convergence sweep aborting on one transient per-item error); +3 fuzz files; one IAM-path self-check coverage gap recorded as a known limitation)
 
-## Active — Property/fuzz testing pins the safety-critical invariants; spec-fidelity sweep
+## Active — Second bug / spec-fidelity / fuzz sweep (newest + under-covered surfaces)
+
+A second adversarial multi-agent sweep targeting what the first under-covered — the newest code especially
+(the in-app editor proxy from #142/#143, the `@edd/iam-preflight` package, the reconciler convergence
+loops) — plus an AWS-spec fidelity re-audit. 5 read-only auditors found traced bugs; fixes were applied
+serially (auditors never edit) to avoid the parallel-edit stash races the first sweep hit. **Every fix has a
+test; +3 `*.fuzz.test.ts` extend the property tier** (`machine-token`, `ssh`, `timeline`/`audit`). Two HIGH:
+
+- **`verifyWorkspaceToken` fail-closed contract (security).** A string-length guard before `timingSafeEqual`
+  (which needs equal BYTE length) let a multi-byte candidate THROW instead of returning `false` on every
+  machine-token trust boundary (heartbeat / gateway wake / editor token); now compares on bytes.
+- **Reconciler convergence resilience.** A transient compute/DynamoDB error on ONE workspace threw out of a
+  per-item convergence loop and aborted the whole sweep (skipping every later step for the tick); each loop
+  now isolates a throw — counts a new `failed`, logs loudly, retries next sweep (`reconciler.converge.failed`).
+
+Plus: the editor proxy no longer forwards the Auth.js session JWT into the workspace container
+(`stripSessionCookie`), the WS-upgrade timeout no longer kills idle editor tunnels, `getToken` `secureCookie`
+is read from the actual cookie (TLS-LB safe), and the token redirect sets `Referrer-Policy: no-referrer`;
+`git-credential` refuses a `deleting` tombstone; `runTask`/`taskState` honour RunTask/DescribeTasks
+`failures[]`; `deleteVolume`/`deleteSnapshot` are idempotent; `cost-service.replaceAll` fails loud on
+`BatchWriteItem` `unprocessed`; `fingerprintPublicKey` rejects non-canonical base64; timeline/audit sort by
+instant; `parseLevel` anchors to a level marker; iam-preflight treats a `MissingContextValues` provisional
+allow as fail-closed; `connect-info` parses its body; `sessionCost.state` is a closed set. One **known
+limitation** recorded (`BUGS.md` → Open): preflight can't recover an IAM **path** from an STS ARN (degrades
+safely). Verified at close: `pnpm build`/`test`/`lint` green; control-plane + web integ green on DynamoDB
+Local (cost figure-equivalence preserved).
+
+## Prior — Property/fuzz testing pins the safety-critical invariants; spec-fidelity sweep
 
 The test suite now includes **property-based / fuzz testing** (`fast-check`) alongside the example-based
 unit/contract/integ/e2e tiers: **11 `*.fuzz.test.ts`** files exercise the pure functions over generated

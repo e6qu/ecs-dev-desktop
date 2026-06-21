@@ -69,6 +69,13 @@ export function fingerprintPublicKey(publicKey: SshPublicKey | string): SshKeyFi
   if (raw.length === 0) {
     throw new Error("ssh public key blob did not decode to any bytes");
   }
+  // `Buffer.from(_, "base64")` is LENIENT — it silently skips non-base64 chars rather
+  // than rejecting, so two distinct submitted strings can decode to the same bytes and
+  // collide on a fingerprint (the stable identity a key is deduped/looked up by). Reject
+  // anything that isn't canonical base64 by re-encoding and comparing (padding-agnostic).
+  if (raw.toString("base64").replace(/=+$/, "") !== blob.replace(/=+$/, "")) {
+    throw new Error("ssh public key blob is not valid base64");
+  }
   const digest = createHash("sha256").update(raw).digest("base64").replace(/=+$/, "");
   return sshKeyFingerprint(`SHA256:${digest}`);
 }

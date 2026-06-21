@@ -143,6 +143,9 @@ export interface DriftResult {
   lost: number;
   /** Reconciles rejected by a concurrent update (skipped, not failed). */
   skipped: number;
+  /** One workspace's reconcile THREW (transient compute/DynamoDB error); isolated,
+   * counted, retried next sweep — never allowed to abort the whole sweep. */
+  failed: number;
 }
 
 export interface ProvisioningResult {
@@ -152,6 +155,8 @@ export interface ProvisioningResult {
   recovered: number;
   /** Reverts rejected by a concurrent update — a slow wake that finally committed. */
   skipped: number;
+  /** One revert THREW (transient error); isolated, counted, retried next sweep. */
+  failed: number;
 }
 
 /** A convergence sweep (finish-delete or error-recover): how many were found,
@@ -167,6 +172,8 @@ export interface ReconcileResult {
   stopped: number;
   /** Eligible workspaces whose stop was rejected by a state race (skipped, not failed). */
   skipped: number;
+  /** One stop THREW (transient error); isolated, counted, retried next sweep. */
+  failed: number;
 }
 
 export interface SnapshotResult {
@@ -174,6 +181,8 @@ export interface SnapshotResult {
   snapshotted: number;
   /** Eligible workspaces whose snapshot was rejected by a state race. */
   skipped: number;
+  /** One snapshot THREW (transient error); isolated, counted, retried next sweep. */
+  failed: number;
 }
 
 export interface GcResult {
@@ -250,12 +259,25 @@ export class Reconciler {
     const active = await this.deps.service.listActive();
     let lost = 0;
     let skipped = 0;
+    let failed = 0;
     for (const ws of active) {
-      const result = await this.deps.service.reconcileTaskLoss(ws.id);
-      if (!result.ok) skipped += 1;
-      else if (result.value.lost) lost += 1;
+      try {
+        const result = await this.deps.service.reconcileTaskLoss(ws.id);
+        if (!result.ok) skipped += 1;
+        else if (result.value.lost) lost += 1;
+      } catch (err) {
+        // The service converts only version conflicts to a Result; a transient
+        // compute/DynamoDB error THROWS. Isolate it to this one workspace so one
+        // unlucky record can't abort the whole convergence sweep (and skip every
+        // later sweep step for the tick) — count it, log loudly (§6.5), retry next.
+        failed += 1;
+        this.deps.logger?.warn("drift: reconcileTaskLoss threw for one workspace", {
+          workspaceId: ws.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
-    return { scanned: active.length, lost, skipped };
+    return { scanned: active.length, lost, skipped, failed };
   }
 
   /**
@@ -268,16 +290,25 @@ export class Reconciler {
    */
   async detectStorageDrift(): Promise<DriftResult> {
     const refs = await this.deps.service.listSnapshotReferences();
-    if (refs.length === 0) return { scanned: 0, lost: 0, skipped: 0 };
+    if (refs.length === 0) return { scanned: 0, lost: 0, skipped: 0, failed: 0 };
     const existing = new Set((await this.deps.storage.listSnapshots()).map((s) => s.id));
     let lost = 0;
     let skipped = 0;
+    let failed = 0;
     for (const ref of refs) {
       if (existing.has(ref.snapshotId)) continue;
-      if ((await this.deps.service.markSnapshotLostFor(ref.id)).ok) lost += 1;
-      else skipped += 1;
+      try {
+        if ((await this.deps.service.markSnapshotLostFor(ref.id)).ok) lost += 1;
+        else skipped += 1;
+      } catch (err) {
+        failed += 1;
+        this.deps.logger?.warn("storage-drift: markSnapshotLost threw for one workspace", {
+          workspaceId: ref.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
-    return { scanned: refs.length, lost, skipped };
+    return { scanned: refs.length, lost, skipped, failed };
   }
 
   /**
@@ -294,11 +325,20 @@ export class Reconciler {
     const stuck = selectIdle(candidates, this.now(), this.provisioningTimeoutMs);
     let recovered = 0;
     let skipped = 0;
+    let failed = 0;
     for (const id of stuck) {
-      if ((await this.deps.service.recoverStuckProvisioning(id)).ok) recovered += 1;
-      else skipped += 1;
+      try {
+        if ((await this.deps.service.recoverStuckProvisioning(id)).ok) recovered += 1;
+        else skipped += 1;
+      } catch (err) {
+        failed += 1;
+        this.deps.logger?.warn("provisioning-recover: recoverStuckProvisioning threw", {
+          workspaceId: id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
-    return { scanned: candidates.length, recovered, skipped };
+    return { scanned: candidates.length, recovered, skipped, failed };
   }
 
   /**
@@ -313,8 +353,18 @@ export class Reconciler {
     let acted = 0;
     let failed = 0;
     for (const ws of deleting.slice(0, this.convergeBudget)) {
-      if ((await this.deps.service.finishDeleting(ws.id)).ok) acted += 1;
-      else failed += 1;
+      try {
+        if ((await this.deps.service.finishDeleting(ws.id)).ok) acted += 1;
+        else failed += 1;
+      } catch (err) {
+        // A genuine (non-version-conflict) error throws; isolate + retry next sweep
+        // rather than aborting every other workspace's convergence this tick.
+        failed += 1;
+        this.deps.logger?.warn("finish-deletions: finishDeleting threw for one workspace", {
+          workspaceId: ws.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
     return { scanned: deleting.length, acted, failed };
   }
@@ -329,8 +379,16 @@ export class Reconciler {
     let acted = 0;
     let failed = 0;
     for (const ws of recoverable.slice(0, this.convergeBudget)) {
-      if ((await this.deps.service.recoverError(ws.id)).ok) acted += 1;
-      else failed += 1;
+      try {
+        if ((await this.deps.service.recoverError(ws.id)).ok) acted += 1;
+        else failed += 1;
+      } catch (err) {
+        failed += 1;
+        this.deps.logger?.warn("recover-errors: recoverError threw for one workspace", {
+          workspaceId: ws.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
     return { scanned: recoverable.length, acted, failed };
   }
@@ -343,11 +401,20 @@ export class Reconciler {
     const toStop = selectIdle(active, this.now(), this.idleThresholdMs);
     let stopped = 0;
     let skipped = 0;
+    let failed = 0;
     for (const id of toStop) {
-      if ((await this.deps.service.stop(id)).ok) stopped += 1;
-      else skipped += 1;
+      try {
+        if ((await this.deps.service.stop(id)).ok) stopped += 1;
+        else skipped += 1;
+      } catch (err) {
+        failed += 1;
+        this.deps.logger?.warn("idle: stop threw for one workspace", {
+          workspaceId: id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
-    return { scanned: active.length, stopped, skipped };
+    return { scanned: active.length, stopped, skipped, failed };
   }
 
   /** Take scheduled point-in-time snapshots of workspaces past the interval. */
@@ -359,11 +426,20 @@ export class Reconciler {
     });
     let snapshotted = 0;
     let skipped = 0;
+    let failed = 0;
     for (const id of due) {
-      if ((await this.deps.service.snapshot(id)).ok) snapshotted += 1;
-      else skipped += 1;
+      try {
+        if ((await this.deps.service.snapshot(id)).ok) snapshotted += 1;
+        else skipped += 1;
+      } catch (err) {
+        failed += 1;
+        this.deps.logger?.warn("snapshot: snapshot threw for one workspace", {
+          workspaceId: id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
     }
-    return { scanned: candidates.length, snapshotted, skipped };
+    return { scanned: candidates.length, snapshotted, skipped, failed };
   }
 
   /**

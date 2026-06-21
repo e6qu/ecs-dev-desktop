@@ -136,7 +136,9 @@ export class SshKeyService {
 
   /** The caller's registered keys, newest first. */
   async list(ownerId: OwnerId): Promise<SshKeyDto[]> {
-    const { data } = await this.deps.keys.query.primary({ ownerId }).go();
+    // `pages: "all"` is mandatory — a bare `.go()` returns only the first 1 MB Query
+    // page, silently truncating a user's key list (the codebase's documented footgun).
+    const { data } = await this.deps.keys.query.primary({ ownerId }).go({ pages: "all" });
     return data
       .map(toDto)
       .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));

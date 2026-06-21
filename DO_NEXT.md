@@ -47,12 +47,16 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **Property-based / fuzz testing — ESTABLISHED (2026-06-21).** `fast-check` is now part of the suite
-  (11 `*.fuzz.test.ts` over the pure functions); the **cost figure-equivalence** and
-  **GC-never-reaps-referenced** safety invariants are property-pinned, along with the state machine and the
-  fail-closed/never-throw security parsers (see `WHAT_WE_DID.md` 2026-06-21 + `STATUS.md`). Extend it as new
-  pure logic lands (the natural home for any future invariant); the 2026-06-21 sweep also fixed a batch of
-  traced bugs and recorded one deferred cost-model teardown-volume approximation (`BUGS.md` → Open).
+- **Property-based / fuzz testing — ESTABLISHED + extended (2026-06-21, two sweeps).** `fast-check` is part
+  of the suite (now **14 `*.fuzz.test.ts`** over the pure functions); the **cost figure-equivalence** and
+  **GC-never-reaps-referenced** safety invariants are property-pinned, along with the state machine, the
+  fail-closed/never-throw security parsers, and (second sweep) the **machine-token verifier**
+  (total/never-throws/exact, workspace-scoped), the **ssh fingerprint** (canonical-base64-only, collision-free),
+  and **timeline/audit instant-ordering**. Extend it as new pure logic lands. The two 2026-06-21 sweeps fixed
+  ~26 traced bugs total (the second incl. two HIGH: a fail-closed machine-token verifier that THREW, and a
+  reconciler convergence sweep that aborted on one transient per-item error) — see `WHAT_WE_DID.md` +
+  `BUGS.md`. Two items recorded under `BUGS.md` → Open (neither a code defect to chase): the cost-model
+  teardown-volume approximation, and the iam-preflight IAM-path self-check coverage gap (degrades safely).
 
 - **Reconciler runtime IAM preflight (follow-up to the IAM self-check) — DONE (2026-06-20).** The
   preflight adapter was lifted out of `apps/web/lib/iam-preflight.ts` into a shared package

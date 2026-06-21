@@ -26,6 +26,19 @@ import {
 /** Audit-action prefix for billable lifecycle events (session.create/start/…). */
 const SESSION_ACTION_PREFIX = "session.";
 
+/** ElectroDB batch put/delete map to DynamoDB `BatchWriteItem`, which returns
+ * `UnprocessedItems` under throttling/partial failure — ElectroDB surfaces these in
+ * `unprocessed` and does NOT auto-retry. Discarding them would silently drop cost
+ * checkpoint rows (a stale/double-counted report). Fail loud so the next reconciler
+ * sweep re-runs the idempotent `replaceAll` instead (§6.5). */
+function assertAllProcessed(unprocessed: readonly unknown[], op: "put" | "delete"): void {
+  if (unprocessed.length > 0) {
+    throw new Error(
+      `cost rollup ${op} left ${String(unprocessed.length)} unprocessed item(s) (DynamoDB BatchWriteItem throttle); rollup not persisted`,
+    );
+  }
+}
+
 /** The audit ledger the cost model prices. `all` is the whole ledger (full-scan
  * report + rollup generation); `since` is the time-windowed tail the rollup
  * report replays on top of the checkpoint. */
@@ -292,8 +305,14 @@ export class StoredCostRollupStore implements CostRollupStore {
     const keep = new Set(records.map((r) => r.workspaceId));
     const stale = (await this.list()).filter((r) => !keep.has(r.workspaceId));
     if (stale.length > 0) {
-      await this.entity.delete(stale.map((r) => ({ workspaceId: r.workspaceId }))).go();
+      const { unprocessed } = await this.entity
+        .delete(stale.map((r) => ({ workspaceId: r.workspaceId })))
+        .go();
+      assertAllProcessed(unprocessed, "delete");
     }
-    if (records.length > 0) await this.entity.put([...records]).go();
+    if (records.length > 0) {
+      const { unprocessed } = await this.entity.put([...records]).go();
+      assertAllProcessed(unprocessed, "put");
+    }
   }
 }

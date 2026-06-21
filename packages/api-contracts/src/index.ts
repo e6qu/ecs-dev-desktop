@@ -339,7 +339,11 @@ export type CostSizingDto = z.infer<typeof costSizing>;
 export const sessionCost = costBreakdown.extend({
   workspaceId: z.string(),
   owner: z.string(),
-  state: z.string(),
+  // The session's lifecycle state, or the `unknown` sentinel the cost model emits for a
+  // priced session whose workspace record is gone (the ledger is append-only, so a
+  // deleted session still prices). A closed set, not a bare string, so a typo'd/unknown
+  // state can't ride the cost DTO into the admin UI (mirrors `workspace.state`).
+  state: workspaceState.or(z.literal("unknown")),
   terminated: z.boolean(),
 });
 export type SessionCostDto = z.infer<typeof sessionCost>;

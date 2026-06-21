@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { NextResponse } from "next/server";
 
+import { sshConnectInfo } from "@edd/api-contracts";
+
 import { conflict, isResponse, loadConnectableWorkspace, notFound } from "../../../../../lib/api";
 import { withObservability } from "../../../../../lib/observability";
 
@@ -37,7 +39,10 @@ async function handleGET(req: Request, { params }: Ctx) {
     return conflict(`workspace ${ctx.id} host not yet assigned — retry shortly`);
   }
 
-  return NextResponse.json({ host: sshHost, port: SSH_PORT });
+  // Validate the body against the contract before emitting it (every JSON route either
+  // parses its output or returns a service-built DTO — this hand-built body must too, so
+  // the `host: min(1)` / `port` invariants hold at the wire boundary, not just client-side).
+  return NextResponse.json(sshConnectInfo.parse({ host: sshHost, port: SSH_PORT }));
 }
 
 export const GET = withObservability("workspaces.connectInfo", handleGET);

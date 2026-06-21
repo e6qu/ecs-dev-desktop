@@ -54,7 +54,9 @@ const server = createServer((req, res) => {
     // the initial navigation, so the workbench loads without the user ever seeing it.
     const tokenRedirect = editorTokenRedirect(req, wsId);
     if (tokenRedirect !== undefined) {
-      res.writeHead(302, { location: tokenRedirect });
+      // `no-referrer` so the `?tkn=<connection-token>` the browser lands on is never
+      // leaked in a Referer header to any sub-resource or outbound link.
+      res.writeHead(302, { location: tokenRedirect, "referrer-policy": "no-referrer" });
       res.end();
       return;
     }

@@ -81,6 +81,37 @@ describe("Ec2StorageProvider create cleanup on a failed settle", () => {
   });
 });
 
+// EBS deletes are eventually consistent and the reconciler GC re-enumerates +
+// re-deletes across sweeps (and managed-EBS deleteOnTermination can reap a volume out
+// from under us). An already-gone delete must be a no-op, else GC's `gc.failed` metric
+// false-alarms on normal operation. A NON-not-found error must still propagate.
+describe("Ec2StorageProvider delete idempotency", () => {
+  function deleteFailingClient(errName: string): EC2Client {
+    const send = (command: unknown): Promise<unknown> => {
+      if (command instanceof DeleteVolumeCommand || command instanceof DeleteSnapshotCommand) {
+        return Promise.reject(Object.assign(new Error("gone"), { name: errName }));
+      }
+      return Promise.reject(new Error("unexpected command"));
+    };
+    return { send } as unknown as EC2Client;
+  }
+
+  it("deleteVolume swallows InvalidVolume.NotFound (already gone)", async () => {
+    const sp = new Ec2StorageProvider({ client: deleteFailingClient("InvalidVolume.NotFound") });
+    await expect(sp.deleteVolume(volumeId("vol-gone"))).resolves.toBeUndefined();
+  });
+
+  it("deleteSnapshot swallows InvalidSnapshot.NotFound (already gone)", async () => {
+    const sp = new Ec2StorageProvider({ client: deleteFailingClient("InvalidSnapshot.NotFound") });
+    await expect(sp.deleteSnapshot(snapshotId("snap-gone"))).resolves.toBeUndefined();
+  });
+
+  it("deleteVolume still throws a real (non-not-found) error", async () => {
+    const sp = new Ec2StorageProvider({ client: deleteFailingClient("VolumeInUse") });
+    await expect(sp.deleteVolume(volumeId("vol-busy"))).rejects.toThrow(/gone/);
+  });
+});
+
 // The security-critical guarantee: every resource we create is tagged `edd:managed`
 // and every enumeration filters by it, so GC can NEVER touch a resource we didn't
 // create. These assert the actual `command.input` (not just that a command was sent),

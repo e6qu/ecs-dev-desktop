@@ -59,7 +59,10 @@ export function deriveFleetAudit(
       }),
     ),
   );
-  return events.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit);
+  // Newest-first by parsed INSTANT, not string compare (see deriveWorkspaceTimeline):
+  // a CloudTrail-sourced timestamp in a non-`Z` surface form must still order
+  // chronologically before the slice, or the cap could drop the genuinely-newest event.
+  return events.sort((a, b) => Date.parse(b.at) - Date.parse(a.at)).slice(0, limit);
 }
 
 /** Source of audit events. Derived from state now; CloudTrail-backed on AWS. */

@@ -548,6 +548,16 @@ export class EcsComputeProvider implements ComputeProvider {
         ],
       }),
     );
+    // RunTask returns HTTP 200 with an EMPTY tasks[] and a populated failures[] when
+    // placement fails for a recoverable reason (RESOURCE:MEMORY / RESOURCE:CPU — no
+    // Fargate capacity, AGENT, subnet/ENI exhaustion). It does not throw. Surface the
+    // real reason instead of the misleading generic "missing taskArn" the bare
+    // `required()` would raise, so the operator (and retry logic) sees "no capacity".
+    const failure = out.failures?.[0];
+    if (failure !== undefined) {
+      const detail = failure.detail === undefined ? "" : ` (${failure.detail})`;
+      throw new Error(`ECS RunTask failed to place task: ${failure.reason ?? "unknown"}${detail}`);
+    }
     const arn = required(out.tasks?.[0]?.taskArn, "taskArn");
     // The task is now launched. If it never becomes ready (stops mid-boot, or the
     // readiness poll times out), stop it before propagating — otherwise a failed
@@ -685,7 +695,21 @@ export class EcsComputeProvider implements ComputeProvider {
       new DescribeTasksCommand({ cluster: this.cluster(), tasks: [id] }),
     );
     const status = out.tasks?.[0]?.lastStatus;
-    if (status === undefined) return "stopped";
+    if (status === undefined) {
+      // The task was not described. ECS returns it in failures[] with reason MISSING
+      // once the task is genuinely gone (stopped + pruned past the retention window) —
+      // the loss condition this drift check exists to catch, so MISSING → stopped. But
+      // any OTHER failure reason (e.g. a cluster/permission problem) is NOT evidence the
+      // task is gone; mapping it to "stopped" would tear down a live workspace, so fail
+      // loud rather than silently treating an API-level problem as task loss (§6.5).
+      const failure = out.failures?.[0];
+      if (failure !== undefined && failure.reason !== "MISSING") {
+        throw new Error(
+          `ECS DescribeTasks for ${id} returned an unexpected failure: ${failure.reason ?? "unknown"}`,
+        );
+      }
+      return "stopped";
+    }
     return ["DEACTIVATING", "STOPPING", "DEPROVISIONING", "STOPPED", "DELETED"].includes(status)
       ? "stopped"
       : "running";

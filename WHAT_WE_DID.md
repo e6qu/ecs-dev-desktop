@@ -2159,3 +2159,68 @@ connectionSecret)` reading `EDD_CONNECTION_SECRET`. The golden image already run
     requires splitting the teardown bucket by its prior phase through the **persisted** `BillingState`
     rollup schema (a `@edd/db` entity change) and re-proving the figure-equivalence invariant — judged not
     worth the persisted-schema churn + regression risk for the magnitude.
+
+### 2026-06-21 — Second bug / spec-fidelity / fuzz sweep (one PR)
+
+A second adversarial multi-agent sweep (5 read-only auditors: editor-proxy/server, pure-core fuzz gaps,
+AWS-spec fidelity, IAM-preflight/reconciler, contracts/client/routes) over the surfaces the first sweep
+under-covered — the newest code especially (the in-app editor proxy #142/#143, the `@edd/iam-preflight`
+package). Fixes were applied serially (read-only auditors → central edits) to avoid the parallel-edit stash
+races the prior sweep hit. All findings fixed; every fix has a test; three new `*.fuzz.test.ts` extend the
+property-based tier. Verified at close: `pnpm build`/`test`/`lint` green; control-plane + web integ green
+against DynamoDB Local (figure-equivalence preserved). Grouped:
+
+- **core (security / fail-closed).** `verifyWorkspaceToken` compared candidate length by STRING (UTF-16
+  code units) before `timingSafeEqual`, which needs equal BYTE length — an attacker-controlled candidate of
+  the same code-unit but different byte length (a multi-byte char) made it THROW instead of returning
+  `false`, breaking the documented "never throws → callers fail closed" contract on every machine-token
+  trust boundary (heartbeat / gateway wake / editor token); now compares on bytes. `fingerprintPublicKey`
+  used lenient `Buffer.from(_,"base64")` (skips invalid chars), so distinct submitted strings could decode
+  to the same bytes and collide on the fingerprint a key is deduped/looked-up by; now rejects non-canonical
+  base64 via a round-trip check. `deriveWorkspaceTimeline`/`deriveFleetAudit`/`earliestEventAt` sorted ISO
+  timestamps by STRING compare (the same class cost.ts already guards) — a CloudTrail-sourced `+hh:mm`
+  offset form could mis-order, listing a later event first / dropping the newest from the capped audit feed;
+  now sort by parsed instant.
+- **compute-ecs (real-Fargate fidelity).** `runTask` read `tasks[0].taskArn` without checking RunTask's
+  `failures[]` — a recoverable placement failure (RESOURCE:MEMORY / ENI exhaustion) returns 200 with empty
+  `tasks[]` + `failures[]`, so the operator saw a misleading "missing taskArn" instead of "no capacity";
+  now surfaces the placement reason. `taskState` ignored DescribeTasks `failures[]` entirely — a
+  non-MISSING failure (cluster/permission problem) silently mapped to "stopped" and could tear down a live
+  workspace; now MISSING → stopped (genuine loss) but any other failure fails loud.
+- **storage-ec2 (idempotent GC).** `deleteVolume`/`deleteSnapshot` didn't swallow `InvalidVolume.NotFound`/
+  `InvalidSnapshot.NotFound`, so a benign double-delete (eventually-consistent EBS + GC re-enumeration, or
+  managed-EBS `deleteOnTermination`) made the reconciler's `gc.failed` metric false-alarm on normal
+  operation; now idempotent (mirrors `stopTask`), a real error still propagates.
+- **reconciler (convergence resilience, HIGH).** The per-item convergence loops (drift, storage-drift,
+  provisioning-recover, finish-delete, error-recover, idle-stop, snapshot) handled a benign version-conflict
+  Result but assumed the service call never THREW — a single transient compute/DynamoDB error on one
+  workspace escaped the loop and aborted the whole sweep, skipping every later sweep step for the tick (the
+  GC/reap sweeps were already hardened; these were not). Each loop now isolates a throw per-item: counts a
+  new `failed`, logs loudly, retries next sweep; new `reconciler.converge.failed` metric + sweep-log field.
+- **cost-service (silent partial write).** `replaceAll`'s batch put/delete (DynamoDB `BatchWriteItem`)
+  discarded ElectroDB's `unprocessed` array — under throttling some cost checkpoint rows would silently fail
+  to write/delete (stale/double-counted report); now fails loud so the next reconciler sweep re-runs the
+  idempotent rollup. `ssh-key-service.list` used a bare `.go()` (first 1 MB page only) — now `pages:"all"`.
+- **cloudwatch-logs (log fidelity).** `parseLevel` classified any stdout line CONTAINING "error"/"warn" as
+  that level ("0 errors", "no warnings", `error_handler.go`); now matches a standalone level MARKER token.
+- **iam-preflight (fail-closed).** `decisionsFromEvaluationResults` read a SimulatePrincipalPolicy result
+  with non-empty `MissingContextValues` as a definitive allow, but per the IAM API that decision is
+  PROVISIONAL (a condition couldn't be evaluated) — a future un-populated context key would report green;
+  now a provisional allow counts as not-allowed (surfaces the gap).
+- **apps/web (proxy hardening + authz).** The editor proxy forwarded the FULL browser cookie jar — including
+  the Auth.js session JWT that authorizes the control-plane/admin API — into the workspace container (which
+  runs user code/extensions); `stripSessionCookie` now removes it (keeps `vscode-tkn`). The WS-upgrade
+  connect-timeout stayed armed after upgrade, so an idle editor tunnel was `destroy()`ed at the first quiet
+  stretch; now cleared on upgrade. `getToken`'s `secureCookie` was inferred from the `AUTH_URL` scheme,
+  which breaks behind a TLS-terminating LB (login-redirect loop); now detected from the cookie the browser
+  actually sent. The token redirect now sets `Referrer-Policy: no-referrer` so `?tkn=` can't leak via
+  Referer. The `git-credential` broker minted a live token for any record `get` returns, including a
+  `deleting` tombstone — now refuses `deleting`/`terminated` (the one secret-emitting route had no state
+  gate). `connect-info` now parses its hand-built body through the `sshConnectInfo` contract; `sessionCost.state`
+  tightened from a bare string to `workspaceState | "unknown"` (the sentinel the cost model emits).
+- **Fuzz tier (+3 files).** `machine-token.fuzz` (verify is total/never-throws/exact, workspace-scoped),
+  `ssh.fuzz` (fingerprint only accepts canonical base64 + never collides; label/principal/host helpers),
+  `timeline.fuzz` (timeline + audit order by instant regardless of ISO surface form; limit fail-loud).
+- **Known limitation recorded (not fixed; `BUGS.md` → Open).** `callerToPrincipalArn` can't recover an IAM
+  **path** from an STS assumed-role ARN (AWS drops it), so preflight's IAM self-check silently never runs
+  for a path-scoped control-plane/reconciler role — degrades safely (→ unknown, never a false drift).

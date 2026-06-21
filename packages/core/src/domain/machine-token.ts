@@ -29,7 +29,13 @@ export function verifyWorkspaceToken(
   candidate: string,
 ): boolean {
   if (secretHex.length === 0) return false;
-  const expected = deriveWorkspaceToken(secretHex, workspaceId);
-  if (expected.length !== candidate.length) return false;
-  return timingSafeEqual(Buffer.from(expected), Buffer.from(candidate));
+  const expectedBuf = Buffer.from(deriveWorkspaceToken(secretHex, workspaceId));
+  const candidateBuf = Buffer.from(candidate);
+  // Compare on BYTE length, not string (UTF-16 code-unit) length: an
+  // attacker-controlled `candidate` with the same code-unit length but a different
+  // UTF-8 byte length (e.g. a multi-byte char) would otherwise pass a string-length
+  // guard and make `timingSafeEqual` THROW (it requires equal byte length) — breaking
+  // the documented "never throws → callers fail closed" contract.
+  if (expectedBuf.length !== candidateBuf.length) return false;
+  return timingSafeEqual(expectedBuf, candidateBuf);
 }
