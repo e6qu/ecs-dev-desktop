@@ -2268,3 +2268,19 @@ embedded in the serialized line — tightened the generator to exclude marker to
 cron integ: its CloudTrail fire-count is now scoped to the cluster's `ResourceName` (one LookupAttribute,
 real-AWS-conformant) so concurrent integ suites hammering the shared sim can't bury the 2nd fire. Lesson
 recorded: never seed-pin — fix the property/generator. Production code unchanged by any of these.
+
+**sockerless DynamoDB conformance investigation + 4 upstream issues (2026-06-21).** Rather than work around
+the rare `concurrency-pairs` DynamoDB-Local CAS-isolation flake, we tried to run the control-plane integ
+tier against the SIM's own DynamoDB (endpoint-only, `:4566`) — its single global-mutex item store
+serializes conditional writes correctly, and `concurrency-pairs` passes 20/20 there. But a full-tier run
+surfaced four genuine sim DynamoDB conformance gaps (each confirmed with a minimal SDK repro vs DynamoDB
+Local + the AWS spec + a `dynamodb*.go` code pointer), all filed on e6qu/sockerless: **#641** (CRITICAL —
+`TransactWriteItems` silently ignores the `Update` action: no mutation, no condition eval, 200 OK — guts
+transactional version-CAS/atomic-counter/audit-ledger writes), **#642** (`TransactionCanceledException`
+omits the `CancellationReasons` array — conflict→domain-error mapping), **#643** (`SET if_not_exists(c,:0)
+
+- :v`stores`null`), **#644** (`DeleteTable` doesn't purge items). Per §6.8 we WAIT on the upstream fixes
+
+* re-pin, then migrate the tier and drop the `amazon/dynamodb-local` container — no workaround, no switch to
+  a less-conformant substrate. The flake stays documented (rare + self-healed) and gated on #641–#644. No
+  test/product code changed by this investigation.
