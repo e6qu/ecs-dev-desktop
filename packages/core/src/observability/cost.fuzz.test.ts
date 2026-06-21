@@ -44,26 +44,39 @@ const PRICING: Pricing = {
 };
 const SIZING: WorkspaceSizing = { vcpu: 1, memoryGib: 2, volumeGib: 30 };
 
-/** A chronological lifecycle event stream + a `now` at/after the last event. */
-const streamArb = fc
-  .record({
-    steps: fc.array(
-      fc.record({ gap: fc.integer({ min: 0, max: 200_000 }), action: fc.constantFrom(...ACTIONS) }),
-      { minLength: 0, maxLength: 14 },
-    ),
-    tail: fc.integer({ min: 0, max: 200_000 }),
-  })
-  .map(({ steps, tail }) => {
-    let t = BASE;
-    const events: AuditEvent[] = [];
-    const times: number[] = [];
-    for (const { gap, action } of steps) {
-      t += gap;
-      times.push(t);
-      events.push({ at: iso(t), actor: "system", action, target: "ws-x", detail: "" });
-    }
-    return { events, times, nowMs: t + tail, now: iso(t + tail) };
-  });
+/** A chronological lifecycle event stream + a `now` at/after the last event.
+ * `minGap` is the smallest inter-event gap: 0 allows two events at the SAME instant
+ * (whose relative order is causally meaningful — `stop` then `start` ≠ `start` then
+ * `stop` at one ms); ≥1 forces strictly-increasing, chronologically-unambiguous
+ * instants (the precondition for order-independence). */
+const makeStreamArb = (minGap: number) =>
+  fc
+    .record({
+      steps: fc.array(
+        fc.record({
+          gap: fc.integer({ min: minGap, max: 200_000 }),
+          action: fc.constantFrom(...ACTIONS),
+        }),
+        { minLength: 0, maxLength: 14 },
+      ),
+      tail: fc.integer({ min: 0, max: 200_000 }),
+    })
+    .map(({ steps, tail }) => {
+      let t = BASE;
+      const events: AuditEvent[] = [];
+      const times: number[] = [];
+      for (const { gap, action } of steps) {
+        t += gap;
+        times.push(t);
+        events.push({ at: iso(t), actor: "system", action, target: "ws-x", detail: "" });
+      }
+      return { events, times, nowMs: t + tail, now: iso(t + tail) };
+    });
+
+const streamArb = makeStreamArb(0);
+/** Strictly-increasing instants — every event at a distinct ms, so the chronological
+ * order is unambiguous (required for the order-independence property). */
+const distinctStreamArb = makeStreamArb(1);
 
 describe("cost model — properties", () => {
   it("checkpoint + resume equals full-ledger derivation (figure equivalence) for any split", () => {
@@ -90,19 +103,29 @@ describe("cost model — properties", () => {
     );
   });
 
-  it("derived intervals are non-negative and order-independent", () => {
+  it("derived intervals are non-negative (any stream, incl. same-instant events)", () => {
     fc.assert(
       fc.property(streamArb, (s) => {
         const intervals = deriveBillingIntervals(s.events, s.now);
         for (const bucket of [intervals.running, intervals.stopped, intervals.teardown]) {
           for (const i of bucket) expect(i.toMs).toBeGreaterThanOrEqual(i.fromMs);
         }
-        // Shuffling the input must not change the output (events are sorted internally).
-        const shuffled = [...s.events].reverse();
-        const re = deriveBillingIntervals(shuffled, s.now);
-        expect(sum(re.running)).toBeCloseTo(sum(intervals.running), 6);
-        expect(sum(re.stopped)).toBeCloseTo(sum(intervals.stopped), 6);
-        expect(sum(re.teardown)).toBeCloseTo(sum(intervals.teardown), 6);
+      }),
+    );
+  });
+
+  it("is order-independent for a chronologically-unambiguous (distinct-instant) stream", () => {
+    fc.assert(
+      // Reversing the input must not change the output — but ONLY when instants are
+      // distinct. At the same ms the event order is causally meaningful (the internal
+      // sort is stable, so it preserves the ledger's read order for ties), so reversing
+      // a same-instant stream legitimately changes the bill. Use distinct instants.
+      fc.property(distinctStreamArb, (s) => {
+        const intervals = deriveBillingIntervals(s.events, s.now);
+        const reversed = deriveBillingIntervals([...s.events].reverse(), s.now);
+        expect(sum(reversed.running)).toBeCloseTo(sum(intervals.running), 6);
+        expect(sum(reversed.stopped)).toBeCloseTo(sum(intervals.stopped), 6);
+        expect(sum(reversed.teardown)).toBeCloseTo(sum(intervals.teardown), 6);
       }),
     );
   });
