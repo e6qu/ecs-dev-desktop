@@ -123,4 +123,19 @@ describe("decisionsFromEvaluationResults", () => {
       { action: "ec2:DeleteVolume", allowed: false },
     ]);
   });
+
+  it("does NOT report 'allowed' when MissingContextValues is present (provisional → fail-closed)", () => {
+    // A provisional 'allowed' (AWS couldn't evaluate a condition for lack of context)
+    // must not read as a definitive allow — the preflight would otherwise report green
+    // while a condition gate is actually unevaluated.
+    expect(
+      decisionsFromEvaluationResults([
+        {
+          EvalActionName: "ecs:RunTask",
+          EvalDecision: "allowed",
+          MissingContextValues: ["ecs:cluster"],
+        },
+      ]),
+    ).toEqual([{ action: "ecs:RunTask", allowed: false }]);
+  });
 });

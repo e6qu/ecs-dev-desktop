@@ -146,14 +146,25 @@ export function buildSimulationRequests(
   }));
 }
 
-/** Map AWS `EvaluationResult[]` to our action decisions (`allowed` iff `allowed`). */
+/** Map AWS `EvaluationResult[]` to our action decisions. An action counts as allowed
+ * only when `EvalDecision === "allowed"` AND no `MissingContextValues` are present: per
+ * the IAM Simulate API, a result with missing context is PROVISIONAL — AWS couldn't
+ * fully evaluate a condition, so a provisional "allowed" must not read as a definitive
+ * allow (that would let the preflight report green while a condition gate is actually
+ * unevaluated). Treating it as not-allowed surfaces the gap instead (fail-closed). */
 export function decisionsFromEvaluationResults(
-  results: readonly { EvalActionName?: string; EvalDecision?: string }[],
+  results: readonly {
+    EvalActionName?: string;
+    EvalDecision?: string;
+    MissingContextValues?: string[];
+  }[],
 ): IamActionDecision[] {
   const out: IamActionDecision[] = [];
   for (const r of results) {
     if (r.EvalActionName === undefined) continue;
-    out.push({ action: r.EvalActionName, allowed: r.EvalDecision === "allowed" });
+    const conclusivelyAllowed =
+      r.EvalDecision === "allowed" && (r.MissingContextValues?.length ?? 0) === 0;
+    out.push({ action: r.EvalActionName, allowed: conclusivelyAllowed });
   }
   return out;
 }

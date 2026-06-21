@@ -40,6 +40,7 @@ import {
   METRIC_RECONCILER_TASKDEFS_PRUNE_FAILED,
   METRIC_RECONCILER_QUOTA_DRIFT_CORRECTED,
   METRIC_RECONCILER_SKIPPED,
+  METRIC_RECONCILER_CONVERGE_FAILED,
   METRIC_RECONCILER_RECOVERED,
   METRIC_RECONCILER_DELETIONS_FINISHED,
   METRIC_RECONCILER_DELETIONS_FAILED,
@@ -183,6 +184,15 @@ try {
       result.idle.skipped +
       result.snapshots.skipped,
   );
+  metrics.count(
+    METRIC_RECONCILER_CONVERGE_FAILED,
+    result.provisioning.failed +
+      result.drift.failed +
+      result.storageDrift.failed +
+      result.recovered.failed +
+      result.idle.failed +
+      result.snapshots.failed,
+  );
 
   // Structured, queryable per-sweep log (was a single untyped JSON line).
   log.info("maintenance sweep complete", {
@@ -207,6 +217,13 @@ try {
       result.drift.skipped +
       result.idle.skipped +
       result.snapshots.skipped,
+    convergeFailed:
+      result.provisioning.failed +
+      result.drift.failed +
+      result.storageDrift.failed +
+      result.recovered.failed +
+      result.idle.failed +
+      result.snapshots.failed,
   });
 
   // Heartbeat FIRST: the sweep above completed, and that — not the gauge/cost steps

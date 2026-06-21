@@ -4,6 +4,16 @@
 
 ## Open
 
+- **IAM preflight skips a path-scoped role — known limitation (2026-06-21).** `callerToPrincipalArn`
+  (`@edd/iam-preflight`) reconstructs the role/user ARN from the STS caller ARN, but AWS DROPS the IAM
+  **path** in the STS assumed-role ARN (`assumed-role/<RoleNameOnly>/<session>`), so a role created under a
+  non-default IAM path (e.g. `role/eng/team/edd-cp`) is reconstructed without the path. `SimulatePrincipalPolicy`
+  requires the full ARN incl. path, so the simulate call fails → the preflight self-check silently never
+  runs for a path-scoped control-plane/reconciler role. **Degrades safely** (→ `unknown`, never a false
+  `drift`/green), so it's a self-check coverage gap, not a security hole. The path is genuinely unrecoverable
+  from the STS ARN alone; the mitigation is to deploy the roles at the default path (the terraform module
+  does). Recorded so it isn't silently lost; revisit only if a deployment needs path-scoped roles.
+
 - **Cost-model teardown-volume over-bill — known approximation, DEFERRED (2026-06-21).** When a _stopped_
   workspace is deleted there is no live EBS volume (it was released at stop), but the cost model's single
   `teardown` bucket bills the live-volume line for the whole teardown window — so a stopped-then-deleted
@@ -306,6 +316,48 @@ concurrent-wake race, TLS storage adapter). PR #550 is bleephub-Actions-only;
 no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
+
+- **Second bug / spec-fidelity / fuzz sweep (2026-06-21) — 5-agent audit of the under-covered + newest
+  surfaces, all fixed.** A read-only multi-agent audit (editor-proxy/custom-server, pure-core fuzz gaps,
+  AWS-spec fidelity, IAM-preflight/reconciler, contracts/client/routes); fixes applied serially to avoid
+  the parallel-edit stash races the first sweep hit. Every fix has a test; +3 `*.fuzz.test.ts`. Highlights:
+  - **`verifyWorkspaceToken` threw instead of failing closed (HIGH).** A string-length (UTF-16 code-unit)
+    guard before `timingSafeEqual` (which needs equal BYTE length) let an attacker-controlled candidate of
+    the same code-unit but different byte length (a multi-byte char) make it THROW — breaking the "never
+    throws → callers fail closed" contract on every machine-token trust boundary. Now compares on bytes.
+  - **Reconciler convergence sweep aborted on one transient per-item error (HIGH).** The per-item loops
+    (drift/storage-drift/provisioning/finish-delete/error-recover/idle/snapshot) handled a version-conflict
+    Result but assumed the service never THREW; a single transient compute/DynamoDB error escaped the loop
+    and skipped every later sweep step for the tick. Each loop now isolates a throw (counts `failed`, logs,
+    retries next sweep); new `reconciler.converge.failed` metric.
+  - **Editor proxy forwarded the Auth.js session JWT into the workspace container (MED).** The full cookie
+    jar — including the portal session credential that authorizes the control-plane/admin API — was
+    forwarded to the user-code-running editor upstream; `stripSessionCookie` now removes it (keeps
+    `vscode-tkn`). Also: the WS-upgrade connect-timeout stayed armed post-upgrade (idle editor tunnels were
+    killed) — cleared on upgrade; `getToken` `secureCookie` inferred from `AUTH_URL` scheme broke behind a
+    TLS-terminating LB (login loop) — now read from the actual cookie; token redirect sets
+    `Referrer-Policy: no-referrer`.
+  - **`git-credential` minted a token for a `deleting` tombstone (MED).** The one secret-emitting route had
+    no lifecycle gate (a lingering container mid-delete kept pulling tokens); now refuses
+    `deleting`/`terminated`.
+  - **AWS-spec fidelity (real-Fargate).** `runTask` ignored RunTask `failures[]` (capacity/ENI placement
+    failure surfaced as a misleading "missing taskArn") — now surfaces the reason; `taskState` ignored
+    DescribeTasks `failures[]` (a non-MISSING cluster/permission failure silently mapped to "stopped" and
+    could tear down a live workspace) — MISSING → stopped, any other failure fails loud; `deleteVolume`/
+    `deleteSnapshot` weren't idempotent (a benign already-gone delete false-alarmed `gc.failed`) — now
+    swallow `Invalid{Volume,Snapshot}.NotFound`; `cost-service.replaceAll` discarded `BatchWriteItem`
+    `unprocessed` (silent partial cost-row write under throttle) — now fails loud; `ssh-key-service.list`
+    bare `.go()` → `pages:"all"`.
+  - **Other fail-loud / fail-closed / fidelity.** `fingerprintPublicKey` accepted non-canonical base64
+    (distinct strings could collide on a fingerprint) — round-trip check; timeline/audit/earliest sorted ISO
+    by string (CloudTrail offset forms mis-order) — sort by instant; `parseLevel` mis-classified any line
+    mentioning "error"/"warn" — anchored to a level marker token; iam-preflight read a `MissingContextValues`
+    provisional allow as definitive — now fail-closed; `connect-info` parses its body through `sshConnectInfo`;
+    `sessionCost.state` tightened to `workspaceState | "unknown"`.
+
+  One item recorded as a **known limitation** (not fixed; under _Open_): `callerToPrincipalArn` can't recover
+  an IAM path from an STS assumed-role ARN (degrades safely). Verified at close: `pnpm build`/`test`/`lint`
+  green; control-plane + web integ green against DynamoDB Local (figure-equivalence preserved).
 
 - **Bug / spec-fidelity / fuzz-testing sweep (2026-06-21) — property-based tests + a batch of traced
   fixes.** Added a **property-based / fuzz testing** capability (`fast-check`, 11 `*.fuzz.test.ts`) over the

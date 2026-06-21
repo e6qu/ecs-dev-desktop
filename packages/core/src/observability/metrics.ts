@@ -55,6 +55,11 @@ export const METRIC_RECONCILER_TASKDEFS_PRUNE_FAILED = "reconciler.taskdefs.prun
 export const METRIC_RECONCILER_PROVISIONING_RECOVERED = "reconciler.provisioning.recovered";
 /** Actions skipped because a concurrent update won the race (not failures). */
 export const METRIC_RECONCILER_SKIPPED = "reconciler.skipped";
+/** Per-item convergence actions that THREW a genuine (non-version-conflict) error —
+ * a transient compute/DynamoDB fault on one workspace, isolated so it can't abort the
+ * whole sweep. Counted + logged + retried next sweep; a sustained non-zero needs a
+ * human (the offending workspace never converges). */
+export const METRIC_RECONCILER_CONVERGE_FAILED = "reconciler.converge.failed";
 /** Workspaces recovered `error → stopped` (had a snapshot) — converged toward working. */
 export const METRIC_RECONCILER_RECOVERED = "reconciler.recovered";
 /** `deleting` tombstones whose teardown was finished + record removed this sweep. */

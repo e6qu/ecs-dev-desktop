@@ -44,6 +44,12 @@ async function handleGET(req: Request, { params }: Ctx) {
   const cp = await getControlPlane();
   const ws = await cp.get(workspaceId(id));
   if (!ws) return notFound();
+  // Never mint a live git credential for a workspace that is being torn down. `get`
+  // returns the `deleting` tombstone (and a `terminated` record) too, so without this
+  // gate a lingering container whose deletion is in flight could keep pulling tokens.
+  // Every other lifecycle decision refuses to act on a tombstone (snapshot guards it,
+  // planConnect maps `deleting`→unavailable); this is the one secret-emitting route.
+  if (ws.state === "deleting" || ws.state === "terminated") return notFound();
 
   const provider = await getGitProvider(ownerId(ws.ownerId));
   const credential = provider === null ? null : await provider.gitCredential(repoOwner(ws.repoUrl));

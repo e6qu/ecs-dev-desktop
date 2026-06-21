@@ -162,13 +162,21 @@ function structuredLevel(msg: string): LogLevel | undefined {
   return isLogLevel(parsed.level) ? parsed.level : undefined;
 }
 
+// A level token used as an actual severity marker: it stands alone as a word and is
+// NOT a count ("0 errors", "no warnings") or part of an identifier ("error_handler.go").
+// Anchored to a word boundary on each side and forbidding a preceding digit / "no "
+// keeps a stdout line that merely mentions the word from being mis-escalated.
+const ERROR_MARKER_RE = /(?<![\dA-Za-z_]|no )\b(error|fatal|err)\b(?![A-Za-z_])/i;
+const WARN_MARKER_RE = /(?<![\dA-Za-z_]|no )\b(warn|warning)\b(?![A-Za-z_])/i;
+
 export function parseLevel(msg: string): LogLevel {
   // Prefer the structured `level` our loggers emit; only guess from the text for
-  // unstructured lines (e.g. raw idle-agent / workspace-process stdout).
+  // unstructured lines (e.g. raw idle-agent / workspace-process stdout). The heuristic
+  // matches a level *marker* (a standalone token), not any substring, so "built with 0
+  // errors" / "no warnings" / "error_handler.go" stay `info`.
   const structured = structuredLevel(msg);
   if (structured !== undefined) return structured;
-  const m = msg.toLowerCase();
-  if (m.includes("error") || m.includes(" err ") || m.includes(" err:")) return "error";
-  if (m.includes("warn")) return "warn";
+  if (ERROR_MARKER_RE.test(msg)) return "error";
+  if (WARN_MARKER_RE.test(msg)) return "warn";
   return "info";
 }

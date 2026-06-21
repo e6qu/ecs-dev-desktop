@@ -94,13 +94,46 @@ describe("Reconciler.detectDrift", () => {
     });
     const result = await reconciler.runMaintenance();
 
-    expect(result.drift).toEqual({ scanned: 3, lost: 1, skipped: 1 });
+    expect(result.drift).toEqual({ scanned: 3, lost: 1, skipped: 1, failed: 0 });
     // Every drift reconcile happened before any idle stop.
     const firstStop = calls.findIndex((c) => c.startsWith("stop:"));
     const lastDrift = calls
       .map((c, i) => (c.startsWith("drift:") ? i : -1))
       .reduce((a, b) => Math.max(a, b), -1);
     expect(lastDrift).toBeLessThan(firstStop === -1 ? Number.MAX_SAFE_INTEGER : firstStop);
+  });
+
+  it("isolates a workspace whose reconcile THROWS — the sweep scans the rest", async () => {
+    // The service converts only version conflicts to a Result; a transient infra error
+    // (throttle/5xx) THROWS. One unlucky record must not abort the whole sweep (which
+    // would skip every later sweep step for the tick).
+    const seen: string[] = [];
+    const active = [
+      { id: workspaceId("ws-throws"), lastActivity: isoTimestamp("2026-06-01T00:00:00.000Z") },
+      { id: workspaceId("ws-ok"), lastActivity: isoTimestamp("2026-06-01T00:00:00.000Z") },
+    ];
+    const service = fakeService({
+      listActive: () => Promise.resolve(active),
+      reconcileTaskLoss: (id) => {
+        seen.push(id);
+        if (id === workspaceId("ws-throws")) throw new Error("ThrottlingException");
+        return Promise.resolve(ok({ lost: false, workspace: undefined }));
+      },
+    });
+    const reconciler = new Reconciler({
+      service,
+      storage: await emptyStorage(),
+      clock: fixedClock(isoTimestamp("2026-06-01T02:00:00.000Z")),
+    });
+
+    expect(await reconciler.detectDrift()).toEqual({
+      scanned: 2,
+      lost: 0,
+      skipped: 0,
+      failed: 1,
+    });
+    // Both workspaces were visited — the throw on the first did not abort the loop.
+    expect(seen).toEqual([workspaceId("ws-throws"), workspaceId("ws-ok")]);
   });
 });
 
@@ -125,7 +158,7 @@ describe("Reconciler.runOnce", () => {
       idleThresholdMs: 1000,
     });
 
-    expect(await reconciler.runOnce()).toEqual({ scanned: 1, stopped: 1, skipped: 0 });
+    expect(await reconciler.runOnce()).toEqual({ scanned: 1, stopped: 1, skipped: 0, failed: 0 });
     expect(stopped).toEqual(["ws-1"]);
   });
 
@@ -142,7 +175,7 @@ describe("Reconciler.runOnce", () => {
       clock: fixedClock("2026-06-01T02:00:00.000Z"),
       idleThresholdMs: THIRTY_MIN,
     });
-    expect(await reconciler.runOnce()).toEqual({ scanned: 1, stopped: 0, skipped: 0 });
+    expect(await reconciler.runOnce()).toEqual({ scanned: 1, stopped: 0, skipped: 0, failed: 0 });
   });
 
   it("skips (does not throw) a workspace whose stop loses a state race", async () => {
@@ -160,7 +193,7 @@ describe("Reconciler.runOnce", () => {
       clock: fixedClock("2026-06-01T02:00:00.000Z"),
       idleThresholdMs: 1000,
     });
-    expect(await reconciler.runOnce()).toEqual({ scanned: 1, stopped: 0, skipped: 1 });
+    expect(await reconciler.runOnce()).toEqual({ scanned: 1, stopped: 0, skipped: 1, failed: 0 });
   });
 });
 
@@ -189,7 +222,12 @@ describe("Reconciler.snapshotDue", () => {
       snapshotIntervalMs: THIRTY_MIN,
     });
 
-    expect(await reconciler.snapshotDue()).toEqual({ scanned: 2, snapshotted: 1, skipped: 0 });
+    expect(await reconciler.snapshotDue()).toEqual({
+      scanned: 2,
+      snapshotted: 1,
+      skipped: 0,
+      failed: 0,
+    });
     expect(snapped).toEqual(["ws-never"]);
   });
 });
@@ -560,7 +598,12 @@ describe("Reconciler.detectStorageDrift (reverse drift: manually-deleted snapsho
       storage,
       clock: fixedClock("2026-06-01T02:00:00.000Z"),
     });
-    expect(await reconciler.detectStorageDrift()).toEqual({ scanned: 2, lost: 1, skipped: 0 });
+    expect(await reconciler.detectStorageDrift()).toEqual({
+      scanned: 2,
+      lost: 1,
+      skipped: 0,
+      failed: 0,
+    });
     expect(marked).toEqual([workspaceId("ws-gone")]);
   });
 });
@@ -643,6 +686,7 @@ describe("Reconciler.recoverProvisioning", () => {
       scanned: 2,
       recovered: 1,
       skipped: 0,
+      failed: 0,
     });
     expect(recovered).toEqual([workspaceId("ws-stuck")]);
   });
@@ -667,6 +711,7 @@ describe("Reconciler.recoverProvisioning", () => {
       scanned: 1,
       recovered: 0,
       skipped: 1,
+      failed: 0,
     });
   });
 });

@@ -22,7 +22,8 @@ vi.mock("./control-plane", () => ({
   getControlPlane: vi.fn(() => Promise.resolve({ inspect: inspectMock })),
 }));
 
-const { authorizeWorkspace, editorTokenRedirect } = await import("./workspace-proxy");
+const { authorizeWorkspace, editorTokenRedirect, stripSessionCookie } =
+  await import("./workspace-proxy");
 
 const WS = workspaceId("ws-abc123");
 const req = (cookie = "session=x"): CookieBearingRequest => ({ headers: { cookie } });
@@ -154,5 +155,30 @@ describe("editorTokenRedirect (editor connection-token handoff)", () => {
     vi.stubEnv("EDD_CONNECTION_SECRET", "");
     const out = editorTokenRedirect({ method: "GET", url: `/w/${WS}/`, headers: docHeaders() }, WS);
     expect(out).toBeUndefined();
+  });
+});
+
+// The portal Auth.js session JWT must never reach the workspace container (it runs
+// user-supplied code/extensions; the session credential authorizes the control-plane
+// API). stripSessionCookie removes it from the forwarded Cookie header while keeping
+// everything else (notably the editor's own `vscode-tkn`).
+describe("stripSessionCookie", () => {
+  it("drops the Auth.js session token (plain + __Secure- + chunked) and keeps other cookies", () => {
+    expect(stripSessionCookie("authjs.session-token=abc; vscode-tkn=xyz")).toBe("vscode-tkn=xyz");
+    expect(stripSessionCookie("__Secure-authjs.session-token=abc; vscode-tkn=xyz")).toBe(
+      "vscode-tkn=xyz",
+    );
+    expect(
+      stripSessionCookie("authjs.session-token.0=aa; authjs.session-token.1=bb; vscode-tkn=xyz"),
+    ).toBe("vscode-tkn=xyz");
+  });
+
+  it("returns undefined when only the session cookie was present (nothing left to forward)", () => {
+    expect(stripSessionCookie("__Secure-authjs.session-token=abc")).toBeUndefined();
+    expect(stripSessionCookie(undefined)).toBeUndefined();
+  });
+
+  it("passes a session-free cookie header through unchanged", () => {
+    expect(stripSessionCookie("vscode-tkn=xyz; theme=dark")).toBe("vscode-tkn=xyz; theme=dark");
   });
 });

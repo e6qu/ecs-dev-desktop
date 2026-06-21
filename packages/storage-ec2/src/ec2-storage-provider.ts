@@ -74,6 +74,13 @@ function errMessage(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+/** Whether an EC2 error means the resource is already gone, so a delete is a no-op.
+ * EC2 returns `InvalidVolume.NotFound` / `InvalidSnapshot.NotFound` (HTTP 400) for a
+ * delete of a resource that no longer exists. */
+function isAlreadyGone(e: unknown, notFoundCode: string): boolean {
+  return e instanceof Error && e.name === notFoundCode;
+}
+
 /**
  * Real EBS-backed StorageProvider over the EC2 API. Identical against the
  * sockerless AWS simulator and real AWS — only the endpoint differs (AGENTS.md
@@ -245,12 +252,25 @@ export class Ec2StorageProvider implements StorageProvider {
     return id;
   }
 
+  // Deletes are idempotent: EBS deletes are eventually consistent and the reconciler GC
+  // re-enumerates + re-deletes across sweeps, while managed-EBS `deleteOnTermination`
+  // can reap a volume out from under us. Swallowing the already-gone error (mirroring
+  // `stopTask`) keeps the GC's `gc.failed` metric meaningful — it should flag genuine
+  // leaks, not normal double-deletes.
   async deleteVolume(volume: VolumeId): Promise<void> {
-    await this.client.send(new DeleteVolumeCommand({ VolumeId: volume }));
+    try {
+      await this.client.send(new DeleteVolumeCommand({ VolumeId: volume }));
+    } catch (err) {
+      if (!isAlreadyGone(err, "InvalidVolume.NotFound")) throw err;
+    }
   }
 
   async deleteSnapshot(snapshot: SnapshotId): Promise<void> {
-    await this.client.send(new DeleteSnapshotCommand({ SnapshotId: snapshot }));
+    try {
+      await this.client.send(new DeleteSnapshotCommand({ SnapshotId: snapshot }));
+    } catch (err) {
+      if (!isAlreadyGone(err, "InvalidSnapshot.NotFound")) throw err;
+    }
   }
 
   /**

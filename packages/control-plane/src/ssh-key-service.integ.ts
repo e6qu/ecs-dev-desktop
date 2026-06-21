@@ -67,12 +67,18 @@ describe("SshKeyService against DynamoDB Local", () => {
   });
 
   it("rejects re-registering the same key for the same owner (idempotency)", async () => {
-    await expect(svc.register(ownerId("alice"), sshPublicKey(KEY_A))).rejects.toBeInstanceOf(SshKeyConflictError);
-    await expect(svc.register(ownerId("alice"), sshPublicKey(KEY_A))).rejects.toMatchObject({ ownedByCaller: true });
+    await expect(svc.register(ownerId("alice"), sshPublicKey(KEY_A))).rejects.toBeInstanceOf(
+      SshKeyConflictError,
+    );
+    await expect(svc.register(ownerId("alice"), sshPublicKey(KEY_A))).rejects.toMatchObject({
+      ownedByCaller: true,
+    });
   });
 
   it("rejects registering a key already owned by another account (global uniqueness)", async () => {
-    await expect(svc.register(ownerId("mallory"), sshPublicKey(KEY_A))).rejects.toMatchObject({ ownedByCaller: false });
+    await expect(svc.register(ownerId("mallory"), sshPublicKey(KEY_A))).rejects.toMatchObject({
+      ownedByCaller: false,
+    });
   });
 
   it("admits exactly one winner when two accounts register the same key concurrently", async () => {
@@ -101,8 +107,11 @@ describe("SshKeyService against DynamoDB Local", () => {
   });
 
   it("returns null for an unregistered key", async () => {
+    // A real, canonical ed25519 key (valid base64) that was never registered — not a
+    // fabricated blob (fingerprintPublicKey rejects non-canonical base64 to prevent
+    // fingerprint collisions, so the lookup key must be a genuine key).
     const unknown =
-      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIE3Qm0m5l5p5h7Vd2yq0a8t8m8m8m8m8m8m8m8m8m8m nobody@x";
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIAMrwsHm4KfyJCTwxgPT6MKCnQO2GZd4j3usNnR7lVXq nobody@x";
     expect(await svc.ownerForKey(sshPublicKey(unknown))).toBeNull();
   });
 

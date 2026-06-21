@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { randomBytes } from "node:crypto";
 
-import { baseImage, ownerId } from "@edd/core";
+import { baseImage, ownerId, workspaceId } from "@edd/core";
 import { agentToken } from "@edd/compute-ecs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -83,6 +83,20 @@ describe("git credential broker", () => {
   it("returns 404 when the owner has no stored credential", async () => {
     const token = agentToken(AGENT_SECRET, otherWsId);
     const res = await GET(brokerRequest(otherWsId, token), ctx(otherWsId));
+    expect(res.status).toBe(404);
+  });
+
+  it("refuses to mint a credential for a workspace being torn down (deleting tombstone)", async () => {
+    // Owner HAS a stored credential, so a 404 here can only be the lifecycle gate — a
+    // lingering container whose deletion is in flight must not keep pulling tokens.
+    const cp = await getControlPlane();
+    const doomed = await cp.create({
+      ownerId: ownerId("git-owner"),
+      baseImage: baseImage("golden/node:20"),
+    });
+    await cp.remove(workspaceId(doomed.id)); // → `deleting` tombstone (still readable via get)
+    const token = agentToken(AGENT_SECRET, doomed.id);
+    const res = await GET(brokerRequest(doomed.id, token), ctx(doomed.id));
     expect(res.status).toBe(404);
   });
 });

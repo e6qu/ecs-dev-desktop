@@ -71,6 +71,15 @@ describe("parseLevel", () => {
     expect(parseLevel('{"level":"verbose","msg":"hi"}')).toBe("info"); // not a known level
     expect(parseLevel("plain error text")).toBe("error");
   });
+
+  // The heuristic matches a level *marker* (a standalone token), not any substring, so a
+  // raw stdout line that merely mentions the word stays `info`.
+  it("does not escalate a line that only MENTIONS error/warn in non-level context", () => {
+    expect(parseLevel("built with 0 errors")).toBe("info");
+    expect(parseLevel("no warnings emitted")).toBe("info");
+    expect(parseLevel("compiling error_handler.go")).toBe("info");
+    expect(parseLevel("terraform: no errors found")).toBe("info");
+  });
 });
 
 // ── toLogLine (pure) ─────────────────────────────────────────────────────────

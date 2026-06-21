@@ -30,5 +30,10 @@ export function deriveWorkspaceTimeline(ws: WorkspaceTimelineInput): TimelineEve
   if (ws.lastActivity !== ws.createdAt) {
     events.push({ at: ws.lastActivity, event: "activity", detail: "last activity observed" });
   }
-  return events.sort((a, b) => a.at.localeCompare(b.at));
+  // Order by parsed INSTANT, not string compare: equivalent ISO timestamps in
+  // different surface forms (`Z` vs `+00:00`, `.000` vs none) must order
+  // chronologically, or a later event could sort before an earlier one (the same
+  // hazard cost.ts guards). Today's records are all canonical `toISOString()`, but the
+  // identical audit shape is filled from CloudTrail `LookupEvents` on AWS.
+  return events.sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
 }

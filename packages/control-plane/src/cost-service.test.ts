@@ -4,7 +4,14 @@ import { workspacePricing, workspaceSizing } from "@edd/config";
 import { isoTimestamp, type AuditEvent, type Clock } from "@edd/core";
 import { describe, expect, it } from "vitest";
 
-import { CostService, type CostRollupRecord, type CostRollupStore } from "./cost-service";
+import type { CostRollupEntity } from "@edd/db";
+
+import {
+  CostService,
+  StoredCostRollupStore,
+  type CostRollupRecord,
+  type CostRollupStore,
+} from "./cost-service";
 
 // The real @edd/config defaults (us-east-1 on-demand; 0.5 vCPU / 1 GiB / 8 GiB),
 // so the service test is pinned to the rates the app actually charges.
@@ -213,5 +220,41 @@ describe("CostService.rollupIfStale", () => {
     const f = fakeStore([checkpoint(at(0))]); // 4h old at now=4h
     await svc(at(4), f.store).rollupIfStale(1 * 3_600_000); // 1h cadence → stale
     expect(f.records[0]?.checkpointAt).toBe(at(4)); // regenerated to now
+  });
+});
+
+// ElectroDB batch put/delete (DynamoDB BatchWriteItem) returns `unprocessed` items
+// under throttling/partial failure and does NOT auto-retry — discarding them would
+// silently drop cost checkpoint rows (a stale/double-counted report). replaceAll must
+// fail loud so the next reconciler sweep re-runs the idempotent rollup.
+describe("StoredCostRollupStore.replaceAll — unprocessed items", () => {
+  const rec: CostRollupRecord = {
+    workspaceId: "ws-1",
+    owner: "u1",
+    checkpointAt: at(4),
+    windowStart: at(0),
+    runningMs: 0,
+    stoppedMs: 0,
+    teardownMs: 0,
+    phase: "running",
+  };
+
+  /** A fake CostRollupEntity whose `put` reports the given items as unprocessed. */
+  function entityWithUnprocessedPut(unprocessed: unknown[]): CostRollupEntity {
+    return {
+      query: { byAll: () => ({ go: () => Promise.resolve({ data: [] }) }) },
+      put: () => ({ go: () => Promise.resolve({ unprocessed }) }),
+      delete: () => ({ go: () => Promise.resolve({ unprocessed: [] }) }),
+    } as unknown as CostRollupEntity;
+  }
+
+  it("throws when a put leaves unprocessed items", async () => {
+    const store = new StoredCostRollupStore(entityWithUnprocessedPut([{ workspaceId: "ws-1" }]));
+    await expect(store.replaceAll([rec])).rejects.toThrow(/unprocessed/);
+  });
+
+  it("resolves when nothing is left unprocessed", async () => {
+    const store = new StoredCostRollupStore(entityWithUnprocessedPut([]));
+    await expect(store.replaceAll([rec])).resolves.toBeUndefined();
   });
 });
