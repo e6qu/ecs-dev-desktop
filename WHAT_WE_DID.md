@@ -2255,3 +2255,16 @@ wiring + tests, validated against the live sim with no AWS account.
 
 Verified at close: `pnpm build`/`test`/`lint` green; `knip` clean; `pnpm outdated` clean; both new integ
 suites green against the live sockerless sim (process-mode, `:4566`).
+
+**Flakiness sweep folded into the same PR (2026-06-21).** CI surfaced two seedless `@edd/core`
+fuzz properties that over-claimed on a fresh random seed (latent on main too): `ssh.fuzz` asserted a
+base64 round-trip on the RAW input rather than the token `fingerprintPublicKey` actually validates (it
+trims+splits first); `cost.fuzz` claimed order-independence under input reversal, false when two events
+share a millisecond (causally-meaningful order, stable sort). Fixed both (assert on the processed value;
+`distinctStreamArb` with minGap ≥ 1). Then an audit of all 14 `*.fuzz.test.ts` + a 30–40× per-file loop
+found one more (~1/1800 runs): the `parseLevel` heuristic-fallback test generated a `badLevel` filtered
+only against `info/warn/error`, but the post-#145 heuristic also escalates on `err/fatal/warning` markers
+embedded in the serialized line — tightened the generator to exclude marker tokens. Also hardened the new
+cron integ: its CloudTrail fire-count is now scoped to the cluster's `ResourceName` (one LookupAttribute,
+real-AWS-conformant) so concurrent integ suites hammering the shared sim can't bury the 2nd fire. Lesson
+recorded: never seed-pin — fix the property/generator. Production code unchanged by any of these.
