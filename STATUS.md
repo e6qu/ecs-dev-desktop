@@ -2,9 +2,31 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-21 (SECOND bug / spec-fidelity / fuzz sweep — 5-agent read-only audit of the under-covered + newest surfaces (in-app editor proxy, iam-preflight, reconciler convergence, cloud-adapter spec fidelity); fixed every finding incl. two HIGH (a fail-closed machine-token verifier that THREW; a reconciler convergence sweep aborting on one transient per-item error); +3 fuzz files; one IAM-path self-check coverage gap recorded as a known limitation)
+**Last updated:** 2026-06-21 (moved two e2e-aws-only proofs onto the sim — a CloudWatch-Metrics EMF→metric-extraction integ (closes Phase 8C "Metrics on real AWS") and a recurring `rate()`-schedule firing integ proving the production reconciler cron model re-arms + fires, not just the one-shot `at()` (Phase 5). Both validated against the live sockerless sim; no AWS account needed, no upstream slice required)
 
-## Active — Second bug / spec-fidelity / fuzz sweep (newest + under-covered surfaces)
+## Active — Two e2e-aws-only proofs moved onto the sim (CloudWatch Metrics + recurring cron)
+
+Acting on the principle that a sim gap is a slice to implement, not a wall: two validations previously
+labelled "real AWS only" are now sim-proven against the live sockerless sim (the sim already had the needed
+support — sockerless #604 EMF extraction + the scheduler firing loop — so no upstream slice was needed):
+
+- **CloudWatch Metrics EMF → metric extraction (Phase 8C gate closed).** New
+  `@edd/cloudwatch-metrics` integ (`test/emf-metric-sink.integ.ts`): drive a real EMF document through
+  `EmfMetricSink`, `PutLogEvents` it to a log group exactly as the awslogs driver would, then read it back
+  through the CloudWatch **metric** APIs (`ListMetrics`/`GetMetricStatistics`) — proving our EMF shape is
+  genuinely _extractable_, not just well-formed JSON. The package gained a `test:integ` script + integ
+  config (auto-discovered by the `integration` CI job's `pnpm test:integ`).
+- **Recurring `rate()` schedule firing (Phase 5 cron model).** New reconciler integ
+  (`services/reconciler/src/scheduler-recurrence.integ.ts`): a `rate(1 minute)` EventBridge schedule fires
+  its ECS RunTask target **repeatedly** (≥2 fires observed via CloudTrail `LookupEvents`) and **re-arms**
+  (still present after firing despite `ActionAfterCompletion: DELETE` — a one-shot `at()` would be deleted).
+  Terraform-sim already proved the production `rate(5 minutes)` schedule is _created_; the container e2e
+  proved a one-shot `at()` drives the reconciler; this closes the gap that a _recurring_ schedule actually
+  fires on cadence. (~2 min wall-clock — the inherent cost of two 1-minute-minimum fires on a real-clock sim.)
+
+Verified: `pnpm build`/`test`/`lint` green; `knip` clean; both new integ suites green against the live sim.
+
+## Prior — Second bug / spec-fidelity / fuzz sweep (newest + under-covered surfaces)
 
 A second adversarial multi-agent sweep targeting what the first under-covered — the newest code especially
 (the in-app editor proxy from #142/#143, the `@edd/iam-preflight` package, the reconciler convergence

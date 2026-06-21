@@ -47,6 +47,17 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
+- **Moved two e2e-aws-only proofs onto the sim — DONE (2026-06-21).** Acting on the reframe that a sim gap
+  is a slice to implement (not a real-AWS wall): **CloudWatch Metrics EMF→metric extraction** is now
+  sim-proven (`@edd/cloudwatch-metrics` `test/emf-metric-sink.integ.ts` — `ListMetrics`/`GetMetricStatistics`
+  read back our `EmfMetricSink` doc; closes Phase 8C "Metrics on real AWS"), and the **production recurring
+  cron model** is sim-proven (`services/reconciler/src/scheduler-recurrence.integ.ts` — a `rate(1 minute)`
+  schedule fires its RunTask target ≥2× and re-arms, vs the one-shot `at()` the container e2e covers). Both
+  needed NO upstream slice (the sim already had #604 EMF extraction + the scheduler firing loop). The next
+  natural sim-first targets: SSH Slice 3 ingress (NLB+Route53 — likely DOES need a sockerless slice), real
+  IAM call-time _enforcement_ (sim evaluates `SimulatePrincipalPolicy` but doesn't enforce), and the Cost
+  _dashboard_ visualization.
+
 - **Property-based / fuzz testing — ESTABLISHED + extended (2026-06-21, two sweeps).** `fast-check` is part
   of the suite (now **14 `*.fuzz.test.ts`** over the pure functions); the **cost figure-equivalence** and
   **GC-never-reaps-referenced** safety invariants are property-pinned, along with the state machine, the

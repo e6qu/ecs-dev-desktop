@@ -23,15 +23,20 @@ describe("fingerprintPublicKey — properties", () => {
   it("only accepts a canonical-base64 blob, and that blob round-trips to the same bytes", () => {
     fc.assert(
       fc.property(fc.string(), (blob) => {
+        const line = `ssh-ed25519 ${blob}`;
         let fp: string;
         try {
-          fp = fingerprintPublicKey(`ssh-ed25519 ${blob}`);
+          fp = fingerprintPublicKey(line);
         } catch {
           return; // rejection is always acceptable (garbage in)
         }
-        // Accepted ⇒ the blob is canonical base64 (re-encoding round-trips, padding aside).
-        expect(Buffer.from(blob, "base64").toString("base64").replace(/=+$/, "")).toBe(
-          blob.replace(/=+$/, ""),
+        // Accepted ⇒ canonical base64. Assert on the token the function actually
+        // fingerprints (it trims + splits the line), NOT the raw `blob`: surrounding
+        // whitespace in `blob` is stripped before validation, so the raw string can
+        // differ from the validated token (e.g. blob `"//4 "` → token `"//4"`).
+        const token = line.trim().split(/\s+/)[1] ?? "";
+        expect(Buffer.from(token, "base64").toString("base64").replace(/=+$/, "")).toBe(
+          token.replace(/=+$/, ""),
         );
         expect(/^SHA256:[A-Za-z0-9+/]+$/.test(fp)).toBe(true);
       }),
