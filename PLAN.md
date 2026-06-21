@@ -175,11 +175,16 @@ paginate fully (`pages:"all"`) — fixing a quota-bypass-at-scale; integ sweeps 
 450-record fleet. ✅ **Concurrency-safe:** optimistic-concurrency `version`
 conditions every transition write so concurrent wakes can't leak ECS tasks.
 
-- ⬜ **AWS-gated:** cron (`rate(5 minutes)` default; `cron()` also works —
-  BUG-1531/#489 fixed upstream); SOCI; cost metric.
+- ✅ **Recurring cron firing — sim-proven** (`scheduler-recurrence.integ.ts`): a `rate(1 minute)`
+  EventBridge schedule fires its ECS RunTask target repeatedly (≥2 fires, CloudTrail) and re-arms (survives
+  `ActionAfterCompletion: DELETE`, unlike a one-shot `at()`). The production `rate(5 minutes)` schedule's
+  _creation_ is covered by terraform-sim; this proves a _recurring_ schedule fires on cadence.
+- ⬜ **AWS-gated:** SOCI; real-cadence cost metric at scale. (Cron is now sim-proven above; `cron()` also
+  works — BUG-1531/#489 fixed upstream.)
 - **Gate:** idle→stop→snapshot→wake ✅; GC reaps orphans only ✅; heartbeat keep-alive ✅
   (incl. live in-workspace agent); reconciler container + scheduler e2e ✅ (incl.
-  real task stop); drift detection ✅; concurrent-wake no-leak ✅; real cron + cost metric ⬜.
+  real task stop); drift detection ✅; concurrent-wake no-leak ✅; recurring cron firing ✅ (sim);
+  SOCI + real-scale cost metric ⬜.
 
 ## Phase 6 — User portal + base-image catalog — ✅ (UI complete)
 
@@ -258,7 +263,11 @@ is ports-and-adapters: events/audit/logs **derived from current state now**, fro
   All Playwright-covered.
 - ✅ **8C — CloudTrail + CloudWatch Logs adapters (sim-proven):** `@edd/cloudtrail-audit`
   (`CloudTrailAuditSource`) + `@edd/cloudwatch-logs` (`CloudWatchLogSource`) — endpoint-only,
-  integration-tested against the sim (sim has `cloudtrail.go` + `cloudwatch.go`). CloudWatch
-  Metrics + Cost dashboard remain account-gated.
+  integration-tested against the sim (sim has `cloudtrail.go` + `cloudwatch.go`). **CloudWatch Metrics
+  (EMF) now sim-proven too** (`@edd/cloudwatch-metrics` `emf-metric-sink.integ.ts`): a real `EmfMetricSink`
+  document shipped via `PutLogEvents` is extracted + queryable through the CloudWatch metric APIs
+  (`ListMetrics`/`GetMetricStatistics`) — our EMF shape is conformant (sockerless #604). Only the Cost
+  _dashboard_ visualization remains account-gated.
 - **Gate:** health board + Inspect ✅(8A); audit/logs/overview/quotas ✅(8B);
-  CloudTrail/CloudWatch adapters ✅(8C); Metrics/Cost on real AWS ⬜.
+  CloudTrail/CloudWatch-Logs adapters ✅(8C); CloudWatch-Metrics EMF extraction ✅ (sim); Cost dashboard
+  on real AWS ⬜.

@@ -2224,3 +2224,34 @@ against DynamoDB Local (figure-equivalence preserved). Grouped:
 - **Known limitation recorded (not fixed; `BUGS.md` → Open).** `callerToPrincipalArn` can't recover an IAM
   **path** from an STS assumed-role ARN (AWS drops it), so preflight's IAM self-check silently never runs
   for a path-scoped control-plane/reconciler role — degrades safely (→ unknown, never a false drift).
+
+### 2026-06-21 — Moved two e2e-aws-only proofs onto the sim (CloudWatch Metrics + recurring cron)
+
+Acting on the reframe that a sim gap is a slice to file/implement (not a hard "real-AWS-only" wall), moved
+two validations onto the sockerless sim. Both turned out to need NO upstream slice — the sim already had the
+support (sockerless #604 EMF extraction; the scheduler firing loop re-arms `rate()`/`cron()`), so this was
+wiring + tests, validated against the live sim with no AWS account.
+
+- **CloudWatch Metrics EMF→metric extraction (Phase 8C "Metrics on real AWS" gate closed).** `@edd/cloudwatch-metrics`
+  gained a `test:integ` script + `vitest.integ.config.ts` + `test/emf-metric-sink.integ.ts` (and `test` in
+  its tsconfig include for type-aware lint). The integ drives a real EMF document through `EmfMetricSink`,
+  ships it via CloudWatch Logs `PutLogEvents` exactly as the awslogs driver would, then reads it back through
+  the CloudWatch **metric** APIs (`ListMetrics` + `GetMetricStatistics`) — proving our EMF document shape is
+  genuinely extractable (not just well-formed JSON). devDeps: `@aws-sdk/client-cloudwatch` (new — not used
+  anywhere before) + `@aws-sdk/client-cloudwatch-logs` + `@edd/config`. The `integration` CI job
+  auto-discovers it via turbo `pnpm test:integ`.
+- **Recurring `rate()` schedule firing (Phase 5 cron model).** New `services/reconciler/src/scheduler-recurrence.integ.ts`
+  proves the PRODUCTION reconciler cron model: a `rate(1 minute)` EventBridge Scheduler schedule fires its
+  ECS RunTask target **repeatedly** (≥2 fires observed via CloudTrail `LookupEvents`) and **re-arms** (still
+  present after firing despite `ActionAfterCompletion: DELETE` — a one-shot `at()` would be consumed). This
+  closes the gap between terraform-sim (proves the `rate(5 minutes)` schedule is _created_) and the container
+  e2e (proves a one-shot `at()` drives the reconciler) — neither proved a _recurring_ schedule fires on
+  cadence. Detection via CloudTrail (records the fire attempt even when the target RunTask fails on the fake
+  subnet — we assert the FIRE, not a launched container). Verified in-source that the sim's
+  `scheduler_firing.go` ticks every second and only deletes a one-shot `at()` on completion (recurring
+  expressions re-arm), so no upstream slice was needed. devDeps: `@aws-sdk/client-{ecs,scheduler,cloudtrail}`.
+  Cost note: ~2 min wall-clock (two fires at the 1-minute AWS-minimum rate on a real-clock sim) — logged so
+  it isn't mistaken for a hang.
+
+Verified at close: `pnpm build`/`test`/`lint` green; `knip` clean; `pnpm outdated` clean; both new integ
+suites green against the live sockerless sim (process-mode, `:4566`).
