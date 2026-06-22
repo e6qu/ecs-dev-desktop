@@ -81,11 +81,24 @@ function tuningMs(name: string): number | undefined {
   return value;
 }
 
+/** Like `tuningMs` but for a count (a positive integer, e.g. a per-sweep budget) — so a
+ * fractional or non-positive value fails loudly with count-appropriate wording rather than
+ * being silently accepted by the millisecond parser. */
+function tuningCount(name: string): number | undefined {
+  const raw = process.env[name];
+  if (raw === undefined || raw.length === 0) return undefined;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value <= 0) {
+    throw new Error(`${name} must be a positive integer count: ${raw}`);
+  }
+  return value;
+}
+
 const idleThresholdMs = tuningMs("EDD_IDLE_THRESHOLD_MS");
 const snapshotIntervalMs = tuningMs("EDD_SNAPSHOT_INTERVAL_MS");
 const earlySnapshotIntervalMs = tuningMs("EDD_EARLY_SNAPSHOT_INTERVAL_MS");
 const earlySessionMs = tuningMs("EDD_EARLY_SESSION_MS");
-const convergeBudget = tuningMs("EDD_CONVERGE_BUDGET");
+const convergeBudget = tuningCount("EDD_CONVERGE_BUDGET");
 const gcGraceMs = tuningMs("EDD_GC_GRACE_MS");
 const provisioningTimeoutMs = tuningMs("EDD_PROVISIONING_TIMEOUT_MS");
 
@@ -177,22 +190,30 @@ try {
   metrics.count(METRIC_RECONCILER_TASKDEFS_PRUNED, result.taskDefs.deregistered);
   metrics.count(METRIC_RECONCILER_TASKDEFS_PRUNE_FAILED, result.taskDefs.failed);
   metrics.count(METRIC_RECONCILER_QUOTA_DRIFT_CORRECTED, result.quotaDriftCorrected);
-  metrics.count(
-    METRIC_RECONCILER_SKIPPED,
+  // One source of truth for the two roll-ups (metric + log must never diverge — they did,
+  // dropping storageDrift.skipped from the SKIPPED total). SKIPPED counts every benign
+  // race/no-op across the sweeps that distinguish it (incl. the recover/finish-deletion
+  // version-conflict races); CONVERGE_FAILED counts every genuine thrown failure that left
+  // a record un-converged — including finishDeletions, whose failures the teardown path's
+  // own comments promise are alarm-surfaced.
+  const skipped =
     result.provisioning.skipped +
-      result.drift.skipped +
-      result.idle.skipped +
-      result.snapshots.skipped,
-  );
-  metrics.count(
-    METRIC_RECONCILER_CONVERGE_FAILED,
+    result.drift.skipped +
+    result.storageDrift.skipped +
+    result.idle.skipped +
+    result.snapshots.skipped +
+    result.recovered.skipped +
+    result.deletions.skipped;
+  const convergeFailed =
     result.provisioning.failed +
-      result.drift.failed +
-      result.storageDrift.failed +
-      result.recovered.failed +
-      result.idle.failed +
-      result.snapshots.failed,
-  );
+    result.drift.failed +
+    result.storageDrift.failed +
+    result.recovered.failed +
+    result.deletions.failed +
+    result.idle.failed +
+    result.snapshots.failed;
+  metrics.count(METRIC_RECONCILER_SKIPPED, skipped);
+  metrics.count(METRIC_RECONCILER_CONVERGE_FAILED, convergeFailed);
 
   // Structured, queryable per-sweep log (was a single untyped JSON line).
   log.info("maintenance sweep complete", {
@@ -212,18 +233,8 @@ try {
     taskDefsPruned: result.taskDefs.deregistered,
     taskDefsPruneFailed: result.taskDefs.failed,
     quotaDriftCorrected: result.quotaDriftCorrected,
-    skipped:
-      result.provisioning.skipped +
-      result.drift.skipped +
-      result.idle.skipped +
-      result.snapshots.skipped,
-    convergeFailed:
-      result.provisioning.failed +
-      result.drift.failed +
-      result.storageDrift.failed +
-      result.recovered.failed +
-      result.idle.failed +
-      result.snapshots.failed,
+    skipped,
+    convergeFailed,
   });
 
   // Heartbeat FIRST: the sweep above completed, and that — not the gauge/cost steps

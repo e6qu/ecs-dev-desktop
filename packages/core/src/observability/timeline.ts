@@ -27,7 +27,12 @@ export function deriveWorkspaceTimeline(ws: WorkspaceTimelineInput): TimelineEve
   if (ws.latestSnapshotAt !== undefined) {
     events.push({ at: ws.latestSnapshotAt, event: "snapshot", detail: "latest snapshot taken" });
   }
-  if (ws.lastActivity !== ws.createdAt) {
+  // Dedup the activity event by parsed INSTANT, not string compare — for the SAME reason
+  // the sort below does: `createdAt` and `lastActivity` can be the same instant in different
+  // surface forms (`Z` vs `+00:00`, `.000` vs none) once filled from CloudTrail
+  // `LookupEvents`, and a string `!==` would then fabricate a spurious duplicate "activity"
+  // event at the creation instant.
+  if (Date.parse(ws.lastActivity) !== Date.parse(ws.createdAt)) {
     events.push({ at: ws.lastActivity, event: "activity", detail: "last activity observed" });
   }
   // Order by parsed INSTANT, not string compare: equivalent ISO timestamps in

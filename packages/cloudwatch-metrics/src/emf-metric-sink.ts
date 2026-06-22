@@ -98,11 +98,19 @@ export class EmfMetricSink implements MetricSink {
   }
 
   private emit(name: string, value: number, unit: MetricUnit, dimensions?: MetricDimensions): void {
+    const timestamp = Date.parse(this.clock.now());
+    // Fail loud: an unparseable clock value would serialize `Timestamp: null` into the EMF
+    // document, which CloudWatch silently drops — a metric that looks emitted but never lands.
+    if (Number.isNaN(timestamp)) {
+      throw new Error(
+        `EmfMetricSink: clock returned an unparseable timestamp: ${this.clock.now()}`,
+      );
+    }
     const document = buildEmfDocument(
       name,
       value,
       unit,
-      Date.parse(this.clock.now()),
+      timestamp,
       this.namespace,
       dimensions ?? {},
     );

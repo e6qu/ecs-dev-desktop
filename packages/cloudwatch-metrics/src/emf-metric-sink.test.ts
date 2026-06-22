@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { fixedClock } from "@edd/core";
+import { fixedClock, isoTimestamp } from "@edd/core";
 import { describe, expect, it } from "vitest";
 
 import { buildEmfDocument, EmfMetricSink } from "./emf-metric-sink";
@@ -49,5 +49,20 @@ describe("EmfMetricSink", () => {
     expect(lines).toHaveLength(1);
     expect(lines[0]).toContain('"reconciler.sweep.count":1');
     expect(lines[0]).toContain('"Unit":"Count"');
+  });
+
+  it("throws on an unparseable clock value rather than silently shipping Timestamp: null", () => {
+    // A NaN timestamp serializes to `null` in JSON, which CloudWatch drops — a metric that
+    // looks emitted but never lands. Fail loud instead.
+    const lines: string[] = [];
+    const sink = new EmfMetricSink({
+      write: (l) => lines.push(l),
+      clock: { now: () => isoTimestamp("not-a-timestamp") },
+    });
+
+    expect(() => {
+      sink.count("reconciler.sweep.count");
+    }).toThrow(/unparseable timestamp/);
+    expect(lines).toEqual([]); // nothing emitted
   });
 });

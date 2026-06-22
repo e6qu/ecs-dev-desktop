@@ -103,6 +103,14 @@ describe("CloudTrailAuditSource", () => {
     expect(mockSend).toHaveBeenCalledWith(expect.objectContaining({ input: { MaxResults: 7 } }));
   });
 
+  it("returns [] for a non-positive limit without sending an invalid MaxResults: 0", async () => {
+    // AWS LookupEvents floors MaxResults at 1 and rejects 0; asking for ≤0 events is empty.
+    const mockSend = vi.fn().mockResolvedValue({ Events: [] });
+    const source = new CloudTrailAuditSource({ send: mockSend } as unknown as CloudTrailClient);
+    expect(await source.recent(0)).toEqual([]);
+    expect(mockSend).not.toHaveBeenCalled();
+  });
+
   const evt = (name: string): NonNullable<LookupEventsCommandOutput["Events"]>[number] => ({
     EventTime: new Date("2026-06-06T12:00:00.000Z"),
     EventName: name,

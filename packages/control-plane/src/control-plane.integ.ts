@@ -634,4 +634,30 @@ describe("WorkspaceService.recordSecurityEvent idempotency (DynamoDB Local)", ()
     const counted = metrics.recorded.filter((m) => m.name === METRIC_SECURITY_PRIVILEGE_ATTEMPT);
     expect(counted).toHaveLength(1); // the retry deduped — counted exactly once
   });
+
+  it("fails loud (no double-counted metric) when no audit ledger is wired", async () => {
+    // Without an audit ledger the dedup store is absent, so a retried attempt could not be
+    // deduped — the method must fail loud rather than emit an unauditable, double-counted
+    // metric. (Production always wires the ledger; this guards a misconfiguration.)
+    const storage = await FakeStorageProvider.create();
+    const metrics = new InMemoryMetricSink();
+    const service = new WorkspaceService({
+      workspaces: makeWorkspaceEntity(client, SEC_TABLE),
+      storage,
+      compute: new FakeComputeProvider(storage),
+      clock: fixedClock(),
+      metrics,
+      // audit intentionally omitted
+    });
+    const ws = await service.create({
+      ownerId: ownerId("sec-user-2"),
+      baseImage: baseImage("img"),
+    });
+    const evt = { kind: "privilege_attempt", tool: "docker" } as const;
+    const result = await service.recordSecurityEvent(workspaceId(ws.id), evt);
+    expect(result.ok).toBe(false);
+    expect(metrics.recorded.filter((m) => m.name === METRIC_SECURITY_PRIVILEGE_ATTEMPT)).toEqual(
+      [],
+    );
+  });
 });

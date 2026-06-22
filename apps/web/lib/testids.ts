@@ -46,6 +46,8 @@ export const TESTID = {
   costUserRow: "cost-user-row",
   /** A per-session cost row on the admin Costs page. Attrs: `data-id`, `data-owner`, `data-usd`. */
   costSessionRow: "cost-session-row",
+  /** The proportional spend bar inside a per-user/per-session cost row. Attrs: `data-usd` (row total), `data-pct` (rounded integer width %). */
+  costBar: "cost-bar",
   /** A time-window selector link on the admin Costs page. Attrs: `data-window`, `data-active`. */
   costWindow: "cost-window",
   /** A cluster-metric tile on the Infrastructure view. Attrs: `data-metric`, `data-value`. */

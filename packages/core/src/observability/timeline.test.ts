@@ -27,6 +27,17 @@ describe("deriveWorkspaceTimeline", () => {
     expect(events.some((e) => e.event === "activity")).toBe(false);
   });
 
+  it("omits a spurious activity event when createdAt/lastActivity are the same instant in different surface forms", () => {
+    // CloudTrail LookupEvents can surface the SAME instant as `+00:00`/no-millis rather than
+    // canonical `Z` — the dedup must compare instants, not strings, or it fabricates a
+    // duplicate "activity" event at the creation instant.
+    const events = deriveWorkspaceTimeline({
+      createdAt: isoTimestamp("2026-06-04T00:00:00.000Z"),
+      lastActivity: isoTimestamp("2026-06-04T00:00:00+00:00"),
+    });
+    expect(events.some((e) => e.event === "activity")).toBe(false);
+  });
+
   it("keeps both snapshot and activity when they share a timestamp", () => {
     const events = deriveWorkspaceTimeline({
       createdAt: t(0),

@@ -61,10 +61,18 @@ deferral by choice.
   read back our `EmfMetricSink` doc; closes Phase 8C "Metrics on real AWS"), and the **production recurring
   cron model** is sim-proven (`services/reconciler/src/scheduler-recurrence.integ.ts` — a `rate(1 minute)`
   schedule fires its RunTask target ≥2× and re-arms, vs the one-shot `at()` the container e2e covers). Both
-  needed NO upstream slice (the sim already had #604 EMF extraction + the scheduler firing loop). The next
-  natural sim-first targets: SSH Slice 3 ingress (NLB+Route53 — likely DOES need a sockerless slice), real
-  IAM call-time _enforcement_ (sim evaluates `SimulatePrincipalPolicy` but doesn't enforce), and the Cost
-  _dashboard_ visualization.
+  needed NO upstream slice (the sim already had #604 EMF extraction + the scheduler firing loop). Of the
+  follow-on sim-first targets: **IAM call-time enforcement — FILED upstream (#657, 2026-06-22)** + a
+  coordinate-gated skipped enforcement test staged (the sim authorizes every call regardless of policy; the
+  test runs once #657 lands or on real AWS — see `BUGS.md` → External blockers). **Cost dashboard
+  visualization — DONE (2026-06-22)**: a no-dependency stacked spend bar on `/admin/costs`. Remaining: **SSH
+  Slice 3 ingress** (NLB+Route53 — likely DOES need a sockerless slice).
+
+- **Catalog optimistic concurrency (follow-up to the 2026-06-22 sweep L2).** `CatalogService.update`/`create`
+  are last-write-wins (no `version` attribute → two concurrent admin edits of the same base image clobber).
+  Accepted for now (admin-only, zero-contention; recorded in `BUGS.md` → Open). The fix is to add a `version`
+  attribute to the `baseImages` entity + a conditional write, mirroring the `WorkspaceEntity` version-CAS, with
+  a conflict integ test. Low priority.
 
 - **Property-based / fuzz testing — ESTABLISHED + extended (2026-06-21, two sweeps).** `fast-check` is part
   of the suite (now **14 `*.fuzz.test.ts`** over the pure functions); the **cost figure-equivalence** and
@@ -183,6 +191,10 @@ deferral by choice.
   path unchanged, so the rollup figure-equivalence invariant is untouched). The earlier
   "sizable bucketed-rollup subsystem" was unnecessary — on-the-fly clipping is exact.
   The O(history)→O(recent) cost **rollups** were already done (`BUGS.md` → Resolved).
+  **Graphical spend visualization — DONE (2026-06-22):** the page was tiles + text rows; it now
+  also renders a no-dependency stacked proportional spend bar (compute/volume/snapshot) per
+  user/session row (server-computed widths, pure div+CSS in the house style). A cost _trend_
+  line would need per-day bucketing added to `computeFleetCost` first — out of scope, not queued.
 - **GitHub App provider — built** (`feat/github-app-provider`): `GitProvider` seam
   (user-OAuth + GitHub-App installation-token impls), selectable by config; the
   repos/namespaces routes + clone/push broker go through it. New HARD RULE §6.9

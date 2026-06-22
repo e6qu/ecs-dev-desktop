@@ -2,9 +2,32 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-22 (retired DynamoDB Local from ALL of CI — e2e + playwright now also run on the sim's DynamoDB; `@edd/config` `dynamodb.endpoint` defaults to the sim; re-pinned the sim to `5fb1341a` adopting sockerless #654/#655 (fail-loud + differential testing, which closed architecture issue #652); only the local `pnpm dev` loop keeps DynamoDB Local)
+**Last updated:** 2026-06-22 (three-thread PR: filed the IAM call-time-**enforcement** gap upstream (#657) + staged a coordinate-gated skipped enforcement test — the sim authorizes every call regardless of policy, so least-privilege denial stays e2e-aws-only until #657; added a no-dep stacked cost-spend visualization to the admin costs page; third bug/spec-fidelity/fuzz sweep — fixed a HIGH false converge-failed alarm + 3 medium + 4 low, added 6 fuzz files)
 
-## Active — DynamoDB Local retired from all CI; sim re-pinned to #655
+## Active — IAM-enforcement gap filed (#657) + cost visualization + third sweep
+
+Three user-requested threads in one PR:
+
+- **IAM call-time enforcement (sim-first).** We can prove our least-privilege **policy text** denies (the
+  conformant `SimulatePrincipalPolicy` preflight in `@edd/iam-preflight`), but the sim authorizes every
+  service call regardless of policy (`iamEvalDecision` is wired only to the Simulate endpoint, not service
+  handlers; `AuthPassthroughMiddleware` validates nothing) — so a runtime DENIAL can't be proven at the sim
+  tier. Filed **e6qu/sockerless#657** (request-time authz layer) and staged a coordinate-gated **skipped**
+  test (`packages/storage-ec2/src/iam-enforcement.integ.ts`): a restricted principal's `CreateVolume` →
+  `UnauthorizedOperation`; skips until the restricted-principal coordinates can be supplied (once the sim
+  enforces, or on real AWS in e2e-aws). Real IAM **enforcement** stays an e2e-aws certification meanwhile.
+- **Cost-spend visualization.** The admin costs page gained a no-dependency, stacked proportional spend bar
+  (compute/volume/snapshot) per user/session row — pure div+CSS in the house style, server-computed widths.
+  Portal Playwright extended (top spender fills to 100%); 13/13.
+- **Third bug/spec-fidelity/fuzz sweep.** Fixed **H1** (a benign version-conflict race was counted as
+  `failed`, raising a false `CONVERGE_FAILED` reconciler alarm), **M1** (a skipped-drift term dropped from the
+  metric/log roll-up), **M2** (security privilege metric double-counted without an audit ledger → now fails
+  loud), **M3** (timeline dedup by string vs instant), **L1/L3/L4** (count-vs-ms parser, client-doc accuracy,
+  EMF/CloudTrail fail-loud guards), and added **6 property/fuzz files** (now 20). One flagged finding (M4 —
+  scheduler `ActionAfterCompletion: DELETE`) was verified a **false positive** and left unchanged; one (L2 —
+  catalog last-write-wins) is recorded as an accepted admin-only limitation with a follow-up.
+
+## Prior — DynamoDB Local retired from all CI; sim re-pinned to #655
 
 Completed the DynamoDB-Local retirement that the integration-tier migration started. Now **every CI tier
 runs against the sockerless sim's DynamoDB**: the **e2e** tier (the container-mode sim already serves it)
