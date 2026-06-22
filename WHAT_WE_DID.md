@@ -2284,3 +2284,41 @@ omits the `CancellationReasons` array — conflict→domain-error mapping), **#6
 * re-pin, then migrate the tier and drop the `amazon/dynamodb-local` container — no workaround, no switch to
   a less-conformant substrate. The flake stays documented (rare + self-healed) and gated on #641–#644. No
   test/product code changed by this investigation.
+
+### 2026-06-22 — Migrated the integration tier's DynamoDB from DynamoDB Local to the sockerless sim
+
+Closed out the `concurrency-pairs` "delete vs wake" flake at its root. The flake was DynamoDB Local's
+weaker conditional-write isolation (it can, rarely, let two `version == V` CAS writes both commit). The
+fix — per the user's "use sockerless, don't work around" directive — was to run the integration tier
+against the sim's own DynamoDB (a single global-mutex item store, so conditional writes are atomically
+serialized), endpoint-only.
+
+Getting there surfaced **seven sim conformance bugs**, each confirmed with a minimal AWS-CLI/SDK repro vs
+DynamoDB Local + the AWS spec + a `simulators/aws/*.go` code pointer, all filed on e6qu/sockerless and
+**all fixed upstream** (we did NOT work around any): #641 (TransactWriteItems dropped the `Update` action),
+#642 (TransactionCanceledException omitted `CancellationReasons`), #643/#648 (SET RHS evaluator stored
+`null` for a parenthesized `if_not_exists` arithmetic — the form ElectroDB emits), #644 (DeleteTable didn't
+purge items), #650 (sim self-generated phantom `ListBuckets` CloudTrail events from a bare `GET /`
+healthcheck), #651 (CloudTrail `LookupEvents` returned DynamoDB data-plane ops — AWS returns management
+events only). Also filed an architecture issue (#652) on the recurring "silent incompleteness" failure
+mode (succeed-with-wrong-result instead of compute-or-fail-loud).
+
+The migration (this PR), re-pinned to `0e46585e`:
+
+- **Integ tier → sim DynamoDB:** `DYNAMODB_ENDPOINT=http://127.0.0.1:4566` is set in the CI `integration`
+  job + `scripts/test-integ.sh` (turbo already passes `DYNAMODB_ENDPOINT` through to `test:integ`); the
+  `amazon/dynamodb-local` container/service was removed from `docker-compose.tier2.yml` and the CI job. The
+  `@edd/config` `dynamodb.endpoint` default stays `:8000` (still used by dev + the e2e tier).
+- **`observability-live` made isolation-robust:** it asserted specific platform events appear in the admin
+  audit feed (a shared, capped, newest-first view of CloudTrail); with the integ tier now logging DynamoDB
+  _management_ events (CreateTable/DeleteTable) to the shared sim CloudTrail, those legitimate sibling events
+  could crowd out the test's events past the 100-cap. The test now verifies its ECS/EBS ops were recorded
+  via a server-side `EventName`-scoped `LookupEvents` (narrowed to this run's resource where the sim records
+  one), and separately asserts the route returns a well-formed non-empty feed. (`@aws-sdk/client-cloudtrail`
+  added to `apps/web` devDeps.)
+- **Validated:** the full integ tier passes against the new pin + sim DynamoDB — control-plane 52/52 (incl.
+  `concurrency-pairs`, now deterministic), db 5/5, web 130/130, storage-ec2 9/9 (×3 stable), compute-ecs 4/4,
+  cloudtrail-audit 7/7, cloudwatch-logs 4/4, cloudwatch-metrics 2/2.
+- **e2e tier still on DynamoDB Local** (`docker-compose.e2e.yml`): the container-mode e2e hardcodes
+  `host.docker.internal:8000` for in-container DynamoDB access, so its migration is a separate follow-up
+  (recorded in `DO_NEXT.md`).

@@ -68,14 +68,13 @@ jobs:
   integration:
     name: integration
     runs-on: ubuntu-latest
-    services:
-      # Readiness is handled in-harness (`waitForDynamo` in `@edd/db`, called by
-      # ensureTable/dropTable), so the suite never races a still-starting container
-      # — no container health-check tooling needed.
-      dynamodb-local:
-        image: amazon/dynamodb-local:latest
-        ports:
-          - 8000:8000
+    # DynamoDB is served by the sockerless sim (brought up below); the integ suite
+    # targets it via DYNAMODB_ENDPOINT. The standalone DynamoDB-Local service was
+    # retired once the sim's DynamoDB became conformant (sockerless #641-#644/#648 +
+    # CloudTrail #650/#651). Readiness is handled in-harness (`waitForDynamo` in
+    # `@edd/db`, called by ensureTable/dropTable), so the suite never races startup.
+    env:
+      DYNAMODB_ENDPOINT: http://127.0.0.1:4566
     steps:
       - uses: actions/checkout@v6.0.2
         with:
