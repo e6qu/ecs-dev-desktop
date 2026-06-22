@@ -62,11 +62,13 @@ deferral by choice.
   cron model** is sim-proven (`services/reconciler/src/scheduler-recurrence.integ.ts` — a `rate(1 minute)`
   schedule fires its RunTask target ≥2× and re-arms, vs the one-shot `at()` the container e2e covers). Both
   needed NO upstream slice (the sim already had #604 EMF extraction + the scheduler firing loop). Of the
-  follow-on sim-first targets: **IAM call-time enforcement — FILED upstream (#657, 2026-06-22)** + a
-  coordinate-gated skipped enforcement test staged (the sim authorizes every call regardless of policy; the
-  test runs once #657 lands or on real AWS — see `BUGS.md` → External blockers). **Cost dashboard
-  visualization — DONE (2026-06-22)**: a no-dependency stacked spend bar on `/admin/costs`. Remaining: **SSH
-  Slice 3 ingress** (NLB+Route53 — likely DOES need a sockerless slice).
+  follow-on sim-first targets: **IAM call-time enforcement — DONE / PROVEN (2026-06-22)**. Filed #657, fixed
+  by sockerless #659 (re-pinned `1dc18896`); `packages/storage-ec2/src/iam-enforcement.integ.ts` now
+  self-provisions a restricted principal via standard IAM APIs and proves the gate is selective
+  (`DescribeVolumes` allowed, `CreateVolume` denied with `UnauthorizedOperation`). Least-privilege denial is no
+  longer e2e-aws-only (see `BUGS.md` → Resolved (sockerless)). **Cost dashboard visualization — DONE
+  (2026-06-22)**: a no-dependency stacked spend bar on `/admin/costs`. Remaining: **SSH Slice 3 ingress**
+  (NLB+Route53 — likely DOES need a sockerless slice).
 
 - **Catalog optimistic concurrency (follow-up to the 2026-06-22 sweep L2).** `CatalogService.update`/`create`
   are last-write-wins (no `version` attribute → two concurrent admin edits of the same base image clobber).

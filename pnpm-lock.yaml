@@ -418,6 +418,9 @@ importers:
         specifier: workspace:*
         version: link:../core
     devDependencies:
+      '@aws-sdk/client-iam':
+        specifier: ^3.1073.0
+        version: 3.1073.0
       '@types/node':
         specifier: ^26.0.0
         version: 26.0.0

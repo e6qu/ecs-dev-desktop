@@ -51,6 +51,16 @@ async function emptyStorage(): Promise<StorageProvider> {
   return FakeStorageProvider.create();
 }
 
+/** A compute backend that can't run/stop tasks — for the no-op / never-throws sweep paths.
+ * Extend with `pruneTaskDefinitions` etc. via spread when a test needs that surface. */
+function inertCompute(): ComputeProvider {
+  return {
+    runTask: () => Promise.reject(new Error("x")),
+    taskState: () => Promise.resolve("stopped"),
+    stopTask: () => Promise.resolve(),
+  };
+}
+
 describe("selectIdle", () => {
   it("selects only workspaces idle past the threshold", () => {
     const now = isoTimestamp("2026-06-01T01:00:00.000Z");
@@ -500,11 +510,7 @@ describe("Reconciler.reapOrphanSecrets", () => {
     const reconciler = new Reconciler({
       service: fakeService(),
       storage: await emptyStorage(),
-      compute: {
-        runTask: () => Promise.reject(new Error("x")),
-        taskState: () => Promise.resolve("stopped"),
-        stopTask: () => Promise.resolve(),
-      },
+      compute: inertCompute(),
       clock: fixedClock("2026-06-01T02:00:00.000Z"),
     });
     expect(await reconciler.reapOrphanSecrets()).toEqual({ scanned: 0, reaped: 0, failed: 0 });
@@ -518,9 +524,7 @@ describe("Reconciler.pruneTaskDefinitions", () => {
       service: fakeService(),
       storage: await emptyStorage(),
       compute: {
-        runTask: () => Promise.reject(new Error("x")),
-        taskState: () => Promise.resolve("stopped"),
-        stopTask: () => Promise.resolve(),
+        ...inertCompute(),
         pruneTaskDefinitions: (keep) => {
           keepSeen = keep;
           return Promise.resolve(7);
@@ -537,11 +541,7 @@ describe("Reconciler.pruneTaskDefinitions", () => {
     const reconciler = new Reconciler({
       service: fakeService(),
       storage: await emptyStorage(),
-      compute: {
-        runTask: () => Promise.reject(new Error("x")),
-        taskState: () => Promise.resolve("stopped"),
-        stopTask: () => Promise.resolve(),
-      },
+      compute: inertCompute(),
       clock: fixedClock("2026-06-01T02:00:00.000Z"),
     });
     expect(await reconciler.pruneTaskDefinitions()).toEqual({ deregistered: 0, failed: 0 });
@@ -553,9 +553,7 @@ describe("Reconciler.pruneTaskDefinitions", () => {
       service: fakeService(),
       storage: await emptyStorage(),
       compute: {
-        runTask: () => Promise.reject(new Error("x")),
-        taskState: () => Promise.resolve("stopped"),
-        stopTask: () => Promise.resolve(),
+        ...inertCompute(),
         pruneTaskDefinitions: () => Promise.reject(new Error("AccessDenied")),
       },
       clock: fixedClock("2026-06-01T02:00:00.000Z"),
