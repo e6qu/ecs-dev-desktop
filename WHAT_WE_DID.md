@@ -2416,3 +2416,30 @@ the recurring schedule survives the more-aggressive setting (verified against AW
 **L2 (catalog create/update last-write-wins, no optimistic concurrency)** is recorded as an accepted
 limitation (admin-only, low-contention) with a follow-up rather than expanded into a db-schema/version-CAS
 migration in this PR — see `BUGS.md` → Open + `DO_NEXT.md`.
+
+### 2026-06-22 — IAM call-time enforcement PROVEN at the sim tier (#657 fixed by sockerless #659)
+
+The day after we filed #657 (the sim authorized every call regardless of policy), sockerless **#659** landed
+the request-time IAM authorization layer: an IAM user/access-key/inline+managed-policy surface
+(`iam_users.go`) plus a gate (`iam_enforcement.go`) that resolves the SigV4 access-key id → registered IAM
+user → effective policy → the existing `iamEvalDecision`, returning the per-service deny shape (EC2
+`UnauthorizedOperation`, awsJson `AccessDeniedException`, other query `AccessDenied`).
+
+Adopted it (re-pinned `5fb1341a → 1dc18896`):
+
+- **Backward-compat verified first.** The gate enforces ONLY on access keys that resolve to a _registered_
+  IAM user; an unregistered/dummy key (what every existing test uses) stays permissive. Confirmed by
+  rebuilding the sim and running the full integ tier — **25/25, unchanged**.
+- **The enforcement test now runs** (was a coordinate-gated skip). `packages/storage-ec2/src/iam-enforcement.integ.ts`
+  self-provisions a restricted principal via standard IAM APIs — `CreateUser` → `PutUserPolicy` (an inline
+  policy granting ONLY `ec2:DescribeVolumes`) → `CreateAccessKey` — and proves the gate is **selective**, not
+  blanket: `DescribeVolumes` is allowed (positive control) while `CreateVolume`, which the policy omits, is
+  denied with `UnauthorizedOperation` (negative control). `afterAll` tears the principal down. It uses only
+  standard IAM + EC2 APIs and never branches on the target, so the same test certifies real AWS in `e2e-aws`.
+  (`@aws-sdk/client-iam` added as a storage-ec2 devDep.)
+
+Why self-provision rather than a config-supplied coordinate: an IAM user/key is a first-class IAM API
+resource (unlike a GitHub App or hosted zone, which are out-of-band-only), so the test brings up its own
+restricted principal through the same standard API a real deployment would — coordinate-pure, no skip, no env
+plumbing. This closes the loop opened by the #657 filing: least-privilege **denial** is now proven at the sim
+tier, not deferred to a real AWS account. Eight sockerless issues filed across this whole arc; all resolved.

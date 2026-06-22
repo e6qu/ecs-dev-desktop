@@ -71,8 +71,9 @@ Tooling: **Vitest**.
 | UI on real compute (`test:pw:live`)          | Playwright vs built app with `COMPUTE_PROVIDER=ecs` on the container-mode sim (browser clicks launch/stop/wake real golden-image tasks) |
 
 Proves wiring/call-shapes and, in container mode, real task behavior. It does
-**not** prove real EBS latency, real Fargate capacity/cold-start, real IAM
-enforcement, or real IdP federation — that's tier 3.
+**not** prove real EBS latency, real Fargate capacity/cold-start, or real IdP
+federation — that's tier 3. (Call-time IAM **enforcement** logic is now proven
+earlier, at the integration tier, against the sim's authorization gate — see below.)
 
 ### 3. `e2e-aws` — MANUAL, on `main` (real AWS/IdP)
 
@@ -88,7 +89,12 @@ Exclusively certifies what no simulator can:
 3. Cold-start latency & 200+ load (k6/Locust).
 4. Real GitHub-org + **Azure Entra** federation (live group claims).
 5. ACM cert issuance + Route 53 DNS propagation.
-6. IAM least-privilege actually enforcing (Access Analyzer / policy simulator).
+6. The **real AWS IAM engine** enforcing our policies on the live deployment
+   (condition keys at scale, Access Analyzer). The call-time enforcement _logic_
+   — a registered principal's ungranted call is denied — is now proven at the
+   integration tier against the sim's authorization gate (sockerless #659;
+   `packages/storage-ec2/src/iam-enforcement.integ.ts`), so e2e-aws narrows to
+   certifying the real IAM service rather than first-proving denial.
 7. KMS grants, cross-region snapshot copy, DR drills.
 
 **Status — first slice wired (`.github/workflows/e2e-aws.yml`).** The `ebs` job

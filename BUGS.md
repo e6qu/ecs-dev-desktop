@@ -139,21 +139,6 @@ old STATIC-gate "tokenless behind the gate" framing (see _Resolved (repo)_).
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-- **sockerless does not enforce IAM at call time — OPEN, filed #657 (2026-06-22).** The sim authorizes every
-  API call regardless of the caller's policy: the policy evaluator (`iamEvalDecision`) is wired only into the
-  `SimulatePrincipalPolicy` diagnostic endpoint, never into a service handler, and `AuthPassthroughMiddleware`
-  accepts every request without validating credentials. So a zero-permission principal calling
-  `ec2:CreateVolume` gets a 200; real AWS returns `UnauthorizedOperation`. This means we can prove our
-  least-privilege **policy text** denies (via the conformant `SimulatePrincipalPolicy` preflight in
-  `@edd/iam-preflight`) but cannot prove a **runtime call** is denied at the sim tier. Filed **#657** (asks for
-  a credential→principal→policy binding + a request-time authz gate running the existing evaluator on each
-  mutating call). A coordinate-gated enforcement test is staged and **skipped** until the sim enforces:
-  `packages/storage-ec2/src/iam-enforcement.integ.ts` (asserts a restricted principal's `CreateVolume` →
-  `UnauthorizedOperation`; reads the restricted-principal coordinates from `EDD_IAM_DENIED_ACCESS_KEY_ID`/
-  `_SECRET` and skips when absent — never falls back to unrestricted creds). It runs unchanged once #657 lands
-  and against real AWS in `e2e-aws`. Until then, real IAM **enforcement** stays an `e2e-aws`-only certification
-  (TESTING.md) while **policy-text** correctness is sim-proven.
-
 - **sockerless DynamoDB + CloudTrail conformance — ALL FIXED + tier MIGRATED (2026-06-22).** Seven gaps,
   found by moving the integration tier off **DynamoDB Local** onto the sim's own DynamoDB (endpoint-only,
   `DYNAMODB_ENDPOINT` → `:4566`) to fix a rare DynamoDB-Local CAS-isolation flake (`concurrency-pairs`). Each
@@ -889,6 +874,20 @@ connectionSecret)` reads `EDD_CONNECTION_SECRET`. The in-app proxy (`apps/web/li
   starts `sshd`, and runs idle-agent/OpenVSCode as `workspace`.
 
 ## Resolved (sockerless — fixed upstream; full detail in `WHAT_WE_DID.md`)
+
+**IAM call-time enforcement — #657 FIXED (sockerless #659) + PROVEN downstream (2026-06-22).** The sim used
+to authorize every API call regardless of the caller's policy (the evaluator was wired only into the
+`SimulatePrincipalPolicy` diagnostic endpoint). #659 added the IAM user/access-key/inline+managed-policy
+surface (`iam_users.go`) and a request-time authorization gate (`iam_enforcement.go`) that resolves the SigV4
+access-key id → registered IAM user → effective policy → evaluator, returning the per-service deny shape (EC2
+`UnauthorizedOperation`, awsJson `AccessDeniedException`, other query `AccessDenied`). Backward-compatible by
+design: enforcement applies ONLY to access keys that resolve to a registered IAM user, so existing tests'
+dummy creds stay permissive (re-pinned to `1dc18896`; full integ tier 25/25, unchanged). We now PROVE
+least-privilege denial at the sim tier — `packages/storage-ec2/src/iam-enforcement.integ.ts` self-provisions a
+restricted principal via standard IAM APIs (`CreateUser`→`PutUserPolicy` granting only `ec2:DescribeVolumes`
+→`CreateAccessKey`) and asserts the gate is SELECTIVE: `DescribeVolumes` allowed (positive control),
+`CreateVolume` denied with `UnauthorizedOperation` (negative control), then tears the principal down. Standard
+IAM+EC2 APIs only, no skip, no sim branch — the same test certifies real AWS in `e2e-aws`.
 
 **Most-recent batch** (submodule bumped `9d43f3d` → `1ca1f717`, PRs #563/#564/#565;
 #565 is ACA/Actions-runner-only — no downstream impact on our consumed surfaces):

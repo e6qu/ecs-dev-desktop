@@ -2,9 +2,24 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-22 (three-thread PR: filed the IAM call-time-**enforcement** gap upstream (#657) + staged a coordinate-gated skipped enforcement test — the sim authorizes every call regardless of policy, so least-privilege denial stays e2e-aws-only until #657; added a no-dep stacked cost-spend visualization to the admin costs page; third bug/spec-fidelity/fuzz sweep — fixed a HIGH false converge-failed alarm + 3 medium + 4 low, added 6 fuzz files)
+**Last updated:** 2026-06-22 (IAM call-time **enforcement now PROVEN at the sim tier**: sockerless #659 fixed #657 — re-pinned to `1dc18896`; the enforcement test now self-provisions a restricted IAM principal via standard APIs and asserts the gate is selective — `DescribeVolumes` allowed, `CreateVolume` denied with `UnauthorizedOperation`. Backward-compat holds (full integ 25/25). Least-privilege denial is no longer e2e-aws-only)
 
-## Active — IAM-enforcement gap filed (#657) + cost visualization + third sweep
+## Active — IAM call-time enforcement proven at the sim tier (#657 fixed by sockerless #659)
+
+sockerless **#659** implemented the request-time IAM authorization gate I filed as **#657**: it resolves the
+SigV4 access-key id → registered IAM user → effective policy → the existing evaluator, returning the correct
+per-service deny shape (EC2 `UnauthorizedOperation`, etc.). Backward-compatible — enforcement applies only to
+access keys that resolve to a _registered_ IAM user, so existing tests' dummy creds stay permissive (re-pinned
+`5fb1341a → 1dc18896`; full integ tier 25/25, unchanged).
+
+So `packages/storage-ec2/src/iam-enforcement.integ.ts` now **runs** (no longer skipped): it self-provisions a
+restricted principal via standard IAM APIs (`CreateUser` → `PutUserPolicy` granting only `ec2:DescribeVolumes`
+→ `CreateAccessKey`) and proves the gate is **selective** — `DescribeVolumes` allowed (positive control),
+`CreateVolume` denied with `UnauthorizedOperation` (negative control) — then tears the principal down.
+Standard IAM+EC2 APIs only, no sim branch, so the same test certifies real AWS in `e2e-aws`. This closes the
+loop: least-privilege **denial** (not just policy-text evaluation) is now proven without a real AWS account.
+
+## Prior — IAM-enforcement gap filed (#657) + cost visualization + third sweep
 
 Three user-requested threads in one PR:
 
