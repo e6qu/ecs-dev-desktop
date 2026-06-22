@@ -2443,3 +2443,35 @@ resource (unlike a GitHub App or hosted zone, which are out-of-band-only), so th
 restricted principal through the same standard API a real deployment would — coordinate-pure, no skip, no env
 plumbing. This closes the loop opened by the #657 filing: least-privilege **denial** is now proven at the sim
 tier, not deferred to a real AWS account. Eight sockerless issues filed across this whole arc; all resolved.
+
+### 2026-06-22 — IAM enforcement deepened to condition keys (adopted sockerless #660; filed #661)
+
+The day after #659 (call-time enforcement) landed, sockerless **#660** shipped a 3-cloud IAM/identity
+fidelity sweep — for AWS, the full real-AWS condition-operator set (`Numeric*`/`Date*`/`IpAddress`(CIDR)/
+`Null`/`Arn*`/`ForAllValues:`/`ForAnyValue:`/policy-variable substitution/`Principal` matching; previously a
+policy using an unsupported operator silently failed its Allow → behaved as a Deny) plus STS `AssumeRole`/
+`AssumeRoleWithWebIdentity`/`GetSessionToken`/faithful `GetCallerIdentity`.
+
+Adopted it (re-pinned `1dc18896 → 9a1d4e92`):
+
+- **Backward-compat verified:** full integ tier 25/25, unchanged (the gate still enforces only on registered
+  IAM users; dummy creds stay permissive).
+- **Extended the enforcement proof from action-level to condition-level.** Refactored
+  `packages/storage-ec2/src/iam-enforcement.integ.ts` behind a shared `provisionPrincipal(policyDocument)`
+  helper (creates a restricted IAM user + inline policy + access key via standard APIs, returns a region-scoped
+  EC2-client factory + teardown — also keeps jscpd happy). Two describes now: **action level** (a
+  describe-only principal: `DescribeVolumes` allowed, `CreateVolume` denied) and **condition keys** (a
+  region-locked principal: `ec2:CreateVolume` granted only when `aws:RequestedRegion` equals the region, so the
+  SAME action is allowed in-region and denied cross-region with `UnauthorizedOperation`). This proves the gate
+  evaluates a policy's `Condition` against request context — the #660 evaluator in action — not just the
+  action verb.
+
+**Why only a global-key condition (`aws:RequestedRegion`):** the gate (`iam_enforcement.go` `iamAuthorize`)
+populates only GLOBAL condition keys (`aws:username`/`userid`/`SourceIp`/`RequestedRegion`). It does NOT
+resolve RESOURCE-scoped keys (`aws:ResourceTag/<key>` from the target resource's tags) or service keys
+(`ecs:cluster`). Our least-privilege design conditions the destructive EC2 grants on
+`aws:ResourceTag/edd:managed=true` and the ECS task grants on `ecs:cluster`, so those exact grants can't be
+proven at the sim tier yet (a tag-scoped Allow currently behaves as a blanket deny). Filed **sockerless #661**
+to populate resource/service condition keys into the authz context (the operator support already landed in
+#660). Until then, the tag/cluster-conditioned grants stay e2e-aws-only. Nine sockerless issues filed across
+the whole arc; eight resolved, #661 open.

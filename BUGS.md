@@ -139,6 +139,19 @@ old STATIC-gate "tokenless behind the gate" framing (see _Resolved (repo)_).
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
+- **IAM enforcement doesn't populate RESOURCE-scoped condition keys — OPEN, filed #661 (2026-06-22).** The
+  call-time authz gate (sockerless #659) + full condition-operator evaluator (#660) now enforce conditions,
+  but `iamAuthorize` (`iam_enforcement.go`) only populates **global** keys into the request context
+  (`aws:username`/`userid`/`SourceIp`/`RequestedRegion`). It does NOT resolve **resource-scoped** keys —
+  `aws:ResourceTag/<key>` from the target resource's tags, or service keys like `ecs:cluster`. Our
+  least-privilege design conditions the destructive EC2 grants on `aws:ResourceTag/edd:managed=true` and the
+  ECS task grants on `ecs:cluster`, so those exact grants can't yet be enforced/proven at the sim tier (a
+  tag-scoped Allow currently behaves as a blanket deny — the key is absent from context). Filed **#661** to
+  populate resource/service keys into the authz context (the operator support already landed in #660). Until
+  then we prove call-time enforcement at the **action** level + with a **global-key** condition
+  (`aws:RequestedRegion`); the tag/cluster-conditioned grants stay e2e-aws-only. See
+  `packages/storage-ec2/src/iam-enforcement.integ.ts`.
+
 - **sockerless DynamoDB + CloudTrail conformance — ALL FIXED + tier MIGRATED (2026-06-22).** Seven gaps,
   found by moving the integration tier off **DynamoDB Local** onto the sim's own DynamoDB (endpoint-only,
   `DYNAMODB_ENDPOINT` → `:4566`) to fix a rare DynamoDB-Local CAS-isolation flake (`concurrency-pairs`). Each
@@ -884,10 +897,15 @@ access-key id → registered IAM user → effective policy → evaluator, return
 design: enforcement applies ONLY to access keys that resolve to a registered IAM user, so existing tests'
 dummy creds stay permissive (re-pinned to `1dc18896`; full integ tier 25/25, unchanged). We now PROVE
 least-privilege denial at the sim tier — `packages/storage-ec2/src/iam-enforcement.integ.ts` self-provisions a
-restricted principal via standard IAM APIs (`CreateUser`→`PutUserPolicy` granting only `ec2:DescribeVolumes`
-→`CreateAccessKey`) and asserts the gate is SELECTIVE: `DescribeVolumes` allowed (positive control),
-`CreateVolume` denied with `UnauthorizedOperation` (negative control), then tears the principal down. Standard
-IAM+EC2 APIs only, no skip, no sim branch — the same test certifies real AWS in `e2e-aws`.
+restricted principal via standard IAM APIs (`CreateUser`→`PutUserPolicy`→`CreateAccessKey`) and asserts the
+gate is SELECTIVE: `DescribeVolumes` allowed (positive control), `CreateVolume` denied with
+`UnauthorizedOperation` (negative control), then tears the principal down. Standard IAM+EC2 APIs only, no skip,
+no sim branch — the same test certifies real AWS in `e2e-aws`. **Extended for condition keys via sockerless
+#660** (the full real-AWS condition-operator evaluator + STS `AssumeRole`/`GetCallerIdentity`; re-pinned
+`1dc18896` → `9a1d4e92`, full integ 25/25 unchanged): the test now also proves CONDITION-level enforcement —
+a region-locked policy (`ec2:CreateVolume` with `Condition StringEquals aws:RequestedRegion`) allows the SAME
+action in-region and denies it cross-region. Resource-scoped condition keys (`aws:ResourceTag/*`,
+`ecs:cluster` — our exact design) are not yet populated by the gate; filed **#661** (see _External blockers_).
 
 **Most-recent batch** (submodule bumped `9d43f3d` → `1ca1f717`, PRs #563/#564/#565;
 #565 is ACA/Actions-runner-only — no downstream impact on our consumed surfaces):

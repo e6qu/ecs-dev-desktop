@@ -62,13 +62,17 @@ deferral by choice.
   cron model** is sim-proven (`services/reconciler/src/scheduler-recurrence.integ.ts` — a `rate(1 minute)`
   schedule fires its RunTask target ≥2× and re-arms, vs the one-shot `at()` the container e2e covers). Both
   needed NO upstream slice (the sim already had #604 EMF extraction + the scheduler firing loop). Of the
-  follow-on sim-first targets: **IAM call-time enforcement — DONE / PROVEN (2026-06-22)**. Filed #657, fixed
-  by sockerless #659 (re-pinned `1dc18896`); `packages/storage-ec2/src/iam-enforcement.integ.ts` now
-  self-provisions a restricted principal via standard IAM APIs and proves the gate is selective
-  (`DescribeVolumes` allowed, `CreateVolume` denied with `UnauthorizedOperation`). Least-privilege denial is no
-  longer e2e-aws-only (see `BUGS.md` → Resolved (sockerless)). **Cost dashboard visualization — DONE
-  (2026-06-22)**: a no-dependency stacked spend bar on `/admin/costs`. Remaining: **SSH Slice 3 ingress**
-  (NLB+Route53 — likely DOES need a sockerless slice).
+  follow-on sim-first targets: **IAM call-time enforcement — DONE / PROVEN, deepened to condition keys
+  (2026-06-22)**. Filed #657 → fixed by sockerless #659 (action-level enforcement) → extended via #660 (full
+  condition-operator evaluator; re-pinned `9a1d4e92`). `packages/storage-ec2/src/iam-enforcement.integ.ts`
+  proves both **action** level (`DescribeVolumes` allowed, `CreateVolume` denied with `UnauthorizedOperation`)
+  and **condition** level (a region-locked policy allows `CreateVolume` in-region, denies it cross-region via
+  `aws:RequestedRegion`). **Open follow-up (#661):** the gate doesn't populate RESOURCE-scoped condition keys
+  (`aws:ResourceTag/*`, `ecs:cluster`), so our exact tag/cluster-conditioned grants (the destructive-EC2 +
+  ECS-task least-privilege) stay e2e-aws-only until it lands — then extend the test to prove them (see
+  `BUGS.md` → External blockers). **Cost dashboard visualization — DONE (2026-06-22)**: a no-dependency
+  stacked spend bar on `/admin/costs`. Remaining: **SSH Slice 3 ingress** (NLB+Route53 — likely DOES need a
+  sockerless slice).
 
 - **Catalog optimistic concurrency (follow-up to the 2026-06-22 sweep L2).** `CatalogService.update`/`create`
   are last-write-wins (no `version` attribute → two concurrent admin edits of the same base image clobber).
