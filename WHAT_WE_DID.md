@@ -2355,3 +2355,64 @@ before — the cost of fully retiring DynamoDB Local there, validated 18/18 loca
 Verified: integ 25/25 (via config default, no env override), portal Playwright 18/18 vs the sim's DynamoDB
 locally (incl. the live-DynamoDB health board), build / lint (19) / unit (33) / knip / shellcheck /
 actionlint / `pnpm outdated` clean. The container-mode e2e + e2e-https tiers validate in CI.
+
+### 2026-06-22 — Three-thread sweep: IAM-enforcement (sim-first), cost-spend visualization, bug/fuzz sweep
+
+One PR, three user-requested threads.
+
+**(1) IAM call-time enforcement (sim-first).** Goal: prove least-privilege IAM actually DENIES an
+unauthorized call at runtime, not just that the policy text is shaped right (the `@edd/iam-preflight`
+`SimulatePrincipalPolicy` self-check already covers the latter). Investigation found the sockerless sim does
+NOT enforce IAM on service calls: `iamEvalDecision` is wired only into the `SimulatePrincipalPolicy`
+diagnostic endpoint, never into any service handler, and `AuthPassthroughMiddleware` accepts every request
+without validating credentials — so a zero-permission principal calling `ec2:CreateVolume` gets a 200. Per
+§6.8/§6.9 (file the gap, never work around): filed **e6qu/sockerless#657** (request-time authorization
+layer: credential→principal→policy binding + an authz gate running the existing evaluator on each mutating
+call, returning `UnauthorizedOperation`/`AccessDeniedException`). Added a coordinate-gated, skipped
+enforcement test (`packages/storage-ec2/src/iam-enforcement.integ.ts`): it asserts a restricted principal's
+`CreateVolume` is rejected with `UnauthorizedOperation`, and SKIPS until the restricted-principal coordinates
+can be supplied (i.e. once the sim enforces, or on real AWS in e2e-aws) — it never falls back to
+unrestricted creds. TDD against the upstream fix.
+
+**(2) Cost-spend visualization.** The costs page was tiles + text rows; added a no-dependency, stacked
+proportional spend bar per user/session row (compute/volume/snapshot segments, width = row.totalUsd/maxUsd,
+server-computed — pure div+CSS in the house style, no chart lib). Extended the portal Playwright test to
+assert the bar renders and the top spender fills to 100%. `apps/web/app/admin/costs/page.tsx`,
+`globals.css`, `lib/testids.ts` (`costBar`), `e2e/portal.pw.ts`.
+
+**(3) Bug / spec-fidelity / fuzz sweep.** A parallel audit of the newest surfaces surfaced real findings;
+fixed all the confirmed ones:
+
+- **H1 (HIGH) — false converge-failed alarm.** `recoverErrors`/`finishDeletions` bucketed a benign
+  version-conflict race (a non-ok `Result`) as `failed`, feeding `METRIC_RECONCILER_CONVERGE_FAILED` (a
+  human-attention alarm). Every other sweep distinguishes a non-ok Result (skipped) from a thrown error
+  (failed); these two didn't. Gave `RecoveryResult` a `skipped` field, bucketed races there, and routed it to
+  `METRIC_RECONCILER_SKIPPED`. `services/reconciler/src/index.ts` + `run.ts`.
+- **M1 — `storageDrift.skipped` was silently dropped** from the SKIPPED metric/log while `storageDrift.failed`
+  was counted. Extracted the two roll-ups into single source-of-truth consts (so the metric + log can't
+  diverge again — that divergence WAS M1) and added the missing terms, including `deletions.failed` to
+  CONVERGE_FAILED (which the teardown path's own comments promised was alarm-surfaced but wasn't).
+- **M2 — security privilege-attempt metric double-counted** when no audit ledger is wired (the idempotency
+  dedup lived inside the audit block, the metric ran unconditionally after). Now the metric is counted only
+  when a new audit row is created, and an absent ledger fails loud (the method can't honor its
+  idempotent+auditable contract without one — production always wires it). `workspace-service.ts`.
+- **M3 — timeline activity-dedup used a string compare while the sort used instant compare**, so the same
+  instant in different surface forms (`Z` vs `+00:00`, from CloudTrail) fabricated a spurious duplicate
+  "activity" event. Now dedups by parsed instant. `observability/timeline.ts`.
+- **L1** `EDD_CONVERGE_BUDGET` (a count) was parsed by the milliseconds helper → added a `tuningCount`
+  (positive-integer) parser. **L3** corrected the `createDynamoClient` doc to state `DYNAMODB_ENDPOINT` is the
+  only coordinate (it deliberately must NOT default to the sim when unset — real cloud needs ambient
+  resolution). **L4** fail-loud/early-return hardening: EMF sink throws on an unparseable clock timestamp
+  (else `Timestamp: null` is silently dropped by CloudWatch); CloudTrail `recent(≤0)` returns `[]` instead of
+  sending an invalid `MaxResults: 0`.
+- **6 new property/fuzz files** over high-value pure functions (now 20 `*.fuzz.test.ts`): `iam-requirements`
+  (fail-closed — a missing decision counts as denied), `base-image-catalog`, `config-sync`, `health`,
+  `stats` (conservation), `topology` (unmatched node → `unknown`, never fabricated `ok`).
+
+**Two findings NOT actioned, with reasons:** **M4 (scheduler test uses `ActionAfterCompletion: DELETE`) was
+a FALSE POSITIVE** — `DELETE` deletes a schedule only after it _completes_; a recurring `rate()` with no end
+date never completes, so real AWS keeps it, the sim agrees, and the test deliberately uses DELETE to prove
+the recurring schedule survives the more-aggressive setting (verified against AWS semantics; left unchanged).
+**L2 (catalog create/update last-write-wins, no optimistic concurrency)** is recorded as an accepted
+limitation (admin-only, low-contention) with a follow-up rather than expanded into a db-schema/version-CAS
+migration in this PR — see `BUGS.md` → Open + `DO_NEXT.md`.

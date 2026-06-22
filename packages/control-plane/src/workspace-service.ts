@@ -1116,32 +1116,39 @@ export class WorkspaceService {
     const found = await this.find(id);
     if (found === null) return err(notFoundError("workspace", id));
     const audit = this.deps.audit;
-    if (audit !== undefined) {
-      // Idempotent: a DETERMINISTIC event id per (workspace, tool, time bucket) +
-      // conditional `create` dedupes the in-workspace guard's `curl --retry` of the SAME
-      // blocked attempt, so a retry writes no duplicate audit row and (below) no double
-      // metric. Distinct attempts (a later bucket) still record separately.
-      const bucket = Math.floor(
-        Date.parse(this.deps.clock.now()) / SECURITY_EVENT_BUCKET_MS,
-      ).toString();
-      try {
-        await audit
-          .create({
-            id: `sec-${id}-${event.tool}-${bucket}`,
-            at: this.deps.clock.now(),
-            actor: "workspace",
-            action: `security.${event.kind}`,
-            target: id,
-            detail: event.tool,
-          })
-          .go();
-      } catch (e) {
-        // The deterministic id already exists → this is a retry of an already-recorded
-        // attempt. Idempotent success: don't double-count the metric below.
-        if (isVersionConflict(e)) return ok(undefined);
-        throw e;
-      }
+    if (audit === undefined) {
+      // The audit ledger is what makes this method idempotent: without it we can neither
+      // record the event as a first-class audit row nor dedup the in-workspace guard's
+      // `curl --retry` of the SAME blocked attempt — so the metric below would double-count
+      // every retry. Fail loud rather than emit an unauditable, double-counted signal. (The
+      // web route + reconciler always wire the ledger; this guards a misconfiguration.)
+      return err(unavailableError("security-event recording requires an audit ledger"));
     }
+    // Idempotent: a DETERMINISTIC event id per (workspace, tool, time bucket) + conditional
+    // `create` dedupes the guard's retry of the SAME blocked attempt, so a retry writes no
+    // duplicate audit row and (below) no double metric. Distinct attempts (a later bucket)
+    // still record separately.
+    const bucket = Math.floor(
+      Date.parse(this.deps.clock.now()) / SECURITY_EVENT_BUCKET_MS,
+    ).toString();
+    try {
+      await audit
+        .create({
+          id: `sec-${id}-${event.tool}-${bucket}`,
+          at: this.deps.clock.now(),
+          actor: "workspace",
+          action: `security.${event.kind}`,
+          target: id,
+          detail: event.tool,
+        })
+        .go();
+    } catch (e) {
+      // The deterministic id already exists → this is a retry of an already-recorded
+      // attempt. Idempotent success: don't double-count the metric below.
+      if (isVersionConflict(e)) return ok(undefined);
+      throw e;
+    }
+    // Exactly one new audit row was created → count the privilege-attempt metric exactly once.
     this.deps.metrics?.count(METRIC_SECURITY_PRIVILEGE_ATTEMPT, 1, { tool: event.tool });
     return ok(undefined);
   }

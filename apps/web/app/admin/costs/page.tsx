@@ -34,6 +34,65 @@ function hours(ms: number): string {
   return `${(ms / MS_PER_HOUR).toFixed(1)}h`;
 }
 
+/** The three priced components of a row, in stack order (largest share first). */
+const COST_SEGMENTS: readonly { key: "compute" | "volume" | "snapshot"; label: string }[] = [
+  { key: "compute", label: "compute" },
+  { key: "volume", label: "volume" },
+  { key: "snapshot", label: "snapshot" },
+];
+
+/** A row's spend priced into its three components, for the stacked bar. */
+interface BarRow {
+  readonly totalUsd: number;
+  readonly computeUsd: number;
+  readonly volumeUsd: number;
+  readonly snapshotUsd: number;
+}
+
+/** Width of a segment as a percent of the list's max spend, clamped to [0, 100].
+ * `maxUsd === 0` (every row $0) yields 0 — never a divide-by-zero. */
+function pct(value: number, maxUsd: number): number {
+  if (maxUsd <= 0) return 0;
+  return Math.min(100, Math.max(0, (value / maxUsd) * 100));
+}
+
+/**
+ * A horizontal, proportional spend bar for a cost row: its full width is the
+ * row's share of the list max (`totalUsd / maxUsd`), stacked from the three
+ * priced components (compute / volume / snapshot). Pure presentation — widths are
+ * computed server-side, so no client JS. `data-usd`/`data-pct` carry the asserted
+ * values; `--seg` colours each component off the lime palette.
+ */
+function CostBar({ row, maxUsd }: { row: BarRow; maxUsd: number }) {
+  const totalPct = pct(row.totalUsd, maxUsd);
+  return (
+    <div
+      className="cost-bar"
+      data-testid={TESTID.costBar}
+      data-usd={row.totalUsd}
+      data-pct={Math.round(totalPct)}
+    >
+      <div className="cost-bar-track" style={{ width: `${totalPct}%` }}>
+        {COST_SEGMENTS.map((s) => {
+          const componentUsd = row[`${s.key}Usd`];
+          // Width is relative to the track (the row's spend); the track is itself
+          // sized to the row's share of the list max, so each segment ends up
+          // `componentUsd / maxUsd` of the full bar — the stacked proportion.
+          return (
+            <div
+              key={s.key}
+              className="cost-bar-seg"
+              data-seg={s.key}
+              title={`${s.label} · ${usd(componentUsd)}`}
+              style={{ width: `${pct(componentUsd, row.totalUsd)}%` }}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // Admin-only (the /admin layout gates it). Fleet spend, derived by pricing the
 // lifecycle audit ledger; rolled up per user and per session. `?window=` scopes
 // the report to the last N days (default: the full lifetime).
@@ -49,6 +108,11 @@ export default async function AdminCostsPage({
   const window: CostWindow = parsedWindow.success ? parsedWindow.data.window : "all";
   const report = await (await getCostService()).report(COST_WINDOW_DAYS[window]);
   const { total, byUser, bySession, pricing, sizing } = report;
+
+  // The proportional bars are scaled per list to its most-expensive row, so the
+  // top spender fills the bar and the rest read as a fraction of it.
+  const maxUserUsd = byUser.reduce((m, u) => Math.max(m, u.totalUsd), 0);
+  const maxSessionUsd = bySession.reduce((m, s) => Math.max(m, s.totalUsd), 0);
 
   const scope =
     window === "all"
@@ -107,7 +171,17 @@ export default async function AdminCostsPage({
         ))}
       </div>
 
-      <h2 style={{ fontSize: 16, margin: "18px 0 10px" }}>By user</h2>
+      <div className="cost-list-head">
+        <h2 style={{ fontSize: 16, margin: "18px 0 10px" }}>By user</h2>
+        <div className="cost-legend" aria-label="cost components">
+          {COST_SEGMENTS.map((s) => (
+            <span key={s.key} className="cost-legend-item">
+              <span className="cost-legend-swatch" data-seg={s.key} />
+              {s.label}
+            </span>
+          ))}
+        </div>
+      </div>
       {byUser.length === 0 ? (
         <p className="mono" style={{ color: "var(--dim)" }}>
           no spend recorded yet
@@ -124,6 +198,7 @@ export default async function AdminCostsPage({
             >
               <span className="wid">{u.owner}</span>
               <span className="detail">{usd(u.totalUsd)}</span>
+              <CostBar row={u} maxUsd={maxUserUsd} />
               <div className="meta">
                 <span>{u.sessions} session(s)</span>
                 <span>compute · {usd(u.computeUsd)}</span>
@@ -152,6 +227,7 @@ export default async function AdminCostsPage({
             >
               <span className="wid">{s.workspaceId}</span>
               <span className="detail">{usd(s.totalUsd)}</span>
+              <CostBar row={s} maxUsd={maxSessionUsd} />
               <div className="meta">
                 <span>owner · {s.owner}</span>
                 <span>state · {s.state}</span>

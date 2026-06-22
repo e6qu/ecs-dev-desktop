@@ -4,6 +4,14 @@
 
 ## Open
 
+- **Catalog (base-image) create/update is last-write-wins — accepted, admin-only (2026-06-22).**
+  `CatalogService.update`/`create` (`packages/control-plane/src/catalog-service.ts`) read → patch →
+  unconditional `put()`; the `baseImages` entity has no `version` attribute, so two concurrent admin edits of
+  the SAME image silently clobber each other — unlike every other mutating path (`WorkspaceEntity` uses
+  version-CAS). Accepted for now because the catalog is admin-only and effectively zero-contention (admins
+  rarely edit, never concurrently the same image). A follow-up to add a `version` attribute + conditional
+  write (mirroring the workspace discipline) is noted in `DO_NEXT.md`; flagged by the 2026-06-22 sweep (L2).
+
 - **IAM preflight skips a path-scoped role — known limitation (2026-06-21).** `callerToPrincipalArn`
   (`@edd/iam-preflight`) reconstructs the role/user ARN from the STS caller ARN, but AWS DROPS the IAM
   **path** in the STS assumed-role ARN (`assumed-role/<RoleNameOnly>/<session>`), so a role created under a
@@ -130,6 +138,21 @@ in-app path-based proxy hands the session-authorized browser the token, supersed
 old STATIC-gate "tokenless behind the gate" framing (see _Resolved (repo)_).
 
 ## External blockers (upstream — `e6qu/sockerless`)
+
+- **sockerless does not enforce IAM at call time — OPEN, filed #657 (2026-06-22).** The sim authorizes every
+  API call regardless of the caller's policy: the policy evaluator (`iamEvalDecision`) is wired only into the
+  `SimulatePrincipalPolicy` diagnostic endpoint, never into a service handler, and `AuthPassthroughMiddleware`
+  accepts every request without validating credentials. So a zero-permission principal calling
+  `ec2:CreateVolume` gets a 200; real AWS returns `UnauthorizedOperation`. This means we can prove our
+  least-privilege **policy text** denies (via the conformant `SimulatePrincipalPolicy` preflight in
+  `@edd/iam-preflight`) but cannot prove a **runtime call** is denied at the sim tier. Filed **#657** (asks for
+  a credential→principal→policy binding + a request-time authz gate running the existing evaluator on each
+  mutating call). A coordinate-gated enforcement test is staged and **skipped** until the sim enforces:
+  `packages/storage-ec2/src/iam-enforcement.integ.ts` (asserts a restricted principal's `CreateVolume` →
+  `UnauthorizedOperation`; reads the restricted-principal coordinates from `EDD_IAM_DENIED_ACCESS_KEY_ID`/
+  `_SECRET` and skips when absent — never falls back to unrestricted creds). It runs unchanged once #657 lands
+  and against real AWS in `e2e-aws`. Until then, real IAM **enforcement** stays an `e2e-aws`-only certification
+  (TESTING.md) while **policy-text** correctness is sim-proven.
 
 - **sockerless DynamoDB + CloudTrail conformance — ALL FIXED + tier MIGRATED (2026-06-22).** Seven gaps,
   found by moving the integration tier off **DynamoDB Local** onto the sim's own DynamoDB (endpoint-only,
@@ -340,6 +363,35 @@ concurrent-wake race, TLS storage adapter). PR #550 is bleephub-Actions-only;
 no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
+
+- **Third bug / spec-fidelity / fuzz sweep (2026-06-22) — parallel audit of the newest surfaces, all
+  confirmed findings fixed.** Alongside the IAM-enforcement + cost-visualization threads:
+  - **H1 (HIGH) — false `METRIC_RECONCILER_CONVERGE_FAILED` alarm.** `recoverErrors`/`finishDeletions` counted
+    a benign version-conflict race (a non-ok `Result`) as `failed`, unlike every other sweep (which counts a
+    non-ok Result as `skipped`, only a thrown error as `failed`). Gave `RecoveryResult` a `skipped` field,
+    bucketed races there, routed it to `METRIC_RECONCILER_SKIPPED`. (`services/reconciler/src/index.ts`.)
+  - **M1 — `storageDrift.skipped` dropped from the SKIPPED roll-up** (while `storageDrift.failed` was counted).
+    Extracted both roll-ups (`run.ts`) into single source-of-truth consts so the metric + log can't diverge
+    again (that divergence WAS M1), and added the missing terms incl. `deletions.failed` → CONVERGE_FAILED
+    (which finishDeletions' own comments promised was alarmed but wasn't).
+  - **M2 — security `privilege_attempt` metric double-counted with no audit ledger.** The retry-dedup lived
+    inside the audit block but the metric ran unconditionally after. Now the metric fires only when a NEW audit
+    row is created; an absent ledger fails loud (`unavailableError`) — the method can't honor its
+    idempotent+auditable contract without one (production always wires it). (`workspace-service.ts`.)
+  - **M3 — timeline activity-dedup used a string compare while the sort used instant compare**, fabricating a
+    spurious duplicate "activity" event when `createdAt`/`lastActivity` are the same instant in different
+    CloudTrail surface forms. Now dedups by parsed instant. (`observability/timeline.ts`.)
+  - **L1** `tuningCount` parser for `EDD_CONVERGE_BUDGET` (a count, was parsed as ms). **L3** corrected the
+    `createDynamoClient` doc (`DYNAMODB_ENDPOINT` is the only coordinate; it must NOT default to the sim when
+    unset). **L4** fail-loud/early-return hardening: EMF sink throws on an unparseable clock timestamp (else
+    `Timestamp: null` is silently dropped); CloudTrail `recent(≤0)` returns `[]` not an invalid `MaxResults: 0`.
+  - **6 new property/fuzz files** (now 20): `iam-requirements` (fail-closed: a missing decision is a deny),
+    `base-image-catalog`, `config-sync`, `health`, `stats` (conservation), `topology` (unmatched node →
+    `unknown`, never fabricated `ok`).
+  - **NOT a bug — M4 false positive:** the scheduler-recurrence test's `ActionAfterCompletion: "DELETE"` is
+    correct/intentional — `DELETE` reaps a schedule only after it _completes_, and a recurring `rate()` with no
+    end date never completes, so real AWS keeps it (the test proves the recurring schedule survives the
+    more-aggressive setting). Left unchanged.
 
 - **Second bug / spec-fidelity / fuzz sweep (2026-06-21) — 5-agent audit of the under-covered + newest
   surfaces, all fixed.** A read-only multi-agent audit (editor-proxy/custom-server, pure-core fuzz gaps,

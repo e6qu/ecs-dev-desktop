@@ -232,6 +232,24 @@ test("admin costs page prices fleet spend per session and per user", async ({
   // …and erin is rolled up in the per-user view.
   await expect(page.locator(sel(TESTID.costUserRow, { "data-owner": "erin" }))).toBeVisible();
 
+  // Each row renders a proportional spend bar scaled to the most-expensive line in
+  // its list (width = totalUsd / maxUsd). erin's session row carries one, with a
+  // rounded width percent in [0, 100]. We assert the percent, never absolute
+  // dollars — the dollar figure grows with elapsed run time (AGENTS.md §6.10).
+  // (Other specs share the fleet, so erin's row is not guaranteed to be the max;
+  // the most-expensive session row, whichever it is, fills the bar at 100% below.)
+  const sessionBar = row.locator(sel(TESTID.costBar));
+  await expect(sessionBar).toBeVisible();
+  const pct = Number(await sessionBar.getAttribute("data-pct"));
+  expect(Number.isInteger(pct)).toBeTruthy();
+  expect(pct).toBeGreaterThanOrEqual(0);
+  expect(pct).toBeLessThanOrEqual(100);
+
+  // The single most-expensive session (the list max) fills its bar exactly.
+  await expect(
+    page.locator(sel(TESTID.costSessionRow)).first().locator(sel(TESTID.costBar)),
+  ).toHaveAttribute("data-pct", "100");
+
   // The time-window selector defaults to "All time" and scopes the report when
   // changed. The session was created just now, so it stays inside the 24h window.
   await expect(page.locator(sel(TESTID.costWindow, { "data-window": "all" }))).toHaveAttribute(

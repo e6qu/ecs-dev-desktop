@@ -164,6 +164,10 @@ export interface ProvisioningResult {
 export interface RecoveryResult {
   scanned: number;
   acted: number;
+  /** Acted-on workspace whose write was rejected by a benign version-conflict race
+   * (another process/wake already converged it) — skipped, not failed. */
+  skipped: number;
+  /** One operation THREW (genuine, non-conflict error); isolated, counted, retried. */
   failed: number;
 }
 
@@ -351,14 +355,16 @@ export class Reconciler {
   async finishDeletions(): Promise<RecoveryResult> {
     const deleting = await this.deps.service.listDeleting();
     let acted = 0;
+    let skipped = 0;
     let failed = 0;
     for (const ws of deleting.slice(0, this.convergeBudget)) {
       try {
+        // A non-ok Result is a benign version-conflict race (another pass converged it) —
+        // skipped, not failed. A genuine (non-conflict) error throws and is counted as a
+        // failure (isolated + retried next sweep rather than aborting the tick).
         if ((await this.deps.service.finishDeleting(ws.id)).ok) acted += 1;
-        else failed += 1;
+        else skipped += 1;
       } catch (err) {
-        // A genuine (non-version-conflict) error throws; isolate + retry next sweep
-        // rather than aborting every other workspace's convergence this tick.
         failed += 1;
         this.deps.logger?.warn("finish-deletions: finishDeleting threw for one workspace", {
           workspaceId: ws.id,
@@ -366,7 +372,7 @@ export class Reconciler {
         });
       }
     }
-    return { scanned: deleting.length, acted, failed };
+    return { scanned: deleting.length, acted, skipped, failed };
   }
 
   /**
@@ -377,11 +383,15 @@ export class Reconciler {
   async recoverErrors(): Promise<RecoveryResult> {
     const recoverable = await this.deps.service.listRecoverableErrors();
     let acted = 0;
+    let skipped = 0;
     let failed = 0;
     for (const ws of recoverable.slice(0, this.convergeBudget)) {
       try {
+        // A non-ok Result is a benign race (another process/wake already moved this
+        // `error` record on) — skipped, NOT failed; only a thrown error is a failure.
+        // Counting the race as failed would feed a false CONVERGE_FAILED alarm.
         if ((await this.deps.service.recoverError(ws.id)).ok) acted += 1;
-        else failed += 1;
+        else skipped += 1;
       } catch (err) {
         failed += 1;
         this.deps.logger?.warn("recover-errors: recoverError threw for one workspace", {
@@ -390,7 +400,7 @@ export class Reconciler {
         });
       }
     }
-    return { scanned: recoverable.length, acted, failed };
+    return { scanned: recoverable.length, acted, skipped, failed };
   }
 
   /** Scale idle workspaces to zero (snapshot + tear down). A stop rejected by a

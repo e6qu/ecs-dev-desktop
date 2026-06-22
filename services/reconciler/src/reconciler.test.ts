@@ -610,17 +610,26 @@ describe("Reconciler.detectStorageDrift (reverse drift: manually-deleted snapsho
 
 describe("Reconciler.finishDeletions + recoverErrors (desired-state convergence)", () => {
   const ok = () => Promise.resolve({ ok: true as const, value: undefined });
-  const fail = () =>
+  const conflict = () =>
     Promise.resolve({ ok: false as const, error: { kind: "conflict" as const, reason: "x" } });
+  const throws = () => Promise.reject(new Error("genuine teardown error"));
 
-  it("finishes each deleting tombstone, counting failures and retrying next sweep", async () => {
+  it("finishes deleting tombstones: conflict race is skipped, a genuine throw is failed", async () => {
+    // A non-ok Result is a benign version-conflict race (another pass converged it) → skipped,
+    // NOT failed — counting it as failed would raise a false CONVERGE_FAILED alarm. Only a
+    // thrown (genuine) error is a failure that's retried next sweep.
     const finished: string[] = [];
     const reconciler = new Reconciler({
       service: fakeService({
         listDeleting: () =>
-          Promise.resolve([{ id: workspaceId("ws-a") }, { id: workspaceId("ws-b") }]),
+          Promise.resolve([
+            { id: workspaceId("ws-a") },
+            { id: workspaceId("ws-conflict") },
+            { id: workspaceId("ws-throw") },
+          ]),
         finishDeleting: (id) => {
-          if (id === workspaceId("ws-b")) return fail();
+          if (id === workspaceId("ws-conflict")) return conflict();
+          if (id === workspaceId("ws-throw")) return throws();
           finished.push(id);
           return ok();
         },
@@ -628,16 +637,23 @@ describe("Reconciler.finishDeletions + recoverErrors (desired-state convergence)
       storage: await emptyStorage(),
       clock: fixedClock("2026-06-01T02:00:00.000Z"),
     });
-    expect(await reconciler.finishDeletions()).toEqual({ scanned: 2, acted: 1, failed: 1 });
+    expect(await reconciler.finishDeletions()).toEqual({
+      scanned: 3,
+      acted: 1,
+      skipped: 1,
+      failed: 1,
+    });
     expect(finished).toEqual([workspaceId("ws-a")]);
   });
 
-  it("recovers each recoverable error workspace forward to stopped", async () => {
+  it("recovers error workspaces: a conflict race is skipped, not a false failure", async () => {
     const recovered: string[] = [];
     const reconciler = new Reconciler({
       service: fakeService({
-        listRecoverableErrors: () => Promise.resolve([{ id: workspaceId("ws-err") }]),
+        listRecoverableErrors: () =>
+          Promise.resolve([{ id: workspaceId("ws-err") }, { id: workspaceId("ws-raced") }]),
         recoverError: (id) => {
+          if (id === workspaceId("ws-raced")) return conflict();
           recovered.push(id);
           return ok();
         },
@@ -645,7 +661,13 @@ describe("Reconciler.finishDeletions + recoverErrors (desired-state convergence)
       storage: await emptyStorage(),
       clock: fixedClock("2026-06-01T02:00:00.000Z"),
     });
-    expect(await reconciler.recoverErrors()).toEqual({ scanned: 1, acted: 1, failed: 0 });
+    // The raced workspace must NOT count as failed (no false converge-failed alarm).
+    expect(await reconciler.recoverErrors()).toEqual({
+      scanned: 2,
+      acted: 1,
+      skipped: 1,
+      failed: 0,
+    });
     expect(recovered).toEqual([workspaceId("ws-err")]);
   });
 
@@ -657,7 +679,12 @@ describe("Reconciler.finishDeletions + recoverErrors (desired-state convergence)
       clock: fixedClock("2026-06-01T02:00:00.000Z"),
       convergeBudget: 2,
     });
-    expect(await reconciler.finishDeletions()).toEqual({ scanned: 5, acted: 2, failed: 0 });
+    expect(await reconciler.finishDeletions()).toEqual({
+      scanned: 5,
+      acted: 2,
+      skipped: 0,
+      failed: 0,
+    });
   });
 });
 

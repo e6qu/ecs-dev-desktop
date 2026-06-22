@@ -34,6 +34,9 @@ export class CloudTrailAuditSource implements AuditSource {
 
   async recent(limit?: number): Promise<AuditEvent[]> {
     const max = limit ?? DEFAULT_AUDIT_FEED_LIMIT;
+    // Asking for ≤0 events is empty by definition — return early, never send the page
+    // request with `MaxResults: 0` (AWS LookupEvents floors MaxResults at 1 and rejects 0).
+    if (max <= 0) return [];
     const events: AuditEvent[] = [];
     // LookupEvents returns at most 50 events per page; follow NextToken until we
     // have `max` mapped events (or run out). Without this the feed silently
