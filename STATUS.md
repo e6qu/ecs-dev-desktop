@@ -2,9 +2,36 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-21 (moved two e2e-aws-only proofs onto the sim — a CloudWatch-Metrics EMF→metric-extraction integ (closes Phase 8C "Metrics on real AWS") and a recurring `rate()`-schedule firing integ proving the production reconciler cron model re-arms + fires, not just the one-shot `at()` (Phase 5). Both validated against the live sockerless sim; no AWS account needed, no upstream slice required)
+**Last updated:** 2026-06-22 (migrated the integration tier's DynamoDB from DynamoDB Local to the sockerless sim — fixes the `concurrency-pairs` CAS-isolation flake at its root; surfaced + got fixed 7 sim conformance bugs upstream (DynamoDB #641-#644/#648 + CloudTrail #650/#651) + filed an architecture issue #652; e2e tier stays on DynamoDB Local as a follow-up)
 
-## Active — Two e2e-aws-only proofs moved onto the sim (CloudWatch Metrics + recurring cron)
+## Active — Integration tier's DynamoDB migrated to the sockerless sim
+
+The integration tier now runs against the **sim's own DynamoDB** (endpoint-only, `DYNAMODB_ENDPOINT` →
+`:4566`) instead of the standalone **DynamoDB Local** container. This closes the long-standing
+`concurrency-pairs.integ.ts` "delete vs wake" flake at its root: DynamoDB Local's weaker conditional-write
+isolation could rarely let two `version == V` CAS writes both commit, whereas the sim's single global-mutex
+item store serializes them — so the test is now deterministic. Per the user's "use sockerless, don't work
+around" directive, getting here meant filing + getting fixed **7 sim conformance bugs** upstream (each with
+a minimal AWS-CLI/SDK repro + AWS-spec citation + a `simulators/aws/*.go` code pointer):
+
+- **DynamoDB:** #641 (TransactWriteItems dropped the `Update` action), #642 (TransactionCanceledException
+  omitted `CancellationReasons`), #643/#648 (SET RHS evaluator stored `null` for the parenthesized
+  `if_not_exists` arithmetic ElectroDB emits), #644 (DeleteTable didn't purge items). Fixed in sockerless
+  #646/#649.
+- **CloudTrail:** #650 (sim self-generated phantom `ListBuckets` from a bare `GET /` healthcheck), #651
+  (`LookupEvents` returned DynamoDB data-plane ops — AWS returns management events only). Fixed in #653 via
+  registration-time management-vs-data classification. Plus architecture issue **#652** (open) on the
+  recurring "silent incompleteness" failure mode.
+
+Mechanics (re-pinned to `0e46585e`): `DYNAMODB_ENDPOINT` set in the CI `integration` job +
+`scripts/test-integ.sh`; `dynamodb-local` removed from `docker-compose.tier2.yml` + the CI job;
+`observability-live` made isolation-robust (scoped `LookupEvents` instead of the shared capped audit feed);
+`@aws-sdk/client-cloudtrail` added to `apps/web`. Validated: full integ tier green against the new pin + sim
+DynamoDB (control-plane 52/52, db 5/5, web 130/130, storage-ec2 9/9, all adapters green). The container-mode
+**e2e tier stays on DynamoDB Local** (it hardcodes `host.docker.internal:8000`) — its migration is a
+follow-up.
+
+## Prior — Two e2e-aws-only proofs moved onto the sim (CloudWatch Metrics + recurring cron)
 
 Acting on the principle that a sim gap is a slice to implement, not a wall: two validations previously
 labelled "real AWS only" are now sim-proven against the live sockerless sim (the sim already had the needed

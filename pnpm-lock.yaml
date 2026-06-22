@@ -105,6 +105,9 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      '@aws-sdk/client-cloudtrail':
+        specifier: ^3.1073.0
+        version: 3.1073.0
       '@aws-sdk/client-cloudwatch-logs':
         specifier: ^3.1073.0
         version: 3.1073.0

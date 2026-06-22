@@ -5,17 +5,17 @@
 #
 # `sockerless-aws` is built FROM SOURCE from the pinned `third_party/sockerless`
 # submodule (no published release — see WHAT_WE_DID.md). It runs with
-# SIM_RUNTIME=process so the AWS API surface (EC2/EBS lifecycle, etc.) serves
-# without a container runtime; real container execution would additionally need a
-# runtime + sockerless #333.
+# SIM_RUNTIME=process so the AWS API surface (EC2/EBS lifecycle, DynamoDB, etc.)
+# serves without a container runtime; real container execution would additionally
+# need a runtime + sockerless #333.
+#
+# DynamoDB is served BY THE SIM in this tier (the integ run sets DYNAMODB_ENDPOINT to
+# the sim at :4566); the standalone DynamoDB-Local container was retired here once the
+# sim's DynamoDB became conformant (sockerless #641/#642/#643/#644/#648 + the CloudTrail
+# #650/#651 fixes). The container-mode e2e tier (docker-compose.e2e.yml) still uses
+# DynamoDB Local — migrating it is a separate follow-up.
 
 services:
-  dynamodb-local:
-    image: amazon/dynamodb-local:latest
-    command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
-    ports:
-      - "8000:8000"
-
   sockerless-aws:
     build:
       # Upstream Dockerfile, shared simulators/ context (fixed by sockerless #370).
