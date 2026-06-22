@@ -15,7 +15,7 @@ import {
  * then exercised through the running app over this table.
  */
 const TABLE = process.env.DYNAMODB_TABLE ?? "ecs-dev-desktop-pw";
-const ENDPOINT = process.env.DYNAMODB_ENDPOINT ?? "http://127.0.0.1:8000";
+const ENDPOINT = process.env.DYNAMODB_ENDPOINT ?? "http://127.0.0.1:4566";
 
 const client = new DynamoDBClient({
   region: process.env.AWS_REGION ?? "us-east-1",

@@ -210,7 +210,9 @@ describe(
               essential: true,
               environment: [
                 { name: "AWS_ENDPOINT_URL", value: "http://host.docker.internal:4566" },
-                { name: "DYNAMODB_ENDPOINT", value: "http://host.docker.internal:8000" },
+                // DynamoDB is served by the sim (same endpoint as the rest of AWS); the
+                // standalone DynamoDB-Local container was retired from this tier.
+                { name: "DYNAMODB_ENDPOINT", value: "http://host.docker.internal:4566" },
                 { name: "AWS_REGION", value: DEFAULT_AWS_REGION },
                 { name: "AWS_ACCESS_KEY_ID", value: "test" },
                 { name: "AWS_SECRET_ACCESS_KEY", value: "test" },

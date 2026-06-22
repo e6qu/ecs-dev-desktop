@@ -5,14 +5,11 @@
 # socket mounted + --privileged. Consumed endpoint-only (AGENTS.md §6.8).
 #
 # Built from the pinned third_party/sockerless submodule (same image as Tier-2).
+#
+# DynamoDB is served by the sim (the container-mode `sockerless-aws-exec` at :4566, same
+# AWS surface as Tier-2); the standalone DynamoDB-Local container was retired from CI.
 
 services:
-  dynamodb-local:
-    image: amazon/dynamodb-local:latest
-    command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
-    ports:
-      - "8000:8000"
-
   sockerless-aws-exec:
     # Named so it can be run prebuilt (`up --no-build`) from a pulled image — the
     # macOS CI job pulls this from GHCR instead of building it under colima (slow).

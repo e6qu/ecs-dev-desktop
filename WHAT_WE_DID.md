@@ -2322,3 +2322,36 @@ The migration (this PR), re-pinned to `0e46585e`:
 - **e2e tier still on DynamoDB Local** (`docker-compose.e2e.yml`): the container-mode e2e hardcodes
   `host.docker.internal:8000` for in-container DynamoDB access, so its migration is a separate follow-up
   (recorded in `DO_NEXT.md`).
+
+### 2026-06-22 — Retired DynamoDB Local from all CI + re-pinned the sim (#654/#655, closing arch issue #652)
+
+Two things in one PR (user-requested "1 and 2"):
+
+**(1) Re-pinned the sim `0e46585e → 5fb1341a`**, adopting sockerless **#654** (DynamoDB fail-loud expressions
+
+- spec-derived required-field validation) and **#655** (differential testing vs DynamoDB Local + CloudWatch
+  fail-loud). These were the last two levers of the architecture meta-issue **#652** (the "silent
+  incompleteness" failure mode I filed) — so #655 **closed #652**: all five prevention levers (spec as source
+  of truth, fail-loud-by-default, closed types + real parsers, modelled cross-cutting concerns, differential
+  testing) are now in place upstream. Re-validated the full integ tier (25/25) against the new pin — the new
+  fail-loud + required-field validation surfaced **no new gaps** in surfaces our code uses (clean adoption).
+
+**(2) Retired DynamoDB Local from ALL of CI.** The integration tier was migrated last PR; this finishes the
+job — **e2e** (the container-mode sim already serves DynamoDB) and **playwright** (which now builds + runs
+the process-mode sim) both moved onto the sim. `@edd/config` `dynamodb.endpoint` now **defaults to the sim**
+(`:4566`), so the per-tier `DYNAMODB_ENDPOINT` overrides (CI integration job, `test-integ.sh`) were removed
+— one source of truth. The `amazon/dynamodb-local` container is gone from `docker-compose.tier2.yml` +
+`docker-compose.e2e.yml` and the integration/e2e/playwright CI jobs. Container-side endpoints updated:
+`reconciler-container.e2e.ts` and the playwright config/global-setup now point at the sim (`:4566` /
+`host.docker.internal:4566`). The playwright job gained `submodules: recursive` + a sim build (it had no sim
+before — the cost of fully retiring DynamoDB Local there, validated 18/18 locally).
+
+**The one deliberate exception: the local `pnpm dev` loop keeps DynamoDB Local** (`docker-compose.dev.yml`
+
+- `dev.sh` pin `:8000`). The CAS-isolation flake DynamoDB Local can hit only matters under CI concurrency,
+  not a single-user dev loop, and forcing a sockerless sim build on every `pnpm dev` is a real inner-loop
+  regression. It's overridable to the sim (`DYNAMODB_ENDPOINT=…:4566` + `EDD_DEV_PROFILES=aws`).
+
+Verified: integ 25/25 (via config default, no env override), portal Playwright 18/18 vs the sim's DynamoDB
+locally (incl. the live-DynamoDB health board), build / lint (19) / unit (33) / knip / shellcheck /
+actionlint / `pnpm outdated` clean. The container-mode e2e + e2e-https tiers validate in CI.

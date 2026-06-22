@@ -4,9 +4,9 @@ import { AWS_SDK_MAX_ATTEMPTS, AWS_SDK_RETRY_MODE, DEFAULT_AWS_REGION } from "@e
 
 /**
  * Build a DynamoDB client. When `DYNAMODB_ENDPOINT` is set (the sockerless sim in
- * the Tier-2 integration harness; DynamoDB Local still in the container-mode e2e
- * tier) it points there with dummy credentials; otherwise it uses the ambient AWS
- * environment (real DynamoDB).
+ * all test tiers — the default; or DynamoDB Local for the fast `pnpm dev` loop) it
+ * points there with dummy credentials; otherwise it uses the ambient AWS environment
+ * (real DynamoDB).
  *
  * Uses the platform's standard retry policy (adaptive, 6 attempts) — this is the
  * highest-traffic, most-contended client (every optimistic-concurrency write and

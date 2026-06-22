@@ -14,7 +14,7 @@ const IS_CI = process.env.CI === "true" || process.env.CI === "1";
 const appEnv = {
   EDD_DEV_AUTH: "1",
   AUTH_SECRET: "playwright-dev-secret",
-  DYNAMODB_ENDPOINT: process.env.DYNAMODB_ENDPOINT ?? "http://127.0.0.1:8000",
+  DYNAMODB_ENDPOINT: process.env.DYNAMODB_ENDPOINT ?? "http://127.0.0.1:4566",
   DYNAMODB_TABLE: process.env.DYNAMODB_TABLE ?? "ecs-dev-desktop-pw",
 };
 // global-setup runs in this process and reads these.

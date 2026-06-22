@@ -2,9 +2,31 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-22 (migrated the integration tier's DynamoDB from DynamoDB Local to the sockerless sim — fixes the `concurrency-pairs` CAS-isolation flake at its root; surfaced + got fixed 7 sim conformance bugs upstream (DynamoDB #641-#644/#648 + CloudTrail #650/#651) + filed an architecture issue #652; e2e tier stays on DynamoDB Local as a follow-up)
+**Last updated:** 2026-06-22 (retired DynamoDB Local from ALL of CI — e2e + playwright now also run on the sim's DynamoDB; `@edd/config` `dynamodb.endpoint` defaults to the sim; re-pinned the sim to `5fb1341a` adopting sockerless #654/#655 (fail-loud + differential testing, which closed architecture issue #652); only the local `pnpm dev` loop keeps DynamoDB Local)
 
-## Active — Integration tier's DynamoDB migrated to the sockerless sim
+## Active — DynamoDB Local retired from all CI; sim re-pinned to #655
+
+Completed the DynamoDB-Local retirement that the integration-tier migration started. Now **every CI tier
+runs against the sockerless sim's DynamoDB**: the **e2e** tier (the container-mode sim already serves it)
+and **playwright** (which now brings up the process-mode sim) joined the already-migrated **integration**
+tier. `@edd/config` `dynamodb.endpoint` now **defaults to the sim** (`:4566`); the `amazon/dynamodb-local`
+container is gone from `tier2` + `e2e` compose and all three CI jobs. The only remaining DynamoDB-Local
+consumer is the local `pnpm dev` loop (it pins `:8000` for instant startup — the CAS flake only bites under
+CI concurrency, and forcing a sim build on every dev loop is a real regression; overridable to the sim).
+
+Also re-pinned the sim `0e46585e → 5fb1341a`, adopting sockerless **#654** (DynamoDB fail-loud expressions
+
+- spec-derived required-field validation) and **#655** (differential testing vs DynamoDB Local + CloudWatch
+  fail-loud) — which together **closed the architecture meta-issue #652** (all five "silent incompleteness"
+  prevention levers landed). The new fail-loud + required-field validation surfaced **no new gaps** in
+  surfaces our code uses — clean adoption.
+
+Validated: full integ tier 25/25 against the new pin + sim DynamoDB (via the config default, no env
+override); portal **Playwright 18/18** against the sim's DynamoDB locally (incl. the live-DynamoDB health
+board); build / lint (19) / unit (33) / knip / shellcheck / actionlint clean. The e2e tier (container-mode,
+CI-only) validates in CI.
+
+## Prior — Integration tier's DynamoDB migrated to the sockerless sim
 
 The integration tier now runs against the **sim's own DynamoDB** (endpoint-only, `DYNAMODB_ENDPOINT` →
 `:4566`) instead of the standalone **DynamoDB Local** container. This closes the long-standing

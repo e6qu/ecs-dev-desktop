@@ -47,15 +47,13 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **Migrate the e2e tier's DynamoDB to the sim too (follow-up, 2026-06-22).** The **integration** tier was
-  migrated off DynamoDB Local onto the sim's DynamoDB (see `STATUS.md`/`BUGS.md` — fixes the
-  `concurrency-pairs` flake; sockerless DynamoDB + CloudTrail are now conformant). The **container-mode e2e
-  tier** still uses DynamoDB Local (`docker-compose.e2e.yml`): the reconciler/golden containers hardcode
-  `host.docker.internal:8000` for in-container DynamoDB access (e.g. `reconciler-container.e2e.ts`,
-  `live-ecs-app.ts`). Migrating it means pointing those at the sim (`:4566`) + dropping the e2e
-  `dynamodb-local` service, then re-validating the (heavy, CI-only) container-mode e2e suite. Not started —
-  it's lower-value (no flake there) and needs the e2e harness validated, which is a CI-only loop. Once done,
-  DynamoDB Local is fully retired and `@edd/config` `dynamodb.endpoint` can default to the sim.
+- **DynamoDB Local retired from all CI — DONE (2026-06-22).** The integration (#148), **e2e**, and
+  **playwright** tiers all run on the sim's DynamoDB now; `@edd/config` `dynamodb.endpoint` defaults to the
+  sim; `amazon/dynamodb-local` is gone from `tier2`/`e2e` compose + every CI job (see `STATUS.md`/`BUGS.md`).
+  The **only** remaining DynamoDB-Local consumer is the local `pnpm dev` loop — kept deliberately for instant
+  startup (the CAS flake only bites under CI concurrency), overridable to the sim. A future cleanup could
+  migrate the dev loop too (make the sim part of the default dev substrate) to delete DynamoDB Local
+  entirely, but it trades dev inner-loop speed for one fewer image — low priority.
 
 - **Moved two e2e-aws-only proofs onto the sim — DONE (2026-06-21).** Acting on the reframe that a sim gap
   is a slice to implement (not a real-AWS wall): **CloudWatch Metrics EMF→metric extraction** is now
