@@ -23,6 +23,11 @@ docker compose -f docker-compose.dev.yml $profiles up -d --wait
 # inner loop, but set EDD_DEV_AUTH=0 to exercise the real OIDC login (e.g. with the
 # github/entra tiers). COMPUTE_PROVIDER / AWS_ENDPOINT_URL / AUTH_GITHUB_* pass
 # through from the caller's env (the tiers — see docs/running-locally.md).
+# The fast dev loop pins DynamoDB Local (:8000, instant startup), overriding the
+# default `dynamodb.endpoint` (the sim at :4566 — used by all of CI). The CAS-isolation
+# flake DynamoDB Local can hit only matters under CI concurrency, not the single-user
+# dev loop; set DYNAMODB_ENDPOINT=http://127.0.0.1:4566 + `EDD_DEV_PROFILES=aws` to use
+# the sim's DynamoDB here too.
 export DYNAMODB_ENDPOINT="${DYNAMODB_ENDPOINT:-http://127.0.0.1:8000}"
 export EDD_DEV_AUTH="${EDD_DEV_AUTH:-1}"
 

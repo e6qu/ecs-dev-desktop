@@ -146,18 +146,25 @@ old STATIC-gate "tokenless behind the gate" framing (see _Resolved (repo)_).
   - **CloudTrail (#653):** **#650** the sim self-generated phantom `ListBuckets` events (a bare `GET /`
     healthcheck recorded as an API call); **#651** `LookupEvents` returned DynamoDB **data**-plane ops
     (PutItem/GetItem/Query), but AWS only returns **management** events there. Fixed by registration-time
-    management-vs-data classification (also informed the architecture issue **#652**, open).
+    management-vs-data classification.
+  - **Architecture (#652) — CLOSED by sockerless #655.** The meta-issue on the "silent incompleteness"
+    failure mode (succeed-with-wrong-result instead of compute-or-fail-loud) was fully addressed: all five
+    proposed prevention levers landed across #653/#654/#655 (spec as source of truth + required-field
+    validation; fail-loud-by-default for DynamoDB expressions + CloudWatch; closed types + real parsers;
+    modelled CloudTrail event classification; differential testing vs DynamoDB Local).
   - The maintainer also confirmed the principle: the sim must be conformant via **all** official access
     methods (CLI, SDK, Terraform providers, the official API/spec), not some.
 
-  **Migration done (this PR):** the integration tier now targets the sim's DynamoDB (`DYNAMODB_ENDPOINT` set
-  in the CI `integration` job + `scripts/test-integ.sh`; `dynamodb-local` removed from `docker-compose.tier2.yml`
-  - the CI job). The full integ tier passes against the new pin + sim DynamoDB (control-plane 52/52 incl.
-    `concurrency-pairs` now deterministic, db 5/5, web 130/130, storage-ec2 9/9, compute-ecs/cloudtrail/
-    cloudwatch all green). `observability-live` was made isolation-robust (verifies its events via a
-    server-side EventName-scoped `LookupEvents` instead of the shared, capped audit feed). **The container-mode
-    e2e tier still uses DynamoDB Local** (`docker-compose.e2e.yml`) — migrating it (it hardcodes
-    `host.docker.internal:8000` for in-container access) is a separate follow-up (`DO_NEXT.md`).
+  **Migration DONE — DynamoDB Local retired from all CI (merged #148 + this PR).** #148 migrated the
+  integration tier; this PR finished it: **e2e** (the container-mode sim already serves DynamoDB) and
+  **playwright** (now brings up the process-mode sim) both run on the sim too, and `@edd/config`
+  `dynamodb.endpoint` now **defaults to the sim** (`:4566`) — the per-tier `DYNAMODB_ENDPOINT` overrides were
+  removed, and `amazon/dynamodb-local` is gone from `tier2`/`e2e` compose + all three CI jobs. Re-pinned to
+  `5fb1341a` (#654/#655). `observability-live` is isolation-robust (server-side EventName-scoped
+  `LookupEvents` instead of the shared, capped audit feed). Validated: full integ 25/25 (via config default),
+  portal Playwright 18/18 vs the sim locally; e2e validates in CI. **The only remaining DynamoDB-Local
+  consumer is the local `pnpm dev` loop** (pins `:8000` for instant startup; the CAS flake only bites under
+  CI concurrency) — overridable to the sim, kept deliberately for inner-loop speed.
 
 - **sockerless#629/#630 (fixed upstream — confirmed downstream 2026-06-20)** — two GC-safety
   filter/ordering gaps found in a deeper fidelity pass that adversarially probed the AWS call shapes our
