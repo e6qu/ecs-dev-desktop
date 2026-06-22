@@ -91,10 +91,16 @@ test("OpenVSCode workspace: load the workbench, compile from the terminal, verif
     }
   };
 
-  await page.locator(".xterm-screen").first().click();
   await page.waitForTimeout(2_500);
   let built = false;
-  for (let attempt = 0; attempt < 4 && !built; attempt++) {
+  for (let attempt = 0; attempt < 6 && !built; attempt++) {
+    // Re-establish terminal focus BEFORE each burst. Clicking the xterm screen once up
+    // front isn't enough: focus can drift to another workbench part (the bundled chat
+    // panel / a webview) between attempts, so the keystrokes land nowhere and every retry
+    // is a silent no-op — the failure mode behind a rare "no artifact after all retries"
+    // flake. Re-clicking each attempt reclaims focus so a retry can actually land.
+    await page.locator(".xterm-screen").first().click();
+    await page.waitForTimeout(500);
     await page.keyboard.press("Enter"); // prime a clean prompt
     await page.waitForTimeout(800);
     await page.keyboard.type(BUILD_COMMAND, { delay: 25 });

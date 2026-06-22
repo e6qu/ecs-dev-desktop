@@ -364,6 +364,16 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **VS Code workspace proof (`vscode-workspace.pwvscode.ts`) keyboard-focus flake — hardened (2026-06-22).**
+  The container-mode e2e tier's keyboard-driven OpenVSCode terminal proof failed once in CI ("keyboard-driven
+  VS Code terminal never produced the build artifact" — the `mkdir ~/proof` keystrokes never landed across all
+  retries; confirmed a non-deterministic flake: a re-run of the identical commit passed). Root cause: the test
+  clicked the xterm screen ONCE before the 4-attempt retry loop, so if terminal focus drifted to another
+  workbench part (the bundled chat panel / a webview) the keystrokes landed nowhere and EVERY retry was a
+  silent no-op. Fixed by re-establishing terminal focus (re-clicking the xterm screen) at the start of each
+  attempt and bumping the retries 4→6. Unrelated to the #150 changes; folded in per the standing
+  fix-flakiness-in-the-open-PR rule. (CI-only validatable — the proof needs the golden image + browser.)
+
 - **Third bug / spec-fidelity / fuzz sweep (2026-06-22) — parallel audit of the newest surfaces, all
   confirmed findings fixed.** Alongside the IAM-enforcement + cost-visualization threads:
   - **H1 (HIGH) — false `METRIC_RECONCILER_CONVERGE_FAILED` alarm.** `recoverErrors`/`finishDeletions` counted
