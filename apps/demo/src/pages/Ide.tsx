@@ -2,8 +2,9 @@
 import { useState, type JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 
+import { AgentPanel } from "../components/AgentPanel";
 import { DemoEditor } from "../components/DemoEditor";
-import { EDITOR_LABELS } from "../lib/demo-types";
+import { AGENT_LABELS, EDITOR_LABELS } from "../lib/demo-types";
 import { filesFor, saveFile, type WorkspaceFiles } from "../lib/ide-files";
 // Side-effect: bundle + configure Monaco. Imported here (not in main) so it lands in the
 // lazy-loaded IDE chunk — the other pages don't pay Monaco's ~4 MB.
@@ -35,6 +36,7 @@ export function Ide(): JSX.Element {
   };
 
   const editor = cp.editorFor(ws.id);
+  const agent = cp.agentFor(ws.id);
 
   return (
     <section className="demo-page">
@@ -46,14 +48,17 @@ export function Ide(): JSX.Element {
           <code>{ws.id}</code>
         </h2>
         <span className="meta">
-          {ws.baseImage} · {EDITOR_LABELS[editor]}
+          {ws.baseImage} · {EDITOR_LABELS[editor]} · {AGENT_LABELS[agent]}
         </span>
       </div>
       <DemoEditor files={files} onSave={onSave} variant={editor} />
+      <AgentPanel agent={agent} fileNames={Object.keys(files)} />
       <p className="demo-fine">
         {editor === "openvscode"
-          ? "OpenVSCode — the full IDE. In production this environment runs OpenVSCode Server; this static demo previews the workbench over a real Monaco engine. Edits persist locally (cleared on reset)."
-          : "Monaco — the lightweight first-party editor (real, bundled). Edits persist locally (cleared on reset)."}
+          ? "OpenVSCode — the full IDE (the static demo previews the workbench over a real Monaco engine)."
+          : "Monaco — the lightweight first-party editor (real, bundled)."}{" "}
+        The agent panel runs a scripted {AGENT_LABELS[agent]} session; everything persists locally
+        and is cleared on reset.
       </p>
     </section>
   );

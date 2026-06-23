@@ -37,7 +37,7 @@ import {
   type WorkspaceAction,
 } from "@edd/core";
 
-import type { DemoState, DemoUser, EditorKind } from "./demo-types";
+import type { AgentKind, DemoState, DemoUser, EditorKind } from "./demo-types";
 import { DEMO_PRICING, DEMO_SIZING } from "./demo-pricing";
 import { clearState, loadState, saveState, stateSizeBytes } from "./persistence";
 import { buildSeed } from "./seed";
@@ -193,8 +193,17 @@ export class DemoControlPlane {
     return this.state.editors[workspaceId] ?? "openvscode";
   }
 
+  /** The coding agent an environment runs (defaults to Claude Code). */
+  agentFor(workspaceId: string): AgentKind {
+    return this.state.agents[workspaceId] ?? "claude-code";
+  }
+
   // ── lifecycle (real @edd/core transitions) ──
-  create(image: BaseImage, editor: EditorKind = "openvscode"): void {
+  create(
+    image: BaseImage,
+    editor: EditorKind = "openvscode",
+    agent: AgentKind = "claude-code",
+  ): void {
     const owner = this.currentUser();
     const at = this.now();
     const id = newWorkspaceId();
@@ -210,7 +219,14 @@ export class DemoControlPlane {
       ...this.state,
       workspaces: [...this.state.workspaces, ws],
       editors: { ...this.state.editors, [id]: editor },
-      audit: this.withEvent(at, owner.email, "session.create", id, `created ${image} (${editor})`),
+      agents: { ...this.state.agents, [id]: agent },
+      audit: this.withEvent(
+        at,
+        owner.email,
+        "session.create",
+        id,
+        `created ${image} (${editor}/${agent})`,
+      ),
     });
   }
 
@@ -239,10 +255,12 @@ export class DemoControlPlane {
     const editors = Object.fromEntries(
       Object.entries(this.state.editors).filter(([k]) => k !== id),
     );
+    const agents = Object.fromEntries(Object.entries(this.state.agents).filter(([k]) => k !== id));
     this.commit({
       ...this.state,
       workspaces: this.state.workspaces.filter((w) => w.id !== id),
       editors,
+      agents,
       audit: this.withEvent(at, owner.email, "session.delete", id, "workspace deleted"),
     });
   }

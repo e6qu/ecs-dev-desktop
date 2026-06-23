@@ -48,4 +48,12 @@ describe("buildSeed", () => {
     expect(kinds.has("openvscode")).toBe(true);
     expect(kinds.has("monaco")).toBe(true);
   });
+
+  it("assigns every workspace an agent, with both kinds represented", () => {
+    const s = buildSeed();
+    for (const w of s.workspaces) expect(s.agents[w.id]).toBeDefined();
+    const kinds = new Set(s.workspaces.map((w) => s.agents[w.id]));
+    expect(kinds.has("claude-code")).toBe(true);
+    expect(kinds.has("codex")).toBe(true);
+  });
 });

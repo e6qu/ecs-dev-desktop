@@ -24,7 +24,7 @@ import {
   type Workspace,
 } from "@edd/core";
 
-import type { DemoState, DemoUser, EditorKind } from "./demo-types";
+import type { AgentKind, DemoState, DemoUser, EditorKind } from "./demo-types";
 
 const DAY_MS = 86_400_000;
 const daysAgo = (d: number): IsoTimestamp =>
@@ -173,7 +173,7 @@ export function buildSeed(): DemoState {
   const milo = byRole("member");
   const vera = byRole("viewer");
 
-  type Spec = Parameters<typeof buildWorkspace>[0] & { editor: EditorKind };
+  type Spec = Parameters<typeof buildWorkspace>[0] & { editor: EditorKind; agent: AgentKind };
   const specs: Spec[] = [
     {
       owner: ada,
@@ -182,8 +182,17 @@ export function buildSeed(): DemoState {
       createdDaysAgo: 28,
       steps: ["stop", "wake"],
       editor: "openvscode",
+      agent: "claude-code",
     },
-    { owner: ada, image: img(3), index: 2, createdDaysAgo: 21, steps: [], editor: "monaco" },
+    {
+      owner: ada,
+      image: img(3),
+      index: 2,
+      createdDaysAgo: 21,
+      steps: [],
+      editor: "monaco",
+      agent: "codex",
+    },
     {
       owner: milo,
       image: img(1),
@@ -191,6 +200,7 @@ export function buildSeed(): DemoState {
       createdDaysAgo: 18,
       steps: ["stop"],
       editor: "openvscode",
+      agent: "claude-code",
     },
     {
       owner: milo,
@@ -199,16 +209,53 @@ export function buildSeed(): DemoState {
       createdDaysAgo: 14,
       steps: ["stop", "wake", "stop"],
       editor: "monaco",
+      agent: "codex",
     },
-    { owner: milo, image: img(5), index: 3, createdDaysAgo: 9, steps: [], editor: "openvscode" },
-    { owner: vera, image: img(4), index: 1, createdDaysAgo: 7, steps: ["fail"], editor: "monaco" },
-    { owner: vera, image: img(1), index: 2, createdDaysAgo: 4, steps: [], editor: "openvscode" },
-    { owner: ada, image: img(0), index: 3, createdDaysAgo: 2, steps: ["stop"], editor: "monaco" },
+    {
+      owner: milo,
+      image: img(5),
+      index: 3,
+      createdDaysAgo: 9,
+      steps: [],
+      editor: "openvscode",
+      agent: "claude-code",
+    },
+    {
+      owner: vera,
+      image: img(4),
+      index: 1,
+      createdDaysAgo: 7,
+      steps: ["fail"],
+      editor: "monaco",
+      agent: "claude-code",
+    },
+    {
+      owner: vera,
+      image: img(1),
+      index: 2,
+      createdDaysAgo: 4,
+      steps: [],
+      editor: "openvscode",
+      agent: "codex",
+    },
+    {
+      owner: ada,
+      image: img(0),
+      index: 3,
+      createdDaysAgo: 2,
+      steps: ["stop"],
+      editor: "monaco",
+      agent: "claude-code",
+    },
   ];
 
-  const built = specs.map((s) => ({ ...buildWorkspace(s), editor: s.editor }));
+  const built = specs.map((s) => ({ ...buildWorkspace(s), editor: s.editor, agent: s.agent }));
   const editors: Record<string, EditorKind> = {};
-  for (const b of built) editors[b.workspace.id] = b.editor;
+  const agents: Record<string, AgentKind> = {};
+  for (const b of built) {
+    editors[b.workspace.id] = b.editor;
+    agents[b.workspace.id] = b.agent;
+  }
 
   return {
     version: 1,
@@ -217,6 +264,7 @@ export function buildSeed(): DemoState {
     catalog,
     workspaces: built.map((b) => b.workspace),
     editors,
+    agents,
     audit: built.flatMap((b) => b.events).sort((a, b) => Date.parse(b.at) - Date.parse(a.at)),
   };
 }

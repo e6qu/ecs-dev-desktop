@@ -4,13 +4,14 @@ import { useNavigate } from "react-router-dom";
 
 import { baseImage } from "@edd/core";
 
-import { EDITOR_LABELS, type EditorKind } from "../lib/demo-types";
+import { AGENT_LABELS, EDITOR_LABELS, type AgentKind, type EditorKind } from "../lib/demo-types";
 import { useDemo } from "../lib/use-demo";
 
 export function Catalog(): JSX.Element {
   const cp = useDemo();
   const navigate = useNavigate();
   const [editor, setEditor] = useState<EditorKind>("openvscode");
+  const [agent, setAgent] = useState<AgentKind>("claude-code");
 
   return (
     <section className="demo-page">
@@ -28,6 +29,20 @@ export function Catalog(): JSX.Element {
           >
             <option value="openvscode">{EDITOR_LABELS.openvscode}</option>
             <option value="monaco">{EDITOR_LABELS.monaco}</option>
+          </select>
+        </label>
+        <label className="demo-user">
+          <span>agent</span>
+          <select
+            value={agent}
+            onChange={(e) => {
+              if (e.target.value === "claude-code" || e.target.value === "codex") {
+                setAgent(e.target.value);
+              }
+            }}
+          >
+            <option value="claude-code">{AGENT_LABELS["claude-code"]}</option>
+            <option value="codex">{AGENT_LABELS.codex}</option>
           </select>
         </label>
       </div>
@@ -54,7 +69,7 @@ export function Catalog(): JSX.Element {
               type="button"
               className="demo-primary"
               onClick={() => {
-                cp.create(baseImage(c.image), editor);
+                cp.create(baseImage(c.image), editor, agent);
                 void navigate("/");
               }}
             >
