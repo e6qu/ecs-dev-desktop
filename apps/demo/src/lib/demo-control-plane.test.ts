@@ -101,6 +101,30 @@ describe("DemoControlPlane", () => {
     expect(nodes.find((n) => n.id === "user")?.status).toBe("unknown"); // boundary node, no check
   });
 
+  it("discards a stale-schema persisted blob and re-seeds (the blank-screen regression)", () => {
+    // The pre-agents blob: an older version with no `agents`/`editors` maps. Loading it into the
+    // newer code used to crash on `state.agents[id]`; it must now be discarded + re-seeded.
+    globalThis.localStorage.setItem(
+      "edd-demo:state:v1",
+      JSON.stringify({
+        version: 1,
+        users: [{ id: "x", name: "X", email: "x@x", role: "member" }],
+        currentUserId: "x",
+        catalog: [],
+        workspaces: [],
+        audit: [],
+      }),
+    );
+    const fresh = new DemoControlPlane();
+    expect(fresh.workspaces().length).toBeGreaterThan(0); // re-seeded, not the empty stale blob
+    const first = fresh.workspaces()[0];
+    expect(first).toBeDefined();
+    if (first !== undefined) {
+      expect(() => fresh.agentFor(first.id)).not.toThrow();
+      expect(() => fresh.editorFor(first.id)).not.toThrow();
+    }
+  });
+
   it("reset clears persisted state", () => {
     cp.create(baseImage("golden/go"));
     cp.reset();

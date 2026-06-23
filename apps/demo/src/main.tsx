@@ -3,6 +3,7 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 // Reuse the production design tokens + components' CSS (the demo's look = the real app's look),
 // then layer the demo-shell layout on top.
 import "../../web/app/globals.css";
@@ -14,6 +15,8 @@ if (rootEl === null) {
 }
 createRoot(rootEl).render(
   <StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </StrictMode>,
 );
