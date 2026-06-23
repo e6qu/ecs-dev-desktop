@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { JSX } from "react";
 
+import { clearKeys } from "../lib/agent-key";
 import { clearFiles } from "../lib/ide-files";
 import { demo } from "../lib/use-demo";
 
@@ -14,6 +15,7 @@ export function ResetWidget(): JSX.Element {
     if (!ok) return;
     demo.reset();
     clearFiles();
+    clearKeys();
     window.location.reload();
   };
   return (

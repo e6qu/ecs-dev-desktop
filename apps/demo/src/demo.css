@@ -697,3 +697,34 @@ body {
   font: inherit;
   padding: 0.4rem 0.6rem;
 }
+
+/* ── agent real (BYO-key) mode ── */
+.agent-live-dot {
+  color: var(--st-error);
+}
+.agent-scripted {
+  color: var(--dimmer);
+}
+.agent-key-note p {
+  margin: 0 0 0.5rem;
+}
+.agent-key-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.agent-key-row input {
+  flex: 1;
+  min-width: 180px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  padding: 0.4rem 0.6rem;
+}
+.agent-input button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

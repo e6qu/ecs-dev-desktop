@@ -52,7 +52,7 @@ export function Ide(): JSX.Element {
         </span>
       </div>
       <DemoEditor files={files} onSave={onSave} variant={editor} />
-      <AgentPanel agent={agent} fileNames={Object.keys(files)} />
+      <AgentPanel agent={agent} files={files} />
       <p className="demo-fine">
         {editor === "openvscode"
           ? "OpenVSCode — the full IDE (the static demo previews the workbench over a real Monaco engine)."
