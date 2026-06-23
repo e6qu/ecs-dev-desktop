@@ -1,0 +1,505 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Demo-shell layout, built on the shared design tokens from globals.css (--bg/--panel/--accent…). */
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+}
+
+.demo-shell {
+  min-height: 100vh;
+}
+
+.demo-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.demo-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.demo-logo {
+  color: var(--accent);
+}
+.demo-tag {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.demo-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.demo-user {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--dim);
+}
+.demo-user select,
+.demo-create select {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+}
+
+.demo-reset {
+  background: transparent;
+  color: var(--dim);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.4rem 0.7rem;
+  cursor: pointer;
+  font: inherit;
+}
+.demo-reset:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.demo-note {
+  max-width: var(--maxw);
+  margin: 0.75rem auto 0;
+  padding: 0.6rem 1rem;
+  color: var(--dim);
+  font-size: 0.85rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--r);
+}
+
+.demo-main {
+  max-width: var(--maxw);
+  margin: 1.25rem auto;
+  padding: 0 1.25rem;
+}
+
+.demo-page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.demo-page-head h2 {
+  font-family: var(--font-display);
+  margin: 0;
+}
+.demo-create {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.demo-primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: none;
+  border-radius: 8px;
+  padding: 0.4rem 0.8rem;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.demo-primary:hover {
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.demo-ws-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.demo-ws {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+}
+.demo-ws-main {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+.demo-ws-name {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+}
+.demo-ws-meta {
+  color: var(--dim);
+  font-size: 0.8rem;
+}
+.demo-ws-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+.demo-ghost,
+.demo-danger {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.3rem 0.6rem;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  text-transform: capitalize;
+}
+.demo-ghost:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.demo-danger:hover {
+  border-color: var(--st-error);
+  color: var(--st-error);
+}
+
+.demo-empty {
+  color: var(--dim);
+  padding: 2rem;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: var(--r);
+}
+
+/* ── nav ── */
+.demo-nav {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  max-width: var(--maxw);
+  margin: 0.75rem auto 0;
+  padding: 0 1.25rem;
+}
+.demo-nav-group {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.demo-nav-label {
+  color: var(--dimmer);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-right: 0.25rem;
+}
+.demo-nav-link {
+  color: var(--dim);
+  text-decoration: none;
+  padding: 0.3rem 0.6rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+.demo-nav-link:hover {
+  color: var(--text);
+}
+.demo-nav-link.active {
+  color: var(--accent);
+  background: var(--panel-2);
+}
+
+/* ── admin pages ── */
+.demo-subhead {
+  font-family: var(--font-display);
+  margin: 1.5rem 0 0.5rem;
+  color: var(--dim);
+  font-size: 0.95rem;
+}
+.demo-fine {
+  color: var(--dim);
+  font-size: 0.8rem;
+  margin-top: 1rem;
+  line-height: 1.5;
+}
+.stat .sub {
+  color: var(--dim);
+  font-size: 0.75rem;
+  margin-top: 0.2rem;
+}
+
+.demo-tabs {
+  display: flex;
+  gap: 0.25rem;
+}
+.demo-tab {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--dim);
+  border-radius: 8px;
+  padding: 0.3rem 0.7rem;
+  font: inherit;
+  cursor: pointer;
+}
+.demo-tab.active {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.demo-cost-row {
+  display: grid;
+  grid-template-columns: 1fr 2fr auto;
+  gap: 1rem;
+  align-items: center;
+}
+.demo-cost-id {
+  font-size: 0.85rem;
+}
+.demo-cost-usd {
+  font-family: var(--font-mono);
+  text-align: right;
+}
+
+/* ── catalog ── */
+.demo-catalog {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem;
+}
+.demo-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.demo-card-head h3 {
+  margin: 0 0 0.2rem;
+  font-family: var(--font-display);
+  font-size: 1rem;
+}
+.demo-card-desc {
+  color: var(--dim);
+  font-size: 0.85rem;
+  margin: 0;
+  flex: 1;
+}
+.demo-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.demo-chip {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  font-size: 0.72rem;
+  color: var(--dim);
+}
+
+/* ── IDE (editor seam v0) ── */
+.demo-open {
+  text-decoration: none;
+}
+.demo-back {
+  color: var(--dim);
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+.demo-back:hover {
+  color: var(--accent);
+}
+.ide {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  height: 60vh;
+  min-height: 420px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+  background: var(--panel);
+}
+.ide-explorer {
+  border-right: 1px solid var(--border);
+  background: var(--panel-2);
+  overflow-y: auto;
+}
+.ide-explorer-head {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--dimmer);
+}
+.ide-explorer ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ide-file {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--dim);
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  padding: 0.3rem 0.75rem;
+  cursor: pointer;
+}
+.ide-file:hover {
+  color: var(--text);
+}
+.ide-file.active {
+  color: var(--accent);
+  background: var(--panel);
+}
+.ide-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ide-tabs {
+  border-bottom: 1px solid var(--border);
+  padding: 0.3rem 0.5rem;
+  min-height: 1.6rem;
+}
+.ide-tab {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text);
+  padding: 0.2rem 0.6rem;
+  border-radius: 6px 6px 0 0;
+}
+.ide-tab.active {
+  background: var(--panel-2);
+}
+.ide-editor-wrap {
+  flex: 1;
+  min-height: 0;
+}
+.ide-loading {
+  padding: 1rem;
+  color: var(--dim);
+  font-size: 0.85rem;
+}
+
+/* ── editor variants ── */
+.demo-editor-tag {
+  color: var(--accent);
+}
+.ide-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+/* OpenVSCode workbench: activity bar + explorer + main */
+.ide-workbench {
+  grid-template-columns: 46px 200px 1fr;
+}
+.wb-activity {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+  color: var(--dimmer);
+}
+.wb-act {
+  font-size: 1.1rem;
+  cursor: default;
+  width: 100%;
+  text-align: center;
+  padding: 0.2rem 0;
+}
+.wb-act.active {
+  color: var(--text);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.wb-status {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.25rem 0.75rem;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+}
+.wb-status-spacer {
+  flex: 1;
+}
+
+/* ── health + topology ── */
+.h-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  text-transform: capitalize;
+}
+.h-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.h-ok {
+  color: var(--st-running);
+}
+.h-degraded {
+  color: var(--st-idle);
+}
+.h-down {
+  color: var(--st-error);
+}
+.h-unknown {
+  color: var(--dim);
+}
+
+.demo-topo {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.6rem;
+}
+.demo-topo-node {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 0.6rem 0.8rem;
+}
+.demo-topo-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.demo-topo-label {
+  font-size: 0.9rem;
+}

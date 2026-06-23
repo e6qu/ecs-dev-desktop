@@ -3,6 +3,9 @@
   "ignore": ["third_party/**"],
   "ignoreBinaries": ["ssh-keygen"],
   "workspaces": {
+    "apps/demo": {
+      "entry": ["src/main.tsx", "src/lib/node-shims/*.ts", "**/*.test.ts"]
+    },
     "apps/web": {
       "entry": [
         "e2e/**/*.pw.ts",

@@ -1,0 +1,56 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Build + publish the GitHub Pages site: the landing (/), the interactive demo (/demo), and the
+# docs stub (/docs). The demo is a static client-only build of apps/demo (the real @edd/core in
+# the browser). Pages must be enabled once: Settings -> Pages -> Source: GitHub Actions.
+name: pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/demo/**"
+      - "site/**"
+      - "packages/core/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one Pages deploy at a time; don't cancel an in-progress publish.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-deploy:
+    name: build + deploy
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: pnpm/action-setup@v6.0.8
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Project Pages serve under /<repo>/, so the demo lives at /ecs-dev-desktop/demo/.
+      - name: Build the demo (project-Pages base path)
+        run: DEMO_BASE=/ecs-dev-desktop/demo/ pnpm --filter @edd/demo build
+      - name: Assemble the site (/ landing, /demo, /docs)
+        run: |
+          rm -rf _site
+          cp -r site _site
+          mkdir -p _site/demo
+          cp -r apps/demo/dist/. _site/demo/
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deploy
+        uses: actions/deploy-pages@v4

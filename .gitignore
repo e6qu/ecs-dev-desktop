@@ -48,3 +48,6 @@ temp/
 # VS Code workspace proof outputs (screenshots + Playwright traces)
 apps/web/e2e/vscode-shots/
 apps/web/playwright-vscode-output/
+
+# GitHub Pages assembly (built in CI)
+_site/
