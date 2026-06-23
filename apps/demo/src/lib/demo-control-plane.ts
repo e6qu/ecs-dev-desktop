@@ -11,10 +11,13 @@ import {
   markStopped,
   markWaking,
   newWorkspaceId,
+  overlayTopologyHealth,
   ownerId,
   provision,
   relativeWindow,
   snapshotId,
+  summarizeHealth,
+  SYSTEM_TOPOLOGY,
   tallyWorkspaceStates,
   taskId,
   unwrap,
@@ -23,9 +26,12 @@ import {
   type AuditEvent,
   type BaseImage,
   type BaseImageEntry,
+  type ComponentHealth,
   type FleetCostReport,
+  type HealthReport,
   type IsoTimestamp,
   type SnapshotId,
+  type TopologyNodeStatus,
   type WorkspaceCostInput,
   type Workspace,
   type WorkspaceAction,
@@ -107,6 +113,41 @@ export class DemoControlPlane {
   /** Fleet state tally (total / by-state / active) — the admin overview + infra views. */
   fleetStats(): FleetStats {
     return tallyWorkspaceStates(this.state.workspaces.map((w) => w.state));
+  }
+
+  /** Component health for the admin Health board — partly DERIVED from fleet state (e.g. a
+   * workspace in `error` degrades compute) so it tracks what the demo is actually doing. */
+  healthComponents(): ComponentHealth[] {
+    const anyError = this.state.workspaces.some((w) => w.state === "error");
+    return [
+      { component: "control-plane", status: "ok", detail: "web + API responding" },
+      { component: "reconciler", status: "ok", detail: "idle sweep ran recently" },
+      {
+        component: "compute",
+        status: anyError ? "degraded" : "ok",
+        detail: anyError ? "a workspace task is in error" : "ECS Fargate healthy",
+      },
+      { component: "storage", status: "ok", detail: "EBS volumes + snapshots healthy" },
+    ];
+  }
+
+  /** Overall health roll-up (the real `summarizeHealth`). */
+  healthReport(): HealthReport {
+    return summarizeHealth(this.healthComponents(), this.now());
+  }
+
+  /** The system topology with health overlaid (the real `overlayTopologyHealth`). */
+  topology(): TopologyNodeStatus[] {
+    return overlayTopologyHealth(SYSTEM_TOPOLOGY, this.healthComponents());
+  }
+
+  /** Cluster summary for the Infrastructure view (derived from fleet state). */
+  clusterInfo(): { name: string; status: string; running: number; pending: number } {
+    const running = this.state.workspaces.filter(
+      (w) => w.state === "running" || w.state === "idle",
+    ).length;
+    const pending = this.state.workspaces.filter((w) => w.state === "provisioning").length;
+    return { name: "edd-demo (local)", status: "ACTIVE", running, pending };
   }
 
   /** Per-session/per-user spend over the real cost model + the seeded audit ledger. `windowDays`

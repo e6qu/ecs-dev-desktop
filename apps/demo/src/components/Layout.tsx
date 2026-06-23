@@ -61,6 +61,12 @@ export function Layout(): JSX.Element {
             <NavLink to="/admin/costs" className={navClass}>
               Costs
             </NavLink>
+            <NavLink to="/admin/health" className={navClass}>
+              Health
+            </NavLink>
+            <NavLink to="/admin/infra" className={navClass}>
+              Infra
+            </NavLink>
             <NavLink to="/admin/audit" className={navClass}>
               Audit
             </NavLink>

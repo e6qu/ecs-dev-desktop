@@ -455,3 +455,51 @@ body {
 .wb-status-spacer {
   flex: 1;
 }
+
+/* ── health + topology ── */
+.h-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  text-transform: capitalize;
+}
+.h-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.h-ok {
+  color: var(--st-running);
+}
+.h-degraded {
+  color: var(--st-idle);
+}
+.h-down {
+  color: var(--st-error);
+}
+.h-unknown {
+  color: var(--dim);
+}
+
+.demo-topo {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 0.6rem;
+}
+.demo-topo-node {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 0.6rem 0.8rem;
+}
+.demo-topo-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+.demo-topo-label {
+  font-size: 0.9rem;
+}

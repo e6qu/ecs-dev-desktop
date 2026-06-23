@@ -6,6 +6,8 @@ import { Layout } from "./components/Layout";
 import { useDemo } from "./lib/use-demo";
 import { AdminAudit } from "./pages/AdminAudit";
 import { AdminCosts } from "./pages/AdminCosts";
+import { AdminHealth } from "./pages/AdminHealth";
+import { AdminInfra } from "./pages/AdminInfra";
 import { AdminOverview } from "./pages/AdminOverview";
 import { Catalog } from "./pages/Catalog";
 import { Workspaces } from "./pages/Workspaces";
@@ -48,6 +50,22 @@ export function App(): JSX.Element {
             element={
               <RequireAdmin>
                 <AdminCosts />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="admin/health"
+            element={
+              <RequireAdmin>
+                <AdminHealth />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="admin/infra"
+            element={
+              <RequireAdmin>
+                <AdminInfra />
               </RequireAdmin>
             }
           />

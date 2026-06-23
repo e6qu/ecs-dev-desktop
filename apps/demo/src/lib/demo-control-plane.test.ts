@@ -85,6 +85,16 @@ describe("DemoControlPlane", () => {
     expect(cp.editorFor("does-not-exist")).toBe("openvscode");
   });
 
+  it("derives health and overlays it on the system topology", () => {
+    const report = cp.healthReport();
+    expect(report.components.some((c) => c.component === "control-plane")).toBe(true);
+    // The seed includes an error workspace, so compute degrades — the roll-up isn't "ok".
+    expect(report.status).not.toBe("ok");
+    const nodes = cp.topology();
+    expect(nodes.find((n) => n.id === "control-plane")?.status).toBe("ok");
+    expect(nodes.find((n) => n.id === "user")?.status).toBe("unknown"); // boundary node, no check
+  });
+
   it("reset clears persisted state", () => {
     cp.create(baseImage("golden/go"));
     cp.reset();
