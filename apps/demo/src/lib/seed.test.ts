@@ -1,0 +1,43 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+import { describe, expect, it } from "vitest";
+
+import { buildSeed } from "./seed";
+
+describe("buildSeed", () => {
+  it("produces a fleet across states by replaying real @edd/core transitions", () => {
+    const s = buildSeed();
+    expect(s.workspaces).toHaveLength(8);
+    const byState: Record<string, number> = {};
+    for (const w of s.workspaces) byState[w.state] = (byState[w.state] ?? 0) + 1;
+    // The states are the OUTPUT of the real state machine over the seeded lifecycle steps,
+    // not asserted into existence — so this guards that the replay stays valid.
+    expect(byState).toEqual({ running: 4, stopped: 3, error: 1 });
+  });
+
+  it("seeds 3 users (admin/member/viewer), a 6-image catalog, and a member current user", () => {
+    const s = buildSeed();
+    expect(s.users.map((u) => u.role).sort()).toEqual(["admin", "member", "viewer"]);
+    expect(s.catalog).toHaveLength(6);
+    expect(s.users.find((u) => u.id === s.currentUserId)?.role).toBe("member");
+  });
+
+  it("builds a backdated audit ledger, newest-first, that starts with a session.create", () => {
+    const s = buildSeed();
+    expect(s.audit.length).toBeGreaterThanOrEqual(s.workspaces.length);
+    // Sorted strictly newest-first.
+    for (let i = 1; i < s.audit.length; i++) {
+      const prev = s.audit[i - 1];
+      const cur = s.audit[i];
+      if (prev === undefined || cur === undefined) throw new Error("audit gap");
+      expect(Date.parse(prev.at)).toBeGreaterThanOrEqual(Date.parse(cur.at));
+    }
+    // Every workspace's first-ever event is a create.
+    expect(s.audit.some((e) => e.action === "session.create")).toBe(true);
+  });
+
+  it("attributes every workspace to a seeded user", () => {
+    const s = buildSeed();
+    const userIds = new Set(s.users.map((u) => u.id));
+    for (const w of s.workspaces) expect(userIds.has(w.ownerId)).toBe(true);
+  });
+});

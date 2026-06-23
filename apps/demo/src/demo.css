@@ -1,0 +1,192 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+/* Demo-shell layout, built on the shared design tokens from globals.css (--bg/--panel/--accent…). */
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+}
+
+.demo-shell {
+  min-height: 100vh;
+}
+
+.demo-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.demo-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.demo-logo {
+  color: var(--accent);
+}
+.demo-tag {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.demo-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.demo-user {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--dim);
+}
+.demo-user select,
+.demo-create select {
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.35rem 0.5rem;
+  font: inherit;
+}
+
+.demo-reset {
+  background: transparent;
+  color: var(--dim);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.4rem 0.7rem;
+  cursor: pointer;
+  font: inherit;
+}
+.demo-reset:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+
+.demo-note {
+  max-width: var(--maxw);
+  margin: 0.75rem auto 0;
+  padding: 0.6rem 1rem;
+  color: var(--dim);
+  font-size: 0.85rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--r);
+}
+
+.demo-main {
+  max-width: var(--maxw);
+  margin: 1.25rem auto;
+  padding: 0 1.25rem;
+}
+
+.demo-page-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+.demo-page-head h2 {
+  font-family: var(--font-display);
+  margin: 0;
+}
+.demo-create {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.demo-primary {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border: none;
+  border-radius: 8px;
+  padding: 0.4rem 0.8rem;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.demo-primary:hover {
+  box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.demo-ws-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.demo-ws {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+}
+.demo-ws-main {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+.demo-ws-name {
+  font-family: var(--font-mono);
+  font-size: 0.9rem;
+}
+.demo-ws-meta {
+  color: var(--dim);
+  font-size: 0.8rem;
+}
+.demo-ws-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+.demo-ghost,
+.demo-danger {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.3rem 0.6rem;
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+  text-transform: capitalize;
+}
+.demo-ghost:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.demo-danger:hover {
+  border-color: var(--st-error);
+  color: var(--st-error);
+}
+
+.demo-empty {
+  color: var(--dim);
+  padding: 2rem;
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: var(--r);
+}
