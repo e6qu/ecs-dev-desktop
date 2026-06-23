@@ -31,7 +31,7 @@ import {
   type WorkspaceAction,
 } from "@edd/core";
 
-import type { DemoState, DemoUser } from "./demo-types";
+import type { DemoState, DemoUser, EditorKind } from "./demo-types";
 import { DEMO_PRICING, DEMO_SIZING } from "./demo-pricing";
 import { clearState, loadState, saveState, stateSizeBytes } from "./persistence";
 import { buildSeed } from "./seed";
@@ -147,8 +147,13 @@ export class DemoControlPlane {
     }
   }
 
+  /** The editor an environment runs (defaults to the product default, OpenVSCode). */
+  editorFor(workspaceId: string): EditorKind {
+    return this.state.editors[workspaceId] ?? "openvscode";
+  }
+
   // ── lifecycle (real @edd/core transitions) ──
-  create(image: BaseImage): void {
+  create(image: BaseImage, editor: EditorKind = "openvscode"): void {
     const owner = this.currentUser();
     const at = this.now();
     const id = newWorkspaceId();
@@ -163,7 +168,8 @@ export class DemoControlPlane {
     this.commit({
       ...this.state,
       workspaces: [...this.state.workspaces, ws],
-      audit: this.withEvent(at, owner.email, "session.create", id, `created ${image}`),
+      editors: { ...this.state.editors, [id]: editor },
+      audit: this.withEvent(at, owner.email, "session.create", id, `created ${image} (${editor})`),
     });
   }
 
@@ -189,9 +195,13 @@ export class DemoControlPlane {
     const owner = this.ownerOf(id);
     const ws = this.find(id);
     unwrap(markDeleting(ws, at)); // validate the transition is legal, then hard-remove (demo)
+    const editors = Object.fromEntries(
+      Object.entries(this.state.editors).filter(([k]) => k !== id),
+    );
     this.commit({
       ...this.state,
       workspaces: this.state.workspaces.filter((w) => w.id !== id),
+      editors,
       audit: this.withEvent(at, owner.email, "session.delete", id, "workspace deleted"),
     });
   }

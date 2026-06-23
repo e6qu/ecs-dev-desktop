@@ -407,3 +407,51 @@ body {
   color: var(--dim);
   font-size: 0.85rem;
 }
+
+/* ── editor variants ── */
+.demo-editor-tag {
+  color: var(--accent);
+}
+.ide-files {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+/* OpenVSCode workbench: activity bar + explorer + main */
+.ide-workbench {
+  grid-template-columns: 46px 200px 1fr;
+}
+.wb-activity {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0;
+  background: var(--bg);
+  border-right: 1px solid var(--border);
+  color: var(--dimmer);
+}
+.wb-act {
+  font-size: 1.1rem;
+  cursor: default;
+  width: 100%;
+  text-align: center;
+  padding: 0.2rem 0;
+}
+.wb-act.active {
+  color: var(--text);
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.wb-status {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.25rem 0.75rem;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-size: 0.72rem;
+  font-family: var(--font-mono);
+}
+.wb-status-spacer {
+  flex: 1;
+}

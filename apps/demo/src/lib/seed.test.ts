@@ -40,4 +40,12 @@ describe("buildSeed", () => {
     const userIds = new Set(s.users.map((u) => u.id));
     for (const w of s.workspaces) expect(userIds.has(w.ownerId)).toBe(true);
   });
+
+  it("assigns every workspace an editor, with both kinds represented", () => {
+    const s = buildSeed();
+    for (const w of s.workspaces) expect(s.editors[w.id]).toBeDefined();
+    const kinds = new Set(s.workspaces.map((w) => s.editors[w.id]));
+    expect(kinds.has("openvscode")).toBe(true);
+    expect(kinds.has("monaco")).toBe(true);
+  });
 });

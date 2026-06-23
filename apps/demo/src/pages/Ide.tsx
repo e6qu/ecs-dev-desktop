@@ -3,6 +3,7 @@ import { useState, type JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { DemoEditor } from "../components/DemoEditor";
+import { EDITOR_LABELS } from "../lib/demo-types";
 import { filesFor, saveFile, type WorkspaceFiles } from "../lib/ide-files";
 // Side-effect: bundle + configure Monaco. Imported here (not in main) so it lands in the
 // lazy-loaded IDE chunk — the other pages don't pay Monaco's ~4 MB.
@@ -33,6 +34,8 @@ export function Ide(): JSX.Element {
     setFiles((prev) => ({ ...prev, [path]: content }));
   };
 
+  const editor = cp.editorFor(ws.id);
+
   return (
     <section className="demo-page">
       <div className="demo-page-head">
@@ -42,12 +45,15 @@ export function Ide(): JSX.Element {
           </Link>{" "}
           <code>{ws.id}</code>
         </h2>
-        <span className="meta">{ws.baseImage}</span>
+        <span className="meta">
+          {ws.baseImage} · {EDITOR_LABELS[editor]}
+        </span>
       </div>
-      <DemoEditor files={files} onSave={onSave} />
+      <DemoEditor files={files} onSave={onSave} variant={editor} />
       <p className="demo-fine">
-        Editor v0 — edits persist locally (cleared on reset). The full in-browser VS Code workbench
-        drops in behind this same component once its dependency surface is approved.
+        {editor === "openvscode"
+          ? "OpenVSCode — the full IDE. In production this environment runs OpenVSCode Server; this static demo previews the workbench over a real Monaco engine. Edits persist locally (cleared on reset)."
+          : "Monaco — the lightweight first-party editor (real, bundled). Edits persist locally (cleared on reset)."}
       </p>
     </section>
   );

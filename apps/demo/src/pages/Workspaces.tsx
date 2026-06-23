@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { baseImage, type Workspace, type WorkspaceAction } from "@edd/core";
 
 import { StateBadge } from "../components/StateBadge";
+import { EDITOR_LABELS, type EditorKind } from "../lib/demo-types";
 import { relTime } from "../lib/format";
 import { useDemo } from "../lib/use-demo";
 
@@ -12,6 +13,7 @@ export function Workspaces(): JSX.Element {
   const cp = useDemo();
   const catalog = cp.catalog();
   const [picked, setPicked] = useState<string>(catalog[0]?.image ?? "");
+  const [editor, setEditor] = useState<EditorKind>("openvscode");
   const mine = [...cp.workspaces({ mine: true })].sort(
     (a, b) => Date.parse(b.lastActivity) - Date.parse(a.lastActivity),
   );
@@ -30,7 +32,7 @@ export function Workspaces(): JSX.Element {
           className="demo-create"
           onSubmit={(e) => {
             e.preventDefault();
-            if (picked !== "") cp.create(baseImage(picked));
+            if (picked !== "") cp.create(baseImage(picked), editor);
           }}
         >
           <select
@@ -45,6 +47,18 @@ export function Workspaces(): JSX.Element {
                 {c.name}
               </option>
             ))}
+          </select>
+          <select
+            value={editor}
+            onChange={(e) => {
+              if (e.target.value === "monaco" || e.target.value === "openvscode") {
+                setEditor(e.target.value);
+              }
+            }}
+            aria-label="Editor"
+          >
+            <option value="openvscode">OpenVSCode</option>
+            <option value="monaco">Monaco</option>
           </select>
           <button type="submit" className="demo-primary">
             + New workspace
@@ -63,7 +77,9 @@ export function Workspaces(): JSX.Element {
                 <div>
                   <div className="demo-ws-name">{ws.id}</div>
                   <div className="demo-ws-meta">
-                    {ws.baseImage} · active {relTime(ws.lastActivity)}
+                    {ws.baseImage} ·{" "}
+                    <span className="demo-editor-tag">{EDITOR_LABELS[cp.editorFor(ws.id)]}</span> ·
+                    active {relTime(ws.lastActivity)}
                   </div>
                 </div>
               </div>

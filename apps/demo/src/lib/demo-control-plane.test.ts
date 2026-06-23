@@ -74,6 +74,17 @@ describe("DemoControlPlane", () => {
     expect(cp.costReport(1).total.totalUsd).toBeLessThanOrEqual(cp.costReport().total.totalUsd);
   });
 
+  it("records the environment's editor choice; unknown ids default to OpenVSCode", () => {
+    cp.create(baseImage("golden/go"), "monaco");
+    const monacoWs = cp.workspaces({ mine: true }).find((w) => cp.editorFor(w.id) === "monaco");
+    expect(monacoWs).toBeDefined();
+    cp.create(baseImage("golden/go")); // default
+    expect(cp.workspaces({ mine: true }).some((w) => cp.editorFor(w.id) === "openvscode")).toBe(
+      true,
+    );
+    expect(cp.editorFor("does-not-exist")).toBe("openvscode");
+  });
+
   it("reset clears persisted state", () => {
     cp.create(baseImage("golden/go"));
     cp.reset();

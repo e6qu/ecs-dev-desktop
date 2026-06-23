@@ -24,7 +24,7 @@ import {
   type Workspace,
 } from "@edd/core";
 
-import type { DemoState, DemoUser } from "./demo-types";
+import type { DemoState, DemoUser, EditorKind } from "./demo-types";
 
 const DAY_MS = 86_400_000;
 const daysAgo = (d: number): IsoTimestamp =>
@@ -173,24 +173,50 @@ export function buildSeed(): DemoState {
   const milo = byRole("member");
   const vera = byRole("viewer");
 
-  const specs: Parameters<typeof buildWorkspace>[0][] = [
-    { owner: ada, image: img(0), index: 1, createdDaysAgo: 28, steps: ["stop", "wake"] },
-    { owner: ada, image: img(3), index: 2, createdDaysAgo: 21, steps: [] },
-    { owner: milo, image: img(1), index: 1, createdDaysAgo: 18, steps: ["stop"] },
-    { owner: milo, image: img(2), index: 2, createdDaysAgo: 14, steps: ["stop", "wake", "stop"] },
-    { owner: milo, image: img(5), index: 3, createdDaysAgo: 9, steps: [] },
-    { owner: vera, image: img(4), index: 1, createdDaysAgo: 7, steps: ["fail"] },
-    { owner: vera, image: img(1), index: 2, createdDaysAgo: 4, steps: [] },
-    { owner: ada, image: img(0), index: 3, createdDaysAgo: 2, steps: ["stop"] },
+  type Spec = Parameters<typeof buildWorkspace>[0] & { editor: EditorKind };
+  const specs: Spec[] = [
+    {
+      owner: ada,
+      image: img(0),
+      index: 1,
+      createdDaysAgo: 28,
+      steps: ["stop", "wake"],
+      editor: "openvscode",
+    },
+    { owner: ada, image: img(3), index: 2, createdDaysAgo: 21, steps: [], editor: "monaco" },
+    {
+      owner: milo,
+      image: img(1),
+      index: 1,
+      createdDaysAgo: 18,
+      steps: ["stop"],
+      editor: "openvscode",
+    },
+    {
+      owner: milo,
+      image: img(2),
+      index: 2,
+      createdDaysAgo: 14,
+      steps: ["stop", "wake", "stop"],
+      editor: "monaco",
+    },
+    { owner: milo, image: img(5), index: 3, createdDaysAgo: 9, steps: [], editor: "openvscode" },
+    { owner: vera, image: img(4), index: 1, createdDaysAgo: 7, steps: ["fail"], editor: "monaco" },
+    { owner: vera, image: img(1), index: 2, createdDaysAgo: 4, steps: [], editor: "openvscode" },
+    { owner: ada, image: img(0), index: 3, createdDaysAgo: 2, steps: ["stop"], editor: "monaco" },
   ];
 
-  const built = specs.map(buildWorkspace);
+  const built = specs.map((s) => ({ ...buildWorkspace(s), editor: s.editor }));
+  const editors: Record<string, EditorKind> = {};
+  for (const b of built) editors[b.workspace.id] = b.editor;
+
   return {
     version: 1,
     users: USERS,
     currentUserId: milo.id,
     catalog,
     workspaces: built.map((b) => b.workspace),
+    editors,
     audit: built.flatMap((b) => b.events).sort((a, b) => Date.parse(b.at) - Date.parse(a.at)),
   };
 }
