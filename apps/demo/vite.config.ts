@@ -12,6 +12,9 @@ const shim = (p: string): string => fileURLToPath(new URL(p, import.meta.url));
 // and a future custom domain use "/".
 export default defineConfig({
   base: process.env.DEMO_BASE ?? "/",
+  // Monaco's editor core is a single large (~4 MB) chunk, lazy-loaded only on the IDE route —
+  // expected, so raise the advisory size limit rather than see it warn on every build.
+  build: { chunkSizeWarningLimit: 5000 },
   plugins: [react()],
   resolve: {
     alias: {

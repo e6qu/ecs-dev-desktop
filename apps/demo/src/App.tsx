@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { JSX } from "react";
+import { lazy, Suspense, type JSX } from "react";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 
 import { Layout } from "./components/Layout";
@@ -8,8 +8,10 @@ import { AdminAudit } from "./pages/AdminAudit";
 import { AdminCosts } from "./pages/AdminCosts";
 import { AdminOverview } from "./pages/AdminOverview";
 import { Catalog } from "./pages/Catalog";
-import { Ide } from "./pages/Ide";
 import { Workspaces } from "./pages/Workspaces";
+
+// The IDE pulls in Monaco (~4 MB) — lazy-load it so only visitors who open the IDE pay for it.
+const Ide = lazy(() => import("./pages/Ide").then((m) => ({ default: m.Ide })));
 
 /** Gate the admin routes on the demo identity's role (switch to admin in the header). */
 function RequireAdmin({ children }: { children: JSX.Element }): JSX.Element {
@@ -25,7 +27,14 @@ export function App(): JSX.Element {
         <Route element={<Layout />}>
           <Route index element={<Workspaces />} />
           <Route path="catalog" element={<Catalog />} />
-          <Route path="ide/:id" element={<Ide />} />
+          <Route
+            path="ide/:id"
+            element={
+              <Suspense fallback={<div className="demo-page demo-empty">Loading IDE…</div>}>
+                <Ide />
+              </Suspense>
+            }
+          />
           <Route
             path="admin"
             element={

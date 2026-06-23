@@ -1,11 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import Editor from "@monaco-editor/react";
 import { useState, type JSX } from "react";
 
 import type { WorkspaceFiles } from "../lib/ide-files";
 
-// The editor SEAM. v0 is a deliberately small explorer + tabs + edit pane (zero new deps) —
-// the full vscode-web workbench (or Monaco) drops in behind this same { files, onSave }
-// interface without touching the rest of the app. Files persist via onSave.
+// The editor SEAM: an explorer + tabs around a real Monaco editor (bundled, syntax-highlighted,
+// multi-file via per-path models). The full vscode-web workbench could later replace the editor
+// pane behind this same { files, onSave } interface. Edits persist via onSave.
 export function DemoEditor({
   files,
   onSave,
@@ -41,15 +42,25 @@ export function DemoEditor({
         <div className="ide-tabs">
           {active !== "" ? <span className="ide-tab active">{active}</span> : null}
         </div>
-        <textarea
-          className="ide-editor"
-          value={content}
-          spellCheck={false}
-          onChange={(e) => {
-            onSave(active, e.target.value);
-          }}
-          aria-label={`editor: ${active}`}
-        />
+        <div className="ide-editor-wrap">
+          <Editor
+            theme="vs-dark"
+            path={active}
+            value={content}
+            onChange={(v) => {
+              onSave(active, v ?? "");
+            }}
+            loading={<div className="ide-loading">Loading editor…</div>}
+            options={{
+              minimap: { enabled: false },
+              fontSize: 13,
+              fontFamily: "var(--font-mono)",
+              scrollBeyondLastLine: false,
+              tabSize: 2,
+              automaticLayout: true,
+            }}
+          />
+        </div>
       </div>
     </div>
   );

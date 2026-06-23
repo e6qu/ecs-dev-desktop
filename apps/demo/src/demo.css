@@ -398,16 +398,12 @@ body {
 .ide-tab.active {
   background: var(--panel-2);
 }
-.ide-editor {
+.ide-editor-wrap {
   flex: 1;
-  resize: none;
-  border: none;
-  outline: none;
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font-mono);
+  min-height: 0;
+}
+.ide-loading {
+  padding: 1rem;
+  color: var(--dim);
   font-size: 0.85rem;
-  line-height: 1.6;
-  padding: 0.75rem 1rem;
-  tab-size: 2;
 }

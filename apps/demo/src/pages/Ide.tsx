@@ -4,6 +4,9 @@ import { Link, useParams } from "react-router-dom";
 
 import { DemoEditor } from "../components/DemoEditor";
 import { filesFor, saveFile, type WorkspaceFiles } from "../lib/ide-files";
+// Side-effect: bundle + configure Monaco. Imported here (not in main) so it lands in the
+// lazy-loaded IDE chunk — the other pages don't pay Monaco's ~4 MB.
+import "../lib/monaco-setup";
 import { useDemo } from "../lib/use-demo";
 
 export function Ide(): JSX.Element {
