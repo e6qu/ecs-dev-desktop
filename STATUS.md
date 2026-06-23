@@ -2,9 +2,28 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-22 (IAM call-time **enforcement now PROVEN at the sim tier**: sockerless #659 fixed #657 — re-pinned to `1dc18896`; the enforcement test now self-provisions a restricted IAM principal via standard APIs and asserts the gate is selective — `DescribeVolumes` allowed, `CreateVolume` denied with `UnauthorizedOperation`. Backward-compat holds (full integ 25/25). Least-privilege denial is no longer e2e-aws-only)
+**Last updated:** 2026-06-22 (IAM enforcement deepened to CONDITION KEYS: adopted sockerless #660 (full condition-operator evaluator + STS; re-pinned `9a1d4e92`) and extended the enforcement test to prove a region-locked policy allows `CreateVolume` in-region and denies it cross-region (`aws:RequestedRegion`). Filed #661 — the gate doesn't yet populate resource-scoped keys (`aws:ResourceTag/*`, `ecs:cluster`), so our exact tag/cluster-conditioned grants stay e2e-aws-only)
 
-## Active — IAM call-time enforcement proven at the sim tier (#657 fixed by sockerless #659)
+## Active — IAM enforcement deepened to condition keys (#660 adopted; #661 filed)
+
+Building on the action-level enforcement proof (#657→#659), adopted sockerless **#660** — the full real-AWS
+condition-operator evaluator (`Numeric*`/`Date*`/`IpAddress`/`Arn*`/`ForAllValues`/policy-variable
+substitution/`Principal` matching) + STS `AssumeRole`/`GetCallerIdentity`. Re-pinned `1dc18896 → 9a1d4e92`;
+backward-compat holds (full integ 25/25, since the gate still only enforces on registered IAM users).
+
+`packages/storage-ec2/src/iam-enforcement.integ.ts` (refactored behind a shared `provisionPrincipal` helper)
+now proves **two** levels: **action** (DescribeVolumes allowed, CreateVolume denied) AND **condition** — a
+region-locked policy (`ec2:CreateVolume` with `Condition StringEquals aws:RequestedRegion`) allows the SAME
+action in-region and denies it cross-region with `UnauthorizedOperation`. So the gate evaluates the policy's
+Condition against request context, not just the action.
+
+**Gap filed (#661):** the gate populates only GLOBAL condition keys (`aws:username`/`SourceIp`/
+`RequestedRegion`), not RESOURCE-scoped ones (`aws:ResourceTag/<key>` from the target resource's tags) or
+service keys (`ecs:cluster`). Our least-privilege design conditions destructive EC2 grants on
+`aws:ResourceTag/edd:managed=true` and ECS grants on `ecs:cluster`, so those exact grants stay e2e-aws-only
+until #661 lands. (9 sockerless issues filed across the arc; 8 resolved, #661 open.)
+
+## Prior — IAM call-time enforcement proven at the sim tier (#657 fixed by sockerless #659)
 
 sockerless **#659** implemented the request-time IAM authorization gate I filed as **#657**: it resolves the
 SigV4 access-key id → registered IAM user → effective policy → the existing evaluator, returning the correct
