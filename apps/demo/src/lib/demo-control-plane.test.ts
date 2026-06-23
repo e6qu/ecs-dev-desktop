@@ -85,6 +85,12 @@ describe("DemoControlPlane", () => {
     expect(cp.editorFor("does-not-exist")).toBe("openvscode");
   });
 
+  it("records the environment's agent choice; unknown ids default to Claude Code", () => {
+    cp.create(baseImage("golden/go"), "monaco", "codex");
+    expect(cp.workspaces({ mine: true }).some((w) => cp.agentFor(w.id) === "codex")).toBe(true);
+    expect(cp.agentFor("does-not-exist")).toBe("claude-code");
+  });
+
   it("derives health and overlays it on the system topology", () => {
     const report = cp.healthReport();
     expect(report.components.some((c) => c.component === "control-plane")).toBe(true);

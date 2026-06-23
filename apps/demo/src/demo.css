@@ -503,3 +503,228 @@ body {
 .demo-topo-label {
   font-size: 0.9rem;
 }
+
+/* ── agent panel (terminal + chat) ── */
+.demo-agent-tag {
+  color: var(--st-provisioning);
+}
+.agent-panel {
+  margin-top: 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  height: 320px;
+}
+.agent-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border);
+  padding: 0.3rem 0.5rem;
+}
+.agent-tabs {
+  display: flex;
+  gap: 0.25rem;
+}
+.agent-tab {
+  background: transparent;
+  border: none;
+  color: var(--dim);
+  padding: 0.3rem 0.7rem;
+  border-radius: 6px;
+  font: inherit;
+  cursor: pointer;
+}
+.agent-tab.active {
+  color: var(--text);
+  background: var(--panel-2);
+}
+.agent-panel-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.agent-name {
+  color: var(--st-provisioning);
+  font-size: 0.8rem;
+}
+.agent-key-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--dim);
+  font: inherit;
+  font-size: 0.78rem;
+  padding: 0.25rem 0.55rem;
+  cursor: pointer;
+}
+.agent-key-btn:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.agent-key-note {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.78rem;
+  color: var(--dim);
+  border-bottom: 1px solid var(--border);
+  background: var(--panel-2);
+}
+.agent-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.6rem 0.85rem;
+}
+
+/* terminal surface */
+.agent-term {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+.agent-term-banner {
+  color: var(--dimmer);
+  margin-bottom: 0.4rem;
+}
+.agent-term-line {
+  white-space: pre-wrap;
+}
+.agent-term-prompt {
+  color: var(--st-provisioning);
+}
+.agent-term-think {
+  color: var(--dim);
+  font-style: italic;
+}
+.agent-term-tool {
+  color: var(--accent);
+}
+.agent-term-arg {
+  color: var(--text);
+}
+.agent-term-result {
+  color: var(--dim);
+  padding-left: 1.2rem;
+}
+.agent-term-say {
+  color: var(--text);
+}
+.agent-cursor {
+  color: var(--accent);
+  animation: agent-blink 1s steps(1) infinite;
+}
+@keyframes agent-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* chat surface */
+.agent-chat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.agent-msg {
+  border-radius: 10px;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.85rem;
+  max-width: 90%;
+}
+.agent-msg-user {
+  align-self: flex-end;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+}
+.agent-msg-assistant {
+  align-self: flex-start;
+  background: rgba(182, 242, 74, 0.06);
+  border: 1px solid var(--border);
+}
+.agent-msg-who {
+  display: block;
+  color: var(--accent);
+  font-size: 0.72rem;
+  margin-bottom: 0.2rem;
+}
+.agent-think-bubble {
+  align-self: flex-start;
+  color: var(--dim);
+  font-style: italic;
+  font-size: 0.8rem;
+}
+.agent-tool-card {
+  align-self: flex-start;
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--accent);
+  border-radius: 8px;
+  padding: 0.35rem 0.6rem;
+  font-size: 0.8rem;
+  background: var(--panel-2);
+}
+.agent-tool-name {
+  color: var(--accent);
+  font-weight: 600;
+  margin-right: 0.4rem;
+}
+.agent-tool-result {
+  color: var(--dim);
+  margin-top: 0.2rem;
+}
+.agent-typing {
+  color: var(--dim);
+  font-size: 0.8rem;
+  font-style: italic;
+}
+.agent-input {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-top: 1px solid var(--border);
+  padding: 0.45rem 0.6rem;
+}
+.agent-input-prompt {
+  color: var(--st-provisioning);
+  font-family: var(--font-mono);
+}
+.agent-input input {
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  padding: 0.4rem 0.6rem;
+}
+
+/* ── agent real (BYO-key) mode ── */
+.agent-live-dot {
+  color: var(--st-error);
+}
+.agent-scripted {
+  color: var(--dimmer);
+}
+.agent-key-note p {
+  margin: 0 0 0.5rem;
+}
+.agent-key-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.agent-key-row input {
+  flex: 1;
+  min-width: 180px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  font: inherit;
+  padding: 0.4rem 0.6rem;
+}
+.agent-input button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

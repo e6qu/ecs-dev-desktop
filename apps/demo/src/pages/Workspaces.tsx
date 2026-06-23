@@ -5,7 +5,7 @@ import { Link } from "react-router-dom";
 import { baseImage, type Workspace, type WorkspaceAction } from "@edd/core";
 
 import { StateBadge } from "../components/StateBadge";
-import { EDITOR_LABELS, type EditorKind } from "../lib/demo-types";
+import { AGENT_LABELS, EDITOR_LABELS, type AgentKind, type EditorKind } from "../lib/demo-types";
 import { relTime } from "../lib/format";
 import { useDemo } from "../lib/use-demo";
 
@@ -14,6 +14,7 @@ export function Workspaces(): JSX.Element {
   const catalog = cp.catalog();
   const [picked, setPicked] = useState<string>(catalog[0]?.image ?? "");
   const [editor, setEditor] = useState<EditorKind>("openvscode");
+  const [agent, setAgent] = useState<AgentKind>("claude-code");
   const mine = [...cp.workspaces({ mine: true })].sort(
     (a, b) => Date.parse(b.lastActivity) - Date.parse(a.lastActivity),
   );
@@ -32,7 +33,7 @@ export function Workspaces(): JSX.Element {
           className="demo-create"
           onSubmit={(e) => {
             e.preventDefault();
-            if (picked !== "") cp.create(baseImage(picked), editor);
+            if (picked !== "") cp.create(baseImage(picked), editor, agent);
           }}
         >
           <select
@@ -60,6 +61,18 @@ export function Workspaces(): JSX.Element {
             <option value="openvscode">OpenVSCode</option>
             <option value="monaco">Monaco</option>
           </select>
+          <select
+            value={agent}
+            onChange={(e) => {
+              if (e.target.value === "claude-code" || e.target.value === "codex") {
+                setAgent(e.target.value);
+              }
+            }}
+            aria-label="Agent"
+          >
+            <option value="claude-code">Claude Code</option>
+            <option value="codex">Codex</option>
+          </select>
           <button type="submit" className="demo-primary">
             + New workspace
           </button>
@@ -78,7 +91,8 @@ export function Workspaces(): JSX.Element {
                   <div className="demo-ws-name">{ws.id}</div>
                   <div className="demo-ws-meta">
                     {ws.baseImage} ·{" "}
-                    <span className="demo-editor-tag">{EDITOR_LABELS[cp.editorFor(ws.id)]}</span> ·
+                    <span className="demo-editor-tag">{EDITOR_LABELS[cp.editorFor(ws.id)]}</span> ·{" "}
+                    <span className="demo-agent-tag">{AGENT_LABELS[cp.agentFor(ws.id)]}</span> ·
                     active {relTime(ws.lastActivity)}
                   </div>
                 </div>

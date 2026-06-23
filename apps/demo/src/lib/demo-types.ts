@@ -19,6 +19,14 @@ export const EDITOR_LABELS: Record<EditorKind, string> = {
   monaco: "Monaco",
 };
 
+/** The coding agent an environment runs (in the IDE terminal + chat panel). */
+export type AgentKind = "claude-code" | "codex";
+
+export const AGENT_LABELS: Record<AgentKind, string> = {
+  "claude-code": "Claude Code",
+  codex: "Codex",
+};
+
 /** The entire demo state, persisted as one JSON blob in localStorage. The bulky IDE
  * filesystem lives separately in IndexedDB (see the Phase-2 editor); this stays compact. */
 export interface DemoState {
@@ -29,6 +37,8 @@ export interface DemoState {
   readonly workspaces: readonly Workspace[];
   /** The editor each workspace runs (by workspace id) — the environment's editor choice. */
   readonly editors: Record<string, EditorKind>;
+  /** The coding agent each workspace runs (by workspace id) — the environment's agent choice. */
+  readonly agents: Record<string, AgentKind>;
   /** Append-only audit ledger — backdated at seed so cost/timeline/audit views show history. */
   readonly audit: readonly AuditEvent[];
 }
