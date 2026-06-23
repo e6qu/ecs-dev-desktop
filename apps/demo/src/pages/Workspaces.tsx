@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { useState, type JSX } from "react";
+import { Link } from "react-router-dom";
 
 import { baseImage, type Workspace, type WorkspaceAction } from "@edd/core";
 
@@ -67,6 +68,11 @@ export function Workspaces(): JSX.Element {
                 </div>
               </div>
               <div className="demo-ws-actions">
+                {ws.state === "running" || ws.state === "idle" ? (
+                  <Link to={`/ide/${ws.id}`} className="demo-primary demo-open">
+                    Open IDE
+                  </Link>
+                ) : null}
                 {cp.actionsFor(ws).map((a) =>
                   a === "snapshot" ? null : (
                     <button

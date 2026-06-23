@@ -318,3 +318,96 @@ body {
   font-size: 0.72rem;
   color: var(--dim);
 }
+
+/* ── IDE (editor seam v0) ── */
+.demo-open {
+  text-decoration: none;
+}
+.demo-back {
+  color: var(--dim);
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+.demo-back:hover {
+  color: var(--accent);
+}
+.ide {
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  height: 60vh;
+  min-height: 420px;
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  overflow: hidden;
+  background: var(--panel);
+}
+.ide-explorer {
+  border-right: 1px solid var(--border);
+  background: var(--panel-2);
+  overflow-y: auto;
+}
+.ide-explorer-head {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--dimmer);
+}
+.ide-explorer ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.ide-file {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: var(--dim);
+  font: inherit;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  padding: 0.3rem 0.75rem;
+  cursor: pointer;
+}
+.ide-file:hover {
+  color: var(--text);
+}
+.ide-file.active {
+  color: var(--accent);
+  background: var(--panel);
+}
+.ide-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.ide-tabs {
+  border-bottom: 1px solid var(--border);
+  padding: 0.3rem 0.5rem;
+  min-height: 1.6rem;
+}
+.ide-tab {
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  color: var(--text);
+  padding: 0.2rem 0.6rem;
+  border-radius: 6px 6px 0 0;
+}
+.ide-tab.active {
+  background: var(--panel-2);
+}
+.ide-editor {
+  flex: 1;
+  resize: none;
+  border: none;
+  outline: none;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 0.85rem;
+  line-height: 1.6;
+  padding: 0.75rem 1rem;
+  tab-size: 2;
+}

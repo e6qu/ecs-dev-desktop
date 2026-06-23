@@ -8,6 +8,7 @@ import { AdminAudit } from "./pages/AdminAudit";
 import { AdminCosts } from "./pages/AdminCosts";
 import { AdminOverview } from "./pages/AdminOverview";
 import { Catalog } from "./pages/Catalog";
+import { Ide } from "./pages/Ide";
 import { Workspaces } from "./pages/Workspaces";
 
 /** Gate the admin routes on the demo identity's role (switch to admin in the header). */
@@ -24,6 +25,7 @@ export function App(): JSX.Element {
         <Route element={<Layout />}>
           <Route index element={<Workspaces />} />
           <Route path="catalog" element={<Catalog />} />
+          <Route path="ide/:id" element={<Ide />} />
           <Route
             path="admin"
             element={
