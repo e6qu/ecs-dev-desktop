@@ -728,3 +728,27 @@ body {
   opacity: 0.5;
   cursor: default;
 }
+
+/* ── crash recovery screen ── */
+.demo-crash {
+  max-width: 560px;
+  margin: 4rem auto;
+  padding: 2rem;
+  text-align: center;
+}
+.demo-crash h1 {
+  font-family: var(--font-display);
+}
+.demo-crash p {
+  color: var(--dim);
+}
+.demo-crash pre {
+  text-align: left;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 0.75rem;
+  color: var(--st-error);
+  font-size: 0.8rem;
+  overflow-x: auto;
+}

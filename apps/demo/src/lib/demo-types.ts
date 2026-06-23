@@ -27,10 +27,15 @@ export const AGENT_LABELS: Record<AgentKind, string> = {
   codex: "Codex",
 };
 
+/** The persisted-state schema version. Bump this whenever the DemoState shape changes so older
+ * persisted blobs are discarded + re-seeded rather than loaded into newer code (a missing field
+ * like `agents`/`editors` would otherwise crash on read). */
+export const STATE_VERSION = 2;
+
 /** The entire demo state, persisted as one JSON blob in localStorage. The bulky IDE
  * filesystem lives separately in IndexedDB (see the Phase-2 editor); this stays compact. */
 export interface DemoState {
-  readonly version: 1;
+  readonly version: number;
   readonly users: readonly DemoUser[];
   readonly currentUserId: string;
   readonly catalog: readonly BaseImageEntry[];

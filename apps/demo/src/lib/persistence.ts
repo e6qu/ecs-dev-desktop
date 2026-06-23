@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { DemoState } from "./demo-types";
+import { STATE_VERSION, type DemoState } from "./demo-types";
 
 // Everything the demo persists lives under ONE namespaced key, so reset is a single removal
 // and the budget is easy to measure. The branded domain types serialize as their string
@@ -11,8 +11,15 @@ export function loadState(): DemoState | null {
   if (raw === null) return null;
   try {
     const parsed: unknown = JSON.parse(raw);
-    // A shallow shape check — a corrupt/old blob is discarded (re-seeds) rather than crashing.
-    if (typeof parsed === "object" && parsed !== null && "version" in parsed) {
+    // Only accept the CURRENT schema version — an older/corrupt blob (e.g. seeded before the
+    // `agents` field existed) is discarded and re-seeded, never loaded into newer code where a
+    // missing map would crash on read.
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "version" in parsed &&
+      parsed.version === STATE_VERSION
+    ) {
       return parsed as DemoState;
     }
     return null;

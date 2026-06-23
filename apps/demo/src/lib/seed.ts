@@ -24,7 +24,13 @@ import {
   type Workspace,
 } from "@edd/core";
 
-import type { AgentKind, DemoState, DemoUser, EditorKind } from "./demo-types";
+import {
+  STATE_VERSION,
+  type AgentKind,
+  type DemoState,
+  type DemoUser,
+  type EditorKind,
+} from "./demo-types";
 
 const DAY_MS = 86_400_000;
 const daysAgo = (d: number): IsoTimestamp =>
@@ -258,7 +264,7 @@ export function buildSeed(): DemoState {
   }
 
   return {
-    version: 1,
+    version: STATE_VERSION,
     users: USERS,
     currentUserId: milo.id,
     catalog,
