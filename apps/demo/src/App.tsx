@@ -1,53 +1,56 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { JSX } from "react";
+import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 
-import { ResetWidget } from "./components/ResetWidget";
+import { Layout } from "./components/Layout";
 import { useDemo } from "./lib/use-demo";
+import { AdminAudit } from "./pages/AdminAudit";
+import { AdminCosts } from "./pages/AdminCosts";
+import { AdminOverview } from "./pages/AdminOverview";
+import { Catalog } from "./pages/Catalog";
 import { Workspaces } from "./pages/Workspaces";
 
-export function App(): JSX.Element {
+/** Gate the admin routes on the demo identity's role (switch to admin in the header). */
+function RequireAdmin({ children }: { children: JSX.Element }): JSX.Element {
   const cp = useDemo();
-  const me = cp.currentUser();
-  const kb = Math.round(cp.storageBytes() / 1024);
+  return cp.currentUser().role === "admin" ? children : <Navigate to="/" replace />;
+}
 
+export function App(): JSX.Element {
+  // HashRouter so deep links work on GitHub Pages without server rewrites.
   return (
-    <div className="demo-shell">
-      <header className="demo-header">
-        <div className="demo-brand">
-          <span className="demo-logo">◢◤</span>
-          <span>
-            ecs-dev-desktop <span className="demo-tag">demo</span>
-          </span>
-        </div>
-        <div className="demo-header-right">
-          <label className="demo-user">
-            <span>acting as</span>
-            <select
-              value={me.id}
-              onChange={(e) => {
-                cp.setCurrentUser(e.target.value);
-              }}
-            >
-              {cp.users().map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name} ({u.role})
-                </option>
-              ))}
-            </select>
-          </label>
-          <ResetWidget />
-        </div>
-      </header>
-
-      <div className="demo-note">
-        This is a client-only showcase — the real <code>@edd/core</code> runs in your browser over
-        localStorage ({kb} KB used). Nothing leaves your machine; “Reset demo” restores fresh seed
-        data.
-      </div>
-
-      <main className="demo-main">
-        <Workspaces />
-      </main>
-    </div>
+    <HashRouter>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route index element={<Workspaces />} />
+          <Route path="catalog" element={<Catalog />} />
+          <Route
+            path="admin"
+            element={
+              <RequireAdmin>
+                <AdminOverview />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="admin/costs"
+            element={
+              <RequireAdmin>
+                <AdminCosts />
+              </RequireAdmin>
+            }
+          />
+          <Route
+            path="admin/audit"
+            element={
+              <RequireAdmin>
+                <AdminAudit />
+              </RequireAdmin>
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
+    </HashRouter>
   );
 }

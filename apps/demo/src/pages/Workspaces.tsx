@@ -4,16 +4,8 @@ import { useState, type JSX } from "react";
 import { baseImage, type Workspace, type WorkspaceAction } from "@edd/core";
 
 import { StateBadge } from "../components/StateBadge";
+import { relTime } from "../lib/format";
 import { useDemo } from "../lib/use-demo";
-
-function relTime(iso: string): string {
-  const ms = Date.now() - Date.parse(iso);
-  const days = Math.floor(ms / 86_400_000);
-  if (days > 0) return `${String(days)}d ago`;
-  const hours = Math.floor(ms / 3_600_000);
-  if (hours > 0) return `${String(hours)}h ago`;
-  return "just now";
-}
 
 export function Workspaces(): JSX.Element {
   const cp = useDemo();

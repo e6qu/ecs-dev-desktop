@@ -190,3 +190,131 @@ body {
   border: 1px dashed var(--border);
   border-radius: var(--r);
 }
+
+/* ── nav ── */
+.demo-nav {
+  display: flex;
+  gap: 1.5rem;
+  align-items: center;
+  max-width: var(--maxw);
+  margin: 0.75rem auto 0;
+  padding: 0 1.25rem;
+}
+.demo-nav-group {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.demo-nav-label {
+  color: var(--dimmer);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-right: 0.25rem;
+}
+.demo-nav-link {
+  color: var(--dim);
+  text-decoration: none;
+  padding: 0.3rem 0.6rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+.demo-nav-link:hover {
+  color: var(--text);
+}
+.demo-nav-link.active {
+  color: var(--accent);
+  background: var(--panel-2);
+}
+
+/* ── admin pages ── */
+.demo-subhead {
+  font-family: var(--font-display);
+  margin: 1.5rem 0 0.5rem;
+  color: var(--dim);
+  font-size: 0.95rem;
+}
+.demo-fine {
+  color: var(--dim);
+  font-size: 0.8rem;
+  margin-top: 1rem;
+  line-height: 1.5;
+}
+.stat .sub {
+  color: var(--dim);
+  font-size: 0.75rem;
+  margin-top: 0.2rem;
+}
+
+.demo-tabs {
+  display: flex;
+  gap: 0.25rem;
+}
+.demo-tab {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--dim);
+  border-radius: 8px;
+  padding: 0.3rem 0.7rem;
+  font: inherit;
+  cursor: pointer;
+}
+.demo-tab.active {
+  color: var(--accent-ink);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.demo-cost-row {
+  display: grid;
+  grid-template-columns: 1fr 2fr auto;
+  gap: 1rem;
+  align-items: center;
+}
+.demo-cost-id {
+  font-size: 0.85rem;
+}
+.demo-cost-usd {
+  font-family: var(--font-mono);
+  text-align: right;
+}
+
+/* ── catalog ── */
+.demo-catalog {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem;
+}
+.demo-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.demo-card-head h3 {
+  margin: 0 0 0.2rem;
+  font-family: var(--font-display);
+  font-size: 1rem;
+}
+.demo-card-desc {
+  color: var(--dim);
+  font-size: 0.85rem;
+  margin: 0;
+  flex: 1;
+}
+.demo-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.demo-chip {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  font-size: 0.72rem;
+  color: var(--dim);
+}

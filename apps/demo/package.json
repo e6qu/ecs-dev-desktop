@@ -13,7 +13,8 @@
   "dependencies": {
     "@edd/core": "workspace:*",
     "react": "^19.2.7",
-    "react-dom": "^19.2.7"
+    "react-dom": "^19.2.7",
+    "react-router-dom": "^7.18.0"
   },
   "devDependencies": {
     "@types/node": "^26.0.0",

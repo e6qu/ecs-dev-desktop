@@ -4,6 +4,7 @@
 // WorkspaceService collapse to plain array updates). It is the demo's only mutation surface;
 // React subscribes for re-render.
 import {
+  computeFleetCost,
   isoTimestamp,
   markDeleting,
   markProvisioned,
@@ -12,7 +13,9 @@ import {
   newWorkspaceId,
   ownerId,
   provision,
+  relativeWindow,
   snapshotId,
+  tallyWorkspaceStates,
   taskId,
   unwrap,
   volumeId,
@@ -20,15 +23,20 @@ import {
   type AuditEvent,
   type BaseImage,
   type BaseImageEntry,
+  type FleetCostReport,
   type IsoTimestamp,
   type SnapshotId,
+  type WorkspaceCostInput,
   type Workspace,
   type WorkspaceAction,
 } from "@edd/core";
 
 import type { DemoState, DemoUser } from "./demo-types";
+import { DEMO_PRICING, DEMO_SIZING } from "./demo-pricing";
 import { clearState, loadState, saveState, stateSizeBytes } from "./persistence";
 import { buildSeed } from "./seed";
+
+export type FleetStats = ReturnType<typeof tallyWorkspaceStates>;
 
 export class DemoControlPlane {
   private state: DemoState;
@@ -92,6 +100,44 @@ export class DemoControlPlane {
   /** The valid actions for a workspace in its current state (drives the UI buttons). */
   actionsFor(ws: Workspace): readonly WorkspaceAction[] {
     return workspaceActions(ws.state);
+  }
+
+  // ── derived showcase data (the real @edd/core pure derivations) ──
+
+  /** Fleet state tally (total / by-state / active) — the admin overview + infra views. */
+  fleetStats(): FleetStats {
+    return tallyWorkspaceStates(this.state.workspaces.map((w) => w.state));
+  }
+
+  /** Per-session/per-user spend over the real cost model + the seeded audit ledger. `windowDays`
+   * scopes it (1/7/30); omitted = lifetime. The figures are computed, not hand-faked. */
+  costReport(windowDays?: number): FleetCostReport {
+    const now = this.now();
+    const window = windowDays === undefined ? undefined : relativeWindow(now, windowDays);
+    return computeFleetCost(this.costInputs(), DEMO_PRICING, DEMO_SIZING, now, window);
+  }
+
+  /** One cost input per workspace that has lifecycle events — grouping the audit ledger by
+   * target and attributing each to its owner (the live record's owner, else the event actor). */
+  private costInputs(): WorkspaceCostInput[] {
+    const byTarget = new Map<string, AuditEvent[]>();
+    for (const e of this.state.audit) {
+      const list = byTarget.get(e.target) ?? [];
+      list.push(e);
+      byTarget.set(e.target, list);
+    }
+    const inputs: WorkspaceCostInput[] = [];
+    for (const [workspaceId, events] of byTarget) {
+      const live = this.state.workspaces.find((w) => w.id === workspaceId);
+      const owner =
+        (live ? this.state.users.find((u) => u.id === live.ownerId)?.email : undefined) ??
+        events[0]?.actor ??
+        "unknown";
+      inputs.push(
+        live ? { workspaceId, owner, state: live.state, events } : { workspaceId, owner, events },
+      );
+    }
+    return inputs;
   }
 
   // ── identity ──
