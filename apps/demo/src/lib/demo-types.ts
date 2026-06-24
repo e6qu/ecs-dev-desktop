@@ -27,10 +27,20 @@ export const AGENT_LABELS: Record<AgentKind, string> = {
   codex: "Codex",
 };
 
+/** A registered account SSH key (demo-local; only the public key is ever held). */
+export interface SshKeyEntry {
+  readonly id: string;
+  readonly ownerId: string;
+  readonly label: string;
+  readonly keyType: string;
+  readonly publicKey: string;
+  readonly addedAt: string;
+}
+
 /** The persisted-state schema version. Bump this whenever the DemoState shape changes so older
  * persisted blobs are discarded + re-seeded rather than loaded into newer code (a missing field
- * like `agents`/`editors` would otherwise crash on read). */
-export const STATE_VERSION = 2;
+ * like `agents`/`editors`/`sshKeys` would otherwise crash on read). */
+export const STATE_VERSION = 3;
 
 /** The entire demo state, persisted as one JSON blob in localStorage. The bulky IDE
  * filesystem lives separately in IndexedDB (see the Phase-2 editor); this stays compact. */
@@ -44,6 +54,8 @@ export interface DemoState {
   readonly editors: Record<string, EditorKind>;
   /** The coding agent each workspace runs (by workspace id) — the environment's agent choice. */
   readonly agents: Record<string, AgentKind>;
+  /** Registered account SSH keys (by owner) — the user-facing settings page. */
+  readonly sshKeys: readonly SshKeyEntry[];
   /** Append-only audit ledger — backdated at seed so cost/timeline/audit views show history. */
   readonly audit: readonly AuditEvent[];
 }

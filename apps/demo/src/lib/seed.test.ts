@@ -57,6 +57,16 @@ describe("buildSeed", () => {
     expect(kinds.has("codex")).toBe(true);
   });
 
+  it("seeds account SSH keys attributed to seeded users", () => {
+    const s = buildSeed();
+    expect(s.sshKeys.length).toBeGreaterThan(0);
+    const userIds = new Set(s.users.map((u) => u.id));
+    for (const k of s.sshKeys) {
+      expect(userIds.has(k.ownerId)).toBe(true);
+      expect(k.publicKey.startsWith(k.keyType)).toBe(true);
+    }
+  });
+
   it("serializes to a compact localStorage blob (use-storage-wisely budget)", () => {
     // The control-plane state is the ONLY thing in localStorage (IDE files live in IndexedDB).
     // localStorage caps ~5 MB; this must stay a tiny fraction, with headroom for the audit ledger

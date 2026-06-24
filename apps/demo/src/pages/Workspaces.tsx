@@ -88,7 +88,9 @@ export function Workspaces(): JSX.Element {
               <div className="demo-ws-main">
                 <StateBadge state={ws.state} />
                 <div>
-                  <div className="demo-ws-name">{ws.id}</div>
+                  <Link to={`/workspace/${ws.id}`} className="demo-ws-name demo-ws-link">
+                    {ws.id}
+                  </Link>
                   <div className="demo-ws-meta">
                     {ws.baseImage} ·{" "}
                     <span className="demo-editor-tag">{EDITOR_LABELS[cp.editorFor(ws.id)]}</span> ·{" "}

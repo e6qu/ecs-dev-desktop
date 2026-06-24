@@ -30,6 +30,7 @@ import {
   type DemoState,
   type DemoUser,
   type EditorKind,
+  type SshKeyEntry,
 } from "./demo-types";
 
 const DAY_MS = 86_400_000;
@@ -40,6 +41,29 @@ const USERS: readonly DemoUser[] = [
   { id: "ada", name: "Ada Okafor", email: "ada@edd.demo", role: "admin" },
   { id: "milo", name: "Milo Tan", email: "milo@edd.demo", role: "member" },
   { id: "vera", name: "Vera Smit", email: "vera@edd.demo", role: "viewer" },
+];
+
+// Inert demo public keys (public keys are not secrets; only the public half is ever held). The
+// settings page registers/removes more, validating the type with the real @edd/core `sshKeyType`.
+const SEED_SSH_KEYS: readonly SshKeyEntry[] = [
+  {
+    id: "key-ada-1",
+    ownerId: "ada",
+    label: "ada laptop",
+    keyType: "ssh-ed25519",
+    publicKey:
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIH4kLpQh2mD3vR8tN0wXyZ7cF1bG6aE9sJ5oP2qU3rT demo-ada@edd.local",
+    addedAt: daysAgo(40),
+  },
+  {
+    id: "key-milo-1",
+    ownerId: "milo",
+    label: "milo workstation",
+    keyType: "ssh-ed25519",
+    publicKey:
+      "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIQ9wE2rT5yU7iO0pA3sD6fG8hJ1kL4zX7cV0bN2mQ5w demo-milo@edd.local",
+    addedAt: daysAgo(30),
+  },
 ];
 
 const IMAGES: readonly { ref: string; name: string; description: string; tools: string[] }[] = [
@@ -271,6 +295,7 @@ export function buildSeed(): DemoState {
     workspaces: built.map((b) => b.workspace),
     editors,
     agents,
+    sshKeys: SEED_SSH_KEYS,
     audit: built.flatMap((b) => b.events).sort((a, b) => Date.parse(b.at) - Date.parse(a.at)),
   };
 }

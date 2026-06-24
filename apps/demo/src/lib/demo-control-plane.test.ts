@@ -91,6 +91,37 @@ describe("DemoControlPlane", () => {
     expect(cp.agentFor("does-not-exist")).toBe("claude-code");
   });
 
+  it("derives a per-workspace timeline + filters the audit ledger to that workspace", () => {
+    const ws = cp.workspaces()[0];
+    expect(ws).toBeDefined();
+    if (ws === undefined) throw new Error("no workspace");
+    const timeline = cp.timelineFor(ws.id);
+    expect(timeline.length).toBeGreaterThan(0);
+    expect(timeline[0]?.event).toBe("created"); // oldest-first, starts at creation
+    // The per-workspace audit is a subset of the full ledger, all targeting this workspace.
+    const history = cp.auditFor(ws.id);
+    expect(history.length).toBeGreaterThan(0);
+    expect(history.every((e) => e.target === ws.id)).toBe(true);
+  });
+
+  it("registers + removes SSH keys for the current user, validating the key type", () => {
+    const before = cp.sshKeys().length;
+    cp.addSshKey("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAITESTKEYdata00000000 me@host", "my laptop");
+    const after = cp.sshKeys();
+    expect(after.length).toBe(before + 1);
+    expect(after[0]?.keyType).toBe("ssh-ed25519");
+    // A malformed key (no data blob) is rejected.
+    expect(() => {
+      cp.addSshKey("ssh-ed25519", "bad");
+    }).toThrow();
+    const added = after.find((k) => k.label === "my laptop");
+    expect(added).toBeDefined();
+    if (added !== undefined) {
+      cp.removeSshKey(added.id);
+      expect(cp.sshKeys().some((k) => k.id === added.id)).toBe(false);
+    }
+  });
+
   it("derives health and overlays it on the system topology", () => {
     const report = cp.healthReport();
     expect(report.components.some((c) => c.component === "control-plane")).toBe(true);

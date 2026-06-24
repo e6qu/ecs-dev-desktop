@@ -5,6 +5,7 @@
 // React subscribes for re-render.
 import {
   computeFleetCost,
+  deriveWorkspaceTimeline,
   isoTimestamp,
   markDeleting,
   markProvisioned,
@@ -16,6 +17,7 @@ import {
   provision,
   relativeWindow,
   snapshotId,
+  sshKeyType,
   summarizeHealth,
   SYSTEM_TOPOLOGY,
   tallyWorkspaceStates,
@@ -30,14 +32,16 @@ import {
   type FleetCostReport,
   type HealthReport,
   type IsoTimestamp,
+  type SessionCost,
   type SnapshotId,
+  type TimelineEvent,
   type TopologyNodeStatus,
   type WorkspaceCostInput,
   type Workspace,
   type WorkspaceAction,
 } from "@edd/core";
 
-import type { AgentKind, DemoState, DemoUser, EditorKind } from "./demo-types";
+import type { AgentKind, DemoState, DemoUser, EditorKind, SshKeyEntry } from "./demo-types";
 import { DEMO_PRICING, DEMO_SIZING } from "./demo-pricing";
 import { clearState, loadState, saveState, stateSizeBytes } from "./persistence";
 import { buildSeed } from "./seed";
@@ -198,6 +202,32 @@ export class DemoControlPlane {
     return this.state.agents[workspaceId] ?? "claude-code";
   }
 
+  /** A single workspace by id (for the detail view). */
+  workspaceById(workspaceId: string): Workspace | undefined {
+    return this.state.workspaces.find((w) => w.id === workspaceId);
+  }
+
+  /** A workspace's lifecycle timeline (the real `deriveWorkspaceTimeline`, oldest-first). */
+  timelineFor(workspaceId: string): TimelineEvent[] {
+    const ws = this.workspaceById(workspaceId);
+    if (ws === undefined) return [];
+    return deriveWorkspaceTimeline({
+      createdAt: ws.createdAt,
+      lastActivity: ws.lastActivity,
+      ...(ws.latestSnapshotAt !== undefined ? { latestSnapshotAt: ws.latestSnapshotAt } : {}),
+    });
+  }
+
+  /** The audit ledger filtered to one workspace (newest-first, as stored). */
+  auditFor(workspaceId: string): AuditEvent[] {
+    return this.state.audit.filter((e) => e.target === workspaceId);
+  }
+
+  /** The real per-session cost for one workspace (lifetime), if it has billable history. */
+  sessionCostFor(workspaceId: string): SessionCost | undefined {
+    return this.costReport().bySession.find((s) => s.workspaceId === workspaceId);
+  }
+
   // ── lifecycle (real @edd/core transitions) ──
   create(
     image: BaseImage,
@@ -268,6 +298,53 @@ export class DemoControlPlane {
   /** Wipe everything (the reset widget also drops the IDE IndexedDB, then reloads). */
   reset(): void {
     clearState();
+  }
+
+  // ── SSH keys (account settings) ──
+  /** The current user's registered SSH keys, newest-first. */
+  sshKeys(): SshKeyEntry[] {
+    const uid = this.state.currentUserId;
+    return this.state.sshKeys
+      .filter((k) => k.ownerId === uid)
+      .slice()
+      .sort((a, b) => Date.parse(b.addedAt) - Date.parse(a.addedAt));
+  }
+
+  /** Register a public key for the current user. The type is validated by the real @edd/core
+   * `sshKeyType` (it throws on a key with no type field — the page surfaces the message). */
+  addSshKey(publicKey: string, label: string): void {
+    const trimmed = publicKey.trim();
+    const keyType = sshKeyType(trimmed);
+    const parts = trimmed.split(/\s+/);
+    if (parts.length < 2 || (parts[1] ?? "").length < 8) {
+      throw new Error("ssh public key is missing its key data");
+    }
+    const owner = this.currentUser();
+    const at = this.now();
+    const entry: SshKeyEntry = {
+      id: `key-${crypto.randomUUID()}`,
+      ownerId: owner.id,
+      label: label.trim() === "" ? keyType : label.trim(),
+      keyType,
+      publicKey: trimmed,
+      addedAt: at,
+    };
+    this.commit({
+      ...this.state,
+      sshKeys: [...this.state.sshKeys, entry],
+      audit: this.withEvent(at, owner.email, "sshkey.add", entry.id, `registered ${keyType} key`),
+    });
+  }
+
+  /** Remove one of the current user's SSH keys. */
+  removeSshKey(id: string): void {
+    const owner = this.currentUser();
+    const at = this.now();
+    this.commit({
+      ...this.state,
+      sshKeys: this.state.sshKeys.filter((k) => k.id !== id),
+      audit: this.withEvent(at, owner.email, "sshkey.remove", id, "removed SSH key"),
+    });
   }
 
   // ── internals ──
