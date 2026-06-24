@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { useState, type JSX } from "react";
+import { useEffect, useState, type JSX } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { AgentPanel } from "../components/AgentPanel";
 import { DemoEditor } from "../components/DemoEditor";
 import { AGENT_LABELS, EDITOR_LABELS } from "../lib/demo-types";
-import { filesFor, saveFile, type WorkspaceFiles } from "../lib/ide-files";
+import { loadFiles, saveFile, type WorkspaceFiles } from "../lib/ide-files";
 // Side-effect: bundle + configure Monaco. Imported here (not in main) so it lands in the
 // lazy-loaded IDE chunk — the other pages don't pay Monaco's ~4 MB.
 import "../lib/monaco-setup";
@@ -15,10 +15,20 @@ export function Ide(): JSX.Element {
   const cp = useDemo();
   const { id = "" } = useParams();
   const ws = cp.workspaces().find((w) => w.id === id);
+  const baseImage = ws?.baseImage;
 
-  const [files, setFiles] = useState<WorkspaceFiles>(() =>
-    ws ? filesFor(ws.id, ws.baseImage) : {},
-  );
+  // IDE files live in IndexedDB (async), so load them after mount; null = still loading.
+  const [files, setFiles] = useState<WorkspaceFiles | null>(null);
+  useEffect(() => {
+    if (baseImage === undefined) return;
+    let active = true;
+    void loadFiles(id, baseImage).then((f) => {
+      if (active) setFiles(f);
+    });
+    return () => {
+      active = false;
+    };
+  }, [id, baseImage]);
 
   if (ws === undefined) {
     return (
@@ -30,9 +40,17 @@ export function Ide(): JSX.Element {
     );
   }
 
+  if (files === null) {
+    return (
+      <section className="demo-page">
+        <p className="demo-empty">Loading workspace…</p>
+      </section>
+    );
+  }
+
   const onSave = (path: string, content: string): void => {
-    saveFile(ws.id, path, content);
-    setFiles((prev) => ({ ...prev, [path]: content }));
+    void saveFile(id, path, content);
+    setFiles((prev) => (prev === null ? prev : { ...prev, [path]: content }));
   };
 
   const editor = cp.editorFor(ws.id);

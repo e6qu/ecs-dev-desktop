@@ -56,4 +56,13 @@ describe("buildSeed", () => {
     expect(kinds.has("claude-code")).toBe(true);
     expect(kinds.has("codex")).toBe(true);
   });
+
+  it("serializes to a compact localStorage blob (use-storage-wisely budget)", () => {
+    // The control-plane state is the ONLY thing in localStorage (IDE files live in IndexedDB).
+    // localStorage caps ~5 MB; this must stay a tiny fraction, with headroom for the audit ledger
+    // growing as a visitor creates/stops workspaces. A regression here (e.g. accidentally storing
+    // bulky data in the blob) trips this gate.
+    const bytes = JSON.stringify(buildSeed()).length;
+    expect(bytes).toBeLessThan(64 * 1024);
+  });
 });

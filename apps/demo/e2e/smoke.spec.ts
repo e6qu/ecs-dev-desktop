@@ -43,6 +43,30 @@ test("renders and drives the core flows with no console errors", async ({ page }
   // The scripted agent reveals output.
   await expect(page.locator(".agent-term-line").first()).toBeVisible();
 
+  // The IDE filesystem persisted to IndexedDB (not localStorage) — the real store, real browser.
+  const persistedWorkspaces = await page.evaluate(
+    () =>
+      new Promise<number>((resolve, reject) => {
+        const open = indexedDB.open("edd-demo", 1);
+        open.onsuccess = () => {
+          const keys = open.result
+            .transaction("ide-files", "readonly")
+            .objectStore("ide-files")
+            .getAllKeys();
+          keys.onsuccess = () => {
+            resolve(keys.result.length);
+          };
+          keys.onerror = () => {
+            reject(keys.error ?? new Error("getAllKeys failed"));
+          };
+        };
+        open.onerror = () => {
+          reject(open.error ?? new Error("open failed"));
+        };
+      }),
+  );
+  expect(persistedWorkspaces).toBeGreaterThan(0);
+
   expect(errors, `unexpected console/page errors:\n${errors.join("\n")}`).toEqual([]);
 });
 
