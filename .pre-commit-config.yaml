@@ -72,6 +72,16 @@ repos:
         pass_filenames: false
         types_or: [ts, tsx]
 
+      # pnpm-lock.yaml must match the manifests — CI installs with --frozen-lockfile, which fails
+      # fast across EVERY job on a stale lockfile (e.g. after moving a dep to devDependencies). This
+      # catches it locally. Runs only when a manifest/lockfile changes; <1s when already in sync.
+      - id: pnpm-lockfile
+        name: pnpm lockfile in sync
+        language: system
+        entry: pnpm install --frozen-lockfile --prefer-offline
+        pass_filenames: false
+        files: ^(([^/]+/)*package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$
+
       # Dead-code detection (unused files / exports / dependencies).
       - id: knip
         name: knip (dead code)

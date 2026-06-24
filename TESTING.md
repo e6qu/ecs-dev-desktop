@@ -46,6 +46,11 @@ Pure logic + adapters-with-fakes. No network, no Docker.
 
 Tooling: **Vitest**.
 
+> **jscpd (copy-paste check) scans test files too** — there is no test exclusion, and the pre-commit
+> hook + CI fail over ~1% duplication. So parallel suites (e.g. the OpenVSCode + Monaco live-flow
+> e2e) should **share a fixture** (see `packages/e2e/src/live-editor-fixture.ts`) rather than
+> duplicate the setup/boilerplate — intentional pressure toward DRY tests, not a quirk to work around.
+
 ### 2. Integration — every PR, local + CI (sockerless substrate)
 
 | Concern                                      | Backed by                                                                                                                               |
