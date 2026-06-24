@@ -4,7 +4,13 @@
   "ignoreBinaries": ["ssh-keygen"],
   "workspaces": {
     "apps/demo": {
-      "entry": ["src/main.tsx", "src/lib/node-shims/*.ts", "**/*.test.ts"]
+      "entry": [
+        "src/main.tsx",
+        "src/lib/node-shims/*.ts",
+        "**/*.test.ts",
+        "playwright.config.ts",
+        "e2e/**/*.spec.ts"
+      ]
     },
     "apps/web": {
       "entry": [

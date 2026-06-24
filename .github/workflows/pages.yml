@@ -1,7 +1,11 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Build + publish the GitHub Pages site: the landing (/), the interactive demo (/demo), and the
+# Verify + publish the GitHub Pages site: the landing (/), the interactive demo (/demo), and the
 # docs stub (/docs). The demo is a static client-only build of apps/demo (the real @edd/core in
 # the browser). Pages must be enabled once: Settings -> Pages -> Source: GitHub Actions.
+#
+# The `verify` job (lint + unit + a real-browser smoke) runs on PRs AND before every deploy, so a
+# demo that crashes at runtime (e.g. the blank-screen-on-stale-state regression) is caught before
+# it reaches the live site — `deploy` only runs once `verify` is green.
 name: pages
 
 on:
@@ -12,25 +16,54 @@ on:
       - "site/**"
       - "packages/core/**"
       - ".github/workflows/pages.yml"
+  pull_request:
+    paths:
+      - "apps/demo/**"
+      - "site/**"
+      - "packages/core/**"
+      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
-
-# Allow one Pages deploy at a time; don't cancel an in-progress publish.
-concurrency:
-  group: pages
-  cancel-in-progress: false
 
 jobs:
-  build-deploy:
-    name: build + deploy
+  verify:
+    name: verify (lint, unit, browser smoke)
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: pnpm/action-setup@v6.0.8
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Lint
+        run: pnpm --filter @edd/demo lint
+      - name: Unit tests
+        run: pnpm --filter @edd/demo test
+      - name: Install Playwright browser
+        run: pnpm --filter @edd/demo exec playwright install --with-deps chromium
+      - name: Browser smoke (build + preview + drive a real browser)
+        run: pnpm --filter @edd/demo test:smoke
+
+  deploy:
+    name: build + deploy
+    needs: verify
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
+    # Allow one Pages deploy at a time; don't cancel an in-progress publish.
+    concurrency:
+      group: pages
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v6.0.2
       - uses: pnpm/action-setup@v6.0.8

@@ -1,0 +1,4 @@
+
+# Playwright (demo browser smoke)
+test-results/
+playwright-report/
