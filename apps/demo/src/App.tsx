@@ -10,6 +10,8 @@ import { AdminHealth } from "./pages/AdminHealth";
 import { AdminInfra } from "./pages/AdminInfra";
 import { AdminOverview } from "./pages/AdminOverview";
 import { Catalog } from "./pages/Catalog";
+import { Settings } from "./pages/Settings";
+import { WorkspaceDetail } from "./pages/WorkspaceDetail";
 import { Workspaces } from "./pages/Workspaces";
 
 // The IDE pulls in Monaco (~4 MB) — lazy-load it so only visitors who open the IDE pay for it.
@@ -29,6 +31,8 @@ export function App(): JSX.Element {
         <Route element={<Layout />}>
           <Route index element={<Workspaces />} />
           <Route path="catalog" element={<Catalog />} />
+          <Route path="workspace/:id" element={<WorkspaceDetail />} />
+          <Route path="settings" element={<Settings />} />
           <Route
             path="ide/:id"
             element={

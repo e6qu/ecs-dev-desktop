@@ -51,6 +51,9 @@ export function Layout(): JSX.Element {
           <NavLink to="/catalog" className={navClass}>
             Catalog
           </NavLink>
+          <NavLink to="/settings" className={navClass}>
+            Settings
+          </NavLink>
         </div>
         {isAdmin ? (
           <div className="demo-nav-group">

@@ -35,8 +35,17 @@ test("renders and drives the core flows with no console errors", async ({ page }
   await page.getByRole("link", { name: "Infra" }).click();
   await expect(page.locator(".demo-topo-node").first()).toBeVisible();
 
+  // Settings: the SSH-keys page (real sshKeyType validation; a seeded key renders).
+  await page.getByRole("link", { name: "Settings" }).click();
+  await expect(page.locator(".adm-row").first()).toBeVisible();
+
+  // Workspace detail: the lifecycle timeline derived by @edd/core.
+  await page.getByRole("link", { name: "Workspaces", exact: true }).click();
+  await page.locator(".demo-ws-link").first().click();
+  await expect(page.locator(".demo-timeline-item").first()).toBeVisible();
+
   // Open a workspace IDE → editor + the agent panel mount.
-  await page.getByRole("link", { name: "Workspaces" }).click();
+  await page.getByRole("link", { name: "Workspaces", exact: true }).click();
   await page.locator(".demo-open").first().click();
   await expect(page.locator(".ide")).toBeVisible();
   await expect(page.locator(".agent-panel")).toBeVisible();
