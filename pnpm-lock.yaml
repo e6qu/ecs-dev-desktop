@@ -474,6 +474,31 @@ importers:
         specifier: ^26.0.0
         version: 26.0.0
 
+  services/editor-monaco:
+    dependencies:
+      '@edd/config':
+        specifier: workspace:*
+        version: link:../../packages/config
+      monaco-editor:
+        specifier: ^0.55.1
+        version: 0.55.1
+    devDependencies:
+      '@types/node':
+        specifier: ^26.0.0
+        version: 26.0.0
+      esbuild:
+        specifier: ^0.28.1
+        version: 0.28.1
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
+      vite:
+        specifier: ^8.1.0
+        version: 8.1.0(@types/node@26.0.0)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0)
+      vitest:
+        specifier: ^4.1.9
+        version: 4.1.9(@types/node@26.0.0)(vite@8.1.0(@types/node@26.0.0)(esbuild@0.28.1)(jiti@2.7.0)(tsx@4.22.4)(yaml@2.9.0))
+
   services/reconciler:
     dependencies:
       '@edd/cloudwatch-metrics':
