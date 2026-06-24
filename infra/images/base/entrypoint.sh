@@ -104,11 +104,12 @@ fi
 
 # Editor selection. The control plane sets EDD_EDITOR_MODE from the workspace's editor choice
 # (its base-image catalog entry): "monaco" -> the first-party Monaco editor server; anything else
-# (including unset) -> OpenVSCode Server, the historical default. The Monaco editor server is added
-# to the image in a follow-up; until then a monaco request falls back to OpenVSCode so the
-# workspace still launches a working editor rather than nothing.
+# (including unset) -> OpenVSCode Server, the historical default. The Monaco server (bundled into
+# the image at /opt/edd-editor-monaco) listens on :3000 under /w/<id>/ and reads the same
+# coordinates from the environment (EDD_WORKSPACE_ID, CONNECTION_TOKEN,
+# EDD_DISABLE_CONNECTION_TOKEN), so the in-app proxy reaches it exactly like OpenVSCode.
 if [ "${EDD_EDITOR_MODE:-openvscode}" = "monaco" ]; then
-  echo "edd: EDD_EDITOR_MODE=monaco requested, but the Monaco editor server is not installed in this image yet -- falling back to OpenVSCode." >&2
+  exec gosu workspace node /opt/edd-editor-monaco/server.js
 fi
 
 # Base server args. --disable-workspace-trust: a per-user workspace contains the

@@ -53,6 +53,10 @@ export interface IdeBridgeOptions {
   image?: string;
   /** Listener port; 0 (default) picks a free one. */
   port?: number;
+  /** Read the OpenVSCode `--connection-token` from the task's process args (default true).
+   * Set false for editors that don't use that arg (e.g. the Monaco server, which validates the
+   * token from its CONNECTION_TOKEN env) — the caller then supplies the token itself. */
+  extractConnectionToken?: boolean;
 }
 
 /** Container ids (one per line) for `docker ps`/`docker ps -a`. */
@@ -150,7 +154,7 @@ function extractToken(container: string): string | undefined {
 export async function startIdeBridge(opts: IdeBridgeOptions): Promise<IdeBridge> {
   const image = opts.image ?? "edd-workspace:e2e";
   const container = findTaskContainer(opts.workspaceId, image);
-  const token = extractToken(container);
+  const token = opts.extractConnectionToken === false ? undefined : extractToken(container);
 
   const server = createServer((sock: Socket) => {
     const child = spawn("docker", ["exec", "-i", container, "python3", "-c", INNER_RELAY], {

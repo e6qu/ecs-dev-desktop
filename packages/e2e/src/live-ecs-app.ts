@@ -14,7 +14,7 @@ import {
 import { EC2Client } from "@aws-sdk/client-ec2";
 import { aws, dynamodb } from "@edd/config";
 import { CatalogService } from "@edd/control-plane";
-import { baseImage, systemClock } from "@edd/core";
+import { baseImage, systemClock, type EditorKind } from "@edd/core";
 import { createDynamoClient, dropTable, ensureTable, makeBaseImageEntity } from "@edd/db";
 
 import { awsSimClientConfig, createVpcWithEgress, e2eEbsRoleArn } from "./aws-sim";
@@ -46,6 +46,8 @@ export interface LiveEcsAppOptions {
   agentSecret: string;
   /** Extra env merged into the web app (e.g. EDD_HEARTBEAT_INTERVAL_S). */
   extraEnv?: Record<string, string>;
+  /** Editor the seeded catalog entry serves (default OpenVSCode) — drives EDD_EDITOR_MODE. */
+  editor?: EditorKind;
 }
 
 /**
@@ -66,7 +68,11 @@ export async function startLiveEcsApp(opts: LiveEcsAppOptions): Promise<LiveEcsA
   await new CatalogService({
     baseImages: makeBaseImageEntity(dynamo, table),
     clock: systemClock,
-  }).create({ name: "Golden e2e", image: baseImage(opts.workspaceImage) });
+  }).create({
+    name: "Golden e2e",
+    image: baseImage(opts.workspaceImage),
+    ...(opts.editor === undefined ? {} : { editor: opts.editor }),
+  });
 
   const ec2 = new EC2Client(sim);
   const ecs = new ECSClient(sim);

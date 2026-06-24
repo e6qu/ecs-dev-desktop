@@ -13,8 +13,12 @@
         <div id="files" aria-label="Files"></div>
       </aside>
       <section id="main">
-        <div id="tabbar"><span id="current-file">no file open</span></div>
+        <div id="tabbar">
+          <span id="current-file">no file open</span>
+          <button type="button" id="toggle-terminal">Terminal</button>
+        </div>
         <div id="editor"></div>
+        <div id="terminal-panel" hidden><div id="terminal"></div></div>
       </section>
     </div>
     <div id="status" role="status"></div>

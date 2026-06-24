@@ -100,3 +100,29 @@ body {
 #status.show {
   opacity: 1;
 }
+
+#tabbar {
+  justify-content: space-between;
+}
+#toggle-terminal {
+  background: none;
+  border: 1px solid var(--border);
+  color: var(--dim);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font: inherit;
+  cursor: pointer;
+}
+#toggle-terminal:hover {
+  color: var(--text);
+}
+#terminal-panel {
+  height: 220px;
+  flex: none;
+  border-top: 1px solid var(--border);
+  background: #1e1e1e;
+}
+#terminal {
+  height: 100%;
+  padding: 4px 8px;
+}

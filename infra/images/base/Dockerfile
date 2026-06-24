@@ -115,6 +115,12 @@ RUN printf '%s\n' \
       > /etc/ssh/sshd_config.d/10-edd-path.conf \
     && chmod 0644 /etc/ssh/sshd_config.d/10-edd-path.conf
 
+# First-party Monaco editor server: the esbuild-bundled server (server.js) + its built SPA (spa/)
+# + the runtime node_modules (node-pty, native). Staged into this build context by
+# infra/images/base/build.sh BEFORE `docker build` (so the base image is built via that script);
+# the entrypoint launches it when EDD_EDITOR_MODE=monaco.
+COPY editor-monaco /opt/edd-editor-monaco
+
 # Idle-agent + entrypoint (live in /usr/local/bin).
 COPY --chmod=0755 idle-agent.sh /usr/local/bin/edd-idle-agent
 COPY --chmod=0755 entrypoint.sh /usr/local/bin/edd-entrypoint
