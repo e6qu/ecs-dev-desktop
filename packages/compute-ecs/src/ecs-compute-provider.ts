@@ -44,6 +44,7 @@ import {
   type ComponentHealth,
   type ComputeProvider,
   type ComputeTask,
+  type EditorKind,
   type TaskLiveness,
   type RunTaskInput,
   type TaskId,
@@ -191,8 +192,12 @@ export function workspaceEnvironment(
   workspaceId: string,
   repo?: { url?: string; ref?: string },
   opts?: { omitAgentToken?: boolean; omitConnectionToken?: boolean },
+  editor?: EditorKind,
 ): EnvironmentEntry[] {
   const env: EnvironmentEntry[] = [{ name: "EDD_WORKSPACE_ID", value: workspaceId }];
+  // Which editor the entrypoint launches. Only emitted when chosen; the container defaults to
+  // OpenVSCode when unset, so existing tasks are unaffected.
+  if (editor !== undefined) env.push({ name: "EDD_EDITOR_MODE", value: editor });
   if (config.controlPlaneUrl !== undefined)
     env.push({ name: "EDD_CONTROL_PLANE_URL", value: config.controlPlaneUrl });
   // The agent token is omitted here when it is delivered via ECS `secrets`
@@ -505,6 +510,7 @@ export class EcsComputeProvider implements ComputeProvider {
       wsId,
       { url: input.repoUrl, ref: input.repoRef },
       { omitAgentToken: agentViaSecret, omitConnectionToken: connectionViaSecret },
+      input.editor,
     );
 
     const out = await this.client.send(

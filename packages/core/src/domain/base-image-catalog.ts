@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { DEFAULT_EDITOR, type EditorKind } from "./editor";
 import type { BaseImage, BaseImageId, IsoTimestamp } from "./ids";
 
 /**
@@ -20,6 +21,8 @@ export interface BaseImageEntry {
   readonly tools: readonly string[];
   /** Disabled entries stay in the catalog (history) but can't launch new work. */
   readonly enabled: boolean;
+  /** Which editor workspaces from this image serve (`openvscode` default). */
+  readonly editor: EditorKind;
   readonly createdAt: IsoTimestamp;
 }
 
@@ -31,6 +34,7 @@ export interface ProvisionBaseImageParams {
   tags?: readonly string[];
   tools?: readonly string[];
   enabled?: boolean;
+  editor?: EditorKind;
   at: IsoTimestamp;
 }
 
@@ -41,6 +45,7 @@ export interface BaseImagePatch {
   tags?: readonly string[];
   tools?: readonly string[];
   enabled?: boolean;
+  editor?: EditorKind;
 }
 
 function normalizeLabels(labels: readonly string[] | undefined): readonly string[] {
@@ -70,6 +75,7 @@ export function provisionBaseImage(params: ProvisionBaseImageParams): BaseImageE
     tags: normalizeLabels(params.tags),
     tools: normalizeLabels(params.tools),
     enabled: params.enabled ?? true,
+    editor: params.editor ?? DEFAULT_EDITOR,
     createdAt: params.at,
   };
 }
@@ -86,6 +92,7 @@ export function applyBaseImagePatch(entry: BaseImageEntry, patch: BaseImagePatch
     tags: patch.tags === undefined ? entry.tags : normalizeLabels(patch.tags),
     tools: patch.tools === undefined ? entry.tools : normalizeLabels(patch.tools),
     enabled: patch.enabled ?? entry.enabled,
+    editor: patch.editor ?? entry.editor,
   };
 }
 

@@ -34,10 +34,16 @@ export type DesiredStateDto = z.infer<typeof desiredState>;
 export const workspaceAction = z.enum(["start", "stop", "snapshot", "delete"]);
 export type WorkspaceActionDto = z.infer<typeof workspaceAction>;
 
+/** Which editor a workspace serves (openvscode = OpenVSCode Server; monaco = the first-party
+ * lightweight editor). Mirrors `@edd/core`'s EditorKind across the API boundary. */
+export const editorKind = z.enum(["openvscode", "monaco"]);
+export type EditorKindDto = z.infer<typeof editorKind>;
+
 export const workspace = z.object({
   id: z.string(),
   ownerId: z.string(),
   baseImage: z.string(),
+  editor: editorKind.optional(),
   state: workspaceState,
   createdAt: z.iso.datetime(),
   // The repo cloned into the session ("one repo per session"), when any. Lets
@@ -135,6 +141,7 @@ export const workspaceDetail = z.object({
   /** Git repo cloned into the session, if any ("one repo per session"). */
   repoUrl: z.string().optional(),
   baseImage: z.string(),
+  editor: editorKind.optional(),
   state: workspaceState,
   /** Durable intent: should this workspace exist (`present`) or be torn down
    * (`deleted`). Absent on records predating the field ⇒ treated `present`. */
@@ -182,6 +189,7 @@ export const baseImageEntry = z.object({
   tags: z.array(z.string()),
   tools: z.array(z.string()),
   enabled: z.boolean(),
+  editor: editorKind,
   createdAt: z.iso.datetime(),
 });
 export type BaseImageEntryDto = z.infer<typeof baseImageEntry>;
@@ -193,6 +201,7 @@ export const createBaseImageRequest = z.object({
   tags: z.array(z.string()).optional(),
   tools: z.array(z.string()).optional(),
   enabled: z.boolean().optional(),
+  editor: editorKind.optional(),
 });
 export type CreateBaseImageRequest = z.infer<typeof createBaseImageRequest>;
 
@@ -204,6 +213,7 @@ export const updateBaseImageRequest = z
     tags: z.array(z.string()).optional(),
     tools: z.array(z.string()).optional(),
     enabled: z.boolean().optional(),
+    editor: editorKind.optional(),
   })
   .refine(
     (p) =>
@@ -211,7 +221,8 @@ export const updateBaseImageRequest = z
       p.description !== undefined ||
       p.tags !== undefined ||
       p.tools !== undefined ||
-      p.enabled !== undefined,
+      p.enabled !== undefined ||
+      p.editor !== undefined,
     {
       message: "at least one field is required",
     },

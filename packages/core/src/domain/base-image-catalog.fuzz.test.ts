@@ -117,6 +117,7 @@ const entryArb: fc.Arbitrary<BaseImageEntry> = fc.record({
   tags: labelsArb.map(expectedNormalized),
   tools: labelsArb.map(expectedNormalized),
   enabled: fc.boolean(),
+  editor: fc.constantFrom("openvscode" as const, "monaco" as const),
   createdAt: fc.constant(AT),
 });
 

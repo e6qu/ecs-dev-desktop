@@ -12,6 +12,7 @@ export function toBaseImageDto(entry: BaseImageEntry): BaseImageEntryDto {
     tags: [...entry.tags],
     tools: [...entry.tools],
     enabled: entry.enabled,
+    editor: entry.editor,
     createdAt: entry.createdAt,
   };
 }
