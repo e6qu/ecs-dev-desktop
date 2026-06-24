@@ -1,15 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { randomBytes, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
-import { workspace } from "@edd/api-contracts";
-import { dynamodb } from "@edd/config";
 import { deriveWorkspaceToken } from "@edd/core";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { configureAwsSimEnv } from "./aws-sim";
 import { startIdeBridge, type IdeBridge } from "./ide-bridge";
-import { startLiveEcsApp, type LiveEcsApp } from "./live-ecs-app";
-import { devHeaders } from "./web-app";
+import {
+  createRunningWorkspace,
+  initLiveEnv,
+  newSecret,
+  startEditorApp,
+  WORKSPACE_IMAGE,
+  type LiveEcsApp,
+} from "./live-editor-fixture";
 
 /**
  * Full live flow on the container-mode sim: the REAL control plane launches a
@@ -21,17 +24,15 @@ import { devHeaders } from "./web-app";
  * Endpoint/coordinate-only (§6.8/§6.9): only AWS endpoint+credentials differ from
  * real cloud; the bridge is the local/sim realisation of the production proxy reach.
  */
-configureAwsSimEnv();
-process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
+initLiveEnv();
 
 const RUN_ID = randomUUID().slice(0, 8);
-const WORKSPACE_IMAGE = process.env.WORKSPACE_IMAGE ?? "edd-workspace:e2e";
 const OWNER = "ide-user";
 // Master key for the editor connection token. With it set, the control plane injects
 // each task's CONNECTION_TOKEN = HMAC(secret, workspaceId) — the same value the in-app
 // proxy would hand the browser. The bridge then reads the token the running editor
 // actually uses, so we can assert the injection end to end.
-const CONNECTION_SECRET = randomBytes(32).toString("hex");
+const CONNECTION_SECRET = newSecret();
 
 /** Follow OpenVSCode's token redirect with a cookie jar (node fetch has none):
  * `/?tkn=` → 302 (Set-Cookie) → GET the workbench with that cookie. */
@@ -52,14 +53,12 @@ describe(
     let bridge: IdeBridge | undefined;
 
     beforeAll(async () => {
-      app = await startLiveEcsApp({
+      // Distinct CIDRs from the other live suites so concurrent runs never collide.
+      app = await startEditorApp({
         runId: `ide-${RUN_ID}`,
-        workspaceImage: WORKSPACE_IMAGE,
-        // Distinct CIDRs from the other live suites so concurrent runs never collide.
         vpcCidr: "10.80.0.0/16",
         subnetCidr: "10.80.1.0/24",
-        agentSecret: randomBytes(32).toString("hex"),
-        extraEnv: { EDD_CONNECTION_SECRET: CONNECTION_SECRET },
+        connectionSecret: CONNECTION_SECRET,
       });
     });
 
@@ -73,14 +72,7 @@ describe(
     it("launches a real ECS task and serves the OpenVSCode workbench through the bridge", async () => {
       if (app === undefined) throw new Error("app was not started (beforeAll failed)");
       // Create the workspace through the real HTTP API (real RunTask + readiness gate).
-      const created = await fetch(`${app.web.baseUrl}/api/workspaces`, {
-        method: "POST",
-        headers: devHeaders(OWNER, "member"),
-        body: JSON.stringify({ baseImage: WORKSPACE_IMAGE }),
-      });
-      expect(created.status).toBe(201);
-      const ws = workspace.parse(await created.json());
-      expect(ws.state).toBe("running");
+      const ws = await createRunningWorkspace(app, OWNER);
 
       // Bridge into the task's isolated netns and reach the workbench.
       bridge = await startIdeBridge({ workspaceId: ws.id, image: WORKSPACE_IMAGE });

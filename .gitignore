@@ -51,3 +51,6 @@ apps/web/playwright-vscode-output/
 
 # GitHub Pages assembly (built in CI)
 _site/
+
+# Staged Monaco editor server (built into the base image by build.sh)
+infra/images/base/editor-monaco/

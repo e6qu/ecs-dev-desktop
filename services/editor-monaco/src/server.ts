@@ -12,6 +12,7 @@ import {
 import * as path from "node:path";
 
 import { buildTree, readTextFile, writeTextFile } from "./file-api";
+import { attachTerminal } from "./terminal";
 import { tokenCookie, tokenFromRequest, tokensMatch } from "./token";
 
 export interface EditorServerOptions {
@@ -78,11 +79,18 @@ async function serveStatic(res: ServerResponse, spaDir: string, rel: string): Pr
 export function createEditorServer(opts: EditorServerOptions): Server {
   const base = opts.basePath.endsWith("/") ? opts.basePath : `${opts.basePath}/`;
 
-  return createHttpServer((req, res) => {
+  const server = createHttpServer((req, res) => {
     void handle(req, res).catch(() => {
       if (!res.headersSent) send(res, 500, "internal error");
     });
   });
+  // The interactive terminal rides a WebSocket on the same server + token gate.
+  attachTerminal(server, {
+    root: opts.root,
+    basePath: base,
+    ...(opts.token === undefined ? {} : { token: opts.token }),
+  });
+  return server;
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     const url = new URL(req.url ?? "/", "http://localhost");

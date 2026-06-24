@@ -33,7 +33,9 @@ jobs:
       # Build the shared base once, then every variant FROM it (base layer cached).
       - name: Build base + language variants
         run: |
-          docker build -t edd-base:e2e infra/images/base
+          # build.sh stages the first-party Monaco editor (@edd/editor-monaco) into the base
+          # context before docker build; variants then build FROM the base unchanged.
+          infra/images/base/build.sh edd-base:e2e
           for v in typescript python go java rust; do
             docker build --build-arg BASE=edd-base:e2e -t "edd-ws-${v}:e2e" "infra/images/${v}"
           done

@@ -2,19 +2,24 @@
 // The Monaco SPA: a file tree + a Monaco editor over the server's confined file API. Vanilla TS
 // (no framework) — the "lightweight first-party editor". Served under /w/<id>/; all fetches are
 // relative to the document, so they ride the proxy to this workspace's editor server.
+import { FitAddon } from "@xterm/addon-fit";
+import { Terminal } from "@xterm/xterm";
 import * as monaco from "monaco-editor";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import jsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
 import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
 
+import "@xterm/xterm/css/xterm.css";
 import "./editor.css";
 
+const WORKER_BY_LABEL: Record<string, () => Worker> = {
+  json: () => new jsonWorker(),
+  typescript: () => new tsWorker(),
+  javascript: () => new tsWorker(),
+};
 self.MonacoEnvironment = {
-  getWorker(_workerId: string, label: string): Worker {
-    if (label === "json") return new jsonWorker();
-    if (label === "typescript" || label === "javascript") return new tsWorker();
-    return new editorWorker();
-  },
+  getWorker: (_workerId: string, label: string): Worker =>
+    (WORKER_BY_LABEL[label] ?? (() => new editorWorker()))(),
 };
 
 interface TreeEntry {
@@ -141,6 +146,49 @@ async function loadTree(): Promise<void> {
 
 editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
   void save();
+});
+
+// ── terminal (xterm over the server's PTY WebSocket) ──
+let term: Terminal | null = null;
+
+function setupTerminal(): void {
+  if (term !== null) return;
+  const t = new Terminal({ fontSize: 13, cursorBlink: true, theme: { background: "#1e1e1e" } });
+  const fit = new FitAddon();
+  t.loadAddon(fit);
+  t.open(el("terminal"));
+  fit.fit();
+
+  const wsUrl = new URL("terminal", document.baseURI);
+  wsUrl.protocol = wsUrl.protocol === "https:" ? "wss:" : "ws:";
+  const sock = new WebSocket(wsUrl);
+  sock.addEventListener("open", () => {
+    sock.send(JSON.stringify({ type: "resize", cols: t.cols, rows: t.rows }));
+  });
+  sock.addEventListener("message", (e: MessageEvent) => {
+    if (typeof e.data === "string") t.write(e.data);
+  });
+  t.onData((data) => {
+    if (sock.readyState === WebSocket.OPEN) sock.send(JSON.stringify({ type: "input", data }));
+  });
+  t.onResize(({ cols, rows }) => {
+    if (sock.readyState === WebSocket.OPEN)
+      sock.send(JSON.stringify({ type: "resize", cols, rows }));
+  });
+  window.addEventListener("resize", () => {
+    fit.fit();
+  });
+  term = t;
+}
+
+el("toggle-terminal").addEventListener("click", () => {
+  const panel = el("terminal-panel");
+  const show = panel.hidden;
+  panel.hidden = !show;
+  if (show) {
+    setupTerminal();
+    term?.focus();
+  }
 });
 
 void loadTree();
