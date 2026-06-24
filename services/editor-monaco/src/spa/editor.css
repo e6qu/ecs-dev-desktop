@@ -1,0 +1,102 @@
+/* SPDX-License-Identifier: AGPL-3.0-or-later */
+:root {
+  --bg: #1e1e1e;
+  --panel: #252526;
+  --border: #333;
+  --text: #ccc;
+  --dim: #888;
+  --accent: #4ec9b0;
+}
+* {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font:
+    13px -apple-system,
+    "Segoe UI",
+    system-ui,
+    sans-serif;
+}
+#app {
+  display: flex;
+  height: 100vh;
+}
+#sidebar {
+  width: 240px;
+  flex: none;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+#sidebar-head {
+  padding: 8px 12px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--dim);
+}
+#files {
+  padding-bottom: 12px;
+}
+.file-row {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: var(--text);
+  font: inherit;
+  padding: 3px 12px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.file-row:hover {
+  background: #2a2d2e;
+}
+.file-row.active {
+  background: #37373d;
+}
+.file-row.dir {
+  color: var(--dim);
+  cursor: default;
+}
+#main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+#tabbar {
+  height: 32px;
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--dim);
+}
+#editor {
+  flex: 1;
+  min-height: 0;
+}
+#status {
+  position: fixed;
+  bottom: 0;
+  right: 0;
+  padding: 4px 12px;
+  background: var(--accent);
+  color: #06281f;
+  font-size: 11px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+#status.show {
+  opacity: 1;
+}

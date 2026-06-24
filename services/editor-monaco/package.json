@@ -1,0 +1,25 @@
+{
+  "name": "@edd/editor-monaco",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json --noEmit && vite build && esbuild src/run.ts --bundle --platform=node --target=node22 --format=esm --log-level=warning '--banner:js=import { createRequire } from \"module\"; const require = createRequire(import.meta.url);' --outfile=dist/server.js",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@edd/config": "workspace:*",
+    "monaco-editor": "^0.55.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0",
+    "esbuild": "^0.28.1",
+    "typescript": "^6.0.3",
+    "vite": "^8.1.0",
+    "vitest": "^4.1.9"
+  }
+}
