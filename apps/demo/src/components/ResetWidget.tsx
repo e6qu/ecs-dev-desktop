@@ -2,7 +2,7 @@
 import type { JSX } from "react";
 
 import { clearKeys } from "../lib/agent-key";
-import { clearFiles } from "../lib/ide-files";
+import { clearAllFiles } from "../lib/ide-files";
 import { demo } from "../lib/use-demo";
 
 // UI-only top-right control: wipe ALL of the demo's local state (control plane + IDE files) and
@@ -14,9 +14,12 @@ export function ResetWidget(): JSX.Element {
     );
     if (!ok) return;
     demo.reset();
-    clearFiles();
     clearKeys();
-    window.location.reload();
+    // IDE files are in IndexedDB (async) — reload only after they're cleared, so the fresh load
+    // doesn't race a half-deleted store.
+    void clearAllFiles().finally(() => {
+      window.location.reload();
+    });
   };
   return (
     <button

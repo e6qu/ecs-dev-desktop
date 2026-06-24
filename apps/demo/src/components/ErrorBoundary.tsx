@@ -2,7 +2,7 @@
 import { Component, type ReactNode } from "react";
 
 import { clearKeys } from "../lib/agent-key";
-import { clearFiles } from "../lib/ide-files";
+import { clearAllFiles } from "../lib/ide-files";
 import { clearState } from "../lib/persistence";
 
 interface State {
@@ -20,9 +20,11 @@ export class ErrorBoundary extends Component<{ children: ReactNode }, State> {
 
   private reset(): void {
     clearState();
-    clearFiles();
     clearKeys();
-    window.location.reload();
+    // IDE files are in IndexedDB (async) — reload after the wipe resolves.
+    void clearAllFiles().finally(() => {
+      window.location.reload();
+    });
   }
 
   override render(): ReactNode {
