@@ -2,7 +2,7 @@
 import { useState, type JSX } from "react";
 import { Link } from "react-router-dom";
 
-import { baseImage, type Workspace, type WorkspaceAction } from "@edd/core";
+import { baseImage, type WorkspaceAction } from "@edd/core";
 
 import { StateBadge } from "../components/StateBadge";
 import { AGENT_LABELS, EDITOR_LABELS, type AgentKind, type EditorKind } from "../lib/demo-types";
@@ -15,14 +15,17 @@ export function Workspaces(): JSX.Element {
   const [picked, setPicked] = useState<string>(catalog[0]?.image ?? "");
   const [editor, setEditor] = useState<EditorKind>("openvscode");
   const [agent, setAgent] = useState<AgentKind>("claude-code");
+  // Deleting a workspace is irreversible, so (like SSH-key removal) it takes a second click.
+  const [confirmingDelete, setConfirmingDelete] = useState<string | null>(null);
   const mine = [...cp.workspaces({ mine: true })].sort(
     (a, b) => Date.parse(b.lastActivity) - Date.parse(a.lastActivity),
   );
 
-  const runAction = (ws: Workspace, action: WorkspaceAction): void => {
-    if (action === "stop") cp.stop(ws.id);
-    else if (action === "start") cp.start(ws.id);
-    else if (action === "delete") cp.remove(ws.id);
+  const ACTION_LABEL: Record<WorkspaceAction, string> = {
+    start: "Start",
+    stop: "Stop",
+    snapshot: "Snapshot",
+    delete: "Delete",
   };
 
   return (
@@ -105,20 +108,42 @@ export function Workspaces(): JSX.Element {
                     Open IDE
                   </Link>
                 ) : null}
-                {cp.actionsFor(ws).map((a) =>
-                  a === "snapshot" ? null : (
+                {cp.actionsFor(ws).map((a) => {
+                  if (a === "snapshot") return null;
+                  if (a === "delete") {
+                    const armed = confirmingDelete === ws.id;
+                    return (
+                      <button
+                        key={a}
+                        type="button"
+                        className="demo-danger"
+                        onClick={() => {
+                          if (armed) {
+                            cp.remove(ws.id);
+                            setConfirmingDelete(null);
+                          } else {
+                            setConfirmingDelete(ws.id);
+                          }
+                        }}
+                      >
+                        {armed ? "Confirm delete" : "Delete"}
+                      </button>
+                    );
+                  }
+                  return (
                     <button
                       key={a}
                       type="button"
-                      className={a === "delete" ? "demo-danger" : "demo-ghost"}
+                      className="demo-ghost"
                       onClick={() => {
-                        runAction(ws, a);
+                        if (a === "stop") cp.stop(ws.id);
+                        else cp.start(ws.id);
                       }}
                     >
-                      {a}
+                      {ACTION_LABEL[a]}
                     </button>
-                  ),
-                )}
+                  );
+                })}
               </div>
             </li>
           ))}

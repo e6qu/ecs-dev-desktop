@@ -65,8 +65,10 @@ export function AgentPanel({
       })
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err);
-        setEvents((ev) => [...ev, { kind: "say", text: `⚠ ${msg}` }]);
+        setEvents((ev) => [...ev, { kind: "error", text: msg }]);
         setRevealed((r) => r + 1);
+        // Don't leave the user stuck in a quietly-broken live mode — fall back to scripted.
+        setLive(false);
       })
       .finally(() => {
         setPending(false);
@@ -168,7 +170,7 @@ export function AgentPanel({
         </div>
       ) : null}
 
-      <div className="agent-scroll" ref={scrollRef}>
+      <div className="agent-scroll" ref={scrollRef} role="log" aria-live="polite">
         {surface === "terminal" ? (
           <AgentTerminal agent={agent} events={visible} running={running} />
         ) : (

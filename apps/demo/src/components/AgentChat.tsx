@@ -41,6 +41,13 @@ export function AgentChat({
             </div>
           );
         }
+        if (e.kind === "error") {
+          return (
+            <div key={i} className="agent-msg agent-error-msg">
+              ⚠ {e.text}
+            </div>
+          );
+        }
         return (
           <div key={i} className="agent-msg agent-msg-assistant">
             <span className="agent-msg-who">{AGENT_LABELS[agent]}</span>

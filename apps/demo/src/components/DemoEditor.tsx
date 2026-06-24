@@ -70,19 +70,12 @@ export function DemoEditor({
   // OpenVSCode workbench chrome.
   return (
     <div className="ide ide-workbench">
-      <div className="wb-activity">
-        <span className="wb-act active" title="Explorer">
-          ▤
-        </span>
-        <span className="wb-act" title="Search">
-          ⌕
-        </span>
-        <span className="wb-act" title="Source control">
-          ⎇
-        </span>
-        <span className="wb-act" title="Extensions">
-          ▦
-        </span>
+      {/* Decorative OpenVSCode-style chrome (preview only, not interactive) — hidden from AT. */}
+      <div className="wb-activity" aria-hidden="true">
+        <span className="wb-act active">▤</span>
+        <span className="wb-act">⌕</span>
+        <span className="wb-act">⎇</span>
+        <span className="wb-act">▦</span>
       </div>
       <aside className="ide-explorer">
         <div className="ide-explorer-head">Explorer — workspace</div>

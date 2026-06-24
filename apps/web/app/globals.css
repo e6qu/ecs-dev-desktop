@@ -9,12 +9,15 @@
   --bg: #090b0a;
   --panel: #0f1311;
   --panel-2: #141a16;
+  /* Deepest surface (log pane). Was referenced as a fallback only; now a real token. */
+  --panel-3: #0b0e12;
   --line: rgba(182, 242, 74, 0.07);
   --border: rgba(232, 236, 230, 0.09);
   --border-strong: rgba(232, 236, 230, 0.16);
   --text: #e8ece6;
   --dim: #7c867a;
-  --dimmer: #525a50;
+  /* Lightened from #525a50 (2.8:1) to clear WCAG AA 4.5:1 on --bg — it's used for real small text. */
+  --dimmer: #7a857a;
   --accent: #b6f24a;
   --accent-ink: #0a0d06;
   --accent-glow: rgba(182, 242, 74, 0.35);
@@ -24,7 +27,8 @@
   --st-idle: #ffb454;
   --st-stopped: #7a877c;
   --st-error: #ff5d6c;
-  --st-terminated: #4b554a;
+  /* Lightened from #4b554a (2.5:1) to clear 3:1 non-text contrast on --bg (the status dot/badge). */
+  --st-terminated: #6f7a6e;
 
   --r: 10px;
   --maxw: 1140px;
@@ -467,9 +471,15 @@ main {
 
 .input:focus,
 .select:focus {
-  outline: none;
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-dim, rgba(182, 242, 74, 0.14));
+  box-shadow: 0 0 0 3px rgba(182, 242, 74, 0.3);
+}
+
+/* A clear, high-contrast keyboard-focus ring on every interactive control (WCAG 2.4.7 Focus
+ * Visible) — previously focus relied on the often-invisible UA ring on these dark surfaces. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* ---- panels / empty / errors ---- */

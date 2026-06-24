@@ -16,6 +16,7 @@ export function Layout(): JSX.Element {
 
   return (
     <div className="demo-shell">
+      <h1 className="demo-sr-only">ecs-dev-desktop — interactive demo</h1>
       <header className="demo-header">
         <div className="demo-brand">
           <span className="demo-logo">◢◤</span>

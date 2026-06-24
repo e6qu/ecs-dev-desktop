@@ -123,23 +123,34 @@ async function save(): Promise<void> {
 }
 
 async function loadTree(): Promise<void> {
-  const res = await fetch("api/tree");
-  const raw: unknown = await res.json();
   const filesEl = el("files");
+  const res = await fetch("api/tree");
+  if (!res.ok) {
+    filesEl.textContent = `could not load files (${String(res.status)})`;
+    return;
+  }
+  const raw: unknown = await res.json();
   filesEl.replaceChildren();
   for (const entry of parseEntries(raw)) {
-    const depth = entry.path.split("/").length - 1;
+    const pad = `${String(12 + (entry.path.split("/").length - 1) * 12)}px`;
+    const label = (entry.type === "dir" ? "▸ " : "") + (entry.path.split("/").pop() ?? entry.path);
+    if (entry.type === "dir") {
+      // Directories are not openable yet — render an inert label, not a dead focusable button.
+      const dir = document.createElement("div");
+      dir.className = "file-row dir";
+      dir.style.paddingLeft = pad;
+      dir.textContent = label;
+      filesEl.append(dir);
+      continue;
+    }
     const row = document.createElement("button");
     row.type = "button";
-    row.className = entry.type === "dir" ? "file-row dir" : "file-row";
-    row.style.paddingLeft = `${String(12 + depth * 12)}px`;
-    row.textContent =
-      (entry.type === "dir" ? "▸ " : "") + (entry.path.split("/").pop() ?? entry.path);
-    if (entry.type === "file") {
-      row.addEventListener("click", () => {
-        void openFile(entry.path, row);
-      });
-    }
+    row.className = "file-row";
+    row.style.paddingLeft = pad;
+    row.textContent = label;
+    row.addEventListener("click", () => {
+      void openFile(entry.path, row);
+    });
     filesEl.append(row);
   }
 }
@@ -167,6 +178,12 @@ function setupTerminal(): void {
   });
   sock.addEventListener("message", (e: MessageEvent) => {
     if (typeof e.data === "string") t.write(e.data);
+  });
+  sock.addEventListener("error", () => {
+    t.write("\r\n\x1b[31m[terminal connection error]\x1b[0m\r\n");
+  });
+  sock.addEventListener("close", () => {
+    t.write("\r\n\x1b[33m[terminal disconnected]\x1b[0m\r\n");
   });
   t.onData((data) => {
     if (sock.readyState === WebSocket.OPEN) sock.send(JSON.stringify({ type: "input", data }));

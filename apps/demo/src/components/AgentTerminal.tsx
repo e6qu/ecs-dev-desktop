@@ -36,8 +36,10 @@ export function AgentTerminal({
                 <div className="agent-term-result">⎿ {e.result}</div>
               ) : null}
             </span>
-          ) : (
+          ) : e.kind === "say" ? (
             <span className="agent-term-say">{e.text}</span>
+          ) : (
+            <span className="agent-term-error">⚠ {e.text}</span>
           )}
         </div>
       ))}
