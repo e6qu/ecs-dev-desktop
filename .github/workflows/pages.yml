@@ -46,7 +46,7 @@ jobs:
       - name: Install Playwright browser
         run: pnpm --filter @edd/demo exec playwright install --with-deps chromium
       - name: Browser smoke (build + preview + drive a real browser)
-        run: pnpm --filter @edd/demo test:e2e
+        run: pnpm --filter @edd/demo test:smoke
 
   deploy:
     name: build + deploy
