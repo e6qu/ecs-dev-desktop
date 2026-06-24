@@ -4,6 +4,15 @@
 
 ## Open
 
+- **node-pty (Monaco editor terminal) has no Linux prebuild — compiled in CI (2026-06-24).** The
+  in-container Monaco editor (`@edd/editor-monaco`) uses `node-pty` for its terminal; node-pty 1.1.0 ships
+  prebuilt binaries only for darwin/win32, **not Linux**, so on the (Linux) golden image it is compiled from
+  source by `infra/images/base/build.sh` (CI runners have build-essential). Consequences: (a) a
+  macOS/Apple-Silicon host build stages a darwin binary the Linux image can't load, so the terminal is
+  exercised only by the **e2e tier** — node-pty is lazy-loaded, so the editor still serves and only the
+  terminal degrades; (b) a node-pty bump that changes its prebuild/build story is a known risk — re-check the
+  e2e tier still builds it. `infra/images/base/smoke.sh` validates the editor (not the terminal) locally.
+
 - **Catalog (base-image) create/update is last-write-wins — accepted, admin-only (2026-06-22).**
   `CatalogService.update`/`create` (`packages/control-plane/src/catalog-service.ts`) read → patch →
   unconditional `put()`; the `baseImages` entity has no `version` attribute, so two concurrent admin edits of
