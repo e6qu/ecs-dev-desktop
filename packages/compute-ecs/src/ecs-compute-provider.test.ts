@@ -129,6 +129,20 @@ describe("workspaceEnvironment", () => {
     ]);
   });
 
+  it("injects EDD_EDITOR_MODE only when an editor is chosen (default stays OpenVSCode)", () => {
+    const config = {
+      subnets: ["subnet-1"],
+      ebsRoleArn: "arn:aws:iam::123456789012:role/ecsInfrastructureRole",
+    };
+    // No editor → no EDD_EDITOR_MODE (the container defaults to OpenVSCode).
+    expect(workspaceEnvironment(config, "ws-1").some((e) => e.name === "EDD_EDITOR_MODE")).toBe(
+      false,
+    );
+    // monaco → the env var the entrypoint branches on.
+    const monaco = workspaceEnvironment(config, "ws-1", undefined, undefined, "monaco");
+    expect(monaco).toContainEqual({ name: "EDD_EDITOR_MODE", value: "monaco" });
+  });
+
   it("injects the heartbeat interval when configured (scale-to-zero tuning)", () => {
     const env = workspaceEnvironment(
       {

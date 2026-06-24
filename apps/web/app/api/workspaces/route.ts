@@ -55,8 +55,11 @@ async function handlePOST(req: Request) {
 
   const image = baseImage(parsed.data.baseImage);
   // Workspaces may only launch from an enabled catalog entry (the allow-list).
-  const enabled = await getCatalog().assertEnabled(image);
+  const catalog = getCatalog();
+  const enabled = await catalog.assertEnabled(image);
   if (!enabled.ok) return domainErrorResponse(enabled.error);
+  // The editor is the base-image's choice (OpenVSCode by default) — flows to EDD_EDITOR_MODE.
+  const editor = await catalog.editorForImage(image);
 
   const cp = await getControlPlane();
 
@@ -86,6 +89,7 @@ async function handlePOST(req: Request) {
       ...(parsed.data.repoUrl === undefined ? {} : { repoUrl: parsed.data.repoUrl }),
       ...(parsed.data.repoRef === undefined ? {} : { repoRef: parsed.data.repoRef }),
       baseImage: image,
+      editor,
       // Authoritative cap: enforced ATOMICALLY in the create transaction (the read
       // check above is only a fast UX gate). Concurrent creates past `limit` cancel.
       // `null` = unlimited → no counter condition.

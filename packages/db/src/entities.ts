@@ -23,6 +23,9 @@ export function makeWorkspaceEntity(client: DynamoDBClient, table = TABLE) {
         // session"). Optional: blank/scratch sessions have none.
         repoUrl: { type: "string", required: false },
         baseImage: { type: "string", required: true },
+        // Which editor this workspace serves (drives EDD_EDITOR_MODE). Optional: records
+        // predating the field are treated as the default (OpenVSCode).
+        editor: { type: ["openvscode", "monaco"] as const, required: false },
         state: {
           type: [
             "provisioning",
@@ -101,6 +104,9 @@ export function makeBaseImageEntity(client: DynamoDBClient, table = TABLE) {
         tags: { type: "list", items: { type: "string" }, required: false },
         tools: { type: "list", items: { type: "string" }, required: false },
         enabled: { type: "boolean", required: true },
+        // Which editor workspaces from this image serve (openvscode | monaco). Optional:
+        // records predating the field are treated as the default (OpenVSCode).
+        editor: { type: ["openvscode", "monaco"] as const, required: false },
         createdAt: { type: "string", required: true },
       },
       indexes: {

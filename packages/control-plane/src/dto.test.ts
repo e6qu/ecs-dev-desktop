@@ -26,6 +26,7 @@ describe("toWorkspaceDto", () => {
       id: "ws-1",
       ownerId: "alice",
       baseImage: "golden/node:20",
+      editor: "openvscode",
       state: "running",
       createdAt: "2026-06-01T00:00:00.000Z",
       // Server-computed from the state machine so the UI renders buttons from data.

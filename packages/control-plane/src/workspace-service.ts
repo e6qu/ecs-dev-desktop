@@ -41,6 +41,7 @@ import {
   type ComputeProvider,
   type ComputeTask,
   type DomainError,
+  type EditorKind,
   type Email,
   type IsoTimestamp,
   type MetricSink,
@@ -242,6 +243,7 @@ interface WorkspaceRecord {
   ownerEmail?: string;
   repoUrl?: string;
   baseImage: string;
+  editor?: EditorKind;
   state: WorkspaceState;
   desiredState?: DesiredState;
   deleteRequestedAt?: string;
@@ -297,6 +299,7 @@ function toWorkspace(r: WorkspaceRecord): Workspace {
     ownerEmail: r.ownerEmail === undefined ? undefined : email(r.ownerEmail),
     repoUrl: r.repoUrl,
     baseImage: baseImage(r.baseImage),
+    editor: r.editor,
     state: r.state,
     desiredState: r.desiredState,
     deleteRequestedAt:
@@ -327,6 +330,9 @@ export class WorkspaceService {
     ownerId: OwnerId;
     ownerEmail?: Email;
     baseImage: BaseImage;
+    /** The editor this workspace serves — resolved from the base-image catalog entry by the
+     * route; defaults to OpenVSCode. Flows to the container as `EDD_EDITOR_MODE`. */
+    editor?: EditorKind;
     repoUrl?: string;
     repoRef?: string;
     /** The owner's per-role workspace cap. When given (and `ownerCounts` is wired),
@@ -344,6 +350,7 @@ export class WorkspaceService {
       task = await this.deps.compute.runTask({
         workspaceId: id,
         baseImage: input.baseImage,
+        ...(input.editor === undefined ? {} : { editor: input.editor }),
         ...(input.repoUrl === undefined ? {} : { repoUrl: input.repoUrl }),
         ...(input.repoRef === undefined ? {} : { repoRef: input.repoRef }),
       });
@@ -356,6 +363,7 @@ export class WorkspaceService {
       ownerEmail: input.ownerEmail,
       repoUrl: input.repoUrl,
       baseImage: input.baseImage,
+      ...(input.editor === undefined ? {} : { editor: input.editor }),
       volumeId: task.volumeId,
       taskId: task.id,
       at,
@@ -673,6 +681,7 @@ export class WorkspaceService {
       task = await this.deps.compute.runTask({
         workspaceId: ws.id,
         baseImage: ws.baseImage,
+        ...(ws.editor === undefined ? {} : { editor: ws.editor }),
         fromSnapshot: ws.latestSnapshotId,
       });
     } catch (e) {

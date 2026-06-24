@@ -102,6 +102,15 @@ fi
 # built-in extensions dir at image build, so they load with no runtime copy. The
 # user's own extensions still install into the volume's extensions dir below.)
 
+# Editor selection. The control plane sets EDD_EDITOR_MODE from the workspace's editor choice
+# (its base-image catalog entry): "monaco" -> the first-party Monaco editor server; anything else
+# (including unset) -> OpenVSCode Server, the historical default. The Monaco editor server is added
+# to the image in a follow-up; until then a monaco request falls back to OpenVSCode so the
+# workspace still launches a working editor rather than nothing.
+if [ "${EDD_EDITOR_MODE:-openvscode}" = "monaco" ]; then
+  echo "edd: EDD_EDITOR_MODE=monaco requested, but the Monaco editor server is not installed in this image yet -- falling back to OpenVSCode." >&2
+fi
+
 # Base server args. --disable-workspace-trust: a per-user workspace contains the
 # user's own files, so the Workspace Trust prompt is pure friction (a modal that
 # blocks the UI); hosted dev environments disable it.

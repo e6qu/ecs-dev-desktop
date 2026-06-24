@@ -70,6 +70,9 @@ export {
   ID_PREFIX,
 } from "./domain/constants";
 
+// Editor choice (openvscode | monaco): flows base-image → workspace → EDD_EDITOR_MODE.
+export { asEditorKind, DEFAULT_EDITOR, EDITOR_KINDS, type EditorKind } from "./domain/editor";
+
 // Workspace domain object + pure lifecycle functions (functional core).
 export type {
   DesiredState,

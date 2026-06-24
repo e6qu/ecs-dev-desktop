@@ -42,6 +42,7 @@ async function handlePOST(req: Request) {
     tags: parsed.data.tags,
     tools: parsed.data.tools,
     enabled: parsed.data.enabled,
+    editor: parsed.data.editor,
   });
   return NextResponse.json(entry, { status: 201 });
 }

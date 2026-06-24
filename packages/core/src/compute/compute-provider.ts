@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import type { EditorKind } from "../domain/editor";
 import type {
   BaseImage,
   IsoTimestamp,
@@ -28,6 +29,9 @@ export interface ComputeTask {
 export interface RunTaskInput {
   workspaceId: WorkspaceId;
   baseImage: BaseImage;
+  /** Which editor to serve — passed to the container as `EDD_EDITOR_MODE`; the entrypoint
+   * branches on it. Omit ⇒ the container default (OpenVSCode). */
+  editor?: EditorKind;
   /** Hydrate the managed volume from this snapshot (wake); omit for a fresh volume. */
   fromSnapshot?: SnapshotId;
   /** Git repo to clone into the session at first boot (fresh volume only); the

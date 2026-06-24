@@ -2,6 +2,7 @@
 "use client";
 
 import { ApiClient } from "@edd/api-client";
+import type { EditorKindDto } from "@edd/api-contracts";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 
@@ -14,6 +15,7 @@ export function CreateBaseImage() {
   const [description, setDescription] = useState("");
   const [tags, setTags] = useState("");
   const [tools, setTools] = useState("");
+  const [editor, setEditor] = useState<EditorKindDto>("openvscode");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,12 +37,14 @@ export function CreateBaseImage() {
         description: description === "" ? undefined : description,
         tags: parseLabels(tags),
         tools: parseLabels(tools),
+        editor,
       });
       setName("");
       setImage("");
       setDescription("");
       setTags("");
       setTools("");
+      setEditor("openvscode");
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : "create failed");
@@ -110,6 +114,22 @@ export function CreateBaseImage() {
             }}
           />
           <span className="field-hint">Key CLIs surfaced to users before launch.</span>
+        </label>
+        <label className="field-stack">
+          <span className="field-label">Editor</span>
+          <select
+            className="input"
+            value={editor}
+            onChange={(e) => {
+              if (e.target.value === "openvscode" || e.target.value === "monaco") {
+                setEditor(e.target.value);
+              }
+            }}
+          >
+            <option value="openvscode">OpenVSCode</option>
+            <option value="monaco">Monaco</option>
+          </select>
+          <span className="field-hint">Which editor workspaces from this image serve.</span>
         </label>
       </div>
       <div className="field" style={{ marginTop: 16 }}>

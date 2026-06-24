@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { transition, type WorkspaceState } from "../lifecycle/workspace-state-machine";
 import { err, map, ok, type Result } from "../result";
+import { DEFAULT_EDITOR, type EditorKind } from "./editor";
 import { conflictError, type DomainError } from "./errors";
 import type {
   BaseImage,
@@ -35,6 +36,9 @@ export interface Workspace {
    * Absent for an empty workspace. */
   readonly repoUrl?: string;
   readonly baseImage: BaseImage;
+  /** Which editor this workspace serves — drives `EDD_EDITOR_MODE` at launch. Absent on records
+   * created before the field ⇒ treated as the default (OpenVSCode). */
+  readonly editor?: EditorKind;
   readonly state: WorkspaceState;
   /** Durable intent, independent of the observed `state`: whether this workspace
    * should exist (`present`) or be torn down (`deleted`). The reconciler converges
@@ -72,6 +76,7 @@ export interface ProvisionParams {
   ownerEmail?: Email;
   repoUrl?: string;
   baseImage: BaseImage;
+  editor?: EditorKind;
   volumeId: VolumeId;
   taskId: TaskId;
   at: IsoTimestamp;
@@ -86,6 +91,7 @@ export function provision(params: ProvisionParams): Workspace {
     ownerEmail: params.ownerEmail,
     repoUrl: params.repoUrl,
     baseImage: params.baseImage,
+    editor: params.editor ?? DEFAULT_EDITOR,
     state: "running",
     desiredState: "present",
     createdAt: params.at,

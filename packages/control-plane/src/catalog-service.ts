@@ -2,6 +2,7 @@
 import type { BaseImageEntryDto } from "@edd/api-contracts";
 import {
   applyBaseImagePatch,
+  asEditorKind,
   baseImage,
   baseImageId,
   conflictError,
@@ -18,6 +19,7 @@ import {
   type BaseImagePatch,
   type Clock,
   type DomainError,
+  type EditorKind,
   type Result,
 } from "@edd/core";
 import type { BaseImageEntity } from "@edd/db";
@@ -38,6 +40,7 @@ interface BaseImageRecord {
   tags?: string[];
   tools?: string[];
   enabled: boolean;
+  editor?: string;
   createdAt: string;
 }
 
@@ -50,6 +53,7 @@ function toEntry(r: BaseImageRecord): BaseImageEntry {
     tags: r.tags ?? [],
     tools: r.tools ?? [],
     enabled: r.enabled,
+    editor: asEditorKind(r.editor),
     createdAt: isoTimestamp(r.createdAt),
   };
 }
@@ -78,6 +82,7 @@ export class CatalogService {
     tags?: readonly string[];
     tools?: readonly string[];
     enabled?: boolean;
+    editor?: EditorKind;
   }): Promise<BaseImageEntryDto> {
     const entry = provisionBaseImage({
       id: newBaseImageId(),
@@ -87,6 +92,7 @@ export class CatalogService {
       tags: input.tags,
       tools: input.tools,
       enabled: input.enabled,
+      editor: input.editor,
       at: isoTimestamp(this.deps.clock.now()),
     });
     await this.persist(entry);
@@ -119,6 +125,12 @@ export class CatalogService {
     return ok(undefined);
   }
 
+  /** The editor a workspace launched from `image` should serve (the entry's choice, default
+   * OpenVSCode). The workspace-create route reads this to thread it into the launch. */
+  async editorForImage(image: BaseImage): Promise<EditorKind> {
+    return asEditorKind(findEnabledImage(await this.all(), image)?.editor);
+  }
+
   private async all(): Promise<BaseImageEntry[]> {
     const { data } = await this.deps.baseImages.query.byCatalog({}).go({ pages: "all" });
     return data.map((r: BaseImageRecord) => toEntry(r));
@@ -144,6 +156,7 @@ export class CatalogService {
         tags: [...entry.tags],
         tools: [...entry.tools],
         enabled: entry.enabled,
+        editor: entry.editor,
         createdAt: entry.createdAt,
       })
       .go();
