@@ -1390,9 +1390,10 @@ jobs:
             -var "sim_endpoint=${SIM_ENDPOINT}" -var nat_mode=instance
 
       # DNS/TLS path: re-apply with enable_dns=true so the module's ACM cert +
-      # Route53 validation + HTTPS listener (dns.tf) provision against the sim
-      # (64 resources). The two ACM gaps — #421 (wildcard-SAN validation record
-      # name) and #420 (cert never reaching ISSUED) — were fixed upstream by #424.
+      # Route53 validation + HTTPS listener (dns.tf) AND the SSH ingress (ssh-ingress.tf:
+      # NLB + TCP:22 listener + target group + gateway service + the *.ssh wildcard) provision
+      # against the sim. (Historical: the ACM gaps #421 wildcard-SAN validation + #420
+      # cert-never-ISSUED were fixed upstream by #424; the cert is single-name now, no wildcard.)
       - name: terraform apply + resource verification + idempotency + destroy (DNS/TLS)
         run: |
           terraform -chdir="${TF_DIR}" apply -auto-approve -input=false \
@@ -1517,9 +1518,9 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" acm describe-certificate \
               --certificate-arn "${CERT_ARN}" \
               --query 'Certificate.DomainName' --output text)"
-          # Route53 cert validation CNAME records: one per unique domain (app.* and *.devbox.*
-          # are unrelated — no CNAME sharing), so exactly 2.
-          assert_eq "Route53 cert validation CNAME count 2" "2" \
+          # Route53 cert validation CNAME records: one per cert domain. The cert is now single-name
+          # (app.<domain> only — no workspace wildcard SAN), so exactly 1.
+          assert_eq "Route53 cert validation CNAME count 1" "1" \
             "$(aws --endpoint-url "${ENDPT}" route53 list-resource-record-sets \
               --hosted-zone-id "${ZONE_ID}" \
               --query "length(ResourceRecordSets[?Type=='CNAME'])" --output text)"
