@@ -148,16 +148,18 @@ old STATIC-gate "tokenless behind the gate" framing (see _Resolved (repo)_).
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-- **SSH ingress (Slice 3) sim-exercise — #683 + #685-matcher FIXED in #687; one residual gap #688
-  keeps it gated (re-pinned `f58007ba`, 2026-06-26).** The ingress terraform (`ssh-ingress.tf`)
-  **applies + asserts cleanly against the sim**; sockerless **#687** landed the NLB raw-TCP data plane
-  (#683, so the live byte-stream loop is no longer inherently sim-blocked, only e2e-aws by deploy) and
-  cleared the TCP-target-group `Matcher` (#685). But re-validating against #687 surfaced a **residual**
-  gap, **filed #688 (OPEN):** the sim still returns `HealthCheckPath="/"` for a TCP target group (real
-  AWS omits path AND matcher for TCP) — so the **idempotency re-plan** still fails (`path cannot be
-specified when protocol is TCP`). So `tests/sim` keeps `ssh_base_domain` empty (SSH terraform covered
-  by `terraform validate`; the unconditional `ssh-gateway` ECR repo IS sim-asserted) until #688 lands —
-  then re-enable the full SSH-ingress sim exercise. Integration tier 26/26 against #687. See
+- **SSH ingress (Slice 3) sim-exercise — health-check gaps FIXED (#685/#688), one regression #691 OPEN
+  keeps it gated (re-pinned `fe3fce01`, 2026-06-26).** Progress across three sockerless bumps: **#687**
+  landed **#683** (NLB raw-TCP data plane, `elbv2_nlb_proxy.go`) + **#685** (TCP target group `Matcher`);
+  **#690** landed **#688** (TCP target group `HealthCheckPath`). Re-validated against #690: the SSH
+  ingress `terraform apply` succeeds and the plan no longer _errors_ — but the idempotency re-plan still
+  **drifts** (1 to change). The #683 NLB proxy introduced a regression, **filed #691 (OPEN):**
+  `DescribeLoadBalancers` returns the `network` LB's `DNSName` as the proxy's `host:port` (e.g.
+  `10.89.3.2:44425`) instead of the stable `*.elb.amazonaws.com` hostname `CreateLoadBalancer` returned,
+  so `aws_lb.dns_name` + the `*.<ssh-base-domain>` Route53 alias never settle (a `:` isn't even valid in
+  a DNS name). So `tests/sim` keeps `ssh_base_domain` empty (SSH terraform covered by `terraform
+validate`; the unconditional `ssh-gateway` ECR repo IS sim-asserted) until #691 lands — then re-enable
+  the full SSH-ingress sim exercise. Integration tier 26/26 against #690. See
   `infra/terraform/modules/ecs-dev-desktop/ssh-ingress.tf`.
 
 - **IAM enforcement RESOURCE/SERVICE-scoped condition keys — FIXED upstream (#661→#662), CONFIRMED

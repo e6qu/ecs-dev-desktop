@@ -1458,11 +1458,12 @@ jobs:
               --query "length(ResourceRecordSets[?Name=='app.edd-sim.example.com.' && Type=='A'])" \
               --output text)"
           # NOTE: the SSH ingress (NLB + TCP:22 listener + target group + gateway service + the
-          # `*.ssh` wildcard) applies + asserts cleanly against the sim, but is NOT exercised here —
-          # the idempotency re-plan fails because the sim returns an HTTP-only health-check attribute
-          # for the TCP target group (#687/#685 cleared the Matcher, but HealthCheckPath is still
-          # returned — sockerless #688). The sim test leaves `ssh_base_domain` empty until #688 lands;
-          # the SSH terraform is covered by `terraform validate`.
+          # `*.ssh` wildcard) applies cleanly against the sim, but is NOT exercised here yet — the
+          # idempotency re-plan drifts because `DescribeLoadBalancers` returns the NLB DNSName as the
+          # raw-TCP data-plane proxy's host:port (sockerless #691), so `aws_lb.dns_name` + the Route53
+          # alias never settle. (The TCP-TG health-check gaps #685/#688 are fixed in #687/#690.) The
+          # sim test leaves `ssh_base_domain` empty until #691 lands; SSH terraform covered by
+          # `terraform validate`.
           # HTTPS listener SSL policy + forward action (both fixed by sockerless#473 / PR #475).
           assert_eq "ALB HTTPS listener ssl policy TLS13" "ELBSecurityPolicy-TLS13-1-2-2021-06" \
             "$(aws --endpoint-url "${ENDPT}" elbv2 describe-listeners \

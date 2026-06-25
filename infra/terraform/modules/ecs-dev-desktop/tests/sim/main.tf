@@ -97,11 +97,13 @@ module "edd" {
   domain_name     = var.enable_dns ? "edd-sim.example.com" : ""
   route53_zone_id = var.enable_dns ? aws_route53_zone.test[0].zone_id : ""
 
-  # SSH ingress (Slice 3) is still NOT exercised against the sim. The resources apply + assert
-  # cleanly, but the idempotency re-plan fails because the sim returns an HTTP-only health-check
-  # attribute for the TCP target group: #687/#685 cleared the `Matcher`, but `HealthCheckPath` (`/`)
-  # is still returned (sockerless #688) — real AWS omits both for TCP. Leave `ssh_base_domain` empty
-  # until #688 lands; the SSH terraform is covered by `terraform validate`.
+  # SSH ingress (Slice 3) is still NOT exercised against the sim. The TCP-target-group health-check
+  # gaps are now fixed (Matcher #687/#685, HealthCheckPath #690/#688) and the apply + plan no longer
+  # error — but the idempotency re-plan still shows drift: since the NLB raw-TCP data plane (#683/#687),
+  # `DescribeLoadBalancers` returns the NLB `DNSName` as the proxy's `host:port` (e.g. `10.89.3.2:44425`)
+  # instead of the stable `*.elb.amazonaws.com` hostname, so `aws_lb.dns_name` + the Route53 alias drift
+  # (sockerless #691). Leave `ssh_base_domain` empty until #691 lands; SSH terraform covered by
+  # `terraform validate`.
   ssh_base_domain = ""
 }
 

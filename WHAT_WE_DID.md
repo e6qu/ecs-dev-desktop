@@ -2601,3 +2601,15 @@ Confirmed via the SDK (`describe-target-groups` → `Matcher: null` ✅, `HCPath
 sockerless #688** (a focused follow-up to #685). So the SSH ingress stays gated off `tests/sim` until
 #688 lands — but the bump is kept (integration tier 26/26 against #687, and it captures #683 + the
 matcher fix + the service ratchets). Per §6.8: filed upstream + skip, no workaround.
+
+**2026-06-26 — sockerless #690 bump; #688 fixed, but a #683-introduced regression #691 found.**
+Re-pinned `f58007ba` → `fe3fce01` (#690 "omit HealthCheckPath for TCP target groups" (#688) + #689 GCP/
+Azure ratchets). Re-validated the SSH ingress against the rebuilt sim: the TCP-target-group health-check
+error is **gone** (apply + plan no longer error on `path`/`matcher`) — but the idempotency re-plan still
+**drifts** (`1 to change`). Root cause: the NLB raw-TCP data plane added in #687/#683 made
+`DescribeLoadBalancers` return the `network` LB's `DNSName` as the **proxy's `host:port`** (e.g.
+`10.89.3.2:44425`) instead of the stable `*.elb.amazonaws.com` hostname `CreateLoadBalancer` returned, so
+`aws_lb.dns_name` + the `*.ssh` Route53 alias never settle (and a `:` isn't valid in a DNS name).
+Confirmed via the SDK and **filed sockerless #691**. So the SSH ingress stays gated off `tests/sim` until
+#691 lands; the #690 bump is kept (integration tier 26/26). Third gap in the chain (#685→#688→#691); each
+upstream fix surfaced the next. Per §6.8: filed upstream + skip, no workaround.
