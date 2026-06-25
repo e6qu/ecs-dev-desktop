@@ -9,8 +9,10 @@
 # resolvable); the NLB / listener / target group / service / DNS are created only when enabled.
 
 resource "aws_ecr_repository" "ssh_gateway" {
-  name                 = "${var.name}/ssh-gateway"
-  image_tag_mutability = "MUTABLE" # rolling deploy tag (:latest)
+  name = "${var.name}/ssh-gateway"
+  # Immutable: the gateway must be deployed by a PINNED tag (`ssh_gateway_image`), never a mutable
+  # `:latest` — reproducible deploys, and a re-pushed tag can't silently swap the SSH front door.
+  image_tag_mutability = "IMMUTABLE"
   force_delete         = !var.deletion_protection
   image_scanning_configuration {
     scan_on_push = true
@@ -127,6 +129,13 @@ resource "aws_ecs_task_definition" "ssh_gateway" {
   cpu                      = tostring(var.ssh_gateway_cpu)
   memory                   = tostring(var.ssh_gateway_memory)
   execution_role_arn       = aws_iam_role.execution.arn
+
+  lifecycle {
+    precondition {
+      condition     = var.ssh_gateway_image != ""
+      error_message = "ssh_gateway_image must be set (a pinned tag) when ssh_base_domain enables SSH ingress."
+    }
+  }
 
   container_definitions = jsonencode([{
     name      = "ssh-gateway"

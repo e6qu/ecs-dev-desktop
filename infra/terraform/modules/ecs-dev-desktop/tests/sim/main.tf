@@ -98,9 +98,11 @@ module "edd" {
   route53_zone_id = var.enable_dns ? aws_route53_zone.test[0].zone_id : ""
 
   # SSH ingress (Slice 3): the NLB + TCP:22 listener + target group + gateway service + the
-  # `*.<ssh_base_domain>` wildcard — exercised against the sim's ELBv2 `network` LB + Route53.
+  # `*.<ssh_base_domain>` wildcard — exercised against the sim's ELBv2 `network` LB + Route53. The
+  # gateway image is a PINNED tag (no `:latest`); the sim only creates the task def, never pulls it.
   ssh_base_domain     = var.enable_dns ? "ssh.edd-sim.example.com" : ""
   route53_ssh_zone_id = var.enable_dns ? aws_route53_zone.test[0].zone_id : ""
+  ssh_gateway_image   = var.enable_dns ? "eddsim/ssh-gateway:sim" : ""
 }
 
 output "vpc_id" {

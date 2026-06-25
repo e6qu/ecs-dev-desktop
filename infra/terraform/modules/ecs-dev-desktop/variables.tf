@@ -204,7 +204,7 @@ variable "route53_ssh_zone_id" {
 }
 
 variable "ssh_gateway_image" {
-  description = "SSH-gateway container image. Empty = the module's ECR repo at `:latest`."
+  description = "SSH-gateway container image — a PINNED tag/digest (no `:latest`), e.g. `<ssh_gateway_repository_url>:<tag>`. Required when `ssh_base_domain` is set (a task-def precondition enforces it)."
   type        = string
   default     = ""
 }

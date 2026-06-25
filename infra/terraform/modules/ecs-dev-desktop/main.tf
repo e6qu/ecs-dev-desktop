@@ -37,5 +37,7 @@ locals {
 
   # Default to this stack's own ECR repo at :latest unless the caller pins an image.
   control_plane_image = var.control_plane_image != "" ? var.control_plane_image : "${aws_ecr_repository.control_plane.repository_url}:latest"
-  ssh_gateway_image   = var.ssh_gateway_image != "" ? var.ssh_gateway_image : "${aws_ecr_repository.ssh_gateway.repository_url}:latest"
+  # The SSH gateway has no `:latest` fallback — push a pinned tag to `ssh_gateway_repository_url` and
+  # pass it as `ssh_gateway_image` (required when SSH ingress is enabled; a precondition enforces it).
+  ssh_gateway_image = var.ssh_gateway_image
 }
