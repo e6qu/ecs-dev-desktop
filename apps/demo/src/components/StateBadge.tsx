@@ -9,7 +9,7 @@ export function StateBadge({ state }: { state: WorkspaceState }): JSX.Element {
   const pulse = state === "provisioning" || state === "deleting";
   return (
     <span className="badge" data-status={state}>
-      <span className={pulse ? "dot pulse" : "dot"} />
+      <span className={pulse ? "dot pulse" : "dot"} aria-hidden="true" />
       {state}
     </span>
   );

@@ -47,15 +47,13 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **Demo journey: two behavior changes deferred from the 2026-06-25 journey sweep (need their own focused
-  change + smoke-test care).** (1) **Viewer role is cosmetic** — the demo identity switcher offers
-  admin/member/viewer but a viewer can still create/stop/delete/edit (the platform's headline CASL RBAC is
-  contradicted by behavior). Gate the demo's mutating controls on `@edd/authz` `defineAbilityFor` (mirror the
-  prod app's `canCreate`), hiding the create form + action buttons for a viewer. (2) **Instant create skips
-  the provisioning story** — `create` returns `running` immediately, so the scale-to-zero/hydrate signature
-  (the `StateBadge` pulse, "Open IDE appears when ready") is never shown; add a brief `provisioning`→`running`
-  dwell on the demo create path (the smoke test opens a _seeded_ running workspace, so it's unaffected). Both
-  are showcase-storytelling fixes, not correctness bugs.
+- **Demo journey: two behavior changes — DONE (2026-06-25).** (1) **Viewer RBAC** — the demo now gates its
+  mutating controls on the REAL `@edd/authz` `defineAbilityFor` (`DemoControlPlane.canMutateWorkspaces()`),
+  so a viewer sees the workspace list read-only (no create form, no start/stop/delete) — the identity
+  switcher tells a true CASL story. (2) **Provisioning dwell** — `create` now lands in `provisioning` and
+  advances to `running` after a short dwell (`markProvisioned`, the real transition), so the scale-to-zero
+  cold-start (the `StateBadge` pulse → "Open IDE appears when ready") is visible. (Boy-scout alongside:
+  `persistence.loadState` now validates the top-level SHAPE, not just the version number — §6.5a.)
 
 - **Admin Quotas page: flag who is at/over their limit.** The page shows per-role limits + per-user
   usage (`{owner, count}`) but can't mark an owner over-limit because the usage rows lack the owner's

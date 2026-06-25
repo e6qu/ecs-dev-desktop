@@ -6,7 +6,7 @@ import type { HealthStatus } from "@edd/core";
 export function HealthBadge({ status }: { status: HealthStatus }): JSX.Element {
   return (
     <span className={`h-badge h-${status}`}>
-      <span className="h-dot" />
+      <span className="h-dot" aria-hidden="true" />
       {status}
     </span>
   );

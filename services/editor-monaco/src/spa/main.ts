@@ -202,6 +202,7 @@ el("toggle-terminal").addEventListener("click", () => {
   const panel = el("terminal-panel");
   const show = panel.hidden;
   panel.hidden = !show;
+  el("toggle-terminal").setAttribute("aria-expanded", String(show));
   if (show) {
     setupTerminal();
     term?.focus();

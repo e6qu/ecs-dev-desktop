@@ -7,7 +7,7 @@ export function StatusBadge({ state }: { state: WorkspaceStateDto }) {
   const meta = statusMeta(state);
   return (
     <span className="badge" data-status={state}>
-      <span className={meta.pulse ? "dot pulse" : "dot"} />
+      <span className={meta.pulse ? "dot pulse" : "dot"} aria-hidden="true" />
       {meta.label}
     </span>
   );
