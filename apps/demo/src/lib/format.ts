@@ -9,9 +9,10 @@ export function usd(value: number): string {
   });
 }
 
-/** A value's percent of a list max, clamped to [0,100]; maxUsd<=0 → 0 (no divide-by-zero). */
+/** A value's percent of a list max, clamped to [0,100]; maxUsd<=0 or a non-finite value → 0 (no
+ * divide-by-zero, and never a NaN/Infinity that would render as `width: NaN%`). */
 export function pct(value: number, maxUsd: number): number {
-  if (maxUsd <= 0) return 0;
+  if (maxUsd <= 0 || !Number.isFinite(value)) return 0;
   return Math.min(100, Math.max(0, (value / maxUsd) * 100));
 }
 

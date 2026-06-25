@@ -8,7 +8,8 @@ export type AgentEvent =
   | { kind: "user"; text: string }
   | { kind: "think"; text: string }
   | { kind: "tool"; name: string; detail: string; result?: string }
-  | { kind: "say"; text: string };
+  | { kind: "say"; text: string }
+  | { kind: "error"; text: string };
 
 /** The primary source file in a workspace (first non-doc), for the script to reference. */
 function primaryFile(fileNames: readonly string[]): string {

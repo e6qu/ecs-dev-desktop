@@ -70,17 +70,17 @@ function asFiles(value: unknown): WorkspaceFiles | undefined {
  * for unit testing (pure); the IndexedDB persistence around it is covered by the browser smoke. */
 export function seedFilesFor(image: string): WorkspaceFiles {
   const readme = `# Workspace\n\nThis is an in-browser demo IDE. Edits persist locally and are wiped on reset.\n\nBase image: \`${image}\`\n`;
-  // Discriminate on the language segment, NOT the whole ref — every image is "golden/<lang>", and
-  // "golden" itself starts with "go", which would mis-match rust/typescript/java as Go.
-  const lang = image.split("/").pop() ?? "";
-  if (lang.includes("python")) {
+  // Match the EXACT language segment (the part after "golden/", minus any ":tag"), not a substring:
+  // `includes("go")` wrongly matched "golden" (no slash), "django", "mongo", etc. as Go.
+  const lang = (image.split("/").pop() ?? "").split(":")[0] ?? "";
+  if (lang === "python") {
     return {
       "main.py":
         'def main():\n    print("hello from edd")\n\n\nif __name__ == "__main__":\n    main()\n',
       "README.md": readme,
     };
   }
-  if (lang.includes("go") || lang.includes("omnibus")) {
+  if (lang === "go" || lang === "omnibus") {
     return {
       "main.go":
         'package main\n\nimport "fmt"\n\nfunc main() {\n\tfmt.Println("hello from edd")\n}\n',
@@ -88,7 +88,7 @@ export function seedFilesFor(image: string): WorkspaceFiles {
       "README.md": readme,
     };
   }
-  if (lang.includes("rust")) {
+  if (lang === "rust") {
     return { "main.rs": 'fn main() {\n    println!("hello from edd");\n}\n', "README.md": readme };
   }
   return {

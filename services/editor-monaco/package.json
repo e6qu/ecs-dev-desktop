@@ -21,6 +21,7 @@
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "esbuild": "^0.28.1",
+    "fast-check": "^4.8.0",
     "monaco-editor": "^0.55.1",
     "typescript": "^6.0.3",
     "vite": "^8.1.0",

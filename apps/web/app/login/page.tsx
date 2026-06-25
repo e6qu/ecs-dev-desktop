@@ -35,7 +35,7 @@ function DevLogin({ error }: { error?: string }) {
         <p
           className="mono"
           data-testid={TESTID.loginError}
-          style={{ color: "var(--danger, #e66)", marginTop: 12, fontSize: 12 }}
+          style={{ color: "var(--st-error)", marginTop: 12, fontSize: 12 }}
         >
           Invalid username or password
         </p>

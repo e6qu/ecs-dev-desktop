@@ -114,6 +114,13 @@ Per task: read them first → do the work → update them (past tense at PR clos
   — supply-chain safeguard; `check-deps` CI enforces it). A `check-deps` failure is
   the gate working, not a flake: a newer age-eligible version exists — bump it and
   commit the lockfile. Declare only what a package imports; no unused deps.
+- **Lockfile integrity.** Any dependency change — _including_ moving a dep between
+  `dependencies` and `devDependencies` — must regenerate + commit `pnpm-lock.yaml`. CI installs
+  with `--frozen-lockfile`, so a stale lockfile fails fast across **every** job; the
+  `pnpm lockfile in sync` pre-commit hook catches it locally. Regenerate the **Terraform**
+  provider lock with `terraform providers lock -platform=linux_amd64 -platform=darwin_arm64
+-platform=darwin_amd64` (ALL platforms) — `terraform init -upgrade` records only the current
+  platform's `h1:` hash, leaving the lock incomplete so `check-deps` nags on the Linux CI runner.
 - **Shell scripts**: pass `shellcheck`; run under bash **and** zsh, macOS **and**
   Linux. Portable only (`$0`-derived paths, `unset CDPATH`; no `BASH_SOURCE`,
   arrays, `pushd`, or GNU-only flags). The `shellcheck` CI job enforces it.
@@ -166,6 +173,12 @@ in → domain object out, no I/O, no doubles) in `@edd/core`; the thin **shell**
 `catch {}`) that hide errors — throw or return an explicit error; documented
 named defaults are fine. No wildcard re-exports (`export *`) — explicit named
 exports only.
+
+**6.5a Version persisted state.** Any state that outlives a code change (localStorage/IndexedDB
+blobs, DynamoDB items) carries a schema **version**; bump it whenever the shape changes and
+discard-or-migrate older blobs on load — never read a stale shape into newer code (an absent field
+then crashes on read). Loaders accept ONLY the current version. (See the demo's `STATE_VERSION`
+gate, added after a stale blob blanked the live site.)
 
 **6.6 Security gates (CI, required).** Semgrep SAST (fail on high/critical) and
 Trivy deps/IaC/secret scan (fail on HIGH/CRITICAL; medium/low acceptable).

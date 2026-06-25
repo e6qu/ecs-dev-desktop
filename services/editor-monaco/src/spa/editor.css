@@ -4,11 +4,17 @@
   --panel: #252526;
   --border: #333;
   --text: #ccc;
-  --dim: #888;
+  /* Lightened from #888 (≈4.3:1, just under AA) to clear WCAG AA 4.5:1 on the panels. */
+  --dim: #9d9d9d;
   --accent: #4ec9b0;
 }
 * {
   box-sizing: border-box;
+}
+/* High-contrast keyboard-focus ring on the editor's controls. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 html,
 body {

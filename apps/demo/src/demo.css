@@ -837,3 +837,93 @@ body {
   color: var(--st-error);
   font-size: 0.85rem;
 }
+
+/* ── keyboard focus (WCAG 2.4.7): a clear, high-contrast ring on every control ── */
+.demo-shell a:focus-visible,
+.demo-shell button:focus-visible,
+.demo-shell select:focus-visible,
+.demo-shell input:focus-visible,
+.demo-shell textarea:focus-visible,
+.demo-shell .demo-tab:focus-visible,
+.demo-shell .agent-tab:focus-visible,
+.demo-shell .ide-file:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* ── reduced motion: stop the blinking agent cursor + any pulse for users who ask ── */
+@media (prefers-reduced-motion: reduce) {
+  .agent-cursor,
+  .badge .dot.pulse {
+    animation: none;
+  }
+}
+
+/* ── responsive: the demo is a public showcase, routinely opened on phones ── */
+@media (max-width: 720px) {
+  .demo-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.6rem;
+  }
+  .demo-header-right {
+    justify-content: space-between;
+  }
+  .demo-nav,
+  .demo-nav-group {
+    flex-wrap: wrap;
+  }
+  .demo-create {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .demo-create select,
+  .demo-create button {
+    width: 100%;
+  }
+  .demo-page-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+  .demo-cost-row {
+    grid-template-columns: 1fr;
+    gap: 0.2rem;
+  }
+  .ide,
+  .ide-workbench {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr;
+    height: auto;
+    min-height: 65vh;
+  }
+}
+
+/* ── agent live-mode error (distinct from a normal reply; the panel reverts to scripted) ── */
+.agent-term-error {
+  color: var(--st-error);
+}
+.agent-error-msg {
+  align-self: flex-start;
+  max-width: 90%;
+  background: rgba(255, 93, 108, 0.08);
+  border: 1px solid var(--st-error);
+  border-radius: 10px;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.85rem;
+  color: var(--st-error);
+}
+
+/* Visually hidden but available to screen readers (e.g. the document <h1>). */
+.demo-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
