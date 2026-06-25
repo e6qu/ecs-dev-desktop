@@ -32,9 +32,9 @@ export function CreateBaseImage() {
     setError(null);
     try {
       await api.createBaseImage({
-        name,
-        image,
-        description: description === "" ? undefined : description,
+        name: name.trim(),
+        image: image.trim(),
+        description: description.trim() === "" ? undefined : description.trim(),
         tags: parseLabels(tags),
         tools: parseLabels(tools),
         editor,

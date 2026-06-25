@@ -67,11 +67,19 @@ export default async function WorkspacesPage({
         )}
         <span className="spacer" />
         {isAdmin && (
-          <div className="tabs">
-            <Link className={viewAll ? "" : "on"} href="/workspaces">
+          <div className="tabs" aria-label="workspace view">
+            <Link
+              className={viewAll ? "" : "on"}
+              href="/workspaces"
+              aria-current={viewAll ? undefined : "page"}
+            >
               mine
             </Link>
-            <Link className={viewAll ? "on" : ""} href="/workspaces?view=all">
+            <Link
+              className={viewAll ? "on" : ""}
+              href="/workspaces?view=all"
+              aria-current={viewAll ? "page" : undefined}
+            >
               all
             </Link>
           </div>

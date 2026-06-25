@@ -47,6 +47,12 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
+- **Admin Quotas page: flag who is at/over their limit.** The page shows per-role limits + per-user
+  usage (`{owner, count}`) but can't mark an owner over-limit because the usage rows lack the owner's
+  **role** (roles derive from IdP groups at sign-in, not stored per workspace). Needs role resolution
+  threaded through `fleet-status` → `QuotaReportDto.usage` → the page, then a per-row at/over-limit
+  accent. Deferred from the 2026-06-25 sweep as a data-model change, not a UI tweak.
+
 - **DynamoDB Local retired from all CI — DONE (2026-06-22).** The integration (#148), **e2e**, and
   **playwright** tiers all run on the sim's DynamoDB now; `@edd/config` `dynamodb.endpoint` defaults to the
   sim; `amazon/dynamodb-local` is gone from `tier2`/`e2e` compose + every CI job (see `STATUS.md`/`BUGS.md`).

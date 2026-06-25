@@ -7,9 +7,25 @@
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 
-import { isoTimestamp, snapshotId, volumeId, workspaceId, type VolumeId } from "../domain/ids";
+import type { WorkspaceAgentSecretRef, WorkspaceTaskRef } from "../compute/compute-provider";
+import {
+  isoTimestamp,
+  snapshotId,
+  taskId,
+  volumeId,
+  workspaceId,
+  type TaskId,
+  type VolumeId,
+  type WorkspaceId,
+} from "../domain/ids";
 import type { SnapshotRef, VolumeRef } from "../storage/storage-provider";
-import { selectDueForSnapshot, selectOrphanSnapshots, selectOrphanVolumes } from "./select";
+import {
+  selectDueForSnapshot,
+  selectOrphanSecrets,
+  selectOrphanSnapshots,
+  selectOrphanTasks,
+  selectOrphanVolumes,
+} from "./select";
 import type { SnapshotCandidate } from "./select";
 
 const NOW_MS = Date.parse("2026-06-01T00:00:00.000Z");
@@ -133,5 +149,97 @@ describe("orphan-GC selection — properties", () => {
         });
       }),
     );
+  });
+
+  // ── selectOrphanTasks: the compute analogue of orphan-volume GC ──
+  const tasksArb = fc
+    .array(
+      fc.record({ ageMs: fc.integer({ min: 0, max: 30 * 86_400_000 }), referenced: fc.boolean() }),
+      { minLength: 0, maxLength: 20 },
+    )
+    .map((rows) => {
+      const existing: WorkspaceTaskRef[] = rows.map((r, i) => ({
+        id: taskId(`task-${String(i)}`),
+        workspaceId: workspaceId(`ws-${String(i)}`),
+        startedAt: iso(NOW_MS - r.ageMs),
+      }));
+      const referenced = new Set<TaskId>(
+        rows.flatMap((r, i) => (r.referenced ? [taskId(`task-${String(i)}`)] : [])),
+      );
+      return { existing, referenced, ages: rows.map((r) => r.ageMs) };
+    });
+
+  it("selectOrphanTasks NEVER stops a referenced (live) task, and selects exactly unreferenced-aged", () => {
+    fc.assert(
+      fc.property(
+        tasksArb,
+        fc.integer({ min: 0, max: 30 * 86_400_000 }),
+        ({ existing, referenced, ages }, grace) => {
+          const selected = selectOrphanTasks(existing, referenced, NOW, grace);
+          for (const t of selected) expect(referenced.has(t.id)).toBe(false);
+          const expected = existing.filter(
+            (t, i) => !referenced.has(t.id) && (ages[i] ?? 0) >= grace,
+          );
+          expect(selected).toEqual(expected);
+        },
+      ),
+    );
+  });
+
+  it("selectOrphanTasks fails safe on a malformed startedAt — never reaps it", () => {
+    const existing: WorkspaceTaskRef[] = [
+      {
+        id: taskId("task-bad"),
+        workspaceId: workspaceId("ws-bad"),
+        startedAt: isoTimestamp("nope"),
+      },
+    ];
+    expect(selectOrphanTasks(existing, new Set(), NOW, 0)).toEqual([]);
+  });
+
+  // ── selectOrphanSecrets: the secrets-manager analogue ──
+  const secretsArb = fc
+    .array(fc.record({ ageMs: fc.integer({ min: 0, max: 30 * 86_400_000 }), live: fc.boolean() }), {
+      minLength: 0,
+      maxLength: 20,
+    })
+    .map((rows) => {
+      const existing: WorkspaceAgentSecretRef[] = rows.map((r, i) => ({
+        name: `edd/workspace/ws-${String(i)}/agent`,
+        workspaceId: workspaceId(`ws-${String(i)}`),
+        createdAt: iso(NOW_MS - r.ageMs),
+      }));
+      const live = new Set<WorkspaceId>(
+        rows.flatMap((r, i) => (r.live ? [workspaceId(`ws-${String(i)}`)] : [])),
+      );
+      return { existing, live, ages: rows.map((r) => r.ageMs) };
+    });
+
+  it("selectOrphanSecrets NEVER reaps a live workspace's secret, and selects exactly orphaned-aged", () => {
+    fc.assert(
+      fc.property(
+        secretsArb,
+        fc.integer({ min: 0, max: 30 * 86_400_000 }),
+        ({ existing, live, ages }, grace) => {
+          const selected = selectOrphanSecrets(existing, live, NOW, grace);
+          for (const s of selected) expect(live.has(s.workspaceId)).toBe(false);
+          const expected = existing.filter(
+            (s, i) => !live.has(s.workspaceId) && (ages[i] ?? 0) >= grace,
+          );
+          expect(selected).toEqual(expected);
+        },
+      ),
+    );
+  });
+
+  it("selectOrphanSecrets fails safe on a malformed createdAt — never reaps it", () => {
+    const existing: WorkspaceAgentSecretRef[] = [
+      {
+        name: "edd/workspace/ws-bad/agent",
+        workspaceId: workspaceId("ws-bad"),
+        createdAt: isoTimestamp("nope"),
+      },
+    ];
+    expect(selectOrphanSecrets(existing, new Set(), NOW, 0)).toEqual([]);
   });
 });

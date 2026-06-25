@@ -112,7 +112,10 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
 
   async function createAndStart(): Promise<void> {
     const namespace = namespaces.find((n) => n.login === ns);
-    if (namespace === undefined || repoName.trim().length === 0) return;
+    if (namespace === undefined || repoName.trim().length === 0) {
+      setError("Pick an owner and enter a repository name.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -200,7 +203,7 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
           disabled={busy}
           onClick={() => void startSession()}
         >
-          blank session
+          {busy ? "starting…" : "blank session"}
         </button>
       </section>
 
@@ -243,7 +246,7 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
                       disabled={busy}
                       onClick={() => void startSession(repo.cloneUrl, repo.defaultBranch)}
                     >
-                      start session
+                      {busy ? "starting…" : "start session"}
                     </button>
                   </li>
                 ))}
@@ -295,7 +298,7 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
                   disabled={busy || repoName.trim().length === 0}
                   onClick={() => void createAndStart()}
                 >
-                  create &amp; start session
+                  {busy ? "creating…" : "create & start session"}
                 </button>
               </div>
             ) : (
