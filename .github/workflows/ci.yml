@@ -1400,6 +1400,7 @@ jobs:
 
           # -- read outputs -------------------------------------------------------
           ENDPT="${SIM_ENDPOINT}"
+          CLUSTER=$(terraform -chdir="${TF_DIR}" output -raw ecs_cluster_name)
 
           assert_eq() {
             local label="$1" want="$2" got="$3"
@@ -1491,7 +1492,7 @@ jobs:
               --query "TargetGroups[?TargetGroupName=='eddsim-ssh'].TargetType|[0]" --output text)"
           assert_eq "SSH gateway ECS service exists" "eddsim-ssh-gateway" \
             "$(aws --endpoint-url "${ENDPT}" ecs describe-services \
-              --cluster eddsim --services eddsim-ssh-gateway \
+              --cluster "${CLUSTER}" --services eddsim-ssh-gateway \
               --query 'services[0].serviceName' --output text)"
           # HTTPS listener SSL policy + forward action (both fixed by sockerless#473 / PR #475).
           assert_eq "ALB HTTPS listener ssl policy TLS13" "ELBSecurityPolicy-TLS13-1-2-2021-06" \
