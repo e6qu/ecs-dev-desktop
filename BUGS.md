@@ -148,6 +148,16 @@ old STATIC-gate "tokenless behind the gate" framing (see _Resolved (repo)_).
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
+- **ELBv2 NLB data plane is HTTP-only — OPEN, filed #683 (2026-06-25).** The sim's ELBv2 _control
+  plane_ models `network` LBs + TCP listeners + TCP target groups (so the SSH ingress `terraform
+apply` + resource-level assertions pass against the sim), but its _data plane_
+  (`simulators/aws/elbv2_dataplane.go`) only reverse-proxies HTTP — a raw TCP byte stream can't
+  traverse an NLB TCP listener. So a live **`ssh <principal>@<ws-id>.<ssh-base-domain>` through the
+  NLB** proof (SSH Slice 3) stays **e2e-aws-only** until #683 (raw-TCP stream forwarding) lands. Our
+  terraform-sim tier proves the ingress resources are created to spec (NLB type=network, TCP:22
+  listener, TCP target group, the `*.<ssh-base-domain>` wildcard); the byte-stream loop is the
+  real-AWS slice. See `infra/terraform/modules/ecs-dev-desktop/ssh-ingress.tf`.
+
 - **IAM enforcement RESOURCE/SERVICE-scoped condition keys — FIXED upstream (#661→#662), CONFIRMED
   downstream (2026-06-25).** Was: `iamAuthorize` (`iam_enforcement.go`) populated only **global** keys
   (`aws:username`/`userid`/`SourceIp`/`RequestedRegion`) into the request context, not **resource-scoped**

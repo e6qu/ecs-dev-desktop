@@ -86,6 +86,9 @@ async function handlePOST(req: Request) {
     workspace = await cp.create({
       ownerId: principal.id,
       ...(ownerEmail === undefined ? {} : { ownerEmail }),
+      // Persist the owner's role so the admin quota view can flag this workspace against the
+      // owner's per-role limit (the role is otherwise only known at this user's sign-in).
+      ownerRole: principal.role,
       ...(parsed.data.repoUrl === undefined ? {} : { repoUrl: parsed.data.repoUrl }),
       ...(parsed.data.repoRef === undefined ? {} : { repoRef: parsed.data.repoRef }),
       baseImage: image,

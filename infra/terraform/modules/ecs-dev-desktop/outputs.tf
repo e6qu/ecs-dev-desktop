@@ -50,6 +50,16 @@ output "golden_repository_urls" {
   value       = { for k, repo in aws_ecr_repository.golden : k => repo.repository_url }
 }
 
+output "ssh_gateway_repository_url" {
+  description = "ECR repository URL for the SSH-gateway image (push here)."
+  value       = aws_ecr_repository.ssh_gateway.repository_url
+}
+
+output "ssh_nlb_dns_name" {
+  description = "Public DNS name of the SSH ingress NLB (null when SSH ingress is disabled)."
+  value       = local.ssh_enabled ? aws_lb.ssh[0].dns_name : null
+}
+
 output "alb_dns_name" {
   description = "Public DNS name of the control-plane load balancer."
   value       = aws_lb.this.dns_name

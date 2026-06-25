@@ -57,6 +57,7 @@ import {
   type FunctionalStatus,
   type Workspace,
   type WorkspaceId,
+  type WorkspaceOwnerRole,
   type WorkspaceState,
 } from "@edd/core";
 import {
@@ -241,6 +242,7 @@ interface WorkspaceRecord {
   id: string;
   ownerId: string;
   ownerEmail?: string;
+  ownerRole?: WorkspaceOwnerRole;
   repoUrl?: string;
   baseImage: string;
   editor?: EditorKind;
@@ -297,6 +299,7 @@ function toWorkspace(r: WorkspaceRecord): Workspace {
     id: workspaceId(r.id),
     ownerId: ownerId(r.ownerId),
     ownerEmail: r.ownerEmail === undefined ? undefined : email(r.ownerEmail),
+    ownerRole: r.ownerRole,
     repoUrl: r.repoUrl,
     baseImage: baseImage(r.baseImage),
     editor: r.editor,
@@ -329,6 +332,9 @@ export class WorkspaceService {
   async create(input: {
     ownerId: OwnerId;
     ownerEmail?: Email;
+    /** The owner's role at create time — persisted so the admin quota view can flag the workspace
+     * against its owner's per-role limit. */
+    ownerRole?: WorkspaceOwnerRole;
     baseImage: BaseImage;
     /** The editor this workspace serves — resolved from the base-image catalog entry by the
      * route; defaults to OpenVSCode. Flows to the container as `EDD_EDITOR_MODE`. */
@@ -361,6 +367,7 @@ export class WorkspaceService {
       id,
       ownerId: input.ownerId,
       ownerEmail: input.ownerEmail,
+      ownerRole: input.ownerRole,
       repoUrl: input.repoUrl,
       baseImage: input.baseImage,
       ...(input.editor === undefined ? {} : { editor: input.editor }),

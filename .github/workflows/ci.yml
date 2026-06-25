@@ -593,6 +593,10 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
               --repository-names "eddsim/golden/node-20" \
               --query 'repositories[0].repositoryName' --output text)"
+          assert_eq "ECR ssh-gateway repo exists" "eddsim/ssh-gateway" \
+            "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
+              --repository-names "eddsim/ssh-gateway" \
+              --query 'repositories[0].repositoryName' --output text)"
           aws --endpoint-url "${ENDPT}" ecr get-lifecycle-policy \
             --repository-name "eddsim/control-plane" \
             --query 'lifecyclePolicyText' --output text > /dev/null
@@ -895,15 +899,15 @@ jobs:
 
           # -- ALB + listeners + target group -------------------------------------
           LB_ARN=$(aws --endpoint-url "${ENDPT}" elbv2 describe-load-balancers \
-            --query "LoadBalancers[?starts_with(LoadBalancerName,'eddsim')].LoadBalancerArn|[0]" \
+            --query "LoadBalancers[?starts_with(LoadBalancerName,'eddsim-cp')].LoadBalancerArn|[0]" \
             --output text)
           assert_eq "ALB state active" "active" \
             "$(aws --endpoint-url "${ENDPT}" elbv2 describe-load-balancers \
-              --query "LoadBalancers[?starts_with(LoadBalancerName,'eddsim')].State.Code|[0]" \
+              --query "LoadBalancers[?starts_with(LoadBalancerName,'eddsim-cp')].State.Code|[0]" \
               --output text)"
           assert_eq "ALB scheme internet-facing" "internet-facing" \
             "$(aws --endpoint-url "${ENDPT}" elbv2 describe-load-balancers \
-              --query "LoadBalancers[?starts_with(LoadBalancerName,'eddsim')].Scheme|[0]" \
+              --query "LoadBalancers[?starts_with(LoadBalancerName,'eddsim-cp')].Scheme|[0]" \
               --output text)"
           assert_eq "ALB HTTP listener port 80" "80" \
             "$(aws --endpoint-url "${ENDPT}" elbv2 describe-listeners \
@@ -911,20 +915,20 @@ jobs:
               --query "Listeners[?Port==\`80\`].Port|[0]" --output text)"
           assert_eq "ALB target group type ip" "ip" \
             "$(aws --endpoint-url "${ENDPT}" elbv2 describe-target-groups \
-              --query "TargetGroups[?starts_with(TargetGroupName,'eddsim')].TargetType|[0]" \
+              --query "TargetGroups[?starts_with(TargetGroupName,'eddsim-cp')].TargetType|[0]" \
               --output text)"
           assert_eq "ALB target group port 3000" "3000" \
             "$(aws --endpoint-url "${ENDPT}" elbv2 describe-target-groups \
-              --query "TargetGroups[?starts_with(TargetGroupName,'eddsim')].Port|[0]" \
+              --query "TargetGroups[?starts_with(TargetGroupName,'eddsim-cp')].Port|[0]" \
               --output text)"
           # Readiness (DynamoDB-backed), not liveness — see apps/web/app/api/readyz.
           assert_eq "ALB target group health check path" "/api/readyz" \
             "$(aws --endpoint-url "${ENDPT}" elbv2 describe-target-groups \
-              --query "TargetGroups[?starts_with(TargetGroupName,'eddsim')].HealthCheckPath|[0]" \
+              --query "TargetGroups[?starts_with(TargetGroupName,'eddsim-cp')].HealthCheckPath|[0]" \
               --output text)"
           assert_eq "ALB target group health check matcher 200" "200" \
             "$(aws --endpoint-url "${ENDPT}" elbv2 describe-target-groups \
-              --query "TargetGroups[?starts_with(TargetGroupName,'eddsim')].Matcher.HttpCode|[0]" \
+              --query "TargetGroups[?starts_with(TargetGroupName,'eddsim-cp')].Matcher.HttpCode|[0]" \
               --output text)"
           assert_eq "ALB HTTP listener action forward (no-TLS mode)" "forward" \
             "$(aws --endpoint-url "${ENDPT}" elbv2 describe-listeners \
@@ -936,7 +940,7 @@ jobs:
               --query "Attributes[?Key=='routing.http.drop_invalid_header_fields.enabled'].Value|[0]" \
               --output text)"
           TG_ARN=$(aws --endpoint-url "${ENDPT}" elbv2 describe-target-groups \
-            --query "TargetGroups[?starts_with(TargetGroupName,'eddsim')].TargetGroupArn|[0]" \
+            --query "TargetGroups[?starts_with(TargetGroupName,'eddsim-cp')].TargetGroupArn|[0]" \
             --output text)
           assert_eq "ALB target group health check interval 30" "30" \
             "$(aws --endpoint-url "${ENDPT}" elbv2 describe-target-groups \
@@ -1409,7 +1413,7 @@ jobs:
 
           # -- DNS/TLS-specific assertions ----------------------------------------
           LB_ARN=$(aws --endpoint-url "${ENDPT}" elbv2 describe-load-balancers \
-            --query "LoadBalancers[?starts_with(LoadBalancerName,'eddsim')].LoadBalancerArn|[0]" \
+            --query "LoadBalancers[?starts_with(LoadBalancerName,'eddsim-cp')].LoadBalancerArn|[0]" \
             --output text)
           assert_eq "ALB HTTPS listener port 443" "443" \
             "$(aws --endpoint-url "${ENDPT}" elbv2 describe-listeners \
@@ -1429,12 +1433,13 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" elbv2 describe-listeners \
               --load-balancer-arn "${LB_ARN}" \
               --query "Listeners[?Port==\`80\`].DefaultActions[0].Type|[0]" --output text)"
-          # ACM cert must be AMAZON_ISSUED and have both SANs (control-plane + wildcard).
+          # ACM cert is AMAZON_ISSUED and single-name (control plane only — the editor proxy is
+          # path-based, so there is no workspace wildcard SAN).
           assert_eq "ACM cert type AMAZON_ISSUED" "AMAZON_ISSUED" \
             "$(aws --endpoint-url "${ENDPT}" acm describe-certificate \
               --certificate-arn "${CERT_ARN}" \
               --query 'Certificate.Type' --output text)"
-          assert_eq "ACM cert SAN count 2" "2" \
+          assert_eq "ACM cert SAN count 1 (no wildcard)" "1" \
             "$(aws --endpoint-url "${ENDPT}" acm describe-certificate \
               --certificate-arn "${CERT_ARN}" \
               --query 'length(Certificate.SubjectAlternativeNames)' --output text)"
@@ -1442,7 +1447,7 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" acm describe-certificate \
               --certificate-arn "${CERT_ARN}" \
               --query 'Certificate.DomainValidationOptions[0].ValidationMethod' --output text)"
-          # Route53: control-plane A record and workspace wildcard A record created.
+          # Route53: control-plane A record (no workspace editor wildcard — the proxy is path-based).
           ZONE_ID=$(aws --endpoint-url "${ENDPT}" route53 list-hosted-zones \
             --query "HostedZones[?contains(Name,'edd-sim')].Id|[0]" \
             --output text | sed 's|/hostedzone/||')
@@ -1451,11 +1456,43 @@ jobs:
               --hosted-zone-id "${ZONE_ID}" \
               --query "length(ResourceRecordSets[?Name=='app.edd-sim.example.com.' && Type=='A'])" \
               --output text)"
-          assert_eq "Route53 workspace wildcard A record exists" "1" \
+          # SSH ingress (Slice 3): the `*.ssh.<domain>` wildcard A record points at the SSH NLB.
+          assert_eq "Route53 SSH wildcard A record exists" "1" \
             "$(aws --endpoint-url "${ENDPT}" route53 list-resource-record-sets \
               --hosted-zone-id "${ZONE_ID}" \
-              --query "length(ResourceRecordSets[?contains(Name,'devbox') && Type=='A'])" \
+              --query "length(ResourceRecordSets[?contains(Name,'ssh.edd-sim.example.com') && Type=='A'])" \
               --output text)"
+          # -- SSH ingress: NLB + TCP:22 listener + target group + gateway service ----
+          SSH_LB_ARN=$(aws --endpoint-url "${ENDPT}" elbv2 describe-load-balancers \
+            --query "LoadBalancers[?LoadBalancerName=='eddsim-ssh'].LoadBalancerArn|[0]" \
+            --output text)
+          assert_eq "SSH NLB type network" "network" \
+            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-load-balancers \
+              --query "LoadBalancers[?LoadBalancerName=='eddsim-ssh'].Type|[0]" --output text)"
+          assert_eq "SSH NLB scheme internet-facing" "internet-facing" \
+            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-load-balancers \
+              --query "LoadBalancers[?LoadBalancerName=='eddsim-ssh'].Scheme|[0]" --output text)"
+          assert_eq "SSH NLB TCP listener port 22" "22" \
+            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-listeners \
+              --load-balancer-arn "${SSH_LB_ARN}" \
+              --query "Listeners[?Port==\`22\`].Port|[0]" --output text)"
+          assert_eq "SSH NLB listener protocol TCP" "TCP" \
+            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-listeners \
+              --load-balancer-arn "${SSH_LB_ARN}" \
+              --query "Listeners[?Port==\`22\`].Protocol|[0]" --output text)"
+          assert_eq "SSH target group protocol TCP" "TCP" \
+            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-target-groups \
+              --query "TargetGroups[?TargetGroupName=='eddsim-ssh'].Protocol|[0]" --output text)"
+          assert_eq "SSH target group port 22" "22" \
+            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-target-groups \
+              --query "TargetGroups[?TargetGroupName=='eddsim-ssh'].Port|[0]" --output text)"
+          assert_eq "SSH target group type ip" "ip" \
+            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-target-groups \
+              --query "TargetGroups[?TargetGroupName=='eddsim-ssh'].TargetType|[0]" --output text)"
+          assert_eq "SSH gateway ECS service exists" "eddsim-ssh-gateway" \
+            "$(aws --endpoint-url "${ENDPT}" ecs describe-services \
+              --cluster eddsim --services eddsim-ssh-gateway \
+              --query 'services[0].serviceName' --output text)"
           # HTTPS listener SSL policy + forward action (both fixed by sockerless#473 / PR #475).
           assert_eq "ALB HTTPS listener ssl policy TLS13" "ELBSecurityPolicy-TLS13-1-2-2021-06" \
             "$(aws --endpoint-url "${ENDPT}" elbv2 describe-listeners \
@@ -1467,7 +1504,7 @@ jobs:
               --query "Listeners[?Port==\`443\`].DefaultActions[0].Type|[0]" --output text)"
           # ALB SG must have a port-443 ingress rule in DNS mode.
           ALB_SG_DNS=$(aws --endpoint-url "${ENDPT}" elbv2 describe-load-balancers \
-            --query "LoadBalancers[?starts_with(LoadBalancerName,'eddsim')].SecurityGroups[0]|[0]" \
+            --query "LoadBalancers[?starts_with(LoadBalancerName,'eddsim-cp')].SecurityGroups[0]|[0]" \
             --output text)
           assert_eq "ALB SG has port-443 ingress rule (DNS mode)" "1" \
             "$(aws --endpoint-url "${ENDPT}" ec2 describe-security-group-rules \

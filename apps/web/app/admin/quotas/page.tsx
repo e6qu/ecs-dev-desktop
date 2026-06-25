@@ -43,11 +43,23 @@ export default async function AdminQuotasPage() {
         <p className="state-note">no workspaces yet</p>
       ) : (
         <div className="adm-rows">
-          {usage.map(({ owner, count }) => (
-            <div key={owner} className="health-row">
+          {usage.map(({ owner, count, role, limit, atOrOver }) => (
+            <div
+              key={owner}
+              className="health-row"
+              data-testid={TESTID.quotaUsageRow}
+              data-over-limit={atOrOver ? "true" : undefined}
+            >
               <span className="name">{owner}</span>
               <span className="detail">
-                {count.toString()} workspace{count === 1 ? "" : "s"}
+                {role !== undefined
+                  ? `${count.toString()} / ${fmtLimit(limit)} (${role})`
+                  : `${count.toString()} workspace${count === 1 ? "" : "s"}`}
+                {atOrOver ? (
+                  <span className="pill" style={{ marginLeft: 8, color: "var(--st-error)" }}>
+                    {role !== undefined ? "at/over limit" : "over strictest limit"}
+                  </span>
+                ) : null}
               </span>
             </div>
           ))}

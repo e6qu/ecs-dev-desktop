@@ -79,6 +79,7 @@ export type {
   FunctionalStatus,
   ProvisionParams,
   Workspace,
+  WorkspaceOwnerRole,
 } from "./domain/workspace";
 export {
   assertTerminable,

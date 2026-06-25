@@ -2564,3 +2564,24 @@ username, `password ?? fallback`). **Boy-scout:** `workspaceLimit` now strict-de
 `--filter web`→`@edd/web` nit, and a `reset()` latent-state comment. The wildcard-resources infra question
 
 - a demo-viewer SSH-keys note are recorded in `DO_NEXT`.
+
+**2026-06-25 — Forward capability: wildcard-DNS cleanup + Quotas over-limit + SSH Slice 3 ingress, one
+PR.** Three deferred items, all delivered. **(1) Wildcard cleanup:** the `*.devbox.<domain>` editor
+wildcard was confirmed vestigial (the path-based proxy needs only the `app.<domain>` cert) and removed —
+the wildcard Route53 record, the ACM wildcard SAN, `local.workspaces_fqdn`, `var.workspaces_subdomain`,
+plus the example/README/sim-assert refreshes (ACM SAN 2→1; the workspace-wildcard Route53 assert
+repurposed to the SSH wildcard). **(2) Quotas over-limit:** resolved the role-not-stored blocker by
+persisting `ownerRole` on the workspace at create (the user's role is otherwise only known at sign-in),
+threaded through `@edd/core` Workspace/`provision` → `@edd/db` entity → `@edd/control-plane` (record +
+both DTO mappers) → the `workspace`/`workspaceDetail`/`quotaReport.usage` contracts → `fleet-status` →
+`quota-report` → the page (`atOrOver` flag). Forward-only; legacy un-roled rows fall back to the
+strictest POSITIVE per-role cap (viewer's 0 excluded so it doesn't trivially flag everyone), admins
+(unlimited) never flagged — locked with `quota-report.test.ts`. **(3) SSH Slice 3 ingress:** the gated
+public SSH front door in `ssh-ingress.tf` — a `network` NLB + raw TCP:22 listener + TCP target group +
+SSH-gateway ECS service/task + ECR repo + public SG (+ the workspace-SG ingress from it) + a
+`*.<ssh_base_domain>` Route53 wildcard. terraform-sim asserts the resources are created to spec (NLB
+type=network, TCP:22 listener, TCP TG, the wildcard, the gateway service); the live ssh-through-NLB
+byte-stream proof is **e2e-aws-only** because the sim's NLB data plane is HTTP-only — **filed sockerless
+#683** (raw-TCP stream forwarding) + tracked in `BUGS.md`. Boy-scout: fixed the module README's wrong
+"SSH gateway runs behind this ALB" (it's the dedicated NLB) and the stale sim "workspace-wildcard
+routing" comment.

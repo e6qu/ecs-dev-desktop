@@ -93,9 +93,14 @@ module "edd" {
   # applies + round-trips against the sim.
   enable_cloudwatch_dashboard = true
 
-  # TLS + workspace-wildcard routing (ACM cert, DNS validation, HTTPS listener).
+  # Control-plane TLS routing (ACM cert, DNS validation, HTTPS listener for `app.<domain>`).
   domain_name     = var.enable_dns ? "edd-sim.example.com" : ""
   route53_zone_id = var.enable_dns ? aws_route53_zone.test[0].zone_id : ""
+
+  # SSH ingress (Slice 3): the NLB + TCP:22 listener + target group + gateway service + the
+  # `*.<ssh_base_domain>` wildcard — exercised against the sim's ELBv2 `network` LB + Route53.
+  ssh_base_domain     = var.enable_dns ? "ssh.edd-sim.example.com" : ""
+  route53_ssh_zone_id = var.enable_dns ? aws_route53_zone.test[0].zone_id : ""
 }
 
 output "vpc_id" {
