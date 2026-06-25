@@ -343,7 +343,9 @@ export class DemoControlPlane {
     });
   }
 
-  /** Wipe everything (the reset widget also drops the IDE IndexedDB, then reloads). */
+  /** Wipe everything (the reset widget also drops the IDE IndexedDB, then reloads). Only clears
+   * persistence — the in-memory `state`/`version` are intentionally left for the caller's
+   * `location.reload()` to drop; a non-reloading caller must re-seed before reading. */
   reset(): void {
     clearState();
   }

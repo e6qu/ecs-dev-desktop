@@ -18,34 +18,40 @@ export function Catalog(): JSX.Element {
     <section className="demo-page">
       <div className="demo-page-head">
         <h2>Base-image catalog</h2>
-        <label className="demo-user">
-          <span>editor</span>
-          <select
-            value={editor}
-            onChange={(e) => {
-              if (e.target.value === "monaco" || e.target.value === "openvscode") {
-                setEditor(e.target.value);
-              }
-            }}
-          >
-            <option value="openvscode">{EDITOR_LABELS.openvscode}</option>
-            <option value="monaco">{EDITOR_LABELS.monaco}</option>
-          </select>
-        </label>
-        <label className="demo-user">
-          <span>agent</span>
-          <select
-            value={agent}
-            onChange={(e) => {
-              if (e.target.value === "claude-code" || e.target.value === "codex") {
-                setAgent(e.target.value);
-              }
-            }}
-          >
-            <option value="claude-code">{AGENT_LABELS["claude-code"]}</option>
-            <option value="codex">{AGENT_LABELS.codex}</option>
-          </select>
-        </label>
+        {!canMutate && <span className="demo-readonly-note">viewer — browse only</span>}
+        {/* The editor/agent pickers only feed `create`, so they're hidden for a read-only viewer. */}
+        {canMutate && (
+          <>
+            <label className="demo-user">
+              <span>editor</span>
+              <select
+                value={editor}
+                onChange={(e) => {
+                  if (e.target.value === "monaco" || e.target.value === "openvscode") {
+                    setEditor(e.target.value);
+                  }
+                }}
+              >
+                <option value="openvscode">{EDITOR_LABELS.openvscode}</option>
+                <option value="monaco">{EDITOR_LABELS.monaco}</option>
+              </select>
+            </label>
+            <label className="demo-user">
+              <span>agent</span>
+              <select
+                value={agent}
+                onChange={(e) => {
+                  if (e.target.value === "claude-code" || e.target.value === "codex") {
+                    setAgent(e.target.value);
+                  }
+                }}
+              >
+                <option value="claude-code">{AGENT_LABELS["claude-code"]}</option>
+                <option value="codex">{AGENT_LABELS.codex}</option>
+              </select>
+            </label>
+          </>
+        )}
       </div>
       <p className="demo-fine">
         Curated golden images. Pick an editor and launch one to create a workspace. OpenVSCode is

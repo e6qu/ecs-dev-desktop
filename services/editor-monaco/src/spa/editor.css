@@ -3,8 +3,9 @@
   --bg: #1e1e1e;
   --panel: #252526;
   --border: #333;
-  /* Control boundary (the terminal-toggle button) — clears the 3:1 non-text floor vs --border. */
-  --border-control: #565659;
+  /* Control boundary (the terminal-toggle button) — must clear the 3:1 non-text floor vs the
+   * ADJACENT panel/bg surface (not vs --border): #757578 is 3.3:1 on --panel, 3.6:1 on --bg. */
+  --border-control: #757578;
   --text: #ccc;
   /* Lightened from #888 (≈4.3:1, just under AA) to clear WCAG AA 4.5:1 on the panels. */
   --dim: #9d9d9d;

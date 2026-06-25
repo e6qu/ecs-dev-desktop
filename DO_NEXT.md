@@ -55,6 +55,14 @@ deferral by choice.
   cold-start (the `StateBadge` pulse → "Open IDE appears when ready") is visible. (Boy-scout alongside:
   `persistence.loadState` now validates the top-level SHAPE, not just the version number — §6.5a.)
 
+- **Terraform: are the `*.devbox.<domain>` wildcard DNS/TLS resources vestigial?** The module still
+  provisions a `*.devbox.<domain>` Route 53 record + a wildcard SAN on the ACM cert (`modules/
+ecs-dev-desktop/dns.tf` `workspaces_wildcard`, `main.tf`, `variables.tf` `workspaces_subdomain`), but
+  the editor proxy is now **path-based** (`app.<domain>/w/<id>/`) and nothing in `apps/web` routes off a
+  workspace subdomain — so these look left over from the pre-pivot (Pomerium/wildcard) design. The 2026-06-25
+  example-comment fix stopped _teaching_ the wildcard model; removing the wildcard `.tf` resources is a
+  separate infra-correctness decision (confirm nothing — SSH zone? future use? — depends on them first).
+
 - **Admin Quotas page: flag who is at/over their limit.** The page shows per-role limits + per-user
   usage (`{owner, count}`) but can't mark an owner over-limit because the usage rows lack the owner's
   **role** (roles derive from IdP groups at sign-in, not stored per workspace). Needs role resolution

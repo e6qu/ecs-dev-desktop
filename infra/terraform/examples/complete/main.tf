@@ -36,7 +36,8 @@ module "ecs_dev_desktop" {
   # Curated golden base images users launch workspaces from.
   golden_image_repos = ["node-20", "go-1.22", "python-3.12"]
 
-  # DNS + TLS + `*.devbox.<domain>` workspace routing (omit for an HTTP-only dev stack).
+  # DNS + a single-host ACM cert for the path-based editor proxy (`app.<domain>/w/<id>/`) — no
+  # wildcard DNS/TLS (omit this whole block for an HTTP-only dev stack).
   domain_name     = var.domain_name
   route53_zone_id = var.route53_zone_id
 
