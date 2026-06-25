@@ -2544,3 +2544,23 @@ A11y: `aria-label` on the three NewSession fields + `aria-busy` on its in-flight
 on the demo SSH-key error; `aria-hidden` on the decorative status dots (web + demo); `aria-expanded`/
 `aria-controls` on the editor's terminal-toggle disclosure. Contrast: the audit found NO fresh failures —
 the token system is now AA-clean.
+
+**2026-06-25 — Examples + journey + fuzz + a contrast-regression fix, one PR.** Four audits on saturating
+surfaces still found real items. **Contrast regression (mine):** the prior editor `--border-control`
+(#565659) was 2.09:1 vs the panel — I'd measured it against `--border` (#333), the wrong reference; the
+3:1 non-text floor is vs the adjacent surface. Lifted to #757578 (3.3:1 on panel). **Deploy-breaking doc
+omission:** `EDD_CONNECTION_SECRET` (the per-workspace OpenVSCode connection-token HMAC, read by
+`constants.ts`/`workspace-proxy`) was missing from all three copy-paste secret lists — added to
+`apps/web/.env.example`, the tfvars `auth_secret_arns` example, and the README crypto list. **Production
+journey:** `/sessions/new` now gates on `defineAbilityFor(principal).can("create","Workspace")` and shows
+a read-only `StateBlock` for a viewer (was a guaranteed 403 dead-end after picking an image — the prod
+analog of the demo viewer-RBAC). **Demo journey:** Catalog hides the editor/agent pickers + shows a
+read-only note for a viewer (they only feed `create`). **Fuzz (looped 20×):** `checkMachineAuth` (the
+agent-heartbeat/gateway-wake auth boundary — it had NO test of any kind: total, fail-closed, soundness,
+scheme case-insensitivity, SECURITY) and `matchDevUser` (dev-auth credential match — first-match, exact
+username, `password ?? fallback`). **Boy-scout:** `workspaceLimit` now strict-decimal-parses
+`EDD_QUOTA_<ROLE>` (rejects `0x10`/`1e1`/`" 5 "`, which `Number()` silently accepted); refreshed the stale
+`*.devbox.<domain>` wildcard-routing comment in the terraform example (path-based now), a TESTING.md
+`--filter web`→`@edd/web` nit, and a `reset()` latent-state comment. The wildcard-resources infra question
+
+- a demo-viewer SSH-keys note are recorded in `DO_NEXT`.

@@ -109,7 +109,7 @@ SSH access, DNS/TLS, and seeding — is in
 3. **Configure secrets** the module does not inject — Auth.js (`AUTH_SECRET`,
    `AUTH_URL`/`AUTH_TRUST_HOST`) + IdP creds, RBAC groups (`EDD_ADMIN_GROUPS` — set
    this or no one is an admin), and crypto (`EDD_TOKEN_ENC_KEY`, `EDD_GATEWAY_SECRET`,
-   `EDD_AGENT_SECRET`). SSH needs no extra secret — it is registered-key only, and
+   `EDD_AGENT_SECRET`, `EDD_CONNECTION_SECRET`). SSH needs no extra secret — it is registered-key only, and
    the gateway/workspace authorize keys via `EDD_GATEWAY_SECRET`/`EDD_AGENT_SECRET`.
    The infra coordinates (`COMPUTE_PROVIDER`, `AUDIT_PROVIDER`, `LOG_PROVIDER`,
    cluster/subnets/roles, …) are injected by the module. Same code, real cloud by

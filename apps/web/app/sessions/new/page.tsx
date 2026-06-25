@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { defineAbilityFor } from "@edd/authz";
+
 import { NewSession } from "../../../components/NewSession";
 import { StateBlock } from "../../../components/StateBlock";
 import { getCatalog } from "../../../lib/control-plane";
@@ -20,6 +22,19 @@ export default async function NewSessionPage() {
         title="Not signed in"
         detail="Sign in to start a session."
         action={{ href: "/login", label: "sign in" }}
+      />
+    );
+  }
+
+  // A viewer can't create workspaces — gate the launcher here (the API would 403 anyway) so they
+  // get a clear read-only message instead of a dead-end error after picking an image. Mirrors the
+  // workspaces page's read-only treatment.
+  if (!defineAbilityFor(principal).can("create", "Workspace")) {
+    return (
+      <StateBlock
+        title="Read-only access"
+        detail="Your role can't create workspaces — ask an admin if you need one."
+        action={{ href: "/workspaces", label: "back to workspaces" }}
       />
     );
   }

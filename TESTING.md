@@ -180,7 +180,7 @@ docker build -f services/ssh-gateway/Dockerfile.node -t edd-workspace-node:e2e .
 docker compose -f docker-compose.e2e.yml up -d --build --wait
 RECONCILER_IMAGE=edd-reconciler:e2e PROXY_IMAGE=edd-ssh-proxy:e2e \
   NODE_IMAGE=edd-workspace-node:e2e pnpm test:e2e
-pnpm --filter web test:pw:live      # browser lifecycle on real ECS compute
+pnpm --filter @edd/web test:pw:live  # browser lifecycle on real ECS compute
                                     # (also exercises the in-app /w/<id>/ editor proxy)
 
 pnpm --filter <pkg> test   # one component in isolation

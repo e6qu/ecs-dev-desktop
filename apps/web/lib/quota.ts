@@ -11,14 +11,14 @@ export function workspaceLimit(role: Role): number | null {
   const envKey = `${QUOTA_ENV_PREFIX}${role.toUpperCase()}`;
   const override = process.env[envKey];
   if (override !== undefined && override !== "") {
-    const n = Number(override);
-    // A negative or fractional quota is a misconfiguration (a negative would lock the
-    // role out of creating ANY workspace). Fail loud (§6.5) rather than silently driving
-    // enforcement with garbage — and it keeps the report contract's nonnegative-int invariant.
-    if (!Number.isInteger(n) || n < 0) {
+    // Strict decimal only. `Number()` would silently accept `0x10`/`1e1`/`0b101`/`" 5 "` as
+    // "integers" — surprising, and contradicting the documented non-negative-integer contract.
+    // A negative/fractional/garbage quota is a misconfiguration (a negative would lock the role
+    // out of creating ANY workspace); fail loud (§6.5) rather than driving enforcement with it.
+    if (!/^\d+$/.test(override)) {
       throw new Error(`invalid ${envKey}="${override}": expected a non-negative integer`);
     }
-    return n;
+    return Number(override);
   }
   return DEFAULT_WORKSPACE_QUOTAS[role] ?? null;
 }
