@@ -34,10 +34,17 @@ export function decryptToken(blob: string, keyHex: string): string {
   if (ivB64 === undefined || tagB64 === undefined || ctB64 === undefined) {
     throw new Error("malformed ciphertext");
   }
-  const decipher = createDecipheriv(ALGORITHM, keyFromHex(keyHex), Buffer.from(ivB64, "base64"), {
+  const iv = Buffer.from(ivB64, "base64");
+  const tag = Buffer.from(tagB64, "base64");
+  // Validate sizes up front so a corrupt blob throws our controlled error, not a raw crypto
+  // TypeError (ERR_CRYPTO_INVALID_IV) from deep inside createDecipheriv.
+  if (iv.length !== IV_BYTES || tag.length !== TAG_BYTES) {
+    throw new Error("malformed ciphertext");
+  }
+  const decipher = createDecipheriv(ALGORITHM, keyFromHex(keyHex), iv, {
     authTagLength: TAG_BYTES,
   });
-  decipher.setAuthTag(Buffer.from(tagB64, "base64"));
+  decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(Buffer.from(ctB64, "base64")), decipher.final()]).toString(
     "utf8",
   );

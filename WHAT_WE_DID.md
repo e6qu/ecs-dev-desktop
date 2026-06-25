@@ -2475,3 +2475,19 @@ proven at the sim tier yet (a tag-scoped Allow currently behaves as a blanket de
 to populate resource/service condition keys into the authz context (the operator support already landed in
 #660). Until then, the tag/cluster-conditioned grants stay e2e-aws-only. Nine sockerless issues filed across
 the whole arc; eight resolved, #661 open.
+
+**2026-06-25 — Second opportunistic audit sweep (fuzz + prod UX + examples), one PR.** Property-based
+hardening on previously-uncovered surfaces: `token-crypto` (AES-GCM round-trip, fresh-IV, fail-closed
+on wrong-key/tamper, controlled-error on a malformed blob), the shared `sshPublicKeyField` (no-newline
+/ second-key-smuggle rejection, accepted⇒well-formed, total/no-ReDoS), GC-safety for
+`selectOrphanTasks`/`selectOrphanSecrets` + the reconciler's `selectIdle` (never reap a referenced/live
+resource; NaN-timestamp fail-safe), and the terminal `parseMessage` protocol. Two robustness fixes the
+fuzz surfaced: `decryptToken` now throws its controlled "malformed ciphertext" (not a raw crypto
+`TypeError`) on a bad blob, and `parseMessage` rejects non-integer/≤0 PTY dimensions. Prod-app UX: the
+NewSession session buttons show in-flight labels (and the create form no longer silently no-ops on an
+incomplete form); the workspaces mine/all tabs got `aria-current`; `LiveRefresh` pauses while the tab
+is hidden + catches up on re-show. Examples/quality: removed the dead `EDD_WORKSPACE_BASE_DOMAIN` from
+the tfvars/variables examples (its config export was dropped in #142 — only `EDD_SSH_BASE_DOMAIN` is
+live), added the deployment-secret block to `apps/web/.env.example`, made `workspace-proxy` fail loud
+on a missing `AUTH_SECRET` (was `?? ""`), trimmed CreateBaseImage name/image, and stopped the
+ssh-gateway e2e fake from swallowing a malformed authorize body.

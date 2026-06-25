@@ -150,9 +150,15 @@ export async function authorizeWorkspace(
   // a login-redirect loop for already-authenticated users). Instead, detect it from the
   // cookie the browser actually sent, so the read matches whatever Auth.js wrote.
   const cookieHeader = req.headers.cookie ?? "";
+  // Fail loud on a missing secret rather than reading tokens with `?? ""` — an empty secret would
+  // silently reject every session (→ login-redirect loop) instead of surfacing the misconfig.
+  const authSecret = process.env.AUTH_SECRET;
+  if (authSecret === undefined || authSecret === "") {
+    throw new Error("AUTH_SECRET is required to authorize workspace-proxy requests");
+  }
   const token = await getToken({
     req: { headers: { cookie: cookieHeader } },
-    secret: process.env.AUTH_SECRET ?? "",
+    secret: authSecret,
     secureCookie: cookieHeader.includes(`__Secure-${SESSION_COOKIE_STEM}`),
   });
   if (token === null) return { kind: "unauthenticated" };

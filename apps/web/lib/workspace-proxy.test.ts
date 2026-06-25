@@ -31,6 +31,11 @@ const req = (cookie = "session=x"): CookieBearingRequest => ({ headers: { cookie
 beforeEach(() => {
   getTokenMock.mockReset();
   inspectMock.mockReset();
+  // authorizeWorkspace now fails loud without AUTH_SECRET (getToken itself is mocked).
+  process.env.AUTH_SECRET = "test-secret";
+});
+afterEach(() => {
+  delete process.env.AUTH_SECRET;
 });
 
 describe("authorizeWorkspace (in-app proxy authz glue)", () => {
@@ -44,6 +49,12 @@ describe("authorizeWorkspace (in-app proxy authz glue)", () => {
     getTokenMock.mockResolvedValue({ uid: "u-1" });
     inspectMock.mockResolvedValue(null);
     expect(await authorizeWorkspace(req(), WS)).toEqual({ kind: "forbidden" });
+  });
+
+  it("fails loud (throws) when AUTH_SECRET is unset — never authorizes with an empty secret", async () => {
+    delete process.env.AUTH_SECRET;
+    getTokenMock.mockResolvedValue({ uid: "u-1" });
+    await expect(authorizeWorkspace(req(), WS)).rejects.toThrow(/AUTH_SECRET/);
   });
 
   it("allows the owner (session uid === workspace ownerId)", async () => {

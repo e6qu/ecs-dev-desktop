@@ -25,5 +25,5 @@ availability_zones = ["us-east-1a", "us-east-1b"]
 #   EDD_ADMIN_GROUPS          = "platform-admins"
 #   EDD_MEMBER_GROUPS         = "engineering"
 #   AUTH_TRUST_HOST           = "true"
-#   EDD_WORKSPACE_BASE_DOMAIN = "devbox.dev.example.com"
+#   EDD_SSH_BASE_DOMAIN       = "ssh.dev.example.com"
 # }

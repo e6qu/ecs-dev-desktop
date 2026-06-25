@@ -78,7 +78,14 @@ function startStub(): Promise<number> {
         req.on('data', (c) => chunks.push(c));
         req.on('end', () => {
           let pk = '';
-          try { pk = (JSON.parse(Buffer.concat(chunks).toString()).publicKey || '').trim(); } catch {}
+          try {
+            pk = (JSON.parse(Buffer.concat(chunks).toString()).publicKey || '').trim();
+          } catch (err) {
+            // Fail loud: a malformed authorize body is a real protocol error, not "no key".
+            res.writeHead(400);
+            res.end(JSON.stringify({ error: 'malformed ssh-authorize body: ' + String(err) }));
+            return;
+          }
           res.writeHead(200);
           res.end(JSON.stringify(pk === KEY ? { authorized: true, principal: 'dev-e2e' } : { authorized: false }));
         });

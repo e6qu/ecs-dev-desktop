@@ -21,6 +21,11 @@ function rawToString(raw: Buffer | ArrayBuffer | Buffer[]): string {
   return Buffer.from(raw).toString("utf8");
 }
 
+/** A finite, positive integer — a valid PTY dimension (rejects NaN/Infinity/floats/<=0). */
+function isPositiveInt(v: unknown): v is number {
+  return typeof v === "number" && Number.isInteger(v) && v > 0;
+}
+
 /** Narrow a client message to the input/resize protocol without unsafe casts. */
 export function parseMessage(
   raw: string,
@@ -39,8 +44,8 @@ export function parseMessage(
     value.type === "resize" &&
     "cols" in value &&
     "rows" in value &&
-    typeof value.cols === "number" &&
-    typeof value.rows === "number"
+    isPositiveInt(value.cols) &&
+    isPositiveInt(value.rows)
   ) {
     return { cols: value.cols, rows: value.rows };
   }
