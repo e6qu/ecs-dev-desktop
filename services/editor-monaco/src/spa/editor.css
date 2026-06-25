@@ -3,6 +3,8 @@
   --bg: #1e1e1e;
   --panel: #252526;
   --border: #333;
+  /* Control boundary (the terminal-toggle button) — clears the 3:1 non-text floor vs --border. */
+  --border-control: #565659;
   --text: #ccc;
   /* Lightened from #888 (≈4.3:1, just under AA) to clear WCAG AA 4.5:1 on the panels. */
   --dim: #9d9d9d;
@@ -112,7 +114,7 @@ body {
 }
 #toggle-terminal {
   background: none;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-control);
   color: var(--dim);
   border-radius: 4px;
   padding: 2px 8px;

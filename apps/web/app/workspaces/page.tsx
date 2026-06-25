@@ -3,6 +3,7 @@ import type { WorkspaceDto } from "@edd/api-contracts";
 import { defineAbilityFor } from "@edd/authz";
 import Link from "next/link";
 
+import { LiveRefresh } from "../../components/LiveRefresh";
 import { StateBlock } from "../../components/StateBlock";
 import { WorkspaceCard } from "../../components/WorkspaceCard";
 import { getCatalog, getControlPlane } from "../../lib/control-plane";
@@ -10,6 +11,12 @@ import { getPagePrincipal } from "../../lib/principal";
 import { catalogByImage, enrichWorkspace } from "../../lib/workspace-enrich";
 
 export const dynamic = "force-dynamic";
+
+// While a workspace is mid-transition (just created → provisioning, or deleting), poll the
+// server render so the card advances to its resting state — and the "Open editor" button appears —
+// without the user manually reloading. Stops once nothing is transitional.
+const TRANSITIONAL_STATES = new Set(["provisioning", "deleting"]);
+const TRANSITIONAL_REFRESH_MS = 4000;
 
 export default async function WorkspacesPage({
   searchParams,
@@ -41,9 +48,11 @@ export default async function WorkspacesPage({
   const workspaces = raw
     .map((ws) => enrichWorkspace(ws, byImage))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const hasTransitional = workspaces.some((w) => TRANSITIONAL_STATES.has(w.state));
 
   return (
     <>
+      {hasTransitional && <LiveRefresh intervalMs={TRANSITIONAL_REFRESH_MS} />}
       <div className="page-head">
         <div>
           <div className="kicker">workspaces</div>

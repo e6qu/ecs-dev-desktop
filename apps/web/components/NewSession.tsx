@@ -129,7 +129,19 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
           isPersonal: namespace.kind === "user",
         }),
       });
-      if (!res.ok) throw new Error(`creating the repository failed (${String(res.status)})`);
+      if (!res.ok) {
+        // Surface the API's specific, user-correctable message (e.g. "repository name unavailable")
+        // instead of an opaque status code; fall back to the status only if there's no error body.
+        const body: unknown = await res.json().catch(() => null);
+        const serverMsg =
+          body !== null &&
+          typeof body === "object" &&
+          "error" in body &&
+          typeof body.error === "string"
+            ? body.error
+            : `creating the repository failed (${String(res.status)})`;
+        throw new Error(serverMsg);
+      }
       const { repo } = createRepoResponse.parse(await res.json());
       await startSession(repo.cloneUrl, repo.defaultBranch);
     } catch (e) {
@@ -311,7 +323,7 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
       )}
 
       {error !== null && (
-        <p className="mono" style={{ color: "var(--st-error)" }}>
+        <p role="alert" className="mono" style={{ color: "var(--st-error)" }}>
           {error}
         </p>
       )}

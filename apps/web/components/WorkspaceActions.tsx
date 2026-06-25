@@ -102,7 +102,7 @@ export function WorkspaceActions({
         </button>
       )}
       {error !== null && (
-        <span className="mono" style={{ color: "var(--st-error)", fontSize: 11 }}>
+        <span role="alert" className="mono" style={{ color: "var(--st-error)", fontSize: 11 }}>
           {error} — refreshed to the current state.
         </span>
       )}
