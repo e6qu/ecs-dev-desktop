@@ -173,9 +173,9 @@ variable "secret_environment" {
 
 variable "domain_name" {
   description = <<-EOT
-    Base domain for the control plane and workspace wildcard routing
-    (`app.<domain>` and `*.devbox.<domain>`). Empty disables Route53/ACM and
-    serves the ALB over HTTP only (dev). Requires `route53_zone_id` when set.
+    Base domain for the control plane (`app.<domain>`). The editor proxy is path-based
+    (`app.<domain>/w/<id>/`) — no workspace wildcard. Empty disables Route53/ACM and serves the ALB
+    over HTTP only (dev). Requires `route53_zone_id` when set.
   EOT
   type        = string
   default     = ""
@@ -187,10 +187,44 @@ variable "route53_zone_id" {
   default     = ""
 }
 
-variable "workspaces_subdomain" {
-  description = "Subdomain under which per-user workspaces are routed (`*.<this>.<domain>`)."
+# ---- SSH ingress (Slice 3) ----
+# Public SSH front door: an NLB + TCP:22 listener + a `*.<ssh_base_domain>` wildcard, so a workspace
+# is reachable as `ssh <principal>@<ws-id>.<ssh_base_domain>` (registered-key dual-trust auth). Gated
+# on `ssh_base_domain` (empty = no SSH ingress). Separate from the editor `domain_name` above.
+variable "ssh_base_domain" {
+  description = "Base domain for per-workspace SSH (`<ws-id>.<this>`). Empty disables SSH ingress."
   type        = string
-  default     = "devbox"
+  default     = ""
+}
+
+variable "route53_ssh_zone_id" {
+  description = "Route53 hosted-zone id for `ssh_base_domain`. Required when `ssh_base_domain` is set."
+  type        = string
+  default     = ""
+}
+
+variable "ssh_gateway_image" {
+  description = "SSH-gateway container image — a PINNED tag/digest (no `:latest`), e.g. `<ssh_gateway_repository_url>:<tag>`. Required when `ssh_base_domain` is set (a task-def precondition enforces it)."
+  type        = string
+  default     = ""
+}
+
+variable "ssh_gateway_cpu" {
+  description = "SSH-gateway Fargate task CPU units."
+  type        = number
+  default     = 256
+}
+
+variable "ssh_gateway_memory" {
+  description = "SSH-gateway Fargate task memory (MiB)."
+  type        = number
+  default     = 512
+}
+
+variable "ssh_gateway_desired_count" {
+  description = "SSH-gateway service desired task count."
+  type        = number
+  default     = 1
 }
 
 # ---- Golden images / ECR ----

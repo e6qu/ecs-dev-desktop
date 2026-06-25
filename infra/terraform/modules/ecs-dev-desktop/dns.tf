@@ -1,14 +1,13 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# DNS + TLS, created only when a domain is provided. A single DNS-validated ACM
-# cert covers the control plane (`app.<domain>`) and the workspace wildcard
-# (`*.<workspaces_subdomain>.<domain>`); A/AAAA aliases point both at the ALB.
+# DNS + TLS, created only when a domain is provided. A single DNS-validated ACM cert covers the
+# control plane (`app.<domain>`); an A alias points it at the ALB. The editor proxy is path-based
+# (`app.<domain>/w/<id>/`) folded into the app — there is NO workspace wildcard DNS/TLS.
 
 resource "aws_acm_certificate" "this" {
-  count                     = local.dns_enabled ? 1 : 0
-  domain_name               = local.control_plane_fqdn
-  subject_alternative_names = [local.workspaces_fqdn]
-  validation_method         = "DNS"
-  tags                      = local.tags
+  count             = local.dns_enabled ? 1 : 0
+  domain_name       = local.control_plane_fqdn
+  validation_method = "DNS"
+  tags              = local.tags
 
   lifecycle {
     create_before_destroy = true
@@ -42,19 +41,6 @@ resource "aws_route53_record" "control_plane" {
   count   = local.dns_enabled ? 1 : 0
   zone_id = var.route53_zone_id
   name    = local.control_plane_fqdn
-  type    = "A"
-
-  alias {
-    name                   = aws_lb.this.dns_name
-    zone_id                = aws_lb.this.zone_id
-    evaluate_target_health = true
-  }
-}
-
-resource "aws_route53_record" "workspaces_wildcard" {
-  count   = local.dns_enabled ? 1 : 0
-  zone_id = var.route53_zone_id
-  name    = local.workspaces_fqdn
   type    = "A"
 
   alias {

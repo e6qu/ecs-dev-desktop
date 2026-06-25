@@ -12,7 +12,7 @@ environment.
 ## Architecture
 
 ```
-                          Route53  *.devbox.<domain>, app.<domain>
+                          Route53  app.<domain>  (path-based proxy, no wildcard)
                               │  (ACM-validated TLS)
                               ▼
    Internet ──▶ ALB (public subnets) ──▶ ECS service: control-plane (Next.js)
@@ -31,14 +31,19 @@ What this module **does** create: VPC + subnets + NAT + security groups,
 DynamoDB single-table (matching `@edd/db`), KMS key, ECR repos, IAM roles
 (execution, control-plane, reconciler, the ECS managed-EBS infrastructure role,
 the scheduler role), the ECS cluster + control-plane service + autoscaling, the
-ALB + listeners + (optional) ACM/Route53, the reconciler schedule, and CloudWatch
-log groups.
+ALB + listeners + (optional) ACM/Route53, the reconciler schedule, CloudWatch
+log groups, and — when `ssh_base_domain` is set — the **SSH ingress** (a network
+LB with a raw TCP:22 listener, a target group, the SSH-gateway ECS service, and a
+`*.<ssh_base_domain>` wildcard) so a workspace is reachable as
+`ssh <principal>@<ws-id>.<ssh_base_domain>` (registered-key dual-trust auth).
 
 What it does **not** do (app/runtime layer, by design): build/push the
-control-plane image or golden images; create the auth secrets (you pass their
-ARNs); deploy the SSH gateway — it runs behind this ALB and is configured at the
-app layer. The browser→VS Code workspace proxy is served by the control-plane app
-itself (`/w/<id>/`), not a separate service.
+control-plane, golden, or SSH-gateway images; create the auth secrets (you pass
+their ARNs). The browser→VS Code workspace proxy is served by the control-plane
+app itself (`app.<domain>/w/<id>/`, path-based), not a separate service. NOTE: an
+end-to-end SSH connection _through_ the NLB is e2e-aws-only — the sockerless sim's
+NLB data plane is HTTP-only (BUGS.md → External blockers), so the sim proves only
+that the ingress resources are created correctly, not a live byte-stream forward.
 
 ## Private networking & NAT
 
@@ -149,7 +154,6 @@ sim (AGENTS.md §6.8).
 | `secret_environment`                                  | map(string)  | `{}`              | Env var → Secrets Manager ARN.                                                       |
 | `domain_name`                                         | string       | `""`              | Base domain (empty = HTTP-only dev).                                                 |
 | `route53_zone_id`                                     | string       | `""`              | Zone id (required with `domain_name`).                                               |
-| `workspaces_subdomain`                                | string       | `devbox`          | `*.<this>.<domain>` routing.                                                         |
 | `golden_image_repos`                                  | list(string) | `[]`              | Golden base-image ECR repos to create.                                               |
 | `image_retention_count`                               | number       | `20`              | Images kept per ECR repo.                                                            |
 | `reconciler_schedule`                                 | string       | `rate(5 minutes)` | Reconciler cadence.                                                                  |

@@ -30,6 +30,7 @@ export const TESTID = {
   logStream: "log-stream",
   /** A per-role limit row on the Quotas page. Attrs: `data-role`. */
   quotaRow: "quota-row",
+  quotaUsageRow: "quota-usage-row",
   /** The "admins only" gate shown to non-admins. */
   adminDenied: "admin-denied",
   /** A repo row in the New-session repo browser. Attrs: `data-repo`, `data-private`. */

@@ -28,10 +28,16 @@ locals {
   )
 
   dns_enabled = var.domain_name != ""
+  # SSH ingress (Slice 3) is independent of the editor domain — it has its own zone.
+  ssh_enabled = var.ssh_base_domain != ""
 
   control_plane_fqdn = local.dns_enabled ? "app.${var.domain_name}" : null
-  workspaces_fqdn    = local.dns_enabled ? "*.${var.workspaces_subdomain}.${var.domain_name}" : null
+  # `*.<ssh_base_domain>` — every workspace is reached at `<ws-id>.<ssh_base_domain>`.
+  ssh_wildcard_fqdn = local.ssh_enabled ? "*.${var.ssh_base_domain}" : null
 
   # Default to this stack's own ECR repo at :latest unless the caller pins an image.
   control_plane_image = var.control_plane_image != "" ? var.control_plane_image : "${aws_ecr_repository.control_plane.repository_url}:latest"
+  # The SSH gateway has no `:latest` fallback — push a pinned tag to `ssh_gateway_repository_url` and
+  # pass it as `ssh_gateway_image` (required when SSH ingress is enabled; a precondition enforces it).
+  ssh_gateway_image = var.ssh_gateway_image
 }

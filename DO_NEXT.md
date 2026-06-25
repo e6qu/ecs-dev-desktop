@@ -55,19 +55,19 @@ deferral by choice.
   cold-start (the `StateBadge` pulse → "Open IDE appears when ready") is visible. (Boy-scout alongside:
   `persistence.loadState` now validates the top-level SHAPE, not just the version number — §6.5a.)
 
-- **Terraform: are the `*.devbox.<domain>` wildcard DNS/TLS resources vestigial?** The module still
-  provisions a `*.devbox.<domain>` Route 53 record + a wildcard SAN on the ACM cert (`modules/
-ecs-dev-desktop/dns.tf` `workspaces_wildcard`, `main.tf`, `variables.tf` `workspaces_subdomain`), but
-  the editor proxy is now **path-based** (`app.<domain>/w/<id>/`) and nothing in `apps/web` routes off a
-  workspace subdomain — so these look left over from the pre-pivot (Pomerium/wildcard) design. The 2026-06-25
-  example-comment fix stopped _teaching_ the wildcard model; removing the wildcard `.tf` resources is a
-  separate infra-correctness decision (confirm nothing — SSH zone? future use? — depends on them first).
+- **Terraform `*.devbox.<domain>` wildcard DNS/TLS resources — REMOVED (2026-06-25, vestigial confirmed).**
+  Verified no consumer (the HTTPS listener needs only the `app.<domain>` cert); deleted the wildcard
+  Route53 record, the wildcard ACM SAN, `local.workspaces_fqdn`, and `var.workspaces_subdomain`, and
+  refreshed the sim assertions (ACM SAN count 2→1; the workspace-wildcard Route53 assert repurposed to the
+  SSH wildcard). The SSH base domain (`<ws-id>.<ssh-base-domain>`) is separate — untouched.
 
-- **Admin Quotas page: flag who is at/over their limit.** The page shows per-role limits + per-user
-  usage (`{owner, count}`) but can't mark an owner over-limit because the usage rows lack the owner's
-  **role** (roles derive from IdP groups at sign-in, not stored per workspace). Needs role resolution
-  threaded through `fleet-status` → `QuotaReportDto.usage` → the page, then a per-row at/over-limit
-  accent. Deferred from the 2026-06-25 sweep as a data-model change, not a UI tweak.
+- **Admin Quotas page: flag who is at/over their limit — DONE (2026-06-25).** Resolved the role-not-stored
+  blocker by persisting `ownerRole` on the workspace at create time (the role is otherwise only known at
+  the owner's sign-in): threaded through `@edd/core` Workspace/`provision` → `@edd/db` entity →
+  `@edd/control-plane` → the `workspace`/`workspaceDetail` contracts → `fleet-status` →
+  `QuotaReportDto.usage`. The page now flags `atOrOver` rows. Forward-only (records predating the field
+  have no role) → those legacy rows fall back to the **strictest positive** per-role cap (viewer's 0 cap is
+  excluded so it doesn't trivially flag everyone). Admin (unlimited) is never flagged.
 
 - **DynamoDB Local retired from all CI — DONE (2026-06-22).** The integration (#148), **e2e**, and
   **playwright** tiers all run on the sim's DynamoDB now; `@edd/config` `dynamodb.endpoint` defaults to the
@@ -95,8 +95,14 @@ ecs-dev-desktop/dns.tf` `workspaces_wildcard`, `main.tf`, `variables.tf` `worksp
   tagged vs untagged resource) and the new `compute-ecs/src/iam-enforcement.integ.ts` adds `ecs:cluster`
   (ListTasks on the granted cluster vs another), both via the shared `@edd/aws-itest-support` helper.
   **Cost dashboard visualization — DONE (2026-06-22)**: a no-dependency
-  stacked spend bar on `/admin/costs`. Remaining: **SSH Slice 3 ingress** (NLB+Route53 — likely DOES need a
-  sockerless slice).
+  stacked spend bar on `/admin/costs`. **SSH Slice 3 ingress — terraform DONE (2026-06-25)**: the
+  gated NLB + TCP:22 listener + target group + SSH-gateway ECS service + `*.<ssh_base_domain>` wildcard
+  (`ssh-ingress.tf`, gateway image pinned/immutable, no `:latest`). It applies + asserts cleanly against
+  the sim, but is OFF the terraform-sim run pending **two** sockerless gaps (validated by `terraform
+validate` meanwhile): **#685** (TCP target group returns a HealthCheck Matcher → breaks the idempotency
+  re-plan) and **#683** (NLB data plane HTTP-only → live ssh-through-NLB is e2e-aws-only). Both filed +
+  tracked in `BUGS.md`. **Follow-up: re-enable the SSH ingress in `tests/sim` once #685 lands.** Remaining
+  real-AWS work is gated on decisions #1 (account) / #2 (the SSH zone).
 
 - **Catalog optimistic concurrency (follow-up to the 2026-06-22 sweep L2).** `CatalogService.update`/`create`
   are last-write-wins (no `version` attribute → two concurrent admin edits of the same base image clobber).

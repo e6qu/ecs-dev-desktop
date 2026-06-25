@@ -39,9 +39,18 @@ export type WorkspaceActionDto = z.infer<typeof workspaceAction>;
 export const editorKind = z.enum(["openvscode", "monaco"]);
 export type EditorKindDto = z.infer<typeof editorKind>;
 
+/** The RBAC roles (mirrors `@edd/authz` `ROLES` — kept here so the contract has no dep on authz;
+ * the role-mapping test pins them in sync). A closed enum, not a bare string, so a typo'd/unknown
+ * role can't ride a DTO. */
+export const role = z.enum(["viewer", "member", "admin"]);
+export type RoleDto = z.infer<typeof role>;
+
 export const workspace = z.object({
   id: z.string(),
   ownerId: z.string(),
+  // The owner's role at create time — lets the admin quota view flag a workspace against its
+  // owner's per-role limit. Absent on records predating the field.
+  ownerRole: role.optional(),
   baseImage: z.string(),
   editor: editorKind.optional(),
   state: workspaceState,
@@ -138,6 +147,8 @@ export const workspaceDetail = z.object({
    * Validated as an email (not a bare string) so a malformed value is rejected at
    * the wire boundary, matching `@edd/core`'s `email()` smart constructor. */
   ownerEmail: z.email().optional(),
+  /** The owner's role at create time (persisted), for the admin quota view. */
+  ownerRole: role.optional(),
   /** Git repo cloned into the session, if any ("one repo per session"). */
   repoUrl: z.string().optional(),
   baseImage: z.string(),
@@ -378,19 +389,23 @@ export type CostReport = z.infer<typeof costReport>;
 
 // --- Admin: quota report (per-role limits + per-user usage) ---
 
-/** The RBAC roles (mirrors `@edd/authz` `ROLES` — kept here so the contract has no
- * dep on authz; the role-mapping test pins them in sync). A closed enum, not a bare
- * string, so a typo'd/unknown role can't ride a DTO. */
-export const role = z.enum(["viewer", "member", "admin"]);
-export type RoleDto = z.infer<typeof role>;
-
 export const quotaReport = z.object({
   /** Per-role workspace caps (`limit: null` = unlimited). A negative or fractional
    * cap is non-representable — a misconfigured limit fails the contract, not silently
    * drives quota enforcement. */
   limits: z.array(z.object({ role, limit: z.number().int().nonnegative().nullable() })),
-  /** Current workspace count per owner, busiest first. */
-  usage: z.array(z.object({ owner: z.string(), count: z.number().int().nonnegative() })),
+  /** Current workspace count per owner, busiest first. `role`/`limit` are present when the owner's
+   * role is known (persisted on a workspace they own); `atOrOver` flags a count at/over the limit —
+   * against the owner's own per-role cap when known, else against the strictest finite cap. */
+  usage: z.array(
+    z.object({
+      owner: z.string(),
+      count: z.number().int().nonnegative(),
+      role: role.optional(),
+      limit: z.number().int().nonnegative().nullable(),
+      atOrOver: z.boolean(),
+    }),
+  ),
 });
 export type QuotaReportDto = z.infer<typeof quotaReport>;
 

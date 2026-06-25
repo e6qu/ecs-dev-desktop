@@ -93,9 +93,17 @@ module "edd" {
   # applies + round-trips against the sim.
   enable_cloudwatch_dashboard = true
 
-  # TLS + workspace-wildcard routing (ACM cert, DNS validation, HTTPS listener).
+  # Control-plane TLS routing (ACM cert, DNS validation, HTTPS listener for `app.<domain>`).
   domain_name     = var.enable_dns ? "edd-sim.example.com" : ""
   route53_zone_id = var.enable_dns ? aws_route53_zone.test[0].zone_id : ""
+
+  # SSH ingress (Slice 3) is NOT exercised against the sim yet. The resources apply cleanly (NLB +
+  # TCP:22 listener + target group + gateway service + `*.<ssh_base_domain>` wildcard, all assert to
+  # spec), but the sim returns a HealthCheck `Matcher` for the TCP target group that real AWS does
+  # not, which breaks the terraform idempotency re-plan (sockerless #685). Until that lands, leave
+  # `ssh_base_domain` empty so the SSH ingress isn't created here; the terraform is covered by
+  # `terraform validate`. (The live ssh-through-NLB byte stream is also e2e-aws-only, sockerless #683.)
+  ssh_base_domain = ""
 }
 
 output "vpc_id" {

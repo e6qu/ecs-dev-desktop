@@ -19,6 +19,9 @@ export function makeWorkspaceEntity(client: DynamoDBClient, table = TABLE) {
         // Owner's email — the identity the proxy matches a caller against for
         // per-workspace access. Optional: records predating the field have none.
         ownerEmail: { type: "string", required: false },
+        // Owner's role at create time — lets the admin quota view flag a workspace against its
+        // owner's per-role limit. Optional: records predating the field have none.
+        ownerRole: { type: ["viewer", "member", "admin"] as const, required: false },
         // Git repo cloned into the session at first boot ("one repo per
         // session"). Optional: blank/scratch sessions have none.
         repoUrl: { type: "string", required: false },

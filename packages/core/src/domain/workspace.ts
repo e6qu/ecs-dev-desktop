@@ -17,6 +17,10 @@ import type {
 /** Durable convergence intent (see {@link Workspace.desiredState}). */
 export type DesiredState = "present" | "deleted";
 
+/** The owner's role recorded on a workspace at create time. Mirrors `@edd/authz`'s `Role` (kept a
+ * standalone union here because `@edd/authz` depends on `@edd/core`, so core can't import it). */
+export type WorkspaceOwnerRole = "viewer" | "member" | "admin";
+
 /**
  * The Workspace domain object — the typed value passed across boundaries (never
  * a bare dict). All identifiers are branded. This and the pure functions below
@@ -32,6 +36,10 @@ export interface Workspace {
    * field, or by paths without a session email, have none (proxy fails closed
    * for non-admins). */
   readonly ownerEmail?: Email;
+  /** The owner's role at create time — lets the admin quota view flag a workspace against its
+   * owner's per-role limit. Forward-only (like {@link Workspace.ownerEmail}): records created
+   * before the field have none. */
+  readonly ownerRole?: WorkspaceOwnerRole;
   /** Git repo cloned into the session at first boot ("one repo per session").
    * Absent for an empty workspace. */
   readonly repoUrl?: string;
@@ -74,6 +82,7 @@ export interface ProvisionParams {
   id: WorkspaceId;
   ownerId: OwnerId;
   ownerEmail?: Email;
+  ownerRole?: WorkspaceOwnerRole;
   repoUrl?: string;
   baseImage: BaseImage;
   editor?: EditorKind;
@@ -89,6 +98,7 @@ export function provision(params: ProvisionParams): Workspace {
     id: params.id,
     ownerId: params.ownerId,
     ownerEmail: params.ownerEmail,
+    ownerRole: params.ownerRole,
     repoUrl: params.repoUrl,
     baseImage: params.baseImage,
     editor: params.editor ?? DEFAULT_EDITOR,
