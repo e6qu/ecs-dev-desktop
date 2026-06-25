@@ -2589,3 +2589,15 @@ unconditional ssh-gateway ECR repo IS still sim-asserted. The gateway image must
 (immutable repo, a task-def precondition, no `:latest`). Boy-scout: fixed the module README's wrong
 "SSH gateway runs behind this ALB" (it's the dedicated NLB) and the stale sim "workspace-wildcard
 routing" comment.
+
+**2026-06-26 — sockerless #687 bump; #683 + #685-matcher fixed, residual #688 found.** Re-pinned the
+submodule `6918fb81` → `f58007ba` (#687 + 5 service-fidelity commits: GCP op-coverage gate, IAM to
+100%, EC2/SSM/RDS/CloudFront to 100%, event-stream ops). #687 landed our two filed SSH-ingress
+blockers — **#683** (the NLB raw-TCP data plane, new `elbv2_nlb_proxy.go`) and **#685** (cleared the TCP
+target group's `Matcher`). Re-validated the SSH ingress against the rebuilt sim: `terraform apply`
+succeeds, but the **idempotency re-plan still fails** — the sim now returns `HealthCheckPath="/"` for
+the TCP target group (real AWS omits path AND matcher for TCP), the same root cause #685's fix missed.
+Confirmed via the SDK (`describe-target-groups` → `Matcher: null` ✅, `HCPath: "/"` ❌) and **filed
+sockerless #688** (a focused follow-up to #685). So the SSH ingress stays gated off `tests/sim` until
+#688 lands — but the bump is kept (integration tier 26/26 against #687, and it captures #683 + the
+matcher fix + the service ratchets). Per §6.8: filed upstream + skip, no workaround.

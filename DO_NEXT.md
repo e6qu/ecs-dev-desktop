@@ -98,11 +98,12 @@ deferral by choice.
   stacked spend bar on `/admin/costs`. **SSH Slice 3 ingress — terraform DONE (2026-06-25)**: the
   gated NLB + TCP:22 listener + target group + SSH-gateway ECS service + `*.<ssh_base_domain>` wildcard
   (`ssh-ingress.tf`, gateway image pinned/immutable, no `:latest`). It applies + asserts cleanly against
-  the sim, but is OFF the terraform-sim run pending **two** sockerless gaps (validated by `terraform
-validate` meanwhile): **#685** (TCP target group returns a HealthCheck Matcher → breaks the idempotency
-  re-plan) and **#683** (NLB data plane HTTP-only → live ssh-through-NLB is e2e-aws-only). Both filed +
-  tracked in `BUGS.md`. **Follow-up: re-enable the SSH ingress in `tests/sim` once #685 lands.** Remaining
-  real-AWS work is gated on decisions #1 (account) / #2 (the SSH zone).
+  the sim, but the **idempotency re-plan** is still gated off `tests/sim` by one residual sockerless gap
+  (validated by `terraform validate` meanwhile): sockerless **#687** landed #683 (NLB raw-TCP data plane)
+  - #685's Matcher fix, but the sim still returns `HealthCheckPath` for a TCP target group → **#688**
+    (OPEN). **Follow-up: re-enable the SSH ingress in `tests/sim` once #688 lands** (re-pin the submodule,
+    set `ssh_base_domain` in `tests/sim`, restore the SSH CI assertions). Remaining real-AWS work is gated
+    on decisions #1 (account) / #2 (the SSH zone).
 
 - **Catalog optimistic concurrency (follow-up to the 2026-06-22 sweep L2).** `CatalogService.update`/`create`
   are last-write-wins (no `version` attribute → two concurrent admin edits of the same base image clobber).
