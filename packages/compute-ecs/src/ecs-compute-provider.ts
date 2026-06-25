@@ -310,7 +310,7 @@ export class EcsComputeProvider implements ComputeProvider {
         memory: this.config.memory ?? DEFAULT_WORKSPACE_MEMORY,
         // On real Fargate the execution role is required to pull a private-ECR
         // image and ship awslogs; the task role is the container's runtime
-        // identity. Both optional against the sim (no IAM enforcement).
+        // identity. Both optional config — omitted by the integ/sim harness.
         ...(this.config.executionRoleArn !== undefined
           ? { executionRoleArn: this.config.executionRoleArn }
           : {}),

@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@aws-sdk/client-iam": "^3.1075.0",
+    "@edd/aws-itest-support": "workspace:*",
     "@types/node": "^26.0.0"
   }
 }

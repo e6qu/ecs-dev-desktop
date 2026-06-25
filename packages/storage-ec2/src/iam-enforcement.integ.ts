@@ -1,16 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { randomBytes } from "node:crypto";
-
-import { CreateVolumeCommand, DescribeVolumesCommand, EC2Client } from "@aws-sdk/client-ec2";
 import {
-  CreateAccessKeyCommand,
-  CreateUserCommand,
-  DeleteAccessKeyCommand,
-  DeleteUserCommand,
-  DeleteUserPolicyCommand,
-  IAMClient,
-  PutUserPolicyCommand,
-} from "@aws-sdk/client-iam";
+  CreateVolumeCommand,
+  DeleteVolumeCommand,
+  DescribeVolumesCommand,
+  EC2Client,
+} from "@aws-sdk/client-ec2";
+import { IAMClient } from "@aws-sdk/client-iam";
+import { inlinePolicy, provisionRestrictedCredentials } from "@edd/aws-itest-support";
 import { aws, DEFAULT_AWS_REGION } from "@edd/config";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -25,13 +21,11 @@ const REGION = process.env.AWS_REGION; // set just above, so a string
 // A region the region-locked policy below does NOT permit (to force the condition to fail).
 const OTHER_REGION = REGION === "us-west-2" ? "us-east-1" : "us-west-2";
 const ENDPOINT = process.env.AWS_ENDPOINT_URL;
-const POLICY_NAME = "edd-test-inline-policy";
 
 // The ambient (admin) identity, used only to PROVISION the restricted principals below.
 const iam = new IAMClient({ region: REGION, endpoint: ENDPOINT });
 
-const policyDoc = (statement: Record<string, unknown>): string =>
-  JSON.stringify({ Version: "2012-10-17", Statement: [statement] });
+const policyDoc = inlinePolicy;
 
 interface RestrictedPrincipal {
   /** An EC2 client that authenticates AS the restricted principal, targeting `region`. */
@@ -39,44 +33,19 @@ interface RestrictedPrincipal {
   teardown(): Promise<void>;
 }
 
-// Bring up a restricted IAM principal via STANDARD IAM APIs (CreateUser → PutUserPolicy →
-// CreateAccessKey) — the same surface a real-AWS deployment provisions out of band — bound to
-// `policyDocument`, and hand back a factory for region-scoped EC2 clients + a teardown.
+// Bind a restricted principal (shared IAM provisioning helper) to `policyDocument` and hand back a
+// factory for region-scoped EC2 clients that authenticate AS it, plus a teardown.
 async function provisionPrincipal(policyDocument: string): Promise<RestrictedPrincipal> {
-  const userName = `edd-iam-enforce-${randomBytes(4).toString("hex")}`;
-  await iam.send(new CreateUserCommand({ UserName: userName }));
-  await iam.send(
-    new PutUserPolicyCommand({
-      UserName: userName,
-      PolicyName: POLICY_NAME,
-      PolicyDocument: policyDocument,
-    }),
-  );
-  const created = await iam.send(new CreateAccessKeyCommand({ UserName: userName }));
-  const accessKeyId = created.AccessKey?.AccessKeyId;
-  const secretAccessKey = created.AccessKey?.SecretAccessKey;
-  if (accessKeyId === undefined || secretAccessKey === undefined) {
-    throw new Error("CreateAccessKey did not return a usable access key");
-  }
+  const creds = await provisionRestrictedCredentials(iam, policyDocument);
   return {
     ec2: (region) =>
       new EC2Client({
         region,
         endpoint: ENDPOINT,
-        credentials: { accessKeyId, secretAccessKey },
+        credentials: { accessKeyId: creds.accessKeyId, secretAccessKey: creds.secretAccessKey },
         maxAttempts: 1, // a denial is terminal — don't retry it as a transient error
       }),
-    teardown: async () => {
-      // Best-effort (the access key must go before the user). The sim is ephemeral, but a
-      // real-AWS run must not leak the principal.
-      await iam
-        .send(new DeleteAccessKeyCommand({ UserName: userName, AccessKeyId: accessKeyId }))
-        .catch(() => undefined);
-      await iam
-        .send(new DeleteUserPolicyCommand({ UserName: userName, PolicyName: POLICY_NAME }))
-        .catch(() => undefined);
-      await iam.send(new DeleteUserCommand({ UserName: userName })).catch(() => undefined);
-    },
+    teardown: creds.teardown,
   };
 }
 
@@ -142,6 +111,67 @@ describe("least-privilege IAM enforcement — condition keys", () => {
       principal
         .ec2(OTHER_REGION)
         .send(new CreateVolumeCommand({ AvailabilityZone: `${OTHER_REGION}a`, Size: 1 })),
+    ).rejects.toMatchObject({ name: "UnauthorizedOperation" });
+  });
+});
+
+describe("least-privilege IAM enforcement — resource-scoped condition keys (aws:ResourceTag)", () => {
+  // The gate now resolves RESOURCE-scoped condition keys (sockerless #662, issue #661), so the EXACT
+  // tag-scoped grant our least-privilege design uses for destructive EC2 ops can be proven at the sim
+  // tier — not just e2e-aws. Grant ec2:DeleteVolume ONLY on resources tagged edd:managed=true, then
+  // delete a tagged volume (condition met → allowed) vs an untagged one (key absent → denied).
+  const adminEc2 = new EC2Client({ region: REGION, endpoint: ENDPOINT });
+  let principal: RestrictedPrincipal;
+  let managedVolumeId = "";
+  let unmanagedVolumeId = "";
+
+  beforeAll(async () => {
+    const managed = await adminEc2.send(
+      new CreateVolumeCommand({
+        AvailabilityZone: `${REGION}a`,
+        Size: 1,
+        TagSpecifications: [
+          { ResourceType: "volume", Tags: [{ Key: "edd:managed", Value: "true" }] },
+        ],
+      }),
+    );
+    const unmanaged = await adminEc2.send(
+      new CreateVolumeCommand({ AvailabilityZone: `${REGION}a`, Size: 1 }),
+    );
+    managedVolumeId = managed.VolumeId ?? "";
+    unmanagedVolumeId = unmanaged.VolumeId ?? "";
+    expect(managedVolumeId).not.toBe("");
+    expect(unmanagedVolumeId).not.toBe("");
+
+    principal = await provisionPrincipal(
+      policyDoc({
+        Effect: "Allow",
+        Action: "ec2:DeleteVolume",
+        Resource: "*",
+        Condition: { StringEquals: { "aws:ResourceTag/edd:managed": "true" } },
+      }),
+    );
+  });
+  afterAll(async () => {
+    await principal.teardown();
+    // Best-effort: the deny test leaves the untagged volume behind; the sim is ephemeral but a
+    // real-AWS run must not leak it.
+    for (const id of [managedVolumeId, unmanagedVolumeId]) {
+      if (id !== "") {
+        await adminEc2.send(new DeleteVolumeCommand({ VolumeId: id })).catch(() => undefined);
+      }
+    }
+  });
+
+  it("ALLOWS DeleteVolume on an edd:managed-tagged resource (condition met)", async () => {
+    await expect(
+      principal.ec2(REGION).send(new DeleteVolumeCommand({ VolumeId: managedVolumeId })),
+    ).resolves.toBeDefined();
+  });
+
+  it("DENIES DeleteVolume on an untagged resource (aws:ResourceTag/edd:managed absent)", async () => {
+    await expect(
+      principal.ec2(REGION).send(new DeleteVolumeCommand({ VolumeId: unmanagedVolumeId })),
     ).rejects.toMatchObject({ name: "UnauthorizedOperation" });
   });
 });

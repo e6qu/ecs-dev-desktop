@@ -1,0 +1,19 @@
+{
+  "name": "@edd/aws-itest-support",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "lint": "eslint ."
+  },
+  "dependencies": {
+    "@aws-sdk/client-iam": "^3.1075.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26.0.0"
+  }
+}
