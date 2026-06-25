@@ -927,3 +927,10 @@ body {
   white-space: nowrap;
   border: 0;
 }
+
+/* "viewer — read-only" hint shown in place of the create form for the viewer identity. */
+.demo-readonly-note {
+  font-size: 0.8rem;
+  color: var(--dim);
+  font-style: italic;
+}

@@ -3,6 +3,7 @@
 // single-user and single-threaded (so the version-CAS/transaction concerns of the production
 // WorkspaceService collapse to plain array updates). It is the demo's only mutation surface;
 // React subscribes for re-render.
+import { defineAbilityFor } from "@edd/authz";
 import {
   computeFleetCost,
   deriveWorkspaceTimeline,
@@ -48,6 +49,10 @@ import { buildSeed } from "./seed";
 
 export type FleetStats = ReturnType<typeof tallyWorkspaceStates>;
 
+/** How long a freshly-created demo workspace shows `provisioning` before advancing to `running`
+ * (a visible cold-start, not so long it feels stuck). */
+const PROVISIONING_DWELL_MS = 1500;
+
 export class DemoControlPlane {
   private state: DemoState;
   private version = 0;
@@ -88,6 +93,14 @@ export class DemoControlPlane {
     if (u === undefined) throw new Error("current demo user missing");
     return u;
   }
+
+  /** Whether the acting identity may create/stop/delete workspaces — the REAL CASL ability
+   * (`@edd/authz`), so the identity switcher tells a true RBAC story: a viewer is read-only. */
+  canMutateWorkspaces(): boolean {
+    const u = this.currentUser();
+    return defineAbilityFor({ id: ownerId(u.id), role: u.role }).can("create", "Workspace");
+  }
+
   catalog(): readonly BaseImageEntry[] {
     return this.state.catalog;
   }
@@ -237,7 +250,10 @@ export class DemoControlPlane {
     const owner = this.currentUser();
     const at = this.now();
     const id = newWorkspaceId();
-    const ws = provision({
+    // A new workspace cold-starts: it provisions (hydrates from a base image) BEFORE it's running
+    // — the platform's signature scale-to-zero/wake behaviour — then advances to running after a
+    // short dwell, so the demo shows the provisioning pulse instead of an instant jump to running.
+    const running = provision({
       id,
       ownerId: ownerId(owner.id),
       baseImage: image,
@@ -245,6 +261,7 @@ export class DemoControlPlane {
       taskId: taskId(`task-${id}`),
       at,
     });
+    const ws: Workspace = { ...running, state: "provisioning" };
     this.commit({
       ...this.state,
       workspaces: [...this.state.workspaces, ws],
@@ -258,6 +275,37 @@ export class DemoControlPlane {
         `created ${image} (${editor}/${agent})`,
       ),
     });
+    this.scheduleProvisioned(id);
+  }
+
+  /** After a short dwell, advance a freshly-created workspace provisioning → running (the real
+   * state-machine transition). Fire-and-forget: re-reads current state and no-ops if the workspace
+   * was deleted or already moved on (and a page reload after reset drops any pending timer). */
+  private scheduleProvisioned(id: string): void {
+    setTimeout(() => {
+      const ws = this.state.workspaces.find((w) => w.id === id);
+      if (ws?.state !== "provisioning") return; // deleted or already advanced — no-op
+      const at = this.now();
+      const provisioned = unwrap(
+        markProvisioned(
+          ws,
+          volumeId(`vol-${id}-${String(Date.parse(at))}`),
+          taskId(`task-${id}-${String(Date.parse(at))}`),
+          at,
+        ),
+      );
+      this.commit({
+        ...this.state,
+        workspaces: this.state.workspaces.map((w) => (w.id === id ? provisioned : w)),
+        audit: this.withEvent(
+          at,
+          this.ownerOf(id).email,
+          "session.ready",
+          id,
+          "provisioned — now running",
+        ),
+      });
+    }, PROVISIONING_DWELL_MS);
   }
 
   stop(id: string): void {

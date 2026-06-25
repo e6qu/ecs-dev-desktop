@@ -12,6 +12,7 @@
     "test:smoke": "playwright test"
   },
   "dependencies": {
+    "@edd/authz": "workspace:*",
     "@edd/core": "workspace:*",
     "@monaco-editor/react": "^4.7.0",
     "monaco-editor": "^0.55.1",

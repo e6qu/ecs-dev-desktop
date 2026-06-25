@@ -2527,3 +2527,20 @@ opaque status code. A11y: `role="alert"` on the inline async-error spans (SshKey
 CreateBaseImage/WorkspaceActions) so screen readers announce them. Two demo-journey behavior changes
 (viewer-role RBAC is cosmetic; instant-create skips the provisioning story) were deferred to `DO_NEXT`
 as focused follow-ups.
+
+**2026-06-25 — Demo RBAC + provisioning dwell + fuzz + a11y, one PR.** The two deferred demo-journey
+items landed: (1) **Viewer RBAC** — `DemoControlPlane.canMutateWorkspaces()` uses the REAL `@edd/authz`
+`defineAbilityFor`, and Workspaces/Catalog hide the create form + start/stop/delete for a viewer, so the
+identity switcher tells a true CASL story (a viewer is read-only). (2) **Provisioning dwell** — `create`
+lands in `provisioning` and advances to `running` after a 1.5s dwell via the real `markProvisioned`
+transition (fire-and-forget timer, re-reads state + no-ops if deleted), so the scale-to-zero cold-start
+(the `StateBadge` pulse → "Open IDE appears when ready") is visible instead of an instant jump. Boy-scout:
+`persistence.loadState` now validates the top-level SHAPE (`isDemoState` guard — arrays/records/primitives),
+not just the version number, so a torn/hand-edited blob is re-seeded rather than read into newer code
+(§6.5a; replaces a bare `as DemoState`). Fuzz added (fast-check; looped 20×): `ttlCache` (load-once-per-
+window + single-flight + reject-not-cached, time injected), `buildEmfDocument` (round-trip + the
+name/`_aws` dimension-collision guard), `auditToLogLines` (order/length-preserving, fields verbatim).
+A11y: `aria-label` on the three NewSession fields + `aria-busy` on its in-flight buttons; `role="alert"`
+on the demo SSH-key error; `aria-hidden` on the decorative status dots (web + demo); `aria-expanded`/
+`aria-controls` on the editor's terminal-toggle disclosure. Contrast: the audit found NO fresh failures —
+the token system is now AA-clean.

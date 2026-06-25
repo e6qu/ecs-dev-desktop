@@ -15,7 +15,14 @@
       <section id="main">
         <div id="tabbar">
           <span id="current-file">no file open</span>
-          <button type="button" id="toggle-terminal">Terminal</button>
+          <button
+            type="button"
+            id="toggle-terminal"
+            aria-controls="terminal-panel"
+            aria-expanded="false"
+          >
+            Terminal
+          </button>
         </div>
         <div id="editor"></div>
         <div id="terminal-panel" hidden><div id="terminal"></div></div>

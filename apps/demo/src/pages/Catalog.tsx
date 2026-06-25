@@ -12,6 +12,7 @@ export function Catalog(): JSX.Element {
   const navigate = useNavigate();
   const [editor, setEditor] = useState<EditorKind>("openvscode");
   const [agent, setAgent] = useState<AgentKind>("claude-code");
+  const canMutate = cp.canMutateWorkspaces(); // a viewer is read-only — no create control
 
   return (
     <section className="demo-page">
@@ -65,16 +66,18 @@ export function Catalog(): JSX.Element {
                 </span>
               ))}
             </div>
-            <button
-              type="button"
-              className="demo-primary"
-              onClick={() => {
-                cp.create(baseImage(c.image), editor, agent);
-                void navigate("/");
-              }}
-            >
-              + New workspace
-            </button>
+            {canMutate && (
+              <button
+                type="button"
+                className="demo-primary"
+                onClick={() => {
+                  cp.create(baseImage(c.image), editor, agent);
+                  void navigate("/");
+                }}
+              >
+                + New workspace
+              </button>
+            )}
           </div>
         ))}
       </div>

@@ -57,7 +57,11 @@ export function Settings(): JSX.Element {
           </button>
         </div>
       </form>
-      {error !== null ? <p className="demo-error">{error}</p> : null}
+      {error !== null ? (
+        <p role="alert" className="demo-error">
+          {error}
+        </p>
+      ) : null}
 
       {keys.length === 0 ? (
         <p className="demo-empty">No SSH keys registered yet.</p>

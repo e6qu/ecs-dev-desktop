@@ -212,6 +212,7 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
           type="button"
           className="btn"
           data-testid={TESTID.blankSession}
+          aria-busy={busy}
           disabled={busy}
           onClick={() => void startSession()}
         >
@@ -229,6 +230,7 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
             <h2>Start from a repository</h2>
             <input
               className="input"
+              aria-label="search repositories"
               placeholder="search repositories…"
               value={search}
               onChange={(e) => {
@@ -255,6 +257,7 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
                       type="button"
                       className="btn primary"
                       data-testid={TESTID.startSession}
+                      aria-busy={busy}
                       disabled={busy}
                       onClick={() => void startSession(repo.cloneUrl, repo.defaultBranch)}
                     >
@@ -273,6 +276,7 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
               <div className="stack" style={{ gap: 10 }}>
                 <select
                   className="select"
+                  aria-label="repository owner"
                   value={ns}
                   onChange={(e) => {
                     setNs(e.target.value);
@@ -287,6 +291,7 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
                 </select>
                 <input
                   className="input"
+                  aria-label="repository name"
                   placeholder="repository name"
                   value={repoName}
                   onChange={(e) => {
@@ -307,6 +312,7 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
                   type="button"
                   className="btn primary"
                   data-testid={TESTID.startSession}
+                  aria-busy={busy}
                   disabled={busy || repoName.trim().length === 0}
                   onClick={() => void createAndStart()}
                 >
