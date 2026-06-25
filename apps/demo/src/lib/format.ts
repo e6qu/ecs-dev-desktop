@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-/** USD formatter (matches the production costs page). */
+/** USD formatter (matches the production costs page). A non-finite value renders as `$0.00` rather
+ * than a literal `$NaN`/`$∞` leaking into the costs UI (consistent with {@link pct}'s guard). */
 export function usd(value: number): string {
-  return value.toLocaleString("en-US", {
+  return (Number.isFinite(value) ? value : 0).toLocaleString("en-US", {
     style: "currency",
     currency: "USD",
     maximumFractionDigits: 2,

@@ -49,7 +49,14 @@ export function editorTokenRedirect(
   const isDocumentNav = dest === "document" || (dest === undefined && accept.includes("text/html"));
   if (!isDocumentNav) return undefined;
 
-  const url = new URL(req.url, "http://internal");
+  // `new URL` throws on some crafted targets (e.g. "http://", "//"). This runs in the proxy hot
+  // path and must return-or-undefined, never throw — so fail safe on an un-parseable target.
+  let url: URL;
+  try {
+    url = new URL(req.url, "http://internal");
+  } catch {
+    return undefined;
+  }
   if (url.searchParams.has(EDITOR_TOKEN_PARAM)) return undefined; // already has the token
   if (cookiePresent(req.headers.cookie, EDITOR_TOKEN_COOKIE)) return undefined; // session established
 
@@ -90,6 +97,7 @@ export function stripSessionCookie(cookieHeader: string | undefined): string | u
     .split(";")
     .map((p) => p.trim())
     .filter((p) => {
+      if (p.length === 0) return false; // drop empty pairs (empty header / trailing "; ")
       const eq = p.indexOf("=");
       const name = eq === -1 ? p : p.slice(0, eq).trim();
       return !isSessionCookie(name);

@@ -2508,3 +2508,22 @@ compute-ecs 2/2, **full integ tier 26/26**. No sockerless bug found — the upst
 specified. Boy-scout: refreshed three stale "DynamoDB Local" integ comments/describe-names (the tier
 migrated to the sim's DynamoDB — §6.9 target-agnostic wording), the stale "no IAM enforcement" comment
 in `ecs-compute-provider.ts`, and the `docs/simulator-live-coverage.md` "real-AWS-only" IAM line.
+
+**2026-06-25 — Journey + fuzz + contrast sweep (4 specialized audits), one PR.** Contrast: the status
+tokens are used as badge **label text**, not just the dot, so `--st-stopped` (#7a877c) and
+`--st-terminated` (#6f7a6e) failed AA 4.5:1 as text — lifted to #838f86 / #828d80; added a
+`--border-control` token (≥3:1) for input/select boundaries (`--border-strong` was ~1.5:1) and the
+editor's terminal-toggle button. Bugs (the fuzz surfaced two): `editorTokenRedirect` threw `TypeError`
+on a crafted proxy target (e.g. `req.url="http://"`/`"//"`) — now fails safe (returns undefined);
+`stripSessionCookie("")`/trailing-`; ` leaked a spurious empty Cookie pair — now drops empty pairs;
+`usd(NaN)` rendered `$NaN` — now guards non-finite like `pct`. Fuzz added (looped 20×, no flakiness):
+`usd`; `normalizeClaims` (the github/entra identity edge — complete-or-throw, never silent-map,
+SECURITY); `recordQuotaUsage` (utilization always finite ≥0); `stripSessionCookie` (no session cookie
+survives, non-session preserved, SECURITY) + `editorTokenRedirect` totality. Production journeys: the
+`/workspaces` list now mounts `LiveRefresh` while any workspace is transitional (provisioning/deleting)
+so a just-created workspace advances to running + shows "Open editor" without a manual reload; the
+create-repo flow surfaces the API's specific error (e.g. "repository name unavailable") instead of an
+opaque status code. A11y: `role="alert"` on the inline async-error spans (SshKeys/NewSession/
+CreateBaseImage/WorkspaceActions) so screen readers announce them. Two demo-journey behavior changes
+(viewer-role RBAC is cosmetic; instant-create skips the provisioning story) were deferred to `DO_NEXT`
+as focused follow-ups.

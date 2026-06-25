@@ -144,7 +144,7 @@ export function CreateBaseImage() {
           {busy ? "adding…" : "+ add base image"}
         </button>
         {error !== null && (
-          <span className="mono" style={{ color: "var(--st-error)" }}>
+          <span role="alert" className="mono" style={{ color: "var(--st-error)" }}>
             {error}
           </span>
         )}

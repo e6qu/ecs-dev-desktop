@@ -2,7 +2,21 @@
 import fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { pct, relTime } from "./format";
+import { pct, relTime, usd } from "./format";
+
+describe("usd (fuzz)", () => {
+  it("always returns a $-prefixed string and never a literal $NaN/$∞", () => {
+    fc.assert(
+      fc.property(
+        fc.oneof(fc.double(), fc.constant(NaN), fc.constant(Infinity), fc.constant(-Infinity)),
+        (value) => {
+          const out = usd(value);
+          expect(out).toMatch(/^-?\$[\d,]+(\.\d{2})?$/);
+        },
+      ),
+    );
+  });
+});
 
 describe("pct (fuzz)", () => {
   it("always returns a finite value in [0,100] — incl. NaN/Infinity inputs (the cost-bar width)", () => {

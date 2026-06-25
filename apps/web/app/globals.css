@@ -14,6 +14,9 @@
   --line: rgba(182, 242, 74, 0.07);
   --border: rgba(232, 236, 230, 0.09);
   --border-strong: rgba(232, 236, 230, 0.16);
+  /* Form-control boundary — the sole visible edge of an input/select, so it must clear the 3:1
+   * non-text-contrast floor (WCAG 1.4.11), unlike the decorative panel borders above. */
+  --border-control: rgba(232, 236, 230, 0.4);
   --text: #e8ece6;
   --dim: #7c867a;
   /* Lightened from #525a50 (2.8:1) to clear WCAG AA 4.5:1 on --bg — it's used for real small text. */
@@ -25,10 +28,11 @@
   --st-running: #b6f24a;
   --st-provisioning: #5ac8fa;
   --st-idle: #ffb454;
-  --st-stopped: #7a877c;
+  /* --st-stopped and --st-terminated also render as badge LABEL text (not just the dot), so they
+   * must clear AA 4.5:1 — not only the 3:1 non-text floor. Lifted from #7a877c / #4b554a. */
+  --st-stopped: #838f86;
   --st-error: #ff5d6c;
-  /* Lightened from #4b554a (2.5:1) to clear 3:1 non-text contrast on --bg (the status dot/badge). */
-  --st-terminated: #6f7a6e;
+  --st-terminated: #828d80;
 
   --r: 10px;
   --maxw: 1140px;
@@ -463,7 +467,7 @@ main {
   font-size: 13px;
   background: var(--bg);
   color: var(--text);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border-control);
   border-radius: 7px;
   padding: 8px 11px;
   min-width: 220px;

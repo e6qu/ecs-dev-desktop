@@ -47,6 +47,16 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
+- **Demo journey: two behavior changes deferred from the 2026-06-25 journey sweep (need their own focused
+  change + smoke-test care).** (1) **Viewer role is cosmetic** — the demo identity switcher offers
+  admin/member/viewer but a viewer can still create/stop/delete/edit (the platform's headline CASL RBAC is
+  contradicted by behavior). Gate the demo's mutating controls on `@edd/authz` `defineAbilityFor` (mirror the
+  prod app's `canCreate`), hiding the create form + action buttons for a viewer. (2) **Instant create skips
+  the provisioning story** — `create` returns `running` immediately, so the scale-to-zero/hydrate signature
+  (the `StateBadge` pulse, "Open IDE appears when ready") is never shown; add a brief `provisioning`→`running`
+  dwell on the demo create path (the smoke test opens a _seeded_ running workspace, so it's unaffected). Both
+  are showcase-storytelling fixes, not correctness bugs.
+
 - **Admin Quotas page: flag who is at/over their limit.** The page shows per-role limits + per-user
   usage (`{owner, count}`) but can't mark an owner over-limit because the usage rows lack the owner's
   **role** (roles derive from IdP groups at sign-in, not stored per workspace). Needs role resolution

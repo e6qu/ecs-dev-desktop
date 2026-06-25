@@ -106,7 +106,7 @@ export function SshKeys() {
           register key
         </button>
         {error !== null && (
-          <p className="mono" style={{ color: "var(--st-error)" }}>
+          <p role="alert" className="mono" style={{ color: "var(--st-error)" }}>
             {error}
           </p>
         )}
