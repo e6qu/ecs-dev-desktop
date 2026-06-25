@@ -97,10 +97,12 @@ deferral by choice.
   **Cost dashboard visualization — DONE (2026-06-22)**: a no-dependency
   stacked spend bar on `/admin/costs`. **SSH Slice 3 ingress — terraform DONE (2026-06-25)**: the
   gated NLB + TCP:22 listener + target group + SSH-gateway ECS service + `*.<ssh_base_domain>` wildcard
-  (`ssh-ingress.tf`), with terraform-sim asserting the resources are created to spec. The live
-  ssh-through-NLB byte-stream proof is **e2e-aws-only** until sockerless **#683** (raw-TCP NLB data plane)
-  lands — filed + tracked in `BUGS.md` → External blockers. Remaining real-AWS work is gated on decisions
-  #1 (account) / #2 (the SSH zone).
+  (`ssh-ingress.tf`, gateway image pinned/immutable, no `:latest`). It applies + asserts cleanly against
+  the sim, but is OFF the terraform-sim run pending **two** sockerless gaps (validated by `terraform
+validate` meanwhile): **#685** (TCP target group returns a HealthCheck Matcher → breaks the idempotency
+  re-plan) and **#683** (NLB data plane HTTP-only → live ssh-through-NLB is e2e-aws-only). Both filed +
+  tracked in `BUGS.md`. **Follow-up: re-enable the SSH ingress in `tests/sim` once #685 lands.** Remaining
+  real-AWS work is gated on decisions #1 (account) / #2 (the SSH zone).
 
 - **Catalog optimistic concurrency (follow-up to the 2026-06-22 sweep L2).** `CatalogService.update`/`create`
   are last-write-wins (no `version` attribute → two concurrent admin edits of the same base image clobber).

@@ -1401,7 +1401,6 @@ jobs:
 
           # -- read outputs -------------------------------------------------------
           ENDPT="${SIM_ENDPOINT}"
-          CLUSTER=$(terraform -chdir="${TF_DIR}" output -raw ecs_cluster_name)
 
           assert_eq() {
             local label="$1" want="$2" got="$3"
@@ -1458,43 +1457,11 @@ jobs:
               --hosted-zone-id "${ZONE_ID}" \
               --query "length(ResourceRecordSets[?Name=='app.edd-sim.example.com.' && Type=='A'])" \
               --output text)"
-          # SSH ingress (Slice 3): the `*.ssh.<domain>` wildcard A record points at the SSH NLB.
-          assert_eq "Route53 SSH wildcard A record exists" "1" \
-            "$(aws --endpoint-url "${ENDPT}" route53 list-resource-record-sets \
-              --hosted-zone-id "${ZONE_ID}" \
-              --query "length(ResourceRecordSets[?contains(Name,'ssh.edd-sim.example.com') && Type=='A'])" \
-              --output text)"
-          # -- SSH ingress: NLB + TCP:22 listener + target group + gateway service ----
-          SSH_LB_ARN=$(aws --endpoint-url "${ENDPT}" elbv2 describe-load-balancers \
-            --query "LoadBalancers[?LoadBalancerName=='eddsim-ssh'].LoadBalancerArn|[0]" \
-            --output text)
-          assert_eq "SSH NLB type network" "network" \
-            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-load-balancers \
-              --query "LoadBalancers[?LoadBalancerName=='eddsim-ssh'].Type|[0]" --output text)"
-          assert_eq "SSH NLB scheme internet-facing" "internet-facing" \
-            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-load-balancers \
-              --query "LoadBalancers[?LoadBalancerName=='eddsim-ssh'].Scheme|[0]" --output text)"
-          assert_eq "SSH NLB TCP listener port 22" "22" \
-            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-listeners \
-              --load-balancer-arn "${SSH_LB_ARN}" \
-              --query "Listeners[?Port==\`22\`].Port|[0]" --output text)"
-          assert_eq "SSH NLB listener protocol TCP" "TCP" \
-            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-listeners \
-              --load-balancer-arn "${SSH_LB_ARN}" \
-              --query "Listeners[?Port==\`22\`].Protocol|[0]" --output text)"
-          assert_eq "SSH target group protocol TCP" "TCP" \
-            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-target-groups \
-              --query "TargetGroups[?TargetGroupName=='eddsim-ssh'].Protocol|[0]" --output text)"
-          assert_eq "SSH target group port 22" "22" \
-            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-target-groups \
-              --query "TargetGroups[?TargetGroupName=='eddsim-ssh'].Port|[0]" --output text)"
-          assert_eq "SSH target group type ip" "ip" \
-            "$(aws --endpoint-url "${ENDPT}" elbv2 describe-target-groups \
-              --query "TargetGroups[?TargetGroupName=='eddsim-ssh'].TargetType|[0]" --output text)"
-          assert_eq "SSH gateway ECS service exists" "eddsim-ssh-gateway" \
-            "$(aws --endpoint-url "${ENDPT}" ecs describe-services \
-              --cluster "${CLUSTER}" --services eddsim-ssh-gateway \
-              --query 'services[0].serviceName' --output text)"
+          # NOTE: the SSH ingress (NLB + TCP:22 listener + target group + gateway service + the
+          # `*.ssh` wildcard) applies + asserts cleanly against the sim, but is NOT exercised here —
+          # the sim returns a HealthCheck Matcher for the TCP target group that real AWS doesn't,
+          # breaking the idempotency re-plan (sockerless #685). The sim test leaves `ssh_base_domain`
+          # empty until #685 lands; the SSH terraform is covered by `terraform validate`.
           # HTTPS listener SSL policy + forward action (both fixed by sockerless#473 / PR #475).
           assert_eq "ALB HTTPS listener ssl policy TLS13" "ELBSecurityPolicy-TLS13-1-2-2021-06" \
             "$(aws --endpoint-url "${ENDPT}" elbv2 describe-listeners \

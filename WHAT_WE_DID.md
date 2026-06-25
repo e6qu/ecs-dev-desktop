@@ -2579,9 +2579,13 @@ strictest POSITIVE per-role cap (viewer's 0 excluded so it doesn't trivially fla
 (unlimited) never flagged — locked with `quota-report.test.ts`. **(3) SSH Slice 3 ingress:** the gated
 public SSH front door in `ssh-ingress.tf` — a `network` NLB + raw TCP:22 listener + TCP target group +
 SSH-gateway ECS service/task + ECR repo + public SG (+ the workspace-SG ingress from it) + a
-`*.<ssh_base_domain>` Route53 wildcard. terraform-sim asserts the resources are created to spec (NLB
-type=network, TCP:22 listener, TCP TG, the wildcard, the gateway service); the live ssh-through-NLB
-byte-stream proof is **e2e-aws-only** because the sim's NLB data plane is HTTP-only — **filed sockerless
-#683** (raw-TCP stream forwarding) + tracked in `BUGS.md`. Boy-scout: fixed the module README's wrong
+`*.<ssh_base_domain>` Route53 wildcard. The ingress applies cleanly against the sim and every
+resource-level assertion passes — but TWO sim fidelity gaps keep it OFF the terraform-sim run (the sim
+test leaves `ssh_base_domain` empty; the SSH terraform is covered by `terraform validate`): **#685** —
+the sim returns a HealthCheck `Matcher` for a TCP target group that real AWS doesn't, breaking the
+idempotency re-plan; and **#683** — the sim's NLB data plane is HTTP-only, so the live ssh-through-NLB
+byte-stream proof is **e2e-aws-only**. Both filed on `e6qu/sockerless` + tracked in `BUGS.md`; the
+unconditional ssh-gateway ECR repo IS still sim-asserted. The gateway image must be a PINNED tag
+(immutable repo, a task-def precondition, no `:latest`). Boy-scout: fixed the module README's wrong
 "SSH gateway runs behind this ALB" (it's the dedicated NLB) and the stale sim "workspace-wildcard
 routing" comment.

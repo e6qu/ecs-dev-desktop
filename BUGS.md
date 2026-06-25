@@ -148,15 +148,21 @@ old STATIC-gate "tokenless behind the gate" framing (see _Resolved (repo)_).
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-- **ELBv2 NLB data plane is HTTP-only — OPEN, filed #683 (2026-06-25).** The sim's ELBv2 _control
-  plane_ models `network` LBs + TCP listeners + TCP target groups (so the SSH ingress `terraform
-apply` + resource-level assertions pass against the sim), but its _data plane_
-  (`simulators/aws/elbv2_dataplane.go`) only reverse-proxies HTTP — a raw TCP byte stream can't
-  traverse an NLB TCP listener. So a live **`ssh <principal>@<ws-id>.<ssh-base-domain>` through the
-  NLB** proof (SSH Slice 3) stays **e2e-aws-only** until #683 (raw-TCP stream forwarding) lands. Our
-  terraform-sim tier proves the ingress resources are created to spec (NLB type=network, TCP:22
-  listener, TCP target group, the `*.<ssh-base-domain>` wildcard); the byte-stream loop is the
-  real-AWS slice. See `infra/terraform/modules/ecs-dev-desktop/ssh-ingress.tf`.
+- **SSH ingress (Slice 3) — TWO sim gaps keep it off the terraform-sim run, filed #683 + #685
+  (2026-06-25).** The ingress terraform (`ssh-ingress.tf`: `network` NLB + TCP:22 listener + TCP
+  target group + SSH-gateway ECS service + `*.<ssh-base-domain>` wildcard) **applies cleanly against
+  the sim and every resource-level assertion passes** — but two sim fidelity gaps block the full
+  terraform-sim exercise, so the sim test leaves `ssh_base_domain` empty (the SSH terraform is covered
+  by `terraform validate`) until both land:
+  - **#685 — `DescribeTargetGroups` returns a HealthCheck `Matcher` for a TCP target group** (real AWS
+    returns none; matchers are HTTP/HTTPS-only). The apply succeeds, but the next `terraform plan`
+    refreshes the matcher into state and the provider validation fails (`matcher cannot be specified
+when protocol is TCP`) — so the **idempotency re-plan** can't pass.
+  - **#683 — ELBv2 NLB data plane is HTTP-only** (`elbv2_dataplane.go` reverse-proxies HTTP only), so
+    a raw SSH TCP byte stream can't traverse the NLB TCP listener — the live **`ssh
+<principal>@<ws-id>.<ssh-base-domain>` through the NLB** proof stays **e2e-aws-only**.
+    The unconditional `ssh-gateway` ECR repo IS still sim-asserted (created regardless of
+    `ssh_base_domain`). See `infra/terraform/modules/ecs-dev-desktop/ssh-ingress.tf`.
 
 - **IAM enforcement RESOURCE/SERVICE-scoped condition keys — FIXED upstream (#661→#662), CONFIRMED
   downstream (2026-06-25).** Was: `iamAuthorize` (`iam_enforcement.go`) populated only **global** keys

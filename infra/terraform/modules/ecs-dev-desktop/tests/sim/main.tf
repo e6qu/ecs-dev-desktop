@@ -97,12 +97,13 @@ module "edd" {
   domain_name     = var.enable_dns ? "edd-sim.example.com" : ""
   route53_zone_id = var.enable_dns ? aws_route53_zone.test[0].zone_id : ""
 
-  # SSH ingress (Slice 3): the NLB + TCP:22 listener + target group + gateway service + the
-  # `*.<ssh_base_domain>` wildcard — exercised against the sim's ELBv2 `network` LB + Route53. The
-  # gateway image is a PINNED tag (no `:latest`); the sim only creates the task def, never pulls it.
-  ssh_base_domain     = var.enable_dns ? "ssh.edd-sim.example.com" : ""
-  route53_ssh_zone_id = var.enable_dns ? aws_route53_zone.test[0].zone_id : ""
-  ssh_gateway_image   = var.enable_dns ? "eddsim/ssh-gateway:sim" : ""
+  # SSH ingress (Slice 3) is NOT exercised against the sim yet. The resources apply cleanly (NLB +
+  # TCP:22 listener + target group + gateway service + `*.<ssh_base_domain>` wildcard, all assert to
+  # spec), but the sim returns a HealthCheck `Matcher` for the TCP target group that real AWS does
+  # not, which breaks the terraform idempotency re-plan (sockerless #685). Until that lands, leave
+  # `ssh_base_domain` empty so the SSH ingress isn't created here; the terraform is covered by
+  # `terraform validate`. (The live ssh-through-NLB byte stream is also e2e-aws-only, sockerless #683.)
+  ssh_base_domain = ""
 }
 
 output "vpc_id" {

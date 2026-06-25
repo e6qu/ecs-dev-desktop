@@ -145,11 +145,12 @@ transparency at the same public surface; the workspace authorizes per-connection
   and proves the gateway wakes a STOPPED workspace through the **real** control plane
   (landing-on-node stays covered by `ssh-proxy`). Docs + the architecture table +
   the `EDD_SSH_CA_KEY` deploy secret all updated.
-- 🟦 **Slice 3 — ingress: terraform DONE (2026-06-25), live proof e2e-aws.** The gated NLB + TCP:22
-  listener + target group + SSH-gateway ECS service + Route53 `*.<ssh_base_domain>` wildcard ship in
-  `ssh-ingress.tf`; terraform-sim asserts the resources are created to spec. The live ssh-through-NLB
-  byte-stream proof is e2e-aws-only until sockerless **#683** (raw-TCP NLB data plane) — and is gated on
-  decisions #1 (account) / #2 (SSH zone).
+- 🟦 **Slice 3 — ingress: terraform DONE (2026-06-25), sim-exercise + live proof deferred.** The gated
+  NLB + TCP:22 listener + target group + SSH-gateway ECS service + Route53 `*.<ssh_base_domain>` wildcard
+  ship in `ssh-ingress.tf` (validated by `terraform validate`; the resources apply + assert cleanly when
+  enabled). It's OFF in terraform-sim pending two sockerless gaps: **#685** (TCP target group returns a
+  HealthCheck Matcher → breaks idempotency) and **#683** (NLB data plane HTTP-only → live ssh-through-NLB
+  is e2e-aws-only). Real-AWS work gated on decisions #1 (account) / #2 (SSH zone).
 - **Gate:** register/list/delete ✅; ssh-authorize decision (both tokens) ✅; Settings
   page + per-workspace command ✅; dual-trust registered-key auth at both hops ✅
   (docker e2e); subdomain DNS + public SSH ingress ⬜ (e2e-aws, Slice 3).
