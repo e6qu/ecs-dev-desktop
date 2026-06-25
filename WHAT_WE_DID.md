@@ -2491,3 +2491,20 @@ the tfvars/variables examples (its config export was dropped in #142 — only `E
 live), added the deployment-secret block to `apps/web/.env.example`, made `workspace-proxy` fail loud
 on a missing `AUTH_SECRET` (was `?? ""`), trimmed CreateBaseImage name/image, and stopped the
 ssh-gateway e2e fake from swallowing a malformed authorize body.
+
+**2026-06-25 — sockerless bump + IAM resource/service condition-key proofs (#661 closed), one PR.**
+Re-pinned the `third_party/sockerless` submodule from `9a1d4e92` to `6918fb81` (18 commits: the
+#663–#679 conformance ratchet drove ECS/S3/DynamoDB/EventBridge/SNS/CloudWatch/IAM + many query/REST
+services to 100%, and **#662 populated RESOURCE/SERVICE-scoped IAM condition keys — resolving our
+filed #661**). With #662, the two least-privilege grants that were e2e-aws-only are now proven at the
+sim tier: `packages/storage-ec2/src/iam-enforcement.integ.ts` gained an `aws:ResourceTag/edd:managed`
+block (`DeleteVolume` on a tagged resource allowed, untagged denied), and a new
+`packages/compute-ecs/src/iam-enforcement.integ.ts` proves the `ecs:cluster` service key (`ListTasks`
+on the granted cluster allowed, another denied). The shared IAM-principal provisioning (CreateUser →
+PutUserPolicy → CreateAccessKey + teardown) was extracted into a new internal
+`@edd/aws-itest-support` package (`provisionRestrictedCredentials`/`inlinePolicy`) so both suites
+share it (no jscpd clone). Validated against the locally-rebuilt process-mode sim: storage-ec2 6/6,
+compute-ecs 2/2, **full integ tier 26/26**. No sockerless bug found — the upstream fix works as
+specified. Boy-scout: refreshed three stale "DynamoDB Local" integ comments/describe-names (the tier
+migrated to the sim's DynamoDB — §6.9 target-agnostic wording), the stale "no IAM enforcement" comment
+in `ecs-compute-provider.ts`, and the `docs/simulator-live-coverage.md` "real-AWS-only" IAM line.

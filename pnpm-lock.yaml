@@ -233,6 +233,16 @@ importers:
         specifier: ^26.0.0
         version: 26.0.0
 
+  packages/aws-itest-support:
+    dependencies:
+      '@aws-sdk/client-iam':
+        specifier: ^3.1075.0
+        version: 3.1075.0
+    devDependencies:
+      '@types/node':
+        specifier: ^26.0.0
+        version: 26.0.0
+
   packages/cli:
     dependencies:
       '@edd/api-client':
@@ -321,6 +331,12 @@ importers:
         specifier: workspace:*
         version: link:../core
     devDependencies:
+      '@aws-sdk/client-iam':
+        specifier: ^3.1075.0
+        version: 3.1075.0
+      '@edd/aws-itest-support':
+        specifier: workspace:*
+        version: link:../aws-itest-support
       '@types/node':
         specifier: ^26.0.0
         version: 26.0.0
@@ -480,6 +496,9 @@ importers:
       '@aws-sdk/client-iam':
         specifier: ^3.1075.0
         version: 3.1075.0
+      '@edd/aws-itest-support':
+        specifier: workspace:*
+        version: link:../aws-itest-support
       '@types/node':
         specifier: ^26.0.0
         version: 26.0.0

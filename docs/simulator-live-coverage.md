@@ -89,5 +89,7 @@ simulator-specific product branch.
 - Live GitHub organization and Azure Entra federation with production tenant policies.
 - ACM issuance and public DNS propagation for `app.<domain>` (no wildcard — the
   editor is path-based) and the `*.<ssh-base-domain>` SSH zone.
-- IAM least-privilege enforcement, KMS grants, cross-region snapshot copy, and DR.
+- KMS grant conditions, cross-region snapshot copy, and DR. (Call-time IAM least-privilege
+  enforcement — action, `aws:RequestedRegion`, `aws:ResourceTag/edd:managed`, and `ecs:cluster` —
+  is now sim-proven via the `iam-enforcement.integ.ts` suites.)
 - Cost Explorer/CUR and production-grade CloudWatch Metrics.

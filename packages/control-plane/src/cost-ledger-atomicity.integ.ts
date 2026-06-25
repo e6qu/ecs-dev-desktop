@@ -3,8 +3,8 @@
 // recorded once and only once, and a transition that loses a version race must
 // leave NO event behind. WorkspaceService writes each lifecycle event in the
 // SAME DynamoDB transaction as the transition, so the two can never diverge.
-// Proven here against DynamoDB Local (the version CAS + transaction live at the
-// DB boundary, so fakes for storage/compute exercise them faithfully).
+// Proven here against the configured DynamoDB endpoint (the sim in CI; the version CAS +
+// transaction live at the DB boundary, so fakes for storage/compute exercise them faithfully).
 import {
   baseImage,
   FakeComputeProvider,

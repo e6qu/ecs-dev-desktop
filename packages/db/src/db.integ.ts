@@ -4,12 +4,12 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createDynamoClient, dropTable, dynamodb, ensureTable, makeWorkspaceEntity } from "./index";
 
-// Tier-2: runs against DynamoDB Local (docker-compose.tier2.yml / CI service).
+// Tier-2: runs against the configured DynamoDB endpoint (the sockerless sim in CI; §6.9).
 process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
 
 const TEST_TABLE = "ecs-dev-desktop-integ";
 
-describe("@edd/db ElectroDB against DynamoDB Local", () => {
+describe("@edd/db ElectroDB against the configured DynamoDB endpoint", () => {
   let client: DynamoDBClient;
   let workspaces: ReturnType<typeof makeWorkspaceEntity>;
 

@@ -73,10 +73,12 @@ deferral by choice.
   condition-operator evaluator; re-pinned `9a1d4e92`). `packages/storage-ec2/src/iam-enforcement.integ.ts`
   proves both **action** level (`DescribeVolumes` allowed, `CreateVolume` denied with `UnauthorizedOperation`)
   and **condition** level (a region-locked policy allows `CreateVolume` in-region, denies it cross-region via
-  `aws:RequestedRegion`). **Open follow-up (#661):** the gate doesn't populate RESOURCE-scoped condition keys
-  (`aws:ResourceTag/*`, `ecs:cluster`), so our exact tag/cluster-conditioned grants (the destructive-EC2 +
-  ECS-task least-privilege) stay e2e-aws-only until it lands — then extend the test to prove them (see
-  `BUGS.md` → External blockers). **Cost dashboard visualization — DONE (2026-06-22)**: a no-dependency
+  `aws:RequestedRegion`). **Follow-up (#661) — DONE (2026-06-25):** sockerless #662 now populates
+  RESOURCE/SERVICE-scoped condition keys, so our exact tag/cluster-conditioned grants are proven at the sim
+  tier too — `storage-ec2/src/iam-enforcement.integ.ts` adds `aws:ResourceTag/edd:managed` (DeleteVolume on a
+  tagged vs untagged resource) and the new `compute-ecs/src/iam-enforcement.integ.ts` adds `ecs:cluster`
+  (ListTasks on the granted cluster vs another), both via the shared `@edd/aws-itest-support` helper.
+  **Cost dashboard visualization — DONE (2026-06-22)**: a no-dependency
   stacked spend bar on `/admin/costs`. Remaining: **SSH Slice 3 ingress** (NLB+Route53 — likely DOES need a
   sockerless slice).
 

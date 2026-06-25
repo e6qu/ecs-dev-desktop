@@ -148,18 +148,21 @@ old STATIC-gate "tokenless behind the gate" framing (see _Resolved (repo)_).
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-- **IAM enforcement doesn't populate RESOURCE-scoped condition keys — OPEN, filed #661 (2026-06-22).** The
-  call-time authz gate (sockerless #659) + full condition-operator evaluator (#660) now enforce conditions,
-  but `iamAuthorize` (`iam_enforcement.go`) only populates **global** keys into the request context
-  (`aws:username`/`userid`/`SourceIp`/`RequestedRegion`). It does NOT resolve **resource-scoped** keys —
-  `aws:ResourceTag/<key>` from the target resource's tags, or service keys like `ecs:cluster`. Our
-  least-privilege design conditions the destructive EC2 grants on `aws:ResourceTag/edd:managed=true` and the
-  ECS task grants on `ecs:cluster`, so those exact grants can't yet be enforced/proven at the sim tier (a
-  tag-scoped Allow currently behaves as a blanket deny — the key is absent from context). Filed **#661** to
-  populate resource/service keys into the authz context (the operator support already landed in #660). Until
-  then we prove call-time enforcement at the **action** level + with a **global-key** condition
-  (`aws:RequestedRegion`); the tag/cluster-conditioned grants stay e2e-aws-only. See
-  `packages/storage-ec2/src/iam-enforcement.integ.ts`.
+- **IAM enforcement RESOURCE/SERVICE-scoped condition keys — FIXED upstream (#661→#662), CONFIRMED
+  downstream (2026-06-25).** Was: `iamAuthorize` (`iam_enforcement.go`) populated only **global** keys
+  (`aws:username`/`userid`/`SourceIp`/`RequestedRegion`) into the request context, not **resource-scoped**
+  `aws:ResourceTag/<key>` (from the target's tags) or **service** keys like `ecs:cluster` — so a tag-scoped
+  Allow behaved as a blanket deny (key absent from context), and our exact tag/cluster-conditioned grants
+  stayed e2e-aws-only. Filed **#661**; fixed by **sockerless #662** (resource/service condition-key
+  population, building on the #660 operator evaluator). **Confirmed downstream** after re-pinning the
+  submodule to `6918fb81` (also adopting the #663–#679 conformance ratchet that drove ECS/S3/DynamoDB/
+  EventBridge/CloudWatch/IAM and many query/REST services to 100%): both condition halves now enforce at the
+  sim tier — `packages/storage-ec2/src/iam-enforcement.integ.ts` proves `aws:ResourceTag/edd:managed`
+  (`DeleteVolume` on a tagged resource allowed, untagged denied) and the new
+  `packages/compute-ecs/src/iam-enforcement.integ.ts` proves `ecs:cluster` (`ListTasks` on the granted
+  cluster allowed, another denied), both via the shared `@edd/aws-itest-support` provisioning helper. Full
+  integ tier 26/26 against the rebuilt sim. The tag/cluster-conditioned least-privilege grants no longer
+  need e2e-aws.
 
 - **sockerless DynamoDB + CloudTrail conformance — ALL FIXED + tier MIGRATED (2026-06-22).** Seven gaps,
   found by moving the integration tier off **DynamoDB Local** onto the sim's own DynamoDB (endpoint-only,

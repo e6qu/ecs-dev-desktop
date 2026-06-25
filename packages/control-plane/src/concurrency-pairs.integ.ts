@@ -4,8 +4,8 @@
 // tier. Two simultaneous transitions on one workspace must yield exactly one
 // success and one clean conflict (a typed DomainError, never a thrown 500),
 // with no double side effect — and crucially, a delete racing a wake must not
-// orphan the freshly-launched task. Runs against DynamoDB Local with fakes
-// (the version CAS lives at the DB boundary, so fakes exercise it faithfully).
+// orphan the freshly-launched task. Runs against the configured DynamoDB endpoint (the sim in CI)
+// with fakes (the version CAS lives at the DB boundary, so fakes exercise it faithfully).
 import {
   baseImage,
   FakeComputeProvider,
@@ -119,7 +119,7 @@ function tally(results: Result<unknown, DomainError>[]): { ok: number; conflict:
   return { ok, conflict };
 }
 
-describe("concurrent transition pairs are version-safe (DynamoDB Local + fakes)", () => {
+describe("concurrent transition pairs are version-safe (DynamoDB + fakes)", () => {
   let client: ReturnType<typeof createDynamoClient>;
   let storage: FakeStorageProvider;
   let compute: FakeComputeProvider;
