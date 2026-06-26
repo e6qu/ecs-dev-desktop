@@ -48,7 +48,7 @@
     "@aws-sdk/client-pricing": "^3.1075.0",
     "@edd/e2e": "workspace:*",
     "@playwright/test": "^1.61.1",
-    "@types/node": "^26.0.0",
+    "@types/node": "^26.0.1",
     "@types/react": "^19.2.17",
     "fast-check": "^4.8.0",
     "tsx": "^4.22.4"
