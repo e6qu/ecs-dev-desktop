@@ -2589,3 +2589,40 @@ unconditional ssh-gateway ECR repo IS still sim-asserted. The gateway image must
 (immutable repo, a task-def precondition, no `:latest`). Boy-scout: fixed the module README's wrong
 "SSH gateway runs behind this ALB" (it's the dedicated NLB) and the stale sim "workspace-wildcard
 routing" comment.
+
+**2026-06-26 — sockerless #687 bump; #683 + #685-matcher fixed, residual #688 found.** Re-pinned the
+submodule `6918fb81` → `f58007ba` (#687 + 5 service-fidelity commits: GCP op-coverage gate, IAM to
+100%, EC2/SSM/RDS/CloudFront to 100%, event-stream ops). #687 landed our two filed SSH-ingress
+blockers — **#683** (the NLB raw-TCP data plane, new `elbv2_nlb_proxy.go`) and **#685** (cleared the TCP
+target group's `Matcher`). Re-validated the SSH ingress against the rebuilt sim: `terraform apply`
+succeeds, but the **idempotency re-plan still fails** — the sim now returns `HealthCheckPath="/"` for
+the TCP target group (real AWS omits path AND matcher for TCP), the same root cause #685's fix missed.
+Confirmed via the SDK (`describe-target-groups` → `Matcher: null` ✅, `HCPath: "/"` ❌) and **filed
+sockerless #688** (a focused follow-up to #685). So the SSH ingress stays gated off `tests/sim` until
+#688 lands — but the bump is kept (integration tier 26/26 against #687, and it captures #683 + the
+matcher fix + the service ratchets). Per §6.8: filed upstream + skip, no workaround.
+
+**2026-06-26 — sockerless #690 bump; #688 fixed, but a #683-introduced regression #691 found.**
+Re-pinned `f58007ba` → `fe3fce01` (#690 "omit HealthCheckPath for TCP target groups" (#688) + #689 GCP/
+Azure ratchets). Re-validated the SSH ingress against the rebuilt sim: the TCP-target-group health-check
+error is **gone** (apply + plan no longer error on `path`/`matcher`) — but the idempotency re-plan still
+**drifts** (`1 to change`). Root cause: the NLB raw-TCP data plane added in #687/#683 made
+`DescribeLoadBalancers` return the `network` LB's `DNSName` as the **proxy's `host:port`** (e.g.
+`10.89.3.2:44425`) instead of the stable `*.elb.amazonaws.com` hostname `CreateLoadBalancer` returned, so
+`aws_lb.dns_name` + the `*.ssh` Route53 alias never settle (and a `:` isn't valid in a DNS name).
+Confirmed via the SDK and **filed sockerless #691**. So the SSH ingress stays gated off `tests/sim` until
+#691 lands; the #690 bump is kept (integration tier 26/26). Third gap in the chain (#685→#688→#691); each
+upstream fix surfaced the next. Per §6.8: filed upstream + skip, no workaround.
+
+**2026-06-26 — sockerless #692 bump; the ELBv2/NLB chain is CLOSED, SSH ingress sim-exercised.**
+Re-pinned `fe3fce01` → `08b7ee71` (#692 "NLB DescribeLoadBalancers returns a stable AWS-shaped DNSName"
+(#691)). Re-validated the SSH ingress against the rebuilt sim and it is **finally clean**: `terraform
+apply` (94 added) → idempotency `plan -detailed-exitcode` exit **0** (`No changes`) → `destroy` clean.
+Every SSH CI assertion passes locally (NLB type=network, scheme internet-facing, TCP:22 listener, TCP/22/
+ip target group, the `*.ssh` wildcard A record, the `eddsim-ssh-gateway` ECS service), and the NLB
+`DNSName` is now a stable `eddsim-ssh-<hash>.elb.us-east-1.amazonaws.com`. So `tests/sim` sets
+`ssh_base_domain` again and the SSH CI assertions are restored. This closes a **four-gap chain** —
+#683/#685 (#687) → #688 (#690) → #691 (#692) — each surfaced one at a time on the idempotency re-plan as
+the prior fix landed; every gap diagnosed from the SDK + filed upstream, never worked around (§6.8).
+Integration tier 26/26 against #692. Opened as one combined PR (bump + SSH sim re-enable) per the held-PR
+plan.

@@ -14,6 +14,6 @@
     "@aws-sdk/client-iam": "^3.1075.0"
   },
   "devDependencies": {
-    "@types/node": "^26.0.0"
+    "@types/node": "^26.0.1"
   }
 }

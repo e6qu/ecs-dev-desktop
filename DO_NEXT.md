@@ -95,14 +95,14 @@ deferral by choice.
   tagged vs untagged resource) and the new `compute-ecs/src/iam-enforcement.integ.ts` adds `ecs:cluster`
   (ListTasks on the granted cluster vs another), both via the shared `@edd/aws-itest-support` helper.
   **Cost dashboard visualization — DONE (2026-06-22)**: a no-dependency
-  stacked spend bar on `/admin/costs`. **SSH Slice 3 ingress — terraform DONE (2026-06-25)**: the
-  gated NLB + TCP:22 listener + target group + SSH-gateway ECS service + `*.<ssh_base_domain>` wildcard
-  (`ssh-ingress.tf`, gateway image pinned/immutable, no `:latest`). It applies + asserts cleanly against
-  the sim, but is OFF the terraform-sim run pending **two** sockerless gaps (validated by `terraform
-validate` meanwhile): **#685** (TCP target group returns a HealthCheck Matcher → breaks the idempotency
-  re-plan) and **#683** (NLB data plane HTTP-only → live ssh-through-NLB is e2e-aws-only). Both filed +
-  tracked in `BUGS.md`. **Follow-up: re-enable the SSH ingress in `tests/sim` once #685 lands.** Remaining
-  real-AWS work is gated on decisions #1 (account) / #2 (the SSH zone).
+  stacked spend bar on `/admin/costs`. **SSH Slice 3 ingress — terraform DONE + sim-exercised
+  (2026-06-26)**: the NLB + TCP:22 listener + target group + SSH-gateway ECS service +
+  `*.<ssh_base_domain>` wildcard (`ssh-ingress.tf`, gateway image pinned/immutable, no `:latest`).
+  terraform-sim asserts the full ingress (apply + idempotency re-plan both clean, re-pinned `08b7ee71`).
+  The four ELBv2/NLB sim gaps it depended on are all fixed upstream — #683 (NLB raw-TCP data plane) + #685
+  (TCP-TG Matcher) in #687, #688 (TCP-TG HealthCheckPath) in #690, #691 (stable NLB DNSName) in #692 —
+  each found on the idempotency re-plan, one per round. Remaining real-AWS work (live byte-stream loop
+  through the NLB, real SSH zone) is gated on decisions #1 (account) / #2 (the SSH zone).
 
 - **Catalog optimistic concurrency (follow-up to the 2026-06-22 sweep L2).** `CatalogService.update`/`create`
   are last-write-wins (no `version` attribute → two concurrent admin edits of the same base image clobber).
