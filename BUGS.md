@@ -148,19 +148,19 @@ old STATIC-gate "tokenless behind the gate" framing (see _Resolved (repo)_).
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-- **SSH ingress (Slice 3) sim-exercise — health-check gaps FIXED (#685/#688), one regression #691 OPEN
-  keeps it gated (re-pinned `fe3fce01`, 2026-06-26).** Progress across three sockerless bumps: **#687**
-  landed **#683** (NLB raw-TCP data plane, `elbv2_nlb_proxy.go`) + **#685** (TCP target group `Matcher`);
-  **#690** landed **#688** (TCP target group `HealthCheckPath`). Re-validated against #690: the SSH
-  ingress `terraform apply` succeeds and the plan no longer _errors_ — but the idempotency re-plan still
-  **drifts** (1 to change). The #683 NLB proxy introduced a regression, **filed #691 (OPEN):**
-  `DescribeLoadBalancers` returns the `network` LB's `DNSName` as the proxy's `host:port` (e.g.
-  `10.89.3.2:44425`) instead of the stable `*.elb.amazonaws.com` hostname `CreateLoadBalancer` returned,
-  so `aws_lb.dns_name` + the `*.<ssh-base-domain>` Route53 alias never settle (a `:` isn't even valid in
-  a DNS name). So `tests/sim` keeps `ssh_base_domain` empty (SSH terraform covered by `terraform
-validate`; the unconditional `ssh-gateway` ECR repo IS sim-asserted) until #691 lands — then re-enable
-  the full SSH-ingress sim exercise. Integration tier 26/26 against #690. See
-  `infra/terraform/modules/ecs-dev-desktop/ssh-ingress.tf`.
+- **SSH ingress (Slice 3) sim-exercise — ALL gaps FIXED upstream, CONFIRMED + RE-ENABLED (re-pinned
+  `08b7ee71`, 2026-06-26).** The four-gap chain to get the NLB SSH front door through a clean terraform
+  apply→idempotency loop on the sim is closed: **#683** (NLB raw-TCP data plane, `elbv2_nlb_proxy.go`) +
+  **#685** (TCP target group `Matcher`) in **#687**; **#688** (TCP target group `HealthCheckPath`) in
+  **#690**; **#691** (NLB `DescribeLoadBalancers` returned the proxy `host:port` as `DNSName` — a
+  regression from #683's proxy) in **#692** (now a stable `eddsim-ssh-<hash>.elb.<region>.amazonaws.com`).
+  Each upstream fix surfaced the next, found on the idempotency re-plan. Re-validated against #692: the SSH
+  ingress `terraform apply` **and** the idempotency re-plan are clean (94 added, then `No changes`), the
+  destroy is clean, and every CI assertion passes locally — so `tests/sim` sets `ssh_base_domain` and the
+  terraform-sim DNS/TLS config asserts the full ingress (NLB type=network, TCP:22 listener, TCP target
+  group, the `*.<ssh-base-domain>` wildcard, the gateway ECS service). Integration tier 26/26 against #692.
+  The live `ssh <principal>@<ws-id>.<ssh-base-domain>` byte-stream loop through the NLB is now sim-capable
+  (#683) but exercised at deploy/e2e-aws. See `infra/terraform/modules/ecs-dev-desktop/ssh-ingress.tf`.
 
 - **IAM enforcement RESOURCE/SERVICE-scoped condition keys — FIXED upstream (#661→#662), CONFIRMED
   downstream (2026-06-25).** Was: `iamAuthorize` (`iam_enforcement.go`) populated only **global** keys

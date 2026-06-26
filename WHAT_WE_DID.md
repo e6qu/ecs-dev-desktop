@@ -2613,3 +2613,16 @@ error is **gone** (apply + plan no longer error on `path`/`matcher`) — but the
 Confirmed via the SDK and **filed sockerless #691**. So the SSH ingress stays gated off `tests/sim` until
 #691 lands; the #690 bump is kept (integration tier 26/26). Third gap in the chain (#685→#688→#691); each
 upstream fix surfaced the next. Per §6.8: filed upstream + skip, no workaround.
+
+**2026-06-26 — sockerless #692 bump; the ELBv2/NLB chain is CLOSED, SSH ingress sim-exercised.**
+Re-pinned `fe3fce01` → `08b7ee71` (#692 "NLB DescribeLoadBalancers returns a stable AWS-shaped DNSName"
+(#691)). Re-validated the SSH ingress against the rebuilt sim and it is **finally clean**: `terraform
+apply` (94 added) → idempotency `plan -detailed-exitcode` exit **0** (`No changes`) → `destroy` clean.
+Every SSH CI assertion passes locally (NLB type=network, scheme internet-facing, TCP:22 listener, TCP/22/
+ip target group, the `*.ssh` wildcard A record, the `eddsim-ssh-gateway` ECS service), and the NLB
+`DNSName` is now a stable `eddsim-ssh-<hash>.elb.us-east-1.amazonaws.com`. So `tests/sim` sets
+`ssh_base_domain` again and the SSH CI assertions are restored. This closes a **four-gap chain** —
+#683/#685 (#687) → #688 (#690) → #691 (#692) — each surfaced one at a time on the idempotency re-plan as
+the prior fix landed; every gap diagnosed from the SDK + filed upstream, never worked around (§6.8).
+Integration tier 26/26 against #692. Opened as one combined PR (bump + SSH sim re-enable) per the held-PR
+plan.

@@ -95,16 +95,14 @@ deferral by choice.
   tagged vs untagged resource) and the new `compute-ecs/src/iam-enforcement.integ.ts` adds `ecs:cluster`
   (ListTasks on the granted cluster vs another), both via the shared `@edd/aws-itest-support` helper.
   **Cost dashboard visualization — DONE (2026-06-22)**: a no-dependency
-  stacked spend bar on `/admin/costs`. **SSH Slice 3 ingress — terraform DONE (2026-06-25); sim-exercise
-  gated on one upstream regression**: the NLB + TCP:22 listener + target group + SSH-gateway ECS service
-  - `*.<ssh_base_domain>` wildcard (`ssh-ingress.tf`, gateway image pinned/immutable, no `:latest`). The
-    TCP-TG health-check gaps are fixed (#685 Matcher in #687, #688 HealthCheckPath in #690), so apply +
-    plan no longer error — but the idempotency re-plan still **drifts** because the #683 NLB proxy made
-    `DescribeLoadBalancers` return the NLB DNSName as the proxy `host:port` → **#691 (OPEN)**, so
-    `aws_lb.dns_name` + the Route53 alias don't settle. **Follow-up: re-enable the SSH ingress in
-    `tests/sim` once #691 lands** (re-pin, set `ssh_base_domain`, restore the SSH CI assertions). Branch
-    `chore/sockerless-bump-reenable-ssh-sim` carries the #690 bump (integ 26/26), held unmerged. Remaining
-    real-AWS work gated on decisions #1 (account) / #2 (the SSH zone).
+  stacked spend bar on `/admin/costs`. **SSH Slice 3 ingress — terraform DONE + sim-exercised
+  (2026-06-26)**: the NLB + TCP:22 listener + target group + SSH-gateway ECS service +
+  `*.<ssh_base_domain>` wildcard (`ssh-ingress.tf`, gateway image pinned/immutable, no `:latest`).
+  terraform-sim asserts the full ingress (apply + idempotency re-plan both clean, re-pinned `08b7ee71`).
+  The four ELBv2/NLB sim gaps it depended on are all fixed upstream — #683 (NLB raw-TCP data plane) + #685
+  (TCP-TG Matcher) in #687, #688 (TCP-TG HealthCheckPath) in #690, #691 (stable NLB DNSName) in #692 —
+  each found on the idempotency re-plan, one per round. Remaining real-AWS work (live byte-stream loop
+  through the NLB, real SSH zone) is gated on decisions #1 (account) / #2 (the SSH zone).
 
 - **Catalog optimistic concurrency (follow-up to the 2026-06-22 sweep L2).** `CatalogService.update`/`create`
   are last-write-wins (no `version` attribute → two concurrent admin edits of the same base image clobber).

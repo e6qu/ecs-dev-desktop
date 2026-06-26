@@ -97,14 +97,15 @@ module "edd" {
   domain_name     = var.enable_dns ? "edd-sim.example.com" : ""
   route53_zone_id = var.enable_dns ? aws_route53_zone.test[0].zone_id : ""
 
-  # SSH ingress (Slice 3) is still NOT exercised against the sim. The TCP-target-group health-check
-  # gaps are now fixed (Matcher #687/#685, HealthCheckPath #690/#688) and the apply + plan no longer
-  # error — but the idempotency re-plan still shows drift: since the NLB raw-TCP data plane (#683/#687),
-  # `DescribeLoadBalancers` returns the NLB `DNSName` as the proxy's `host:port` (e.g. `10.89.3.2:44425`)
-  # instead of the stable `*.elb.amazonaws.com` hostname, so `aws_lb.dns_name` + the Route53 alias drift
-  # (sockerless #691). Leave `ssh_base_domain` empty until #691 lands; SSH terraform covered by
-  # `terraform validate`.
-  ssh_base_domain = ""
+  # SSH ingress (Slice 3): the NLB + TCP:22 listener + target group + gateway service + the
+  # `*.<ssh_base_domain>` wildcard — exercised against the sim's ELBv2 `network` LB + Route53. The
+  # three NLB/ELBv2 fidelity gaps are all fixed upstream: TCP-TG `Matcher` (#687/#685) +
+  # `HealthCheckPath` (#690/#688), and the NLB `DNSName` is now a stable AWS-shaped hostname
+  # (#692/#691) so `aws_lb.dns_name` + the Route53 alias settle. Apply + idempotency re-plan are clean.
+  # The gateway image is a PINNED tag; the sim only creates the task def, never pulls it.
+  ssh_base_domain     = var.enable_dns ? "ssh.edd-sim.example.com" : ""
+  route53_ssh_zone_id = var.enable_dns ? aws_route53_zone.test[0].zone_id : ""
+  ssh_gateway_image   = var.enable_dns ? "eddsim/ssh-gateway:sim" : ""
 }
 
 output "vpc_id" {
