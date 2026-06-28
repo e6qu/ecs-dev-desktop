@@ -26,9 +26,13 @@ let subnetId: string;
 beforeAll(async () => {
   const ec2 = new EC2Client(SIM);
   const ecs = new ECSClient(SIM);
-  const vpc = required((await ec2.send(new CreateVpcCommand({ CidrBlock: "10.0.0.0/16" }))).Vpc, "Vpc");
+  const vpc = required(
+    (await ec2.send(new CreateVpcCommand({ CidrBlock: "10.0.0.0/16" }))).Vpc,
+    "Vpc",
+  );
   const subnet = required(
-    (await ec2.send(new CreateSubnetCommand({ VpcId: vpc.VpcId, CidrBlock: "10.0.1.0/24" }))).Subnet,
+    (await ec2.send(new CreateSubnetCommand({ VpcId: vpc.VpcId, CidrBlock: "10.0.1.0/24" })))
+      .Subnet,
     "Subnet",
   );
   subnetId = required(subnet.SubnetId, "SubnetId");

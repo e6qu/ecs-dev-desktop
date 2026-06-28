@@ -18,6 +18,10 @@ RUN pnpm install --frozen-lockfile
 COPY tsconfig.base.json ./
 COPY apps/web apps/web
 RUN pnpm --filter @edd/web build
+# The reconciler runs THIS image with a command override
+# (`node services/reconciler/dist/run.js`, see the module's reconciler task def), so
+# the control-plane image must also carry the reconciler bundle. Build it here.
+RUN pnpm --filter @edd/reconciler build
 
 FROM node:22-bookworm-slim AS runner
 WORKDIR /repo

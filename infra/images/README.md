@@ -2,11 +2,12 @@
 
 # infra/images
 
-Curated **golden workspace images**: OpenVSCode Server, OpenSSH `sshd` + our SSH
-CA trust, the idle-agent, the git-credential broker, and a non-root `workspace`
-user, plus language toolchains. They are published to ECR and surfaced in the admin
-catalog (the base-image allow-list). Extensions are sourced from **Open VSX** (not
-the MS marketplace).
+Curated **golden workspace images**: OpenVSCode Server, OpenSSH `sshd` + its
+registered-key authorizer, the idle-agent, the git-credential broker, and a
+non-root `workspace` user, plus language toolchains. They are published to ECR
+and surfaced in the admin catalog (the base-image allow-list). Extensions are
+sourced from **Open VSX** (not the MS marketplace). SSH is **registered-key only**
+— there is no CA and no certificates (see [`docs/architecture.md`](../../docs/architecture.md#ssh-registered-key-dual-trust)).
 
 ## A collection built on a shared base
 
@@ -51,10 +52,10 @@ The e2e/live suites launch the **omnibus** image (tagged `edd-workspace:e2e`).
 
 ## Runtime behaviour (shared, from `base`)
 
-At startup the entrypoint writes the injected workspace SSH CA public key and the
-`dev-<workspaceId>` principal file, starts `sshd`, seeds default editor settings
-(Dark mode, write-if-absent on the EBS home volume), then runs the idle-agent and
-OpenVSCode Server as the non-root `workspace` user (via `gosu`).
+At startup the entrypoint starts `sshd` (whose `AuthorizedKeysCommand` calls the
+control plane's `ssh-authorize` to admit a registered key), seeds default editor
+settings (Dark mode, write-if-absent on the EBS home volume), then runs the
+idle-agent and OpenVSCode Server as the non-root `workspace` user (via `gosu`).
 
 The default extensions (the cross-cutting dev extensions in every image; the AI
 agents in omnibus only; each variant's language extensions) are installed into
@@ -79,6 +80,8 @@ Cross-cutting notes:
 
 The golden-image SSH path is covered against the AWS container-mode simulator:
 `EcsComputeProvider` launches the image with managed EBS, the task exposes its
-awsvpc private IP, and a same-VPC client task connects with a CA-signed OpenSSH
-certificate. Image publication to the Terraform-created ECR repositories and real
-deploy scanning remain AWS-gated.
+awsvpc private IP, and a same-VPC client connects with a **registered key** (the
+dual-trust `ssh-authorize` flow — no CA). Image publication to the
+Terraform-created ECR repositories and real deploy scanning remain AWS-gated
+(use [`scripts/publish-images.sh`](../../scripts/publish-images.sh) or the
+`release` workflow once the account decision lands).

@@ -36,7 +36,10 @@ export class GitCredentialService {
   }
 
   /** Decrypt + return the owner's git token, or null if none is stored. */
-  async fetch(ownerId: OwnerId, provider: GitProviderId = DEFAULT_PROVIDER): Promise<string | null> {
+  async fetch(
+    ownerId: OwnerId,
+    provider: GitProviderId = DEFAULT_PROVIDER,
+  ): Promise<string | null> {
     const { data } = await this.deps.credentials.get({ ownerId, provider }).go();
     if (data === null) return null;
     return decryptToken(data.ciphertext, this.deps.encryptionKeyHex);

@@ -204,9 +204,121 @@ variable "route53_ssh_zone_id" {
 }
 
 variable "ssh_gateway_image" {
-  description = "SSH-gateway container image — a PINNED tag/digest (no `:latest`), e.g. `<ssh_gateway_repository_url>:<tag>`. Required when `ssh_base_domain` is set (a task-def precondition enforces it)."
+  description = <<-EOT
+    SSH-gateway container image — a PINNED tag/digest (no `:latest`), e.g.
+    `<ssh_gateway_repository_url>:<tag>`. Required when `ssh_base_domain` is set
+    UNLESS `image_build_mode` is "local" or "codebuild", in which case it
+    defaults to `<ssh_gateway_repository_url>:<image_tag>` and is built/pushed
+    during apply.
+  EOT
   type        = string
   default     = ""
+}
+
+# ---- Image build / self-bootstrap ------------------------------------------
+
+variable "image_build_mode" {
+  description = <<-EOT
+    How the container images are produced:
+      "pre-published" — images already exist in ECR (e.g. from CI); terraform
+                        resolves the digest for auto-roll. Default.
+      "local"         — terraform runs `scripts/publish-images.sh` from the
+                        repo root during apply (the operator/CI machine needs
+                        docker + the source checkout). One `terraform apply`
+                        provisions everything.
+      "codebuild"     — terraform creates an AWS CodeBuild project and starts a
+                        build during apply; no docker on the operator machine.
+                        Requires `codebuild_source_repo`.
+  EOT
+  type        = string
+  default     = "pre-published"
+
+  validation {
+    condition     = contains(["pre-published", "local", "codebuild"], var.image_build_mode)
+    error_message = "image_build_mode must be 'pre-published', 'local', or 'codebuild'."
+  }
+}
+
+variable "image_tag" {
+  description = <<-EOT
+    Image tag used when `control_plane_image` / `ssh_gateway_image` are not
+    explicitly set. In "local"/"codebuild" modes the images are pushed with this
+    tag during apply. In "pre-published" mode terraform resolves the digest of
+    `<repo>:<image_tag>` for auto-roll. Default: "main".
+  EOT
+  type        = string
+  default     = "main"
+}
+
+variable "local_build_context_path" {
+  description = <<-EOT
+    (local build mode) Path from the module to the repo root, so terraform can
+    run `scripts/publish-images.sh`. Default works when consuming the module
+    from inside this repo; override if vendoring the module elsewhere.
+  EOT
+  type        = string
+  default     = "../../../../"
+}
+
+variable "codebuild_source_repo" {
+  description = <<-EOT
+    (codebuild build mode) Git URL to clone inside CodeBuild, e.g.
+    "https://github.com/e6qu/ecs-dev-desktop.git". The repo must be clone-able
+    from CodeBuild (public, or supply credentials out of band). Required when
+    `image_build_mode = "codebuild"`.
+  EOT
+  type        = string
+  default     = ""
+}
+
+variable "codebuild_source_ref" {
+  description = "(codebuild build mode) Git ref to clone."
+  type        = string
+  default     = "main"
+}
+
+variable "codebuild_compute_type" {
+  description = "(codebuild build mode) Compute type for the build environment."
+  type        = string
+  default     = "BUILD_GENERAL1_MEDIUM"
+}
+
+# ---- Catalog seed ------------------------------------------------------------
+
+variable "seed_default_catalog" {
+  description = "Create a default base-image catalog entry in DynamoDB during apply so users can launch workspaces immediately."
+  type        = bool
+  default     = true
+}
+
+variable "seed_catalog_variant" {
+  description = "Which golden image repo to seed as the default catalog entry (must be in `golden_image_repos`)."
+  type        = string
+  default     = "omnibus"
+}
+
+variable "seed_catalog_name" {
+  description = "Display name for the seeded default catalog entry."
+  type        = string
+  default     = "Omnibus"
+}
+
+variable "seed_catalog_description" {
+  description = "Description for the seeded default catalog entry."
+  type        = string
+  default     = "Full-toolchain workspace with every language and the AI agents."
+}
+
+variable "seed_catalog_tags" {
+  description = "Tags for the seeded default catalog entry."
+  type        = list(string)
+  default     = ["omnibus"]
+}
+
+variable "seed_catalog_tools" {
+  description = "Tooling highlights for the seeded default catalog entry."
+  type        = list(string)
+  default     = ["node", "python", "go", "rust", "java", "claude"]
 }
 
 variable "ssh_gateway_cpu" {
@@ -230,7 +342,7 @@ variable "ssh_gateway_desired_count" {
 # ---- Golden images / ECR ----
 
 variable "golden_image_repos" {
-  description = "ECR repository names to create for curated golden base images (e.g. [\"node-20\", \"go-1.22\"])."
+  description = "ECR repository names to create for curated golden base images. Must match the variant folder names under infra/images/ (e.g. [\"omnibus\", \"go\"])."
   type        = list(string)
   default     = []
 }

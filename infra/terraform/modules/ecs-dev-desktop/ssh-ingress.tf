@@ -132,14 +132,14 @@ resource "aws_ecs_task_definition" "ssh_gateway" {
 
   lifecycle {
     precondition {
-      condition     = var.ssh_gateway_image != ""
-      error_message = "ssh_gateway_image must be set (a pinned tag) when ssh_base_domain enables SSH ingress."
+      condition     = local.ssh_gateway_image != ""
+      error_message = "ssh_gateway_image must be set (a pinned tag) when ssh_base_domain enables SSH ingress. In local/codebuild modes it defaults to <repo>:<image_tag>; in pre-published mode set ssh_gateway_image or image_tag."
     }
   }
 
   container_definitions = jsonencode([{
     name      = "ssh-gateway"
-    image     = local.ssh_gateway_image
+    image     = local.effective_ssh_gateway_image
     essential = true
     portMappings = [{
       containerPort = local.workspace_ssh_port
@@ -163,6 +163,11 @@ resource "aws_ecs_task_definition" "ssh_gateway" {
   }])
 
   tags = local.tags
+
+  depends_on = [
+    terraform_data.build_images_local,
+    terraform_data.build_images_codebuild,
+  ]
 }
 
 resource "aws_ecs_service" "ssh_gateway" {
@@ -191,7 +196,8 @@ resource "aws_ecs_service" "ssh_gateway" {
   }
 
   depends_on = [aws_lb_listener.ssh]
-  tags       = local.tags
+
+  tags = local.tags
 }
 
 resource "aws_route53_record" "ssh_wildcard" {

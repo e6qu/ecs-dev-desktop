@@ -33,18 +33,36 @@ module "ecs_dev_desktop" {
   nat_mode           = var.environment == "prod" ? "gateway" : "instance"
   single_nat_gateway = var.environment != "prod"
 
-  # Curated golden base images users launch workspaces from.
-  golden_image_repos = ["node-20", "go-1.22", "python-3.12"]
+  # Build mode: "local" makes this a true one-apply self-bootstrap — terraform runs
+  # scripts/publish-images.sh during apply (docker + source checkout required). Use
+  # "pre-published" if your CI already pushes images (e.g. the release workflow), or
+  # "codebuild" to build in AWS (no local docker). See the module README.
+  image_build_mode = "local"
+  image_tag        = var.image_tag
+
+  # Curated golden base images users launch workspaces from. These must match the
+  # variant folder names under infra/images/ (omnibus, typescript, python, go, java, rust).
+  golden_image_repos = ["omnibus", "typescript"]
+
+  # Seed a default catalog entry so users can create workspaces immediately.
+  seed_default_catalog = true
 
   # DNS + a single-host ACM cert for the path-based editor proxy (`app.<domain>/w/<id>/`) — no
   # wildcard DNS/TLS (omit this whole block for an HTTP-only dev stack).
   domain_name     = var.domain_name
   route53_zone_id = var.route53_zone_id
 
-  # Secrets (auth + crypto + SSH CA) live in Secrets Manager; the module grants the
-  # task read access and injects them as env vars. Create the secrets out-of-band
-  # (see docs/deploying.md). Non-secret config (RBAC groups, AUTH_TRUST_HOST,
-  # workspace base domain) goes through extra_environment.
+  # Public SSH front door (NLB + `*.<ssh_base_domain>` wildcard). Independent of the editor
+  # domain above; leave ssh_base_domain empty to skip SSH ingress. In "local" build mode the
+  # gateway image is built/pushed automatically; otherwise set ssh_gateway_image to a pinned tag.
+  ssh_base_domain     = var.ssh_base_domain
+  route53_ssh_zone_id = var.route53_ssh_zone_id
+  ssh_gateway_image   = var.ssh_gateway_image
+
+  # Secrets (auth + crypto) live in Secrets Manager; the module grants the task read
+  # access and injects them as env vars. Create the secrets out-of-band (see
+  # docs/deploying.md, or scripts/bootstrap-secrets.sh). Non-secret config (RBAC groups,
+  # AUTH_TRUST_HOST, Entra issuer) goes through extra_environment.
   secret_environment = var.auth_secret_arns
   extra_environment  = var.extra_environment
 
