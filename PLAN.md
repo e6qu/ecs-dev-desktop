@@ -197,12 +197,9 @@ conditions every transition write so concurrent wakes can't leak ECS tasks.
 enabled catalog) + UI (`/base-images` admin page + create-from-catalog picker). ✅
 **Playwright portal e2e** (built app + DynamoDB Local, cookie dev-auth shim, CI job).
 
-## Phase 9 — Code-review remediation & pre-AWS hardening — ✅ done (no-AWS-gate items merged in #129; real-AWS enforcement proofs remain e2e-aws only)
+## Phase 9 — Code-review remediation & pre-AWS hardening — ✅ done
 
-From the 2026-06-19 `codex` review (12 findings, 4 re-verified) plus previously-deferred items that
-became actionable. **All non-AWS-gated items were remediated and merged in #129**; the few genuinely
-real-AWS-only proofs (live IAM enforcement byte-stream, real DNS/ACM, 200+ load) roll into `e2e-aws`
-when the account decision lands. See `DO_NEXT.md` and `BUGS.md` for the closed list.
+All non-AWS-gated code-review remediation items from the 2026-06-19 `codex` review (12 findings) plus previously-deferred actionable items were remediated and merged in #129 and #172. The genuinely real-AWS-only proofs (live IAM enforcement byte-stream, real DNS/ACM, 200+ load) roll into `e2e-aws` when the account decision lands. See `DO_NEXT.md` and `BUGS.md` for the closed list.
 
 ## Phase 7 — Hardening, scale & DR — ⬜ pending (AWS-gated)
 

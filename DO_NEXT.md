@@ -55,6 +55,8 @@ deferral by choice.
   cold-start (the `StateBadge` pulse → "Open IDE appears when ready") is visible. (Boy-scout alongside:
   `persistence.loadState` now validates the top-level SHAPE, not just the version number — §6.5a.)
 
+- **AWS deploy-readiness — DONE (PR #172 merged, 2026-06-28).** Closed every code/docs gap blocking a real AWS deploy that didn't need a user decision: Terraform examples wired for SSH ingress, control-plane Dockerfile builds the reconciler bundle, bootstrap/publish/install/uninstall scripts, `release` workflow, `docs/architecture.md` + `docs/install.md`, multi-arch image publishing convention, golden-image ECR path fix, variant-name alignment, workspace memory bumped to 2048 MiB, and dependency-freshness refresh. The module remains sim-apply-proven; real `apply` is still gated on open decisions #1/#2.
+
 - **Terraform `*.devbox.<domain>` wildcard DNS/TLS resources — REMOVED (2026-06-25, vestigial confirmed).**
   Verified no consumer (the HTTPS listener needs only the `app.<domain>` cert); deleted the wildcard
   Route53 record, the wildcard ACM SAN, `local.workspaces_fqdn`, and `var.workspaces_subdomain`, and
