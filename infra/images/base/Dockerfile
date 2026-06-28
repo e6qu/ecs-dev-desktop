@@ -9,6 +9,19 @@
 # Runtime env vars expected by the container (consumed by the shared entrypoint):
 #   EDD_WORKSPACE_ID, EDD_CONTROL_PLANE_URL, EDD_AGENT_TOKEN
 #   EDD_HEARTBEAT_INTERVAL_S (optional), CONNECTION_TOKEN (injected by ECS secrets)
+# Multi-stage builder for the first-party Monaco editor's only native dependency
+# (node-pty). It is compiled for the target architecture inside the image, so a
+# host of either architecture can produce correct amd64 and arm64 golden images.
+FROM node:22-bookworm-slim AS node-pty-builder
+WORKDIR /opt/edd-editor-monaco
+COPY editor-monaco/package.json ./
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      python3 \
+      make \
+      g++ \
+    && npm install --production \
+    && rm -rf /var/lib/apt/lists/* /root/.npm
+
 FROM node:22-bookworm-slim
 
 ARG OPENVSCODE_VERSION=1.109.5
@@ -116,10 +129,10 @@ RUN printf '%s\n' \
     && chmod 0644 /etc/ssh/sshd_config.d/10-edd-path.conf
 
 # First-party Monaco editor server: the esbuild-bundled server (server.js) + its built SPA (spa/)
-# + the runtime node_modules (node-pty, native). Staged into this build context by
-# infra/images/base/build.sh BEFORE `docker build` (so the base image is built via that script);
-# the entrypoint launches it when EDD_EDITOR_MODE=monaco.
+# + the runtime node_modules (node-pty only). The editor server.js bundle is architecture-
+# independent; node-pty is compiled for the target arch in the node-pty-builder stage above.
 COPY editor-monaco /opt/edd-editor-monaco
+COPY --from=node-pty-builder /opt/edd-editor-monaco/node_modules /opt/edd-editor-monaco/node_modules
 
 # Idle-agent + entrypoint (live in /usr/local/bin).
 COPY --chmod=0755 idle-agent.sh /usr/local/bin/edd-idle-agent

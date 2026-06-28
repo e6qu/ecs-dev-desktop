@@ -78,9 +78,18 @@ module "edd" {
   availability_zones              = ["us-east-1a", "us-east-1b"]
   deletion_protection             = false
   dynamodb_point_in_time_recovery = false
-  golden_image_repos              = ["node-20"]
+  golden_image_repos              = ["typescript"]
 
   nat_mode = var.nat_mode
+
+  # The sim fixture does not pre-publish real ECR images; pin explicit dummy image
+  # refs so pre-published mode does not try to resolve a non-existent digest.
+  image_build_mode    = "pre-published"
+  image_tag           = "sim"
+  control_plane_image = "eddsim/control-plane:sim"
+
+  # Do not seed the catalog in the sim fixture — keep the table empty for tests.
+  seed_default_catalog = false
 
   # The sim implements the CloudWatch alarm API (PutMetricAlarm/DescribeAlarms/
   # DeleteAlarms) + EMF extraction (sockerless #607) and the percentile

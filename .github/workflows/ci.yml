@@ -589,9 +589,9 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
               --repository-names "eddsim/control-plane" \
               --query 'repositories[0].repositoryName' --output text)"
-          assert_eq "ECR golden/node-20 repo exists" "eddsim/golden/node-20" \
+          assert_eq "ECR golden/typescript repo exists" "eddsim/golden/typescript" \
             "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
-              --repository-names "eddsim/golden/node-20" \
+              --repository-names "eddsim/golden/typescript" \
               --query 'repositories[0].repositoryName' --output text)"
           assert_eq "ECR ssh-gateway repo exists" "eddsim/ssh-gateway" \
             "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
@@ -602,9 +602,9 @@ jobs:
             --query 'lifecyclePolicyText' --output text > /dev/null
           printf 'PASS  ECR control-plane lifecycle policy\n'
           aws --endpoint-url "${ENDPT}" ecr get-lifecycle-policy \
-            --repository-name "eddsim/golden/node-20" \
+            --repository-name "eddsim/golden/typescript" \
             --query 'lifecyclePolicyText' --output text > /dev/null
-          printf 'PASS  ECR golden/node-20 lifecycle policy\n'
+          printf 'PASS  ECR golden/typescript lifecycle policy\n'
           assert_eq "ECR control-plane scan-on-push enabled" "True" \
             "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
               --repository-names "eddsim/control-plane" \
@@ -621,21 +621,21 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
               --repository-names "eddsim/control-plane" \
               --query 'repositories[0].encryptionConfiguration.kmsKey' --output text)"
-          assert_eq "ECR golden/node-20 scan-on-push enabled" "True" \
+          assert_eq "ECR golden/typescript scan-on-push enabled" "True" \
             "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
-              --repository-names "eddsim/golden/node-20" \
+              --repository-names "eddsim/golden/typescript" \
               --query 'repositories[0].imageScanningConfiguration.scanOnPush' --output text)"
-          assert_eq "ECR golden/node-20 encryption type KMS" "KMS" \
+          assert_eq "ECR golden/typescript encryption type KMS" "KMS" \
             "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
-              --repository-names "eddsim/golden/node-20" \
+              --repository-names "eddsim/golden/typescript" \
               --query 'repositories[0].encryptionConfiguration.encryptionType' --output text)"
-          assert_eq "ECR golden/node-20 imageTagMutability IMMUTABLE" "IMMUTABLE" \
+          assert_eq "ECR golden/typescript imageTagMutability IMMUTABLE" "IMMUTABLE" \
             "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
-              --repository-names "eddsim/golden/node-20" \
+              --repository-names "eddsim/golden/typescript" \
               --query 'repositories[0].imageTagMutability' --output text)"
-          assert_eq "ECR golden/node-20 kmsKey matches" "${KMS_ARN}" \
+          assert_eq "ECR golden/typescript kmsKey matches" "${KMS_ARN}" \
             "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
-              --repository-names "eddsim/golden/node-20" \
+              --repository-names "eddsim/golden/typescript" \
               --query 'repositories[0].encryptionConfiguration.kmsKey' --output text)"
 
           # -- ECS ----------------------------------------------------------------

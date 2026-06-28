@@ -2,9 +2,27 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-22 (IAM enforcement deepened to CONDITION KEYS: adopted sockerless #660 (full condition-operator evaluator + STS; re-pinned `9a1d4e92`) and extended the enforcement test to prove a region-locked policy allows `CreateVolume` in-region and denies it cross-region (`aws:RequestedRegion`). Filed #661 — the gate doesn't yet populate resource-scoped keys (`aws:ResourceTag/*`, `ecs:cluster`), so our exact tag/cluster-conditioned grants stay e2e-aws-only)
+**Last updated:** 2026-06-28 (AWS deploy-readiness follow-up: fixed the golden-image ECR path mismatch so `scripts/publish-images.sh` and the catalog seed point at `<prefix>/golden/<variant>` as the module creates them; aligned Terraform examples, module README, sim fixture, and CI assertions with real variant folder names (omnibus/typescript/go/python/rust/java); bumped `DEFAULT_WORKSPACE_MEMORY` to 2048 so the default omnibus image does not OOM when Fargate enforces cgroup limits; refreshed eslint/knip to clear `check-deps`.)
 
-## Active — IAM enforcement deepened to condition keys (#660 adopted; #661 filed)
+## Active — AWS deploy-readiness (code + docs), real apply still decision-gated
+
+Closed every code/docs gap blocking a real AWS deploy that didn't need a user decision. The Terraform module was already sim-apply-proven; this pass made the path from "fresh account" to "running platform" linear, fail-fast, and reclaimable:
+
+- **Golden-image ECR path fixed** — `scripts/publish-images.sh` now pushes variants to `<prefix>/golden/<variant>` (matching the repos Terraform creates as `<name>/golden/<variant>`), and the catalog seed image ref now includes the `/golden/` segment. Terraform examples, the module README, the sim fixture, and CI assertions were updated to use real variant folder names (`omnibus`, `typescript`, `go`, `python`, `java`, `rust`) instead of non-existent placeholder names.
+- **Workspace memory default raised to 2048 MiB** — the previous 1024 MiB default was below the measured footprint of the default omnibus workspace and would OOM once Fargate enforces cgroup limits (sockerless#583). The cost-model pricing test was updated to match.
+- **Dependency freshness** — `eslint` and `knip` were refreshed to clear the `check-deps` gate.
+- **Terraform examples** (`examples/complete`, `examples/terragrunt`) now wire the SSH-ingress vars (`ssh_base_domain`/`route53_ssh_zone_id`/`ssh_gateway_image`) that were missing; the complete example gained SSH + golden-repo outputs; a stale "SSH CA" comment was fixed.
+- **Control-plane Dockerfile** (`apps/web/Dockerfile`) now builds the **reconciler bundle** too — the module runs the reconciler as the control-plane image with a command override (`node services/reconciler/dist/run.js`), but the image never built that bundle, so the reconciler would have failed at runtime. Now one image ships both (no separate reconciler image).
+- **Scripts** (POSIX sh; shellcheck + sh/zsh clean; fail-fast): `bootstrap-state.sh` (versioned/encrypted S3 + DynamoDB lock, idempotent), `bootstrap-secrets.sh` (generates crypto secrets; env-or-prompt for IdP creds; headless-capable), `publish-images.sh` (build+push control-plane/golden/gateway to ECR), `install.sh` (one-command orchestrator — parametrized via env; computes the SSH-gateway image ref upfront so a one-shot SSH-enabled install works; `--verify` re-checks a stack read-only), `uninstall.sh` (full teardown, **partial-install-safe**: terraform destroy with `deletion_protection=false`, force-delete secrets, sweep leaked runtime volumes/snapshots/tasks tagged `edd:managed`, optional state purge).
+- **Multi-arch image publishing convention** — `scripts/publish-images.sh` now builds every image for `amd64` and `arm64`, tags per-arch images with `-amd64`/`-arm64`, and creates/pushes a multi-arch manifest at the unsuffixed tag. The golden base Dockerfile uses a new `node-pty-builder` stage that compiles the native binding for the target architecture inside the image, so cross-arch builds produce correct binaries and the old macOS-host-stages-darwin-binary limitation is gone. `release.yml` sets up QEMU + Buildx for dual-arch publishes; the Terraform CodeBuild project pins `EDD_BUILD_ARCHS=amd64` (single-arch x86_64 runner) until an arm64 runner is added.
+- **`release` workflow** (`release.yml`) — tag/manual, OIDC→AWS role, gated on `RELEASE_AWS_*` repo vars so it's inert until the account decision lands.
+- **`docs/architecture.md`** — block diagram, component roles, persistence/auth models, the deployment sequence, and the browser-editor + SSH-registered-key connection sequences.
+- **`docs/install.md`** — the linear parametrized runbook (set params → paste install → paste verify → cleanup), linked as the headline install path from the README.
+- **Doc sweep** — fixed stale SSH-CA refs (`infra/images/README.md`), the stale "sim NLB is HTTP-only" note in the module README (the NLB raw-TCP chain is closed), stale items in `observability-gaps.md` (CONNECTION_TOKEN done, sockerless#569 fixed), completed the module README inputs/outputs tables, and cross-linked architecture/install across README/deploying/module README.
+
+Genuinely AWS-account-gated work (real `apply`, DNS/ACM issuance, IdP federation, `e2e-aws`) is unchanged — still under `DO_NEXT.md` open decisions #1/#2.
+
+## Prior — IAM enforcement deepened to condition keys (#660 adopted; #661 filed)
 
 Building on the action-level enforcement proof (#657→#659), adopted sockerless **#660** — the full real-AWS
 condition-operator evaluator (`Numeric*`/`Date*`/`IpAddress`/`Arn*`/`ForAllValues`/policy-variable

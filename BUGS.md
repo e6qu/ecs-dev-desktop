@@ -4,14 +4,17 @@
 
 ## Open
 
-- **node-pty (Monaco editor terminal) has no Linux prebuild — compiled in CI (2026-06-24).** The
-  in-container Monaco editor (`@edd/editor-monaco`) uses `node-pty` for its terminal; node-pty 1.1.0 ships
-  prebuilt binaries only for darwin/win32, **not Linux**, so on the (Linux) golden image it is compiled from
-  source by `infra/images/base/build.sh` (CI runners have build-essential). Consequences: (a) a
-  macOS/Apple-Silicon host build stages a darwin binary the Linux image can't load, so the terminal is
-  exercised only by the **e2e tier** — node-pty is lazy-loaded, so the editor still serves and only the
-  terminal degrades; (b) a node-pty bump that changes its prebuild/build story is a known risk — re-check the
-  e2e tier still builds it. `infra/images/base/smoke.sh` validates the editor (not the terminal) locally.
+- **Cross-arch golden-image builds require QEMU/binfmt on the build host (2026-06-28).**
+  The base workspace image now compiles `node-pty` for the target architecture
+  inside the Dockerfile builder stage, so the correct native binary is produced
+  for both `linux/amd64` and `linux/arm64`. Emulation is only needed when the
+  build host architecture differs from the target architecture. If your runner
+  cannot emulate the other architecture (e.g. a standard AWS CodeBuild x86_64
+  project without binfmt), limit `scripts/publish-images.sh` to the host arch with
+  `EDD_BUILD_ARCHS=amd64` (the CodeBuild project in the Terraform module does
+  this). Full dual-arch manifests require either a multi-arch-capable runner or
+  two single-arch runners that each publish the `-amd64`/`-arm64` tags and then
+  create/merge the manifest.
 
 - **Catalog (base-image) create/update is last-write-wins — accepted, admin-only (2026-06-22).**
   `CatalogService.update`/`create` (`packages/control-plane/src/catalog-service.ts`) read → patch →
@@ -322,12 +325,13 @@ ForceDeleteWithoutRecovery` reclaims the name immediately; **CloudTrail `LookupE
 
 - **sockerless#583 (open)** — the ECS sim advertises a task's `Limits`
   (`CPU`/`Memory`) in task metadata but launches the container with **no cgroup
-  limits**, so the sim doesn't enforce the declared Fargate sizing (our workspace
-  used ~1214 MiB against an advertised 1024 MB with no OOM). Code pointer:
+  limits**, so the sim doesn't enforce the declared Fargate sizing. Code pointer:
   `simulators/aws/ecs.go` builds metadata `Limits` (~L1718) but the launched
   `ContainerConfig` (~L1573) sets no `Memory`/`NanoCPU`. Local tracker: this repo's
-  issue #92. **Before adopting the enforced-limits fix, bump `DEFAULT_WORKSPACE_MEMORY`**
-  or the golden workspace will OOM at the current 1024 MB sizing.
+  issue #92. **Mitigation applied:** `DEFAULT_WORKSPACE_MEMORY` was raised from 1024
+  MiB to 2048 MiB, so the default omnibus workspace has headroom when real Fargate
+  enforces the limit. The sim gap itself (no enforcement) remains open upstream.
+  Revisit #583 adoption once the fix lands to confirm no OOM on the default image.
 
 - **sockerless#590/#591/#592 (fixed upstream — confirmed downstream 2026-06-17)** — the
   three conformance gaps from the focused fidelity pass, all fixed by sockerless **#593**

@@ -1,30 +1,37 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copy to terraform.tfvars and edit. The auth secret ARNs must already exist in
-# Secrets Manager (see the module README "Prerequisites").
+# Secrets Manager (see docs/deploying.md, or scripts/bootstrap-secrets.sh).
 
 region             = "us-east-1"
 environment        = "dev"
 availability_zones = ["us-east-1a", "us-east-1b"]
 
-# For a real deployment with TLS + workspace routing:
+# For a real deployment with TLS + workspace routing (the editor is path-based at
+# app.<domain>/w/<id>/ — no wildcard DNS/TLS):
 # domain_name     = "dev.example.com"
 # route53_zone_id = "Z0123456789ABCDEFGHIJ"
 
+# Public SSH front door (independent of the editor domain above). When enabled, also
+# build + push a PINNED gateway image tag to the module's ssh_gateway_repository_url
+# output and pass it here (the module forbids a mutable :latest for the gateway):
+# ssh_base_domain     = "ssh.dev.example.com"
+# route53_ssh_zone_id = "Z0123456789ABCDEFGHIJ"
+# ssh_gateway_image   = "111122223333.dkr.ecr.us-east-1.amazonaws.com/edd-dev/ssh-gateway:v1.0.0"
+
 # All secret env vars → their Secrets Manager ARNs (create the secrets first).
 # auth_secret_arns = {
-#   AUTH_SECRET        = "arn:aws:secretsmanager:us-east-1:111122223333:secret:edd/auth-secret-AbCdEf"
-#   AUTH_GITHUB_ID     = "arn:aws:secretsmanager:us-east-1:111122223333:secret:edd/github-id-AbCdEf"
-#   AUTH_GITHUB_SECRET = "arn:aws:secretsmanager:us-east-1:111122223333:secret:edd/github-secret-AbCdEf"
-#   EDD_TOKEN_ENC_KEY  = "arn:aws:secretsmanager:us-east-1:111122223333:secret:edd/token-enc-key-AbCdEf"
-#   EDD_GATEWAY_SECRET = "arn:aws:secretsmanager:us-east-1:111122223333:secret:edd/gateway-secret-AbCdEf"
-#   EDD_AGENT_SECRET   = "arn:aws:secretsmanager:us-east-1:111122223333:secret:edd/agent-secret-AbCdEf"
+#   AUTH_SECRET           = "arn:aws:secretsmanager:us-east-1:111122223333:secret:edd/auth-secret-AbCdEf"
+#   AUTH_GITHUB_ID        = "arn:aws:secretsmanager:us-east-1:111122223333:secret:edd/github-id-AbCdEf"
+#   AUTH_GITHUB_SECRET    = "arn:aws:secretsmanager:us-east-1:111122223333:secret:edd/github-secret-AbCdEf"
+#   EDD_TOKEN_ENC_KEY     = "arn:aws:secretsmanager:us-east-1:111122223333:secret:edd/token-enc-key-AbCdEf"
+#   EDD_GATEWAY_SECRET    = "arn:aws:secretsmanager:us-east-1:111122223333:secret:edd/gateway-secret-AbCdEf"
+#   EDD_AGENT_SECRET      = "arn:aws:secretsmanager:us-east-1:111122223333:secret:edd/agent-secret-AbCdEf"
 #   EDD_CONNECTION_SECRET = "arn:aws:secretsmanager:us-east-1:111122223333:secret:edd/connection-secret-AbCdEf"
 # }
 
 # Non-secret config. EDD_ADMIN_GROUPS is REQUIRED — without it no one is an admin.
 # extra_environment = {
-#   EDD_ADMIN_GROUPS          = "platform-admins"
-#   EDD_MEMBER_GROUPS         = "engineering"
-#   AUTH_TRUST_HOST           = "true"
-#   EDD_SSH_BASE_DOMAIN       = "ssh.dev.example.com"
+#   EDD_ADMIN_GROUPS = "platform-admins"
+#   EDD_MEMBER_GROUPS = "engineering"
+#   AUTH_TRUST_HOST  = "true"
 # }

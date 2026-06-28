@@ -2,9 +2,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Local smoke for the workspace base image + the first-party Monaco editor: build the image via
 # build.sh, run it in monaco mode, and confirm the editor serves on :3000. The editor (HTTP + SPA +
-# file API) validates on any host; the TERMINAL needs node-pty's Linux native binary, which is
-# absent on a macOS/Apple-Silicon host build, so the terminal is exercised only by CI (the e2e
-# tier), not here. Requires Docker.
+# file API) validates on any host; the terminal is exercised in CI by the e2e tier. Requires Docker.
 #
 # Usage: infra/images/base/smoke.sh
 set -eu

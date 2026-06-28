@@ -14,6 +14,42 @@ resource "aws_kms_alias" "this" {
   target_key_id = aws_kms_key.this.key_id
 }
 
+# Pre-published mode: resolve the image digest so a new push with the same tag
+# still rolls the ECS task definition (digest change = terraform diff).
+# In local/codebuild modes these are unused (the build runs during apply).
+data "aws_ecr_image" "control_plane" {
+  count           = var.image_build_mode == "pre-published" && var.control_plane_image == "" ? 1 : 0
+  repository_name = aws_ecr_repository.control_plane.name
+  image_tag       = var.image_tag
+  registry_id     = local.account_id
+}
+
+data "aws_ecr_image" "ssh_gateway" {
+  count           = var.image_build_mode == "pre-published" && local.ssh_enabled && var.ssh_gateway_image == "" ? 1 : 0
+  repository_name = aws_ecr_repository.ssh_gateway.name
+  image_tag       = var.image_tag
+  registry_id     = local.account_id
+}
+
+locals {
+  # The effective image reference passed to ECS. Pre-published + caller didn't
+  # override: digest-pinned for auto-roll. Build modes or explicit override: tag-based.
+  effective_control_plane_image = (
+    var.image_build_mode == "pre-published" && var.control_plane_image == ""
+    ? "${data.aws_ecr_image.control_plane[0].image_uri}@${data.aws_ecr_image.control_plane[0].image_digest}"
+    : local.control_plane_image
+  )
+  effective_ssh_gateway_image = (
+    local.ssh_enabled
+    ? (
+      var.image_build_mode == "pre-published" && var.ssh_gateway_image == ""
+      ? "${data.aws_ecr_image.ssh_gateway[0].image_uri}@${data.aws_ecr_image.ssh_gateway[0].image_digest}"
+      : local.ssh_gateway_image
+    )
+    : ""
+  )
+}
+
 # Single-table design — mirrors packages/db/src/table.ts exactly:
 #   PK/SK partition + GSI1 (byOwner) + GSI2 (byState), PAY_PER_REQUEST. ElectroDB
 #   writes the PK/SK/GSI*PK/GSI*SK attributes; only the key attributes are declared.

@@ -51,15 +51,35 @@ generate "provider" {
 inputs = {
   name               = "edd-${local.environment}"
   availability_zones = ["${local.region}a", "${local.region}b"]
-  golden_image_repos = ["node-20", "go-1.22"]
 
   # Egress: a cheap fck-nat NAT instance for dev (use "gateway" + single_nat_gateway for prod).
   nat_mode              = "instance"
   nat_instance_use_spot = true
 
+  # One-apply self-bootstrap: terraform builds and pushes the images during apply.
+  # Use "pre-published" if your CI already pushes images, or "codebuild" to build
+  # in AWS (set codebuild_source_repo). See the module README.
+  image_build_mode = "local"
+  image_tag        = "main"
+
+  # Curated golden base images. Must match the variant folder names under infra/images/.
+  golden_image_repos = ["omnibus"]
+
+  # Seed a default catalog entry so users can create workspaces immediately.
+  seed_default_catalog = true
+
   # domain_name     = "dev.example.com"
   # route53_zone_id = "Z0123456789ABCDEFGHIJ"
+
+  # Public SSH front door (independent of the editor domain). In "local" build
+  # mode the gateway image is built/pushed automatically; otherwise set
+  # ssh_gateway_image to a pinned tag.
+  # ssh_base_domain     = "ssh.dev.example.com"
+  # route53_ssh_zone_id = "Z0123456789ABCDEFGHIJ"
+  # ssh_gateway_image   = "<account>.dkr.ecr.${local.region}.amazonaws.com/edd-dev/ssh-gateway:v1.0.0"
+
   # secret_environment = { AUTH_SECRET = "arn:aws:secretsmanager:...:secret:edd/auth-secret-AbCdEf" }
+  # extra_environment  = { EDD_ADMIN_GROUPS = "platform-admins", AUTH_TRUST_HOST = "true" }
 
   tags = { ManagedBy = "terragrunt" }
 }

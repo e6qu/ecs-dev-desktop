@@ -13,6 +13,10 @@ UI, and an admin control plane. Think self-hosted Coder / GitHub Codespaces.
 
 - [`AGENTS.md`](./AGENTS.md) — architecture decisions, component map, and the
   rules of engagement for contributors/agents. (`CLAUDE.md` is a symlink to it.)
+- [`docs/architecture.md`](./docs/architecture.md) — the block diagram, component
+  roles, the deployment sequence, and the browser/SSH connection sequences.
+- [`docs/install.md`](./docs/install.md) — **install to AWS**: a linear,
+  parameter-driven, paste-able runbook (install → verify → cleanup), fail-fast.
 - [`docs/running-locally.md`](./docs/running-locally.md) — run/develop/test the app
   locally: `pnpm dev` and the tiered options (fakes → bleephub → sockerless AWS).
 - [`docs/runbook.md`](./docs/runbook.md) — operations runbook: incident response
@@ -89,24 +93,39 @@ seeded-user config, and the self-reaping local test commands
 
 Nothing is provisioned on AWS yet — the Terraform module is built and
 **simulator-apply-proven** every PR, with real `apply` gated on an AWS account +
-domain (see [`DO_NEXT.md`](./DO_NEXT.md) open decisions). The full runbook —
-Terraform backend, the module, the **two** images, every required env var/secret,
-SSH access, DNS/TLS, and seeding — is in
-**[`docs/deploying.md`](./docs/deploying.md)**. In short:
+domain (see [`DO_NEXT.md`](./DO_NEXT.md) open decisions).
 
-1. **Provision infra** with the Terraform module
-   ([`infra/terraform/README.md`](./infra/terraform/README.md),
-   [module README](./infra/terraform/modules/ecs-dev-desktop/README.md);
-   example in `infra/terraform/examples/complete`) — VPC, DynamoDB, ECR, KMS, IAM,
+- **Install to AWS (linear runbook):** **[`docs/install.md`](./docs/install.md)** —
+  set parameters once, then one pasteable command (`scripts/install.sh`) that runs
+  the whole flow fail-fast; a separate verify step; and a full cleanup
+  (`scripts/uninstall.sh`) that reclaims even a partial/failed install.
+- **Conceptual picture:** [`docs/architecture.md`](./docs/architecture.md) — block
+  diagram, deploy sequence, browser/SSH connection sequences.
+- **Step-by-step runbook:** [`docs/deploying.md`](./docs/deploying.md) — every
+  module input, every secret, DNS/TLS, the editor proxy, explained in order.
+
+In short, the install flow is:
+
+1. **Decide** the external facts: an AWS account + region, a domain (Route53 zone)
+   for `app.<domain>`, and optionally a separate zone for `*.<ssh-base-domain>`,
+   plus the IdP app registrations (GitHub and/or Entra).
+2. **Bootstrap** the remote-state backend (`scripts/bootstrap-state.sh` → S3 +
+   DynamoDB lock) and the secrets (`scripts/bootstrap-secrets.sh` → crypto +
+   IdP creds in Secrets Manager).
+3. **Provision infra** with the Terraform module
+   ([module README](./infra/terraform/modules/ecs-dev-desktop/README.md); examples in
+   `infra/terraform/examples/{complete,terragrunt}`) — VPC, DynamoDB, ECR, KMS, IAM,
    ECS control-plane service, ALB + ACM/Route 53, reconciler schedule, CloudWatch
-   logs. Bootstrap a remote state backend first.
-2. **Publish two images** to the created ECR: the **control-plane app image**
+   logs/alarms/dashboard, and (optionally) the SSH NLB.
+4. **Publish images** (`scripts/publish-images.sh`, or the `release` workflow via
+   OIDC) to the ECR repos the apply created: the **control-plane app image**
    (`apps/web` — the control-plane service _and_ the reconciler run it, via a
-   command override) and a **golden workspace image** (the
-   [`infra/images`](infra/images/README.md) collection — a shared `base` plus
-   `omnibus`/per-language variants; all bake OpenVSCode under `--server-base-path /w/<id>/`
-   plus `sshd` + its registered-key authorizer, no separate proxy image).
-3. **Configure secrets** the module does not inject — Auth.js (`AUTH_SECRET`,
+   command override), a **golden workspace image** (the
+   [`infra/images`](infra/images/README.md) collection), and the **SSH-gateway
+   image** (a pinned tag — the repo is immutable). Images are published as
+   multi-arch manifests (`:<tag>`) plus per-arch tags (`:<tag>-amd64` and
+   `:<tag>-arm64`) so runners that cannot consume manifests can pin an exact arch.
+5. **Configure secrets** the module does not inject — Auth.js (`AUTH_SECRET`,
    `AUTH_URL`/`AUTH_TRUST_HOST`) + IdP creds, RBAC groups (`EDD_ADMIN_GROUPS` — set
    this or no one is an admin), and crypto (`EDD_TOKEN_ENC_KEY`, `EDD_GATEWAY_SECRET`,
    `EDD_AGENT_SECRET`, `EDD_CONNECTION_SECRET`). SSH needs no extra secret — it is registered-key only, and
@@ -114,7 +133,7 @@ SSH access, DNS/TLS, and seeding — is in
    The infra coordinates (`COMPUTE_PROVIDER`, `AUDIT_PROVIDER`, `LOG_PROVIDER`,
    cluster/subnets/roles, …) are injected by the module. Same code, real cloud by
    coordinates alone (`AGENTS.md` §6.8/§6.9).
-4. **Wire DNS/TLS** (`app.<domain>` ACM cert + Route 53; no wildcard — the editor
+6. **Wire DNS/TLS** (`app.<domain>` ACM cert + Route 53; no wildcard — the editor
    is path-based at `app.<domain>/w/<id>/`, proxied in-process by the control-plane
    app and authorized off the Auth.js session), then **seed the base-image catalog**
    so workspaces can launch.

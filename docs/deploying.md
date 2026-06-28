@@ -5,7 +5,9 @@
 A practical runbook for standing up a real environment. The platform reaches AWS
 and the IdPs through **coordinates** only (endpoints + credentials + resource
 ids), so the same code the local tiers and CI exercise targets real cloud by
-configuration alone — no real-vs-sim branches (`AGENTS.md` §6.8/§6.9).
+configuration alone — no real-vs-sim branches (`AGENTS.md` §6.8/§6.9). For the
+conceptual picture (block diagram, component roles, connection sequences), see
+[`architecture.md`](./architecture.md).
 
 > **Status:** the Terraform module is built and **simulator-apply-proven every PR**
 > (`terraform-sim` CI). A real `apply` is gated on an AWS account + a domain (see
@@ -29,53 +31,104 @@ configuration alone — no real-vs-sim branches (`AGENTS.md` §6.8/§6.9).
 ## Step 1 — Terraform backend + module
 
 The module is [`infra/terraform/modules/ecs-dev-desktop`](../infra/terraform/modules/ecs-dev-desktop/README.md);
-a runnable composition is in [`infra/terraform/examples/complete`](../infra/terraform/examples/complete).
+runnable compositions are in [`infra/terraform/examples/complete`](../infra/terraform/examples/complete)
+(Terraform) and [`infra/terraform/examples/terragrunt`](../infra/terraform/examples/terragrunt/terragrunt.hcl)
+(Terragrunt).
 
-1. **Bootstrap remote state** (S3 bucket + DynamoDB lock table) and configure it as
-   the Terraform `backend` — do this before the first `apply` so state is never
-   local. (The module README lists this as prerequisite #1.)
-2. Set the module inputs: `name`, `domain_name` (enables ACM +
-   Route 53 for `app.<domain>`), the optional `nat_mode` (`gateway` —
-   AWS-managed NAT Gateway, or `instance` — a cost-optimized fck-nat EC2
-   instance), task sizing, and `secret_environment` (see Step 3). The AWS region
-   comes from the configured AWS provider (the module derives it via
-   `data "aws_region"`), not a module input.
-3. `terraform apply`. This creates: VPC/subnets/NAT, DynamoDB single-table
-   (PK/SK + GSI1 + GSI2, on-demand), ECR repos (control-plane + golden), KMS,
-   IAM roles, the ECS cluster + control-plane service (autoscaled, on-demand
-   FARGATE — the cluster also registers a FARGATE_SPOT capacity provider —
-   Container Insights, ECS Exec/KMS), the ALB + ACM cert + Route 53 records, the
-   reconciler EventBridge schedule, CloudWatch log groups, and the metric alarms.
+1. **Bootstrap remote state** (once per environment) with
+   [`scripts/bootstrap-state.sh`](../scripts/bootstrap-state.sh):
+   ```sh
+   scripts/bootstrap-state.sh edd-tfstate-dev us-east-1
+   # creates a versioned+encrypted S3 bucket + a DynamoDB lock table, idempotently
+   ```
+   Configure it as the Terraform `backend` (or let Terragrunt own it via
+   `remote_state`) **before** the first `apply` so state is never local.
+2. Set the module inputs: `name`, `domain_name` + `route53_zone_id` (enables ACM +
+   Route 53 for `app.<domain>`), and (optionally) `ssh_base_domain` +
+   `route53_ssh_zone_id` for per-workspace SSH. Choose `nat_mode` (`gateway` —
+   AWS-managed NAT Gateway, recommended for prod; or `instance` — a cost-optimized
+   fck-nat EC2 instance). The AWS region comes from the configured AWS provider
+   (the module derives it via `data "aws_region"`), not a module input.
+3. `terraform apply` (or `terragrunt apply`). This creates: VPC/subnets/NAT,
+   DynamoDB single-table (PK/SK + GSI1 + GSI2, on-demand), ECR repos (control-plane
+   - golden + ssh-gateway), KMS, IAM roles, the ECS cluster + control-plane service
+     (autoscaled, on-demand FARGATE — the cluster also registers a FARGATE_SPOT
+     capacity provider — Container Insights, ECS Exec/KMS), the ALB + ACM cert +
+     Route 53 records, the reconciler EventBridge schedule, CloudWatch log groups +
+     alarms + dashboard, and — when `ssh_base_domain` is set — the SSH ingress (NLB
+   - TCP:22 + the SSH-gateway service + the `*.<ssh-base-domain>` wildcard).
 
-> **Two-phase apply.** The control-plane image tag defaults to `:latest`, which
-> does not exist until Step 2. Either push images first, or expect the first
-> `apply` to create the service with a not-yet-pullable image and roll it after
-> Step 2.
+   The module can also build and push the container images during apply via
+   `image_build_mode`: `local` (runs `scripts/publish-images.sh` on the operator
+   machine), `codebuild` (creates an AWS CodeBuild project and starts a build), or
+   `pre-published` (images already exist in ECR; Terraform resolves the digest).
+   See the module README for the exact variables.
+
+> **Two-phase apply.** With `image_build_mode = "pre-published"`, the image tag
+> defaults to `:main`, which does not exist until Step 2. Either push images first,
+> or expect the first `apply` to create the service with a not-yet-pullable image
+> and roll it after Step 2. `local` and `codebuild` modes avoid this because images
+> are produced during apply.
 
 Module **outputs** feed the rest: `control_plane_repository_url`,
-`golden_repository_urls` (a map, one ECR URL per golden image), the cluster/subnet/
-role ids, the ALB DNS name, and the CloudWatch log groups.
+`golden_repository_urls`, `ssh_gateway_repository_url`, the cluster/subnet/role
+ids, the ALB DNS name, the SSH NLB DNS name, and the CloudWatch log groups.
 
 ## Step 2 — Build & publish images
 
-Two images go to the ECR repos the module created:
+[`scripts/publish-images.sh`](../scripts/publish-images.sh) builds and pushes all
+three image kinds to the ECR repos Step 1 created (it also logs into ECR and
+builds the golden base via `infra/images/base/build.sh`):
+
+```sh
+scripts/publish-images.sh <account-id> <region> <name> <tag> [variant...]
+# e.g. scripts/publish-images.sh 111122223333 us-east-1 edd-dev v1.0.0 omnibus typescript
+```
+
+It publishes a **multi-arch manifest** for each image (`:<tag>`) plus per-arch
+images with an architecture suffix (`:<tag>-amd64` and `:<tag>-arm64`):
+
+```
+<name>/control-plane:<tag>         manifest
+<name>/control-plane:<tag>-amd64   amd64 image
+<name>/control-plane:<tag>-arm64   arm64 image
+```
+
+ECS Fargate pulls the manifest and selects the correct architecture automatically.
+Runners that cannot consume manifests (e.g. AWS Lambda) can pin the suffixed tag
+directly. The architecture list defaults to `amd64 arm64`; limit it with
+`EDD_BUILD_ARCHS=amd64` if your build host cannot emulate the other architecture.
+
+It publishes:
 
 1. **The control-plane app image** (`apps/web`) → `control_plane_repository_url`.
    This is the primary push: **both** the control-plane service **and** the
    reconciler run this image (the reconciler is the same image with a command
-   override — there is no separate reconciler image).
-2. **A golden workspace image** (the [`infra/images`](../infra/images/README.md)
-   collection — a shared `base` plus the `omnibus`/per-language variants; build a
-   variant `FROM base`) → the matching entry in `golden_repository_urls`. These bake
-   OpenVSCode Server (served under `--server-base-path /w/<id>/` so the editor mounts
-   under the control-plane path proxy), the toolchains, and `sshd` + its
-   registered-key authorizer (there is no separate "SSH proxy" image — SSH is served
-   from the workspace task).
+   override — the control-plane Dockerfile builds both bundles, so there is no
+   separate reconciler image).
+2. **The SSH-gateway image** (`services/ssh-gateway`) →
+   `ssh_gateway_repository_url`. **Push a pinned tag each time** — that ECR repo is
+   `IMMUTABLE` (a re-pushed tag can't silently swap the SSH front door), and pass
+   the tag as `ssh_gateway_image`.
+3. **A golden workspace image** (the [`infra/images`](../infra/images/README.md)
+   collection — a shared `base` plus the `omnibus`/per-language variants) → the
+   matching entry in `golden_repository_urls`. These bake OpenVSCode Server
+   (served under `--server-base-path /w/<id>/` so the editor mounts under the
+   control-plane path proxy), the toolchains, and `sshd` + its registered-key
+   authorizer.
+
+For CI-driven publishes, the [`release`](../.github/workflows/release.yml) workflow
+builds + pushes on a `v*` tag (or manual dispatch) via GitHub OIDC → an AWS role
+with ECR push permissions (no static keys). It sets up QEMU and Docker Buildx so
+the default `amd64 arm64` multi-arch build succeeds on GitHub's x86*64 runners.
+It is gated on the `RELEASE_AWS*\*` repo variables (see the workflow header) and
+otherwise skips, so it is inert until the AWS account decision lands.
+
+After publishing, roll the running services:
 
 ```sh
-aws ecr get-login-password --region <region> \
-  | docker login --username AWS --password-stdin <account>.dkr.ecr.<region>.amazonaws.com
-# build + tag + push each image to its repo URL, then roll the ECS service (or re-apply).
+aws ecs update-service --cluster <name>-workspaces \
+  --service <name>-control-plane --force-new-deployment
 ```
 
 ## Step 3 — Configure the control plane (env + secrets)
@@ -87,9 +140,12 @@ The module **already injects** the infra coordinates into the task definition:
 `EDD_APP_NAME`, and `ECS_LOG_GROUP_WORKSPACES`. You do **not** set these by hand.
 
 What **you must supply** (the module injects none of these; the app fails loudly
-without the required ones). Two channels: **`secret_environment`** — a map of
-name → Secrets Manager / SSM ARN, for secrets — and **`extra_environment`** — plain
-name → value, for non-secret config.
+without the required ones). [`scripts/bootstrap-secrets.sh`](../scripts/bootstrap-secrets.sh)
+creates them all in Secrets Manager — it generates the crypto secrets for you and
+prompts for the IdP creds, then prints the ARNs to paste into `secret_environment`.
+Two channels: **`secret_environment`** — a map of name → Secrets Manager / SSM ARN,
+for secrets — and **`extra_environment`** — plain name → value, for non-secret
+config.
 
 Secrets (`secret_environment`):
 
@@ -128,7 +184,9 @@ authorizes the presented key iff it is registered to that workspace's owner.
 There is nothing to provision here beyond the HMAC secrets already set in Step 3:
 the gateway authenticates to `ssh-authorize` with `EDD_GATEWAY_SECRET`, and the
 in-workspace authorizer with its injected agent token (derived from
-`EDD_AGENT_SECRET`). Users self-serve key registration after first sign-in.
+`EDD_AGENT_SECRET`). Users self-serve key registration after first sign-in. The
+full dual-trust handshake is diagrammed in
+[`architecture.md`](./architecture.md#ssh-registered-key-dual-trust).
 
 ## Step 5 — DNS/TLS + editor routing
 
@@ -198,7 +256,8 @@ live GitHub/Entra federation are **unverified end-to-end**. See
 
 ## See also
 
+- [`architecture.md`](./architecture.md) — block diagram, deploy sequence, connection sequences
 - [`infra/terraform/README.md`](../infra/terraform/README.md) ·
   [module README](../infra/terraform/modules/ecs-dev-desktop/README.md)
-- [`docs/running-locally.md`](./running-locally.md) — the same code, by local coordinates
-- [`docs/observability-gaps.md`](./observability-gaps.md) — logs/health/metrics/testing gaps
+- [`running-locally.md`](./running-locally.md) — the same code, by local coordinates
+- [`observability-gaps.md`](./observability-gaps.md) — logs/health/metrics/testing gaps

@@ -1,0 +1,96 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Release pipeline: build and publish the platform's container images to ECR.
+# Triggered by a version tag (`v*`) or manually. Uses GitHub OIDC -> an
+# AWS role with ECR push permissions (no static keys), exactly like the e2e-aws
+# tier. The Terraform module must have been applied first (it creates the ECR
+# repositories); this closes the two-phase-apply friction documented in
+# docs/deploying.md.
+#
+# Prerequisites (supplied once the AWS account decision lands — DO_NEXT #1):
+#   - repo/environment variable `RELEASE_AWS_ROLE_ARN` — OIDC-assumable role
+#     (needs ecr:BatchCheck*/Get*/Describe*/PutImage/CreateRepository/Batch* on
+#     the module's repos; the repos themselves are created by Terraform)
+#   - repo/environment variable `RELEASE_AWS_ACCOUNT`  — 12-digit account id
+#   - repo/environment variable `RELEASE_AWS_REGION`   — optional; default below
+#   - repo/environment variable `RELEASE_NAME_PREFIX`  — the module `name` (e.g. edd-dev)
+#
+# What it publishes (see scripts/publish-images.sh):
+#   <prefix>/control-plane:<tag>     Next.js app (also the reconciler image)
+#   <prefix>/control-plane:<tag>-amd64   amd64 image
+#   <prefix>/control-plane:<tag>-arm64   arm64 image
+#   <prefix>/ssh-gateway:<tag>       SSH gateway (IMMUTABLE repo — each tag once)
+#   <prefix>/ssh-gateway:<tag>-amd64     amd64 image
+#   <prefix>/ssh-gateway:<tag>-arm64     arm64 image
+#   <prefix>/<variant>:<tag>         each golden variant (default: omnibus)
+#   <prefix>/<variant>:<tag>-amd64       amd64 image
+#   <prefix>/<variant>:<tag>-arm64       arm64 image
+# The tag without the suffix is a multi-arch manifest; the suffixed tags are the
+# per-arch images for runners (e.g. Lambda) that cannot consume manifests.
+name: release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag (defaults to the git short sha)"
+        required: false
+        default: ""
+      variants:
+        description: "Golden variants to build (space-separated; default: omnibus)"
+        required: false
+        default: "omnibus"
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency: release
+
+jobs:
+  publish:
+    name: publish images to ECR
+    if: vars.RELEASE_AWS_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      AWS_REGION: ${{ vars.RELEASE_AWS_REGION || 'us-east-1' }}
+      TAG: ${{ github.event.inputs.tag != '' && github.event.inputs.tag || github.sha }}
+      VARIANTS: ${{ github.event.inputs.variants || 'omnibus' }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - uses: pnpm/action-setup@v6.0.8
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4.0.2
+        with:
+          role-to-assume: ${{ vars.RELEASE_AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: release-${{ github.run_id }}
+
+      - name: Verify assumed identity
+        run: aws sts get-caller-identity
+
+      - name: Build & push images
+        run: |
+          # shellcheck disable=SC2086 # intentional word-splitting on $VARIANTS
+          sh scripts/publish-images.sh \
+            "${{ vars.RELEASE_AWS_ACCOUNT }}" \
+            "$AWS_REGION" \
+            "${{ vars.RELEASE_NAME_PREFIX }}" \
+            "${TAG:0:12}" \
+            $VARIANTS

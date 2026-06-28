@@ -197,41 +197,12 @@ conditions every transition write so concurrent wakes can't leak ECS tasks.
 enabled catalog) + UI (`/base-images` admin page + create-from-catalog picker). ✅
 **Playwright portal e2e** (built app + DynamoDB Local, cookie dev-auth shim, CI job).
 
-## Phase 9 — Code-review remediation & pre-AWS hardening — ⬜ actionable now (no AWS gate)
+## Phase 9 — Code-review remediation & pre-AWS hardening — ✅ done (no-AWS-gate items merged in #129; real-AWS enforcement proofs remain e2e-aws only)
 
 From the 2026-06-19 `codex` review (12 findings, 4 re-verified) plus previously-deferred items that
-became actionable. **None of this is gated on the AWS account decision** — code fixes land + unit/integ
-test on fakes/DynamoDB-Local; the terraform/IAM fixes validate against the `terraform-sim` IAM
-simulation; `e2e-aws` only adds final real-enforcement proof. Tracked as bugs in `BUGS.md` → Open and
-prioritized in `DO_NEXT.md`. **Deliverables (do not defer any actionable item):**
-
-- **Critical** — (1) require a real compute/storage provider in production (kill the silent fake
-  fallback, `apps/web/lib/control-plane.ts`); (2) terraform IAM for the per-workspace agent-secret
-  create/inject path (scoped `CreateSecret`/`PutSecretValue`/tag + execution-role read on
-  `edd/workspace/*/agent`); (3) create + pass the workspace execution/task role ARNs (ECR pull,
-  awslogs, secret injection, `iam:PassRole`); (4) transactional SSH-key fingerprint uniqueness.
-- **High** — (5) early/initial snapshot so a fresh workspace is recoverable before the 6h cadence;
-  (6) fail-loud + portal-visible bootstrap status for repo-clone / git-credential failures (non-dev
-  safety); (7) GC per-workspace Secrets Manager agent secrets on terminate + periodic secret GC.
-- **Medium / Low** — (8) bound ECS task-definition revision growth; (9) editor-proxy ownership is now
-  by a stable subject (the Auth.js session `uid` vs `workspace.ownerId`), not a fragile email match —
-  the former "require a valid owner identity for proxy-routed workspaces" concern is closed by the
-  path-based in-app proxy; (10) reject invalid `?window=` instead of coercing to `all`; (11) fix the
-  stale topology CA-cert edge text.
-- **Deferred → now actionable:** **cross-region EBS snapshot DR** (snapshot → `CopySnapshot` →
-  restore) — **DONE**: `StorageProvider.copySnapshot` + the EC2 adapter (cross-region client by
-  coordinates alone, §6.9), proven by a sim integ (snapshot→copy→restore) now that **sockerless#602**
-  landed. `CONNECTION_TOKEN` — on review this is **correctly coupled to a future DYNAMIC
-  per-connection token**, NOT a free-standing fix: the image already consumes `CONNECTION_TOKEN` when
-  injected (`entrypoint.sh`), but the current model runs the IDE **tokenless behind the in-app
-  `/w/<id>/` proxy** (`EDD_DISABLE_CONNECTION_TOKEN=1` — the control-plane app's path proxy is the
-  authorization point, gating each request on the Auth.js session/ownership). Generating/persisting/
-  injecting a token has no consumer until the proxy forwards it, so building it now would be dead
-  code (§6.5). It stays with that extension; the image side is already ready.
-
-- **Gate:** each item proven by a unit/integ/e2e test on fakes / DynamoDB-Local / the sim (incl. the
-  `terraform-sim` IAM simulation for the IAM/role items + a sim DR copy e2e); real-enforcement checks
-  for the IAM/role items roll into `e2e-aws` when AWS lands.
+became actionable. **All non-AWS-gated items were remediated and merged in #129**; the few genuinely
+real-AWS-only proofs (live IAM enforcement byte-stream, real DNS/ACM, 200+ load) roll into `e2e-aws`
+when the account decision lands. See `DO_NEXT.md` and `BUGS.md` for the closed list.
 
 ## Phase 7 — Hardening, scale & DR — ⬜ pending (AWS-gated)
 

@@ -13,7 +13,7 @@ import {
   type CostRollupStore,
 } from "./cost-service";
 
-// The real @edd/config defaults (us-east-1 on-demand; 0.5 vCPU / 1 GiB / 8 GiB),
+// The real @edd/config defaults (us-east-1 on-demand; 0.5 vCPU / 2 GiB / 8 GiB),
 // so the service test is pinned to the rates the app actually charges.
 const PRICING = workspacePricing();
 const SIZING = workspaceSizing();
@@ -67,8 +67,8 @@ describe("CostService.report", () => {
     // Owner comes from the session.create actor (the email), not the record id.
     expect(s?.owner).toBe("alice@example.com");
     expect(s?.state).toBe("running");
-    // Ran 4h (create → now); compute = 4 * (0.5*0.04048 + 1*0.004445).
-    expect(s?.computeUsd).toBeCloseTo(4 * 0.024685, 6);
+    // Ran 4h (create → now); compute = 4 * (0.5*0.04048 + 2*0.004445).
+    expect(s?.computeUsd).toBeCloseTo(4 * 0.02913, 6);
     expect(report.total.totalUsd).toBeCloseTo(s?.totalUsd ?? 0, 10);
   });
 

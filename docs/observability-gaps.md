@@ -152,19 +152,15 @@ truncation at volume.
   account decision. EBS durability/latency, real Fargate cold-start, 200+ load,
   IAM enforcement, ACM/DNS, KMS/DR, and GitHub/Entra federation are all unverified
   against real AWS. Highest launch risk. _High._
-- **sockerless#569 (open):** process-mode `RunTask` with managed EBS panics the
-  sim, so the managed-EBS launch path (incl. agent-secret injection) runs only in
-  container-mode e2e, never in the lighter process-mode integration job. _Medium._
-- ~~**Idle-agent heartbeat RESUMPTION** after the control plane returns — tolerance
-  is proven, resumption is not~~ **Done (2026-06-18).** `idle-agent-resume.integ.ts`
-  drives the real `infra/images/base/idle-agent.sh` (sh + curl, the exact retry flags)
-  against a stub control plane toggled down → up: it asserts the agent lands no acks
-  and does **not** exit while the CP is 503 (tolerance), then a fresh beat lands once
-  the CP returns (resumption). Deterministic (1s interval + relative polling, §6.10);
-  runs in the `integration` job via a new lightweight `@edd/e2e` `test:integ` tier (no
-  container/sim). The in-container liveness was already covered by the user-journey e2e.
-- **`CONNECTION_TOKEN` injection** unimplemented/untested — deferred to the future
-  DYNAMIC wake-on-connect gate. _Low._
+- ~~sockerless#569: process-mode `RunTask` with managed EBS panics the sim~~
+  **Fixed upstream + confirmed downstream** (see `BUGS.md` → External blockers).
+  The managed-EBS launch path (incl. agent-secret injection) is covered in
+  container-mode e2e; the process-mode panic is closed.
+- ~~**`CONNECTION_TOKEN` injection** unimplemented/untested~~ **Done (2026-06-20).**
+  The control plane injects the per-workspace editor connection token via Secrets
+  Manager and the in-app proxy hands the session-authorized browser the token on
+  the first document navigation; covered by `live-ide-flow.e2e.ts` (the running
+  editor serves only with it) + `agent-secret.e2e.ts`. See `BUGS.md` → Resolved.
 
 ## Priority summary (pre-launch)
 

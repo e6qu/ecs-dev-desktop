@@ -35,9 +35,28 @@ locals {
   # `*.<ssh_base_domain>` — every workspace is reached at `<ws-id>.<ssh_base_domain>`.
   ssh_wildcard_fqdn = local.ssh_enabled ? "*.${var.ssh_base_domain}" : null
 
-  # Default to this stack's own ECR repo at :latest unless the caller pins an image.
-  control_plane_image = var.control_plane_image != "" ? var.control_plane_image : "${aws_ecr_repository.control_plane.repository_url}:latest"
-  # The SSH gateway has no `:latest` fallback — push a pinned tag to `ssh_gateway_repository_url` and
-  # pass it as `ssh_gateway_image` (required when SSH ingress is enabled; a precondition enforces it).
-  ssh_gateway_image = var.ssh_gateway_image
+  # Default to this stack's own ECR repo at the configured tag unless the caller
+  # pins an image. In local/codebuild modes the build resources push to this tag
+  # during apply; in pre-published mode terraform resolves the digest for auto-roll.
+  control_plane_image_default = "${aws_ecr_repository.control_plane.repository_url}:${var.image_tag}"
+  control_plane_image         = var.control_plane_image != "" ? var.control_plane_image : local.control_plane_image_default
+
+  # The SSH gateway has no `:latest` fallback — in build modes we compute the
+  # pinned tag from the ECR repo; in pre-published mode the caller must supply it
+  # (or it also defaults to the repo tag, resolved by digest).
+  ssh_gateway_image_default = "${aws_ecr_repository.ssh_gateway.repository_url}:${var.image_tag}"
+  ssh_gateway_image = (
+    var.ssh_gateway_image != "" ? var.ssh_gateway_image :
+    local.ssh_enabled ? local.ssh_gateway_image_default : ""
+  )
+
+  build_local_enabled     = var.image_build_mode == "local"
+  build_codebuild_enabled = var.image_build_mode == "codebuild"
+
+  # Default golden catalog entry uses the first requested variant if the chosen
+  # one isn't present, falling back to omnibus if nothing else is configured.
+  seed_variant = contains(var.golden_image_repos, var.seed_catalog_variant) ? var.seed_catalog_variant : (
+    length(var.golden_image_repos) > 0 ? var.golden_image_repos[0] : ""
+  )
+  seed_image_ref = local.seed_variant != "" ? "${local.account_id}.dkr.ecr.${local.region}.amazonaws.com/${var.name}/golden/${local.seed_variant}:${var.image_tag}" : ""
 }

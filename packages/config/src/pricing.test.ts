@@ -57,7 +57,7 @@ describe("workspacePricing", () => {
 
 describe("workspaceSizing", () => {
   it("converts the default ECS task size to vCPU / GiB", () => {
-    expect(workspaceSizing()).toEqual({ vcpu: 0.5, memoryGib: 1, volumeGib: 8 });
+    expect(workspaceSizing()).toEqual({ vcpu: 0.5, memoryGib: 2, volumeGib: 8 });
   });
 
   it("tracks the ECS_* provisioning overrides", () => {

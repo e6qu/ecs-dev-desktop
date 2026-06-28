@@ -76,7 +76,7 @@ resource "aws_ecs_task_definition" "control_plane" {
 
   container_definitions = jsonencode([{
     name      = "control-plane"
-    image     = local.control_plane_image
+    image     = local.effective_control_plane_image
     essential = true
     portMappings = [{
       containerPort = var.control_plane_port
@@ -102,6 +102,13 @@ resource "aws_ecs_task_definition" "control_plane" {
   }])
 
   tags = local.tags
+
+  # In build modes the images are produced during apply; wait before creating
+  # the task definition so the first service deployment can actually pull them.
+  depends_on = [
+    terraform_data.build_images_local,
+    terraform_data.build_images_codebuild,
+  ]
 }
 
 resource "aws_ecs_service" "control_plane" {
@@ -177,7 +184,7 @@ resource "aws_ecs_task_definition" "reconciler" {
 
   container_definitions = jsonencode([{
     name        = "reconciler"
-    image       = local.control_plane_image
+    image       = local.effective_control_plane_image
     essential   = true
     command     = var.reconciler_command
     environment = [for k, v in local.base_environment : { name = k, value = v }]
@@ -192,4 +199,9 @@ resource "aws_ecs_task_definition" "reconciler" {
   }])
 
   tags = local.tags
+
+  depends_on = [
+    terraform_data.build_images_local,
+    terraform_data.build_images_codebuild,
+  ]
 }

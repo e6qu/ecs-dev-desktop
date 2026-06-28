@@ -38,7 +38,7 @@ export const DEFAULT_WORKSPACE_LOG_STREAM_PREFIX = "workspace";
 export const DEFAULT_WORKSPACE_MOUNT_PATH = "/home/workspace";
 export const DEFAULT_WORKSPACE_VOLUME_GIB = 8;
 export const DEFAULT_WORKSPACE_CPU = "512";
-export const DEFAULT_WORKSPACE_MEMORY = "1024";
+export const DEFAULT_WORKSPACE_MEMORY = "2048";
 /** Port OpenVSCode Server listens on inside the workspace container. */
 export const DEFAULT_WORKSPACE_PORT = 3000;
 /** How often the idle-agent POSTs /heartbeat (seconds). 2 minutes: fires within
