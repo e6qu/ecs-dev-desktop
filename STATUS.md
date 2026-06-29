@@ -2,9 +2,27 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-28 (PR #172 merged: AWS deploy-readiness — examples wired, bootstrap/publish/install/uninstall scripts, `release` workflow, `docs/architecture.md` + `docs/install.md`, multi-arch image publishing convention, golden-image ECR path fix, variant-name alignment, workspace memory bump to 2048 MiB. Real AWS apply remains decision-gated.)
+**Last updated:** 2026-06-29 (sockerless #713 + #715 validated; heavy local e2e suite passes on Podman; submodule re-pinned to `35f0f087`.)
 
-## Active — AWS deploy-readiness merged; real apply still decision-gated
+## Active — sockerless #713 + #715 validated; heavy local e2e passes
+
+sockerless **#713** closed the ten module-wide fidelity gaps (#703–#712), and **#715** closed the follow-up Budgets Terraform lifecycle gap (**#714**). The submodule is now re-pinned to `35f0f087`.
+
+Validation completed:
+
+- `pnpm build` and `pnpm test` pass.
+- `pnpm test:integ` passes across all packages: **130/130 web**, **9/9 reconciler**, **15/15 storage-ec2**, plus `@edd/e2e` integ 1/1.
+- `validate-sockerless-713.sh` applies the module with `enable_dns=true` and `monthly_budget_usd=100` and validates all behavioral surfaces end-to-end: **13/13 PASS**. The `aws_budgets_budget` resource now creates, refreshes, and destroys cleanly through Terraform.
+- `terraform-sim` default apply/destroy and idempotency re-plan pass.
+- Heavy container-mode e2e (`pnpm test:e2e:local`) passes on the Podman-backed dev workstation: **19/19 tasks**, `@edd/e2e` 46/46 tests passed, 5 skipped (variant images). Fixes needed to get there:
+  - `scripts/test-e2e.sh` now uses `infra/images/base/build.sh` (raw `docker build` was missing the staged Monaco editor bundle).
+  - `infra/images/base/build.sh` auto-detects a Podman Docker API backend and uses `podman build` directly, avoiding the `docker-container` buildx driver that doesn't load images into the local store.
+  - On Podman, `scripts/test-e2e.sh` starts a local insecure registry (`localhost:15000`) and pushes the reconciler/proxy/base/workspace/node images there, then sets the corresponding `*_IMAGE` env vars so the container-mode sim and self-contained SSH tests pull fully-qualified image names.
+  - `turbo.json` `test:e2e` env list now includes `WORKSPACE_IMAGE`, `RECONCILER_IMAGE`, `PROXY_IMAGE`, and `NODE_IMAGE` so they pass through to the test processes.
+
+Next: open a PR with the current changes.
+
+## Prior — sockerless fidelity audit filed; real apply still decision-gated
 
 PR #172 closed every code/docs gap blocking a real AWS deploy that didn't need a user decision. The Terraform module was already sim-apply-proven; that PR made the path from "fresh account" to "running platform" linear, fail-fast, and reclaimable:
 

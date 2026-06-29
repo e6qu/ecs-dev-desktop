@@ -171,10 +171,16 @@ pnpm test:integ
 # `pnpm build` covers it; the harness builds apps/web on demand if .next is missing)
 pnpm build
 docker build -f services/reconciler/Dockerfile -t edd-reconciler:e2e .
-# Golden image collection: shared base, then the omnibus variant FROM it
-# (tagged edd-workspace:e2e — the default image the e2e/live suites launch).
-docker build -t edd-base:e2e infra/images/base
+# Golden image collection: shared base (build.sh stages the first-party
+# Monaco editor into it), then the omnibus variant FROM it
+# (tagged edd-workspace:e2e — the default the e2e/live suites launch).
+# NOTE: the base must be built with build.sh, not `docker build`, because it
+# stages the editor bundle into the Docker context first.
+bash infra/images/base/build.sh edd-base:e2e
 docker build --build-arg BASE=edd-base:e2e -t edd-workspace:e2e infra/images/omnibus
+# On a Podman machine (where `docker` is the Podman API), build.sh and the harness
+# auto-detect Podman and use a local insecure registry; the manual equivalent is
+# to tag/push images to `localhost:<port>` and set WORKSPACE_IMAGE etc. below.
 docker build -f services/ssh-gateway/Dockerfile.proxy -t edd-ssh-proxy:e2e .
 docker build -f services/ssh-gateway/Dockerfile.node -t edd-workspace-node:e2e .
 docker compose -f docker-compose.e2e.yml up -d --build --wait

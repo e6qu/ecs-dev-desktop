@@ -43,6 +43,12 @@ EOF
 # Use `docker buildx build` when the caller passes buildx-specific flags
 # (--platform, --push, --load, --builder), otherwise keep the classic `docker build`
 # behaviour so local one-off builds load into the docker daemon by default.
+#
+# Podman exposes a Docker-compatible API, but the default `docker buildx` builder on
+# a Podman machine is the `docker-container` driver: images stay inside the BuildKit
+# container and are not visible to a subsequent `docker build` for `FROM` resolution.
+# Detect a Podman backend and use `podman build` directly so the image is loaded into
+# the local store. CI uses a real Docker daemon and keeps the docker path.
 use_buildx=false
 for a; do
   case $a in
@@ -53,6 +59,9 @@ done
 if [ "$use_buildx" = true ]; then
   echo "edd: docker buildx build -t ${tag} $*"
   docker buildx build -t "$tag" "$@" "$here"
+elif docker version 2>/dev/null | grep -q 'Podman Engine'; then
+  echo "edd: podman build -t ${tag}"
+  podman build -t "$tag" "$@" "$here"
 else
   echo "edd: docker build -t ${tag}"
   docker build -t "$tag" "$@" "$here"

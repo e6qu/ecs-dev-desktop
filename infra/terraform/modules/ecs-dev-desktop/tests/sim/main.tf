@@ -24,7 +24,9 @@ provider "aws" {
   secret_key                  = "test"
   skip_credentials_validation = true
   skip_metadata_api_check     = true
-  skip_requesting_account_id  = true
+  # Allow requesting the account ID so resources that need it (e.g. aws_budgets_budget)
+  # can resolve it from STS; the sim returns a deterministic account.
+  skip_requesting_account_id = false
 
   endpoints {
     sts            = var.sim_endpoint
@@ -44,6 +46,7 @@ provider "aws" {
     appautoscaling = var.sim_endpoint
     cloudtrail     = var.sim_endpoint
     sqs            = var.sim_endpoint
+    budgets        = var.sim_endpoint
   }
 }
 
@@ -69,6 +72,14 @@ variable "enable_dns" {
 resource "aws_route53_zone" "test" {
   count = var.enable_dns ? 1 : 0
   name  = "edd-sim.example.com"
+}
+
+# Budget toggle. Default 0 (disabled); pass `-var monthly_budget_usd=100` to
+# exercise the AWS Budgets resource against the sim (sockerless #703).
+variable "monthly_budget_usd" {
+  description = "Exercise the module's AWS Budgets guardrail against the sim."
+  type        = number
+  default     = 0
 }
 
 module "edd" {
@@ -115,6 +126,11 @@ module "edd" {
   ssh_base_domain     = var.enable_dns ? "ssh.edd-sim.example.com" : ""
   route53_ssh_zone_id = var.enable_dns ? aws_route53_zone.test[0].zone_id : ""
   ssh_gateway_image   = var.enable_dns ? "eddsim/ssh-gateway:sim" : ""
+
+  # Exercise AWS Budgets when DNS/TLS is enabled, so the #713 probe suite can
+  # validate Budgets service behavior end-to-end through Terraform once
+  # sockerless #714 is fixed.
+  monthly_budget_usd = var.enable_dns ? 100 : var.monthly_budget_usd
 }
 
 output "vpc_id" {
