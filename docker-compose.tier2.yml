@@ -25,6 +25,8 @@ services:
       SIM_RUNTIME: process # API-only startup mode, no container runtime — sockerless #367
     ports:
       - "4566:4566"
+      - "15353:5353/tcp"
+      - "15353:5353/udp"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:4566/"]
       interval: 3s

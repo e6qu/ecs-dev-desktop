@@ -1534,6 +1534,11 @@ jobs:
 
           terraform -chdir="${TF_DIR}" destroy -auto-approve -input=false \
             -var "sim_endpoint=${SIM_ENDPOINT}" -var enable_dns=true
+      - name: sockerless #713 behavioral probe suite (DNS/TLS module apply + probes + destroy)
+        run: |
+          # Expose the sim's Route53 DNS port to the host so the probe can resolve records.
+          export DNS_PORT=15353
+          sh "infra/terraform/modules/ecs-dev-desktop/tests/sim/validate-sockerless-713.sh"
       - if: always()
         run: docker compose -f docker-compose.tier2.yml down
 

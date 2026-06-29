@@ -41,10 +41,12 @@ language, and — being slim — carries no AI agents); the omnibus (agents + ev
 toolchain) by `workspace-toolchain.e2e.ts`. Built and run by the path-gated
 `golden-images` CI workflow (variants) / the `e2e` job (omnibus).
 
-Build the base first, then a variant `FROM` it via the `BASE` build-arg:
+Build the base first, then a variant `FROM` it via the `BASE` build-arg.
+`build.sh` must be used for the base because it bundles and stages the first-party
+Monaco editor server into the Docker context:
 
 ```sh
-docker build -t edd-base infra/images/base
+infra/images/base/build.sh edd-base --load
 docker build --build-arg BASE=edd-base -t edd-workspace infra/images/omnibus
 ```
 

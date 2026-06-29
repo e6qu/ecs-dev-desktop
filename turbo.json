@@ -34,7 +34,11 @@
         "EDD_GITHUB_APP_ID",
         "EDD_GITHUB_APP_KEY",
         "EDD_GITHUB_TEST_ORG",
-        "EDD_GITHUB_TEST_REPO"
+        "EDD_GITHUB_TEST_REPO",
+        "WORKSPACE_IMAGE",
+        "RECONCILER_IMAGE",
+        "PROXY_IMAGE",
+        "NODE_IMAGE"
       ]
     }
   }
