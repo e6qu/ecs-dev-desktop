@@ -2,27 +2,21 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-29 (sockerless #713 + #715 validated; heavy local e2e suite passes on Podman; submodule re-pinned to `35f0f087`.)
+**Last updated:** 2026-06-29 (adversarial probe expansion complete; two new sockerless gaps filed (#722, #723); terraform-sim flake hardening in place.)
 
-## Active — sockerless #713 + #715 validated; heavy local e2e passes
+## Active — adversarial spec-fidelity probe expansion + two new upstream gaps filed
 
-sockerless **#713** closed the ten module-wide fidelity gaps (#703–#712), and **#715** closed the follow-up Budgets Terraform lifecycle gap (**#714**). The submodule is now re-pinned to `35f0f087`.
+A second wave of adversarial spec-fidelity probes is complete and wired into `terraform-sim`:
 
-Validation completed:
+- New probe slices: **SQS DLQ redrive on `maxReceiveCount`**, **Application Auto Scaling target tracking on ECS**, **ECS service scheduler `DesiredCount` reconciliation**, **EC2 security group ingress rules** (including referenced-group rules and revoke idempotency), and **CloudWatch Logs metric filters**.
+- Existing `adversarial-slice-probe.sh` (ECR/CloudTrail/KMS) was hardened: CloudTrail pagination now uses a time-bounded window and a page cap so prior test runs cannot cause an unbounded (or endless) loop.
+- All slices pass against sockerless `35f0f087` locally; the runner `run-adversarial-slices.sh` is now invoked in the `terraform-sim` CI job after `validate-sockerless-713.sh`.
+- Two genuine spec gaps were found and filed upstream:
+  - **e6qu/sockerless#722**: `RevokeSecurityGroupIngress` succeeds for a non-existent rule (real AWS returns `InvalidPermission.NotFound`).
+  - **e6qu/sockerless#723**: `PutMetricFilter` accepts an invalid filter pattern (real AWS returns `InvalidParameterException`).
+    Both probes skip the strict assertion and record the gap rather than masking it.
 
-- `pnpm build` and `pnpm test` pass.
-- `pnpm test:integ` passes across all packages: **130/130 web**, **9/9 reconciler**, **15/15 storage-ec2**, plus `@edd/e2e` integ 1/1.
-- `validate-sockerless-713.sh` applies the module with `enable_dns=true` and `monthly_budget_usd=100` and validates all behavioral surfaces end-to-end: **13/13 PASS**. The `aws_budgets_budget` resource now creates, refreshes, and destroys cleanly through Terraform.
-- `terraform-sim` default apply/destroy and idempotency re-plan pass.
-- Adversarial spec-fidelity slice (`adversarial-slice-probe.sh`) passes against sockerless `35f0f087`: ECR repository lifecycle + KMS encryption + repository policy + authorization token shape, CloudTrail `LookupEvents` pagination/filters/timebounds, and KMS key/alias/rotation/policy/data-key all behave to spec.
-- New CloudWatch Logs adversarial slice (`adversarial-slice-cloudwatch-logs.sh`) passes: log group create/destroy with `kmsKeyId`, retention policy, log stream, `PutLogEvents`, `GetLogEvents`, and `FilterLogEvents` all round-trip to spec.
-- Heavy container-mode e2e (`pnpm test:e2e:local`) passes on the Podman-backed dev workstation: **19/19 tasks**, `@edd/e2e` 46/46 tests passed, 5 skipped (variant images). Fixes needed to get there:
-  - `scripts/test-e2e.sh` now uses `infra/images/base/build.sh` (raw `docker build` was missing the staged Monaco editor bundle).
-  - `infra/images/base/build.sh` auto-detects a Podman Docker API backend and uses `podman build` directly, avoiding the `docker-container` buildx driver that doesn't load images into the local store.
-  - On Podman, `scripts/test-e2e.sh` starts a local insecure registry (`localhost:15000`) and pushes the reconciler/proxy/base/workspace/node images there, then sets the corresponding `*_IMAGE` env vars so the container-mode sim and self-contained SSH tests pull fully-qualified image names.
-  - `turbo.json` `test:e2e` env list now includes `WORKSPACE_IMAGE`, `RECONCILER_IMAGE`, `PROXY_IMAGE`, and `NODE_IMAGE` so they pass through to the test processes.
-
-Next: open a PR with the current changes.
+Next: monitor CI for the new slices; make strict once upstream fixes land.
 
 ## Prior — sockerless fidelity audit filed; real apply still decision-gated
 

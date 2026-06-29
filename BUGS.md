@@ -4,6 +4,8 @@
 
 ## Open
 
+- **`terraform-sim` CloudWatch Logs `ResourceAlreadyExistsException` flake (2026-06-29).** The first CI run of PR #175 failed in the `terraform-sim` job during `validate-sockerless-713.sh` apply with `ResourceAlreadyExistsException: The specified log group already exists: /eddsim/control-plane`. The preceding DNS/TLS step had reported a successful destroy (`95 destroyed`). A re-run passed. Local attempts to reproduce the exact sequence have not yet succeeded. Mitigated (boyscout rule) with: (1) failure-time sockerless container logs in CI, (2) a pre-apply `describe-log-groups` dump in the probe script, (3) standard-API cleanup of the three module log groups before apply in `validate-sockerless-713.sh`, and (4) a post-bring-up sim health wait in the `terraform-sim` CI job. Root cause unknown — under investigation; will file upstream on `e6qu/sockerless` only once a reproduction or clear evidence is in hand.
+
 - **Cross-arch golden-image builds require QEMU/binfmt on the build host (2026-06-28).**
   The base workspace image now compiles `node-pty` for the target architecture
   inside the Dockerfile builder stage, so the correct native binary is produced
@@ -150,6 +152,10 @@ in-app path-based proxy hands the session-authorized browser the token, supersed
 old STATIC-gate "tokenless behind the gate" framing (see _Resolved (repo)_).
 
 ## External blockers (upstream — `e6qu/sockerless`)
+
+- **EC2 `RevokeSecurityGroupIngress` succeeds for a non-existent rule (2026-06-29).** Filed as **e6qu/sockerless#722**. Real AWS returns `InvalidPermission.NotFound`; the sim currently returns success. The `adversarial-slice-ec2-sg.sh` probe skips the strict assertion and records the gap.
+
+- **CloudWatch Logs `PutMetricFilter` accepts an invalid filter pattern (2026-06-29).** Filed as **e6qu/sockerless#723**. Real AWS rejects `{` with `InvalidParameterException`; the sim creates the filter. The `adversarial-slice-cloudwatch-metric-filter.sh` probe skips the strict assertion and records the gap.
 
 - **Module-wide sockerless fidelity audit — ALL 10 GAPS FIXED upstream, re-pinned to `35f0f087`, validated downstream through integration tier + new behavioral probes (2026-06-29).** Audited every AWS resource created by `infra/terraform/modules/ecs-dev-desktop` against sockerless `08b7ee71` and filed **#703–#712**. sockerless **#713** closed all ten by adding the real behavioral side effects: Budgets service slice (#703), SQS DLQ auto-redrive (#704), CloudWatch alarm actions → SNS (#705), CloudWatch Logs metric filters → metrics (#706), Application Auto Scaling target tracking → ECS DesiredCount (#707), ACM `AMAZON_ISSUED` real RSA/X509 PEM (#708), ELBv2 HTTPS/TLS termination (#709), Route53 UDP+TCP DNS server (#710), ECS service scheduler reconciles `DesiredCount` (#711), EC2 security-group ingress enforcement at nftables (#712). sockerless **#715** closed the follow-up Budgets Terraform lifecycle gap (**#714**), so `aws_budgets_budget` now creates/reads/destroys cleanly through the Terraform provider. Re-pinned the submodule to `35f0f087`. Validated: `pnpm build`/`test` green; `pnpm test:integ` green (web 130/130, reconciler 9/9, storage-ec2 15/15, e2e integ 1/1); new `validate-sockerless-713.sh` probe suite **13/13 PASS** against the module with `enable_dns=true` and `monthly_budget_usd=100`; `terraform-sim` default apply/destroy and idempotency re-plan pass.
 

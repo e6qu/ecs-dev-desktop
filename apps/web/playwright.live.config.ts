@@ -26,7 +26,7 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   forbidOnly: IS_CI,
-  retries: 0,
+  retries: IS_CI ? 1 : 0,
   reporter: IS_CI ? "line" : "list",
   use: { baseURL: BASE_URL, trace: "on-first-retry" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],

@@ -493,6 +493,14 @@ jobs:
             sleep "$((attempt * 20))"
           done
           exit 1
+      - name: Wait until the sim AWS API is reachable
+        run: |
+          ok=0
+          for _ in $(seq 1 90); do
+            if curl -s -o /dev/null --max-time 3 http://127.0.0.1:4566/; then echo "sim reachable"; ok=1; break; fi
+            sleep 2
+          done
+          if [ "$ok" != 1 ]; then echo "::error::sim not reachable after wait"; docker ps -a; exit 1; fi
       - name: terraform init + validate
         run: |
           terraform -chdir="${TF_DIR}" init -input=false
@@ -1539,6 +1547,15 @@ jobs:
           # Expose the sim's Route53 DNS port to the host so the probe can resolve records.
           export DNS_PORT=15353
           sh "infra/terraform/modules/ecs-dev-desktop/tests/sim/validate-sockerless-713.sh"
+      - name: Adversarial spec-fidelity probe slices
+        env:
+          AWS_ENDPOINT_URL: http://127.0.0.1:4566
+        run: sh "infra/terraform/modules/ecs-dev-desktop/tests/sim/run-adversarial-slices.sh"
+      - name: Diagnostics (sim logs)
+        if: failure()
+        run: |
+          echo "== sim logs =="
+          docker compose -f docker-compose.tier2.yml logs --tail 300 sockerless-aws || true
       - if: always()
         run: docker compose -f docker-compose.tier2.yml down
 
