@@ -14,6 +14,8 @@ Validation completed:
 - `pnpm test:integ` passes across all packages: **130/130 web**, **9/9 reconciler**, **15/15 storage-ec2**, plus `@edd/e2e` integ 1/1.
 - `validate-sockerless-713.sh` applies the module with `enable_dns=true` and `monthly_budget_usd=100` and validates all behavioral surfaces end-to-end: **13/13 PASS**. The `aws_budgets_budget` resource now creates, refreshes, and destroys cleanly through Terraform.
 - `terraform-sim` default apply/destroy and idempotency re-plan pass.
+- Adversarial spec-fidelity slice (`adversarial-slice-probe.sh`) passes against sockerless `35f0f087`: ECR repository lifecycle + KMS encryption + repository policy + authorization token shape, CloudTrail `LookupEvents` pagination/filters/timebounds, and KMS key/alias/rotation/policy/data-key all behave to spec.
+- New CloudWatch Logs adversarial slice (`adversarial-slice-cloudwatch-logs.sh`) passes: log group create/destroy with `kmsKeyId`, retention policy, log stream, `PutLogEvents`, `GetLogEvents`, and `FilterLogEvents` all round-trip to spec.
 - Heavy container-mode e2e (`pnpm test:e2e:local`) passes on the Podman-backed dev workstation: **19/19 tasks**, `@edd/e2e` 46/46 tests passed, 5 skipped (variant images). Fixes needed to get there:
   - `scripts/test-e2e.sh` now uses `infra/images/base/build.sh` (raw `docker build` was missing the staged Monaco editor bundle).
   - `infra/images/base/build.sh` auto-detects a Podman Docker API backend and uses `podman build` directly, avoiding the `docker-container` buildx driver that doesn't load images into the local store.
