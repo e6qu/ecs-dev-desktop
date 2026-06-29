@@ -57,6 +57,22 @@ aws_cmd() {
 
 # --- Apply ------------------------------------------------------------------
 terraform -chdir="${TF_DIR}" init -input=false
+
+# Diagnostic: list any pre-existing /eddsim log groups before apply.
+# The DNS/TLS step should have destroyed these; if one survives, the apply
+# will fail with ResourceAlreadyExistsException and this tells us which.
+printf '\n-- pre-apply log groups --\n'
+aws_cmd logs describe-log-groups --log-group-name-prefix "/eddsim" \
+  --query 'logGroups[*].logGroupName' --output text || true
+
+# Self-healing cleanup: if a previous step leaked the module's named log groups,
+# delete them now using the standard AWS API. This is endpoint-only behavior
+# (works on real AWS too) and prevents a known sockerless consistency flake from
+# failing the apply. Diagnose above if this ever has work to do.
+for lg in /eddsim/control-plane /eddsim/reconciler /eddsim/workspaces; do
+  aws_cmd logs delete-log-group --log-group-name "${lg}" >/dev/null 2>&1 || true
+done
+
 terraform -chdir="${TF_DIR}" apply -auto-approve -input=false \
   -var "sim_endpoint=${ENDPT}" -var enable_dns=true -var monthly_budget_usd=0
 
