@@ -252,12 +252,21 @@ echo "=== TLS: connect to ALB HTTPS endpoint and verify certificate SAN ==="
 if ! command -v openssl >/dev/null 2>&1; then
   fail "openssl is required for TLS verification"
 fi
-# Give the sim TLS proxy a moment to bind after CreateListener.
-sleep 2
-san=$(echo | openssl s_client -connect "127.0.0.1:${listener_port}" -servername "$fqdn" 2>/dev/null |
-  openssl x509 -noout -ext subjectAltName 2>/dev/null |
-  tr -d ' ')
+# Give the sim TLS proxy time to bind after CreateListener; retry because some
+# simulators provision the listener asynchronously.
+san=""
+raw=""
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+  raw=$(echo | openssl s_client -connect "127.0.0.1:${listener_port}" -servername "$fqdn" 2>&1 || true)
+  san=$(printf '%s\n' "$raw" | openssl x509 -noout -ext subjectAltName 2>/dev/null | tr -d ' ' || true)
+  if echo "$san" | grep -qF "DNS:${fqdn}"; then
+    break
+  fi
+  sleep 1
+done
 if ! echo "$san" | grep -qF "DNS:${fqdn}"; then
+  echo "DEBUG: openssl s_client raw output:" >&2
+  printf '%s\n' "$raw" >&2
   fail "Expected SAN DNS:${fqdn}, got: ${san}"
 fi
 pass "TLS handshake served certificate with SAN DNS:${fqdn}"

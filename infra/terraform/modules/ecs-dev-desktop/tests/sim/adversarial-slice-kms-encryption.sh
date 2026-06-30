@@ -47,7 +47,9 @@ user_arn="arn:aws:iam::123456789012:user/${user_name}"
 ak_json=$(aws iam create-access-key --user-name "$user_name" --output json)
 akid=$(echo "$ak_json" | python3 -c 'import sys,json; print(json.load(sys.stdin)["AccessKey"]["AccessKeyId"])')
 secret=$(echo "$ak_json" | python3 -c 'import sys,json; print(json.load(sys.stdin)["AccessKey"]["SecretAccessKey"])')
-[ -n "$akid" ] && [ -n "$secret" ] || fail "CreateAccessKey did not return credentials"
+if [ -z "$akid" ] || [ -z "$secret" ]; then
+  fail "CreateAccessKey did not return credentials"
+fi
 pass "Created IAM user and access key"
 
 echo "=== KMS: create key with user-scoped policy (Encrypt allowed, Decrypt denied) ==="
