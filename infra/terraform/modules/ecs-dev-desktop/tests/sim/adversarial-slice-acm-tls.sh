@@ -210,10 +210,33 @@ listener_arn=$(aws elbv2 create-listener \
   python3 -c 'import sys,json; print(json.load(sys.stdin)["Listeners"][0]["ListenerArn"])')
 pass "Created HTTPS listener ${listener_arn}"
 
-echo "=== Route53: create A record ${fqdn} -> 127.0.0.1 ==="
-# The sim's ALB TLS proxy binds the listener port on 127.0.0.1; on real AWS an
-# alias A record would point at the ALB. The DNS query below resolves through
-# the authoritative server to prove the record is served.
+# Choose a DNS query tool. dig is preferred; drill or nslookup are fallbacks.
+# If DNS_PORT is set, query the sim's authoritative DNS server (CI/local sim);
+# otherwise use the system resolver (real AWS).
+dns_query() {
+  name="$1"
+  if [ -n "${DNS_PORT:-}" ]; then
+    if command -v dig >/dev/null 2>&1; then
+      dig @127.0.0.1 -p "$DNS_PORT" "$name" +short +time=5 +tries=2 || true
+    elif command -v drill >/dev/null 2>&1; then
+      drill @127.0.0.1 -p "$DNS_PORT" "$name" 2>/dev/null | awk '/^'"$(echo "$name" | sed 's/\./\\./g')"'\./{print $5}' || true
+    else
+      nslookup -port="$DNS_PORT" "$name" 127.0.0.1 2>/dev/null | awk '/^Address: /{print $2}' | tail -n1 || true
+    fi
+  else
+    if command -v dig >/dev/null 2>&1; then
+      dig "$name" +short +time=5 +tries=2 || true
+    elif command -v drill >/dev/null 2>&1; then
+      drill "$name" 2>/dev/null | awk '/^'"$(echo "$name" | sed 's/\./\\./g')"'\./{print $5}' || true
+    else
+      nslookup "$name" 2>/dev/null | awk '/^Address: /{print $2}' | tail -n1 || true
+    fi
+  fi
+}
+
+echo "=== Route53: create CNAME ${fqdn} -> ${alb_dns} ==="
+# Real AWS uses an alias A record or CNAME from app.<domain> to the ALB DNS name.
+# The sim's Route53 DNS server serves the CNAME so the TLS SNI matches the cert SAN.
 aws route53 change-resource-record-sets \
   --hosted-zone-id "$zone_id" \
   --change-batch "{
@@ -221,32 +244,20 @@ aws route53 change-resource-record-sets \
       \"Action\": \"CREATE\",
       \"ResourceRecordSet\": {
         \"Name\": \"$fqdn\",
-        \"Type\": \"A\",
+        \"Type\": \"CNAME\",
         \"TTL\": 60,
-        \"ResourceRecords\": [{\"Value\": \"127.0.0.1\"}]
+        \"ResourceRecords\": [{\"Value\": \"$alb_dns\"}]
       }
     }]
-  }" >/dev/null || fail "CREATE A record rejected"
-pass "Created A record"
-
-# Choose a DNS query tool. dig is preferred; drill or nslookup are fallbacks.
-dns_query() {
-  name="$1"
-  if command -v dig >/dev/null 2>&1; then
-    dig @127.0.0.1 -p "$DNS_PORT" "$name" +short +time=5 +tries=2 || true
-  elif command -v drill >/dev/null 2>&1; then
-    drill @127.0.0.1 -p "$DNS_PORT" "$name" 2>/dev/null | awk '/^'"$(echo "$name" | sed 's/\./\\./g')"'\./{print $5}' || true
-  else
-    nslookup -port="$DNS_PORT" "$name" 127.0.0.1 2>/dev/null | awk '/^Address: /{print $2}' | tail -n1 || true
-  fi
-}
+  }" >/dev/null || fail "CREATE CNAME rejected"
+pass "Created CNAME ${fqdn} -> ${alb_dns}"
 
 echo "=== DNS: resolve ${fqdn} via authoritative server ==="
-a_answer=$(dns_query "$fqdn")
-if [ "$a_answer" != "127.0.0.1" ]; then
-  fail "Expected A record 127.0.0.1, got: ${a_answer}"
+resolved=$(dns_query "$fqdn")
+if [ -z "$resolved" ]; then
+  fail "Could not resolve ${fqdn}"
 fi
-pass "${fqdn} resolves to 127.0.0.1"
+pass "${fqdn} resolves to ${resolved}"
 
 echo "=== TLS: connect to ALB HTTPS endpoint and verify certificate SAN ==="
 if ! command -v openssl >/dev/null 2>&1; then
@@ -257,7 +268,7 @@ fi
 san=""
 raw=""
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-  raw=$(echo | openssl s_client -connect "127.0.0.1:${listener_port}" -servername "$fqdn" 2>&1 || true)
+  raw=$(echo | openssl s_client -connect "${resolved}:${listener_port}" -servername "$fqdn" 2>&1 || true)
   san=$(printf '%s\n' "$raw" | openssl x509 -noout -ext subjectAltName 2>/dev/null | tr -d ' ' || true)
   if echo "$san" | grep -qF "DNS:${fqdn}"; then
     break
