@@ -99,15 +99,14 @@ if [ "$remaining" -ne 0 ]; then
 fi
 pass "Revoke of existing ingress rule removes it"
 
-echo "=== EC2 SG: revoking a non-existent rule should fail (recorded upstream gap if it passes) ==="
+echo "=== EC2 SG: revoking a non-existent rule fails loud ==="
 if aws ec2 revoke-security-group-ingress \
   --group-id "$alb_sg" \
   --protocol tcp \
   --port 22 \
   --cidr 0.0.0.0/0 >/dev/null 2>&1; then
-  echo "SKIP: sockerless allowed revoke of a non-existent ingress rule (real AWS returns InvalidPermission.NotFound)"
-else
-  pass "Revoke of non-existent ingress rule fails loud"
+  fail "revoking non-existent ingress rule should have failed"
 fi
+pass "Revoke of non-existent ingress rule fails loud"
 
 echo "=== ALL EC2 SECURITY GROUP ADVERSARIAL SLICE PROBES PASSED ==="
