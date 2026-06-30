@@ -2,21 +2,15 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-29 (adversarial probe expansion complete; two new sockerless gaps filed (#722, #723); terraform-sim flake hardening in place.)
+**Last updated:** 2026-06-30 (PR #178 green; all checks pass including terraform-sim; awaiting merge.)
 
-## Active — adversarial spec-fidelity probe expansion + two new upstream gaps filed
+## Active — PR #178 green, ready to merge
 
-A second wave of adversarial spec-fidelity probes is complete and wired into `terraform-sim`:
+The second-wave adversarial probe gaps filed upstream (**e6qu/sockerless#722** and **#723**) are fixed by **sockerless #725**, with strict assertions enforced in `adversarial-slice-ec2-sg.sh` and `adversarial-slice-cloudwatch-metric-filter.sh`. The submodule was re-pinned past the **#727** revoke-by-rule-id regression fix to `e2fafce6`. I verified the reproduction locally and closed **e6qu/sockerless#727**.
 
-- New probe slices: **SQS DLQ redrive on `maxReceiveCount`**, **Application Auto Scaling target tracking on ECS**, **ECS service scheduler `DesiredCount` reconciliation**, **EC2 security group ingress rules** (including referenced-group rules and revoke idempotency), and **CloudWatch Logs metric filters**.
-- Existing `adversarial-slice-probe.sh` (ECR/CloudTrail/KMS) was hardened: CloudTrail pagination now uses a time-bounded window and a page cap so prior test runs cannot cause an unbounded (or endless) loop.
-- All slices pass against sockerless `35f0f087` locally; the runner `run-adversarial-slices.sh` is now invoked in the `terraform-sim` CI job after `validate-sockerless-713.sh`.
-- Two genuine spec gaps were found and filed upstream:
-  - **e6qu/sockerless#722**: `RevokeSecurityGroupIngress` succeeds for a non-existent rule (real AWS returns `InvalidPermission.NotFound`).
-  - **e6qu/sockerless#723**: `PutMetricFilter` accepts an invalid filter pattern (real AWS returns `InvalidParameterException`).
-    Both probes skip the strict assertion and record the gap rather than masking it.
+Pushed the submodule bump + continuity updates to PR #178. All CI checks now pass, including the previously failing `terraform-sim` (21m35s). PR #178 is ready for merge.
 
-Next: monitor CI for the new slices; make strict once upstream fixes land.
+Next: merge PR #178, then return to AWS-account-gated deploy readiness.
 
 ## Prior — sockerless fidelity audit filed; real apply still decision-gated
 

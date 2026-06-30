@@ -77,10 +77,9 @@ if aws logs put-metric-filter \
   --filter-pattern '{' \
   --metric-transformations "metricName=Bad,metricNamespace=${namespace},metricValue=1" \
   >/dev/null 2>&1; then
-  echo "SKIP: sockerless accepted an invalid metric-filter pattern (real AWS returns InvalidParameterException)"
-else
-  pass "Invalid metric-filter pattern rejected"
+  fail "invalid metric-filter pattern should have been rejected"
 fi
+pass "Invalid metric-filter pattern rejected"
 
 echo "=== CloudWatch Logs metric filter: cleanup ==="
 aws logs delete-metric-filter --log-group-name "$log_group" --filter-name probe-filter >/dev/null 2>&1 || true
