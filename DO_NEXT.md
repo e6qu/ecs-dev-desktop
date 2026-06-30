@@ -47,6 +47,7 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
+- **Third adversarial spec-fidelity probe wave — IN PROGRESS (branch `feat/adversarial-probes-wave3`).** Implement and wire the remaining probe slices: CloudWatch Alarm → SNS, Route53 DNS, ACM/TLS, KMS encryption-in-use, EC2 SG network-layer enforcement, ECS rolling update, S3 backend, EBS cross-region snapshot, Budgets notification, ECS reconciler heal. Bump sockerless to `38e311ac` (#737), update `BUGS.md` for fixed #731/#732 and open #734, and run the full `run-adversarial-slices.sh` orchestrator in CI.
 - **Merge PR #178.** All CI checks are green (including `terraform-sim`). Land the sockerless bump + strict adversarial probes, then return to AWS-account-gated deploy readiness. (1) **Viewer RBAC** — the demo now gates its
   mutating controls on the REAL `@edd/authz` `defineAbilityFor` (`DemoControlPlane.canMutateWorkspaces()`),
   so a viewer sees the workspace list read-only (no create form, no start/stop/delete) — the identity
@@ -105,6 +106,9 @@ deferral by choice.
   (TCP-TG Matcher) in #687, #688 (TCP-TG HealthCheckPath) in #690, #691 (stable NLB DNSName) in #692 —
   each found on the idempotency re-plan, one per round. Remaining real-AWS work (live byte-stream loop
   through the NLB, real SSH zone) is gated on decisions #1 (account) / #2 (the SSH zone).
+
+- **Wave-3 adversarial spec-fidelity probes — in progress, two upstream blockers filed.** On `feat/adversarial-probes-wave3`:
+  (1) **Route53 DNS probe** (`adversarial-slice-route53-dns.sh`) is written and shellcheck-clean; it fails on the wildcard-CNAME assertion because sockerless `e2fafce6` answers DNS queries with exact-name matching only. Filed **e6qu/sockerless#731**. (2) **KMS encryption probe** (`adversarial-slice-kms-encryption.sh`) is blocked by **e6qu/sockerless#732** (KMS `Encrypt`/`Decrypt` do not perform real encryption or enforce key-policy Deny). Both slices will be enabled/strictened once the respective upstream fixes land.
 
 - **Catalog optimistic concurrency (follow-up to the 2026-06-22 sweep L2).** `CatalogService.update`/`create`
   are last-write-wins (no `version` attribute → two concurrent admin edits of the same base image clobber).
@@ -298,6 +302,12 @@ count>10`; `DescribeTasks` empty `tasks`) and **#619** (Scheduler accepts an inv
     cold-start, federation, IAM enforcement, 200+ load, wake-on-connect) follow as further jobs.
 - **On DNS (#2):** real `*.devbox.<domain>` routing + ACM (the module is sim-proven;
   the real hosted zone + cert issuance is AWS/registrar-gated).
+- **On sockerless KMS fidelity:** wave-3 adversarial KMS-encryption probe
+  (`adversarial-slice-kms-encryption.sh`) is blocked by **e6qu/sockerless#732**.
+  The sim's `kms:Encrypt` does not produce real ciphertext (blob decodes to
+  `kms-sim:<key-id>:<base64-plaintext>`) and an explicit `Deny kms:Decrypt`
+  principal in the key policy is ignored. Implement the slice once the upstream
+  fix lands.
 
 ---
 

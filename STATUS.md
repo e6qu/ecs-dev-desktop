@@ -2,15 +2,22 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-30 (PR #178 green; all checks pass including terraform-sim; awaiting merge.)
+**Last updated:** 2026-07-01 (wave-3 adversarial probes in progress on `feat/adversarial-probes-wave3`; sockerless #737 fixes #731/#732; #734 still open.)
 
-## Active — PR #178 green, ready to merge
+## Active — third adversarial spec-fidelity probe wave
 
-The second-wave adversarial probe gaps filed upstream (**e6qu/sockerless#722** and **#723**) are fixed by **sockerless #725**, with strict assertions enforced in `adversarial-slice-ec2-sg.sh` and `adversarial-slice-cloudwatch-metric-filter.sh`. The submodule was re-pinned past the **#727** revoke-by-rule-id regression fix to `e2fafce6`. I verified the reproduction locally and closed **e6qu/sockerless#727**.
+Building a third wave of adversarial probes to increase confidence in surfaces the ecs-dev-desktop module depends on: CloudWatch Alarm → SNS, Route53 DNS resolution, ACM + ALB TLS termination, KMS encryption-in-use, EC2 SG network-layer enforcement, ECS rolling update + circuit breaker, S3 backend encryption/lifecycle, EBS cross-region snapshot copy, Budgets notification wiring, and ECS reconciler heal.
 
-Pushed the submodule bump + continuity updates to PR #178. All CI checks now pass, including the previously failing `terraform-sim` (21m35s). PR #178 is ready for merge.
+Upstream **e6qu/sockerless#737** fixed **#731** (Route53 wildcard DNS) and **#732** (KMS real encryption + key-policy Deny), so the Route53, ACM/TLS, and KMS probes are now enabled and passing locally. **e6qu/sockerless#734** remains open: CloudWatch alarm SNS notifications to SQS are flaky/malformed, so the alarm probe skips SQS receipt verification but still proves alarm state transition and AlarmActions wiring.
 
-Next: merge PR #178, then return to AWS-account-gated deploy readiness.
+The network-layer SG and ECS reconciler-heal probes require `SIM_RUNTIME=docker` (real task netns/containers), so they skip in process-mode CI with explanatory messages. The ECS rolling-update probe runs in process mode by asserting deployment configuration round-trip and PRIMARY deployment creation.
+
+Next: bump the submodule pin to `38e311ac`, run the full orchestrator in CI, and open PR #179.## Wave-3 adversarial probes — in progress on `feat/adversarial-probes-wave3`
+
+- **Route53 DNS spec-fidelity probe** (`adversarial-slice-route53-dns.sh`) created and shellcheck-clean. It proves hosted-zone creation, NS-record retrieval, A-record resolution, and wildcard-CNAME resolution through the authoritative DNS server. Against sockerless `e2fafce6` the A record and NS records resolve, but wildcard DNS records do not: `route53_dns.go:resolveRoute53` matches only exact names, so `foo.example.test` does not match a `*.example.test` CNAME. Filed **e6qu/sockerless#731** with a minimal AWS-CLI + `dig` reproduction; recorded in `BUGS.md`/`WHAT_WE_DID.md`. The slice will be enabled once the upstream fix lands.
+- **KMS encryption spec-fidelity probe** (`adversarial-slice-kms-encryption.sh`) is blocked by **e6qu/sockerless#732** (KMS `Encrypt`/`Decrypt` do not perform real encryption or enforce key-policy Deny); see `BUGS.md`/`WHAT_WE_DID.md` for details.
+
+**2026-06-30 — Wave-3 KMS adversarial probe blocked upstream (e6qu/sockerless#732).** The planned `adversarial-slice-kms-encryption.sh` cannot yet prove real KMS encryption or key-policy access control: sockerless `e2fafce6` returns a trivial `kms-sim:<key-id>:<plaintext>` ciphertext blob and ignores an explicit `Deny kms:Decrypt` principal in the key policy. Recorded in `BUGS.md`; no workaround. The slice lands once the upstream fix is available.
 
 ## Prior — sockerless fidelity audit filed; real apply still decision-gated
 

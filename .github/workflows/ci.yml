@@ -1550,6 +1550,8 @@ jobs:
       - name: Adversarial spec-fidelity probe slices
         env:
           AWS_ENDPOINT_URL: http://127.0.0.1:4566
+          # Expose the sim's Route53 DNS port to the host so DNS-resolution slices can query records.
+          DNS_PORT: 15353
         run: sh "infra/terraform/modules/ecs-dev-desktop/tests/sim/run-adversarial-slices.sh"
       - name: Diagnostics (sim logs)
         if: failure()
