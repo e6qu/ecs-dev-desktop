@@ -2,13 +2,15 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-30 (sockerless re-pinned to #725; adversarial probes now strict against fixed #722/#723.)
+**Last updated:** 2026-06-30 (PR #178 green; all checks pass including terraform-sim; awaiting merge.)
 
-## Active — sockerless #725 adopted; adversarial probes strict
+## Active — PR #178 green, ready to merge
 
-The second-wave adversarial probe gaps filed upstream (**e6qu/sockerless#722** and **#723**) are now fixed by **sockerless #725**. The submodule is re-pinned to `eaf80dc`, the process-mode sim was rebuilt, and the previously-skipped strict assertions in `adversarial-slice-ec2-sg.sh` and `adversarial-slice-cloudwatch-metric-filter.sh` are now enforced: revoke of a non-existent ingress rule fails, and an invalid metric-filter pattern is rejected. All adversarial slices pass locally against the rebuilt sim. Continuity files updated; lint/build/typecheck verification in progress.
+The second-wave adversarial probe gaps filed upstream (**e6qu/sockerless#722** and **#723**) are fixed by **sockerless #725**, with strict assertions enforced in `adversarial-slice-ec2-sg.sh` and `adversarial-slice-cloudwatch-metric-filter.sh`. The submodule was re-pinned past the **#727** revoke-by-rule-id regression fix to `e2fafce6`. I verified the reproduction locally and closed **e6qu/sockerless#727**.
 
-Next: open PR, then return to AWS-account-gated deploy readiness.
+Pushed the submodule bump + continuity updates to PR #178. All CI checks now pass, including the previously failing `terraform-sim` (21m35s). PR #178 is ready for merge.
+
+Next: merge PR #178, then return to AWS-account-gated deploy readiness.
 
 ## Prior — sockerless fidelity audit filed; real apply still decision-gated
 

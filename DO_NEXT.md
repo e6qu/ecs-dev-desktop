@@ -47,7 +47,7 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **Demo journey: two behavior changes — DONE (2026-06-25).** (1) **Viewer RBAC** — the demo now gates its
+- **Merge PR #178.** All CI checks are green (including `terraform-sim`). Land the sockerless bump + strict adversarial probes, then return to AWS-account-gated deploy readiness. (1) **Viewer RBAC** — the demo now gates its
   mutating controls on the REAL `@edd/authz` `defineAbilityFor` (`DemoControlPlane.canMutateWorkspaces()`),
   so a viewer sees the workspace list read-only (no create form, no start/stop/delete) — the identity
   switcher tells a true CASL story. (2) **Provisioning dwell** — `create` now lands in `provisioning` and
