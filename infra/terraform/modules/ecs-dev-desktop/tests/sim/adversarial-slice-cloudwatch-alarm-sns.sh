@@ -85,6 +85,26 @@ if [ "$alarm_actions" != "$topic_arn" ]; then
 fi
 pass "Alarm action points at SNS topic"
 
+echo "=== CloudWatch alarm -> SNS: diagnostic SNS->SQS fan-out check ==="
+aws sns publish --topic-arn "$topic_arn" --message '{"probe":"sns-to-sqs-fanout"}' >/dev/null || fail "SNS Publish rejected"
+fanout_body=""
+for _ in 1 2 3 4 5; do
+  fanout_body=$(aws sqs receive-message --queue-url "$queue_url" --output json 2>/dev/null |
+    python3 -c 'import sys,json; print(json.load(sys.stdin).get("Messages",[{}])[0].get("Body",""))' 2>/dev/null || true)
+  if [ -n "$fanout_body" ]; then
+    break
+  fi
+  sleep 1
+done
+if [ -z "$fanout_body" ]; then
+  fail "direct SNS Publish to topic did not reach subscribed SQS queue; SNS->SQS fan-out is broken"
+fi
+pass "Direct SNS->SQS fan-out works"
+
+# Drain the diagnostic message so it does not interfere with alarm receipt.
+aws sqs purge-queue --queue-url "$queue_url" >/dev/null || true
+sleep 1
+
 echo "=== CloudWatch alarm -> SNS: breach threshold and wait for ALARM state ==="
 timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 aws cloudwatch put-metric-data \
