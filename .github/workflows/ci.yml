@@ -199,14 +199,14 @@ jobs:
         run: sh scripts/gen-sim-tls-cert.sh
       # Retry bring-up: image pulls can transiently hit registry rate limits
       # (public.ecr.aws / Docker Hub) on shared runner IPs.
-      - name: Build & start the sockerless sims over TLS (HTTPS harness)
+      - name: Build & start the sockerless AWS simulator (from source, API-only mode)
         run: |
           for attempt in 1 2 3; do
-            if docker compose -f docker-compose.https.yml up -d --build --wait; then
+            if docker compose -f docker-compose.tier2.yml -f docker-compose.tier2.host.yml up -d --build --wait sockerless-aws; then
               exit 0
             fi
-            echo "::warning::HTTPS sim bring-up failed (attempt ${attempt}); retrying"
-            docker compose -f docker-compose.https.yml down -v || true
+            echo "::warning::sim bring-up failed (attempt ${attempt}); retrying"
+            docker compose -f docker-compose.tier2.yml -f docker-compose.tier2.host.yml down -v || true
             sleep "$((attempt * 20))"
           done
           exit 1
@@ -1557,9 +1557,9 @@ jobs:
         if: failure()
         run: |
           echo "== sim logs =="
-          docker compose -f docker-compose.tier2.yml logs --tail 300 sockerless-aws || true
+          docker compose -f docker-compose.tier2.yml -f docker-compose.tier2.host.yml logs --tail 300 sockerless-aws || true
       - if: always()
-        run: docker compose -f docker-compose.tier2.yml down
+        run: docker compose -f docker-compose.tier2.yml -f docker-compose.tier2.host.yml down
 
   shellcheck:
     name: shellcheck

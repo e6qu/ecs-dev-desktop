@@ -210,6 +210,25 @@ listener_arn=$(aws elbv2 create-listener \
   python3 -c 'import sys,json; print(json.load(sys.stdin)["Listeners"][0]["ListenerArn"])')
 pass "Created HTTPS listener ${listener_arn}"
 
+echo "=== Route53: create A record ${fqdn} -> 127.0.0.1 ==="
+# The sim's ALB TLS proxy binds the listener port on the host loopback. A real
+# AWS deployment would use an alias A record pointing at the ALB; here we target
+# the loopback address the sim's TLS data plane is reachable on.
+aws route53 change-resource-record-sets \
+  --hosted-zone-id "$zone_id" \
+  --change-batch "{
+    \"Changes\": [{
+      \"Action\": \"CREATE\",
+      \"ResourceRecordSet\": {
+        \"Name\": \"$fqdn\",
+        \"Type\": \"A\",
+        \"TTL\": 60,
+        \"ResourceRecords\": [{\"Value\": \"127.0.0.1\"}]
+      }
+    }]
+  }" >/dev/null || fail "CREATE A record rejected"
+pass "Created A record"
+
 # Choose a DNS query tool. dig is preferred; drill or nslookup are fallbacks.
 # If DNS_PORT is set, query the sim's authoritative DNS server (CI/local sim);
 # otherwise use the system resolver (real AWS).
@@ -249,30 +268,12 @@ dns_query() {
   done
 }
 
-echo "=== Route53: create CNAME ${fqdn} -> ${alb_dns} ==="
-# Real AWS uses an alias A record or CNAME from app.<domain> to the ALB DNS name.
-# The sim's Route53 DNS server serves the CNAME so the TLS SNI matches the cert SAN.
-aws route53 change-resource-record-sets \
-  --hosted-zone-id "$zone_id" \
-  --change-batch "{
-    \"Changes\": [{
-      \"Action\": \"CREATE\",
-      \"ResourceRecordSet\": {
-        \"Name\": \"$fqdn\",
-        \"Type\": \"CNAME\",
-        \"TTL\": 60,
-        \"ResourceRecords\": [{\"Value\": \"$alb_dns\"}]
-      }
-    }]
-  }" >/dev/null || fail "CREATE CNAME rejected"
-pass "Created CNAME ${fqdn} -> ${alb_dns}"
-
 echo "=== DNS: resolve ${fqdn} via authoritative server ==="
 resolved=$(dns_query "$fqdn")
-if [ -z "$resolved" ]; then
-  fail "Could not resolve ${fqdn}"
+if [ "$resolved" != "127.0.0.1" ]; then
+  fail "Expected A record 127.0.0.1, got: ${resolved}"
 fi
-pass "${fqdn} resolves to ${resolved}"
+pass "${fqdn} resolves to 127.0.0.1"
 
 echo "=== TLS: connect to ALB HTTPS endpoint and verify certificate SAN ==="
 if ! command -v openssl >/dev/null 2>&1; then
