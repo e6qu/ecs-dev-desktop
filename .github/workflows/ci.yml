@@ -202,11 +202,11 @@ jobs:
       - name: Build & start the sockerless AWS simulator (from source, API-only mode)
         run: |
           for attempt in 1 2 3; do
-            if docker compose -f docker-compose.tier2.yml -f docker-compose.tier2.host.yml up -d --build --wait sockerless-aws; then
+            if docker compose -f docker-compose.tier2.yml up -d --build --wait sockerless-aws; then
               exit 0
             fi
             echo "::warning::sim bring-up failed (attempt ${attempt}); retrying"
-            docker compose -f docker-compose.tier2.yml -f docker-compose.tier2.host.yml down -v || true
+            docker compose -f docker-compose.tier2.yml down -v || true
             sleep "$((attempt * 20))"
           done
           exit 1
