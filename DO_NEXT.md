@@ -47,10 +47,9 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **Third adversarial spec-fidelity probe wave — DONE on branch `feat/adversarial-probes-wave3` (2026-07-01).** All ten probe slices are implemented, wired into `terraform-sim`, and the full CI run is green. Merge PR #179 on user go-ahead, then return to AWS-account-gated deploy readiness. **e6qu/sockerless#734** remains open (CloudWatch Alarm → SNS → SQS delivery is flaky/malformed), so the alarm probe skips SQS receipt verification pending the upstream fix.
+- **Third adversarial spec-fidelity probe wave — DONE; strict CloudWatch alarm SNS probe HALTED awaiting upstream fix (2026-07-01).** PR #179 merged the sockerless #737 bump and all ten probe slices. PR #180 removes the SQS-receipt workaround and fails loudly, which surfaced **e6qu/sockerless#741** (alarm SNS → SQS delivery does not occur in `SIM_RUNTIME=process`). Do not merge PR #180 until #741 is fixed and CI verifies green.
 
-- **Merge PR #179.** Land the sockerless #737 bump + the adversarial probe wave now that CI is green.
-- **Merge PR #178.** All CI checks are green (including `terraform-sim`). Land the sockerless bump + strict adversarial probes, then return to AWS-account-gated deploy readiness. (1) **Viewer RBAC** — the demo now gates its
+- **Await sockerless #741 fix + verification.** Once the upstream fix lands, re-pin the submodule, re-run CI, and merge PR #180 if green.
   mutating controls on the REAL `@edd/authz` `defineAbilityFor` (`DemoControlPlane.canMutateWorkspaces()`),
   so a viewer sees the workspace list read-only (no create form, no start/stop/delete) — the identity
   switcher tells a true CASL story. (2) **Provisioning dwell** — `create` now lands in `provisioning` and

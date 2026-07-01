@@ -2,11 +2,13 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-01 (PR #179 fully green; shellcheck/check-deps/terraform-sim/e2e-https failures resolved; awaiting merge go-ahead.)
+**Last updated:** 2026-07-01 (PR #179 merged; PR #180 is open with strict CloudWatch alarm SNS probe, currently red due to e6qu/sockerless#741. Halted awaiting upstream fix + verification.)
 
-## Active — third adversarial spec-fidelity probe wave (PR #179)
+## Active — strict CloudWatch Alarm → SNS probe blocked upstream
 
-PR #179, which bumps sockerless to #737 and adds the third wave of adversarial spec-fidelity probes, is **fully green in CI**. Route53 wildcard DNS, ACM/TLS termination, and KMS real encryption/key-policy Deny are now strict thanks to the sockerless #737 fixes. The remaining upstream blocker is **e6qu/sockerless#734** (CloudWatch Alarm → SNS → SQS delivery is flaky/malformed), so that probe skips SQS receipt verification but still proves alarm creation, state transition, and AlarmActions wiring.
+PR #179 merged the sockerless #737 bump and the third wave of adversarial spec-fidelity probes. PR #180 removes the remaining workaround and makes the CloudWatch Alarm → SNS probe fail loudly if the SQS notification is not received. The probe is now **red in CI** because **e6qu/sockerless#741** (follow-up to #734) tracks that the SNS → SQS delivery itself does not occur in `SIM_RUNTIME=process`, even though #739 fixed the JSON body format when delivery happens.
+
+Work halted. The next action is to verify the fix once sockerless #741 is addressed, then merge PR #180.
 
 Fixes applied to get CI green:
 
