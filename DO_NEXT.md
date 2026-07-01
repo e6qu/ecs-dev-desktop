@@ -47,9 +47,9 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **Third adversarial spec-fidelity probe wave — DONE; strict CloudWatch alarm SNS probe HALTED awaiting upstream fix (2026-07-01).** PR #179 merged the sockerless #737 bump and all ten probe slices. PR #180 removes the SQS-receipt workaround and fails loudly, which surfaced **e6qu/sockerless#741** (alarm SNS → SQS delivery does not occur in `SIM_RUNTIME=process`). Do not merge PR #180 until #741 is fixed and CI verifies green.
+- **Third adversarial spec-fidelity probe wave — DONE; strict CloudWatch alarm SNS probe HALTED awaiting upstream fix (2026-07-01).** PR #179 merged the sockerless #737 bump and all ten probe slices. PR #180 removes the SQS-receipt workaround and fails loudly, which isolated the remaining failure to **e6qu/sockerless#745** (CloudWatch alarms do not trigger SNS `Publish` on ALARM transition in `SIM_RUNTIME=process`). Do not merge PR #180 until #745 is fixed and CI verifies green.
 
-- **Await sockerless #741 fix + verification.** Once the upstream fix lands, re-pin the submodule, re-run CI, and merge PR #180 if green.
+- **Await sockerless #745 fix + verification.** Once the upstream fix lands, re-pin the submodule, re-run CI, and merge PR #180 if green.
   mutating controls on the REAL `@edd/authz` `defineAbilityFor` (`DemoControlPlane.canMutateWorkspaces()`),
   so a viewer sees the workspace list read-only (no create form, no start/stop/delete) — the identity
   switcher tells a true CASL story. (2) **Provisioning dwell** — `create` now lands in `provisioning` and

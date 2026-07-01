@@ -2,13 +2,13 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-01 (PR #179 merged; PR #180 is open with strict CloudWatch alarm SNS probe, currently red due to e6qu/sockerless#741. Halted awaiting upstream fix + verification.)
+**Last updated:** 2026-07-01 (PR #180 strict CloudWatch alarm SNS probe red due to e6qu/sockerless#745; deps refreshed. Halted awaiting upstream fix + verification.)
 
 ## Active — strict CloudWatch Alarm → SNS probe blocked upstream
 
-PR #179 merged the sockerless #737 bump and the third wave of adversarial spec-fidelity probes. PR #180 removes the remaining workaround and makes the CloudWatch Alarm → SNS probe fail loudly if the SQS notification is not received. The probe is now **red in CI** because **e6qu/sockerless#741** (follow-up to #734) tracks that the SNS → SQS delivery itself does not occur in `SIM_RUNTIME=process`, even though #739 fixed the JSON body format when delivery happens.
+PR #179 merged. PR #180 removes the SQS-receipt workaround and fails loudly. CI is now fully green except for `terraform-sim`, where the CloudWatch Alarm → SNS probe fails because **e6qu/sockerless#745** tracks that CloudWatch alarms do not trigger an SNS `Publish` on `ALARM` transition in `SIM_RUNTIME=process` (direct SNS → SQS fan-out was verified working in the probe diagnostic).
 
-Work halted. The next action is to verify the fix once sockerless #741 is addressed, then merge PR #180.
+Work halted. Next action: verify once sockerless #745 is fixed.
 
 Fixes applied to get CI green:
 
