@@ -213,25 +213,40 @@ pass "Created HTTPS listener ${listener_arn}"
 # Choose a DNS query tool. dig is preferred; drill or nslookup are fallbacks.
 # If DNS_PORT is set, query the sim's authoritative DNS server (CI/local sim);
 # otherwise use the system resolver (real AWS).
+# Follows CNAME chains up to 5 hops.
 dns_query() {
   name="$1"
-  if [ -n "${DNS_PORT:-}" ]; then
-    if command -v dig >/dev/null 2>&1; then
-      dig @127.0.0.1 -p "$DNS_PORT" "$name" +short +time=5 +tries=2 || true
-    elif command -v drill >/dev/null 2>&1; then
-      drill @127.0.0.1 -p "$DNS_PORT" "$name" 2>/dev/null | awk '/^'"$(echo "$name" | sed 's/\./\\./g')"'\./{print $5}' || true
+  hops=0
+  while [ "$hops" -lt 5 ]; do
+    hops=$((hops + 1))
+    if [ -n "${DNS_PORT:-}" ]; then
+      if command -v dig >/dev/null 2>&1; then
+        answer=$(dig @127.0.0.1 -p "$DNS_PORT" "$name" +short +time=5 +tries=2 2>/dev/null | head -n1 || true)
+      elif command -v drill >/dev/null 2>&1; then
+        answer=$(drill @127.0.0.1 -p "$DNS_PORT" "$name" 2>/dev/null | awk '/^'"$(echo "$name" | sed 's/\./\\./g')"'\./{print $5}' | head -n1 || true)
+      else
+        answer=$(nslookup -port="$DNS_PORT" "$name" 127.0.0.1 2>/dev/null | awk '/^Address: /{print $2}' | tail -n1 || true)
+      fi
     else
-      nslookup -port="$DNS_PORT" "$name" 127.0.0.1 2>/dev/null | awk '/^Address: /{print $2}' | tail -n1 || true
+      if command -v dig >/dev/null 2>&1; then
+        answer=$(dig "$name" +short +time=5 +tries=2 2>/dev/null | head -n1 || true)
+      elif command -v drill >/dev/null 2>&1; then
+        answer=$(drill "$name" 2>/dev/null | awk '/^'"$(echo "$name" | sed 's/\./\\./g')"'\./{print $5}' | head -n1 || true)
+      else
+        answer=$(nslookup "$name" 2>/dev/null | awk '/^Address: /{print $2}' | tail -n1 || true)
+      fi
     fi
-  else
-    if command -v dig >/dev/null 2>&1; then
-      dig "$name" +short +time=5 +tries=2 || true
-    elif command -v drill >/dev/null 2>&1; then
-      drill "$name" 2>/dev/null | awk '/^'"$(echo "$name" | sed 's/\./\\./g')"'\./{print $5}' || true
-    else
-      nslookup "$name" 2>/dev/null | awk '/^Address: /{print $2}' | tail -n1 || true
+    answer=$(printf '%s' "$answer" | sed 's/[[:space:]]//g')
+    if [ -z "$answer" ]; then
+      printf '%s' "$answer"
+      return
     fi
-  fi
+    if expr "$answer" : '^[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}\.[0-9]\{1,3\}$' >/dev/null; then
+      printf '%s' "$answer"
+      return
+    fi
+    name="${answer%.}"
+  done
 }
 
 echo "=== Route53: create CNAME ${fqdn} -> ${alb_dns} ==="
