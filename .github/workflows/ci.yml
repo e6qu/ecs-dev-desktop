@@ -199,14 +199,14 @@ jobs:
         run: sh scripts/gen-sim-tls-cert.sh
       # Retry bring-up: image pulls can transiently hit registry rate limits
       # (public.ecr.aws / Docker Hub) on shared runner IPs.
-      - name: Build & start the sockerless AWS simulator (from source, API-only mode)
+      - name: Build & start the HTTPS simulators (sockerless AWS + Azure + bleephub)
         run: |
           for attempt in 1 2 3; do
-            if docker compose -f docker-compose.tier2.yml up -d --build --wait sockerless-aws; then
+            if docker compose -f docker-compose.https.yml up -d --build --wait; then
               exit 0
             fi
             echo "::warning::sim bring-up failed (attempt ${attempt}); retrying"
-            docker compose -f docker-compose.tier2.yml down -v || true
+            docker compose -f docker-compose.https.yml down -v || true
             sleep "$((attempt * 20))"
           done
           exit 1
