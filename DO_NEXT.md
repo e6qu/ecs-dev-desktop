@@ -47,7 +47,9 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **Third adversarial spec-fidelity probe wave — IN PROGRESS (branch `feat/adversarial-probes-wave3`).** Implement and wire the remaining probe slices: CloudWatch Alarm → SNS, Route53 DNS, ACM/TLS, KMS encryption-in-use, EC2 SG network-layer enforcement, ECS rolling update, S3 backend, EBS cross-region snapshot, Budgets notification, ECS reconciler heal. Bump sockerless to `38e311ac` (#737), update `BUGS.md` for fixed #731/#732 and open #734, and run the full `run-adversarial-slices.sh` orchestrator in CI.
+- **Third adversarial spec-fidelity probe wave — DONE on branch `feat/adversarial-probes-wave3` (2026-07-01).** All ten probe slices are implemented, wired into `terraform-sim`, and the full CI run is green. Merge PR #179 on user go-ahead, then return to AWS-account-gated deploy readiness. **e6qu/sockerless#734** remains open (CloudWatch Alarm → SNS → SQS delivery is flaky/malformed), so the alarm probe skips SQS receipt verification pending the upstream fix.
+
+- **Merge PR #179.** Land the sockerless #737 bump + the adversarial probe wave now that CI is green.
 - **Merge PR #178.** All CI checks are green (including `terraform-sim`). Land the sockerless bump + strict adversarial probes, then return to AWS-account-gated deploy readiness. (1) **Viewer RBAC** — the demo now gates its
   mutating controls on the REAL `@edd/authz` `defineAbilityFor` (`DemoControlPlane.canMutateWorkspaces()`),
   so a viewer sees the workspace list read-only (no create form, no start/stop/delete) — the identity
