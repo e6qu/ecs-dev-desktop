@@ -124,21 +124,12 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
   sleep 1
 done
 if [ -z "$message_body" ]; then
-  # sockerless #734: CloudWatch alarm -> SNS notifications to SQS are delivered
-  # intermittently and sometimes with malformed JSON. The alarm state transition
-  # and AlarmActions wiring are proven above; the SQS receipt is a known upstream
-  # gap. Skip rather than fail so the rest of the probe suite stays green.
-  echo "SKIP: alarm notification not received on SQS queue (sockerless#734)"
-  echo "DEBUG: raw SQS response: $raw" >&2
-  exit 0
+  fail "alarm notification not received on SQS queue (upstream: e6qu/sockerless#734); raw response: $raw"
 fi
 pass "Alarm notification delivered to SQS"
 
 echo "=== CloudWatch alarm -> SNS: assert alarm notification payload ==="
 # The SQS body is JSON; the embedded SNS Message is itself a JSON string.
-# sockerless currently emits a malformed inner JSON body for alarm notifications
-# (e6qu/sockerless#734), so we assert the presence of the expected fields by
-# string matching rather than parsing the inner Message.
 if ! echo "$message_body" | grep -qF "\"AlarmName\":\"${alarm_name}\""; then
   fail "alarm notification missing expected AlarmName"
 fi
