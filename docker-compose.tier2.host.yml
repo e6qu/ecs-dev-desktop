@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# CI override for the Tier-2 sockerless AWS sim to use host networking.
+# This lets adversarial probes reach the ALB/NLB TLS data plane, which binds on
+# the container's loopback interface. Used only in the `terraform-sim` CI job on
+# Linux runners; local macOS development keeps the port-mapped compose file.
+services:
+  sockerless-aws:
+    network_mode: host
+    environment:
+      # Bind the Route53 DNS server directly on the host port the probes expect.
+      SIM_DNS_PORT: "15353"
+    # `ports:` are ignored when network_mode: host is set.

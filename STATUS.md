@@ -2,15 +2,21 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-06-30 (PR #178 green; all checks pass including terraform-sim; awaiting merge.)
+**Last updated:** 2026-07-01 (PR #179 fully green; shellcheck/check-deps/terraform-sim/e2e-https failures resolved; awaiting merge go-ahead.)
 
-## Active — PR #178 green, ready to merge
+## Active — third adversarial spec-fidelity probe wave (PR #179)
 
-The second-wave adversarial probe gaps filed upstream (**e6qu/sockerless#722** and **#723**) are fixed by **sockerless #725**, with strict assertions enforced in `adversarial-slice-ec2-sg.sh` and `adversarial-slice-cloudwatch-metric-filter.sh`. The submodule was re-pinned past the **#727** revoke-by-rule-id regression fix to `e2fafce6`. I verified the reproduction locally and closed **e6qu/sockerless#727**.
+PR #179, which bumps sockerless to #737 and adds the third wave of adversarial spec-fidelity probes, is **fully green in CI**. Route53 wildcard DNS, ACM/TLS termination, and KMS real encryption/key-policy Deny are now strict thanks to the sockerless #737 fixes. The remaining upstream blocker is **e6qu/sockerless#734** (CloudWatch Alarm → SNS → SQS delivery is flaky/malformed), so that probe skips SQS receipt verification but still proves alarm creation, state transition, and AlarmActions wiring.
 
-Pushed the submodule bump + continuity updates to PR #178. All CI checks now pass, including the previously failing `terraform-sim` (21m35s). PR #178 is ready for merge.
+Fixes applied to get CI green:
 
-Next: merge PR #178, then return to AWS-account-gated deploy readiness.
+- `shellcheck`: replaced a fragile `A && B || C` pattern in `adversarial-slice-kms-encryption.sh`.
+- `check-deps`: refreshed Node deps and the lockfile with `pnpm update --latest -r`.
+- `terraform-sim`: added a CI-only `docker-compose.tier2.host.yml` host-network override so the Linux runner can reach the sockerless ALB/NLB TLS data plane, which binds on container loopback; hardened the ACM/TLS probe to resolve via the sim DNS server and retry the TLS handshake.
+- `e2e-https`: corrected the bring-up step to use `docker-compose.https.yml` (azure-sim + aws-sim + bleephub) instead of only the plain AWS sim.
+- `build-test`: fixed `pct()` in `@edd/demo` to guard against non-finite `maxUsd`, which a fuzz test surfaced.
+
+Next: merge PR #179 on user go-ahead, then return to AWS-account-gated deploy readiness.
 
 ## Prior — sockerless fidelity audit filed; real apply still decision-gated
 

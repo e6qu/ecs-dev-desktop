@@ -199,13 +199,13 @@ jobs:
         run: sh scripts/gen-sim-tls-cert.sh
       # Retry bring-up: image pulls can transiently hit registry rate limits
       # (public.ecr.aws / Docker Hub) on shared runner IPs.
-      - name: Build & start the sockerless sims over TLS (HTTPS harness)
+      - name: Build & start the HTTPS simulators (sockerless AWS + Azure + bleephub)
         run: |
           for attempt in 1 2 3; do
             if docker compose -f docker-compose.https.yml up -d --build --wait; then
               exit 0
             fi
-            echo "::warning::HTTPS sim bring-up failed (attempt ${attempt}); retrying"
+            echo "::warning::sim bring-up failed (attempt ${attempt}); retrying"
             docker compose -f docker-compose.https.yml down -v || true
             sleep "$((attempt * 20))"
           done
@@ -485,11 +485,11 @@ jobs:
       - name: Build & start the sockerless AWS simulator (from source, API-only mode)
         run: |
           for attempt in 1 2 3; do
-            if docker compose -f docker-compose.tier2.yml up -d --build --wait sockerless-aws; then
+            if docker compose -f docker-compose.tier2.yml -f docker-compose.tier2.host.yml up -d --build --wait sockerless-aws; then
               exit 0
             fi
             echo "::warning::sim bring-up failed (attempt ${attempt}); retrying"
-            docker compose -f docker-compose.tier2.yml down -v || true
+            docker compose -f docker-compose.tier2.yml -f docker-compose.tier2.host.yml down -v || true
             sleep "$((attempt * 20))"
           done
           exit 1
@@ -1550,14 +1550,16 @@ jobs:
       - name: Adversarial spec-fidelity probe slices
         env:
           AWS_ENDPOINT_URL: http://127.0.0.1:4566
+          # Expose the sim's Route53 DNS port to the host so DNS-resolution slices can query records.
+          DNS_PORT: 15353
         run: sh "infra/terraform/modules/ecs-dev-desktop/tests/sim/run-adversarial-slices.sh"
       - name: Diagnostics (sim logs)
         if: failure()
         run: |
           echo "== sim logs =="
-          docker compose -f docker-compose.tier2.yml logs --tail 300 sockerless-aws || true
+          docker compose -f docker-compose.tier2.yml -f docker-compose.tier2.host.yml logs --tail 300 sockerless-aws || true
       - if: always()
-        run: docker compose -f docker-compose.tier2.yml down
+        run: docker compose -f docker-compose.tier2.yml -f docker-compose.tier2.host.yml down
 
   shellcheck:
     name: shellcheck
