@@ -214,7 +214,7 @@ pass "Created HTTPS listener ${listener_arn}"
 echo "=== DIAG: checking TLS listener reachability on 127.0.0.1:${listener_port} ==="
 reachable=0
 for _ in 1 2 3 4 5 6 7 8 9 10; do
-  if (exec 3<>"/dev/tcp/127.0.0.1/${listener_port}") 2>/dev/null; then
+  if python3 -c "import socket; s=socket.socket(); s.connect(('127.0.0.1', ${listener_port})); s.close()" 2>/dev/null; then
     reachable=1
     break
   fi
