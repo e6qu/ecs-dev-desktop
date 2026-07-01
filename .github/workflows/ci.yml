@@ -1556,14 +1556,6 @@ jobs:
       - name: Diagnostics (sim logs)
         if: failure()
         run: |
-          echo "== running containers =="
-          docker ps --format 'table {{.Names}}\t{{.Networks}}\t{{.Ports}}' || true
-          echo "== container inspect network mode =="
-          docker inspect ecs-dev-desktop-sockerless-aws-1 --format='NetworkMode={{.HostConfig.NetworkMode}}' || true
-          echo "== container listening ports =="
-          docker exec ecs-dev-desktop-sockerless-aws-1 sh -c 'ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null || true' || true
-          echo "== host listening ports =="
-          ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null || true
           echo "== sim logs =="
           docker compose -f docker-compose.tier2.yml -f docker-compose.tier2.host.yml logs --tail 300 sockerless-aws || true
       - if: always()

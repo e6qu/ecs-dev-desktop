@@ -210,23 +210,6 @@ listener_arn=$(aws elbv2 create-listener \
   python3 -c 'import sys,json; print(json.load(sys.stdin)["Listeners"][0]["ListenerArn"])')
 pass "Created HTTPS listener ${listener_arn}"
 
-# Diagnostic: verify the TLS proxy data plane is reachable on loopback.
-echo "=== DIAG: checking TLS listener reachability on 127.0.0.1:${listener_port} ==="
-reachable=0
-for _ in 1 2 3 4 5 6 7 8 9 10; do
-  if python3 -c "import socket; s=socket.socket(); s.connect(('127.0.0.1', ${listener_port})); s.close()" 2>/dev/null; then
-    reachable=1
-    break
-  fi
-  sleep 1
-done
-if [ "$reachable" != 1 ]; then
-  echo "DIAG: TLS listener not reachable on 127.0.0.1:${listener_port}" >&2
-  echo "DIAG: listening ports on host:" >&2
-  (ss -tlnp 2>/dev/null || netstat -tlnp 2>/dev/null || true) >&2
-  echo "DIAG: ALB DNS name: ${alb_dns}" >&2
-fi
-
 echo "=== Route53: create A record ${fqdn} -> 127.0.0.1 ==="
 # The sim's ALB TLS proxy binds the listener port on the host loopback. A real
 # AWS deployment would use an alias A record pointing at the ALB; here we target
