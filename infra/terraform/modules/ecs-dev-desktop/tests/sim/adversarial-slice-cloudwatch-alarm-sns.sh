@@ -65,7 +65,6 @@ trap cleanup EXIT
 echo "=== CloudWatch alarm -> SNS: create alarm with SNS action ==="
 aws cloudwatch put-metric-alarm \
   --alarm-name "$alarm_name" \
-  --alarm-description "Adversarial probe CPU alarm" \
   --metric-name "$metric_name" \
   --namespace "$namespace" \
   --statistic Average \
@@ -108,10 +107,7 @@ echo "=== CloudWatch alarm -> SNS: breach threshold and wait for ALARM state ===
 timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 aws cloudwatch put-metric-data \
   --namespace "$namespace" \
-  --metric-name "$metric_name" \
-  --timestamp "$timestamp" \
-  --value 100.0 \
-  --unit Percent >/dev/null || fail "PutMetricData rejected"
+  --metric-data "[{\"MetricName\":\"$metric_name\",\"Value\":95.0,\"Unit\":\"Percent\",\"Timestamp\":\"$timestamp\"}]" >/dev/null || fail "PutMetricData rejected"
 
 state_value=""
 for _ in 1 2 3 4 5 6 7 8 9 10; do
