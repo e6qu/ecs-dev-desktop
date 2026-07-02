@@ -2,17 +2,20 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-02 (bumped sockerless to #751; PR #180 strict CloudWatch alarm SNS probe now running in CI for verification.)
+**Last updated:** 2026-07-02 (sockerless #751 did not fix the integrated CloudWatch alarm failure; refreshed deps; filed e6qu/sockerless#753 and #754.)
 
-## Active — strict CloudWatch Alarm → SNS probe: upstream fix landed, CI verifying
+## Active — strict CloudWatch Alarm → SNS probe still blocked upstream
 
 PR #179 merged. PR #180 removes the SQS-receipt workaround and fails loudly.
 
 - sockerless **#748** added an isolated CLI regression test that passes in a fresh simulator subprocess.
-- Running the **identical** sequence in the integrated `terraform-sim` harness (after Terraform apply/destroy cycles) still failed; filed **e6qu/sockerless#749**.
-- sockerless **#751** (`third_party/sockerless` now at `3d85b89`) fixes #749 by resetting the CloudWatch alarm evaluator state on `PutMetricAlarm`, so re-created alarms dispatch `AlarmActions` on the first real `ALARM` transition.
+- The integrated `terraform-sim` harness still failed after Terraform apply/destroy cycles; filed **e6qu/sockerless#749**.
+- sockerless **#751** attempted to fix #749 by resetting the CloudWatch alarm evaluator state on `PutMetricAlarm`. The submodule was re-pinned to `3d85b89`.
+- **CI re-run shows the same integrated failure**: alarm transitions to `ALARM`, but no `SNS.Publish` is logged and SQS stays empty. Filed **e6qu/sockerless#753** as a follow-up.
+- The same submodule bump also introduced a **bleephub regression**: `GET /user/teams` returns 403 Forbidden, breaking `e2e` and `e2e-https`. Filed **e6qu/sockerless#754**.
+- `check-deps` was refreshed locally and now passes.
 
-**Next action:** CI run in progress. Merge PR #180 if `terraform-sim` goes green.
+**Next action:** wait for sockerless #753 (and #754) to land, then re-pin and verify.
 
 Fixes applied to get CI green:
 
@@ -22,7 +25,7 @@ Fixes applied to get CI green:
 - `e2e-https`: corrected the bring-up step to use `docker-compose.https.yml` (azure-sim + aws-sim + bleephub) instead of only the plain AWS sim.
 - `build-test`: fixed `pct()` in `@edd/demo` to guard against non-finite `maxUsd`, which a fuzz test surfaced.
 
-Next: merge PR #180 once e6qu/sockerless#749/#745 is fixed and CI verifies green, then return to AWS-account-gated deploy readiness.
+Next: wait for e6qu/sockerless#753 (CloudWatch alarm integrated fix) and #754 (bleephub /user/teams regression), re-pin, re-run CI, and merge PR #180 if green. Then return to AWS-account-gated deploy readiness.
 
 ## Prior — sockerless fidelity audit filed; real apply still decision-gated
 
