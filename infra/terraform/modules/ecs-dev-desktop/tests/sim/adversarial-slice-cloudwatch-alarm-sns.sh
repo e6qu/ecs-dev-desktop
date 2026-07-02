@@ -24,7 +24,7 @@ suffix="$(date +%s)"
 topic_name="edd-adv-alarm-topic-${suffix}"
 queue_name="edd-adv-alarm-queue-${suffix}"
 alarm_name="edd-adv-cpu-alarm-${suffix}"
-namespace="edd/adversarial/alarm"
+namespace="Custom/AlarmProbe"
 metric_name="CPUUtilization"
 
 # Create SNS topic and SQS queue; subscribe the queue to the topic so we can
