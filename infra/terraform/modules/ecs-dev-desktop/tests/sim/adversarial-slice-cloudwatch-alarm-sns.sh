@@ -73,8 +73,7 @@ aws cloudwatch put-metric-alarm \
   --evaluation-periods 1 \
   --threshold 50.0 \
   --comparison-operator GreaterThanThreshold \
-  --alarm-actions "$topic_arn" \
-  --treat-missing-data notBreaching >/dev/null || fail "PutMetricAlarm rejected"
+  --alarm-actions "$topic_arn" >/dev/null || fail "PutMetricAlarm rejected"
 
 alarm_actions=$(aws cloudwatch describe-alarms \
   --alarm-names "$alarm_name" \
