@@ -2,13 +2,17 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-01 (PR #180 strict CloudWatch alarm SNS probe red due to e6qu/sockerless#745; deps refreshed. Halted awaiting upstream fix + verification.)
+**Last updated:** 2026-07-02 (bumped sockerless to #751; PR #180 strict CloudWatch alarm SNS probe now running in CI for verification.)
 
-## Active — strict CloudWatch Alarm → SNS probe blocked upstream
+## Active — strict CloudWatch Alarm → SNS probe: upstream fix landed, CI verifying
 
-PR #179 merged. PR #180 removes the SQS-receipt workaround and fails loudly. CI is now fully green except for `terraform-sim`, where the CloudWatch Alarm → SNS probe fails because **e6qu/sockerless#745** tracks that CloudWatch alarms do not trigger an SNS `Publish` on `ALARM` transition in `SIM_RUNTIME=process` (direct SNS → SQS fan-out was verified working in the probe diagnostic).
+PR #179 merged. PR #180 removes the SQS-receipt workaround and fails loudly.
 
-Work halted. Next action: verify once sockerless #745 is fixed.
+- sockerless **#748** added an isolated CLI regression test that passes in a fresh simulator subprocess.
+- Running the **identical** sequence in the integrated `terraform-sim` harness (after Terraform apply/destroy cycles) still failed; filed **e6qu/sockerless#749**.
+- sockerless **#751** (`third_party/sockerless` now at `3d85b89`) fixes #749 by resetting the CloudWatch alarm evaluator state on `PutMetricAlarm`, so re-created alarms dispatch `AlarmActions` on the first real `ALARM` transition.
+
+**Next action:** CI run in progress. Merge PR #180 if `terraform-sim` goes green.
 
 Fixes applied to get CI green:
 
@@ -18,7 +22,7 @@ Fixes applied to get CI green:
 - `e2e-https`: corrected the bring-up step to use `docker-compose.https.yml` (azure-sim + aws-sim + bleephub) instead of only the plain AWS sim.
 - `build-test`: fixed `pct()` in `@edd/demo` to guard against non-finite `maxUsd`, which a fuzz test surfaced.
 
-Next: merge PR #179 on user go-ahead, then return to AWS-account-gated deploy readiness.
+Next: merge PR #180 once e6qu/sockerless#749/#745 is fixed and CI verifies green, then return to AWS-account-gated deploy readiness.
 
 ## Prior — sockerless fidelity audit filed; real apply still decision-gated
 

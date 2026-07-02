@@ -47,9 +47,9 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **Third adversarial spec-fidelity probe wave — DONE; strict CloudWatch alarm SNS probe HALTED awaiting upstream fix (2026-07-01).** PR #179 merged the sockerless #737 bump and all ten probe slices. PR #180 removes the SQS-receipt workaround and fails loudly, which isolated the remaining failure to **e6qu/sockerless#745** (CloudWatch alarms do not trigger SNS `Publish` on ALARM transition in `SIM_RUNTIME=process`). Do not merge PR #180 until #745 is fixed and CI verifies green.
+- **Third adversarial spec-fidelity probe wave — DONE; strict CloudWatch alarm SNS probe VERIFYING in CI (2026-07-02).** PR #179 merged the sockerless #737 bump and all ten probe slices. PR #180 removes the SQS-receipt workaround and fails loudly. The integrated failure was filed as **e6qu/sockerless#749** and fixed by **sockerless #751** (`third_party/sockerless` re-pinned to `3d85b89`). PR #180 is now running through CI; merge it if `terraform-sim` goes green.
 
-- **Await sockerless #745 fix + verification.** Once the upstream fix lands, re-pin the submodule, re-run CI, and merge PR #180 if green.
+- **Verify PR #180 in CI and merge if green.** Once `terraform-sim` passes, merge PR #180 and return to AWS-account-gated deploy readiness.
   mutating controls on the REAL `@edd/authz` `defineAbilityFor` (`DemoControlPlane.canMutateWorkspaces()`),
   so a viewer sees the workspace list read-only (no create form, no start/stop/delete) — the identity
   switcher tells a true CASL story. (2) **Provisioning dwell** — `create` now lands in `provisioning` and
@@ -303,12 +303,13 @@ count>10`; `DescribeTasks` empty `tasks`) and **#619** (Scheduler accepts an inv
     cold-start, federation, IAM enforcement, 200+ load, wake-on-connect) follow as further jobs.
 - **On DNS (#2):** real `*.devbox.<domain>` routing + ACM (the module is sim-proven;
   the real hosted zone + cert issuance is AWS/registrar-gated).
-- **On sockerless KMS fidelity:** wave-3 adversarial KMS-encryption probe
-  (`adversarial-slice-kms-encryption.sh`) is blocked by **e6qu/sockerless#732**.
-  The sim's `kms:Encrypt` does not produce real ciphertext (blob decodes to
-  `kms-sim:<key-id>:<base64-plaintext>`) and an explicit `Deny kms:Decrypt`
-  principal in the key policy is ignored. Implement the slice once the upstream
-  fix lands.
+- **On sockerless CloudWatch alarm fidelity:** strict CloudWatch Alarm → SNS
+  probe (`adversarial-slice-cloudwatch-alarm-sns.sh`) was blocked by
+  **e6qu/sockerless#749** / **#745**. The isolated upstream regression test
+  (#748) passed, but the same sequence failed in the integrated `terraform-sim`
+  environment after Terraform apply/destroy cycles. **sockerless #751** fixed
+  #749 by resetting the CloudWatch alarm evaluator state on `PutMetricAlarm`;
+  the submodule is now at `3d85b89`. Merge PR #180 once CI verifies green.
 
 ---
 
