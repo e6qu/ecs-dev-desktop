@@ -20,11 +20,10 @@ fail() {
 }
 pass() { echo "PASS: $*"; }
 
-suffix="$(date +%s)"
-topic_name="edd-adv-alarm-topic-${suffix}"
-queue_name="edd-adv-alarm-queue-${suffix}"
-alarm_name="edd-adv-cpu-alarm-${suffix}"
-namespace="Custom/AlarmProbe"
+topic_name="cli-repro-t"
+queue_name="cli-repro-q"
+alarm_name="cli-alarm-sns-sqs-process-745"
+namespace="Custom/CLIAlarmProcessRepro"
 metric_name="CPUUtilization"
 
 # Create SNS topic and SQS queue; subscribe the queue to the topic so we can
