@@ -104,10 +104,9 @@ aws sqs purge-queue --queue-url "$queue_url" >/dev/null || true
 sleep 1
 
 echo "=== CloudWatch alarm -> SNS: breach threshold and wait for ALARM state ==="
-timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 aws cloudwatch put-metric-data \
   --namespace "$namespace" \
-  --metric-data "[{\"MetricName\":\"$metric_name\",\"Value\":95.0,\"Unit\":\"Percent\",\"Timestamp\":\"$timestamp\"}]" >/dev/null || fail "PutMetricData rejected"
+  --metric-data "[{\"MetricName\":\"$metric_name\",\"Value\":95.0,\"Unit\":\"Percent\"}]" >/dev/null || fail "PutMetricData rejected"
 
 state_value=""
 for _ in 1 2 3 4 5 6 7 8 9 10; do
