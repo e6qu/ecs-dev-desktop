@@ -36,7 +36,15 @@ const ORG = "acme";
 const TEAM = "platform-admins";
 const TEAM_GROUP = `${ORG}/${TEAM}`;
 // Arbitrary OAuth app coordinates (fixtures); real cloud supplies real app creds.
-const OAUTH = {
+// Provisioning uses admin:org (team creation/membership requires it); the login
+// subject uses read:org (the scope our Auth.js provider requests).
+const OAUTH_ADMIN = {
+  client_id: "edd",
+  client_secret: "secret",
+  redirect_uri: "http://localhost/callback",
+  scope: "admin:org",
+};
+const OAUTH_READ = {
   client_id: "edd",
   client_secret: "secret",
   redirect_uri: "http://localhost/callback",
@@ -48,13 +56,17 @@ describe("GitHub login via github → team → role (mock-free, conformant flow)
   let profile: unknown;
 
   beforeAll(async () => {
-    token = await githubOAuthLogin(USER, OAUTH);
+    // Provision with admin:org scope (team creation/membership requires it).
+    const adminToken = await githubOAuthLogin(USER, OAUTH_ADMIN);
+    await githubProvisionTeam(adminToken, ORG, TEAM);
+
+    // Login subject uses read:org — the scope Auth.js requests in production.
+    token = await githubOAuthLogin(USER, OAUTH_READ);
     profile = await (
       await githubApi("/user", {
         headers: { ...JSON_HEADERS, Authorization: `Bearer ${token}` },
       })
     ).json();
-    await githubProvisionTeam(token, ORG, TEAM);
   });
 
   it("derives the role from the user's GitHub teams after an OAuth login", async () => {

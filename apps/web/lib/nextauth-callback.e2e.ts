@@ -183,13 +183,14 @@ describe("Auth.js callback routes against the live sims", { timeout: 60_000 }, (
 
   it("GitHub: signin → github consent → callback → session carries the team-mapped role", async () => {
     // Provision the admin team so the jwt() callback's team fetch maps admin.
+    // Uses admin:org scope (team creation/membership requires it).
     const cookie = await githubSession(USER);
     const provisioningLocation = await githubApprove(
       cookie,
       `${github.url}/login/oauth/authorize?${new URLSearchParams({
         client_id: OAUTH_APP.id,
         redirect_uri: `${ORIGIN}/api/auth/callback/github`,
-        scope: "read:org",
+        scope: "admin:org",
         state: "provision",
       }).toString()}`,
     );

@@ -2,18 +2,17 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-03 (sockerless #767 re-pinned to f0d96ec3; CloudWatch probe was our `echo` bug — fixed; bleephub teams claimed fixed by #767; CI verifying.)
+**Last updated:** 2026-07-03 (sockerless #767 re-pinned; CloudWatch probe `echo` bug fixed; e2e `read:org`→`admin:org` provisioning fix; CI verifying.)
 
-## Active — CloudWatch probe FIXED locally; CI verifying with sockerless #767
+## Active — PR #180: all three blockers fixed locally; CI verifying
 
-PR #179 merged. PR #180 removes the SQS-receipt workaround and fails loudly.
+- **terraform-sim PASSED in CI** — the CloudWatch alarm SNS probe was failing due to our own `echo "$raw"` bug (POSIX `echo` corrupts backslash sequences in nested-JSON). Fixed with `printf`.
+- **e2e/e2e-https** — the GitHub team provisioning used a `read:org` OAuth token, but bleephub (correctly) requires `admin:org` for `POST /orgs/{org}/teams` and `PUT .../memberships`. Fixed by provisioning with `admin:org` scope and keeping the login/verification token at `read:org`.
+- **check-deps** — `tsx` 4.22.4 → 4.22.5 bumped.
+- sockerless **#767** (`f0d96ec3`) re-pinned; closes #763/#765/#766 upstream.
+- All probe slices and the bleephub team flow pass locally against sockerless #767.
 
-- The CloudWatch alarm → SNS → SQS probe **was failing due to our own bug**: `echo "$raw"` corrupts backslash sequences in the nested-JSON SQS Body (POSIX `echo` interprets `\\`), causing `json.load` to fail silently. Fixed with `printf '%s\n'` and proper nested-JSON parsing. The sim was working correctly all along — upstream sockerless #766 was not a sim bug.
-- sockerless **#767** (`f0d96ec3`) also fixes bleephub team creator auto-maintainer (#763/#765), which should resolve the `GET /user/teams` empty list that blocked GitHub OAuth role mapping.
-- All probe slices pass locally against sockerless #767.
-- `check-deps` passes.
-
-**Next action:** Push the fix + sockerless #767 bump and run CI. If green, merge PR #180.
+**Next action:** Push and watch CI. If green, merge PR #180.
 
 Fixes applied to get CI green:
 
