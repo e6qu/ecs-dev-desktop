@@ -2,7 +2,7 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-03 (sockerless #756 did not fix the integrated CloudWatch alarm failure; refreshed deps; filed e6qu/sockerless#758.)
+**Last updated:** 2026-07-03 (sockerless #759 only added a regression test, no simulator fix; our integrated failure persists; filed e6qu/sockerless#760.)
 
 ## Active — strict CloudWatch Alarm → SNS probe still blocked upstream
 
@@ -13,9 +13,10 @@ PR #179 merged. PR #180 removes the SQS-receipt workaround and fails loudly.
 - sockerless **#751** attempted to fix #749 by resetting `cwAlarmLastState` on `PutMetricAlarm` but the integrated probe still failed; filed **e6qu/sockerless#753**.
 - sockerless **#756** moved the evaluator's last-dispatched state onto each alarm's persisted state and fixed the bleephub `/user/teams` regression. The submodule was re-pinned to `a3448639`.
 - **CI re-run shows the same integrated failure**: alarm transitions to `ALARM`, but no `SNS.Publish` is logged and SQS stays empty. Filed **e6qu/sockerless#758** as a follow-up.
+- sockerless **#759** added a dangling-alarm regression test but **no simulator code change**; the integrated probe still fails. Filed **e6qu/sockerless#760** asking whether a follow-up fix is needed and how to instrument the simulator.
 - `check-deps` was refreshed locally and now passes.
 
-**Next action:** wait for sockerless #758 to land, then re-pin and verify.
+**Next action:** wait for a substantive sockerless fix or instrumentation guidance, then re-pin and verify.
 
 Fixes applied to get CI green:
 
@@ -25,7 +26,7 @@ Fixes applied to get CI green:
 - `e2e-https`: corrected the bring-up step to use `docker-compose.https.yml` (azure-sim + aws-sim + bleephub) instead of only the plain AWS sim.
 - `build-test`: fixed `pct()` in `@edd/demo` to guard against non-finite `maxUsd`, which a fuzz test surfaced.
 
-Next: wait for e6qu/sockerless#758, re-pin, re-run CI, and merge PR #180 if green. Then return to AWS-account-gated deploy readiness.
+Next: wait for a substantive sockerless fix or instrumentation guidance on #760, re-pin, re-run CI, and merge PR #180 if green. Then return to AWS-account-gated deploy readiness.
 
 ## Prior — sockerless fidelity audit filed; real apply still decision-gated
 
