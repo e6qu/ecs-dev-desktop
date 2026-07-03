@@ -47,9 +47,9 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **Third adversarial spec-fidelity probe wave — DONE; strict CloudWatch alarm SNS probe HALTED awaiting upstream fix (2026-07-03).** PR #179 merged the sockerless #737 bump and all ten probe slices. PR #180 removes the SQS-receipt workaround and fails loudly. The integrated failure chain was filed as **e6qu/sockerless#749** / **#753** / **#758** and addressed by **sockerless #756** (evaluator state moved onto each alarm + panic recovery). **sockerless #759** added a dangling-alarm regression test but no simulator code change; the integrated probe still fails. Filed **e6qu/sockerless#760**. Do not merge PR #180 until a substantive fix lands and CI verifies green.
+- **Third adversarial spec-fidelity probe wave — DONE; strict CloudWatch alarm SNS probe VERIFYING in CI (2026-07-03).** PR #179 merged the sockerless #737 bump and all ten probe slices. PR #180 removes the SQS-receipt workaround and fails loudly. The integrated failure chain was filed as **e6qu/sockerless#749** / **#753** / **#758** and addressed in stages by **sockerless #756** (evaluator state moved onto each alarm + panic recovery), **#759** (dangling-alarm regression test), and **#761** (atomic read/dispatch/write in a single `cwAlarms.Update` callback, plus diagnostic logging). The submodule is re-pinned to `354c81d3`. PR #180 is now running through CI; merge it if all jobs go green.
 
-- **Await sockerless #760 resolution + verification.** Once a substantive fix or instrumentation guidance lands, re-pin the submodule, re-run CI, and merge PR #180 if green. `check-deps` was refreshed locally in the meantime.
+- **Verify PR #180 in CI and merge if green.** Once all jobs pass, merge PR #180 and return to AWS-account-gated deploy readiness. `check-deps` was refreshed locally in the meantime.
   mutating controls on the REAL `@edd/authz` `defineAbilityFor` (`DemoControlPlane.canMutateWorkspaces()`),
   so a viewer sees the workspace list read-only (no create form, no start/stop/delete) — the identity
   switcher tells a true CASL story. (2) **Provisioning dwell** — `create` now lands in `provisioning` and
@@ -308,10 +308,11 @@ count>10`; `DescribeTasks` empty `tasks`) and **#619** (Scheduler accepts an inv
   **e6qu/sockerless#749** / **#753** / **#758**. The isolated upstream
   regression test (#748) passed, but the same sequence failed in the integrated
   `terraform-sim` environment after Terraform apply/destroy cycles.
-  **sockerless #756** addressed the evaluator-state issue; **sockerless #759**
-  added a dangling-alarm regression test, but the integrated probe still fails.
-  Filed **e6qu/sockerless#760**. Merge PR #180 once a substantive upstream fix
-  lands and CI verifies green.
+  **sockerless #756** addressed the evaluator-state issue, **sockerless #759**
+  added a dangling-alarm regression test, and **sockerless #761** fixed the
+  race by moving state read/dispatch/write into a single `cwAlarms.Update`
+  callback. Submodule re-pinned to `354c81d3`. Merge PR #180 once CI verifies
+  green.
 
 - **On bleephub GitHub team API:** bumping the submodule regressed `GET
 /user/teams` (403 Forbidden), breaking GitHub OAuth role mapping in `e2e` and
