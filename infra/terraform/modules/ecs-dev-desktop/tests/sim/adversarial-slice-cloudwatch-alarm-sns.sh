@@ -104,9 +104,7 @@ done
 if [ "$state_value" != "ALARM" ]; then
   fail "alarm did not transition to ALARM, got $state_value"
 fi
-# The upstream isolated test sleeps 2s here. In the integrated terraform-sim
-# environment the evaluator may be busy with Terraform-managed alarms, so allow
-# extra time for the SNS fan-out before polling SQS.
+# Allow SNS fan-out to complete before polling SQS.
 sleep 3
 pass "Alarm transitioned to ALARM"
 
@@ -115,7 +113,7 @@ message_body=""
 raw=""
 for _ in $(seq 1 30); do
   raw=$(aws sqs receive-message --queue-url "$queue_url" --output json 2>/dev/null || true)
-  message_body=$(echo "$raw" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("Messages",[{}])[0].get("Body",""))' 2>/dev/null || true)
+  message_body=$(printf '%s\n' "$raw" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("Messages",[{}])[0].get("Body",""))' 2>/dev/null || true)
   if [ -n "$message_body" ]; then
     break
   fi
@@ -128,12 +126,15 @@ pass "Alarm notification delivered to SQS"
 
 echo "=== CloudWatch alarm -> SNS: assert alarm notification payload ==="
 # The SQS body is JSON; the embedded SNS Message is itself a JSON string.
-if ! echo "$message_body" | grep -qF "\"AlarmName\":\"${alarm_name}\""; then
-  fail "alarm notification missing expected AlarmName"
-fi
-if ! echo "$message_body" | grep -qF "\"NewStateValue\":\"ALARM\""; then
-  fail "alarm notification missing expected NewStateValue=ALARM"
-fi
+printf '%s\n' "$message_body" | python3 -c '
+import sys, json
+body = json.load(sys.stdin)
+msg = json.loads(body["Message"])
+alarm_name = msg.get("AlarmName", "")
+state = msg.get("NewStateValue", "")
+assert alarm_name == sys.argv[1], "AlarmName mismatch: " + alarm_name
+assert state == "ALARM", "NewStateValue: " + state
+' "$alarm_name" || fail "alarm notification payload validation failed"
 pass "Alarm notification payload contains expected fields"
 
 echo "=== ALL CLOUDWATCH ALARM -> SNS ADVERSARIAL SLICE PROBES PASSED ==="

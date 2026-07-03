@@ -2,18 +2,18 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-03 (sockerless #764 logs successful CloudWatch→SNS→SQS fan-out, but the message is not returned by `ReceiveMessage`; filed e6qu/sockerless#766. bleephub /user/teams still empty; filed e6qu/sockerless#765.)
+**Last updated:** 2026-07-03 (sockerless #767 re-pinned to f0d96ec3; CloudWatch probe was our `echo` bug — fixed; bleephub teams claimed fixed by #767; CI verifying.)
 
-## Active — strict CloudWatch Alarm → SNS probe: fan-out logs success, message not receivable; bleephub still blocked
+## Active — CloudWatch probe FIXED locally; CI verifying with sockerless #767
 
 PR #179 merged. PR #180 removes the SQS-receipt workaround and fails loudly.
 
-- sockerless **#764** added fan-out observability logging and OAuth team fidelity. After re-pinning to `6756ecfb`:
-  - The integrated `terraform-sim` CI run shows the CloudWatch alarm dispatches to SNS, the SNS fan-out starts, and the log reports `SNS to SQS delivery succeeded`. However, polling the subscribed SQS queue for 30 seconds returns an empty `Messages` array every time. The probe fails. Filed **e6qu/sockerless#766**.
-  - The bleephub `GET /user/teams` endpoint still returns an empty list for the OAuth web-flow token used by our e2e, breaking GitHub OAuth role mapping. Filed **e6qu/sockerless#765**.
+- The CloudWatch alarm → SNS → SQS probe **was failing due to our own bug**: `echo "$raw"` corrupts backslash sequences in the nested-JSON SQS Body (POSIX `echo` interprets `\\`), causing `json.load` to fail silently. Fixed with `printf '%s\n'` and proper nested-JSON parsing. The sim was working correctly all along — upstream sockerless #766 was not a sim bug.
+- sockerless **#767** (`f0d96ec3`) also fixes bleephub team creator auto-maintainer (#763/#765), which should resolve the `GET /user/teams` empty list that blocked GitHub OAuth role mapping.
+- All probe slices pass locally against sockerless #767.
 - `check-deps` passes.
 
-**Next action:** Await upstream fixes for **#766** (CloudWatch/SNS/SQS) and **#765** (bleephub teams), then re-pin and re-run CI.
+**Next action:** Push the fix + sockerless #767 bump and run CI. If green, merge PR #180.
 
 Fixes applied to get CI green:
 

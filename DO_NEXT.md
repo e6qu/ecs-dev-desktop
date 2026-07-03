@@ -47,9 +47,9 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **Third adversarial spec-fidelity probe wave — DONE; strict CloudWatch alarm SNS probe BLOCKED upstream (2026-07-03).** PR #179 merged the sockerless #737 bump and all ten probe slices. PR #180 removes the SQS-receipt workaround and fails loudly. The integrated failure chain was filed as **e6qu/sockerless#749** / **#753** / **#758** and addressed by **sockerless #756** (evaluator state moved onto each alarm + panic recovery), **#759** (dangling-alarm regression test), **#761** (atomic read/dispatch/write), and **#764** (fan-out observability logging). After #764 the fan-out logs `SNS to SQS delivery succeeded`, but the message is not returned by `ReceiveMessage` in the integrated environment; filed **e6qu/sockerless#766**. A bleephub regression remains: `/user/teams` returns an empty list for the OAuth web-flow token; filed **e6qu/sockerless#765**.
+- **Third adversarial spec-fidelity probe wave — DONE; CloudWatch probe FIXED + sockerless #767 bump (2026-07-03).** PR #179 merged the sockerless #737 bump and all ten probe slices. PR #180 removes the SQS-receipt workaround and fails loudly. The "SNS delivery succeeded but ReceiveMessage empty" issue was **our bug**: `echo "$raw"` corrupts backslash sequences in the nested-JSON SQS Body (POSIX `echo` interprets `\\`). Fixed with `printf '%s\n'` and proper nested-JSON parsing. The sim was correct all along (sockerless #766 was not a sim bug — closed). sockerless **#767** (`f0d96ec3`) also fixes bleephub team creator auto-maintainer (#763/#765). All probe slices pass locally.
 
-- **Await sockerless #766 + #765 fixes + verification.** Once both fixes land, re-pin, re-run CI, and merge PR #180 if green.
+- **Verify PR #180 in CI and merge if green.** CI should now pass on all jobs including `terraform-sim`, `e2e`, and `e2e-https`.
 
 - **Await sockerless #765 fix + verification.** Once the bleephub fix lands, re-pin, re-run CI, and merge PR #180 if green.
   mutating controls on the REAL `@edd/authz` `defineAbilityFor` (`DemoControlPlane.canMutateWorkspaces()`),
