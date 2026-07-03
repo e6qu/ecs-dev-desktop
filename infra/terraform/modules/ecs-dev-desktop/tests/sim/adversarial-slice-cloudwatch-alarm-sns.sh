@@ -9,9 +9,12 @@ endpoint="${AWS_ENDPOINT_URL:-http://localhost:4566}"
 region="${AWS_REGION:-us-east-1}"
 export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-test}"
 export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-test}"
+export AWS_ENDPOINT_URL="$endpoint"
+export AWS_DEFAULT_REGION="$region"
+export AWS_PAGER=""
 
 aws() {
-  command aws --endpoint-url "$endpoint" --region "$region" "$@"
+  command aws "$@"
 }
 
 fail() {
@@ -20,11 +23,10 @@ fail() {
 }
 pass() { echo "PASS: $*"; }
 
-suffix="$(date +%s)"
-topic_name="edd-adv-alarm-topic-${suffix}"
-queue_name="edd-adv-alarm-queue-${suffix}"
-alarm_name="edd-adv-cpu-alarm-${suffix}"
-namespace="edd/adversarial/alarm"
+topic_name="cli-repro-t"
+queue_name="cli-repro-q"
+alarm_name="cli-alarm-sns-sqs-process-745"
+namespace="Custom/CLIAlarmProcessRepro"
 metric_name="CPUUtilization"
 
 # Create SNS topic and SQS queue; subscribe the queue to the topic so we can
@@ -65,7 +67,6 @@ trap cleanup EXIT
 echo "=== CloudWatch alarm -> SNS: create alarm with SNS action ==="
 aws cloudwatch put-metric-alarm \
   --alarm-name "$alarm_name" \
-  --alarm-description "Adversarial probe CPU alarm" \
   --metric-name "$metric_name" \
   --namespace "$namespace" \
   --statistic Average \
@@ -73,8 +74,7 @@ aws cloudwatch put-metric-alarm \
   --evaluation-periods 1 \
   --threshold 50.0 \
   --comparison-operator GreaterThanThreshold \
-  --alarm-actions "$topic_arn" \
-  --treat-missing-data notBreaching >/dev/null || fail "PutMetricAlarm rejected"
+  --alarm-actions "$topic_arn" >/dev/null || fail "PutMetricAlarm rejected"
 
 alarm_actions=$(aws cloudwatch describe-alarms \
   --alarm-names "$alarm_name" \
@@ -86,16 +86,12 @@ fi
 pass "Alarm action points at SNS topic"
 
 echo "=== CloudWatch alarm -> SNS: breach threshold and wait for ALARM state ==="
-timestamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 aws cloudwatch put-metric-data \
   --namespace "$namespace" \
-  --metric-name "$metric_name" \
-  --timestamp "$timestamp" \
-  --value 100.0 \
-  --unit Percent >/dev/null || fail "PutMetricData rejected"
+  --metric-data "[{\"MetricName\":\"$metric_name\",\"Value\":95.0,\"Unit\":\"Percent\"}]" >/dev/null || fail "PutMetricData rejected"
 
 state_value=""
-for _ in 1 2 3 4 5 6 7 8 9 10; do
+for _ in $(seq 1 15); do
   state_value=$(aws cloudwatch describe-alarms \
     --alarm-names "$alarm_name" \
     --output json |
@@ -108,43 +104,37 @@ done
 if [ "$state_value" != "ALARM" ]; then
   fail "alarm did not transition to ALARM, got $state_value"
 fi
-# Give SNS a moment to finish serialising the alarm notification before we poll.
-sleep 2
+# Allow SNS fan-out to complete before polling SQS.
+sleep 3
 pass "Alarm transitioned to ALARM"
 
 echo "=== CloudWatch alarm -> SNS: receive alarm notification from SQS ==="
 message_body=""
 raw=""
-for _ in 1 2 3 4 5 6 7 8 9 10; do
+for _ in $(seq 1 30); do
   raw=$(aws sqs receive-message --queue-url "$queue_url" --output json 2>/dev/null || true)
-  message_body=$(echo "$raw" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("Messages",[{}])[0].get("Body",""))' 2>/dev/null || true)
+  message_body=$(printf '%s\n' "$raw" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("Messages",[{}])[0].get("Body",""))' 2>/dev/null || true)
   if [ -n "$message_body" ]; then
     break
   fi
   sleep 1
 done
 if [ -z "$message_body" ]; then
-  # sockerless #734: CloudWatch alarm -> SNS notifications to SQS are delivered
-  # intermittently and sometimes with malformed JSON. The alarm state transition
-  # and AlarmActions wiring are proven above; the SQS receipt is a known upstream
-  # gap. Skip rather than fail so the rest of the probe suite stays green.
-  echo "SKIP: alarm notification not received on SQS queue (sockerless#734)"
-  echo "DEBUG: raw SQS response: $raw" >&2
-  exit 0
+  fail "alarm notification not received on SQS queue (upstream: e6qu/sockerless#734); raw response: $raw"
 fi
 pass "Alarm notification delivered to SQS"
 
 echo "=== CloudWatch alarm -> SNS: assert alarm notification payload ==="
 # The SQS body is JSON; the embedded SNS Message is itself a JSON string.
-# sockerless currently emits a malformed inner JSON body for alarm notifications
-# (e6qu/sockerless#734), so we assert the presence of the expected fields by
-# string matching rather than parsing the inner Message.
-if ! echo "$message_body" | grep -qF "\"AlarmName\":\"${alarm_name}\""; then
-  fail "alarm notification missing expected AlarmName"
-fi
-if ! echo "$message_body" | grep -qF "\"NewStateValue\":\"ALARM\""; then
-  fail "alarm notification missing expected NewStateValue=ALARM"
-fi
+printf '%s\n' "$message_body" | python3 -c '
+import sys, json
+body = json.load(sys.stdin)
+msg = json.loads(body["Message"])
+alarm_name = msg.get("AlarmName", "")
+state = msg.get("NewStateValue", "")
+assert alarm_name == sys.argv[1], "AlarmName mismatch: " + alarm_name
+assert state == "ALARM", "NewStateValue: " + state
+' "$alarm_name" || fail "alarm notification payload validation failed"
 pass "Alarm notification payload contains expected fields"
 
 echo "=== ALL CLOUDWATCH ALARM -> SNS ADVERSARIAL SLICE PROBES PASSED ==="

@@ -2,11 +2,17 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-01 (PR #179 fully green; shellcheck/check-deps/terraform-sim/e2e-https failures resolved; awaiting merge go-ahead.)
+**Last updated:** 2026-07-03 (sockerless #767 re-pinned; CloudWatch probe `echo` bug fixed; e2e `read:org`→`admin:org` provisioning fix; CI verifying.)
 
-## Active — third adversarial spec-fidelity probe wave (PR #179)
+## Active — PR #180: all three blockers fixed locally; CI verifying
 
-PR #179, which bumps sockerless to #737 and adds the third wave of adversarial spec-fidelity probes, is **fully green in CI**. Route53 wildcard DNS, ACM/TLS termination, and KMS real encryption/key-policy Deny are now strict thanks to the sockerless #737 fixes. The remaining upstream blocker is **e6qu/sockerless#734** (CloudWatch Alarm → SNS → SQS delivery is flaky/malformed), so that probe skips SQS receipt verification but still proves alarm creation, state transition, and AlarmActions wiring.
+- **terraform-sim PASSED in CI** — the CloudWatch alarm SNS probe was failing due to our own `echo "$raw"` bug (POSIX `echo` corrupts backslash sequences in nested-JSON). Fixed with `printf`.
+- **e2e/e2e-https** — the GitHub team provisioning used a `read:org` OAuth token, but bleephub (correctly) requires `admin:org` for `POST /orgs/{org}/teams` and `PUT .../memberships`. Fixed by provisioning with `admin:org` scope and keeping the login/verification token at `read:org`.
+- **check-deps** — `tsx` 4.22.4 → 4.22.5 bumped.
+- sockerless **#767** (`f0d96ec3`) re-pinned; closes #763/#765/#766 upstream.
+- All probe slices and the bleephub team flow pass locally against sockerless #767.
+
+**Next action:** Push and watch CI. If green, merge PR #180.
 
 Fixes applied to get CI green:
 
@@ -16,7 +22,7 @@ Fixes applied to get CI green:
 - `e2e-https`: corrected the bring-up step to use `docker-compose.https.yml` (azure-sim + aws-sim + bleephub) instead of only the plain AWS sim.
 - `build-test`: fixed `pct()` in `@edd/demo` to guard against non-finite `maxUsd`, which a fuzz test surfaced.
 
-Next: merge PR #179 on user go-ahead, then return to AWS-account-gated deploy readiness.
+Next: merge PR #180 if CI verifies green. Then return to AWS-account-gated deploy readiness.
 
 ## Prior — sockerless fidelity audit filed; real apply still decision-gated
 

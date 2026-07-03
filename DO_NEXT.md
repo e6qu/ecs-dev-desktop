@@ -47,10 +47,11 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **Third adversarial spec-fidelity probe wave — DONE on branch `feat/adversarial-probes-wave3` (2026-07-01).** All ten probe slices are implemented, wired into `terraform-sim`, and the full CI run is green. Merge PR #179 on user go-ahead, then return to AWS-account-gated deploy readiness. **e6qu/sockerless#734** remains open (CloudWatch Alarm → SNS → SQS delivery is flaky/malformed), so the alarm probe skips SQS receipt verification pending the upstream fix.
+- **Third adversarial spec-fidelity probe wave — DONE; CloudWatch probe FIXED + sockerless #767 bump (2026-07-03).** PR #179 merged the sockerless #737 bump and all ten probe slices. PR #180 removes the SQS-receipt workaround and fails loudly. The "SNS delivery succeeded but ReceiveMessage empty" issue was **our bug**: `echo "$raw"` corrupts backslash sequences in the nested-JSON SQS Body (POSIX `echo` interprets `\\`). Fixed with `printf '%s\n'` and proper nested-JSON parsing. The sim was correct all along (sockerless #766 was not a sim bug — closed). sockerless **#767** (`f0d96ec3`) also fixes bleephub team creator auto-maintainer (#763/#765). All probe slices pass locally.
 
-- **Merge PR #179.** Land the sockerless #737 bump + the adversarial probe wave now that CI is green.
-- **Merge PR #178.** All CI checks are green (including `terraform-sim`). Land the sockerless bump + strict adversarial probes, then return to AWS-account-gated deploy readiness. (1) **Viewer RBAC** — the demo now gates its
+- **Verify PR #180 in CI and merge if green.** CI should now pass on all jobs including `terraform-sim`, `e2e`, and `e2e-https`.
+
+- **Await sockerless #765 fix + verification.** Once the bleephub fix lands, re-pin, re-run CI, and merge PR #180 if green.
   mutating controls on the REAL `@edd/authz` `defineAbilityFor` (`DemoControlPlane.canMutateWorkspaces()`),
   so a viewer sees the workspace list read-only (no create form, no start/stop/delete) — the identity
   switcher tells a true CASL story. (2) **Provisioning dwell** — `create` now lands in `provisioning` and
@@ -304,12 +305,23 @@ count>10`; `DescribeTasks` empty `tasks`) and **#619** (Scheduler accepts an inv
     cold-start, federation, IAM enforcement, 200+ load, wake-on-connect) follow as further jobs.
 - **On DNS (#2):** real `*.devbox.<domain>` routing + ACM (the module is sim-proven;
   the real hosted zone + cert issuance is AWS/registrar-gated).
-- **On sockerless KMS fidelity:** wave-3 adversarial KMS-encryption probe
-  (`adversarial-slice-kms-encryption.sh`) is blocked by **e6qu/sockerless#732**.
-  The sim's `kms:Encrypt` does not produce real ciphertext (blob decodes to
-  `kms-sim:<key-id>:<base64-plaintext>`) and an explicit `Deny kms:Decrypt`
-  principal in the key policy is ignored. Implement the slice once the upstream
-  fix lands.
+- **On sockerless CloudWatch alarm fidelity:** strict CloudWatch Alarm → SNS
+  probe (`adversarial-slice-cloudwatch-alarm-sns.sh`) was blocked by
+  **e6qu/sockerless#749** / **#753** / **#758**. The isolated upstream
+  regression test (#748) passed, but the same sequence failed in the integrated
+  `terraform-sim` environment after Terraform apply/destroy cycles.
+  **sockerless #756** addressed the evaluator-state issue, **sockerless #759**
+  added a dangling-alarm regression test, **sockerless #761** fixed the race
+  by moving state read/dispatch/write into a single `cwAlarms.Update` callback,
+  and **sockerless #764** added fan-out observability logging. Submodule
+  re-pinned to `6756ecfb`. Merge PR #180 once CI verifies green.
+
+- **On bleephub GitHub team API:** bumping the submodule regressed `GET
+/user/teams` to 403 Forbidden, breaking GitHub OAuth role mapping in `e2e`
+  and `e2e-https`. Filed as **e6qu/sockerless#754**; fixed by sockerless
+  **#756**, but the endpoint returned an empty list and the user mapped to
+  `viewer` instead of `admin`. Filed **e6qu/sockerless#763**; fixed by
+  sockerless **#764** (emits `X-OAuth-Scopes` for web-flow tokens).
 
 ---
 
