@@ -2,20 +2,18 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-02 (sockerless #751 did not fix the integrated CloudWatch alarm failure; refreshed deps; filed e6qu/sockerless#753 and #754.)
+**Last updated:** 2026-07-03 (sockerless #756 landed; re-pinned to a3448639; PR #180 now running through CI for verification.)
 
-## Active — strict CloudWatch Alarm → SNS probe still blocked upstream
+## Active — strict CloudWatch Alarm → SNS probe: upstream fix landed, CI verifying
 
 PR #179 merged. PR #180 removes the SQS-receipt workaround and fails loudly.
 
 - sockerless **#748** added an isolated CLI regression test that passes in a fresh simulator subprocess.
 - The integrated `terraform-sim` harness still failed after Terraform apply/destroy cycles; filed **e6qu/sockerless#749**.
-- sockerless **#751** attempted to fix #749 by resetting the CloudWatch alarm evaluator state on `PutMetricAlarm`. The submodule was re-pinned to `3d85b89`.
-- **CI re-run shows the same integrated failure**: alarm transitions to `ALARM`, but no `SNS.Publish` is logged and SQS stays empty. Filed **e6qu/sockerless#753** as a follow-up.
-- The same submodule bump also introduced a **bleephub regression**: `GET /user/teams` returns 403 Forbidden, breaking `e2e` and `e2e-https`. Filed **e6qu/sockerless#754**.
-- `check-deps` was refreshed locally and now passes.
+- sockerless **#751** attempted to fix #749 by resetting `cwAlarmLastState` on `PutMetricAlarm` but the integrated probe still failed; filed **e6qu/sockerless#753**.
+- sockerless **#756** fixes both **#753** (moves evaluator last-dispatched state onto each alarm's persisted state so replacement naturally resets it, plus panic recovery in the evaluator loop) and **#754** (bleephub `/user/teams` no longer requires an OAuth scope). The submodule is re-pinned to `a3448639`.
 
-**Next action:** wait for sockerless #753 (and #754) to land, then re-pin and verify.
+**Next action:** CI run in progress. Merge PR #180 if all jobs go green.
 
 Fixes applied to get CI green:
 
