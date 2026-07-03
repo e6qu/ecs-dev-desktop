@@ -91,7 +91,7 @@ aws cloudwatch put-metric-data \
   --metric-data "[{\"MetricName\":\"$metric_name\",\"Value\":95.0,\"Unit\":\"Percent\"}]" >/dev/null || fail "PutMetricData rejected"
 
 state_value=""
-for _ in 1 2 3 4 5 6 7 8 9 10; do
+for _ in $(seq 1 15); do
   state_value=$(aws cloudwatch describe-alarms \
     --alarm-names "$alarm_name" \
     --output json |
@@ -104,14 +104,16 @@ done
 if [ "$state_value" != "ALARM" ]; then
   fail "alarm did not transition to ALARM, got $state_value"
 fi
-# Give SNS a moment to finish serialising the alarm notification before we poll.
-sleep 2
+# The upstream isolated test sleeps 2s here. In the integrated terraform-sim
+# environment the evaluator may be busy with Terraform-managed alarms, so allow
+# extra time for the SNS fan-out before polling SQS.
+sleep 3
 pass "Alarm transitioned to ALARM"
 
 echo "=== CloudWatch alarm -> SNS: receive alarm notification from SQS ==="
 message_body=""
 raw=""
-for _ in 1 2 3 4 5 6 7 8 9 10; do
+for _ in $(seq 1 30); do
   raw=$(aws sqs receive-message --queue-url "$queue_url" --output json 2>/dev/null || true)
   message_body=$(echo "$raw" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("Messages",[{}])[0].get("Body",""))' 2>/dev/null || true)
   if [ -n "$message_body" ]; then

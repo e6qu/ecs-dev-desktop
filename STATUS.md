@@ -2,22 +2,17 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-03 (sockerless #764 landed with fan-out observability + OAuth team fidelity; re-pinned to 6756ecfb; PR #180 now running through CI for verification.)
+**Last updated:** 2026-07-03 (sockerless #764 fan-out works but is slow in integrated env; increased probe timeout; bleephub /user/teams still empty; filed e6qu/sockerless#765.)
 
-## Active — strict CloudWatch Alarm → SNS probe: upstream fix landed, CI verifying
+## Active — strict CloudWatch Alarm → SNS probe: fan-out works, probe timeout increased; bleephub still blocked
 
 PR #179 merged. PR #180 removes the SQS-receipt workaround and fails loudly.
 
-- sockerless **#748** added an isolated CLI regression test that passes in a fresh simulator subprocess.
-- The integrated `terraform-sim` harness still failed after Terraform apply/destroy cycles; filed **e6qu/sockerless#749**.
-- sockerless **#751** attempted to fix #749 by resetting `cwAlarmLastState` on `PutMetricAlarm` but the integrated probe still failed; filed **e6qu/sockerless#753**.
-- sockerless **#756** moved the evaluator's last-dispatched state onto each alarm's persisted state and fixed the bleephub `/user/teams` 403 regression, but the integrated probe still failed; filed **e6qu/sockerless#758**.
-- sockerless **#759** added a dangling-alarm regression test but no simulator code change; filed **e6qu/sockerless#760**.
-- sockerless **#761** fixed #760/#758 by moving state read/dispatch/write into a single `cwAlarms.Update` callback and added Info-level logging. After re-pinning to `354c81d3`, the simulator logged the dispatch decision and transition, but SQS still received no message; filed **e6qu/sockerless#762**.
-- The bleephub `/user/teams` endpoint returned an empty list after #756, breaking GitHub OAuth role mapping; filed **e6qu/sockerless#763**.
-- sockerless **#764** adds fan-out observability logging at every SNS→SQS decision point and fixes bleephub OAuth team fidelity by emitting `X-OAuth-Scopes` for web-flow tokens. The submodule is re-pinned to `6756ecfb`.
+- sockerless **#764** added fan-out observability logging and OAuth team fidelity. After re-pinning to `6756ecfb`, CI showed the CloudWatch→SNS→SQS fan-out **does succeed** (`SNS to SQS delivery succeeded` log), but the delivery happens ~20 seconds after the alarm reaches `ALARM` in the integrated `terraform-sim` environment (the evaluator is busy with Terraform-managed alarms). The probe's 10-second receive timeout was too aggressive; it has been increased to 30 seconds + 3 seconds post-ALARM settle.
+- The bleephub `/user/teams` endpoint still returns an empty list for the OAuth web-flow token used by our e2e, breaking GitHub OAuth role mapping. Filed **e6qu/sockerless#765** as a follow-up to #763.
+- `check-deps` passes.
 
-**Next action:** CI run in progress. Merge PR #180 if all jobs go green.
+**Next action:** CI run in progress. If `terraform-sim` passes, PR #180 still needs a bleephub fix before it can merge cleanly (or the `e2e`/`e2e-https` GitHub team tests need to be understood as blocked upstream).
 
 Fixes applied to get CI green:
 

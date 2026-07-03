@@ -47,9 +47,9 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **Third adversarial spec-fidelity probe wave — DONE; strict CloudWatch alarm SNS probe VERIFYING in CI (2026-07-03).** PR #179 merged the sockerless #737 bump and all ten probe slices. PR #180 removes the SQS-receipt workaround and fails loudly. The integrated failure chain was filed as **e6qu/sockerless#749** / **#753** / **#758** and addressed by **sockerless #756** (evaluator state moved onto each alarm + panic recovery), **#759** (dangling-alarm regression test), **#761** (atomic read/dispatch/write), and **#764** (fan-out observability logging + OAuth team fidelity). The submodule is re-pinned to `6756ecfb`. PR #180 is now running through CI; merge it if all jobs go green.
+- **Third adversarial spec-fidelity probe wave — DONE; strict CloudWatch alarm SNS probe VERIFYING in CI (2026-07-03).** PR #179 merged the sockerless #737 bump and all ten probe slices. PR #180 removes the SQS-receipt workaround and fails loudly. The integrated failure chain was filed as **e6qu/sockerless#749** / **#753** / **#758** and addressed by **sockerless #756** (evaluator state moved onto each alarm + panic recovery), **#759** (dangling-alarm regression test), **#761** (atomic read/dispatch/write), and **#764** (fan-out observability logging). After #764 the fan-out is confirmed working (`SNS to SQS delivery succeeded`), but delivery is slow (~20 s) in the integrated environment because the evaluator is busy with Terraform-managed alarms; the probe timeout was increased to 30 s receive + 3 s settle. The submodule is re-pinned to `6756ecfb`. A bleephub regression remains: `/user/teams` returns an empty list for the OAuth web-flow token; filed **e6qu/sockerless#765**.
 
-- **Verify PR #180 in CI and merge if green.** Once all jobs pass, merge PR #180 and return to AWS-account-gated deploy readiness. `check-deps` was refreshed locally in the meantime.
+- **Await sockerless #765 fix + verification.** Once the bleephub fix lands, re-pin, re-run CI, and merge PR #180 if green.
   mutating controls on the REAL `@edd/authz` `defineAbilityFor` (`DemoControlPlane.canMutateWorkspaces()`),
   so a viewer sees the workspace list read-only (no create form, no start/stop/delete) — the identity
   switcher tells a true CASL story. (2) **Provisioning dwell** — `create` now lands in `provisioning` and
