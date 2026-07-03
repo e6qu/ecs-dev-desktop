@@ -2,9 +2,9 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-03 (sockerless #761 logs the dispatch decision but SQS still receives no message; bleephub teams returns empty after #756; refreshed deps; filed e6qu/sockerless#762 and #763.)
+**Last updated:** 2026-07-03 (sockerless #764 landed with fan-out observability + OAuth team fidelity; re-pinned to 6756ecfb; PR #180 now running through CI for verification.)
 
-## Active — strict CloudWatch Alarm → SNS probe still blocked upstream
+## Active — strict CloudWatch Alarm → SNS probe: upstream fix landed, CI verifying
 
 PR #179 merged. PR #180 removes the SQS-receipt workaround and fails loudly.
 
@@ -13,11 +13,11 @@ PR #179 merged. PR #180 removes the SQS-receipt workaround and fails loudly.
 - sockerless **#751** attempted to fix #749 by resetting `cwAlarmLastState` on `PutMetricAlarm` but the integrated probe still failed; filed **e6qu/sockerless#753**.
 - sockerless **#756** moved the evaluator's last-dispatched state onto each alarm's persisted state and fixed the bleephub `/user/teams` 403 regression, but the integrated probe still failed; filed **e6qu/sockerless#758**.
 - sockerless **#759** added a dangling-alarm regression test but no simulator code change; filed **e6qu/sockerless#760**.
-- sockerless **#761** fixes #760/#758 by moving state read/dispatch/write into a single `cwAlarms.Update` callback and adding Info-level logging. After re-pinning to `354c81d3`, the simulator now logs `CloudWatch alarm dispatching actions` and `CloudWatch alarm transitioned`, but **SQS still receives no message** and no `SNS.Publish` is logged. Filed **e6qu/sockerless#762**.
-- The bleephub `/user/teams` endpoint now returns an **empty list** after #756, breaking GitHub OAuth role mapping (`viewer` instead of `admin`). Filed **e6qu/sockerless#763**.
-- `check-deps` was refreshed locally and now passes.
+- sockerless **#761** fixed #760/#758 by moving state read/dispatch/write into a single `cwAlarms.Update` callback and added Info-level logging. After re-pinning to `354c81d3`, the simulator logged the dispatch decision and transition, but SQS still received no message; filed **e6qu/sockerless#762**.
+- The bleephub `/user/teams` endpoint returned an empty list after #756, breaking GitHub OAuth role mapping; filed **e6qu/sockerless#763**.
+- sockerless **#764** adds fan-out observability logging at every SNS→SQS decision point and fixes bleephub OAuth team fidelity by emitting `X-OAuth-Scopes` for web-flow tokens. The submodule is re-pinned to `6756ecfb`.
 
-**Next action:** wait for sockerless #762 (and #763) to land, then re-pin and verify.
+**Next action:** CI run in progress. Merge PR #180 if all jobs go green.
 
 Fixes applied to get CI green:
 
@@ -27,7 +27,7 @@ Fixes applied to get CI green:
 - `e2e-https`: corrected the bring-up step to use `docker-compose.https.yml` (azure-sim + aws-sim + bleephub) instead of only the plain AWS sim.
 - `build-test`: fixed `pct()` in `@edd/demo` to guard against non-finite `maxUsd`, which a fuzz test surfaced.
 
-Next: wait for e6qu/sockerless#762 (CloudWatch dispatch outcome logging/fix) and #763 (bleephub teams empty list), re-pin, re-run CI, and merge PR #180 if green. Then return to AWS-account-gated deploy readiness.
+Next: merge PR #180 if CI verifies green. Then return to AWS-account-gated deploy readiness.
 
 ## Prior — sockerless fidelity audit filed; real apply still decision-gated
 
