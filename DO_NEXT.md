@@ -47,9 +47,9 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **Third adversarial spec-fidelity probe wave — DONE; strict CloudWatch alarm SNS probe VERIFYING in CI (2026-07-03).** PR #179 merged the sockerless #737 bump and all ten probe slices. PR #180 removes the SQS-receipt workaround and fails loudly. The integrated failure chain was filed as **e6qu/sockerless#749** / **#753** and fixed by **sockerless #756** (evaluator state moved onto each alarm + panic recovery); the bleephub regression was fixed by the same PR (#754). The submodule is re-pinned to `a3448639`. PR #180 is now running through CI; merge it if all jobs go green.
+- **Third adversarial spec-fidelity probe wave — DONE; strict CloudWatch alarm SNS probe HALTED awaiting upstream fix (2026-07-03).** PR #179 merged the sockerless #737 bump and all ten probe slices. PR #180 removes the SQS-receipt workaround and fails loudly. The integrated failure chain was filed as **e6qu/sockerless#749** / **#753** and addressed by **sockerless #756** (evaluator state moved onto each alarm + panic recovery); the bleephub regression was fixed by the same PR (#754). The submodule was re-pinned to `a3448639`. CI re-run **28641829908** still fails `terraform-sim` with no `SNS.Publish` logged; filed **e6qu/sockerless#758**. Do not merge PR #180 until #758 is fixed and CI verifies green.
 
-- **Verify PR #180 in CI and merge if green.** Once all jobs pass, merge PR #180 and return to AWS-account-gated deploy readiness.
+- **Await sockerless #758 fix + verification.** Once the upstream fix lands, re-pin the submodule, re-run CI, and merge PR #180 if green. `check-deps` was refreshed locally in the meantime.
   mutating controls on the REAL `@edd/authz` `defineAbilityFor` (`DemoControlPlane.canMutateWorkspaces()`),
   so a viewer sees the workspace list read-only (no create form, no start/stop/delete) — the identity
   switcher tells a true CASL story. (2) **Provisioning dwell** — `create` now lands in `provisioning` and
@@ -308,13 +308,13 @@ count>10`; `DescribeTasks` empty `tasks`) and **#619** (Scheduler accepts an inv
   **e6qu/sockerless#749** / **#753**. The isolated upstream regression test
   (#748) passed, but the same sequence failed in the integrated `terraform-sim`
   environment after Terraform apply/destroy cycles. **sockerless #756**
-  resolved both issues; submodule re-pinned to `a3448639`. Merge PR #180 once
-  CI verifies green.
+  addressed both issues; submodule re-pinned to `a3448639`, but the integrated
+  probe still fails. Filed **e6qu/sockerless#758**. Merge PR #180 once the
+  upstream fix lands and CI verifies green.
 
-- **On bleephub GitHub team API:** bumping the submodule from `38e311ac` to
-  `3d85b89` regressed `GET /user/teams` (403 Forbidden), breaking GitHub
-  OAuth role mapping in `e2e` and `e2e-https`. Filed
-  **e6qu/sockerless#754**; fixed by the same sockerless **#756**.
+- **On bleephub GitHub team API:** bumping the submodule regressed `GET
+/user/teams` (403 Forbidden), breaking GitHub OAuth role mapping in `e2e` and
+  `e2e-https`. Filed as **e6qu/sockerless#754**; fixed by sockerless **#756**.
 
 ---
 
