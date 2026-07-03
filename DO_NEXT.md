@@ -47,9 +47,9 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **Third adversarial spec-fidelity probe wave — DONE; strict CloudWatch alarm SNS probe VERIFYING in CI (2026-07-03).** PR #179 merged the sockerless #737 bump and all ten probe slices. PR #180 removes the SQS-receipt workaround and fails loudly. The integrated failure chain was filed as **e6qu/sockerless#749** / **#753** / **#758** and addressed in stages by **sockerless #756** (evaluator state moved onto each alarm + panic recovery), **#759** (dangling-alarm regression test), and **#761** (atomic read/dispatch/write in a single `cwAlarms.Update` callback, plus diagnostic logging). The submodule is re-pinned to `354c81d3`. PR #180 is now running through CI; merge it if all jobs go green.
+- **Third adversarial spec-fidelity probe wave — DONE; strict CloudWatch alarm SNS probe HALTED awaiting upstream fix (2026-07-03).** PR #179 merged the sockerless #737 bump and all ten probe slices. PR #180 removes the SQS-receipt workaround and fails loudly. The integrated failure chain was filed as **e6qu/sockerless#749** / **#753** / **#758** and addressed by **sockerless #756** (evaluator state moved onto each alarm + panic recovery), **#759** (dangling-alarm regression test), and **#761** (atomic read/dispatch/write). After #761 the simulator logs the dispatch decision and transition, but SQS still receives no message; filed **e6qu/sockerless#762**. A bleephub regression also surfaced: `/user/teams` now returns an empty list after #756, breaking GitHub OAuth role mapping; filed **e6qu/sockerless#763**. Do not merge PR #180 until #762 (and #763) is fixed and CI verifies green.
 
-- **Verify PR #180 in CI and merge if green.** Once all jobs pass, merge PR #180 and return to AWS-account-gated deploy readiness. `check-deps` was refreshed locally in the meantime.
+- **Await sockerless #762/#763 fix + verification.** Once the upstream fixes land, re-pin the submodule, re-run CI, and merge PR #180 if green. `check-deps` was refreshed locally in the meantime.
   mutating controls on the REAL `@edd/authz` `defineAbilityFor` (`DemoControlPlane.canMutateWorkspaces()`),
   so a viewer sees the workspace list read-only (no create form, no start/stop/delete) — the identity
   switcher tells a true CASL story. (2) **Provisioning dwell** — `create` now lands in `provisioning` and
@@ -311,12 +311,15 @@ count>10`; `DescribeTasks` empty `tasks`) and **#619** (Scheduler accepts an inv
   **sockerless #756** addressed the evaluator-state issue, **sockerless #759**
   added a dangling-alarm regression test, and **sockerless #761** fixed the
   race by moving state read/dispatch/write into a single `cwAlarms.Update`
-  callback. Submodule re-pinned to `354c81d3`. Merge PR #180 once CI verifies
-  green.
+  callback. After #761 the simulator logs the dispatch decision and transition,
+  but SQS still receives no message. Filed **e6qu/sockerless#762**. Merge PR
+  #180 once the upstream fix lands and CI verifies green.
 
 - **On bleephub GitHub team API:** bumping the submodule regressed `GET
-/user/teams` (403 Forbidden), breaking GitHub OAuth role mapping in `e2e` and
-  `e2e-https`. Filed as **e6qu/sockerless#754**; fixed by sockerless **#756**.
+/user/teams` to 403 Forbidden, breaking GitHub OAuth role mapping in `e2e`
+  and `e2e-https`. Filed as **e6qu/sockerless#754**; fixed by sockerless
+  **#756**, but the endpoint now returns an empty list and the user maps to
+  `viewer` instead of `admin`. Filed **e6qu/sockerless#763**.
 
 ---
 
