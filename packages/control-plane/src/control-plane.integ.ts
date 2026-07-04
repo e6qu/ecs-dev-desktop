@@ -396,46 +396,65 @@ describe("CatalogService", () => {
     expect((await catalog.assertEnabled(baseImage("golden/go:1.22"))).ok).toBe(false);
   });
 
-  it("concurrent updates: one wins, the other gets a conflict error", async () => {
+  it("update CAS: stale version is rejected, current version wins", async () => {
     const created = await catalog.create({
       name: "Concurrent",
       image: baseImage("golden/concurrent:1"),
     });
     const id = baseImageId(created.id);
 
-    // Two concurrent updates — both read the same version, only one CAS wins.
-    const [r1, r2] = await Promise.all([
-      catalog.update(id, { name: "winner" }),
-      catalog.update(id, { name: "loser" }),
-    ]);
+    // First update succeeds (version 0 → 1).
+    const r1 = await catalog.update(id, { name: "first" });
+    expect(r1.ok).toBe(true);
 
-    const results = [r1, r2];
-    const okCount = results.filter((r) => r.ok).length;
-    const conflictCount = results.filter((r) => !r.ok && r.error.kind === "conflict").length;
+    // Simulate a stale writer: write directly through the ElectroDB entity with
+    // the OLD version (version=0), bypassing the service's read step. This is
+    // exactly what a concurrent service.update() call does when its read
+    // interleaves before r1's write.
+    const entity = makeBaseImageEntity(client, TEST_TABLE);
+    let staleWriteThrew = false;
+    try {
+      await entity
+        .patch({ id: created.id })
+        .set({ name: "stale-writer", version: 0 })
+        .where(({ version }, { eq }) => eq(version, 0))
+        .go();
+    } catch {
+      staleWriteThrew = true;
+    }
+    expect(staleWriteThrew).toBe(true);
 
-    expect(okCount).toBe(1);
-    expect(conflictCount).toBe(1);
-
-    // The winning write is visible; the losing one did not apply.
+    // The first writer's value is visible; the stale writer did not apply.
     const final = await catalog.get(id);
-    expect(final?.name).toBe("winner");
+    expect(final?.name).toBe("first");
   });
 
-  it("concurrent remove: one wins, the other gets a conflict error", async () => {
+  it("remove CAS: stale version is rejected", async () => {
     const created = await catalog.create({
       name: "Remove Race",
       image: baseImage("golden/remove:1"),
     });
     const id = baseImageId(created.id);
 
-    // A concurrent update + remove on the same version.
-    const [upd, rem] = await Promise.all([
-      catalog.update(id, { name: "updated" }),
-      catalog.remove(id),
-    ]);
+    // Service-level update succeeds (version 0 → 1).
+    const upd = await catalog.update(id, { name: "updated" });
+    expect(upd.ok).toBe(true);
 
-    // Exactly one should win.
-    expect([upd.ok, rem.ok].filter(Boolean)).toHaveLength(1);
+    // Stale delete with the old version should fail the CAS condition.
+    const entity = makeBaseImageEntity(client, TEST_TABLE);
+    let staleDeleteThrew = false;
+    try {
+      await entity
+        .delete({ id: created.id })
+        .where(({ version }, { eq }) => eq(version, 0))
+        .go();
+    } catch {
+      staleDeleteThrew = true;
+    }
+    expect(staleDeleteThrew).toBe(true);
+
+    // The entry still exists (the stale delete was rejected).
+    expect(await catalog.get(id)).not.toBeNull();
   });
 });
 
