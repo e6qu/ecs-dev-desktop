@@ -7,7 +7,7 @@
 set -eu
 unset CDPATH
 
-endpoint="${AWS_ENDPOINT_URL:-http://localhost:4566}"
+endpoint="${AWS_ENDPOINT_URL:-http://127.0.0.1:4566}"
 region="${AWS_REGION:-us-east-1}"
 # Use a second region endpoint for the cross-region copy target. On real AWS this
 # would be a different regional endpoint; against sockerless process mode both regions

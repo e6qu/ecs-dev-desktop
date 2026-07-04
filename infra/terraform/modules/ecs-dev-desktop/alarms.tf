@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # CloudWatch alarms on the EMF metrics the control plane + reconciler emit. The
 # namespace MUST match `EDD_METRIC_NAMESPACE` in @edd/core. Gated by
 # var.enable_metric_alarms: the sockerless simulator exposes no CloudWatch

@@ -35,6 +35,7 @@ resource "aws_budgets_budget" "monthly" {
       subscriber_sns_topic_arns = var.alarm_sns_topic_arns
     }
   }
+  tags = local.tags
 }
 
 # A single ops pane: fleet size + cost, the wake SLO, control-plane availability +

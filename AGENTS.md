@@ -135,7 +135,7 @@ adapter). Detailed tooling in [`TESTING.md`](./TESTING.md).
 | Tier            | Runs                         | Backed by                                                                                                 |
 | --------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------- |
 | unit / contract | every commit                 | pure core + fakes                                                                                         |
-| integration     | every PR                     | DynamoDB Local + the from-source sockerless sim (`SIM_RUNTIME=process`, API surface)                      |
+| integration     | every PR                     | the from-source sockerless sim (`SIM_RUNTIME=process`, API surface)                                       |
 | `e2e`           | every PR                     | the **container-mode** sockerless sim — executes real task containers (full workspace data-fidelity loop) |
 | `e2e-aws`       | manual (`workflow_dispatch`) | real AWS account/region + real IdP                                                                        |
 

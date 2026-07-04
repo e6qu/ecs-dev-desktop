@@ -69,7 +69,7 @@ export async function ensureTable(client: DynamoDBClient, table = TABLE): Promis
   }
   // On real AWS, CreateTable returns while the table is still CREATING — the next
   // write/query would throw ResourceNotFound until it's ACTIVE. Wait for ACTIVE (also
-  // covers the already-exists path). DynamoDB Local returns ACTIVE immediately, so this
+  // covers the already-exists path). The sim returns ACTIVE immediately, so this
   // is a no-op there.
   await waitUntilTableExists(
     { client, maxWaitTime: TABLE_READY_WAIT_SECONDS },

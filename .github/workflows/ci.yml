@@ -20,6 +20,7 @@ jobs:
   branch-current:
     name: branch-current
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       # Check out the PR HEAD (not the auto-merge ref) with full history so the
       # fast-forward check against the base is meaningful.
@@ -37,6 +38,7 @@ jobs:
   build-test:
     name: build-test
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6.0.2
       - uses: pnpm/action-setup@v6.0.8
@@ -52,6 +54,7 @@ jobs:
   code-health:
     name: code-health
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6.0.2
       - uses: pnpm/action-setup@v6.0.8
@@ -68,6 +71,7 @@ jobs:
   integration:
     name: integration
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # DynamoDB is served by the sockerless sim (brought up below) at the default
     # endpoint (:4566) — the standalone DynamoDB-Local service was retired once the
     # sim's DynamoDB became conformant (sockerless #641-#644/#648 + CloudTrail
@@ -103,6 +107,7 @@ jobs:
   e2e:
     name: e2e
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v6.0.2
         with:
@@ -125,7 +130,7 @@ jobs:
         run: sh scripts/gen-sim-github-app.sh
       # Retry harness bring-up: image pulls can transiently hit registry rate
       # limits (public.ecr.aws / Docker Hub) on shared runner IPs.
-      - name: Build & start the e2e harness (container-mode sim + DynamoDB Local)
+      - name: Build & start the e2e harness (container-mode sim)
         run: |
           for attempt in 1 2 3; do
             if docker compose -f docker-compose.e2e.yml up -d --build --wait; then
@@ -182,6 +187,7 @@ jobs:
   e2e-https:
     name: e2e-https
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6.0.2
         with:
@@ -247,6 +253,7 @@ jobs:
   macos-images:
     name: macos-images
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: >-
       github.event_name == 'workflow_dispatch' ||
       contains(github.event.pull_request.labels.*.name, 'ci:macos')
@@ -304,6 +311,7 @@ jobs:
   e2e-flow-macos:
     name: e2e-flow-macos
     runs-on: macos-15-intel
+    timeout-minutes: 25
     needs: macos-images
     if: >-
       github.event_name == 'workflow_dispatch' ||
@@ -392,6 +400,7 @@ jobs:
   playwright:
     name: playwright
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6.0.2
         with:
@@ -426,6 +435,7 @@ jobs:
   check-deps:
     name: check-deps
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6.0.2
       - uses: pnpm/action-setup@v6.0.8
@@ -443,6 +453,7 @@ jobs:
   terraform:
     name: terraform
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6.0.2
       - uses: hashicorp/setup-terraform@v4.0.1
@@ -1568,6 +1579,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest]
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6.0.2
       - name: Install shellcheck + zsh
@@ -1594,6 +1606,7 @@ jobs:
   sast:
     name: sast
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6.0.2
       - uses: actions/setup-python@v6.2.0
@@ -1606,6 +1619,7 @@ jobs:
   vuln-scan:
     name: vuln-scan
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6.0.2
       - name: Trivy (deps + IaC + secrets; fail on HIGH/CRITICAL)

@@ -11,7 +11,7 @@ const delay = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 /**
  * Block until DynamoDB answers a `ListTables` call, or throw after `timeoutMs`.
  * The integration suite races container startup otherwise — the first run can hit
- * DynamoDB Local before it accepts connections. Polling here makes the bootstrap
+ * the sim before it accepts connections. Polling here makes the bootstrap
  * deterministic instead of relying on container-readiness timing, and it is a fast
  * no-op once DynamoDB is up (a single successful probe). Portable: works the same
  * locally and in CI, with no container health-check tooling required.

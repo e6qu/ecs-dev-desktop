@@ -32,7 +32,7 @@ export interface Workspace {
   readonly id: WorkspaceId;
   readonly ownerId: OwnerId;
   /** Owner's email — the identity the proxy matches a caller against for
-   * per-workspace access (DO_NEXT #5). Optional: records created before the
+   * per-workspace access. Optional: records created before the
    * field, or by paths without a session email, have none (proxy fails closed
    * for non-admins). */
   readonly ownerEmail?: Email;
