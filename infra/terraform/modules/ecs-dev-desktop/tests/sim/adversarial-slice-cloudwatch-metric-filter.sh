@@ -38,7 +38,7 @@ aws logs put-metric-filter \
   >/dev/null || fail "PutMetricFilter rejected"
 
 filters=$(aws logs describe-metric-filters --log-group-name "$log_group" --output json)
-filter_count=$(echo "$filters" | python3 -c 'import sys,json; print(len(json.load(sys.stdin).get("metricFilters",[])))')
+filter_count=$(printf '%s\n' "$filters" | python3 -c 'import sys,json; print(len(json.load(sys.stdin).get("metricFilters",[])))')
 if [ "$filter_count" -ne 1 ]; then
   fail "expected one metric filter, got $filter_count"
 fi

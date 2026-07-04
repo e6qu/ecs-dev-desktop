@@ -40,12 +40,12 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@aws-sdk/client-cloudtrail": "^3.1078.0",
-    "@aws-sdk/client-cloudwatch-logs": "^3.1078.0",
-    "@aws-sdk/client-dynamodb": "^3.1078.0",
-    "@aws-sdk/client-ec2": "^3.1078.0",
-    "@aws-sdk/client-ecs": "^3.1078.0",
-    "@aws-sdk/client-pricing": "^3.1078.0",
+    "@aws-sdk/client-cloudtrail": "^3.1079.0",
+    "@aws-sdk/client-cloudwatch-logs": "^3.1079.0",
+    "@aws-sdk/client-dynamodb": "^3.1079.0",
+    "@aws-sdk/client-ec2": "^3.1079.0",
+    "@aws-sdk/client-ecs": "^3.1079.0",
+    "@aws-sdk/client-pricing": "^3.1079.0",
     "@edd/e2e": "workspace:*",
     "@playwright/test": "^1.61.1",
     "@types/node": "^26.1.0",

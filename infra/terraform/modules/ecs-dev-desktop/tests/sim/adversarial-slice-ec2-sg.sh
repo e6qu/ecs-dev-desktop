@@ -59,7 +59,7 @@ aws ec2 authorize-security-group-ingress \
 rules=$(aws ec2 describe-security-group-rules \
   --filters "Name=group-id,Values=${alb_sg}" \
   --output json)
-ingress_count=$(echo "$rules" | python3 -c 'import sys,json; print(sum(1 for r in json.load(sys.stdin).get("SecurityGroupRules",[]) if not r.get("IsEgress",True) and r.get("FromPort")==443))')
+ingress_count=$(printf '%s\n' "$rules" | python3 -c 'import sys,json; print(sum(1 for r in json.load(sys.stdin).get("SecurityGroupRules",[]) if not r.get("IsEgress",True) and r.get("FromPort")==443))')
 if [ "$ingress_count" -ne 1 ]; then
   fail "expected one port-443 ingress rule on ALB SG, got $ingress_count"
 fi

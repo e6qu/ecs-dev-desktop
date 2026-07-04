@@ -38,7 +38,7 @@ main_url=$(aws sqs create-queue \
   python3 -c 'import sys,json; print(json.load(sys.stdin)["QueueUrl"])')
 
 main_attrs=$(aws sqs get-queue-attributes --queue-url "$main_url" --attribute-names RedrivePolicy --output json)
-if ! echo "$main_attrs" | python3 -c 'import sys,json; rp=json.load(sys.stdin)["Attributes"].get("RedrivePolicy",""); sys.exit(0 if "deadLetterTargetArn" in rp else 1)'; then
+if ! printf '%s\n' "$main_attrs" | python3 -c 'import sys,json; rp=json.load(sys.stdin)["Attributes"].get("RedrivePolicy",""); sys.exit(0 if "deadLetterTargetArn" in rp else 1)'; then
   fail "main queue RedrivePolicy did not round-trip"
 fi
 pass "SQS queue create + RedrivePolicy round-trip"

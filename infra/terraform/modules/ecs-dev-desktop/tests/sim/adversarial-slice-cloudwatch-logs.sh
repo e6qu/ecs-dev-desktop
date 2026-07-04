@@ -37,10 +37,10 @@ aws logs create-log-group --log-group-name "$log_group" --kms-key-id "$key_id" >
   fail "CreateLogGroup rejected"
 
 groups=$(aws logs describe-log-groups --log-group-name-pattern "adversarial/logs-${suffix}" --output json)
-if ! echo "$groups" | python3 -c 'import sys,json; sys.exit(0 if any("adversarial/logs-'"$suffix"'" in g.get("logGroupName","") for g in json.load(sys.stdin).get("logGroups",[])) else 1)'; then
+if ! printf '%s\n' "$groups" | python3 -c 'import sys,json; sys.exit(0 if any("adversarial/logs-'"$suffix"'" in g.get("logGroupName","") for g in json.load(sys.stdin).get("logGroups",[])) else 1)'; then
   fail "DescribeLogGroups did not return the created group"
 fi
-kms=$(echo "$groups" | python3 -c 'import sys,json; print(next((g.get("kmsKeyId") for g in json.load(sys.stdin).get("logGroups",[]) if "adversarial/logs-'"$suffix"'" in g.get("logGroupName","")),""))')
+kms=$(printf '%s\n' "$groups" | python3 -c 'import sys,json; print(next((g.get("kmsKeyId") for g in json.load(sys.stdin).get("logGroups",[]) if "adversarial/logs-'"$suffix"'" in g.get("logGroupName","")),""))')
 if [ -z "$kms" ]; then
   fail "CreateLogGroup did not persist kmsKeyId"
 fi
@@ -68,7 +68,7 @@ aws logs put-log-events \
   >/dev/null || fail "PutLogEvents rejected"
 
 events=$(aws logs get-log-events --log-group-name "$log_group" --log-stream-name "$log_stream" --output json)
-count=$(echo "$events" | python3 -c 'import sys,json; print(len(json.load(sys.stdin).get("events",[])))')
+count=$(printf '%s\n' "$events" | python3 -c 'import sys,json; print(len(json.load(sys.stdin).get("events",[])))')
 if [ "$count" -lt 2 ]; then
   fail "GetLogEvents expected at least 2 events, got $count"
 fi
@@ -79,7 +79,7 @@ filtered=$(aws logs filter-log-events \
   --log-group-name "$log_group" \
   --filter-pattern '"probe-event-1"' \
   --output json)
-fcount=$(echo "$filtered" | python3 -c 'import sys,json; print(len(json.load(sys.stdin).get("events",[])))')
+fcount=$(printf '%s\n' "$filtered" | python3 -c 'import sys,json; print(len(json.load(sys.stdin).get("events",[])))')
 if [ "$fcount" -lt 1 ]; then
   fail "FilterLogEvents expected at least 1 matching event, got $fcount"
 fi

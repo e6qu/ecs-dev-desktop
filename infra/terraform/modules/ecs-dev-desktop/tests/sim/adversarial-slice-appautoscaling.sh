@@ -91,11 +91,11 @@ policies=$(aws application-autoscaling describe-scaling-policies \
   --service-namespace ecs \
   --resource-id "service/${cluster_name}/${service_name}" \
   --output json)
-policy_type=$(echo "$policies" | python3 -c 'import sys,json; print(json.load(sys.stdin)["ScalingPolicies"][0].get("PolicyType","MISSING"))')
+policy_type=$(printf '%s\n' "$policies" | python3 -c 'import sys,json; print(json.load(sys.stdin)["ScalingPolicies"][0].get("PolicyType","MISSING"))')
 if [ "$policy_type" != "TargetTrackingScaling" ]; then
   fail "expected TargetTrackingScaling policy, got $policy_type"
 fi
-target_value=$(echo "$policies" | python3 -c 'import sys,json; print(json.load(sys.stdin)["ScalingPolicies"][0]["TargetTrackingScalingPolicyConfiguration"].get("TargetValue","MISSING"))')
+target_value=$(printf '%s\n' "$policies" | python3 -c 'import sys,json; print(json.load(sys.stdin)["ScalingPolicies"][0]["TargetTrackingScalingPolicyConfiguration"].get("TargetValue","MISSING"))')
 if [ "$target_value" != "70.0" ]; then
   fail "expected TargetValue 70.0, got $target_value"
 fi

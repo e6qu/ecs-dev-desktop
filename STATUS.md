@@ -2,17 +2,17 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-03 (sockerless #767 re-pinned; CloudWatch probe `echo` bug fixed; e2e `read:org`→`admin:org` provisioning fix; CI verifying.)
+**Last updated:** 2026-07-04 (PR #180 merged; wave-4 adversarial probes in progress on `feat/adversarial-probes-wave4`.)
 
-## Active — PR #180: all three blockers fixed locally; CI verifying
+## PR #180 merged — wave-3 probes shipped, all CI green
 
-- **terraform-sim PASSED in CI** — the CloudWatch alarm SNS probe was failing due to our own `echo "$raw"` bug (POSIX `echo` corrupts backslash sequences in nested-JSON). Fixed with `printf`.
-- **e2e/e2e-https** — the GitHub team provisioning used a `read:org` OAuth token, but bleephub (correctly) requires `admin:org` for `POST /orgs/{org}/teams` and `PUT .../memberships`. Fixed by provisioning with `admin:org` scope and keeping the login/verification token at `read:org`.
-- **check-deps** — `tsx` 4.22.4 → 4.22.5 bumped.
-- sockerless **#767** (`f0d96ec3`) re-pinned; closes #763/#765/#766 upstream.
-- All probe slices and the bleephub team flow pass locally against sockerless #767.
+PR #180 merged to `main` with fully green CI. Delivered: strict CloudWatch alarm SNS probe, 10 wave-3 adversarial probe slices, sockerless #767 bump (`f0d96ec3`), probe `echo`→`printf` fix, e2e OAuth scope fix (`admin:org` for provisioning).
 
-**Next action:** Push and watch CI. If green, merge PR #180.
+## Active — wave-4 adversarial spec-fidelity probes
+
+7 new probe slices for previously untested module surfaces (EC2 SG egress, DynamoDB SSE/GSI, EventBridge Scheduler, CloudWatch dashboard, ALB target group, IAM roles, CodeBuild). Boyscout: replaced all `echo "$var" | python3` with `printf` across ALL probe scripts.
+
+**Next action:** Push and run CI.
 
 Fixes applied to get CI green:
 
