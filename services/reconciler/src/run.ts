@@ -7,9 +7,10 @@
  * Required env: DYNAMODB_TABLE, ECS_CLUSTER, ECS_SUBNETS, ECS_EBS_ROLE_ARN.
  * Optional env read by the SDK adapters: AWS_REGION, AWS_ENDPOINT_URL,
  * DYNAMODB_ENDPOINT — same as the rest of the platform.
- * Optional tuning (DO_NEXT decision #4 knobs; defaults in @edd/core):
+ * Optional tuning (defaults in @edd/core; overridable via Terraform variables):
  * EDD_IDLE_THRESHOLD_MS, EDD_SNAPSHOT_INTERVAL_MS, EDD_EARLY_SNAPSHOT_INTERVAL_MS,
- * EDD_EARLY_SESSION_MS, EDD_GC_GRACE_MS, EDD_PROVISIONING_TIMEOUT_MS.
+ * EDD_EARLY_SESSION_MS, EDD_GC_GRACE_MS, EDD_PROVISIONING_TIMEOUT_MS,
+ * EDD_CONVERGE_BUDGET.
  */
 import { metricSinkFromEnv } from "@edd/cloudwatch-metrics";
 import { EcsComputeProvider } from "@edd/compute-ecs";

@@ -367,6 +367,62 @@ variable "reconciler_command" {
   default     = ["node", "services/reconciler/dist/run.js"]
 }
 
+variable "reconciler_cpu" {
+  description = "CPU units (1 CPU = 1024) for the reconciler task. 256 (0.25 vCPU) is fine for <100 workspaces; scale up at 200+."
+  type        = number
+  default     = 256
+}
+
+variable "reconciler_memory" {
+  description = "Memory (MiB) for the reconciler task. Must satisfy the Fargate CPU/memory table."
+  type        = number
+  default     = 512
+}
+
+# ---- Scale-to-zero tuning (injected into both the reconciler and workspace tasks) ----
+
+variable "idle_threshold_ms" {
+  description = "Milliseconds of inactivity before a running workspace is scaled to zero. Default: 30 min."
+  type        = number
+  default     = 1800000
+}
+
+variable "snapshot_interval_ms" {
+  description = "Milliseconds between scheduled snapshots of a running workspace. Default: 6 h."
+  type        = number
+  default     = 21600000
+}
+
+variable "early_snapshot_interval_ms" {
+  description = "Shorter snapshot cadence for a young workspace (created within early_session_ms). Default: 10 min."
+  type        = number
+  default     = 600000
+}
+
+variable "early_session_ms" {
+  description = "How long a workspace counts as 'young' for the shorter snapshot cadence. Default: 1 h."
+  type        = number
+  default     = 3600000
+}
+
+variable "gc_grace_ms" {
+  description = "Grace window (ms) before an unreferenced volume/snapshot becomes GC-eligible. Guards against create/persist races. Default: 1 h."
+  type        = number
+  default     = 3600000
+}
+
+variable "provisioning_timeout_ms" {
+  description = "Milliseconds a workspace may sit in 'provisioning' before the reconciler reverts it to 'stopped'. Default: 10 min."
+  type        = number
+  default     = 600000
+}
+
+variable "heartbeat_interval_s" {
+  description = "Idle-agent heartbeat interval (seconds) injected into workspace tasks. The agent posts to the control plane at this cadence; the idle threshold is measured from the last heartbeat. Default: 5 min."
+  type        = number
+  default     = 300
+}
+
 variable "log_retention_days" {
   description = "CloudWatch Logs retention for app/reconciler/workspace log groups."
   type        = number

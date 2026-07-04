@@ -33,6 +33,7 @@ import {
   DEFAULT_WORKSPACE_VOLUME_GIB,
 } from "@edd/config";
 import {
+  DEFAULT_HEARTBEAT_INTERVAL_S,
   deriveWorkspaceToken,
   isoTimestamp,
   taskId,
@@ -120,8 +121,8 @@ export interface EcsComputeConfig {
    */
   connectionSecret?: string;
   /** Idle-agent heartbeat interval (seconds) injected into the workspace
-   * container as EDD_HEARTBEAT_INTERVAL_S; the image defaults to
-   * DEFAULT_HEARTBEAT_INTERVAL_S when absent (scale-to-zero tuning knob). */
+   * container as EDD_HEARTBEAT_INTERVAL_S. Defaults to
+   * {@link DEFAULT_HEARTBEAT_INTERVAL_S} (scale-to-zero tuning knob). */
   heartbeatIntervalS?: number;
   /** CloudWatch Logs group for workspace container stdout/stderr (awslogs driver).
    * When set, every task definition includes logConfiguration pointing here.
@@ -810,7 +811,8 @@ export class EcsComputeProvider implements ComputeProvider {
     const ebsRoleArn = process.env.ECS_EBS_ROLE_ARN;
     if (subnets.length === 0) throw new Error("COMPUTE_PROVIDER=ecs requires ECS_SUBNETS");
     if (!ebsRoleArn) throw new Error("COMPUTE_PROVIDER=ecs requires ECS_EBS_ROLE_ARN");
-    const heartbeatIntervalS = positiveIntEnv("EDD_HEARTBEAT_INTERVAL_S");
+    const heartbeatIntervalS =
+      positiveIntEnv("EDD_HEARTBEAT_INTERVAL_S") ?? DEFAULT_HEARTBEAT_INTERVAL_S;
     const volumeSizeGiB = positiveIntEnv("ECS_VOLUME_GIB");
     return new EcsComputeProvider({
       client: EcsComputeProvider.client(),
@@ -838,7 +840,7 @@ export class EcsComputeProvider implements ComputeProvider {
         agentSecret,
         connectionSecret,
         logGroupName: process.env.ECS_LOG_GROUP_WORKSPACES,
-        ...(heartbeatIntervalS !== undefined ? { heartbeatIntervalS } : {}),
+        heartbeatIntervalS,
       },
     });
   }

@@ -61,6 +61,14 @@ locals {
     EDD_APP_NAME   = var.name
     # CloudWatch log group for workspace container stdout/stderr (awslogs driver).
     ECS_LOG_GROUP_WORKSPACES = aws_cloudwatch_log_group.workspaces.name
+    # Scale-to-zero tuning (read by the reconciler and injected into workspace tasks).
+    EDD_IDLE_THRESHOLD_MS          = tostring(var.idle_threshold_ms)
+    EDD_SNAPSHOT_INTERVAL_MS       = tostring(var.snapshot_interval_ms)
+    EDD_EARLY_SNAPSHOT_INTERVAL_MS = tostring(var.early_snapshot_interval_ms)
+    EDD_EARLY_SESSION_MS           = tostring(var.early_session_ms)
+    EDD_GC_GRACE_MS                = tostring(var.gc_grace_ms)
+    EDD_PROVISIONING_TIMEOUT_MS    = tostring(var.provisioning_timeout_ms)
+    EDD_HEARTBEAT_INTERVAL_S       = tostring(var.heartbeat_interval_s)
   }
   control_plane_environment = merge(local.base_environment, var.extra_environment)
 }
@@ -177,8 +185,8 @@ resource "aws_ecs_task_definition" "reconciler" {
   family                   = "${var.name}-reconciler"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
-  cpu                      = "256"
-  memory                   = "512"
+  cpu                      = tostring(var.reconciler_cpu)
+  memory                   = tostring(var.reconciler_memory)
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.reconciler.arn
 

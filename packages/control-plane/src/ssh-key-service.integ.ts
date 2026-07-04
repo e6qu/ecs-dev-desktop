@@ -30,7 +30,7 @@ function tickingClock(): { now(): string } {
   return { now: () => new Date(Date.UTC(2026, 5, 1, 0, 0, n++)).toISOString() };
 }
 
-describe("SshKeyService against DynamoDB Local", () => {
+describe("SshKeyService", () => {
   let svc: SshKeyService;
 
   beforeAll(async () => {
