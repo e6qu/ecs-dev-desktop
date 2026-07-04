@@ -307,8 +307,8 @@ importers:
         version: link:../core
     devDependencies:
       '@aws-sdk/client-cloudwatch':
-        specifier: ^3.1078.0
-        version: 3.1078.0
+        specifier: ^3.1079.0
+        version: 3.1079.0
       '@aws-sdk/client-cloudwatch-logs':
         specifier: ^3.1078.0
         version: 3.1078.0
@@ -632,8 +632,8 @@ packages:
     resolution: {integrity: sha512-MDN2nsNvneSmyqPEN7XUJB7cPizDvKr9vRXOgrzC1yV18wjG+lep30F0O/zSYb937TnJjttnmlC4vrnuCSLzzQ==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/client-cloudwatch@3.1078.0':
-    resolution: {integrity: sha512-Pyd4qQRrZd0abybjLXWNQ3Sy4J7j9gdlh1VEFDWp5A09IQEpBSiHNCWt5RbDu++I47HdFANJXhErg3sDS0Yi2w==}
+  '@aws-sdk/client-cloudwatch@3.1079.0':
+    resolution: {integrity: sha512-/nsSchlpcAC1WsGyvsje2MRy37vn7lBINYpxgc/LQ56GX/hXYLA0jymAVPE8HfckhiHnrii9XDGuzuiI4pIQvw==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/client-dynamodb@3.1078.0':
@@ -1630,8 +1630,8 @@ packages:
     resolution: {integrity: sha512-CwCc/7SMTj45y97MUnDTbTaxvtAsiNNRm81z3abROIuMbMsC2Iy5EKfkkVdsKrz8WExQAAMx1EJapq+9j4fFTQ==}
     engines: {node: '>=18.0.0'}
 
-  '@smithy/middleware-compression@4.5.5':
-    resolution: {integrity: sha512-YbEND0YHxzTmvwqX89vrdXjWdsegA6rg7uy6Ef7iFIxCzTR81BXV7wbvJtOTmQJGZLiZcN+XwVJnebd7F6Zgdg==}
+  '@smithy/middleware-compression@4.5.6':
+    resolution: {integrity: sha512-BTRqmd5xIL6hFiJzWlQsMPSRmedAbBLEKIiwgvwdDom6tyKty2TWne48pehQPHwjYhCEiqJTlADjqXV36EI3sQ==}
     engines: {node: '>=18.0.0'}
 
   '@smithy/node-http-handler@4.9.2':
@@ -2692,15 +2692,15 @@ snapshots:
       '@smithy/types': 4.15.1
       tslib: 2.8.1
 
-  '@aws-sdk/client-cloudwatch@3.1078.0':
+  '@aws-sdk/client-cloudwatch@3.1079.0':
     dependencies:
-      '@aws-sdk/core': 3.974.26
-      '@aws-sdk/credential-provider-node': 3.972.61
+      '@aws-sdk/core': 3.974.27
+      '@aws-sdk/credential-provider-node': 3.972.62
       '@aws-sdk/types': 3.973.15
-      '@smithy/core': 3.29.0
-      '@smithy/fetch-http-handler': 5.6.2
-      '@smithy/middleware-compression': 4.5.5
-      '@smithy/node-http-handler': 4.9.2
+      '@smithy/core': 3.29.1
+      '@smithy/fetch-http-handler': 5.6.3
+      '@smithy/middleware-compression': 4.5.6
+      '@smithy/node-http-handler': 4.9.3
       '@smithy/types': 4.15.1
       tslib: 2.8.1
 
@@ -3619,9 +3619,9 @@ snapshots:
       '@smithy/types': 4.15.1
       tslib: 2.8.1
 
-  '@smithy/middleware-compression@4.5.5':
+  '@smithy/middleware-compression@4.5.6':
     dependencies:
-      '@smithy/core': 3.29.0
+      '@smithy/core': 3.29.1
       '@smithy/types': 4.15.1
       fflate: 0.8.1
       tslib: 2.8.1

@@ -16,7 +16,7 @@
     "@edd/core": "workspace:*"
   },
   "devDependencies": {
-    "@aws-sdk/client-cloudwatch": "^3.1078.0",
+    "@aws-sdk/client-cloudwatch": "^3.1079.0",
     "@aws-sdk/client-cloudwatch-logs": "^3.1078.0",
     "@edd/config": "workspace:*",
     "@types/node": "^26.1.0",
