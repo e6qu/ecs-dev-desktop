@@ -50,20 +50,20 @@ function isHttpsUrl(s: string): boolean {
 }
 
 describe("createBaseImageRequest (fuzz)", () => {
-  it("name/image must be non-empty strings (min 1 char, raw length)", () => {
+  it("name/image must be non-empty after trimming (whitespace-only rejected)", () => {
     fc.assert(
       fc.property(fc.string(), fc.string(), (name, image) => {
         const result = createBaseImageRequest.safeParse({ name, image });
-        expect(result.success).toBe(name.length >= 1 && image.length >= 1);
+        expect(result.success).toBe(name.trim().length > 0 && image.trim().length > 0);
       }),
     );
   });
 
-  it("rejects non-string name/image", () => {
+  it("rejects non-string name", () => {
     fc.assert(
       fc.property(fc.anything(), (val) => {
         const result = createBaseImageRequest.safeParse({ name: val, image: "x" });
-        if (typeof val === "string" && val.length >= 1) {
+        if (typeof val === "string" && val.trim().length > 0) {
           expect(result.success).toBe(true);
         } else {
           expect(result.success).toBe(false);
@@ -78,11 +78,11 @@ describe("updateBaseImageRequest (fuzz)", () => {
     expect(updateBaseImageRequest.safeParse({}).success).toBe(false);
   });
 
-  it("name must be non-empty if present", () => {
+  it("name must be non-empty after trimming if present", () => {
     fc.assert(
       fc.property(fc.string(), (name) => {
         const result = updateBaseImageRequest.safeParse({ name });
-        expect(result.success).toBe(name.length >= 1);
+        expect(result.success).toBe(name.trim().length > 0);
       }),
     );
   });
