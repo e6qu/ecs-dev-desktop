@@ -4,17 +4,6 @@ import { describe, expect, it } from "vitest";
 
 import { mapClaimsToRole, type IdentityClaims, type Role } from "./index";
 
-// Mix random casing into a group identifier WITHOUT changing which group it is.
-// `mapClaimsToRole` lowercases for comparison, so case must not affect the result.
-function randomCasing(s: string): fc.Arbitrary<string> {
-  const chars = Array.from(s);
-  return fc
-    .array(fc.boolean(), { minLength: chars.length, maxLength: chars.length })
-    .map((flags) =>
-      chars.map((ch, i) => (flags[i] === true ? ch.toUpperCase() : ch.toLowerCase())).join(""),
-    );
-}
-
 const groupId = fc.stringMatching(/^[a-z0-9][a-z0-9/_-]{0,30}$/);
 const ROLES: readonly Role[] = ["viewer", "member", "admin"];
 
@@ -65,16 +54,22 @@ describe("mapClaimsToRole (property)", () => {
   });
 
   it("matches groups case-insensitively (same group, random casing → same role)", () => {
+    // Flat property: generate config + group + casing flags in one pass.
+    // No nested fc.assert (which would be O(N²) at 5000 runs).
+    const arb = fc
+      .tuple(configArb, fc.nat({ max: 1 }), fc.array(fc.boolean(), { maxLength: 31, minLength: 1 }))
+      .map(([config, groupIdx, flags]) => {
+        const group = groupIdx === 0 ? config.adminHead : config.memberHead;
+        const recased = Array.from(group)
+          .map((ch, i) => (flags[i] === true ? ch.toUpperCase() : ch.toLowerCase()))
+          .join("");
+        return { config, group, recased };
+      });
     fc.assert(
-      fc.property(configArb, (config) => {
-        for (const group of [config.adminHead, config.memberHead]) {
-          const baseline = mapClaimsToRole(claimsWith([group]), config);
-          fc.assert(
-            fc.property(randomCasing(group), (recased) => {
-              expect(mapClaimsToRole(claimsWith([recased]), config)).toBe(baseline);
-            }),
-          );
-        }
+      fc.property(arb, ({ config, group, recased }) => {
+        const baseline = mapClaimsToRole(claimsWith([group]), config);
+        const recasedRole = mapClaimsToRole(claimsWith([recased]), config);
+        expect(recasedRole).toBe(baseline);
       }),
     );
   });
