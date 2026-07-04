@@ -123,12 +123,12 @@ export const securityEventRequest = z.object({
 export type SecurityEventRequest = z.infer<typeof securityEventRequest>;
 
 export const createWorkspaceRequest = z.object({
-  baseImage: z.string().min(1),
+  baseImage: z.string().trim().min(1),
   /** Optional git repo to clone into the session at first boot ("one repo per
    * session"). HTTPS URL; private repos use the owner's git credential. */
   repoUrl: z.url().startsWith("https://").optional(),
   /** Optional branch/tag/SHA to check out (defaults to the repo's default). */
-  repoRef: z.string().min(1).max(255).optional(),
+  repoRef: z.string().trim().min(1).max(255).optional(),
 });
 export type CreateWorkspaceRequest = z.infer<typeof createWorkspaceRequest>;
 
@@ -206,8 +206,8 @@ export const baseImageEntry = z.object({
 export type BaseImageEntryDto = z.infer<typeof baseImageEntry>;
 
 export const createBaseImageRequest = z.object({
-  name: z.string().min(1),
-  image: z.string().min(1),
+  name: z.string().trim().min(1),
+  image: z.string().trim().min(1),
   description: z.string().optional(),
   tags: z.array(z.string()).optional(),
   tools: z.array(z.string()).optional(),
@@ -219,7 +219,7 @@ export type CreateBaseImageRequest = z.infer<typeof createBaseImageRequest>;
 /** Partial update; the id and image ref are immutable. At least one field. */
 export const updateBaseImageRequest = z
   .object({
-    name: z.string().min(1).optional(),
+    name: z.string().trim().min(1).optional(),
     description: z.string().optional(),
     tags: z.array(z.string()).optional(),
     tools: z.array(z.string()).optional(),
