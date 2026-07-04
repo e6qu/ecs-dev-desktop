@@ -35,7 +35,8 @@ async function ConfigSync() {
       <ul className="config-sync-checks">
         {report.checks.map((c) => (
           <li key={c.name} data-check={c.name} data-status={c.status}>
-            <span title={c.status}>{GLYPH[c.status]}</span> <strong>{c.name}</strong> — {c.detail}
+            <span aria-hidden="true">{GLYPH[c.status]}</span> <strong>{c.name}</strong>
+            <span className="sr-only"> ({c.status})</span> — {c.detail}
           </li>
         ))}
       </ul>

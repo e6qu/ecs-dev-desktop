@@ -70,6 +70,11 @@ export function WorkspaceActions({
 
   return (
     <div className="foot">
+      {confirmingDelete && busy === null && (
+        <span className="sr-only" role="status">
+          Click delete again to confirm — this destroys the workspace and its data.
+        </span>
+      )}
       {actions.map((action) => {
         const isConfirming = action === "delete" && confirmingDelete;
         return (

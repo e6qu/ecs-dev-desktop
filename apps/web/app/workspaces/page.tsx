@@ -76,7 +76,7 @@ export default async function WorkspacesPage({
         )}
         <span className="spacer" />
         {isAdmin && (
-          <div className="tabs" aria-label="workspace view">
+          <nav className="tabs" aria-label="Workspace view">
             <Link
               className={viewAll ? "" : "on"}
               href="/workspaces"
@@ -91,7 +91,7 @@ export default async function WorkspacesPage({
             >
               all
             </Link>
-          </div>
+          </nav>
         )}
       </div>
 

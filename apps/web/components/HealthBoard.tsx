@@ -17,9 +17,14 @@ export function HealthBoard() {
   // Only show a bare error when there is NO data yet. Once we have a report, a flaky
   // 5s poll must NOT blank the board — keep the last-known state with a "stale" banner.
   if (report === null) {
-    if (error !== null) return <div className="notice">health check failed: {error}</div>;
+    if (error !== null)
+      return (
+        <div className="notice" role="alert">
+          health check failed: {error}
+        </div>
+      );
     return (
-      <div className="empty">
+      <div className="empty" role="status" aria-busy="true">
         <div className="big">checking…</div>
       </div>
     );
@@ -28,7 +33,7 @@ export function HealthBoard() {
   return (
     <>
       {error !== null && (
-        <div className="notice" data-testid="stale-banner">
+        <div className="notice" role="status" data-testid="stale-banner">
           last refresh failed ({error}) — showing the last known state
         </div>
       )}

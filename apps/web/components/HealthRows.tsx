@@ -9,7 +9,7 @@ export function HealthHead({ status, checkedAt }: { status: HealthStatusDto; che
   return (
     <div className="health-head">
       <span className="badge" data-h={status}>
-        <span className="dot pulse" />
+        <span className="dot pulse" aria-hidden="true" />
         {status}
       </span>
       <span className="mono" style={{ color: "var(--dim)", fontSize: 12 }}>
