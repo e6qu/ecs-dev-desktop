@@ -213,12 +213,18 @@ importers:
         specifier: ^4.4.3
         version: 4.4.3
     devDependencies:
+      '@types/node':
+        specifier: ^26.1.0
+        version: 26.1.0
       fast-check:
         specifier: ^4.8.0
         version: 4.8.0
 
   packages/auth:
     devDependencies:
+      '@types/node':
+        specifier: ^26.1.0
+        version: 26.1.0
       fast-check:
         specifier: ^4.8.0
         version: 4.8.0
