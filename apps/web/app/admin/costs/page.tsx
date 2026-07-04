@@ -200,7 +200,9 @@ export default async function AdminCostsPage({
               <span className="detail">{usd(u.totalUsd)}</span>
               <CostBar row={u} maxUsd={maxUserUsd} />
               <div className="meta">
-                <span>{u.sessions} session(s)</span>
+                <span>
+                  {u.sessions} {u.sessions === 1 ? "session" : "sessions"}
+                </span>
                 <span>compute · {usd(u.computeUsd)}</span>
                 <span>storage · {usd(u.volumeUsd + u.snapshotUsd)}</span>
               </div>

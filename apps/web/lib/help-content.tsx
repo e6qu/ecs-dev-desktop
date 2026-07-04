@@ -61,8 +61,8 @@ const workspacesHelp = (
     </HelpSection>
     <HelpSection title="What you can do">
       <H>
-        <strong>Start a new workspace</strong> — click <em>New session</em> to choose an environment
-        and optional code repository. See{" "}
+        <strong>Start a new workspace</strong> — click <em>+ new session</em> to choose an
+        environment and optional code repository. See{" "}
         <HelpLink href="/sessions/new?help=1">New session</HelpLink>.
       </H>
       <H>
@@ -137,7 +137,7 @@ const sshKeysHelp = (
       <H>
         Paste the entire contents of your public key file (usually{" "}
         <code>~/.ssh/id_ed25519.pub</code> or <code>~/.ssh/id_rsa.pub</code>) into the text area and
-        click <strong>Add</strong>. The key should start with <code>ssh-ed25519</code>,{" "}
+        click <strong>register key</strong>. The key should start with <code>ssh-ed25519</code>,{" "}
         <code>ssh-rsa</code>, or <code>ecdsa-sha2</code>.
       </H>
       <H>
@@ -309,11 +309,6 @@ const catalogHelp = (
       <H>
         <strong>Enable / Disable</strong> — disabled images are hidden from the new-session picker
         but remain available to workspaces already using them.
-      </H>
-      <H>
-        <strong>Edit</strong> — change the name, description, tags, or tools list. Two concurrent
-        edits are protected by optimistic locking — the second writer gets a conflict error instead
-        of silently overwriting the first.
       </H>
       <H>
         <strong>Delete</strong> — removes the image from the catalog. Existing workspaces are not

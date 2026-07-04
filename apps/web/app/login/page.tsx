@@ -15,7 +15,7 @@ export default async function LoginPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { error } = await searchParams;
-  return devAuthEnabled() ? <DevLogin error={error} /> : <OidcLogin />;
+  return devAuthEnabled() ? <DevLogin error={error} /> : <OidcLogin error={error} />;
 }
 
 /** Local dev sign-in form (EDD_DEV_AUTH=1): a seeded account + password.
@@ -93,7 +93,12 @@ function DevLogin({ error }: { error?: string }) {
 }
 
 /** Production sign-in: identity providers. */
-function OidcLogin() {
+function OidcLogin({ error }: { error?: string }) {
+  const errorMessages: Record<string, string> = {
+    OAuthCallback: "Sign-in failed — the identity provider rejected the request. Please try again.",
+    AccessDenied: "Access denied — your account does not have permission to sign in.",
+    Configuration: "Sign-in is not configured correctly. Contact your administrator.",
+  };
   return (
     <div className="panel" style={panelStyle}>
       <div className="mono" style={kicker}>
@@ -103,6 +108,15 @@ function OidcLogin() {
       <p style={{ color: "var(--dim)", marginTop: 8 }}>
         Authenticate with your identity provider to reach the control plane.
       </p>
+      {error !== undefined && (
+        <p
+          role="alert"
+          className="mono"
+          style={{ color: "var(--st-error)", marginTop: 12, fontSize: 12 }}
+        >
+          {errorMessages[error] ?? `Sign-in error: ${error}`}
+        </p>
+      )}
       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 24 }}>
         <form
           action={async () => {
