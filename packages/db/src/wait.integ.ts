@@ -7,7 +7,7 @@ import { createDynamoClient, dynamodb, waitForDynamo } from "./index";
 process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
 
 describe("waitForDynamo", () => {
-  it("resolves once DynamoDB Local is answering", async () => {
+  it("resolves once DynamoDB is answering", async () => {
     await expect(waitForDynamo(createDynamoClient())).resolves.toBeUndefined();
   });
 

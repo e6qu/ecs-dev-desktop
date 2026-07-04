@@ -59,7 +59,7 @@ class FailingCompute implements ComputeProvider {
 
 const TEST_TABLE = "ecs-dev-desktop-cp-integ";
 
-describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
+describe("WorkspaceService lifecycle ", () => {
   let client: ReturnType<typeof createDynamoClient>;
   let service: WorkspaceService;
   let storage: FakeStorageProvider;
@@ -458,7 +458,7 @@ describe("CatalogService", () => {
   });
 });
 
-describe("HealthService (DynamoDB Local)", () => {
+describe("HealthService", () => {
   let client: ReturnType<typeof createDynamoClient>;
 
   beforeAll(async () => {
@@ -502,7 +502,7 @@ describe("HealthService (DynamoDB Local)", () => {
   });
 });
 
-describe("DerivedAuditSource + DerivedLogSource (DynamoDB Local)", () => {
+describe("DerivedAuditSource + DerivedLogSource", () => {
   let client: ReturnType<typeof createDynamoClient>;
   let workspaces: WorkspaceService;
   let entity: ReturnType<typeof makeWorkspaceEntity>;
@@ -557,7 +557,7 @@ describe("DerivedAuditSource + DerivedLogSource (DynamoDB Local)", () => {
   });
 });
 
-describe("WorkspaceService quota enforcement (atomic, DynamoDB Local)", () => {
+describe("WorkspaceService quota enforcement ", () => {
   const QUOTA_TABLE = "ecs-dev-desktop-cp-quota-integ";
   const LIMIT = 3;
   let client: ReturnType<typeof createDynamoClient>;
@@ -663,7 +663,7 @@ describe("WorkspaceService quota enforcement (atomic, DynamoDB Local)", () => {
   });
 });
 
-describe("WorkspaceService.recordSecurityEvent idempotency (DynamoDB Local)", () => {
+describe("WorkspaceService.recordSecurityEvent idempotency", () => {
   const SEC_TABLE = "ecs-dev-desktop-cp-sec-integ";
   let client: ReturnType<typeof createDynamoClient>;
 

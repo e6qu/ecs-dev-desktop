@@ -21,7 +21,7 @@ const ONE_HOUR = 60 * 60 * 1000;
 const T0 = "2026-06-01T00:00:00.000Z";
 const LATER = "2026-06-01T02:00:00.000Z"; // 2h after T0
 
-describe("Reconciler against DynamoDB Local", () => {
+describe("Reconciler", () => {
   let client: ReturnType<typeof createDynamoClient>;
 
   beforeAll(() => {

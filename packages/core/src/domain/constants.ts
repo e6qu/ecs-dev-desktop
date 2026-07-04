@@ -71,3 +71,13 @@ export const DEFAULT_AUDIT_FEED_LIMIT = 100;
  * a single missed run is tolerated but a stalled loop is surfaced).
  */
 export const DEFAULT_RECONCILER_STALE_MS = 15 * 60 * 1000;
+
+/**
+ * Default heartbeat interval injected into workspace tasks: 5 minutes. The
+ * in-workspace idle-agent posts an HMAC heartbeat to the control plane at this
+ * cadence; the `lastActivity` timestamp it updates is what the reconciler's
+ * idle-detection reads. Short enough that idle-to-zero is responsive (within
+ * `threshold + one heartbeat`), long enough to avoid excessive control-plane
+ * load at 200+ scale.
+ */
+export const DEFAULT_HEARTBEAT_INTERVAL_S = 5 * 60;
