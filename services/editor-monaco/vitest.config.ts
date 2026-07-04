@@ -8,5 +8,6 @@ export default defineConfig({
     include: ["src/**/*.test.ts"],
     environment: "node",
     setupFiles: ["./src/fuzz-setup.ts"],
+    testTimeout: 30000,
   },
 });
