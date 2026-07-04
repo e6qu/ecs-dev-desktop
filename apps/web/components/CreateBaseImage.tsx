@@ -57,7 +57,14 @@ export function CreateBaseImage() {
 
   return (
     <div className="panel">
-      <div className="form-grid">
+      <form
+        id="create-base-image-form"
+        className="form-grid"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (ready) void add();
+        }}
+      >
         <label className="field-stack">
           <span className="field-label">Display name</span>
           <input
@@ -131,10 +138,11 @@ export function CreateBaseImage() {
           </select>
           <span className="field-hint">Which editor workspaces from this image serve.</span>
         </label>
-      </div>
+      </form>
       <div className="field" style={{ marginTop: 16 }}>
         <button
-          type="button"
+          type="submit"
+          form="create-base-image-form"
           className="btn primary"
           disabled={!ready}
           onClick={() => {

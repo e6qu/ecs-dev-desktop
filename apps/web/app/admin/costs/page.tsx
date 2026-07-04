@@ -142,7 +142,7 @@ export default async function AdminCostsPage({
             {sizing.memoryGib} GiB, {sizing.volumeGib} GiB disk.
           </p>
         </div>
-        <div className="tabs" aria-label="cost window">
+        <nav className="tabs" aria-label="Cost window">
           {WINDOWS.map((w) => (
             <Link
               key={w.key}
@@ -156,7 +156,7 @@ export default async function AdminCostsPage({
               {w.label}
             </Link>
           ))}
-        </div>
+        </nav>
       </div>
 
       <div className="stat-grid">

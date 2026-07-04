@@ -20,12 +20,19 @@ export function InfrastructureView() {
   // Keep the last-known view on a transient poll error (don't blank it); only show a
   // bare error before the first successful load.
   if (report === null) {
-    if (error !== null) return <div className="notice">infrastructure check failed: {error}</div>;
+    if (error !== null)
+      return (
+        <div className="notice" role="alert">
+          infrastructure check failed: {error}
+        </div>
+      );
     return (
-      <StateBlock
-        title="Loading infrastructure"
-        detail="Fetching live cluster, health, and topology data."
-      />
+      <div role="status" aria-busy="true">
+        <StateBlock
+          title="Loading infrastructure"
+          detail="Fetching live cluster, health, and topology data."
+        />
+      </div>
     );
   }
 
@@ -46,7 +53,7 @@ export function InfrastructureView() {
   return (
     <>
       {error !== null && (
-        <div className="notice" data-testid="stale-banner">
+        <div className="notice" role="status" data-testid="stale-banner">
           last refresh failed ({error}) — showing the last known state
         </div>
       )}

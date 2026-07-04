@@ -12,7 +12,7 @@ export function StateBlock({
 }) {
   return (
     <div className="empty">
-      <div className="big">{title}</div>
+      <h2 className="big">{title}</h2>
       <p>{detail}</p>
       {action !== undefined && (
         <p style={{ marginTop: 18 }}>
