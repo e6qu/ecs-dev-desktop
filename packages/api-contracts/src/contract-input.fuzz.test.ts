@@ -14,11 +14,11 @@ import {
 } from "./index";
 
 describe("createWorkspaceRequest (fuzz)", () => {
-  it("rejects any non-string baseImage", () => {
+  it("rejects any non-string or whitespace-only baseImage", () => {
     fc.assert(
       fc.property(fc.anything(), (val) => {
         const result = createWorkspaceRequest.safeParse({ baseImage: val });
-        if (typeof val === "string" && val.length >= 1) {
+        if (typeof val === "string" && val.trim().length > 0) {
           expect(result.success).toBe(true);
         } else {
           expect(result.success).toBe(false);
