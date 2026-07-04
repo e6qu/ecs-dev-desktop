@@ -762,13 +762,23 @@ export class EcsComputeProvider implements ComputeProvider {
     const name = this.cluster();
     const out = await this.client.send(new DescribeClustersCommand({ clusters: [name] }));
     const cluster = out.clusters?.[0];
+    if (cluster === undefined) {
+      return {
+        name,
+        status: "not found",
+        runningTasks: 0,
+        pendingTasks: 0,
+        activeServices: 0,
+        registeredContainerInstances: 0,
+      };
+    }
     return {
       name,
-      status: cluster?.status ?? "not found",
-      runningTasks: cluster?.runningTasksCount ?? 0,
-      pendingTasks: cluster?.pendingTasksCount ?? 0,
-      activeServices: cluster?.activeServicesCount ?? 0,
-      registeredContainerInstances: cluster?.registeredContainerInstancesCount ?? 0,
+      status: cluster.status ?? "unknown",
+      runningTasks: cluster.runningTasksCount ?? 0,
+      pendingTasks: cluster.pendingTasksCount ?? 0,
+      activeServices: cluster.activeServicesCount ?? 0,
+      registeredContainerInstances: cluster.registeredContainerInstancesCount ?? 0,
     };
   }
 

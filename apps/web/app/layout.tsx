@@ -20,9 +20,14 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html lang="en">
       <body>
+        <a href="#main" className="skip-link">
+          Skip to content
+        </a>
         <header className="topbar">
           <Link href="/" className="brand">
-            <span className="glyph">&gt;</span>
+            <span className="glyph" aria-hidden="true">
+              &gt;
+            </span>
             ecs-dev-desktop
             <small>control plane</small>
           </Link>
@@ -48,7 +53,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             </Link>
           )}
         </header>
-        <main>
+        <main id="main" tabIndex={-1}>
           <div className="shell">{children}</div>
         </main>
       </body>

@@ -218,9 +218,12 @@ export async function iamPreflight(
   try {
     const sts = new STSClient(clientConfig());
     const caller = await sts.send(new GetCallerIdentityCommand({}));
+    if (caller.Account === undefined || caller.Arn === undefined) {
+      throw new Error("GetCallerIdentity returned an incomplete response (missing Account or Arn)");
+    }
     identity = {
-      account: caller.Account ?? "",
-      callerArn: caller.Arn ?? "",
+      account: caller.Account,
+      callerArn: caller.Arn,
       principalArn: callerToPrincipalArn(caller.Arn),
     };
   } catch (e) {
@@ -233,10 +236,7 @@ export async function iamPreflight(
     return { signal: unavailable("caller is not an assumable role/user"), identity };
   }
 
-  const account =
-    identity.account.length > 0
-      ? identity.account
-      : (/::(\d+):/.exec(identity.principalArn)?.[1] ?? "");
+  const account = /::(\d+):/.exec(identity.principalArn)?.[1] ?? identity.account;
   const resolved = resolveCoordinates(env, account);
   if (!resolved.ok) {
     return { signal: unavailable(`missing coordinates: ${resolved.missing.join(", ")}`), identity };

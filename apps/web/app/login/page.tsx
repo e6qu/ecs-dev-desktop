@@ -34,6 +34,7 @@ function DevLogin({ error }: { error?: string }) {
       {error !== undefined && (
         <p
           className="mono"
+          role="alert"
           data-testid={TESTID.loginError}
           style={{ color: "var(--st-error)", marginTop: 12, fontSize: 12 }}
         >

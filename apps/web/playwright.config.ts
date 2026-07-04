@@ -4,8 +4,9 @@ import { defineConfig, devices } from "@playwright/test";
 /**
  * Browser-level e2e for the portal. The app runs under `EDD_DEV_AUTH=1` so the
  * dev-auth cookie shim authenticates the browser (no real IdP); persistence is
- * DynamoDB Local (the table is created in `e2e/global-setup.ts`). Specs are
- * `*.pw.ts` so the vitest unit/integration runs never pick them up.
+ * the sockerless sim's DynamoDB at :4566 (the table is created in
+ * `e2e/global-setup.ts`). Specs are `*.pw.ts` so the vitest unit/integration
+ * runs never pick them up.
  */
 const PORT = 3210;
 const BASE_URL = `http://127.0.0.1:${PORT}`;

@@ -157,6 +157,8 @@ type guards / Zod parsing; no object-literal casts; `as const` is fine.
 **Branded domain types over primitives** (`WorkspaceId`, `VolumeId`, `BaseImage`,
 …) — bare primitives only in trivial local cases. Pass **domain objects**, not
 untyped dicts; typed collections, not `unknown[]`.
+**`interface` for object shapes and `Deps` ports; `type` for unions, brands,
+and `z.infer`/`ReturnType` aliases.**
 
 **6.2 No magic values; no hardcoded endpoints/ports.** Meaningful literals are
 named, documented constants. Endpoints/ports/defaults live in the typed

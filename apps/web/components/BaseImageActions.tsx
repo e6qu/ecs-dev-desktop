@@ -75,7 +75,7 @@ export function BaseImageActions({ id, enabled }: { id: string; enabled: boolean
         </button>
       )}
       {error !== null && (
-        <span className="mono" style={{ color: "var(--st-error)", fontSize: 11 }}>
+        <span role="alert" className="mono" style={{ color: "var(--st-error)", fontSize: 11 }}>
           {error}
         </span>
       )}

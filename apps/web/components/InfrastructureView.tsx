@@ -58,7 +58,7 @@ export function InfrastructureView() {
       <h2 className="infra-h">
         Compute cluster{" "}
         <span className="badge" data-h={cluster.status === "ACTIVE" ? "ok" : "unknown"}>
-          <span className="dot" />
+          <span className="dot" aria-hidden="true" />
           {cluster.name} · {cluster.status}
         </span>
       </h2>
@@ -108,7 +108,7 @@ export function InfrastructureView() {
           >
             <div className="topo-node-head">
               <span className="badge" data-h={n.status}>
-                <span className="dot" />
+                <span className="dot" aria-hidden="true" />
                 {n.status}
               </span>
               <span className="name">{n.label}</span>
@@ -132,9 +132,13 @@ export function InfrastructureView() {
             data-to={e.to}
           >
             <span className="mono">{e.from}</span>
-            <span className="topo-arrow">→</span>
+            <span className="topo-arrow" aria-hidden="true">
+              →
+            </span>
             <span className="topo-edge-label">{e.label}</span>
-            <span className="topo-arrow">→</span>
+            <span className="topo-arrow" aria-hidden="true">
+              →
+            </span>
             <span className="mono">{e.to}</span>
           </div>
         ))}
