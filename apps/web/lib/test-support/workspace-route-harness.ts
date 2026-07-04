@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// Shared harness for the workspace route integration tests (DynamoDB Local).
+// Shared harness for the workspace route integration tests.
 // One source for the DB lifecycle + dev-auth wiring + request helpers, so each
 // route's *.integ.ts stays focused on its own assertions (and jscpd stays quiet).
 import { workspace } from "@edd/api-contracts";
@@ -52,7 +52,7 @@ export function postLifecycle(
 }
 
 /**
- * Point the web app at DynamoDB Local + a per-suite table with dev-auth on, and
+ * Point the web app at the sim's DynamoDB + a per-suite table with dev-auth on, and
  * register the create/drop + golden-image seed around the suite. Call once at the
  * top level of a `*.integ.ts` file (it wires vitest `beforeAll`/`afterAll`).
  */

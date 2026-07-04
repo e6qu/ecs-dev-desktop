@@ -32,7 +32,7 @@ export function HealthRows({ components }: { components: readonly ComponentHealt
           data-h={c.status}
         >
           <span className="badge" data-h={c.status}>
-            <span className="dot" />
+            <span className="dot" aria-hidden="true" />
             {c.status}
           </span>
           <span className="name">{c.component}</span>

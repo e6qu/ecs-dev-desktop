@@ -238,7 +238,9 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
               }}
             />
             {repos === null ? (
-              <p className="state-note">loading repositories…</p>
+              <p className="state-note" role="status">
+                loading repositories…
+              </p>
             ) : (
               <ul className="list">
                 {filtered.map((repo) => (

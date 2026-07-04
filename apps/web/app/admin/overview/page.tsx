@@ -56,7 +56,7 @@ export default async function AdminOverviewPage() {
           {byState.map(({ state, count }) => (
             <div key={state} className="health-row" data-status={state}>
               <span className="badge" data-status={state}>
-                <span className="dot" />
+                <span className="dot" aria-hidden="true" />
                 {state}
               </span>
               <span className="detail">{count}</span>

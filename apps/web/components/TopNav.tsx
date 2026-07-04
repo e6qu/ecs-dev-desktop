@@ -23,11 +23,19 @@ export function TopNav({ isAdmin }: { isAdmin: boolean }) {
 
   return (
     <nav className="tabs top-tabs" aria-label="Primary">
-      <Link href="/workspaces" className={topNavState(path, "/workspaces")}>
+      <Link
+        href="/workspaces"
+        className={topNavState(path, "/workspaces")}
+        aria-current={topNavState(path, "/workspaces") === "on" ? "page" : undefined}
+      >
         workspaces
       </Link>
       {isAdmin && (
-        <Link href="/admin" className={topNavState(path, "/admin")}>
+        <Link
+          href="/admin"
+          className={topNavState(path, "/admin")}
+          aria-current={topNavState(path, "/admin") === "on" ? "page" : undefined}
+        >
           admin
         </Link>
       )}

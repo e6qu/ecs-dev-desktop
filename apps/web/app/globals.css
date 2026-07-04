@@ -1293,6 +1293,25 @@ main {
   word-break: break-all;
 }
 
+/* ---- skip link (WCAG 2.4.1) ---- */
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 100;
+  background: var(--accent);
+  color: var(--accent-ink);
+  padding: 10px 18px;
+  border-radius: 0 0 6px 0;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.skip-link:focus {
+  left: 0;
+}
+
 /* ---- help toggle + panel ---- */
 
 .help-toggle {
@@ -1363,7 +1382,7 @@ main {
   color: var(--text);
 }
 
-.help-h4 {
+.help-h2 {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -1424,4 +1443,13 @@ main {
 
 .help-state.unknown {
   color: var(--dim);
+}
+
+/* ---- section headings (semantic replacement for styled divs) ---- */
+
+.section-h {
+  color: var(--dim);
+  font-size: 12px;
+  font-weight: 500;
+  margin: 0;
 }

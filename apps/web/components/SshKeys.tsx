@@ -75,27 +75,33 @@ export function SshKeys() {
   return (
     <div className="stack" style={{ gap: 24 }}>
       <section className="stack" style={{ gap: 10 }}>
-        <div className="mono" style={{ color: "var(--dim)", fontSize: 12 }}>
-          add a key
-        </div>
-        <textarea
-          className="input"
-          rows={3}
-          placeholder="ssh-ed25519 AAAA… you@machine"
-          data-testid={TESTID.sshKeyInput}
-          value={publicKey}
-          onChange={(e) => {
-            setPublicKey(e.target.value);
-          }}
-        />
-        <input
-          className="input"
-          placeholder="label (optional, e.g. laptop)"
-          value={label}
-          onChange={(e) => {
-            setLabel(e.target.value);
-          }}
-        />
+        <h2 className="mono section-h">add a key</h2>
+        <label className="mono" style={{ fontSize: 12 }}>
+          Public key
+          <textarea
+            className="input"
+            rows={3}
+            placeholder="ssh-ed25519 AAAA… you@machine"
+            aria-label="SSH public key"
+            data-testid={TESTID.sshKeyInput}
+            value={publicKey}
+            onChange={(e) => {
+              setPublicKey(e.target.value);
+            }}
+          />
+        </label>
+        <label className="mono" style={{ fontSize: 12 }}>
+          Label (optional)
+          <input
+            className="input"
+            placeholder="e.g. laptop"
+            aria-label="Label for this SSH key (optional)"
+            value={label}
+            onChange={(e) => {
+              setLabel(e.target.value);
+            }}
+          />
+        </label>
         <button
           type="button"
           className="btn primary"
@@ -113,11 +119,11 @@ export function SshKeys() {
       </section>
 
       <section className="stack" style={{ gap: 8 }}>
-        <div className="mono" style={{ color: "var(--dim)", fontSize: 12 }}>
-          your keys
-        </div>
+        <h2 className="mono section-h">your keys</h2>
         {keys === null ? (
-          <p className="state-note">loading…</p>
+          <p className="state-note" role="status">
+            loading…
+          </p>
         ) : keys.length === 0 ? (
           <StateBlock
             title="No SSH keys yet"

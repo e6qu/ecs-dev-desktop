@@ -44,7 +44,7 @@ export function CatalogPageContent({ entries }: { entries: readonly BaseImageEnt
               <div className="row">
                 <span className="wid">{entry.name}</span>
                 <span className="badge">
-                  <span className="dot" />
+                  <span className="dot" aria-hidden="true" />
                   {entry.enabled ? "enabled" : "disabled"}
                 </span>
               </div>

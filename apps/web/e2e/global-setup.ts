@@ -8,7 +8,7 @@ import {
 } from "@aws-sdk/client-dynamodb";
 
 /**
- * Playwright global setup: stand up a fresh single-table DynamoDB Local table for
+ * Playwright global setup: stand up a fresh single-table DynamoDB table for
  * the run. Uses the raw AWS SDK (not `@edd/db`) because Playwright's loader does
  * not transpile the workspace TypeScript packages; the schema mirrors
  * `packages/db/src/table.ts` (PK/SK + GSI1 + GSI2). The catalog + workspaces are
@@ -67,7 +67,7 @@ export default async function globalSetup(): Promise<void> {
     ],
   });
 
-  // Retry create — a just-deleted table may briefly linger on DynamoDB Local.
+  // Retry create — a just-deleted table may briefly linger.
   for (let attempt = 0; ; attempt++) {
     try {
       await client.send(create);

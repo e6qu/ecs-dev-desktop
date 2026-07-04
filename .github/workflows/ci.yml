@@ -171,7 +171,7 @@ jobs:
       # (COMPUTE_PROVIDER=ecs; cloud state provisioned by its webServer command —
       # see apps/web/e2e/start-live-app.sh).
       - name: Install Playwright browser
-        run: pnpm --filter web exec playwright install --with-deps chromium
+        uses: ./.github/actions/playwright-cache
       - name: Portal browser lifecycle on real ECS compute
         run: pnpm --filter web test:pw:live
       # Real VS Code in the golden image: load the workbench, compile from the
@@ -425,7 +425,7 @@ jobs:
           done
           exit 1
       - name: Install Playwright browser
-        run: pnpm --filter web exec playwright install --with-deps chromium
+        uses: ./.github/actions/playwright-cache
       # test:pw builds + starts the app (its webServer) and creates the table in
       # global-setup, then drives the browser through the RBAC-gated portal flows.
       - run: pnpm --filter web test:pw
@@ -491,6 +491,10 @@ jobs:
       - uses: hashicorp/setup-terraform@v4.0.1
         with:
           terraform_wrapper: false
+      - uses: actions/cache@v4
+        with:
+          path: ${{ env.TF_DIR }}/.terraform/providers
+          key: tf-providers-${{ runner.os }}-${{ hashFiles('infra/terraform/modules/ecs-dev-desktop/.terraform.lock.hcl', 'infra/terraform/modules/ecs-dev-desktop/tests/sim/.terraform.lock.hcl') }}
       # Retry bring-up: image pulls can transiently hit registry rate limits
       # (public.ecr.aws / Docker Hub) on shared runner IPs.
       - name: Build & start the sockerless AWS simulator (from source, API-only mode)

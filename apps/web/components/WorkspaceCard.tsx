@@ -50,7 +50,7 @@ export function WorkspaceCard({
             title="The desktop is running but not fully usable (IDE or workspace storage)."
             aria-label="degraded — running but not fully usable"
           >
-            <span className="dot" />
+            <span className="dot" aria-hidden="true" />
             degraded
           </span>
         )}

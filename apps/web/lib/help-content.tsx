@@ -25,7 +25,7 @@ function HelpLink({ href, children }: { href: string; children: ReactNode }) {
 function HelpSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="help-section">
-      <h4 className="help-h4">{title}</h4>
+      <h2 className="help-h2">{title}</h2>
       {children}
     </div>
   );

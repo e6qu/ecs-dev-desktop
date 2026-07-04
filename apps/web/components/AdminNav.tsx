@@ -19,17 +19,18 @@ const ITEMS: { label: string; href: string | null }[] = [
 export function AdminNav() {
   const path = usePathname();
   return (
-    <nav className="admin-side">
+    <nav className="admin-side" aria-label="Admin sections">
       <div className="sec">admin</div>
       {ITEMS.map((it) =>
         it.href === null ? (
-          <a key={it.label} className="soon" title="coming soon">
+          <span key={it.label} className="soon" aria-disabled="true">
             {it.label}
-          </a>
+          </span>
         ) : (
           <Link
             key={it.label}
             href={it.href}
+            aria-current={path === it.href || path.startsWith(`${it.href}/`) ? "page" : undefined}
             className={path === it.href || path.startsWith(`${it.href}/`) ? "on" : ""}
           >
             {it.label}
