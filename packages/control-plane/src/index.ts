@@ -26,3 +26,4 @@ export { CostService, StoredCostRollupStore } from "./cost-service";
 export type { CostRollupRecord, CostRollupStore, CostServiceDeps } from "./cost-service";
 export { DerivedLogSource } from "./log-source";
 export type { DerivedLogSourceDeps } from "./log-source";
+export { isVersionConflict } from "./version-conflict";

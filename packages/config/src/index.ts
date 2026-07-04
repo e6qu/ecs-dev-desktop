@@ -47,10 +47,8 @@ export const DEFAULT_HEARTBEAT_INTERVAL_S = 120;
 
 const DYNAMODB_HOST = "127.0.0.1";
 // The sockerless sim serves DynamoDB on the same unified endpoint as the rest of the
-// AWS API (:4566). The standalone DynamoDB-Local container was retired from CI once the
-// sim's DynamoDB became conformant; the only consumer still pointing at DynamoDB Local
-// (:8000) is the local `pnpm dev` loop (it overrides `DYNAMODB_ENDPOINT` for instant
-// startup). Real cloud is reached by the SDK's standard resolution / `DYNAMODB_ENDPOINT`.
+// AWS API (:4566) — used by CI, integration tests, and the local dev loop alike.
+// Real cloud is reached by the SDK's standard resolution / `DYNAMODB_ENDPOINT`.
 const DYNAMODB_PORT = 4566;
 
 /** DynamoDB endpoint coordinate. Defaults to the local sim (`:4566`); overridden by

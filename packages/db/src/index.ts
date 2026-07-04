@@ -11,7 +11,7 @@ import { DEFAULT_DYNAMODB_TABLE, dynamodb } from "@edd/config";
 /** Default single-table name (from the typed config). */
 export const TABLE = DEFAULT_DYNAMODB_TABLE;
 
-/** DynamoDB Local connection config (Tier-2 harness / integration tests). */
+/** DynamoDB connection config (sim endpoint for local/CI; SDK default for real cloud). */
 export { dynamodb };
 
 export { createDynamoClient } from "./client";

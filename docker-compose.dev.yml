@@ -2,12 +2,14 @@
 # Local DEVELOPMENT substrate for running the app (`pnpm dev`), tiered via compose
 # profiles so you bring up only what you need (see docs/running-locally.md):
 #
-#   (none)            DynamoDB Local only — app runs with in-process fakes for
-#                     compute/storage + dev-auth. Fastest inner loop.
+#   (none)            sockerless AWS sim (process mode) — serves DynamoDB at
+#                     :4566. App runs with in-process fakes for compute/storage
+#                     + dev-auth.
 #   --profile github  + bleephub (the GitHub server) for the real OAuth login flow.
-#   --profile aws     + the sockerless AWS sim (process mode) for the real ECS/EBS
-#                     adapters (COMPUTE_PROVIDER=ecs, AWS_ENDPOINT_URL=…:4566).
 #   --profile entra   + the Azure/Entra sim for the real Entra OIDC login flow.
+#
+# To drive the real ECS/EBS adapters locally: COMPUTE_PROVIDER=ecs +
+# AWS_ENDPOINT_URL=http://127.0.0.1:4566 (the default sim already serves these).
 #
 # Sims are built from the pinned third_party/sockerless submodule. Consumed
 # endpoint-only (AGENTS.md §6.8/§6.9) — the app/tests differ from real cloud by
@@ -15,11 +17,23 @@
 # never breaks the current one (see scripts/dev.sh).
 
 services:
-  dynamodb-local:
-    image: amazon/dynamodb-local:latest
-    command: ["-jar", "DynamoDBLocal.jar", "-inMemory", "-sharedDb"]
+  # AWS API surface (EC2/EBS, ECS, DynamoDB, …) in process mode. Serves DynamoDB
+  # on :4566 (the unified sim endpoint). DynamoDB Local was retired from the dev
+  # loop — the sim's DynamoDB is conformant and serves on the same port as the
+  # rest of the AWS API surface.
+  sockerless-aws:
+    build:
+      context: ./third_party/sockerless/simulators
+      dockerfile: aws/Dockerfile
+    environment:
+      SIM_RUNTIME: process
     ports:
-      - "8000:8000"
+      - "4566:4566"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:4566/"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
 
   # GitHub server (real OAuth web flow locally). Point the app at it with
   # AUTH_GITHUB_API_URL / AUTH_GITHUB_URL (see docs/running-locally.md).
@@ -34,23 +48,6 @@ services:
       - "5555:5555"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:5555/api/v3/rate_limit"]
-      interval: 3s
-      timeout: 3s
-      retries: 20
-
-  # AWS API surface (EC2/EBS, ECS, DynamoDB, …) in process mode. Drive the real
-  # adapters with COMPUTE_PROVIDER=ecs + AWS_ENDPOINT_URL=http://127.0.0.1:4566.
-  sockerless-aws:
-    profiles: ["aws"]
-    build:
-      context: ./third_party/sockerless/simulators
-      dockerfile: aws/Dockerfile
-    environment:
-      SIM_RUNTIME: process
-    ports:
-      - "4566:4566"
-    healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:4566/"]
       interval: 3s
       timeout: 3s
       retries: 20

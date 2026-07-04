@@ -321,7 +321,7 @@ describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
   });
 });
 
-describe("CatalogService (DynamoDB Local)", () => {
+describe("CatalogService", () => {
   let client: ReturnType<typeof createDynamoClient>;
   let catalog: CatalogService;
 
@@ -394,6 +394,48 @@ describe("CatalogService (DynamoDB Local)", () => {
     expect((await catalog.assertEnabled(baseImage("golden/rust:1"))).ok).toBe(false);
     await catalog.update(baseImageId(entry.id), { enabled: false });
     expect((await catalog.assertEnabled(baseImage("golden/go:1.22"))).ok).toBe(false);
+  });
+
+  it("concurrent updates: one wins, the other gets a conflict error", async () => {
+    const created = await catalog.create({
+      name: "Concurrent",
+      image: baseImage("golden/concurrent:1"),
+    });
+    const id = baseImageId(created.id);
+
+    // Two concurrent updates — both read the same version, only one CAS wins.
+    const [r1, r2] = await Promise.all([
+      catalog.update(id, { name: "winner" }),
+      catalog.update(id, { name: "loser" }),
+    ]);
+
+    const results = [r1, r2];
+    const okCount = results.filter((r) => r.ok).length;
+    const conflictCount = results.filter((r) => !r.ok && r.error.kind === "conflict").length;
+
+    expect(okCount).toBe(1);
+    expect(conflictCount).toBe(1);
+
+    // The winning write is visible; the losing one did not apply.
+    const final = await catalog.get(id);
+    expect(final?.name).toBe("winner");
+  });
+
+  it("concurrent remove: one wins, the other gets a conflict error", async () => {
+    const created = await catalog.create({
+      name: "Remove Race",
+      image: baseImage("golden/remove:1"),
+    });
+    const id = baseImageId(created.id);
+
+    // A concurrent update + remove on the same version.
+    const [upd, rem] = await Promise.all([
+      catalog.update(id, { name: "updated" }),
+      catalog.remove(id),
+    ]);
+
+    // Exactly one should win.
+    expect([upd.ok, rem.ok].filter(Boolean)).toHaveLength(1);
   });
 });
 

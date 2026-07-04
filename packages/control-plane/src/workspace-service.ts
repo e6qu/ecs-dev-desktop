@@ -68,6 +68,7 @@ import {
 } from "@edd/db";
 
 import { toWorkspaceDetail, toWorkspaceDto } from "./dto";
+import { isVersionConflict } from "./version-conflict";
 
 /** Actor attributed to transitions with no human principal (reconciler sweeps,
  * gate-wakes without a forwarded identity). */
@@ -267,16 +268,6 @@ interface WorkspaceRecord {
 interface LoadedWorkspace {
   ws: Workspace;
   version: number;
-}
-
-/** True when a write was rejected by its condition expression: a concurrent
- * writer advanced the record since our read (or deleted it). */
-function isVersionConflict(err: unknown): boolean {
-  for (let e: unknown = err; e instanceof Error; e = e.cause) {
-    if (e.name === "ConditionalCheckFailedException") return true;
-    if (/conditional request failed/i.test(e.message)) return true;
-  }
-  return false;
 }
 
 /** True when a storage op failed because its target volume/snapshot is gone —
