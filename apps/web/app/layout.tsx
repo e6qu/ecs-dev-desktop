@@ -4,6 +4,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { TopNav } from "../components/TopNav";
+import { HelpToggle } from "../components/HelpToggle";
 import { getPagePrincipal } from "../lib/principal";
 import { signOutAction } from "./login/actions";
 import "./globals.css";
@@ -27,6 +28,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           </Link>
           {principal && <TopNav isAdmin={principal.role === "admin"} />}
           <span className="spacer" />
+          <HelpToggle />
           {principal ? (
             <span className="who">
               <span className="mono">{principal.id}</span>

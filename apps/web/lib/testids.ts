@@ -72,6 +72,10 @@ export const TESTID = {
   loginPassword: "login-password",
   loginSubmit: "login-submit",
   loginError: "login-error",
+  /** The ⓘ help toggle button in the topbar. Attr: `data-help-open`. */
+  helpToggle: "help-toggle",
+  /** The collapsible help panel below the toolbar. */
+  helpPanel: "help-panel",
 } as const;
 
 export type TestId = (typeof TESTID)[keyof typeof TESTID];

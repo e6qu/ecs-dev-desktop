@@ -52,8 +52,7 @@ const DYNAMODB_HOST = "127.0.0.1";
 const DYNAMODB_PORT = 4566;
 
 /** DynamoDB endpoint coordinate. Defaults to the local sim (`:4566`); overridden by
- * `DYNAMODB_ENDPOINT` (e.g. `host.docker.internal:4566` for in-container access, or
- * DynamoDB Local for the dev loop). */
+ * `DYNAMODB_ENDPOINT` (e.g. `host.docker.internal:4566` for in-container access). */
 export const dynamodb = {
   host: DYNAMODB_HOST,
   port: DYNAMODB_PORT,

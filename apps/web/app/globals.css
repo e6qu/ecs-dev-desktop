@@ -1292,3 +1292,136 @@ main {
 .iam-identity code {
   word-break: break-all;
 }
+
+/* ---- help toggle + panel ---- */
+
+.help-toggle {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--dim);
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    color 0.15s,
+    background 0.15s;
+  flex-shrink: 0;
+}
+
+.help-toggle:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.help-toggle[data-help-open="1"] {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+
+.help-panel {
+  position: sticky;
+  top: 53px;
+  z-index: 9;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  padding: 24px 24px 28px;
+  animation: help-slide 0.18s ease-out;
+}
+
+@keyframes help-slide {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.help-panel-inner {
+  max-width: var(--maxw);
+  margin: 0 auto;
+  display: grid;
+  gap: 12px;
+}
+
+.help-p {
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.6;
+  margin: 0;
+}
+
+.help-p strong {
+  color: var(--text);
+}
+
+.help-h4 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  margin: 8px 0 4px;
+  font-weight: 600;
+}
+
+.help-section {
+  display: grid;
+  gap: 6px;
+}
+
+.help-link {
+  color: var(--accent);
+  text-decoration: none;
+  border-bottom: 1px dotted var(--accent);
+}
+
+.help-link:hover {
+  opacity: 0.85;
+}
+
+.help-code,
+.help-p code {
+  font-family: var(--font-mono), monospace;
+  font-size: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  padding: 1px 5px;
+  border-radius: 3px;
+  color: var(--accent);
+}
+
+.help-state {
+  font-weight: 600;
+}
+
+.help-state.running {
+  color: var(--accent);
+}
+
+.help-state.idle {
+  color: var(--warn, #f2c94c);
+}
+
+.help-state.stopped {
+  color: var(--dim);
+}
+
+.help-state.error,
+.help-state.degraded {
+  color: var(--danger, #f24a4a);
+}
+
+.help-state.ok {
+  color: var(--accent);
+}
+
+.help-state.unknown {
+  color: var(--dim);
+}
