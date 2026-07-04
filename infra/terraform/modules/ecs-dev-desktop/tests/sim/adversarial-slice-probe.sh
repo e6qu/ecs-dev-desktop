@@ -77,9 +77,9 @@ while [ "$pages" -lt "$max_pages" ]; do
   else
     out=$(aws cloudtrail lookup-events --start-time "$window_start" --end-time "$window_end" --max-results 10 --next-token "$next_token" --output json)
   fi
-  count=$(echo "$out" | python3 -c 'import sys,json; print(len(json.load(sys.stdin).get("Events",[])))')
+  count=$(printf '%s\n' "$out" | python3 -c 'import sys,json; print(len(json.load(sys.stdin).get("Events",[])))')
   total=$((total + count))
-  next_token=$(echo "$out" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("NextToken",""))')
+  next_token=$(printf '%s\n' "$out" | python3 -c 'import sys,json; print(json.load(sys.stdin).get("NextToken",""))')
   if [ "$count" -eq 0 ] || [ -z "$next_token" ]; then
     break
   fi

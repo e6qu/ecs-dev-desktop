@@ -45,7 +45,7 @@ zone_out=$(aws route53 create-hosted-zone \
   --name "$domain" \
   --caller-ref "edd-probe-${suffix}" \
   --output json)
-zone_id=$(echo "$zone_out" | python3 -c 'import sys,json; print(json.load(sys.stdin)["HostedZone"]["Id"].split("/")[-1])')
+zone_id=$(printf '%s\n' "$zone_out" | python3 -c 'import sys,json; print(json.load(sys.stdin)["HostedZone"]["Id"].split("/")[-1])')
 if [ -z "$zone_id" ]; then
   fail "CreateHostedZone did not return a zone id"
 fi

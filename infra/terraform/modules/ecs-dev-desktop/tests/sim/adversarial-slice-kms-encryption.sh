@@ -45,8 +45,8 @@ echo "=== KMS: create IAM user for access-control probe ==="
 aws iam create-user --user-name "$user_name" >/dev/null || fail "CreateUser rejected"
 user_arn="arn:aws:iam::123456789012:user/${user_name}"
 ak_json=$(aws iam create-access-key --user-name "$user_name" --output json)
-akid=$(echo "$ak_json" | python3 -c 'import sys,json; print(json.load(sys.stdin)["AccessKey"]["AccessKeyId"])')
-secret=$(echo "$ak_json" | python3 -c 'import sys,json; print(json.load(sys.stdin)["AccessKey"]["SecretAccessKey"])')
+akid=$(printf '%s\n' "$ak_json" | python3 -c 'import sys,json; print(json.load(sys.stdin)["AccessKey"]["AccessKeyId"])')
+secret=$(printf '%s\n' "$ak_json" | python3 -c 'import sys,json; print(json.load(sys.stdin)["AccessKey"]["SecretAccessKey"])')
 if [ -z "$akid" ] || [ -z "$secret" ]; then
   fail "CreateAccessKey did not return credentials"
 fi

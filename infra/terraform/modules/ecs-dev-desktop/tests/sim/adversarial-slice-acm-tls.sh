@@ -107,8 +107,8 @@ pass "Created hosted zone ${zone_id}"
 
 echo "=== ACM: retrieve DNS validation record ==="
 cert_desc=$(aws acm describe-certificate --certificate-arn "$cert_arn" --output json)
-record_name=$(echo "$cert_desc" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["Certificate"]["DomainValidationOptions"][0]["ResourceRecord"]["Name"])')
-record_value=$(echo "$cert_desc" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["Certificate"]["DomainValidationOptions"][0]["ResourceRecord"]["Value"])')
+record_name=$(printf '%s\n' "$cert_desc" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["Certificate"]["DomainValidationOptions"][0]["ResourceRecord"]["Name"])')
+record_value=$(printf '%s\n' "$cert_desc" | python3 -c 'import sys,json; d=json.load(sys.stdin); print(d["Certificate"]["DomainValidationOptions"][0]["ResourceRecord"]["Value"])')
 if [ -z "$record_name" ] || [ -z "$record_value" ]; then
   fail "DescribeCertificate did not return a validation record"
 fi
