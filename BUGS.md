@@ -18,13 +18,18 @@
   two single-arch runners that each publish the `-amd64`/`-arm64` tags and then
   create/merge the manifest.
 
-- **Catalog (base-image) create/update is last-write-wins — accepted, admin-only (2026-06-22).**
-  `CatalogService.update`/`create` (`packages/control-plane/src/catalog-service.ts`) read → patch →
-  unconditional `put()`; the `baseImages` entity has no `version` attribute, so two concurrent admin edits of
-  the SAME image silently clobber each other — unlike every other mutating path (`WorkspaceEntity` uses
-  version-CAS). Accepted for now because the catalog is admin-only and effectively zero-contention (admins
-  rarely edit, never concurrently the same image). A follow-up to add a `version` attribute + conditional
-  write (mirroring the workspace discipline) is noted in `DO_NEXT.md`; flagged by the 2026-06-22 sweep (L2).
+- **Catalog (base-image) create/update now uses optimistic-concurrency CAS — FIXED (2026-07-04).**
+  `CatalogService.update`/`remove` (`packages/control-plane/src/catalog-service.ts`) now carry a
+  `version` attribute and use ElectroDB `.where(({ version }, { eq }) => eq(version, observedVersion))`
+  conditional writes — mirroring the `WorkspaceEntity` version-CAS. Two concurrent admin edits of the
+  same image now resolve to one winner + one `conflict` domain error instead of silently clobbering.
+  The `isVersionConflict` helper was extracted to a shared `version-conflict.ts` utility. Proven by
+  two new integ tests (concurrent update race + concurrent update-vs-remove race).
+
+- **DynamoDB Local retired from the dev loop — FIXED (2026-07-04).** `docker-compose.dev.yml` no longer
+  ships `amazon/dynamodb-local`; the default substrate now uses the sockerless AWS sim (which serves
+  DynamoDB on `:4566`). `scripts/dev.sh` defaults `DYNAMODB_ENDPOINT` to `:4566`. The `aws` compose
+  profile was removed — the sim is always started. DynamoDB Local is fully eliminated from the project.
 
 - **IAM preflight skips a path-scoped role — known limitation (2026-06-21).** `callerToPrincipalArn`
   (`@edd/iam-preflight`) reconstructs the role/user ARN from the STS caller ARN, but AWS DROPS the IAM

@@ -111,6 +111,10 @@ export function makeBaseImageEntity(client: DynamoDBClient, table = TABLE) {
         // records predating the field are treated as the default (OpenVSCode).
         editor: { type: ["openvscode", "monaco"] as const, required: false },
         createdAt: { type: "string", required: true },
+        // Optimistic-concurrency version: every update is conditioned on the
+        // version it read, so two concurrent admin edits cannot silently clobber
+        // each other (mirrors the WorkspaceEntity version-CAS).
+        version: { type: "number", required: true, default: 0 },
       },
       indexes: {
         primary: {

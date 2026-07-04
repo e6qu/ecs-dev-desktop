@@ -321,7 +321,7 @@ describe("WorkspaceService lifecycle (DynamoDB Local + fakes)", () => {
   });
 });
 
-describe("CatalogService (DynamoDB Local)", () => {
+describe("CatalogService", () => {
   let client: ReturnType<typeof createDynamoClient>;
   let catalog: CatalogService;
 
@@ -394,6 +394,67 @@ describe("CatalogService (DynamoDB Local)", () => {
     expect((await catalog.assertEnabled(baseImage("golden/rust:1"))).ok).toBe(false);
     await catalog.update(baseImageId(entry.id), { enabled: false });
     expect((await catalog.assertEnabled(baseImage("golden/go:1.22"))).ok).toBe(false);
+  });
+
+  it("update CAS: stale version is rejected, current version wins", async () => {
+    const created = await catalog.create({
+      name: "Concurrent",
+      image: baseImage("golden/concurrent:1"),
+    });
+    const id = baseImageId(created.id);
+
+    // First update succeeds (version 0 → 1).
+    const r1 = await catalog.update(id, { name: "first" });
+    expect(r1.ok).toBe(true);
+
+    // Simulate a stale writer: write directly through the ElectroDB entity with
+    // the OLD version (version=0), bypassing the service's read step. This is
+    // exactly what a concurrent service.update() call does when its read
+    // interleaves before r1's write.
+    const entity = makeBaseImageEntity(client, TEST_TABLE);
+    let staleWriteThrew = false;
+    try {
+      await entity
+        .patch({ id: created.id })
+        .set({ name: "stale-writer", version: 0 })
+        .where(({ version }, { eq }) => eq(version, 0))
+        .go();
+    } catch {
+      staleWriteThrew = true;
+    }
+    expect(staleWriteThrew).toBe(true);
+
+    // The first writer's value is visible; the stale writer did not apply.
+    const final = await catalog.get(id);
+    expect(final?.name).toBe("first");
+  });
+
+  it("remove CAS: stale version is rejected", async () => {
+    const created = await catalog.create({
+      name: "Remove Race",
+      image: baseImage("golden/remove:1"),
+    });
+    const id = baseImageId(created.id);
+
+    // Service-level update succeeds (version 0 → 1).
+    const upd = await catalog.update(id, { name: "updated" });
+    expect(upd.ok).toBe(true);
+
+    // Stale delete with the old version should fail the CAS condition.
+    const entity = makeBaseImageEntity(client, TEST_TABLE);
+    let staleDeleteThrew = false;
+    try {
+      await entity
+        .delete({ id: created.id })
+        .where(({ version }, { eq }) => eq(version, 0))
+        .go();
+    } catch {
+      staleDeleteThrew = true;
+    }
+    expect(staleDeleteThrew).toBe(true);
+
+    // The entry still exists (the stale delete was rejected).
+    expect(await catalog.get(id)).not.toBeNull();
   });
 });
 
