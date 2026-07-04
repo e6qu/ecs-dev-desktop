@@ -91,7 +91,7 @@ export function WorkspaceActions({
               onClick(action);
             }}
           >
-            {busy === action ? "…" : isConfirming ? "confirm delete?" : action}
+            {busy === action ? "…" : isConfirming ? "confirm delete" : action}
           </button>
         );
       })}
