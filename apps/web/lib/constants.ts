@@ -16,6 +16,12 @@ export const ROLE_HEADER = "x-edd-role";
 export const DEV_USER_COOKIE = "edd-dev-user";
 export const DEV_ROLE_COOKIE = "edd-dev-role";
 
+/** "View as" persona override cookie — a signed-in caller may downgrade their own
+ * effective role (never escalate; clamped server-side against their real role
+ * every time it's read). Applies in both dev-auth and production, independent of
+ * the IdP/session mechanism. */
+export const PERSONA_COOKIE = "edd-persona";
+
 /** Comma-separated IdP group ids/slugs that grant the admin role. */
 export const ADMIN_GROUPS_ENV = "EDD_ADMIN_GROUPS";
 /** Comma-separated IdP group ids/slugs that grant the member role. */

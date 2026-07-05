@@ -33,8 +33,13 @@ export const TESTID = {
   quotaUsageRow: "quota-usage-row",
   /** The "admins only" gate shown to non-admins. */
   adminDenied: "admin-denied",
+  /** The toggle that expands/collapses the repo browser list (collapsed by
+   * default). Attr: `data-open`. */
+  sessionRepoBrowseToggle: "session-repo-browse-toggle",
   /** A repo row in the New-session repo browser. Attrs: `data-repo`, `data-private`. */
   sessionRepoRow: "session-repo-row",
+  /** "Load more repositories" button at the bottom of the repo browser list. */
+  sessionRepoLoadMore: "session-repo-load-more",
   /** "Start session" button on a repo row / panel. */
   startSession: "start-session",
   /** The create-repository panel on New session. Attr: `data-enabled`. */
@@ -72,6 +77,9 @@ export const TESTID = {
   loginPassword: "login-password",
   loginSubmit: "login-submit",
   loginError: "login-error",
+  /** The "view as" persona switcher in the topbar user menu. Attrs: `data-role`
+   * (effective), `data-real-role`. */
+  personaSwitcher: "persona-switcher",
   /** The ⓘ help toggle button in the topbar. Attr: `data-help-open`. */
   helpToggle: "help-toggle",
   /** The collapsible help panel below the toolbar. */

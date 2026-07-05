@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { Principal, Role } from "@edd/authz";
+import { effectiveRole, isRole, type Principal } from "@edd/authz";
 import { ownerId } from "@edd/core";
 import type { Session } from "next-auth";
 
@@ -8,17 +8,27 @@ import {
   DEV_AUTH_ENV,
   DEV_ROLE_COOKIE,
   DEV_USER_COOKIE,
+  PERSONA_COOKIE,
   ROLE_HEADER,
   USER_ID_HEADER,
 } from "./constants";
 
-function isRole(value: string): value is Role {
-  return value === "viewer" || value === "member" || value === "admin";
-}
-
 /** Whether the dev-auth shim is active (`EDD_DEV_AUTH=1`) — never in production. */
 export function devAuthEnabled(): boolean {
   return process.env[DEV_AUTH_ENV] === DEV_AUTH_ENABLED;
+}
+
+/** Apply a "view as" persona override on top of the real principal (downgrade-only,
+ * see {@link effectiveRole}). Unchanged when no override cookie is present or it
+ * doesn't differ from the real role. */
+export function withPersona(
+  principal: Principal,
+  personaCookieValue: string | undefined,
+): Principal {
+  const effective = effectiveRole(principal.role, personaCookieValue);
+  return effective === principal.role
+    ? principal
+    : { ...principal, role: effective, realRole: principal.role };
 }
 
 /** Build a principal from a candidate id/role pair (rejects unknown roles). */
@@ -69,9 +79,11 @@ function devRequestPrincipal(req: Request): Principal | null {
  * lazily so this module stays import-safe outside the Next runtime (tests).
  */
 export async function getPrincipal(req: Request): Promise<Principal | null> {
-  if (devAuthEnabled()) return devRequestPrincipal(req);
-  const { auth } = await import("../auth");
-  return principalFromSession(await auth());
+  const principal = devAuthEnabled()
+    ? devRequestPrincipal(req)
+    : principalFromSession(await (await import("../auth")).auth());
+  if (principal === null) return null;
+  return withPersona(principal, cookieValue(req.headers.get("cookie"), PERSONA_COOKIE));
 }
 
 /**
@@ -81,11 +93,11 @@ export async function getPrincipal(req: Request): Promise<Principal | null> {
  * lazily to keep this module import-safe in unit/integration tests.
  */
 export async function getPagePrincipal(): Promise<Principal | null> {
-  if (devAuthEnabled()) {
-    const { cookies } = await import("next/headers");
-    const store = await cookies();
-    return devPrincipal(store.get(DEV_USER_COOKIE)?.value, store.get(DEV_ROLE_COOKIE)?.value);
-  }
-  const { auth } = await import("../auth");
-  return principalFromSession(await auth());
+  const { cookies } = await import("next/headers");
+  const store = await cookies();
+  const principal = devAuthEnabled()
+    ? devPrincipal(store.get(DEV_USER_COOKIE)?.value, store.get(DEV_ROLE_COOKIE)?.value)
+    : principalFromSession(await (await import("../auth")).auth());
+  if (principal === null) return null;
+  return withPersona(principal, store.get(PERSONA_COOKIE)?.value);
 }

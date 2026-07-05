@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 
 import { TopNav } from "../components/TopNav";
 import { HelpToggle } from "../components/HelpToggle";
+import { PersonaSwitcher } from "../components/PersonaSwitcher";
 import { getPagePrincipal } from "../lib/principal";
 import { signOutAction } from "./login/actions";
 import "./globals.css";
@@ -36,8 +37,14 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           <HelpToggle />
           {principal ? (
             <span className="who">
-              <span className="mono">{principal.id}</span>
+              <Link href="/me" className="mono">
+                {principal.id}
+              </Link>
               <span className="badge accent">{principal.role}</span>
+              <PersonaSwitcher
+                role={principal.role}
+                realRole={principal.realRole ?? principal.role}
+              />
               <Link href="/settings/ssh-keys" className="btn">
                 ssh keys
               </Link>
