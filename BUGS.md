@@ -417,6 +417,25 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **`publish-images.sh`'s ssh-gateway build passed the wrong Docker build context
+  (2026-07-05, same deploy).** `build_push_arch ssh-gateway "$repo/services/ssh-gateway/Dockerfile.proxy"
+"$repo/services/ssh-gateway"` used the `services/ssh-gateway/` subdirectory itself as
+  context, but `Dockerfile.proxy`'s `COPY` paths are repo-root-relative
+  (`services/ssh-gateway/sshd_config.proxy`, etc. — the same convention as the
+  control-plane Dockerfile), so every `COPY` failed with `"...": not found`. This build
+  path had never been exercised: local `image_build_mode` never got past the
+  control-plane image (see above), and this was the first time `codebuild` mode ever
+  reached the ssh-gateway step. Fixed by passing the repo root as context, matching
+  the control-plane `build_push_arch` call. Also declared `seed_default_catalog` as a
+  proper passthrough variable in `examples/complete` (Terraform warned "does not
+  declare a variable named seed_default_catalog" — `main.tf` hardcoded it instead of
+  taking a variable, the same undeclared-passthrough pattern PR #191 already fixed for
+  `nat_mode`/`image_build_mode`/`golden_image_repos`); cross-checked every other key
+  `install.sh` writes into `install.tfvars` against `examples/complete`'s declared
+  variables and found no further gaps. Verified: `shellcheck`, `terraform fmt`/
+  `validate`, and a direct local `docker buildx build` of the ssh-gateway image with
+  the corrected context (all `COPY` steps succeed).
+
 - **`apps/web/Dockerfile` had never actually been built until this exact real deploy
   (2026-07-05) — only `scripts/release.yml` (gated dormant until now) ever invokes
   it, via `scripts/publish-images.sh`.** The image build failed during
