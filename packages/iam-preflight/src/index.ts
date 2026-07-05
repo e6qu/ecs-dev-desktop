@@ -97,6 +97,10 @@ export function resolveCoordinates(
   };
 }
 
+/** The workspace task-definition family prefix (mirrors `WORKSPACE_TASKDEF_FAMILY_PREFIX`
+ * in `@edd/compute-ecs`) — used only to build a representative ARN for simulation. */
+const WORKSPACE_TASKDEF_FAMILY_PREFIX = "edd-ws-";
+
 /** The resource ARNs to simulate a statement against, by its declared scope. */
 export function resourceArnsForScope(
   scope: IamResourceScope,
@@ -113,6 +117,14 @@ export function resourceArnsForScope(
       return [coords.secretArn];
     case "task-roles":
       return [...coords.taskRoleArns];
+    case "cluster":
+      return [coords.clusterArn];
+    case "workspace-task-definitions":
+      // A concrete ARN under the edd-ws-* family prefix the policy scopes to — IAM
+      // simulate matches this against the deployed statement's wildcard resource.
+      return [
+        `arn:aws:ecs:${coords.region}:${coords.account}:task-definition/${WORKSPACE_TASKDEF_FAMILY_PREFIX}preflight-probe:1`,
+      ];
   }
 }
 

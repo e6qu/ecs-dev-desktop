@@ -44,7 +44,9 @@ export type IamResourceScope =
   | "dynamodb-table"
   | "log-groups"
   | "workspace-secrets"
-  | "task-roles";
+  | "task-roles"
+  | "workspace-task-definitions"
+  | "cluster";
 
 /** One policy statement's worth of required actions + the context it needs. */
 export interface IamRequirement {
@@ -103,7 +105,7 @@ const CONTROL_PLANE_REQUIREMENTS: readonly IamRequirement[] = [
     // each have); DescribeTaskDefinition supports no resource types or condition
     // keys at all.
     sid: "RegisterWorkspaceTaskDefinitions",
-    resource: "any",
+    resource: "workspace-task-definitions",
     actions: ["ecs:RegisterTaskDefinition"],
   },
   {
@@ -152,16 +154,35 @@ const CONTROL_PLANE_REQUIREMENTS: readonly IamRequirement[] = [
     actions: [
       "logs:CreateLogStream",
       "logs:PutLogEvents",
-      "logs:DescribeLogGroups",
       "logs:DescribeLogStreams",
       "logs:GetLogEvents",
       "logs:FilterLogEvents",
     ],
   },
   {
+    // DescribeLogGroups lists every log group in the account -- it supports no
+    // resource types or condition keys at all, so it can't share the log-group-scoped
+    // Logs statement above.
+    sid: "DescribeLogGroups",
+    resource: "any",
+    actions: ["logs:DescribeLogGroups"],
+  },
+  {
     sid: "CloudTrailLookup",
     resource: "any",
     actions: ["cloudtrail:LookupEvents"],
+  },
+  {
+    sid: "DescribeWorkspacesCluster",
+    resource: "cluster",
+    actions: ["ecs:DescribeClusters"],
+  },
+  {
+    // Account/region-wide, no resource type at all (the API call takes no resource
+    // identifier).
+    sid: "DescribeAvailabilityZones",
+    resource: "any",
+    actions: ["ec2:DescribeAvailabilityZones"],
   },
 ];
 

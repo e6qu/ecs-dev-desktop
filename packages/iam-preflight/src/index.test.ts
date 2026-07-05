@@ -90,6 +90,13 @@ describe("resourceArnsForScope", () => {
   it("task-roles → the passable role ARNs", () => {
     expect(resourceArnsForScope("task-roles", COORDS)).toEqual([...COORDS.taskRoleArns]);
   });
+  it("cluster → the cluster ARN", () => {
+    expect(resourceArnsForScope("cluster", COORDS)).toEqual([COORDS.clusterArn]);
+  });
+  it("workspace-task-definitions → a representative edd-ws-* task-definition ARN", () => {
+    const [arn] = resourceArnsForScope("workspace-task-definitions", COORDS);
+    expect(arn).toContain(`:${COORDS.account}:task-definition/edd-ws-`);
+  });
 });
 
 describe("buildSimulationRequests", () => {
