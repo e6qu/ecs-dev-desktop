@@ -66,6 +66,7 @@ const CONTROL_PLANE_REQUIREMENTS: readonly IamRequirement[] = [
     sid: "DynamoSingleTable",
     resource: "dynamodb-table",
     actions: [
+      "dynamodb:DescribeTable",
       "dynamodb:GetItem",
       "dynamodb:PutItem",
       "dynamodb:UpdateItem",

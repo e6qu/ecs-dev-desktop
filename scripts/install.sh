@@ -94,21 +94,27 @@ missing() { # <name> <value>
 }
 missing EDD_NAME "$EDD_NAME" || exit 1
 missing EDD_REGION "$EDD_REGION" || exit 1
-missing EDD_AZS "$EDD_AZS" || exit 1
-missing EDD_ADMIN_GROUPS "$EDD_ADMIN_GROUPS" || exit 1
-if [ "$EDD_IMAGE_BUILD_MODE" != "local" ] && [ "$EDD_IMAGE_BUILD_MODE" != "codebuild" ] && [ "$EDD_IMAGE_BUILD_MODE" != "pre-published" ]; then
-  echo "edd: EDD_IMAGE_BUILD_MODE must be local, codebuild, or pre-published" >&2
-  exit 1
+# The rest (AZs, admin groups, build-mode/nat-mode shape, domain/SSH zone pairing) are
+# install-only concerns — `--verify` is read-only and never writes a tfvars file, so
+# requiring the full install parameter set for it (as a prior version of this script
+# did unconditionally) broke the documented "just EDD_NAME/EDD_REGION" verify usage.
+if [ "$mode" = "install" ]; then
+  missing EDD_AZS "$EDD_AZS" || exit 1
+  missing EDD_ADMIN_GROUPS "$EDD_ADMIN_GROUPS" || exit 1
+  if [ "$EDD_IMAGE_BUILD_MODE" != "local" ] && [ "$EDD_IMAGE_BUILD_MODE" != "codebuild" ] && [ "$EDD_IMAGE_BUILD_MODE" != "pre-published" ]; then
+    echo "edd: EDD_IMAGE_BUILD_MODE must be local, codebuild, or pre-published" >&2
+    exit 1
+  fi
+  if [ "$EDD_NAT_MODE" != "instance" ] && [ "$EDD_NAT_MODE" != "gateway" ]; then
+    echo "edd: EDD_NAT_MODE must be instance or gateway" >&2
+    exit 1
+  fi
+  if [ "$EDD_IMAGE_BUILD_MODE" = "codebuild" ]; then
+    missing EDD_CODEBUILD_SOURCE_REPO "$EDD_CODEBUILD_SOURCE_REPO" || exit 1
+  fi
+  if [ -n "$EDD_DOMAIN" ]; then missing EDD_ROUTE53_ZONE "$EDD_ROUTE53_ZONE" || exit 1; fi
+  if [ -n "$EDD_SSH_DOMAIN" ]; then missing EDD_SSH_ZONE "$EDD_SSH_ZONE" || exit 1; fi
 fi
-if [ "$EDD_NAT_MODE" != "instance" ] && [ "$EDD_NAT_MODE" != "gateway" ]; then
-  echo "edd: EDD_NAT_MODE must be instance or gateway" >&2
-  exit 1
-fi
-if [ "$EDD_IMAGE_BUILD_MODE" = "codebuild" ]; then
-  missing EDD_CODEBUILD_SOURCE_REPO "$EDD_CODEBUILD_SOURCE_REPO" || exit 1
-fi
-if [ -n "$EDD_DOMAIN" ]; then missing EDD_ROUTE53_ZONE "$EDD_ROUTE53_ZONE" || exit 1; fi
-if [ -n "$EDD_SSH_DOMAIN" ]; then missing EDD_SSH_ZONE "$EDD_SSH_ZONE" || exit 1; fi
 
 # "a,b" -> ["a","b"]. (The previous version forced a trailing comma before quoting
 # every comma, which turned that same trailing comma into a closing `","` and left
