@@ -32,6 +32,12 @@ variable "single_nat_gateway" {
   default     = true
 }
 
+variable "nat_instance_type" {
+  description = "With nat_mode=instance: EC2 type for the fck-nat NAT instance. The module default (t4g.nano) isn't free-tier-eligible on accounts still under AWS's Free Tier restriction (RunInstances then fails with InvalidParameterCombination) — override to a free-tier-eligible type (e.g. t4g.micro) if needed; check with `aws ec2 describe-instance-types --filters Name=free-tier-eligible,Values=true`."
+  type        = string
+  default     = "t4g.nano"
+}
+
 variable "domain_name" {
   description = "Base domain (empty = HTTP-only dev stack, no Route53/ACM)."
   type        = string

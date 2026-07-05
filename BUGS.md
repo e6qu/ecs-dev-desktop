@@ -417,6 +417,62 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **`apps/web/Dockerfile` had never actually been built until this exact real deploy
+  (2026-07-05) — only `scripts/release.yml` (gated dormant until now) ever invokes
+  it, via `scripts/publish-images.sh`.** The image build failed during
+  `pnpm install --frozen-lockfile`: `node-gyp` couldn't compile
+  `services/editor-monaco`'s `node-pty` native binding — `gyp ERR! Could not find any
+Python installation to use`. The workspace-wide install pulls in every package's
+  deps (including `editor-monaco`'s, even though `apps/web`'s runtime doesn't use it),
+  and the `node:22-bookworm-slim` base image has no Python or C/C++ toolchain by
+  default. Fixed by installing `python3 make g++` in the builder stage before
+  `pnpm install`. Verified with a direct local
+  `docker buildx build --platform linux/arm64 -f apps/web/Dockerfile .` — full build
+  (install, `@edd/web` build, `@edd/reconciler` build, runner stage) now completes
+  clean.
+
+- **Two more real Terraform-module bugs found once `terraform apply` was actually
+  running against real AWS (2026-07-05, same first-ever real deploy) — never
+  exercisable against the sockerless sim:**
+  1. **`aws_kms_key.this` (`data.tf`) had no explicit key policy**, so AWS applied the
+     default root-only policy. DynamoDB/EBS/Secrets Manager encryption with this key
+     works fine under the default policy (each service authorizes via the CALLING
+     principal's own IAM permissions and a dynamically-created KMS grant), but
+     CloudWatch Logs log-group encryption calls KMS as the
+     `logs.<region>.amazonaws.com` SERVICE principal, which the default policy doesn't
+     cover — all four log groups (`control-plane`/`reconciler`/`workspaces`/
+     `ssh-gateway`) failed with `AccessDeniedException: The specified KMS key does not
+exist or is not allowed to be used`. Fixed by giving the key an explicit policy:
+     the standard "Enable IAM User Permissions" root statement plus a service-principal
+     grant for `logs.<region>.amazonaws.com` (Encrypt/Decrypt/ReEncrypt/
+     GenerateDataKey/Describe, scoped via an `ArnLike` condition on
+     `kms:EncryptionContext:aws:logs:arn`). (The sim doesn't enforce KMS key-policy
+     access control at all per sockerless#732, so this was structurally
+     unexercisable before a real account existed.)
+  2. **The SSH-gateway security group's `description` contained a non-ASCII em-dash**
+     (`ssh-ingress.tf`), and `CreateSecurityGroup`'s `GroupDescription` is
+     ASCII-only on real AWS — real AWS rejected it with
+     `InvalidParameterValue: ... Character sets beyond ASCII are not supported`
+     (the other three security groups in the module don't use non-ASCII characters
+     in their descriptions, so this was isolated). Fixed by replacing the em-dash
+     with a plain hyphen.
+     Both verified via `terraform fmt`/`validate`; the KMS fix's actual effect (log
+     groups creating successfully) was confirmed on the next live re-run.
+
+- **fck-nat's default NAT instance type isn't viable on a fresh/Free-Tier-restricted
+  AWS account (2026-07-05, same deploy).** `RunInstances` for the `t4g.nano` fck-nat
+  instance failed with `InvalidParameterCombination: The specified instance type is
+not eligible for Free Tier` — this AWS account hadn't yet graduated past AWS's
+  Free-Tier EC2 instance-type restriction (the same class of account-level
+  restriction that blocks Route53 Domains registration; see `DO_NEXT.md`). Not a code
+  bug, but the module offered no way to override the instance type through the
+  standard install path. Added `nat_instance_type` as a passthrough variable
+  (`examples/complete`, default `t4g.nano` — unchanged for graduated accounts) and
+  `EDD_NAT_INSTANCE_TYPE` to `install.sh` (default `t4g.nano`); this deploy uses
+  `t4g.micro`, confirmed free-tier-eligible via
+  `aws ec2 describe-instance-types --filters Name=free-tier-eligible,Values=true`
+  and same Graviton family as the default, so no architecture change.
+
 - **`scripts/install.sh`/`bootstrap-secrets.sh` had four real bugs, all found on the
   first-ever real execution of the install path (2026-07-05, right after the AWS
   account/domain decisions unblocked it).** The script had only ever been

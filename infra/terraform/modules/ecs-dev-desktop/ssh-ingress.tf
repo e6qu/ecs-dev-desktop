@@ -47,7 +47,7 @@ resource "aws_cloudwatch_log_group" "ssh_gateway" {
 # the client source IP). Workspaces accept sshd only from this SG (the rule below).
 resource "aws_security_group" "ssh_gateway" {
   name        = "${var.name}-ssh-gateway"
-  description = "SSH gateway tasks — public 22/tcp ingress, all egress (reach control-plane + workspaces)."
+  description = "SSH gateway tasks - public 22/tcp ingress, all egress (reach control-plane + workspaces)."
   vpc_id      = aws_vpc.this.id
   tags        = merge(local.tags, { Name = "${var.name}-ssh-gateway" })
 }

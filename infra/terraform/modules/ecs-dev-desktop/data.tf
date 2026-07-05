@@ -2,10 +2,53 @@
 # Stateful data layer: the DynamoDB single-table store and a KMS key used to
 # encrypt the table, EBS workspace volumes/snapshots, logs, and secrets.
 
+# DynamoDB/EBS/Secrets Manager encryption with this key is authorized through the
+# CALLING principal's own IAM permissions (each service creates its own KMS grant
+# dynamically), covered by the "Enable IAM User Permissions" statement below. CloudWatch
+# Logs is different: log-group encryption calls KMS as the "logs.<region>.amazonaws.com"
+# SERVICE principal, not as an IAM identity, so it needs its own explicit resource-policy
+# grant — omitting it (the default key policy is root-only) fails every encrypted log
+# group with "AccessDeniedException: The specified KMS key does not exist or is not
+# allowed to be used" (found on the first real apply; the sim doesn't enforce KMS
+# key-policy access control per sockerless#732, so this was never exercisable before).
+data "aws_iam_policy_document" "kms" {
+  statement {
+    sid       = "EnableIamUserPermissions"
+    actions   = ["kms:*"]
+    resources = ["*"]
+    principals {
+      type        = "AWS"
+      identifiers = ["arn:${local.partition}:iam::${local.account_id}:root"]
+    }
+  }
+
+  statement {
+    sid = "AllowCloudWatchLogs"
+    actions = [
+      "kms:Encrypt*",
+      "kms:Decrypt*",
+      "kms:ReEncrypt*",
+      "kms:GenerateDataKey*",
+      "kms:Describe*",
+    ]
+    resources = ["*"]
+    principals {
+      type        = "Service"
+      identifiers = ["logs.${local.region}.amazonaws.com"]
+    }
+    condition {
+      test     = "ArnLike"
+      variable = "kms:EncryptionContext:aws:logs:arn"
+      values   = ["arn:${local.partition}:logs:${local.region}:${local.account_id}:log-group:*"]
+    }
+  }
+}
+
 resource "aws_kms_key" "this" {
   description             = "${var.name} ecs-dev-desktop encryption (DynamoDB, EBS, logs, secrets)."
   deletion_window_in_days = 14
   enable_key_rotation     = true
+  policy                  = data.aws_iam_policy_document.kms.json
   tags                    = merge(local.tags, { Name = "${var.name}-kms" })
 }
 
