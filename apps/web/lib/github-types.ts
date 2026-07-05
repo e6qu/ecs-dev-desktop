@@ -25,6 +25,6 @@ const namespace = z.object({
 });
 export type Namespace = z.infer<typeof namespace>;
 
-export const reposResponse = z.object({ repos: z.array(repoSummary) });
+export const reposResponse = z.object({ repos: z.array(repoSummary), hasMore: z.boolean() });
 export const namespacesResponse = z.object({ namespaces: z.array(namespace) });
 export const createRepoResponse = z.object({ repo: repoSummary });

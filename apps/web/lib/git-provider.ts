@@ -19,6 +19,7 @@ import {
   repoSchema,
   toRepoSummary,
   type CreateRepoParams,
+  type RepoPage,
 } from "./github";
 import type { Namespace, RepoSummary } from "./github-types";
 
@@ -33,7 +34,8 @@ import type { Namespace, RepoSummary } from "./github-types";
  * (`x-access-token` + bearer), so the broker and UI are provider-agnostic.
  */
 export interface GitProvider {
-  listRepos(): Promise<RepoSummary[]>;
+  /** One page of repos, 1-indexed. */
+  listRepos(page?: number): Promise<RepoPage>;
   listNamespaces(): Promise<Namespace[]>;
   createRepo(params: CreateRepoParams): Promise<RepoSummary>;
   /** HTTPS git credential for clone/push of `repoOwner`'s repos, or null when
@@ -50,8 +52,8 @@ function apiBase(): string {
 /** Default provider: operates as the signed-in user via their stored OAuth token. */
 class UserOAuthGitProvider implements GitProvider {
   constructor(private readonly token: string) {}
-  listRepos(): Promise<RepoSummary[]> {
-    return listRepos(this.token);
+  listRepos(page = 1): Promise<RepoPage> {
+    return listRepos(this.token, page);
   }
   listNamespaces(): Promise<Namespace[]> {
     return listNamespaces(this.token);
@@ -104,12 +106,17 @@ class InstallationGitProvider implements GitProvider {
     return minted.token;
   }
 
-  async listRepos(): Promise<RepoSummary[]> {
+  // Repos are merged across every installation (deduplicated by full name), which
+  // doesn't map onto GitHub's single-source page cursor -- so this provider fetches
+  // its one combined set on page 1 and reports no further page, rather than
+  // re-fetching (and re-merging) all installations again for "page 2".
+  async listRepos(page = 1): Promise<RepoPage> {
+    if (page > 1) return { repos: [], hasMore: false };
     const installs = await this.listInstallations();
     const perInstall = await Promise.all(installs.map((inst) => this.reposFor(inst.id)));
     const byFullName = new Map<string, RepoSummary>();
     for (const repo of perInstall.flat()) byFullName.set(repo.fullName, repo);
-    return [...byFullName.values()];
+    return { repos: [...byFullName.values()], hasMore: false };
   }
 
   private async reposFor(installationId: number): Promise<RepoSummary[]> {

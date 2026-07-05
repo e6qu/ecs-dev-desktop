@@ -35,12 +35,21 @@ interface CatalogOption {
 export function NewSession({ images }: { images: readonly CatalogOption[] }) {
   const router = useRouter();
   const [image, setImage] = useState(images[0]?.image ?? "");
-  const [repos, setRepos] = useState<RepoSummary[] | null>(null);
   const [namespaces, setNamespaces] = useState<Namespace[]>([]);
   const [ghConnected, setGhConnected] = useState(true);
-  const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // The repo browser is collapsed by default and its list is fetched lazily, one
+  // page at a time, on first expand — most sessions start blank or from a repo the
+  // user already knows the name of, so there's no reason to always pay for the
+  // GitHub round trip (and orgs can have far more repos than fit on one page).
+  const [browseOpen, setBrowseOpen] = useState(false);
+  const [repos, setRepos] = useState<RepoSummary[] | null>(null);
+  const [reposLoading, setReposLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [search, setSearch] = useState("");
 
   // Create-repo form.
   const [ns, setNs] = useState("");
@@ -50,20 +59,11 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
   useEffect(() => {
     void (async () => {
       try {
-        const reposRes = await fetch("/api/github/repos");
-        if (reposRes.status === 409) {
+        const nsRes = await fetch("/api/github/namespaces");
+        if (nsRes.status === 409) {
           setGhConnected(false);
-          setRepos([]);
           return;
         }
-        if (reposRes.ok) {
-          setRepos(reposResponse.parse(await reposRes.json()).repos);
-        } else {
-          // Resolve the list to empty (not a permanent spinner) + surface the error.
-          setRepos([]);
-          setError("failed to load GitHub repositories");
-        }
-        const nsRes = await fetch("/api/github/namespaces");
         if (nsRes.ok) {
           const list = namespacesResponse.parse(await nsRes.json()).namespaces;
           setNamespaces(list);
@@ -75,13 +75,39 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
           setError("failed to load GitHub namespaces");
         }
       } catch {
-        // A network/parse failure must still resolve the loading state, or the list
-        // shows a spinner forever next to the error.
-        setRepos([]);
-        setError("failed to load GitHub repositories");
+        setError("failed to load GitHub namespaces");
       }
     })();
   }, []);
+
+  async function loadRepoPage(targetPage: number): Promise<void> {
+    setReposLoading(true);
+    try {
+      const res = await fetch(`/api/github/repos?page=${String(targetPage)}`);
+      if (res.status === 409) {
+        setGhConnected(false);
+        return;
+      }
+      if (res.ok) {
+        const { repos: pageRepos, hasMore: more } = reposResponse.parse(await res.json());
+        setRepos((prev) => (targetPage === 1 ? pageRepos : [...(prev ?? []), ...pageRepos]));
+        setHasMore(more);
+        setPage(targetPage);
+      } else {
+        setError("failed to load GitHub repositories");
+      }
+    } catch {
+      setError("failed to load GitHub repositories");
+    } finally {
+      setReposLoading(false);
+    }
+  }
+
+  function toggleBrowse(): void {
+    const opening = !browseOpen;
+    setBrowseOpen(opening);
+    if (opening && repos === null) void loadRepoPage(1);
+  }
 
   const filtered = useMemo(
     () =>
@@ -227,48 +253,78 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
       ) : (
         <>
           <section>
-            <h2>Start from a repository</h2>
-            <input
-              className="input"
-              aria-label="search repositories"
-              placeholder="search repositories…"
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-              }}
-            />
-            {repos === null ? (
-              <p className="state-note" role="status">
-                loading repositories…
-              </p>
-            ) : (
-              <ul className="list">
-                {filtered.map((repo) => (
-                  <li
-                    key={repo.fullName}
-                    className="row"
-                    data-testid={TESTID.sessionRepoRow}
-                    data-repo={repo.fullName}
-                    data-private={String(repo.private)}
-                  >
-                    <span>
-                      {repo.fullName}{" "}
-                      {repo.private ? <span className="mono">(private)</span> : null}
-                    </span>
-                    <button
-                      type="button"
-                      className="btn primary"
-                      data-testid={TESTID.startSession}
-                      aria-busy={busy}
-                      disabled={busy}
-                      onClick={() => void startSession(repo.cloneUrl, repo.defaultBranch)}
-                    >
-                      {busy ? "starting…" : "start session"}
-                    </button>
-                  </li>
-                ))}
-                {filtered.length === 0 && <li className="mono">no repositories match</li>}
-              </ul>
+            <h2>
+              <button
+                type="button"
+                className="btn"
+                aria-expanded={browseOpen}
+                aria-controls="session-repo-browse"
+                data-testid={TESTID.sessionRepoBrowseToggle}
+                data-open={String(browseOpen)}
+                onClick={toggleBrowse}
+              >
+                <span aria-hidden="true">{browseOpen ? "▾" : "▸"}</span> Start from a repository
+              </button>
+            </h2>
+            {browseOpen && (
+              <div id="session-repo-browse" className="stack" style={{ gap: 10 }}>
+                <input
+                  className="input"
+                  aria-label="search repositories"
+                  placeholder="search repositories…"
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
+                  }}
+                />
+                {repos === null ? (
+                  <p className="state-note" role="status">
+                    loading repositories…
+                  </p>
+                ) : (
+                  <ul className="list">
+                    {filtered.map((repo) => (
+                      <li
+                        key={repo.fullName}
+                        className="row"
+                        data-testid={TESTID.sessionRepoRow}
+                        data-repo={repo.fullName}
+                        data-private={String(repo.private)}
+                      >
+                        <span>
+                          {repo.fullName}{" "}
+                          {repo.private ? <span className="mono">(private)</span> : null}
+                        </span>
+                        <button
+                          type="button"
+                          className="btn primary"
+                          data-testid={TESTID.startSession}
+                          aria-busy={busy}
+                          disabled={busy}
+                          onClick={() => void startSession(repo.cloneUrl, repo.defaultBranch)}
+                        >
+                          {busy ? "starting…" : "start session"}
+                        </button>
+                      </li>
+                    ))}
+                    {filtered.length === 0 && <li className="mono">no repositories match</li>}
+                    {hasMore && (
+                      <li className="row">
+                        <button
+                          type="button"
+                          className="btn"
+                          data-testid={TESTID.sessionRepoLoadMore}
+                          aria-busy={reposLoading}
+                          disabled={reposLoading}
+                          onClick={() => void loadRepoPage(page + 1)}
+                        >
+                          {reposLoading ? "loading…" : "load more repositories"}
+                        </button>
+                      </li>
+                    )}
+                  </ul>
+                )}
+              </div>
             )}
           </section>
 

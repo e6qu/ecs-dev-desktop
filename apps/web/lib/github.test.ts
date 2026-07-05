@@ -41,10 +41,26 @@ describe("github adapter", () => {
     const { impl } = router([
       { match: "/user/repos", body: [repoJson("alice/widgets", true), repoJson("acme/api")] },
     ]);
-    const repos = await listRepos(TOKEN, impl);
-    expect(repos.map((r) => r.fullName)).toEqual(["alice/widgets", "acme/api"]);
-    expect(repos[0]?.private).toBe(true);
-    expect(repos[0]?.cloneUrl).toBe("https://github.com/alice/widgets.git");
+    const page = await listRepos(TOKEN, 1, impl);
+    expect(page.repos.map((r) => r.fullName)).toEqual(["alice/widgets", "acme/api"]);
+    expect(page.repos[0]?.private).toBe(true);
+    expect(page.repos[0]?.cloneUrl).toBe("https://github.com/alice/widgets.git");
+    expect(page.hasMore).toBe(false);
+  });
+
+  it('reports hasMore from the Link: rel="next" response header', async () => {
+    const { impl, calls } = router([
+      {
+        match: "/user/repos",
+        body: [repoJson("alice/widgets")],
+        headers: {
+          link: '<https://api.example.test/user/repos?page=2>; rel="next", <https://api.example.test/user/repos?page=5>; rel="last"',
+        },
+      },
+    ]);
+    const page = await listRepos(TOKEN, 2, impl);
+    expect(page.hasMore).toBe(true);
+    expect(calls[0]?.url).toContain("page=2");
   });
 
   it("marks create permission per namespace from token scope + org policy", async () => {
