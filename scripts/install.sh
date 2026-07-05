@@ -253,6 +253,14 @@ tfvars="$tfdir/install.tfvars"
   printf '  EDD_ADMIN_GROUPS = "%s"\n' "$EDD_ADMIN_GROUPS"
   [ -n "$EDD_MEMBER_GROUPS" ] && printf '  EDD_MEMBER_GROUPS = "%s"\n' "$EDD_MEMBER_GROUPS"
   printf '  AUTH_TRUST_HOST = "true"\n'
+  # AUTH_TRUST_HOST alone isn't sufficient for this app's custom server
+  # (apps/web/server.ts passes hostname/port to next(), which Next appears to use
+  # for its own request-URL construction ahead of Auth.js's trustHost/header logic) —
+  # Auth.js built the GitHub OAuth redirect_uri from the container's internal ECS
+  # hostname instead of the public domain, and GitHub correctly rejected it
+  # (redirect_uri_mismatch). Set AUTH_URL explicitly so there's no ambiguity; found
+  # on the first real sign-in attempt against this deploy.
+  [ -n "$EDD_DOMAIN" ] && printf '  AUTH_URL = "https://app.%s"\n' "$EDD_DOMAIN"
   printf '}\n'
 } >"$tfvars"
 
