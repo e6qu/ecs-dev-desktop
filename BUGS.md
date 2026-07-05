@@ -417,6 +417,56 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **`pages` deploy workflow could never recover from a transient `deploy-pages`
+  failure without a fresh run (2026-07-05).** The `pages` workflow's push-to-`main`
+  run for PR #190 (run `28723669008`) failed with GitHub's generic
+  `Deployment failed, try again later.` (no further detail; confirmed no
+  githubstatus.com incident for Pages/Actions around that time, no environment/branch
+  policy issue, `concurrency: {group: pages, cancel-in-progress: false}` already
+  correct) — looked like a genuine one-off on GitHub's side. Re-running the failed
+  `build + deploy` job to confirm surfaced a **separate, 100%-reproducible bug**:
+  `actions/upload-pages-artifact@v3` has no `overwrite` input (hardcodes
+  `overwrite: false` on the `actions/upload-artifact@v4` call it wraps), and GitHub
+  keeps every attempt's artifact under the same run id — so the retry's fresh upload
+  didn't replace attempt 1's `github-pages` artifact, it added a second one, and
+  `deploy-pages@v4` then refused to pick one (`Multiple artifacts named "github-pages"
+were unexpectedly found for this workflow run. Artifact count is 2.`). Confirmed via
+  the Artifacts API: two non-expired `github-pages` artifacts existed under run
+  `28723669008` (attempt 1's from the original failure, attempt 2's from the rerun).
+  Net effect: **any** retry of this job — manual or from a future transient hiccup —
+  was guaranteed to fail this way from the second attempt onward. Fixed by adding a
+  step before `upload-pages-artifact` that deletes any `github-pages` artifact already
+  attached to the current run id via the Artifacts REST API (`actions: write` added to
+  the job's permissions). `actionlint` clean. The original attempt-1 failure's root
+  cause stays an unresolved one-off (no further evidence available on our side beyond
+  GitHub's own message), but the workflow no longer compounds it into a second,
+  different, permanent failure on retry.
+
+- **`examples/complete` silently dropped 6 Terraform variables the install flow depends
+  on (2026-07-05).** Found while verifying `docs/install.md`/`docs/deploying.md` against
+  current code ahead of a real deploy. `scripts/install.sh` writes `image_build_mode`
+  into the generated `install.tfvars`, but `examples/complete/variables.tf` never
+  declared that variable — `main.tf` hardcoded it to `"local"` instead, so
+  `EDD_IMAGE_BUILD_MODE=codebuild|pre-published` was silently ignored (Terraform accepts
+  an unused `-var-file` key with a warning, not an error). Same silent-drop for
+  `golden_image_repos` (hardcoded `["omnibus", "typescript"]`, ignoring `EDD_GOLDEN`) and
+  `codebuild_source_repo`/`monthly_budget_usd`/`alarm_sns_topic_arns` (not declared at
+  all — `deploying.md` documents tuning the latter two, but they weren't reachable
+  through the standard install path). Separately, `nat_mode`/`single_nat_gateway` were
+  derived from `var.environment == "prod"` — a real footgun: naming a stack `edd-prod`
+  (a perfectly normal `EDD_NAME`) would silently switch from cheap fck-nat to the AWS
+  NAT Gateway. Fixed by declaring all six as first-class passthrough variables on the
+  example (`nat_mode`/`single_nat_gateway` default to today's non-prod behavior —
+  `instance`/`true` — with no name-based derivation; `image_build_mode` defaults
+  `"local"`; `golden_image_repos` defaults `["omnibus"]`, matching `EDD_GOLDEN`'s own
+  documented default; `codebuild_source_repo`/`monthly_budget_usd`/
+  `alarm_sns_topic_arns` default to the module's own disabled defaults), and threading
+  `scripts/install.sh` (`EDD_NAT_MODE`, validated `instance|gateway`) + updating
+  `terraform.tfvars.example`/`docs/install.md` to match. `examples/complete` is only
+  `terraform validate`d in CI (`terraform-sim` applies a separate fixture,
+  `modules/ecs-dev-desktop/tests/sim`, not this example) — `fmt`/`validate` pass;
+  real end-to-end coverage comes from actually deploying through it.
+
 - **VS Code workspace proof (`vscode-workspace.pwvscode.ts`) keyboard-focus flake — hardened (2026-06-22).**
   The container-mode e2e tier's keyboard-driven OpenVSCode terminal proof failed once in CI ("keyboard-driven
   VS Code terminal never produced the build artifact" — the `mkdir ~/proof` keystrokes never landed across all

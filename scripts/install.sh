@@ -28,6 +28,7 @@
 #   EDD_ROUTE53_ZONE    optional  Route53 zone id for EDD_DOMAIN (required if domain set)
 #   EDD_SSH_DOMAIN      optional  base domain for *.<ssh> (empty = no SSH ingress)
 #   EDD_SSH_ZONE        optional  Route53 zone id for EDD_SSH_DOMAIN (required if SSH)
+#   EDD_NAT_MODE        optional  private-subnet egress: instance (fck-nat, default) | gateway
 #   EDD_IMAGE_TAG       optional  image tag (default: main)
 #   EDD_IMAGE_BUILD_MODE optional image build mode: local | codebuild | pre-published
 #   EDD_CODEBUILD_SOURCE_REPO  optional  git URL for codebuild mode (e.g. https://github.com/...)
@@ -67,6 +68,7 @@ EDD_DOMAIN="${EDD_DOMAIN:-}"
 EDD_ROUTE53_ZONE="${EDD_ROUTE53_ZONE:-}"
 EDD_SSH_DOMAIN="${EDD_SSH_DOMAIN:-}"
 EDD_SSH_ZONE="${EDD_SSH_ZONE:-}"
+EDD_NAT_MODE="${EDD_NAT_MODE:-instance}"
 EDD_TAG="${EDD_IMAGE_TAG:-main}"
 EDD_IMAGE_BUILD_MODE="${EDD_IMAGE_BUILD_MODE:-local}"
 EDD_CODEBUILD_SOURCE_REPO="${EDD_CODEBUILD_SOURCE_REPO:-}"
@@ -90,6 +92,10 @@ missing "$EDD_AZS" || exit 1
 missing "$EDD_ADMIN_GROUPS" || exit 1
 if [ "$EDD_IMAGE_BUILD_MODE" != "local" ] && [ "$EDD_IMAGE_BUILD_MODE" != "codebuild" ] && [ "$EDD_IMAGE_BUILD_MODE" != "pre-published" ]; then
   echo "edd: EDD_IMAGE_BUILD_MODE must be local, codebuild, or pre-published" >&2
+  exit 1
+fi
+if [ "$EDD_NAT_MODE" != "instance" ] && [ "$EDD_NAT_MODE" != "gateway" ]; then
+  echo "edd: EDD_NAT_MODE must be instance or gateway" >&2
   exit 1
 fi
 if [ "$EDD_IMAGE_BUILD_MODE" = "codebuild" ]; then
@@ -218,6 +224,7 @@ tfvars="$tfdir/install.tfvars"
   printf 'route53_zone_id = "%s"\n' "$EDD_ROUTE53_ZONE"
   printf 'ssh_base_domain = "%s"\n' "$EDD_SSH_DOMAIN"
   printf 'route53_ssh_zone_id = "%s"\n' "$EDD_SSH_ZONE"
+  printf 'nat_mode = "%s"\n' "$EDD_NAT_MODE"
   printf 'image_build_mode = "%s"\n' "$EDD_IMAGE_BUILD_MODE"
   printf 'image_tag = "%s"\n' "$EDD_TAG"
   printf 'golden_image_repos = ["%s"]\n' "$(printf '%s' "$EDD_GOLDEN" | sed 's/ /", "/g')"

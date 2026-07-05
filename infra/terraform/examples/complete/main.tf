@@ -29,20 +29,23 @@ module "ecs_dev_desktop" {
   name               = "edd-${var.environment}"
   availability_zones = var.availability_zones
 
-  # Cost-optimized fck-nat NAT instance for dev; managed NAT Gateway(s) for prod.
-  nat_mode           = var.environment == "prod" ? "gateway" : "instance"
-  single_nat_gateway = var.environment != "prod"
+  # Private-subnet egress. Explicit var — do NOT derive from var.environment's name
+  # (a stack happening to be named "...-prod" must not silently switch NAT modes).
+  nat_mode           = var.nat_mode
+  single_nat_gateway = var.single_nat_gateway
 
   # Build mode: "local" makes this a true one-apply self-bootstrap — terraform runs
   # scripts/publish-images.sh during apply (docker + source checkout required). Use
   # "pre-published" if your CI already pushes images (e.g. the release workflow), or
-  # "codebuild" to build in AWS (no local docker). See the module README.
-  image_build_mode = "local"
-  image_tag        = var.image_tag
+  # "codebuild" to build in AWS (no local docker; requires codebuild_source_repo). See
+  # the module README.
+  image_build_mode      = var.image_build_mode
+  image_tag             = var.image_tag
+  codebuild_source_repo = var.codebuild_source_repo
 
   # Curated golden base images users launch workspaces from. These must match the
   # variant folder names under infra/images/ (omnibus, typescript, python, go, java, rust).
-  golden_image_repos = ["omnibus", "typescript"]
+  golden_image_repos = var.golden_image_repos
 
   # Seed a default catalog entry so users can create workspaces immediately.
   seed_default_catalog = true
@@ -65,6 +68,11 @@ module "ecs_dev_desktop" {
   # AUTH_TRUST_HOST, Entra issuer) goes through extra_environment.
   secret_environment = var.auth_secret_arns
   extra_environment  = var.extra_environment
+
+  # Optional cost guardrail + alarm notifications (disabled by default — 0 / empty
+  # matches the module's own defaults).
+  monthly_budget_usd   = var.monthly_budget_usd
+  alarm_sns_topic_arns = var.alarm_sns_topic_arns
 
   tags = {
     "edd:env"   = var.environment
