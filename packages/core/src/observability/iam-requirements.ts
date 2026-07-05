@@ -79,6 +79,11 @@ const CONTROL_PLANE_REQUIREMENTS: readonly IamRequirement[] = [
     ],
   },
   {
+    sid: "DecryptSingleTable",
+    resource: "any",
+    actions: ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"],
+  },
+  {
     sid: "RunAndManageWorkspaceTasks",
     resource: "any",
     actions: [
@@ -157,6 +162,11 @@ const RECONCILER_REQUIREMENTS: readonly IamRequirement[] = [
       "dynamodb:Query",
       "dynamodb:Scan",
     ],
+  },
+  {
+    sid: "DecryptSingleTable",
+    resource: "any",
+    actions: ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"],
   },
   {
     sid: "StopIdleTasks",

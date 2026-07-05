@@ -417,6 +417,25 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **The control-plane and reconciler task roles could read/write DynamoDB items but
+  couldn't decrypt them (2026-07-06, found by a real user hitting `/workspaces` right
+  after the DescribeTable/AUTH_URL fixes went live).** The single table is encrypted
+  with the module's own customer-managed KMS key; the ONLY existing `kms:Decrypt`
+  grant was on the task-EXECUTION role (`DecryptForInjection`, for the ECS agent to
+  decrypt Secrets Manager values at container launch) — the task ROLE the running
+  app actually uses for its own DynamoDB calls had no KMS grant at all. Unlike
+  CloudWatch Logs (a genuine service-principal grant on the key policy), DynamoDB
+  with a customer-managed CMK requires the CALLING PRINCIPAL to hold direct
+  `kms:Decrypt`/`kms:GenerateDataKey`/`kms:DescribeKey` on the key — confirmed via
+  the exact error: `AccessDeniedException ... is not authorized to perform:
+kms:Decrypt on resource: arn:aws:kms:...` thrown from `ElectroError` in
+  `workspace-service.ts`'s `list()`. Added a `DecryptSingleTable` statement granting
+  those three actions on `aws_kms_key.this.arn` to both `control_plane` and
+  `reconciler` task-role policy documents, and the matching entries to both
+  components' `IAM_REQUIREMENTS` manifest entries in `packages/core`. The
+  `iam-policy-drift` test (terraform grants ⊇ manifest) passes; `terraform fmt`/
+  `validate` clean.
+
 - **The `codebuild` build-mode CodeBuild project's default image couldn't run the
   golden-image build's Node.js step (2026-07-05, same deploy).** The golden image
   build stages `@edd/editor-monaco` (`tsc`/`vite`/`esbuild`) directly on the CodeBuild
@@ -427,8 +446,9 @@ no downstream impact (we consume bleephub for OAuth).
   trick on that base image would have fixed it. Fixed by switching the CodeBuild
   project's image to `aws/codebuild/standard:7.0` (Ubuntu, modern glibc) and
   explicitly selecting Node 22 in the buildspec (`n 22`) before `corepack`/`pnpm`.
-  `terraform fmt`/`validate` clean; awaiting confirmation on the next live CodeBuild
-  run.
+  `terraform fmt`/`validate` clean; confirmed working on the next live CodeBuild run
+  (control-plane, ssh-gateway, and the omnibus golden image all built and pushed
+  successfully under Node 22).
 
 - **`publish-images.sh`'s ssh-gateway build passed the wrong Docker build context
   (2026-07-05, same deploy).** `build_push_arch ssh-gateway "$repo/services/ssh-gateway/Dockerfile.proxy"

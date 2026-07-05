@@ -2,7 +2,31 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-04 (PR #180 merged; wave-4 adversarial probes in progress on `feat/adversarial-probes-wave4`.)
+**Last updated:** 2026-07-06 (real production deploy live at `https://app.edd.e6qu.dev`.)
+
+## Real AWS production deploy — LIVE (2026-07-05/06)
+
+The AWS account/domain decisions (`DO_NEXT.md` #1/#2) are resolved and the platform is
+**deployed and verified on real AWS**: region `eu-west-1`, stack name `edd-prod`,
+domain `edd.e6qu.dev` (delegated from Namecheap-registered `e6qu.dev`), GitHub OAuth
+via org `e6qu-org`. `scripts/install.sh --verify` is fully green (ALB health 200,
+control-plane service 2/2 healthy, reconciler schedule enabled, `/api/readyz` 200,
+no Terraform drift), and GitHub sign-in is confirmed working end-to-end.
+
+This was the first-ever real execution of the install/deploy path (previously only
+shellchecked/sim-validated), and it surfaced **9 genuine bugs** across
+`scripts/install.sh`, `scripts/bootstrap-secrets.sh`, `scripts/publish-images.sh`, the
+Terraform module, and `apps/web/Dockerfile` — none exercisable against the sockerless
+sim or via static checks alone. All fixed, verified live, and merged on
+`fix/install-missing-param-logic`; full detail in `BUGS.md` → Resolved (repo) and the
+2026-07-05/06 entries in `WHAT_WE_DID.md`. Highlights: an inverted parameter-validation
+check in `install.sh`, a Secrets Manager eventual-consistency race, an unclosed-HCL-list
+`sed` bug, a missing KMS key policy for CloudWatch Logs, a non-ASCII security-group
+description, a Free-Tier-ineligible NAT instance type, a wrong Docker build context for
+the SSH gateway, CodeBuild's default image lacking a modern-enough Node/glibc, a missing
+`dynamodb:DescribeTable` IAM grant, and (the one affecting real users) Auth.js building
+the GitHub OAuth `redirect_uri` from the container's internal ECS hostname instead of
+the public domain — fixed by setting `AUTH_URL` explicitly.
 
 ## PR #180 merged — wave-3 probes shipped, all CI green
 

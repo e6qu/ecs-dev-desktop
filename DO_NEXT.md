@@ -6,14 +6,7 @@
 
 ## Open decisions (need the user)
 
-1. **AWS account/region & data-residency** — **the top blocker.** Gates real Terraform
-   apply, Phase 1 deploy, SSH/proxy real federation, reconciler cron, real CloudTrail/
-   CloudWatch, Phase 7, `e2e-aws`.
-2. **Domain & DNS owner** — base domain + cert/DNS delegation. The browser editor proxy is now
-   **path-based on a single domain** (`app.<domain>/w/<id>/`), so it no longer needs wildcard DNS
-   or a wildcard TLS cert (a single-host ACM cert suffices); the SSH gateway still wants its own
-   `<ws-id>.<ssh-base-domain>` zone. Gates ACM cert issuance + the SSH zone.
-3. **Heartbeat interval & idle threshold** — scale-to-zero tuning. The knobs
+1. **Heartbeat interval & idle threshold** — scale-to-zero tuning. The knobs
    now exist (`EDD_HEARTBEAT_INTERVAL_S` injected into workspace tasks;
    `EDD_IDLE_THRESHOLD_MS`/`EDD_SNAPSHOT_INTERVAL_MS`/`EDD_EARLY_SNAPSHOT_INTERVAL_MS`/
    `EDD_EARLY_SESSION_MS`/`EDD_GC_GRACE_MS` on the reconciler) — the open decision is
@@ -28,6 +21,14 @@ browser→editor proxy was **folded into the Next.js control-plane app** — pat
 (`app.<domain>/w/<id>/`), authorized in-process by the Auth.js session (uid-ownership/admin); no
 wildcard DNS/TLS, no PDP round-trip, no gate machine-auth (`apps/web/server.ts` +
 `apps/web/lib/workspace-proxy.ts`; see `WHAT_WE_DID.md` 2026-06-20 + `BUGS.md`).
+**AWS account/region — DONE (2026-07-05/06).** Region `eu-west-1`, deployed as
+`edd-prod`. **Domain & DNS — DONE.** `e6qu.dev` registered (Namecheap); a delegated
+Route53 zone `edd.e6qu.dev` hosts `app.edd.e6qu.dev` (control plane) and
+`ssh.edd.e6qu.dev` (SSH front door), NS-delegated from the Namecheap-hosted apex
+so `e6qu.dev` itself stays free for other future use. Real production stack is
+**live**: see `STATUS.md` and `WHAT_WE_DID.md` 2026-07-05/06 for the full deploy
+narrative (9+ real bugs found and fixed along the way, all in `BUGS.md` →
+Resolved (repo)).
 
 ---
 

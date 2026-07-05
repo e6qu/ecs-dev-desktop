@@ -91,6 +91,18 @@ data "aws_iam_policy_document" "control_plane" {
     resources = [aws_dynamodb_table.this.arn, "${aws_dynamodb_table.this.arn}/index/*"]
   }
 
+  # The single table is encrypted with our customer-managed KMS key; unlike the
+  # execution role's DecryptForInjection (Secrets Manager, at container launch), the
+  # RUNNING APP's own DynamoDB calls go through this task role, which needs its own
+  # direct KMS grant (DynamoDB does not proxy CMK access via a service-only grant the
+  # way CloudWatch Logs does) — found live: /workspaces failed with
+  # `kms:Decrypt ... AccessDeniedException` on the first real DynamoDB read.
+  statement {
+    sid       = "DecryptSingleTable"
+    actions   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
+    resources = [aws_kms_key.this.arn]
+  }
+
   statement {
     sid       = "RunAndManageWorkspaceTasks"
     actions   = ["ecs:RunTask", "ecs:StopTask", "ecs:DescribeTasks", "ecs:ListTasks", "ecs:RegisterTaskDefinition", "ecs:DescribeTaskDefinition", "ecs:TagResource"]
@@ -209,6 +221,11 @@ data "aws_iam_policy_document" "reconciler" {
     sid       = "DynamoSingleTable"
     actions   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:Query", "dynamodb:Scan"]
     resources = [aws_dynamodb_table.this.arn, "${aws_dynamodb_table.this.arn}/index/*"]
+  }
+  statement {
+    sid       = "DecryptSingleTable"
+    actions   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
+    resources = [aws_kms_key.this.arn]
   }
   statement {
     sid       = "StopIdleTasks"
