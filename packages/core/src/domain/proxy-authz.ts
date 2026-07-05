@@ -11,12 +11,11 @@ import { type WorkspaceId, workspaceId } from "./ids";
  */
 
 /** The same charset the SSH workspace principal enforces — a workspace id is a
- * valid single DNS label, so the proxy path segment and the SSH principal agree. */
-const WORKSPACE_LABEL_RE = /^[a-z0-9][a-z0-9-]{0,38}$/;
-/** Workspace ids are `ws-` prefixed (see `ID_PREFIX.workspace`). Repeated here
- * as a local literal to keep this module free of cross-imports; the test pins
- * them together. */
-const WORKSPACE_ID_PREFIX = "ws-";
+ * valid single DNS label, so the proxy path segment and the SSH principal agree.
+ * Requires the `ws-` prefix plus at least one further char (a bare "ws-" is not a
+ * real, generated id — every real id has a non-empty random suffix); max total
+ * length 39 to match a `ws-<uuid>` id (3 + 36). */
+const WORKSPACE_LABEL_RE = /^ws-[a-z0-9][a-z0-9-]{0,35}$/;
 
 /** Path prefix under which each workspace's editor is proxied: `/w/<id>/…`. The
  * single-domain, path-based browser route (no wildcard DNS / subdomain). */
@@ -32,7 +31,6 @@ export function workspaceIdFromPath(pathname: string): WorkspaceId | undefined {
   const match = /^\/w\/([^/?#]+)/.exec(pathname);
   const label = match?.[1];
   if (label === undefined) return undefined;
-  if (!label.startsWith(WORKSPACE_ID_PREFIX)) return undefined;
   if (!WORKSPACE_LABEL_RE.test(label)) return undefined;
   return workspaceId(label);
 }

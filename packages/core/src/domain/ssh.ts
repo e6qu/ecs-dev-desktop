@@ -5,8 +5,9 @@ import { sshKeyFingerprint, type SshKeyFingerprint, type SshPublicKey } from "./
 
 /** Charset shared by the workspace SSH principal and the per-workspace
  * subdomain label so the two stay in lockstep (mirrors `WORKSPACE_LABEL_RE` in
- * proxy-authz.ts — a `ws-<uuid>` id is 39 chars, the regex max). */
-const WORKSPACE_LABEL_RE = /^[a-z0-9][a-z0-9-]{0,38}$/;
+ * proxy-authz.ts — a `ws-<uuid>` id is 39 chars, the regex max; requires the
+ * `ws-` prefix plus a non-empty suffix, since a bare "ws-" is never a real id). */
+const WORKSPACE_LABEL_RE = /^ws-[a-z0-9][a-z0-9-]{0,35}$/;
 
 /** Whether a workspace id is a valid DNS/SSH label (so callers can decide
  * before building a principal/host that would otherwise throw). */
