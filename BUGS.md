@@ -417,6 +417,19 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **The `codebuild` build-mode CodeBuild project's default image couldn't run the
+  golden-image build's Node.js step (2026-07-05, same deploy).** The golden image
+  build stages `@edd/editor-monaco` (`tsc`/`vite`/`esbuild`) directly on the CodeBuild
+  host, not inside a container. `aws/codebuild/amazonlinux2-x86_64-standard:5.0`
+  defaults to Node 18.20.8, and Vite 8 requires 20.19+/22.12+ — failed with
+  `ReferenceError: CustomEvent is not defined`. Worse, Amazon Linux 2's glibc (2.26) is
+  too old to run official Node.js 20+/22+ binaries **at all**, so no version-manager
+  trick on that base image would have fixed it. Fixed by switching the CodeBuild
+  project's image to `aws/codebuild/standard:7.0` (Ubuntu, modern glibc) and
+  explicitly selecting Node 22 in the buildspec (`n 22`) before `corepack`/`pnpm`.
+  `terraform fmt`/`validate` clean; awaiting confirmation on the next live CodeBuild
+  run.
+
 - **`publish-images.sh`'s ssh-gateway build passed the wrong Docker build context
   (2026-07-05, same deploy).** `build_push_arch ssh-gateway "$repo/services/ssh-gateway/Dockerfile.proxy"
 "$repo/services/ssh-gateway"` used the `services/ssh-gateway/` subdirectory itself as
