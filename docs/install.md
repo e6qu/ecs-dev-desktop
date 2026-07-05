@@ -57,6 +57,7 @@ export EDD_BOOTSTRAP_GITHUB_SECRET="yyyyyy"     # GitHub OAuth client secret
 # export EDD_BOOTSTRAP_ENTRA_SECRET="…"         # Azure Entra client secret
 
 # --- optional knobs ---
+# export EDD_NAT_MODE="instance"                # instance (fck-nat, default) | gateway
 # export EDD_IMAGE_BUILD_MODE="local"           # local | codebuild | pre-published
 # export EDD_IMAGE_TAG="v1.0.0"                 # image tag (default: main)
 # export EDD_CODEBUILD_SOURCE_REPO="https://github.com/..." # required for codebuild mode

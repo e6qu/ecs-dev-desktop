@@ -417,6 +417,31 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **`examples/complete` silently dropped 6 Terraform variables the install flow depends
+  on (2026-07-05).** Found while verifying `docs/install.md`/`docs/deploying.md` against
+  current code ahead of a real deploy. `scripts/install.sh` writes `image_build_mode`
+  into the generated `install.tfvars`, but `examples/complete/variables.tf` never
+  declared that variable — `main.tf` hardcoded it to `"local"` instead, so
+  `EDD_IMAGE_BUILD_MODE=codebuild|pre-published` was silently ignored (Terraform accepts
+  an unused `-var-file` key with a warning, not an error). Same silent-drop for
+  `golden_image_repos` (hardcoded `["omnibus", "typescript"]`, ignoring `EDD_GOLDEN`) and
+  `codebuild_source_repo`/`monthly_budget_usd`/`alarm_sns_topic_arns` (not declared at
+  all — `deploying.md` documents tuning the latter two, but they weren't reachable
+  through the standard install path). Separately, `nat_mode`/`single_nat_gateway` were
+  derived from `var.environment == "prod"` — a real footgun: naming a stack `edd-prod`
+  (a perfectly normal `EDD_NAME`) would silently switch from cheap fck-nat to the AWS
+  NAT Gateway. Fixed by declaring all six as first-class passthrough variables on the
+  example (`nat_mode`/`single_nat_gateway` default to today's non-prod behavior —
+  `instance`/`true` — with no name-based derivation; `image_build_mode` defaults
+  `"local"`; `golden_image_repos` defaults `["omnibus"]`, matching `EDD_GOLDEN`'s own
+  documented default; `codebuild_source_repo`/`monthly_budget_usd`/
+  `alarm_sns_topic_arns` default to the module's own disabled defaults), and threading
+  `scripts/install.sh` (`EDD_NAT_MODE`, validated `instance|gateway`) + updating
+  `terraform.tfvars.example`/`docs/install.md` to match. `examples/complete` is only
+  `terraform validate`d in CI (`terraform-sim` applies a separate fixture,
+  `modules/ecs-dev-desktop/tests/sim`, not this example) — `fmt`/`validate` pass;
+  real end-to-end coverage comes from actually deploying through it.
+
 - **VS Code workspace proof (`vscode-workspace.pwvscode.ts`) keyboard-focus flake — hardened (2026-06-22).**
   The container-mode e2e tier's keyboard-driven OpenVSCode terminal proof failed once in CI ("keyboard-driven
   VS Code terminal never produced the build artifact" — the `mkdir ~/proof` keystrokes never landed across all

@@ -6,6 +6,22 @@ region             = "us-east-1"
 environment        = "dev"
 availability_zones = ["us-east-1a", "us-east-1b"]
 
+# Private-subnet egress: "instance" (fck-nat, cheap, default) or "gateway" (AWS-managed,
+# HA, pricier). Explicit — intentionally NOT derived from `environment`'s name.
+# nat_mode = "instance"
+
+# Image production: "local" (default; terraform builds/pushes during apply — needs
+# docker + the source checkout), "codebuild" (needs codebuild_source_repo), or
+# "pre-published" (images already in ECR).
+# image_build_mode = "local"
+
+# Golden base-image variants to build/publish (must match infra/images/ folder names).
+# golden_image_repos = ["omnibus"]
+
+# Optional AWS Budgets cost guardrail + alarm notifications (both disabled by default).
+# monthly_budget_usd   = 100
+# alarm_sns_topic_arns = ["arn:aws:sns:us-east-1:111122223333:edd-alerts"]
+
 # For a real deployment with TLS + workspace routing (the editor is path-based at
 # app.<domain>/w/<id>/ — no wildcard DNS/TLS):
 # domain_name     = "dev.example.com"
