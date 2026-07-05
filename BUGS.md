@@ -417,6 +417,59 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **`scripts/install.sh`/`bootstrap-secrets.sh` had four real bugs, all found on the
+  first-ever real execution of the install path (2026-07-05, right after the AWS
+  account/domain decisions unblocked it).** The script had only ever been
+  shellchecked/statically validated before, never actually run against real inputs, so
+  all four went undetected until this exact first live run:
+  1. **`install.sh`'s `missing()` helper had inverted logic.** `[ -n "$1" ] || return 0`
+     returned SUCCESS when the parameter was empty (silently passing an actually-missing
+     required var) and FAILURE when the parameter WAS set (aborting with
+     `edd: missing required parameter edd-prod` — printing the VALUE, not even the
+     name, since the value was all it was ever passed) — the exact opposite of the
+     intended check. Fixed by taking `<name> <value>`, testing `[ -n "$2" ] && return 0`,
+     and passing the variable name at every call site so the error message is useful.
+  2. **`bootstrap-secrets.sh`'s `put_secret` raced Secrets Manager's own eventual
+     consistency.** It created a secret, then immediately ran a SEPARATE
+     `describe-secret --query ARN` to fetch its ARN; that follow-up call intermittently
+     404'd right after a genuine successful create (reproduced live: `AUTH_SECRET`/
+     `EDD_TOKEN_ENC_KEY`/`EDD_GATEWAY_SECRET` created fine, then `EDD_AGENT_SECRET`'s
+     immediate re-describe 404'd — confirmed via direct `describe-secret` calls both
+     immediately and well after: it never existed at that point, so the create's result
+     hadn't propagated to the follow-up read yet). Fixed by removing the redundant call
+     entirely — `create-secret`'s own response already includes the ARN
+     (`--query ARN --output text` works on it directly), so there's no follow-up call
+     left to race. Also routed the "already exists"/"created" status lines to stderr
+     (they were being silently captured into the ARN variable via command substitution
+     and never shown live — how the race went unnoticed for a moment).
+  3. **A skipped IdP prompt could abort the whole script under `set -eu`
+     (deployment-blocking for this exact GitHub-only deploy).** `read -r entra_id` with
+     no env var set and no interactive TTY hits EOF, returns non-zero, and — unguarded —
+     aborted the script even though the docs say "blank = skip". Separately, the final
+     ARN-summary loop's last statement was `[ -n "$val" ] && printf ...`; when the LAST
+     item in that fixed list (`AUTH_MICROSOFT_ENTRA_ID_SECRET`) is blank — our own exact
+     case, GitHub-only, no Entra — that failing test became the whole script's exit
+     status, regardless of whether everything actually succeeded. Fixed both: `read ...
+|| var=""` treats EOF the same as a blank line (skip), and the summary loop uses a
+     proper `if` block (which returns 0 on a false condition with no `else`) instead of
+     `&&`, so the exit code no longer depends on which optional field happened to be
+     listed last.
+  4. **`install.sh`'s `EDD_AZS` → HCL-list `sed` pipeline always emitted an unclosed
+     list.** `sed 's/,*$/,/; s/,/","/g; s/^/["/; s/,$/"]/'` first force-appends a
+     trailing comma (even when one already wasn't there), then globally quotes every
+     comma including that one (turning it into `","`, not a bare `,` anymore) — so the
+     final `s/,$/"]/ ` has no bare trailing comma left to convert, permanently leaving
+     e.g. `["eu-west-1a","eu-west-1b","` unclosed. This reached `terraform apply` as a
+     literal syntax error (`Invalid multi-line string`) that cascaded into a parse
+     failure on every subsequent line of the generated `install.tfvars`. Fixed with the
+     simpler, correct `sed 's/,/","/g; s/^/["/; s/$/"]/'`. Verified:
+     `["eu-west-1a","eu-west-1b"]`.
+     All four verified live against the real AWS account (eu-west-1) mid-deploy:
+     `shellcheck` clean on both scripts, a direct functional re-run of
+     `bootstrap-secrets.sh` with closed stdin and no IdP env vars completes with exit 0
+     and correctly reports every already-created secret's ARN, and the corrected
+     `azs_list` sed pipeline produces valid HCL.
+
 - **`pages` deploy workflow could never recover from a transient `deploy-pages`
   failure without a fresh run (2026-07-05).** The `pages` workflow's push-to-`main`
   run for PR #190 (run `28723669008`) failed with GitHub's generic

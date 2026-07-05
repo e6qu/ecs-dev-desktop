@@ -81,15 +81,15 @@ export EDD_BOOTSTRAP_GITHUB_SECRET="${EDD_BOOTSTRAP_GITHUB_SECRET:-}"
 export EDD_BOOTSTRAP_ENTRA_ID="${EDD_BOOTSTRAP_ENTRA_ID:-}"
 export EDD_BOOTSTRAP_ENTRA_SECRET="${EDD_BOOTSTRAP_ENTRA_SECRET:-}"
 
-missing() { # <name>
-  [ -n "$1" ] || return 0
+missing() { # <name> <value>
+  [ -n "$2" ] && return 0
   echo "edd: missing required parameter $1 (set it as an env var)" >&2
   return 1
 }
-missing "$EDD_NAME" || exit 1
-missing "$EDD_REGION" || exit 1
-missing "$EDD_AZS" || exit 1
-missing "$EDD_ADMIN_GROUPS" || exit 1
+missing EDD_NAME "$EDD_NAME" || exit 1
+missing EDD_REGION "$EDD_REGION" || exit 1
+missing EDD_AZS "$EDD_AZS" || exit 1
+missing EDD_ADMIN_GROUPS "$EDD_ADMIN_GROUPS" || exit 1
 if [ "$EDD_IMAGE_BUILD_MODE" != "local" ] && [ "$EDD_IMAGE_BUILD_MODE" != "codebuild" ] && [ "$EDD_IMAGE_BUILD_MODE" != "pre-published" ]; then
   echo "edd: EDD_IMAGE_BUILD_MODE must be local, codebuild, or pre-published" >&2
   exit 1
@@ -99,12 +99,16 @@ if [ "$EDD_NAT_MODE" != "instance" ] && [ "$EDD_NAT_MODE" != "gateway" ]; then
   exit 1
 fi
 if [ "$EDD_IMAGE_BUILD_MODE" = "codebuild" ]; then
-  missing "$EDD_CODEBUILD_SOURCE_REPO" || exit 1
+  missing EDD_CODEBUILD_SOURCE_REPO "$EDD_CODEBUILD_SOURCE_REPO" || exit 1
 fi
-if [ -n "$EDD_DOMAIN" ]; then missing "$EDD_ROUTE53_ZONE" || exit 1; fi
-if [ -n "$EDD_SSH_DOMAIN" ]; then missing "$EDD_SSH_ZONE" || exit 1; fi
+if [ -n "$EDD_DOMAIN" ]; then missing EDD_ROUTE53_ZONE "$EDD_ROUTE53_ZONE" || exit 1; fi
+if [ -n "$EDD_SSH_DOMAIN" ]; then missing EDD_SSH_ZONE "$EDD_SSH_ZONE" || exit 1; fi
 
-azs_list=$(printf '%s' "$EDD_AZS" | sed 's/,*$/,/; s/,/","/g; s/^/["/; s/,$/"]/')
+# "a,b" -> ["a","b"]. (The previous version forced a trailing comma before quoting
+# every comma, which turned that same trailing comma into a closing `","` and left
+# nothing for the final substitution to convert into `"]` — always emitting an
+# unclosed HCL list, e.g. ["eu-west-1a","eu-west-1b","; found on the first real apply.)
+azs_list=$(printf '%s' "$EDD_AZS" | sed 's/,/","/g; s/^/["/; s/$/"]/')
 state_bucket="edd-tfstate-${EDD_NAME}"
 
 banner() { printf '\n\033[1m=== edd: %s ===\033[0m\n' "$*"; }

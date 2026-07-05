@@ -13,7 +13,12 @@ resource "terraform_data" "build_images_local" {
   ]
 
   provisioner "local-exec" {
-    command     = "sh ${path.module}/scripts/build-images-local.sh ${local.account_id} ${local.region} ${var.name} ${var.image_tag} ${join(" ", var.golden_image_repos)}"
+    # The script path must be absolute: `working_dir` changes the shell's cwd for
+    # `command`, so a `${path.module}`-relative path (which resolves against the
+    # terraform invocation directory, not working_dir) went looking for the script
+    # under `local_build_context_path` instead of the module directory and failed
+    # with "No such file or directory" on the first real apply.
+    command     = "sh ${abspath("${path.module}/scripts/build-images-local.sh")} ${local.account_id} ${local.region} ${var.name} ${var.image_tag} ${join(" ", var.golden_image_repos)}"
     working_dir = var.local_build_context_path
   }
 
