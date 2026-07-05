@@ -50,7 +50,7 @@ module "ecs_dev_desktop" {
   golden_image_repos = var.golden_image_repos
 
   # Seed a default catalog entry so users can create workspaces immediately.
-  seed_default_catalog = true
+  seed_default_catalog = var.seed_default_catalog
 
   # DNS + a single-host ACM cert for the path-based editor proxy (`app.<domain>/w/<id>/`) — no
   # wildcard DNS/TLS (omit this whole block for an HTTP-only dev stack).

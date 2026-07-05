@@ -150,7 +150,12 @@ push_manifest() { # <repo-short>
 build_push_arch control-plane "$repo/apps/web/Dockerfile" "$repo"
 
 # 2. SSH gateway (IMMUTABLE ECR repo: each tag is pushed ONCE; never overwrite).
-build_push_arch ssh-gateway "$repo/services/ssh-gateway/Dockerfile.proxy" "$repo/services/ssh-gateway"
+# Context is the repo root, matching Dockerfile.proxy's repo-root-relative COPY paths
+# (the same convention as the control-plane build above) -- passing the ssh-gateway
+# subdirectory itself as context here made every COPY fail with "not found" (never
+# caught before: this build path had never actually been exercised until CodeBuild
+# got past the control-plane image for the first time).
+build_push_arch ssh-gateway "$repo/services/ssh-gateway/Dockerfile.proxy" "$repo"
 
 # 3. Golden variants, each FROM the per-arch base.
 for arch in $archs; do

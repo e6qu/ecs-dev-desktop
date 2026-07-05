@@ -96,6 +96,12 @@ variable "image_build_mode" {
   default     = "local"
 }
 
+variable "seed_default_catalog" {
+  description = "Seed one default base-image catalog entry (the first golden_image_repos variant) so users can create workspaces immediately."
+  type        = bool
+  default     = true
+}
+
 variable "codebuild_source_repo" {
   description = "(codebuild build mode) Git URL to clone inside CodeBuild. Required when image_build_mode = \"codebuild\"."
   type        = string
