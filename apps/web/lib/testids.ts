@@ -76,6 +76,8 @@ export const TESTID = {
   helpToggle: "help-toggle",
   /** The collapsible help panel below the toolbar. */
   helpPanel: "help-panel",
+  /** The close (×) button inside the help panel, top-right. */
+  helpPanelClose: "help-panel-close",
 } as const;
 
 export type TestId = (typeof TESTID)[keyof typeof TESTID];

@@ -91,11 +91,25 @@ const CONTROL_PLANE_REQUIREMENTS: readonly IamRequirement[] = [
       "ecs:StopTask",
       "ecs:DescribeTasks",
       "ecs:ListTasks",
-      "ecs:RegisterTaskDefinition",
-      "ecs:DescribeTaskDefinition",
       "ecs:TagResource",
     ],
     context: [{ key: "ecs:cluster", values: [IAM_CONTEXT_TOKENS.ecsClusterArn], type: "string" }],
+  },
+  {
+    // Not cluster-scoped (task definitions are account/region-level, independent of
+    // any cluster) — per AWS's IAM condition-key reference, RegisterTaskDefinition
+    // supports only the task-definition resource type (no ecs:cluster condition, no
+    // "Resource: *" + condition row the way RunTask/StopTask/DescribeTasks/ListTasks
+    // each have); DescribeTaskDefinition supports no resource types or condition
+    // keys at all.
+    sid: "RegisterWorkspaceTaskDefinitions",
+    resource: "any",
+    actions: ["ecs:RegisterTaskDefinition"],
+  },
+  {
+    sid: "DescribeTaskDefinitions",
+    resource: "any",
+    actions: ["ecs:DescribeTaskDefinition"],
   },
   {
     sid: "ManagedEbsLifecycle",

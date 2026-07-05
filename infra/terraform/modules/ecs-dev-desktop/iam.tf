@@ -105,13 +105,38 @@ data "aws_iam_policy_document" "control_plane" {
 
   statement {
     sid       = "RunAndManageWorkspaceTasks"
-    actions   = ["ecs:RunTask", "ecs:StopTask", "ecs:DescribeTasks", "ecs:ListTasks", "ecs:RegisterTaskDefinition", "ecs:DescribeTaskDefinition", "ecs:TagResource"]
+    actions   = ["ecs:RunTask", "ecs:StopTask", "ecs:DescribeTasks", "ecs:ListTasks", "ecs:TagResource"]
     resources = ["*"]
     condition {
       test     = "StringEquals"
       variable = "ecs:cluster"
       values   = [aws_ecs_cluster.this.arn]
     }
+  }
+
+  # RegisterTaskDefinition/DescribeTaskDefinition are NOT cluster-scoped (task
+  # definitions are account/region-level resources, registered independent of any
+  # cluster). Grouping them under the `ecs:cluster` condition above (as a prior
+  # version of this file did) meant that key was never populated in their request
+  # context, so the condition could never be satisfied — every real
+  # RegisterTaskDefinition call was silently denied. Found live: the first real
+  # workspace launch failed with "not authorized to perform:
+  # ecs:RegisterTaskDefinition ... no identity-based policy allows the
+  # ecs:RegisterTaskDefinition action". Per AWS's IAM condition-key reference:
+  # RegisterTaskDefinition supports the `task-definition` resource type (scoped to
+  # the workspace family prefix, WORKSPACE_TASKDEF_FAMILY_PREFIX in
+  # @edd/compute-ecs); DescribeTaskDefinition supports no resource types or
+  # condition keys at all (wildcard-only), so it gets its own unscoped statement.
+  statement {
+    sid       = "RegisterWorkspaceTaskDefinitions"
+    actions   = ["ecs:RegisterTaskDefinition"]
+    resources = ["arn:${local.partition}:ecs:${local.region}:${local.account_id}:task-definition/edd-ws-*:*"]
+  }
+
+  statement {
+    sid       = "DescribeTaskDefinitions"
+    actions   = ["ecs:DescribeTaskDefinition"]
+    resources = ["*"]
   }
 
   statement {

@@ -1353,6 +1353,32 @@ main {
   animation: help-slide 0.18s ease-out;
 }
 
+.help-panel-close {
+  position: absolute;
+  top: 12px;
+  right: 24px;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--dim);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    border-color 0.15s,
+    color 0.15s,
+    background 0.15s;
+}
+
+.help-panel-close:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
 @keyframes help-slide {
   from {
     opacity: 0;
