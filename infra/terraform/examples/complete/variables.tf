@@ -102,6 +102,12 @@ variable "codebuild_source_repo" {
   default     = ""
 }
 
+variable "codebuild_source_ref" {
+  description = "(codebuild build mode) Git ref to clone."
+  type        = string
+  default     = "main"
+}
+
 variable "golden_image_repos" {
   description = "Golden base-image variants to build/publish (must match infra/images/ folder names)."
   type        = list(string)

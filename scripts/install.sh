@@ -35,6 +35,7 @@
 #   EDD_IMAGE_TAG       optional  image tag (default: main)
 #   EDD_IMAGE_BUILD_MODE optional image build mode: local | codebuild | pre-published
 #   EDD_CODEBUILD_SOURCE_REPO  optional  git URL for codebuild mode (e.g. https://github.com/...)
+#   EDD_CODEBUILD_SOURCE_REF   optional  git ref for codebuild mode (default: main)
 #   EDD_GOLDEN          optional  golden variants (space-separated; default: omnibus)
 #   EDD_ADMIN_GROUPS    REQUIRED  IdP group(s) granting admin (CSV; without it NO admin)
 #   EDD_MEMBER_GROUPS   optional  IdP group(s) granting member (CSV)
@@ -76,6 +77,7 @@ EDD_NAT_INSTANCE_TYPE="${EDD_NAT_INSTANCE_TYPE:-t4g.nano}"
 EDD_TAG="${EDD_IMAGE_TAG:-main}"
 EDD_IMAGE_BUILD_MODE="${EDD_IMAGE_BUILD_MODE:-local}"
 EDD_CODEBUILD_SOURCE_REPO="${EDD_CODEBUILD_SOURCE_REPO:-}"
+EDD_CODEBUILD_SOURCE_REF="${EDD_CODEBUILD_SOURCE_REF:-main}"
 EDD_GOLDEN="${EDD_GOLDEN:-omnibus}"
 EDD_ADMIN_GROUPS="${EDD_ADMIN_GROUPS:-}"
 EDD_MEMBER_GROUPS="${EDD_MEMBER_GROUPS:-}"
@@ -239,6 +241,7 @@ tfvars="$tfdir/install.tfvars"
   printf 'golden_image_repos = ["%s"]\n' "$(printf '%s' "$EDD_GOLDEN" | sed 's/ /", "/g')"
   printf 'seed_default_catalog = true\n'
   printf 'codebuild_source_repo = "%s"\n' "$EDD_CODEBUILD_SOURCE_REPO"
+  printf 'codebuild_source_ref = "%s"\n' "$EDD_CODEBUILD_SOURCE_REF"
   printf 'auth_secret_arns = {\n%s}\n' "$secret_map"
   printf 'extra_environment = {\n'
   printf '  EDD_ADMIN_GROUPS = "%s"\n' "$EDD_ADMIN_GROUPS"

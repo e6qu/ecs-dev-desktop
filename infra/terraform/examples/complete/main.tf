@@ -43,6 +43,7 @@ module "ecs_dev_desktop" {
   image_build_mode      = var.image_build_mode
   image_tag             = var.image_tag
   codebuild_source_repo = var.codebuild_source_repo
+  codebuild_source_ref  = var.codebuild_source_ref
 
   # Curated golden base images users launch workspaces from. These must match the
   # variant folder names under infra/images/ (omnibus, typescript, python, go, java, rust).
