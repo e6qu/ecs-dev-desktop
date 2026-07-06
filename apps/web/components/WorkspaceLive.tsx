@@ -109,6 +109,24 @@ export function WorkspaceLive({ id }: { id: string }) {
     };
   }, [countdown, id]);
 
+  // Resume: waking a stopped workspace and dropping the user back into the editor
+  // is driven from this page (the card's "Resume" links here with ?autoopen=1).
+  // `resume()` kicks the wake and arms auto-open so the page redirects into the
+  // editor once ready; a 409 just means it already woke (the poll reflects it).
+  const [resuming, setResuming] = useState(false);
+  const resume = useCallback(() => {
+    setResuming(true);
+    setAutoOpen(true);
+    void api.startWorkspace(id).catch(() => {
+      /* already waking/woken — the poll shows the real state */
+    });
+  }, [id]);
+  // Arriving via the card's Resume link (autoopen) on a still-stopped workspace:
+  // kick the wake exactly once.
+  useEffect(() => {
+    if (autoOpen && !resuming && ws?.state === "stopped") resume();
+  }, [autoOpen, resuming, ws?.state, resume]);
+
   // Follow the log tail as new lines arrive (unless the panel isn't rendered).
   const logEndRef = useRef<HTMLDivElement | null>(null);
   const lineCount = logs?.lines.length ?? 0;
@@ -141,7 +159,9 @@ export function WorkspaceLive({ id }: { id: string }) {
           : ws.functional === "degraded"
             ? "Running, but degraded — see the log below for what the agent reported."
             : ws.state === "stopped"
-              ? "Paused (snapshotted) — start it to pick up where you left off."
+              ? resuming
+                ? "Resuming — waking your dev desktop from its snapshot…"
+                : "Paused (snapshotted) — resume to pick up where you left off."
               : `Workspace is ${ws.state}.`;
 
   return (
@@ -235,7 +255,22 @@ export function WorkspaceLive({ id }: { id: string }) {
               Open editor
             </a>
           )}
-          <WorkspaceActions id={ws.id} actions={ws.availableActions} />
+          {ws.state === "stopped" && !resuming && (
+            <button
+              type="button"
+              className="btn primary"
+              data-testid={TESTID.workspaceResume}
+              onClick={resume}
+            >
+              Resume
+            </button>
+          )}
+          {/* `start` is the wake this page already drives via Resume — never a
+              separate button (it would duplicate Resume). */}
+          <WorkspaceActions
+            id={ws.id}
+            actions={ws.availableActions.filter((action) => action !== "start")}
+          />
           <Link href="/workspaces" className="btn">
             all workspaces
           </Link>

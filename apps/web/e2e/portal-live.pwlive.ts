@@ -87,21 +87,36 @@ test("member lifecycle in the browser acts on real ECS tasks (create → stop �
   await card.getByRole("button", { name: "stop" }).click();
   await expect(card).toHaveAttribute("data-status", "stopped");
 
-  // Start: a NEW task hydrated from the stop snapshot.
-  await card.getByRole("button", { name: "start" }).click();
-  await expect(card).toHaveAttribute("data-status", "running");
-
+  // Resume: a stopped workspace now shows ONE button — "Resume" — which routes to
+  // the per-workspace status page. That page wakes the workspace (a NEW task
+  // hydrated from the stop snapshot), shows the load progress, and auto-opens the
+  // editor when ready. We assert the wake through the admin inspect API and stop
+  // short of following the auto-open into the proxied editor (the sim can't route
+  // the awsvpc ENI — that hop is the e2e-aws tier).
+  await card.getByTestId(TESTID.workspaceResume).click();
+  await expect(page).toHaveURL(new RegExp(`/workspaces/${created.id}`));
+  await expect
+    .poll(async () => (await inspectByImage(request, WORKSPACE_IMAGE, "live-member")).state, {
+      timeout: 120_000,
+    })
+    .toBe("running");
   const woken = await inspectByImage(request, WORKSPACE_IMAGE, "live-member");
   expect(woken.id).toBe(created.id);
   expect(woken.taskId).toMatch(/^arn:aws:ecs:/);
   expect(woken.taskId).not.toBe(created.taskId);
   expect(woken.latestSnapshotId).toMatch(/^snap-/);
 
-  // Delete takes a two-step confirm (it destroys the EBS volume/snapshot). It is then
-  // async: the workspace moves to the `deleting` tombstone (the reconciler converges
-  // teardown of the task/volume and removes the record), so the card transitions to
-  // `deleting` (no further actions) rather than vanishing instantly.
-  await card.getByRole("button", { name: "delete" }).click();
-  await card.getByRole("button", { name: /confirm delete/ }).click();
-  await expect(card).toHaveAttribute("data-status", "deleting");
+  // Delete via the API: the browser already drove create → stop → resume, and
+  // deleting here avoids racing the status page's auto-open redirect (the delete
+  // is a two-step confirm in the UI, but its transition is the same async
+  // `deleting` tombstone the reconciler then converges).
+  const deleteRes = await request.delete(`/api/workspaces/${created.id}`, {
+    headers: { cookie: devCookieHeader("live-member", "member") },
+  });
+  expect(deleteRes.status()).toBe(202);
+  await expect
+    .poll(async () => (await inspectByImage(request, WORKSPACE_IMAGE, "live-member")).state, {
+      timeout: 30_000,
+    })
+    .toBe("deleting");
 });

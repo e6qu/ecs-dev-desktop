@@ -95,6 +95,10 @@ export const TESTID = {
   workspaceSshCommand: "workspace-ssh-command",
   /** The "Open editor" link on a workspace card (path-based `/w/<id>/` proxy). Attr: `data-href`. */
   workspaceOpen: "workspace-open",
+  /** The "Resume" link on a stopped workspace card → the status page (wakes + opens). Attr: `data-href`. */
+  workspaceResume: "workspace-resume",
+  /** The "Status" link on a workspace card → the per-workspace status page. */
+  workspaceStatusLink: "workspace-status-link",
   /** Dev-login form (EDD_DEV_AUTH=1) controls + error. */
   loginUser: "login-user",
   loginPassword: "login-password",
