@@ -2,9 +2,11 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-06 (real production deploy live at `https://app.edd.e6qu.dev`;
-persona switcher/`/me`/repo-browser pagination live; OpenVSCode EACCES bug fixed and
-golden images rebuilding on `fix/install-missing-param-logic`, not yet merged/PR'd.)
+**Last updated:** 2026-07-06 (live at `https://app.edd.e6qu.dev`; post-launch feature
+wave deployed — connection-based idle (5-min cooldown), per-workspace monitoring,
+claude/codex agent-first editor modes, 4h rolling sessions; spectate design awaits
+review in `docs/design-public-spectate.md`; branch `fix/install-missing-param-logic`
+still unmerged/no PR by request.)
 
 ## Real AWS production deploy — LIVE (2026-07-05/06), still hardening post-launch
 

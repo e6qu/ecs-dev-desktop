@@ -46,7 +46,8 @@ export type IamResourceScope =
   | "workspace-secrets"
   | "task-roles"
   | "workspace-task-definitions"
-  | "cluster";
+  | "cluster"
+  | "kms-key";
 
 /** One policy statement's worth of required actions + the context it needs. */
 export interface IamRequirement {
@@ -81,8 +82,12 @@ const CONTROL_PLANE_REQUIREMENTS: readonly IamRequirement[] = [
     ],
   },
   {
+    // Scoped to the table's customer-managed key in terraform — simulating
+    // against "*" would false-deny a key-scoped grant (same class as the
+    // RegisterTaskDefinition false drift), so the preflight resolves the real
+    // key ARN from EDD_KMS_KEY_ARN.
     sid: "DecryptSingleTable",
-    resource: "any",
+    resource: "kms-key",
     actions: ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"],
   },
   {
@@ -206,8 +211,12 @@ const RECONCILER_REQUIREMENTS: readonly IamRequirement[] = [
     ],
   },
   {
+    // Scoped to the table's customer-managed key in terraform — simulating
+    // against "*" would false-deny a key-scoped grant (same class as the
+    // RegisterTaskDefinition false drift), so the preflight resolves the real
+    // key ARN from EDD_KMS_KEY_ARN.
     sid: "DecryptSingleTable",
-    resource: "any",
+    resource: "kms-key",
     actions: ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"],
   },
   {

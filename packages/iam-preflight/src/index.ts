@@ -39,6 +39,9 @@ export interface PreflightCoordinates {
   readonly logGroupArn: string;
   readonly secretArn: string;
   readonly taskRoleArns: readonly string[];
+  /** The single-table's customer-managed KMS key (EDD_KMS_KEY_ARN); "*" when the
+   * coordinate is absent, so the preflight still runs (less precisely). */
+  readonly kmsKeyArn: string;
 }
 
 /**
@@ -93,6 +96,10 @@ export function resolveCoordinates(
       // A representative ARN under the `edd/workspace/*` name prefix the policy scopes to.
       secretArn: `arn:aws:secretsmanager:${region}:${account}:secret:edd/workspace/preflight-probe`,
       taskRoleArns: [taskRole],
+      kmsKeyArn:
+        env.EDD_KMS_KEY_ARN !== undefined && env.EDD_KMS_KEY_ARN.length > 0
+          ? env.EDD_KMS_KEY_ARN
+          : "*",
     },
   };
 }
@@ -119,6 +126,8 @@ export function resourceArnsForScope(
       return [...coords.taskRoleArns];
     case "cluster":
       return [coords.clusterArn];
+    case "kms-key":
+      return [coords.kmsKeyArn];
     case "workspace-task-definitions":
       // A concrete ARN under the edd-ws-* family prefix the policy scopes to — IAM
       // simulate matches this against the deployed statement's wildcard resource.

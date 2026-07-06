@@ -19,6 +19,7 @@ const COORDS: PreflightCoordinates = {
   logGroupArn: "arn:aws:logs:us-east-1:123456789012:log-group:/edd/workspaces:*",
   secretArn: "arn:aws:secretsmanager:us-east-1:123456789012:secret:edd/workspace/preflight-probe",
   taskRoleArns: ["arn:aws:iam::123456789012:role/edd-workspace"],
+  kmsKeyArn: "arn:aws:kms:us-east-1:123456789012:key/11111111-2222-3333-4444-555555555555",
 };
 
 describe("callerToPrincipalArn", () => {
@@ -92,6 +93,9 @@ describe("resourceArnsForScope", () => {
   });
   it("cluster → the cluster ARN", () => {
     expect(resourceArnsForScope("cluster", COORDS)).toEqual([COORDS.clusterArn]);
+  });
+  it("kms-key → the table's CMK ARN", () => {
+    expect(resourceArnsForScope("kms-key", COORDS)).toEqual([COORDS.kmsKeyArn]);
   });
   it("workspace-task-definitions → a representative edd-ws-* task-definition ARN", () => {
     const [arn] = resourceArnsForScope("workspace-task-definitions", COORDS);
