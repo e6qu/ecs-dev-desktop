@@ -164,7 +164,11 @@ export function WorkspaceLive({ id }: { id: string }) {
                 ? resuming
                   ? "Resuming — waking your dev desktop from its snapshot…"
                   : "Paused (snapshotted) — resume to pick up where you left off."
-                : `Workspace is ${ws.state}.`;
+                : ws.state === "terminated"
+                  ? "This workspace has been deleted. If it's within the restore window you can undelete it from the workspaces list."
+                  : ws.state === "deleting"
+                    ? "This workspace is being deleted — tearing down the task and reclaiming storage."
+                    : `Workspace is ${ws.state}.`;
 
   return (
     <div className="stack" style={{ gap: 20 }}>

@@ -23,7 +23,7 @@ vi.mock("./control-plane", () => ({
   getControlPlane: vi.fn(() => Promise.resolve({ inspect: inspectMock })),
 }));
 
-const { authorizeSpectate, authorizeWorkspace, editorTokenRedirect, stripSessionCookie } =
+const { authorizeSpectate, authorizeWorkspace, editorTokenRedirect, isDocumentNavigation, stripSessionCookie } =
   await import("./workspace-proxy");
 
 const WS = workspaceId("ws-abc123");
@@ -92,6 +92,21 @@ describe("authorizeWorkspace (in-app proxy authz glue)", () => {
 // initial navigation to the editor is redirected to carry the per-workspace token, so
 // the workbench loads without the user ever handling it. Exercises every gate that
 // decides whether to inject (secret configured, document nav, no token yet).
+describe("isDocumentNavigation (status-page hand-off gate)", () => {
+  it("is true for a top-level document navigation (sec-fetch-dest)", () => {
+    expect(isDocumentNavigation({ headers: { "sec-fetch-dest": "document" } })).toBe(true);
+  });
+  it("is true when there's no sec-fetch-dest but the browser accepts text/html", () => {
+    expect(isDocumentNavigation({ headers: { accept: "text/html,application/xhtml+xml" } })).toBe(
+      true,
+    );
+  });
+  it("is false for the editor's own sub-resource/API requests (script/fetch)", () => {
+    expect(isDocumentNavigation({ headers: { "sec-fetch-dest": "script" } })).toBe(false);
+    expect(isDocumentNavigation({ headers: { "sec-fetch-dest": "empty" } })).toBe(false);
+  });
+});
+
 describe("editorTokenRedirect (editor connection-token handoff)", () => {
   const SECRET = randomBytes(16).toString("hex");
   const expectedTkn = deriveWorkspaceToken(SECRET, WS);

@@ -150,10 +150,30 @@ function cookiePresent(cookieHeader: string | undefined, name: string): boolean 
  * connection counts as "user present" (a background tab never rolls its session,
  * so tab-parked workspaces live at most one session length). */
 export type WorkspaceAuthz =
-  | { readonly kind: "allow"; readonly sessionExpiresAtMs: number; readonly subject: string }
+  | {
+      readonly kind: "allow";
+      readonly sessionExpiresAtMs: number;
+      readonly subject: string;
+      // Whether the workspace is actually usable RIGHT NOW (running + the agent
+      // reports the editor healthy). When false, a browser document nav to `/w/<id>/`
+      // is handed to EDD's status page instead of a not-yet-there editor.
+      readonly ready: boolean;
+      readonly state: string;
+    }
   // authenticated but denied — `subject` (when known) is the caller for the audit trail
   | { readonly kind: "unauthenticated" } // no/invalid session → redirect to login
   | { readonly kind: "forbidden"; readonly subject?: string; readonly reason: string };
+
+/** True when a request is a top-level browser navigation (the workbench document),
+ * not the editor's own sub-resource/API/WebSocket traffic. Used to decide when to
+ * hand a `/w/<id>/` request to the status page vs. proxy it to the editor. */
+export function isDocumentNavigation(req: {
+  readonly headers: IncomingMessage["headers"];
+}): boolean {
+  const dest = headerValue(req.headers["sec-fetch-dest"]);
+  const accept = headerValue(req.headers.accept) ?? "";
+  return dest === "document" || (dest === undefined && accept.includes("text/html"));
+}
 
 /** The only slice of an incoming request the authorizer reads — the session cookie.
  * A Node {@link IncomingMessage} structurally satisfies this; narrowing the input to
@@ -230,7 +250,14 @@ export async function authorizeWorkspace(
   // grant conservatively at the rolling-refresh window rather than forever.
   const sessionExpiresAtMs =
     typeof token.exp === "number" ? token.exp * 1000 : Date.now() + FALLBACK_PRESENCE_GRANT_MS;
-  return { kind: "allow", sessionExpiresAtMs, subject: callerSubject ?? "(no uid)" };
+  const ready = detail.workspace.state === "running" && detail.workspace.functional === "ok";
+  return {
+    kind: "allow",
+    sessionExpiresAtMs,
+    subject: callerSubject ?? "(no uid)",
+    ready,
+    state: detail.workspace.state,
+  };
 }
 
 /** The two spectate WebSocket roles (docs/design-public-spectate.md). */

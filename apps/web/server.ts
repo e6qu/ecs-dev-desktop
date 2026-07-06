@@ -22,6 +22,7 @@ import {
   authorizeSpectate,
   authorizeWorkspace,
   editorTokenRedirect,
+  isDocumentNavigation,
   proxyWorkspaceHttp,
   proxyWorkspaceUpgrade,
   resolveWorkspaceUpstream,
@@ -95,6 +96,18 @@ const server = createServer((req, res) => {
       void auditAccess(wsId, authz.subject ?? "(unauthenticated)", "deny", authz.reason);
       res.writeHead(403, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: "forbidden" }));
+      return;
+    }
+    // Hand-off model: EDD serves the per-workspace STATUS page for any `/w/<id>/`
+    // browser navigation until the workspace is actually running + healthy, then the
+    // status page auto-opens the editor. This means the editor URL is safe to hit in
+    // ANY state — provisioning shows progress, stopped wakes (Resume), deleted shows
+    // "deleted" — instead of a blank/failed page against a not-yet-there editor. Only
+    // a top-level document nav is redirected; the editor's own sub-resources (once
+    // running) proxy straight through.
+    if (!authz.ready && isDocumentNavigation(req)) {
+      res.writeHead(302, { location: `/workspaces/${wsId}?autoopen=1` });
+      res.end();
       return;
     }
     // Defence-in-depth: hand the authorized browser the editor's connection token on
