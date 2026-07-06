@@ -4,6 +4,19 @@
 
 ## Open
 
+- **Golden-image updates never reach existing catalog entries — rollout gap (2026-07-06).**
+  The seeded base-image catalog row (`catalog-seed.tf`) is created once with `image = <repo>:<image_tag>`
+  and then `lifecycle.ignore_changes = [item]` (deliberate — the admin owns the catalog after seeding), and
+  ECR repos are immutable so a fixed tag like `:main` can never be re-pushed. Net effect found live: every
+  golden-image fix built after the first deploy (new tags `11c81ec`, `c892532b`, `c814221`, …) sat unused in
+  ECR while the catalog kept launching workspaces from the original broken `:main` image. **Operational
+  workaround**: after each golden rebuild, repoint the catalog entry's `image` to the new tag (admin
+  `/admin/catalog` edit, or operator `aws dynamodb update-item` on `$edd#id-img-seed-<variant>`). A proper
+  fix needs a product decision: have `install.sh` update the catalog row post-build (fights the
+  admin-owns-catalog model), keep a mutable alias repo for `latest`, or add an explicit "roll golden images"
+  admin action. Existing workspaces additionally pin their image ref at create time — a stopped workspace
+  wakes on its OLD image; only a fresh create picks up the repointed catalog.
+
 - **CodeBuild image rebuild silently no-ops on a re-run against the same branch — known footgun (2026-07-06).**
   `terraform_data.build_images_codebuild`'s `triggers_replace` (`infra/terraform/modules/ecs-dev-desktop/build-codebuild.tf`)
   is keyed on the literal `var.image_tag`/`var.codebuild_source_ref` **strings**, not the commit the ref

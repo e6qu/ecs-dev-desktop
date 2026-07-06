@@ -21,6 +21,7 @@ import {
   sshConnectInfo,
   updateBaseImageRequest,
   workspace,
+  workspaceLogs,
   workspaceInspection,
   type AuditFeedResponse,
   type BaseImageEntryDto,
@@ -42,6 +43,7 @@ import {
   type SshKeyDto,
   type UpdateBaseImageRequest,
   type WorkspaceDto,
+  type WorkspaceLogsDto,
   type WorkspaceInspectionDto,
 } from "@edd/api-contracts";
 
@@ -118,6 +120,12 @@ export class ApiClient {
   async getWorkspace(id: string): Promise<WorkspaceDto> {
     const res = await this.send(`/api/workspaces/${id}`);
     return workspace.parse(await res.json());
+  }
+
+  /** The owner-facing slice of one workspace's container (boot/runtime) logs. */
+  async getWorkspaceLogs(id: string): Promise<WorkspaceLogsDto> {
+    const res = await this.send(`/api/workspaces/${id}/logs`);
+    return workspaceLogs.parse(await res.json());
   }
 
   async stopWorkspace(id: string): Promise<WorkspaceDto> {

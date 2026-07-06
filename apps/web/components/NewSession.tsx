@@ -25,33 +25,50 @@ interface CatalogOption {
   tools: readonly string[];
 }
 
+/** The three ways to start a session — selected by radio, launched by ONE button. */
+type StartMode = "blank" | "repo" | "create";
+
+const MODE_META: Record<StartMode, { title: string; detail: string }> = {
+  blank: {
+    title: "Blank session",
+    detail: "A scratch desktop with no repository — clone anything later from the terminal.",
+  },
+  repo: {
+    title: "An existing repository",
+    detail: "Pick a repository you can access; it's cloned into the session at boot.",
+  },
+  create: {
+    title: "Create a new repository",
+    detail: "A fresh repository (in an organization or your own account), cloned at boot.",
+  },
+};
+
 /**
- * New-session launcher: pick a base image, then start a session in one of the
- * user's GitHub repos, in a newly-created repo, or blank. The user's GitHub
+ * New-session launcher: pick a base image, choose HOW to start (blank / existing
+ * repo / new repo — radio modes), then one prominent Start. The user's GitHub
  * token never reaches the browser — repo/namespace data comes from the
- * server-side `/api/github/*` routes. "Create repository" is grayed out (with the
- * reason) when the user lacks permission.
+ * server-side `/api/github/*` routes. On success the browser lands on the
+ * workspace's live status page (`/workspaces/<id>`), which follows the boot.
  */
 export function NewSession({ images }: { images: readonly CatalogOption[] }) {
   const router = useRouter();
   const [image, setImage] = useState(images[0]?.image ?? "");
+  const [mode, setMode] = useState<StartMode>("blank");
   const [namespaces, setNamespaces] = useState<Namespace[]>([]);
   const [ghConnected, setGhConnected] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // The repo browser is collapsed by default and its list is fetched lazily, one
-  // page at a time, on first expand — most sessions start blank or from a repo the
-  // user already knows the name of, so there's no reason to always pay for the
-  // GitHub round trip (and orgs can have far more repos than fit on one page).
-  const [browseOpen, setBrowseOpen] = useState(false);
+  // Existing-repo mode: lazy, paginated browse (fetched on first entry into the
+  // mode); a row SELECTS the repo — the shared Start button launches it.
   const [repos, setRepos] = useState<RepoSummary[] | null>(null);
   const [reposLoading, setReposLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [search, setSearch] = useState("");
+  const [selectedRepo, setSelectedRepo] = useState<RepoSummary | null>(null);
 
-  // Create-repo form.
+  // Create-repo mode.
   const [ns, setNs] = useState("");
   const [repoName, setRepoName] = useState("");
   const [isPrivate, setIsPrivate] = useState(true);
@@ -103,10 +120,10 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
     }
   }
 
-  function toggleBrowse(): void {
-    const opening = !browseOpen;
-    setBrowseOpen(opening);
-    if (opening && repos === null) void loadRepoPage(1);
+  function selectMode(next: StartMode): void {
+    setMode(next);
+    setError(null);
+    if (next === "repo" && repos === null) void loadRepoPage(1);
   }
 
   const filtered = useMemo(
@@ -120,58 +137,67 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
     namespaces.find((n) => n.reason !== undefined)?.reason ??
     "you do not have permission to create repositories";
 
-  async function startSession(repoUrl?: string, repoRef?: string): Promise<void> {
-    setBusy(true);
-    setError(null);
-    try {
-      await api.createWorkspace({
-        baseImage: image,
-        ...(repoUrl !== undefined ? { repoUrl } : {}),
-        ...(repoRef !== undefined ? { repoRef } : {}),
-      });
-      router.push("/workspaces");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "could not start the session");
-      setBusy(false);
-    }
+  const startReady =
+    !busy &&
+    image !== "" &&
+    (mode === "blank" ||
+      (mode === "repo" && selectedRepo !== null) ||
+      (mode === "create" && createEnabled && repoName.trim().length > 0));
+
+  async function launch(repoUrl?: string, repoRef?: string): Promise<string> {
+    const ws = await api.createWorkspace({
+      baseImage: image,
+      ...(repoUrl !== undefined ? { repoUrl } : {}),
+      ...(repoRef !== undefined ? { repoRef } : {}),
+    });
+    return ws.id;
   }
 
-  async function createAndStart(): Promise<void> {
-    const namespace = namespaces.find((n) => n.login === ns);
-    if (namespace === undefined || repoName.trim().length === 0) {
-      setError("Pick an owner and enter a repository name.");
-      return;
-    }
+  async function start(): Promise<void> {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/github/repos", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          owner: ns,
-          name: repoName.trim(),
-          private: isPrivate,
-          isPersonal: namespace.kind === "user",
-        }),
-      });
-      if (!res.ok) {
-        // Surface the API's specific, user-correctable message (e.g. "repository name unavailable")
-        // instead of an opaque status code; fall back to the status only if there's no error body.
-        const body: unknown = await res.json().catch(() => null);
-        const serverMsg =
-          body !== null &&
-          typeof body === "object" &&
-          "error" in body &&
-          typeof body.error === "string"
-            ? body.error
-            : `creating the repository failed (${String(res.status)})`;
-        throw new Error(serverMsg);
+      let wsId: string;
+      if (mode === "repo") {
+        if (selectedRepo === null) throw new Error("Pick a repository first.");
+        wsId = await launch(selectedRepo.cloneUrl, selectedRepo.defaultBranch);
+      } else if (mode === "create") {
+        const namespace = namespaces.find((n) => n.login === ns);
+        if (namespace === undefined || repoName.trim().length === 0) {
+          throw new Error("Pick an owner and enter a repository name.");
+        }
+        const res = await fetch("/api/github/repos", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            owner: ns,
+            name: repoName.trim(),
+            private: isPrivate,
+            isPersonal: namespace.kind === "user",
+          }),
+        });
+        if (!res.ok) {
+          // Surface the API's specific, user-correctable message (e.g. "repository name
+          // unavailable") instead of an opaque status code.
+          const body: unknown = await res.json().catch(() => null);
+          const serverMsg =
+            body !== null &&
+            typeof body === "object" &&
+            "error" in body &&
+            typeof body.error === "string"
+              ? body.error
+              : `creating the repository failed (${String(res.status)})`;
+          throw new Error(serverMsg);
+        }
+        const { repo } = createRepoResponse.parse(await res.json());
+        wsId = await launch(repo.cloneUrl, repo.defaultBranch);
+      } else {
+        wsId = await launch();
       }
-      const { repo } = createRepoResponse.parse(await res.json());
-      await startSession(repo.cloneUrl, repo.defaultBranch);
+      // Land on the live status page — it follows the boot and opens the editor.
+      router.push(`/workspaces/${wsId}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "could not create the repository");
+      setError(e instanceof Error ? e.message : "could not start the session");
       setBusy(false);
     }
   }
@@ -234,102 +260,130 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
             );
           })}
         </div>
-        <button
-          type="button"
-          className="btn"
-          data-testid={TESTID.blankSession}
-          aria-busy={busy}
-          disabled={busy}
-          onClick={() => void startSession()}
-        >
-          {busy ? "starting…" : "blank session"}
-        </button>
       </section>
 
-      {!ghConnected ? (
-        <p className="mono" style={{ color: "var(--dim)" }}>
-          Connect GitHub to browse and create repositories — sign in with GitHub.
+      <section className="stack" style={{ gap: 12 }}>
+        <div className="mono" style={{ color: "var(--dim)", fontSize: 12 }}>
+          source
+        </div>
+        <p style={{ margin: 0 }}>
+          A dev desktop works best backed by a git repository you have access to — in one of your
+          organizations or your own account (e.g.{" "}
+          <code className="mono">github.com/&lt;your-login&gt;</code>). You can also start blank and
+          clone later.
         </p>
-      ) : (
-        <>
-          <section>
-            <h2>
-              <button
-                type="button"
-                className="btn"
-                aria-expanded={browseOpen}
-                aria-controls="session-repo-browse"
-                data-testid={TESTID.sessionRepoBrowseToggle}
-                data-open={String(browseOpen)}
-                onClick={toggleBrowse}
+        <div role="radiogroup" aria-label="session source" className="stack" style={{ gap: 8 }}>
+          {(Object.keys(MODE_META) as StartMode[]).map((m) => {
+            const meta = MODE_META[m];
+            const disabled = m !== "blank" && !ghConnected;
+            const selected = mode === m;
+            return (
+              <label
+                key={m}
+                data-testid={TESTID.sessionModeOption}
+                data-mode={m}
+                data-selected={String(selected)}
+                className={`picker-card${selected ? " on" : ""}`}
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  alignItems: "baseline",
+                  cursor: disabled ? "not-allowed" : "pointer",
+                  opacity: disabled ? 0.6 : 1,
+                }}
               >
-                <span aria-hidden="true">{browseOpen ? "▾" : "▸"}</span> Start from a repository
-              </button>
-            </h2>
-            {browseOpen && (
-              <div id="session-repo-browse" className="stack" style={{ gap: 10 }}>
                 <input
-                  className="input"
-                  aria-label="search repositories"
-                  placeholder="search repositories…"
-                  value={search}
-                  onChange={(e) => {
-                    setSearch(e.target.value);
+                  type="radio"
+                  name="session-mode"
+                  value={m}
+                  checked={selected}
+                  disabled={disabled}
+                  onChange={() => {
+                    selectMode(m);
                   }}
                 />
-                {repos === null ? (
-                  <p className="state-note" role="status">
-                    loading repositories…
-                  </p>
-                ) : (
-                  <ul className="list">
-                    {filtered.map((repo) => (
-                      <li
-                        key={repo.fullName}
-                        className="row"
-                        data-testid={TESTID.sessionRepoRow}
-                        data-repo={repo.fullName}
-                        data-private={String(repo.private)}
-                      >
+                <span>
+                  <strong>{meta.title}</strong>
+                  <br />
+                  <span style={{ color: "var(--dim)", fontSize: 13 }}>{meta.detail}</span>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+        {!ghConnected && (
+          <p className="mono" style={{ color: "var(--dim)" }}>
+            Repository modes need a connected GitHub account — sign in with GitHub.
+          </p>
+        )}
+
+        {mode === "repo" && ghConnected && (
+          <div className="stack" style={{ gap: 10 }}>
+            <input
+              className="input"
+              aria-label="search repositories"
+              placeholder="search repositories…"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+              }}
+            />
+            {repos === null ? (
+              <p className="state-note" role="status">
+                loading repositories…
+              </p>
+            ) : (
+              <ul className="list">
+                {filtered.map((repo) => {
+                  const selected = selectedRepo?.fullName === repo.fullName;
+                  return (
+                    <li
+                      key={repo.fullName}
+                      className="row"
+                      data-testid={TESTID.sessionRepoRow}
+                      data-repo={repo.fullName}
+                      data-private={String(repo.private)}
+                      data-selected={String(selected)}
+                    >
+                      <label style={{ display: "flex", gap: 8, cursor: "pointer", flex: 1 }}>
+                        <input
+                          type="radio"
+                          name="session-repo"
+                          checked={selected}
+                          onChange={() => {
+                            setSelectedRepo(repo);
+                          }}
+                        />
                         <span>
                           {repo.fullName}{" "}
                           {repo.private ? <span className="mono">(private)</span> : null}
                         </span>
-                        <button
-                          type="button"
-                          className="btn primary"
-                          data-testid={TESTID.startSession}
-                          aria-busy={busy}
-                          disabled={busy}
-                          onClick={() => void startSession(repo.cloneUrl, repo.defaultBranch)}
-                        >
-                          {busy ? "starting…" : "start session"}
-                        </button>
-                      </li>
-                    ))}
-                    {filtered.length === 0 && <li className="mono">no repositories match</li>}
-                    {hasMore && (
-                      <li className="row">
-                        <button
-                          type="button"
-                          className="btn"
-                          data-testid={TESTID.sessionRepoLoadMore}
-                          aria-busy={reposLoading}
-                          disabled={reposLoading}
-                          onClick={() => void loadRepoPage(page + 1)}
-                        >
-                          {reposLoading ? "loading…" : "load more repositories"}
-                        </button>
-                      </li>
-                    )}
-                  </ul>
+                      </label>
+                    </li>
+                  );
+                })}
+                {filtered.length === 0 && <li className="mono">no repositories match</li>}
+                {hasMore && (
+                  <li className="row">
+                    <button
+                      type="button"
+                      className="btn"
+                      data-testid={TESTID.sessionRepoLoadMore}
+                      aria-busy={reposLoading}
+                      disabled={reposLoading}
+                      onClick={() => void loadRepoPage(page + 1)}
+                    >
+                      {reposLoading ? "loading…" : "load more repositories"}
+                    </button>
+                  </li>
                 )}
-              </div>
+              </ul>
             )}
-          </section>
+          </div>
+        )}
 
-          <section data-testid={TESTID.createRepoPanel} data-enabled={String(createEnabled)}>
-            <h2>Create a repository</h2>
+        {mode === "create" && ghConnected && (
+          <div data-testid={TESTID.createRepoPanel} data-enabled={String(createEnabled)}>
             {createEnabled ? (
               <div className="stack" style={{ gap: 10 }}>
                 <select
@@ -343,6 +397,7 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
                   {namespaces.map((n) => (
                     <option key={n.login} value={n.login} disabled={!n.canCreate}>
                       {n.login}
+                      {n.kind === "user" ? " (your account)" : ""}
                       {n.canCreate ? "" : ` — ${n.reason ?? "no permission"}`}
                     </option>
                   ))}
@@ -366,25 +421,34 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
                   />{" "}
                   private
                 </label>
-                <button
-                  type="button"
-                  className="btn primary"
-                  data-testid={TESTID.startSession}
-                  aria-busy={busy}
-                  disabled={busy || repoName.trim().length === 0}
-                  onClick={() => void createAndStart()}
-                >
-                  {busy ? "creating…" : "create & start session"}
-                </button>
               </div>
             ) : (
               <p className="mono" style={{ color: "var(--dim)" }}>
                 Creating repositories is unavailable: {noCreateReason}.
               </p>
             )}
-          </section>
-        </>
-      )}
+          </div>
+        )}
+      </section>
+
+      <section className="stack" style={{ gap: 8 }}>
+        <button
+          type="button"
+          className="btn primary"
+          style={{ fontSize: 16, padding: "10px 28px", alignSelf: "flex-start" }}
+          data-testid={TESTID.sessionStart}
+          aria-busy={busy}
+          disabled={!startReady}
+          onClick={() => void start()}
+        >
+          {busy ? "starting your dev desktop…" : "Start session"}
+        </button>
+        {busy && (
+          <p className="mono" role="status" style={{ color: "var(--dim)", fontSize: 12 }}>
+            launching — you&apos;ll land on the session&apos;s live status page in a moment…
+          </p>
+        )}
+      </section>
 
       {error !== null && (
         <p role="alert" className="mono" style={{ color: "var(--st-error)" }}>

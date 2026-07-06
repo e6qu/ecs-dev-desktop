@@ -144,6 +144,24 @@ export const listWorkspacesResponse = z.object({
 });
 export type ListWorkspacesResponse = z.infer<typeof listWorkspacesResponse>;
 
+/** One workspace's container (boot/runtime) log lines — the owner-facing slice of
+ * the CloudWatch container stream, surfaced on the workspace status page.
+ * `available` is explicit so the UI can distinguish "no lines yet" from "no log
+ * source in this environment" (the `note` says which). */
+export const workspaceLogs = z.object({
+  available: z.boolean(),
+  note: z.string(),
+  lines: z.array(
+    z.object({
+      at: z.iso.datetime(),
+      level: z.enum(["info", "warn", "error"]),
+      source: z.string(),
+      message: z.string(),
+    }),
+  ),
+});
+export type WorkspaceLogsDto = z.infer<typeof workspaceLogs>;
+
 // --- Admin: per-workspace Inspect (full detail + derived timeline) ---
 
 export const workspaceDetail = z.object({

@@ -104,11 +104,17 @@ const newSessionHelp = (
         like <em>pnpm</em> or <em>go</em> are already installed and ready to use.
       </H>
     </HelpSection>
-    <HelpSection title="Connecting a repository (optional)">
+    <HelpSection title="Choosing a source">
       <H>
-        If you connect a <strong>repository</strong> (a code repo hosted on GitHub or a similar
-        service), it will be cloned into your workspace automatically when it starts. You can also
-        skip this and start with a blank workspace.
+        A dev desktop works best backed by a <strong>git repository</strong> you have access to — in
+        one of your organizations or your own account. Pick <em>an existing repository</em> to clone
+        it into the session at boot, <em>create a new repository</em> (choosing which organization —
+        or your own account — owns it), or start <em>blank</em> and clone later from the terminal.
+      </H>
+      <H>
+        After you press <strong>Start session</strong> you land on the session's live status page,
+        which follows the boot (with logs) and offers <strong>Open editor</strong> the moment the
+        desktop is actually usable.
       </H>
       <H>
         Repositories marked <em>private</em> require that your account has access. The connection
