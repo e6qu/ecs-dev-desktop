@@ -2,11 +2,14 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-06 (live at `https://app.edd.e6qu.dev`; post-launch feature
-wave deployed — connection-based idle (5-min cooldown), per-workspace monitoring,
-claude/codex agent-first editor modes, 4h rolling sessions; spectate design awaits
-review in `docs/design-public-spectate.md`; branch `fix/install-missing-param-logic`
-still unmerged/no PR by request.)
+**Last updated:** 2026-07-06 (live at `https://app.edd.e6qu.dev`, tag `6fcf849`;
+post-launch wave deployed — connection-based idle (5-min cooldown), per-workspace
+monitoring, claude/codex agent-first editor modes, 4h rolling sessions, and 7-day
+undelete (terminated tombstones + reconciler retention purge); the live-found
+reconciler `dynamodb:DeleteItem` gap that stalled ALL deletions is fixed; spectate
+design signed off except 3 small defaults (`docs/design-public-spectate.md`),
+implementation queued next; branch `fix/install-missing-param-logic` still
+unmerged/no PR by request.)
 
 ## Real AWS production deploy — LIVE (2026-07-05/06), still hardening post-launch
 
