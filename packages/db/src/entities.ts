@@ -34,6 +34,7 @@ export function makeWorkspaceEntity(client: DynamoDBClient, table = TABLE) {
             "provisioning",
             "running",
             "idle",
+            "stopping",
             "stopped",
             "deleting",
             "terminated",
@@ -47,6 +48,7 @@ export function makeWorkspaceEntity(client: DynamoDBClient, table = TABLE) {
         desiredState: { type: ["present", "deleted"] as const, required: false },
         // When a delete was requested (the `deleting` tombstone began).
         deleteRequestedAt: { type: "string", required: false },
+        stopRequestedAt: { type: "string", required: false },
         lastActivity: { type: "string", required: true },
         createdAt: { type: "string", required: true },
         // Runtime bindings (absent while stopped/scaled-to-zero).

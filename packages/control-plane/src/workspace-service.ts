@@ -21,10 +21,13 @@ import {
   markRecovered,
   markSnapshotLost,
   markStopped,
+  markStopping,
+  cancelStopping,
   markTaskLost,
   markTerminated,
   setShare,
   DEFAULT_UNDELETE_RETENTION_MS,
+  DEFAULT_STOP_GRACE_MS,
   undeleteWorkspace,
   recordFunctional,
   markWaking,
@@ -260,6 +263,7 @@ interface WorkspaceRecord {
   state: WorkspaceState;
   desiredState?: DesiredState;
   deleteRequestedAt?: string;
+  stopRequestedAt?: string;
   createdAt: string;
   lastActivity: string;
   volumeId?: string;
@@ -313,6 +317,7 @@ function toWorkspace(r: WorkspaceRecord): Workspace {
     desiredState: r.desiredState,
     deleteRequestedAt:
       r.deleteRequestedAt === undefined ? undefined : isoTimestamp(r.deleteRequestedAt),
+    stopRequestedAt: r.stopRequestedAt === undefined ? undefined : isoTimestamp(r.stopRequestedAt),
     createdAt: isoTimestamp(r.createdAt),
     lastActivity: isoTimestamp(r.lastActivity),
     volumeId: r.volumeId === undefined ? undefined : volumeId(r.volumeId),
@@ -690,6 +695,20 @@ export class WorkspaceService {
    * the fake's ENOENT). If the record has since advanced, that error IS the lost
    * race — report a conflict instead of throwing a 500; otherwise it is a genuine
    * storage failure and rethrows. */
+  /** The pre-teardown snapshot step shared by stop() and finishStop(): snapshot the
+   * live volume (if any) so the workspace resumes from where it stopped. Returns the
+   * fresh snapshot ref, `undefined` when there's no live volume, or a conflict. */
+  private async snapshotBeforeStop(
+    id: WorkspaceId,
+    ws: Workspace,
+    version: number,
+    at: IsoTimestamp,
+  ): Promise<Result<{ id: SnapshotId; at: IsoTimestamp } | undefined, DomainError>> {
+    if (ws.volumeId === undefined) return ok(undefined);
+    const snap = await this.snapshotForTransition(id, ws.volumeId, version);
+    return snap.ok ? ok({ id: snap.value, at }) : snap;
+  }
+
   private async snapshotForTransition(
     id: WorkspaceId,
     volumeId: VolumeId,
@@ -722,14 +741,10 @@ export class WorkspaceService {
     const validated = transition(ws.state, "stop"); // validate-first, before any I/O
     if (!validated.ok) return validated;
     const at = isoTimestamp(this.deps.clock.now());
-    let freshSnapshot: { id: SnapshotId; at: IsoTimestamp } | undefined;
-    if (ws.volumeId !== undefined) {
-      const snap = await this.snapshotForTransition(id, ws.volumeId, version);
-      if (!snap.ok) return snap;
-      freshSnapshot = { id: snap.value, at };
-    }
+    const snapped = await this.snapshotBeforeStop(id, ws, version, at);
+    if (!snapped.ok) return snapped;
     if (ws.taskId !== undefined) await this.deps.compute.stopTask(ws.taskId);
-    const next = markStopped(ws, freshSnapshot, at);
+    const next = markStopped(ws, snapped.value, at);
     if (!next.ok) return next;
     try {
       await this.persistTransition(next.value, version, {
@@ -750,6 +765,120 @@ export class WorkspaceService {
       return err(conflictError(`stop of ${id} lost a concurrent update (now ${current.ws.state})`));
     }
     return ok(toWorkspaceDto(next.value));
+  }
+
+  /**
+   * MANUAL, cancelable stop: move running/idle → `stopping` and return immediately
+   * (the session keeps running), then converge the actual teardown after a short
+   * grace via a detached {@link finishStop}. During the grace (and until the task
+   * is torn down) {@link cancelStop}/{@link start} resumes the session. The
+   * reconciler's `finishStopping` sweep is the backstop if this process dies before
+   * the detached converge completes. Distinct from {@link stop} (the direct path
+   * the idle auto-shutdown uses).
+   */
+  async requestStop(
+    id: WorkspaceId,
+    actor: string = SYSTEM_ACTOR,
+  ): Promise<Result<WorkspaceDto, DomainError>> {
+    const found = await this.require(id);
+    if (!found.ok) return found;
+    const { ws, version } = found.value;
+    const next = markStopping(ws, isoTimestamp(this.deps.clock.now()));
+    if (!next.ok) return next;
+    try {
+      await this.persistTransition(next.value, version, {
+        action: "session.stop",
+        target: id,
+        actor,
+        detail: "stop requested (cancelable)",
+      });
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+      return err(conflictError(`stop of ${id} lost a concurrent update`));
+    }
+    // Detached converge after the grace. Never rejects (finishStop returns a
+    // Result); a throw here would be an owner-less rejection.
+    void this.finishStop(id, { graceMs: DEFAULT_STOP_GRACE_MS }).catch(() => {
+      /* the reconciler's finishStopping sweep is the backstop */
+    });
+    return ok(toWorkspaceDto(next.value));
+  }
+
+  /**
+   * Converge a `stopping` workspace to `stopped`: after an optional grace (the
+   * cancel window), re-read and — only if STILL stopping — snapshot + tear down +
+   * mark stopped. Re-reads a second time AFTER the (slow) snapshot and before
+   * killing the task, so a cancel that lands mid-snapshot never tears down a
+   * resumed session. Idempotent: a canceled/already-stopped workspace is a no-op
+   * success. Used by requestStop (detached, with grace) and the reconciler
+   * backstop (graceMs 0).
+   */
+  async finishStop(
+    id: WorkspaceId,
+    opts?: { graceMs?: number },
+  ): Promise<Result<void, DomainError>> {
+    if (opts?.graceMs !== undefined && opts.graceMs > 0) await sleep(opts.graceMs);
+    const found = await this.find(id);
+    if (found === null) return ok(undefined);
+    if (found.ws.state !== "stopping") return ok(undefined); // canceled / already done
+    const at = isoTimestamp(this.deps.clock.now());
+    const snapped = await this.snapshotBeforeStop(id, found.ws, found.version, at);
+    if (!snapped.ok) return snapped;
+    // Re-read: a cancel during the snapshot must abort BEFORE we kill the task.
+    const recheck = await this.find(id);
+    if (recheck?.ws.state !== "stopping") return ok(undefined);
+    const { ws, version } = recheck;
+    if (ws.taskId !== undefined) await this.deps.compute.stopTask(ws.taskId);
+    const next = markStopped(ws, snapped.value, at);
+    if (!next.ok) return next;
+    try {
+      await this.persistTransition(next.value, version, {
+        action: "session.stop",
+        target: id,
+        actor: SYSTEM_ACTOR,
+        detail: "scaled to zero",
+      });
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+      const current = await this.find(id);
+      if (current?.ws.state === "stopped") return ok(undefined);
+      return err(conflictError(`finish-stop of ${id} lost a concurrent update`));
+    }
+    return ok(undefined);
+  }
+
+  /** Cancel an in-flight manual stop: `stopping` → running (the session was never
+   * torn down). Idempotent — a workspace already back to running succeeds. */
+  async cancelStop(
+    id: WorkspaceId,
+    actor: string = SYSTEM_ACTOR,
+  ): Promise<Result<WorkspaceDto, DomainError>> {
+    const found = await this.require(id);
+    if (!found.ok) return found;
+    const { ws, version } = found.value;
+    if (ws.state === "running" || ws.state === "idle") return ok(toWorkspaceDto(ws)); // already resumed
+    const next = cancelStopping(ws, isoTimestamp(this.deps.clock.now()));
+    if (!next.ok) return next;
+    try {
+      await this.persistTransition(next.value, version, {
+        action: "session.recover",
+        target: id,
+        actor,
+        detail: "manual stop canceled — session resumed",
+      });
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+      return err(conflictError(`cancel-stop of ${id} lost a concurrent update`));
+    }
+    return ok(toWorkspaceDto(next.value));
+  }
+
+  /** All workspaces mid manual-stop (the reconciler's finishStopping keep-set). */
+  async listStopping(): Promise<readonly { id: WorkspaceId }[]> {
+    const { data } = await this.deps.workspaces.scan.go({ pages: "all" });
+    return (data as readonly WorkspaceRecord[])
+      .filter((r) => r.state === "stopping")
+      .map((r) => ({ id: workspaceId(r.id) }));
   }
 
   /**

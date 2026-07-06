@@ -55,6 +55,7 @@ describe("api-contracts", () => {
           provisioning: 0,
           running: 2,
           idle: 0,
+          stopping: 0,
           stopped: 0,
           deleting: 0,
           terminated: 0,

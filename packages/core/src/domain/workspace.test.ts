@@ -11,6 +11,8 @@ import {
   markRecovered,
   markSnapshotLost,
   markStopped,
+  markStopping,
+  cancelStopping,
   markTerminated,
   recordFunctional,
   setShare,
@@ -267,5 +269,36 @@ describe("setShare (spectate flag)", () => {
     expect(stopped.shareEnabled).toBeUndefined();
     const deleting = unwrap(markDeleting(on, t1));
     expect(deleting.shareEnabled).toBeUndefined();
+  });
+});
+
+describe("markStopping / cancelStopping (cancelable manual stop)", () => {
+  it("markStopping moves running -> stopping, keeps the task, stamps stopRequestedAt", () => {
+    const s = unwrap(markStopping(base, t1));
+    expect(s.state).toBe("stopping");
+    expect(s.stopRequestedAt).toBe(t1);
+    expect(s.taskId).toBe(base.taskId); // session still running
+    expect(s.volumeId).toBe(base.volumeId);
+  });
+
+  it("cancelStopping returns a stopping workspace to running and clears the request", () => {
+    const stopping = unwrap(markStopping(base, t1));
+    const resumed = unwrap(cancelStopping(stopping, t1));
+    expect(resumed.state).toBe("running");
+    expect(resumed.stopRequestedAt).toBeUndefined();
+    expect(resumed.taskId).toBe(base.taskId);
+  });
+
+  it("markStopping is only legal from running/idle", () => {
+    const stopped = unwrap(markStopped(base, { id: snapshotId("s"), at: t0 }, t0));
+    expect(markStopping(stopped, t1).ok).toBe(false);
+  });
+
+  it("markStopped from stopping clears stopRequestedAt (the converge)", () => {
+    const stopping = unwrap(markStopping(base, t1));
+    const stopped = unwrap(markStopped(stopping, { id: snapshotId("s"), at: t1 }, t1));
+    expect(stopped.state).toBe("stopped");
+    expect(stopped.stopRequestedAt).toBeUndefined();
+    expect(stopped.latestSnapshotId).toBe(snapshotId("s")); // resume-from data
   });
 });

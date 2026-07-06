@@ -76,6 +76,9 @@ export interface Workspace {
   /** Home-volume usage from the same self-report (bytes), when the agent measured it. */
   readonly diskUsedBytes?: number;
   readonly diskTotalBytes?: number;
+  /** When a manual stop was requested (state became `stopping`) — the converge
+   * finishes the stop after a short grace unless the user cancels first. */
+  readonly stopRequestedAt?: IsoTimestamp;
   /** When teardown finished (state became `terminated`) — starts the undelete
    * retention window; the purge sweep removes the tombstone (and reaps its
    * retained snapshot) once it is older than the retention. */
@@ -155,6 +158,32 @@ export function provision(params: ProvisionParams): Workspace {
  * `freshSnapshot` is the snapshot just taken while stopping (if the workspace had
  * a live volume); when absent the prior snapshot reference is carried over.
  */
+/**
+ * Begin a MANUAL stop: running/idle → `stopping`. The task keeps running (no
+ * teardown yet) so the stop is cancelable; the converge (finishStop) snapshots +
+ * tears down after a short grace, or {@link cancelStopping} resumes it. Distinct
+ * from the direct {@link markStopped} the idle auto-shutdown uses.
+ */
+export function markStopping(ws: Workspace, at: IsoTimestamp): Result<Workspace, DomainError> {
+  return map(transition(ws.state, "requestStop"), (state) => ({
+    ...ws,
+    state,
+    stopRequestedAt: at,
+    // Deliberately keeps volumeId/taskId/sshHost — the session is still running.
+  }));
+}
+
+/** Cancel an in-flight manual stop: `stopping` → running (the session was never
+ * torn down). Clears the stop request. */
+export function cancelStopping(ws: Workspace, at: IsoTimestamp): Result<Workspace, DomainError> {
+  return map(transition(ws.state, "cancelStop"), (state) => ({
+    ...ws,
+    state,
+    lastActivity: at,
+    stopRequestedAt: undefined,
+  }));
+}
+
 export function markStopped(
   ws: Workspace,
   freshSnapshot: { id: SnapshotId; at: IsoTimestamp } | undefined,
@@ -169,6 +198,7 @@ export function markStopped(
     volumeId: undefined,
     taskId: undefined,
     sshHost: undefined,
+    stopRequestedAt: undefined,
     // Sharing never outlives the live session it exposed.
     shareEnabled: undefined,
     shareEnabledAt: undefined,

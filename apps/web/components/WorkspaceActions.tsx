@@ -9,7 +9,8 @@ import { useState } from "react";
 const api = new ApiClient({ baseUrl: "" });
 
 function classFor(action: WorkspaceActionDto): string {
-  if (action === "start" || action === "undelete" || action === "retry") return "btn primary";
+  if (action === "start" || action === "undelete" || action === "retry" || action === "cancelStop")
+    return "btn primary";
   if (action === "delete") return "btn danger";
   return "btn";
 }
@@ -52,6 +53,9 @@ export function WorkspaceActions({
           break;
         case "retry":
           await api.retryWorkspace(id);
+          break;
+        case "cancelStop":
+          await api.cancelStopWorkspace(id);
           break;
       }
       router.refresh();
@@ -99,7 +103,13 @@ export function WorkspaceActions({
               onClick(action);
             }}
           >
-            {busy === action ? "…" : isConfirming ? "confirm delete" : action}
+            {busy === action
+              ? "…"
+              : isConfirming
+                ? "confirm delete"
+                : action === "cancelStop"
+                  ? "cancel stop"
+                  : action}
           </button>
         );
       })}

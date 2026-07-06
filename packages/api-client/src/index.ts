@@ -141,6 +141,12 @@ export class ApiClient {
     return workspace.parse(await res.json());
   }
 
+  /** Cancel an in-flight manual stop and resume the session. */
+  async cancelStopWorkspace(id: string): Promise<WorkspaceDto> {
+    const res = await this.send(`/api/workspaces/${id}/cancel-stop`, { method: "POST" });
+    return workspace.parse(await res.json());
+  }
+
   async startWorkspace(id: string): Promise<WorkspaceDto> {
     const res = await this.send(`/api/workspaces/${id}/start`, { method: "POST" });
     return workspace.parse(await res.json());

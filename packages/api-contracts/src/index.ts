@@ -19,6 +19,7 @@ export const workspaceState = z.enum([
   "provisioning",
   "running",
   "idle",
+  "stopping",
   "stopped",
   "deleting",
   "terminated",
@@ -31,7 +32,15 @@ export const desiredState = z.enum(["present", "deleted"]);
 export type DesiredStateDto = z.infer<typeof desiredState>;
 
 /** A user-initiated lifecycle operation the UI may offer for a workspace. */
-export const workspaceAction = z.enum(["start", "stop", "snapshot", "delete", "undelete", "retry"]);
+export const workspaceAction = z.enum([
+  "start",
+  "stop",
+  "cancelStop",
+  "snapshot",
+  "delete",
+  "undelete",
+  "retry",
+]);
 export type WorkspaceActionDto = z.infer<typeof workspaceAction>;
 
 /** Which primary interface a workspace serves (mirrors `@edd/core`'s EditorKind):
@@ -62,6 +71,8 @@ export const workspace = z.object({
   /** Last activity/transition timestamp — what the status page's phase-elapsed
    * timer counts from (resets on wake, so it times the current launch). */
   lastActivity: z.iso.datetime().optional(),
+  /** When a manual (cancelable) stop was requested — set while `stopping`. */
+  stopRequestedAt: z.iso.datetime().optional(),
   // The repo cloned into the session ("one repo per session"), when any. Lets
   // the credential broker pick the right GitHub App installation by repo owner.
   repoUrl: z.string().optional(),

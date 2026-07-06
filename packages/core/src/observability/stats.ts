@@ -17,6 +17,7 @@ function zeroByState(): Record<WorkspaceState, number> {
     running: 0,
     idle: 0,
     stopped: 0,
+    stopping: 0,
     deleting: 0,
     terminated: 0,
     error: 0,

@@ -21,6 +21,11 @@ export const ID_PREFIX = {
  * by the auth session's 4-h validity, so this only starts once truly unloaded). */
 export const DEFAULT_IDLE_THRESHOLD_MS = 5 * 60 * 1000;
 
+/** Grace window after a MANUAL stop is requested before the session is actually
+ * torn down — the user's chance to cancel and resume. Short (seconds), since the
+ * point is a brief "oops, keep it" window, not a long delay. */
+export const DEFAULT_STOP_GRACE_MS = 6 * 1000;
+
 /** How long a deleted (terminated) workspace stays restorable before its
  * tombstone + retained snapshot are purged: 7 days (product decision, 2026-07-06). */
 export const DEFAULT_UNDELETE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
