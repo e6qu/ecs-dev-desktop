@@ -23,7 +23,7 @@ describe("humanAgo (deterministic — both instants passed in)", () => {
     expect(humanAgo(t0, t0 + 45_000)).toBe("just now");
     expect(humanAgo(t0, t0 + 5 * 60_000)).toBe("5m ago");
     expect(humanAgo(t0, t0 + (2 * 60 + 15) * 60_000)).toBe("2h 15m ago");
-    expect(humanAgo(t0, t0 + (26 * 60) * 60_000)).toBe("1d 2h ago");
+    expect(humanAgo(t0, t0 + 26 * 60 * 60_000)).toBe("1d 2h ago");
   });
   it("never goes negative (clock skew / future build)", () => {
     expect(humanAgo(t0, t0 - 10_000)).toBe("just now");

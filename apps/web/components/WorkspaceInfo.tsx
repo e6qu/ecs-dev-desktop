@@ -61,14 +61,18 @@ export function WorkspaceInfo({ ws }: { ws: WorkspaceDto }) {
           style={{
             position: "absolute",
             right: 0,
-            top: "100%",
+            top: "calc(100% + 6px)",
             zIndex: 30,
-            minWidth: 280,
-            maxWidth: 360,
+            // Wider and viewport-capped so long values (the full ECR image ref) fit,
+            // with a scroll if the rows exceed the height instead of overflowing the
+            // card. `min()` keeps it inside narrow screens.
+            width: "min(92vw, 460px)",
+            maxHeight: "min(70vh, 520px)",
+            overflowY: "auto",
             background: "var(--panel, #1c1f1a)",
             border: "1px solid var(--line, #333)",
             borderRadius: 8,
-            padding: "10px 12px",
+            padding: "34px 16px 16px",
             boxShadow: "0 8px 24px rgba(0,0,0,0.45)",
           }}
         >
@@ -76,6 +80,7 @@ export function WorkspaceInfo({ ws }: { ws: WorkspaceDto }) {
             type="button"
             className="help-panel-close"
             aria-label="Close session details"
+            style={{ position: "absolute", top: 8, right: 10 }}
             onClick={() => {
               setOpen(false);
             }}
@@ -83,14 +88,22 @@ export function WorkspaceInfo({ ws }: { ws: WorkspaceDto }) {
             <span aria-hidden="true">×</span>
           </button>
           <dl
-            style={{ margin: 0, display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 10px" }}
+            style={{
+              margin: 0,
+              display: "grid",
+              gridTemplateColumns: "auto minmax(0, 1fr)",
+              gap: "8px 12px",
+            }}
           >
             {rows.map(([label, value]) => (
               <div key={label} style={{ display: "contents" }}>
-                <dt className="mono" style={{ color: "var(--dim)", fontSize: 11 }}>
+                <dt className="mono" style={{ color: "var(--dim)", fontSize: 12 }}>
                   {label}
                 </dt>
-                <dd className="mono" style={{ margin: 0, fontSize: 12, wordBreak: "break-all" }}>
+                <dd
+                  className="mono"
+                  style={{ margin: 0, fontSize: 13, lineHeight: 1.4, wordBreak: "break-all" }}
+                >
                   {value}
                 </dd>
               </div>
