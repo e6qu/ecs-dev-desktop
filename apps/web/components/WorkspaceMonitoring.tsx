@@ -8,7 +8,7 @@ import { useCallback } from "react";
 
 import { TESTID } from "../lib/testids";
 import { usePoll } from "../lib/usePoll";
-import { gib } from "./WorkspaceInfo";
+import { gib } from "../lib/format";
 
 const api = new ApiClient({ baseUrl: "" });
 const POLL_MS = 30_000;

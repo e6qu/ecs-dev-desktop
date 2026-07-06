@@ -4,12 +4,8 @@
 import type { WorkspaceDto } from "@edd/api-contracts";
 import { useState } from "react";
 
+import { gib } from "../lib/format";
 import { TESTID } from "../lib/testids";
-
-/** Bytes → a short human GiB figure (one decimal). */
-export function gib(bytes: number): string {
-  return `${(bytes / 1024 ** 3).toFixed(1)} GiB`;
-}
 
 /**
  * The ⓘ control on a workspace card: a closeable overlay with the session's

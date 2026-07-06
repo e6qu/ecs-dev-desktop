@@ -2,11 +2,12 @@
 import type { WorkspaceDto, WorkspaceStateDto } from "@edd/api-contracts";
 import { WORKSPACE_PATH_PREFIX } from "@edd/core";
 
+import { gib } from "../lib/format";
 import { TESTID } from "../lib/testids";
+import { ShareToggle } from "./ShareToggle";
 import { StatusBadge } from "./StatusBadge";
 import { WorkspaceActions } from "./WorkspaceActions";
-import { ShareToggle } from "./ShareToggle";
-import { gib, WorkspaceInfo } from "./WorkspaceInfo";
+import { WorkspaceInfo } from "./WorkspaceInfo";
 
 const STAGGER_MS = 40;
 
