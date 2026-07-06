@@ -2,8 +2,12 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-06 (live at `https://app.edd.e6qu.dev`, tag `6fcf849`;
-post-launch wave deployed — connection-based idle (5-min cooldown), per-workspace
+**Last updated:** 2026-07-06 (live at `https://app.edd.e6qu.dev`, tag `fe7cc2b`; the
+post-launch feature wave is COMPLETE and deployed — connection-based idle (5-min
+cooldown), per-workspace monitoring, claude/codex agent-first editor modes, 4h rolling
+sessions, 7-day undelete, and spectate v1 (owner-shared read-only mirror, viewer+
+only). Remaining: user live-testing, the legacy-snapshot keep/delete call, and the PR
+decision; branch `fix/install-missing-param-logic` still unmerged/no PR by request.), per-workspace
 monitoring, claude/codex agent-first editor modes, 4h rolling sessions, and 7-day
 undelete (terminated tombstones + reconciler retention purge); the live-found
 reconciler `dynamodb:DeleteItem` gap that stalled ALL deletions is fixed; spectate
