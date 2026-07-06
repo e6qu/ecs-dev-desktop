@@ -34,9 +34,8 @@ async function handleGET(req: Request) {
     repos.map(async (r) => {
       try {
         const tags = await ops.listImageTags(r, 1);
-        const latest = tags[0];
-        if (latest === undefined) return { repo: r, tag: null };
-        return (await ops.getImageMetadata(r, latest)) ?? { repo: r, tag: null };
+        if (tags.length === 0) return { repo: r, tag: null };
+        return (await ops.getImageMetadata(r, tags[0])) ?? { repo: r, tag: null };
       } catch (err) {
         log.warn("image metadata failed for one repo", { repo: r, error: errorField(err) });
         return { repo: r, tag: null };

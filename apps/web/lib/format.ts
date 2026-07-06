@@ -33,3 +33,15 @@ export function utcStamp(ms: number): string {
     d.getUTCHours(),
   )}:${p(d.getUTCMinutes())} UTC`;
 }
+
+/** Human byte size that picks the unit (B / KiB / MiB / GiB) — for image + layer sizes. */
+export function humanBytes(bytes: number): string {
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+  let n = bytes;
+  let i = 0;
+  while (n >= 1024 && i < units.length - 1) {
+    n /= 1024;
+    i += 1;
+  }
+  return `${i === 0 ? String(n) : n.toFixed(n >= 100 ? 0 : 1)} ${units[i]}`;
+}
