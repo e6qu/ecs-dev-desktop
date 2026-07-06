@@ -4,6 +4,15 @@
 
 ## Open
 
+- **Cost model doesn't price the undelete window or restored sessions** (2026-07-06).
+  Deleted workspaces now keep a retained snapshot for the 7-day undelete window —
+  that snapshot storage bills in AWS but `deriveBillingIntervals` treats
+  `session.terminated` as the end of all billing, and `session.undelete` is not a
+  billing event (a restored session's later intervals are dropped because the
+  timeline was closed as terminated). Under-attribution only (fleet totals from
+  real AWS billing are unaffected); fix = model a `retained` interval terminated →
+  purge/undelete, and reopen the timeline on `session.undelete`.
+
 - **Golden-image updates never reach existing catalog entries — rollout gap (2026-07-06).**
   The seeded base-image catalog row (`catalog-seed.tf`) is created once with `image = <repo>:<image_tag>`
   and then `lifecycle.ignore_changes = [item]` (deliberate — the admin owns the catalog after seeding), and
