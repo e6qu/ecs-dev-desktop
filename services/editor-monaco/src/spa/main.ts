@@ -159,16 +159,58 @@ editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
   void save();
 });
 
-// ── terminal (xterm over the server's PTY WebSocket) ──
-let term: Terminal | null = null;
+// ── terminal (xterm over the server's PTY WebSocket) — multiple concurrent tabs,
+// each its own PTY (the server spawns one per WebSocket connection, so opening a
+// second tab is just opening a second connection). Starts open with one tab by
+// default; Ctrl+`/Cmd+` toggles the panel, +Shift opens a new tab — the same
+// keybinding convention as VS Code, shown as a hint on the toggle button.
+interface TerminalTab {
+  id: number;
+  term: Terminal;
+  fit: FitAddon;
+  sock: WebSocket;
+  pane: HTMLElement;
+  tabButton: HTMLElement;
+}
 
-function setupTerminal(): void {
-  if (term !== null) return;
+const tabs: TerminalTab[] = [];
+let activeTabId: number | null = null;
+let nextTabId = 1;
+
+function activateTab(id: number): void {
+  activeTabId = id;
+  for (const t of tabs) {
+    const isActive = t.id === id;
+    t.pane.hidden = !isActive;
+    t.tabButton.classList.toggle("active", isActive);
+    t.tabButton.setAttribute("aria-selected", String(isActive));
+  }
+  const active = tabs.find((t) => t.id === id);
+  active?.fit.fit();
+  active?.term.focus();
+}
+
+function openNewTerminalTab(): void {
+  const id = nextTabId++;
+  const pane = document.createElement("div");
+  pane.className = "terminal-pane";
+  pane.hidden = true;
+  el("terminal-panes").append(pane);
+
+  const tabButton = document.createElement("button");
+  tabButton.type = "button";
+  tabButton.className = "terminal-tab";
+  tabButton.setAttribute("role", "tab");
+  tabButton.textContent = String(tabs.length + 1);
+  tabButton.addEventListener("click", () => {
+    activateTab(id);
+  });
+  el("new-terminal-tab").before(tabButton);
+
   const t = new Terminal({ fontSize: 13, cursorBlink: true, theme: { background: "#1e1e1e" } });
   const fit = new FitAddon();
   t.loadAddon(fit);
-  t.open(el("terminal"));
-  fit.fit();
+  t.open(pane);
 
   const wsUrl = new URL("terminal", document.baseURI);
   wsUrl.protocol = wsUrl.protocol === "https:" ? "wss:" : "ws:";
@@ -192,21 +234,45 @@ function setupTerminal(): void {
     if (sock.readyState === WebSocket.OPEN)
       sock.send(JSON.stringify({ type: "resize", cols, rows }));
   });
-  window.addEventListener("resize", () => {
-    fit.fit();
-  });
-  term = t;
+
+  tabs.push({ id, term: t, fit, sock, pane, tabButton });
+  activateTab(id);
 }
 
-el("toggle-terminal").addEventListener("click", () => {
+function setTerminalPanelVisible(show: boolean): void {
   const panel = el("terminal-panel");
-  const show = panel.hidden;
   panel.hidden = !show;
   el("toggle-terminal").setAttribute("aria-expanded", String(show));
   if (show) {
-    setupTerminal();
-    term?.focus();
+    if (tabs.length === 0) openNewTerminalTab();
+    else if (activeTabId !== null) activateTab(activeTabId);
+  }
+}
+
+window.addEventListener("resize", () => {
+  tabs.find((t) => t.id === activeTabId)?.fit.fit();
+});
+
+el("toggle-terminal").addEventListener("click", () => {
+  setTerminalPanelVisible(el("terminal-panel").hidden === true);
+});
+el("new-terminal-tab").addEventListener("click", () => {
+  setTerminalPanelVisible(true);
+  openNewTerminalTab();
+});
+
+window.addEventListener("keydown", (e: KeyboardEvent) => {
+  if (e.key !== "`" || !(e.ctrlKey || e.metaKey)) return;
+  e.preventDefault();
+  if (e.shiftKey) {
+    setTerminalPanelVisible(true);
+    openNewTerminalTab();
+  } else {
+    setTerminalPanelVisible(el("terminal-panel").hidden === true);
   }
 });
+
+// The terminal starts open with one tab, matching a normal dev environment.
+setTerminalPanelVisible(true);
 
 void loadTree();

@@ -62,12 +62,22 @@ async function loadPty(): Promise<typeof import("node-pty") | null> {
   }
 }
 
+/** One-time orientation banner, sent as the first line of every new terminal tab
+ * (ahead of the shell's own output): claude/codex's OAuth login opens a browser
+ * redirect to a localhost port inside THIS remote container — unreachable from the
+ * user's own browser. Both CLIs already support pasting the code shown in the
+ * browser instead of waiting for the redirect; this is pure user education, no new
+ * infrastructure. */
+const WELCOME_BANNER =
+  "\x1b[2mTip: when 'claude' or 'codex' asks you to sign in, the browser redirect can't reach this remote workspace -- paste the code shown in the browser instead of waiting for it.\x1b[0m\r\n";
+
 async function startShell(ws: WebSocket, root: string): Promise<void> {
   const nodePty = await loadPty();
   if (nodePty === null) {
     ws.close(1011, "terminal unavailable");
     return;
   }
+  if (ws.readyState === ws.OPEN) ws.send(WELCOME_BANNER);
   const shell = process.env.SHELL ?? "/bin/bash";
   const pty = nodePty.spawn(shell, [], {
     name: "xterm-color",
