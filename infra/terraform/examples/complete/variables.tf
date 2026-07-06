@@ -114,6 +114,12 @@ variable "codebuild_source_ref" {
   default     = "main"
 }
 
+variable "build_target" {
+  description = "(codebuild build mode) Images to build: web (control-plane only, fast) | golden | all."
+  type        = string
+  default     = "all"
+}
+
 variable "golden_image_repos" {
   description = "Golden base-image variants to build/publish (must match infra/images/ folder names)."
   type        = list(string)

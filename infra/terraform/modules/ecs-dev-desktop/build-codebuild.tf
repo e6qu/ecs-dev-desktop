@@ -131,6 +131,7 @@ resource "aws_codebuild_project" "build_images" {
           VARIANTS: ${join(" ", var.golden_image_repos)}
           SOURCE_REPO: ${var.codebuild_source_repo}
           SOURCE_REF: ${var.codebuild_source_ref}
+          EDD_BUILD_TARGET: ${var.build_target}
           EDD_BUILD_ARCHS: amd64
       phases:
         pre_build:
@@ -171,6 +172,7 @@ resource "terraform_data" "build_images_codebuild" {
     var.image_tag,
     var.codebuild_source_ref,
     join(",", var.golden_image_repos),
+    var.build_target,
   ]
 
   provisioner "local-exec" {

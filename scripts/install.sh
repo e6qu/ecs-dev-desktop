@@ -79,6 +79,10 @@ EDD_IMAGE_BUILD_MODE="${EDD_IMAGE_BUILD_MODE:-local}"
 EDD_CODEBUILD_SOURCE_REPO="${EDD_CODEBUILD_SOURCE_REPO:-}"
 EDD_CODEBUILD_SOURCE_REF="${EDD_CODEBUILD_SOURCE_REF:-main}"
 EDD_GOLDEN="${EDD_GOLDEN:-omnibus}"
+# Which images a (codebuild-mode) run builds: web | golden | all. Default "all" for a
+# first install / full rebuild; set EDD_BUILD_TARGET=web for a FAST control-plane-only
+# deploy that skips the ~3GB golden rebuild.
+EDD_BUILD_TARGET="${EDD_BUILD_TARGET:-all}"
 EDD_ADMIN_GROUPS="${EDD_ADMIN_GROUPS:-}"
 EDD_MEMBER_GROUPS="${EDD_MEMBER_GROUPS:-}"
 EDD_TF_DIR="${EDD_TF_DIR:-infra/terraform/examples/complete}"
@@ -248,6 +252,7 @@ tfvars="$tfdir/install.tfvars"
   printf 'seed_default_catalog = true\n'
   printf 'codebuild_source_repo = "%s"\n' "$EDD_CODEBUILD_SOURCE_REPO"
   printf 'codebuild_source_ref = "%s"\n' "$EDD_CODEBUILD_SOURCE_REF"
+  printf 'build_target = "%s"\n' "$EDD_BUILD_TARGET"
   printf 'auth_secret_arns = {\n%s}\n' "$secret_map"
   printf 'extra_environment = {\n'
   printf '  EDD_ADMIN_GROUPS = "%s"\n' "$EDD_ADMIN_GROUPS"

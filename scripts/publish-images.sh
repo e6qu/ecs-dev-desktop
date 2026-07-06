@@ -58,6 +58,23 @@ repo=$(cd "$here/.." && pwd)
 registry="${account}.dkr.ecr.${region}.amazonaws.com"
 archs="${EDD_BUILD_ARCHS:-amd64 arm64}"
 
+# Which images to build this run — the deploy-decoupling knob (task: fast web deploy):
+#   web    -> the app-layer images only (control-plane + ssh-gateway). Small + fast
+#            (~minutes), so a control-plane fix never rebuilds the ~3GB golden image.
+#   golden -> the golden workspace variants only (the slow ~15-20min build).
+#   all    -> everything (default; the historical behavior, e.g. first install).
+build_target="${EDD_BUILD_TARGET:-all}"
+case "$build_target" in
+  web) do_web=1 do_golden=0 ;;
+  golden) do_web=0 do_golden=1 ;;
+  all) do_web=1 do_golden=1 ;;
+  *)
+    echo "edd: EDD_BUILD_TARGET must be one of: web | golden | all (got '$build_target')" >&2
+    exit 1
+    ;;
+esac
+echo "edd: build target = ${build_target} (web=${do_web} golden=${do_golden})"
+
 # Deploy provenance baked into the control-plane image: the commit it was built
 # from (the image tag is the short sha) and the UTC build time. Surfaced in the
 # app footer so operators can see, at a glance, which build is live and how old
@@ -153,30 +170,38 @@ push_manifest() { # <repo-short>
   docker manifest push "$manifest"
 }
 
-# 1. Control-plane app (also the reconciler image — same image, command override).
-build_push_arch control-plane "$repo/apps/web/Dockerfile" "$repo" \
-  --build-arg "EDD_BUILD_SHA=${build_sha}" --build-arg "EDD_BUILD_TIME=${build_time}"
+if [ "$do_web" = "1" ]; then
+  # 1. Control-plane app (also the reconciler image — same image, command override).
+  build_push_arch control-plane "$repo/apps/web/Dockerfile" "$repo" \
+    --build-arg "EDD_BUILD_SHA=${build_sha}" --build-arg "EDD_BUILD_TIME=${build_time}"
 
-# 2. SSH gateway (IMMUTABLE ECR repo: each tag is pushed ONCE; never overwrite).
-# Context is the repo root, matching Dockerfile.proxy's repo-root-relative COPY paths
-# (the same convention as the control-plane build above) -- passing the ssh-gateway
-# subdirectory itself as context here made every COPY fail with "not found" (never
-# caught before: this build path had never actually been exercised until CodeBuild
-# got past the control-plane image for the first time).
-build_push_arch ssh-gateway "$repo/services/ssh-gateway/Dockerfile.proxy" "$repo"
+  # 2. SSH gateway (IMMUTABLE ECR repo: each tag is pushed ONCE; never overwrite).
+  # Context is the repo root, matching Dockerfile.proxy's repo-root-relative COPY paths
+  # (the same convention as the control-plane build above) -- passing the ssh-gateway
+  # subdirectory itself as context here made every COPY fail with "not found" (never
+  # caught before: this build path had never actually been exercised until CodeBuild
+  # got past the control-plane image for the first time).
+  build_push_arch ssh-gateway "$repo/services/ssh-gateway/Dockerfile.proxy" "$repo"
+fi
 
 # 3. Golden variants, each FROM the per-arch base.
-for arch in $archs; do
-  build_golden_arch "$arch"
-done
+if [ "$do_golden" = "1" ]; then
+  for arch in $archs; do
+    build_golden_arch "$arch"
+  done
+fi
 
 # 4. Multi-arch manifests. These are what ECS Fargate pulls; runners that cannot
 # consume manifests can pin the -amd64 / -arm64 tags directly.
-push_manifest control-plane
-push_manifest ssh-gateway
-for v in $variants; do
-  push_manifest "golden/${v}"
-done
+if [ "$do_web" = "1" ]; then
+  push_manifest control-plane
+  push_manifest ssh-gateway
+fi
+if [ "$do_golden" = "1" ]; then
+  for v in $variants; do
+    push_manifest "golden/${v}"
+  done
+fi
 
 cat <<EOF
 
