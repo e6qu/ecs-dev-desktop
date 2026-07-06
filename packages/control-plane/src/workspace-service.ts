@@ -20,6 +20,7 @@ import {
   markStopped,
   markTaskLost,
   markTerminated,
+  setShare,
   DEFAULT_UNDELETE_RETENTION_MS,
   undeleteWorkspace,
   recordFunctional,
@@ -131,6 +132,8 @@ type AuditAction =
   | "session.recover"
   | "session.undelete"
   | "session.purged"
+  | "session.share_enabled"
+  | "session.share_disabled"
   | "session.snapshot_lost"
   | "security.privilege_attempt";
 
@@ -268,6 +271,8 @@ interface WorkspaceRecord {
   diskUsedBytes?: number;
   diskTotalBytes?: number;
   terminatedAt?: string;
+  shareEnabled?: boolean;
+  shareEnabledAt?: string;
   version: number;
 }
 
@@ -320,6 +325,8 @@ function toWorkspace(r: WorkspaceRecord): Workspace {
     diskUsedBytes: r.diskUsedBytes,
     diskTotalBytes: r.diskTotalBytes,
     terminatedAt: r.terminatedAt === undefined ? undefined : isoTimestamp(r.terminatedAt),
+    shareEnabled: r.shareEnabled,
+    shareEnabledAt: r.shareEnabledAt === undefined ? undefined : isoTimestamp(r.shareEnabledAt),
   };
 }
 
@@ -1214,6 +1221,37 @@ export class WorkspaceService {
       if (e instanceof QuotaExceededError) throw e;
       if (!isVersionConflict(e)) throw e;
       return err(conflictError(`undelete of ${id} lost a concurrent update`));
+    }
+    return ok(toWorkspaceDto(next.value));
+  }
+
+  /**
+   * Toggle the owner's spectate flag (audited). Enabling requires a live
+   * session (pure guard); disabling always succeeds. The route enforces WHO
+   * may toggle (owner only).
+   */
+  async setShare(
+    id: WorkspaceId,
+    enabled: boolean,
+    actor?: string,
+  ): Promise<Result<WorkspaceDto, DomainError>> {
+    const found = await this.find(id);
+    if (found === null) return err(notFoundError("workspace", id));
+    const { ws, version } = found;
+    const next = setShare(ws, enabled, isoTimestamp(this.deps.clock.now()));
+    if (!next.ok) return next;
+    try {
+      await this.persistTransition(next.value, version, {
+        action: enabled ? "session.share_enabled" : "session.share_disabled",
+        target: id,
+        actor: actor ?? SYSTEM_ACTOR,
+        detail: enabled
+          ? "spectate enabled — signed-in viewers may watch a read-only mirror"
+          : "spectate disabled",
+      });
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+      return err(conflictError(`share toggle of ${id} lost a concurrent update`));
     }
     return ok(toWorkspaceDto(next.value));
   }

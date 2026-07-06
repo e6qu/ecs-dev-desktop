@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import type { WorkspaceLogsDto } from "@edd/api-contracts";
 import { taskId as toTaskId } from "@edd/core";
 
-import { isResponse, loadOwnedWorkspace } from "../../../../../lib/api";
+import { isResponse, loadOwnedWorkspaceDetail } from "../../../../../lib/api";
 import { getLogSource } from "../../../../../lib/control-plane";
 import { withObservability } from "../../../../../lib/observability";
 
@@ -18,12 +18,10 @@ interface Ctx {
 // ECS task and gated on ownership (owner or admin), so a member can watch their
 // OWN session boot without the admin console.
 async function handleGET(req: Request, { params }: Ctx) {
-  const ctx = await loadOwnedWorkspace(req, params, "read");
-  if (isResponse(ctx)) return ctx;
-
+  const loaded = await loadOwnedWorkspaceDetail(req, params);
+  if (isResponse(loaded)) return loaded;
   // The task id lives on the full detail record (the list DTO omits it).
-  const detail = await ctx.cp.inspect(ctx.id);
-  const wsTaskId = detail?.workspace.taskId;
+  const wsTaskId = loaded.detail.workspace.taskId;
   if (wsTaskId === undefined) {
     const body: WorkspaceLogsDto = {
       available: false,

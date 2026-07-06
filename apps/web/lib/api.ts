@@ -100,6 +100,25 @@ export async function loadOwnedWorkspace(
  * domain error's HTTP status. The shared shape of the start/stop/snapshot
  * lifecycle routes — the `run` callback supplies the specific action (and actor).
  */
+/** Like {@link loadOwnedWorkspace} but also resolves the FULL detail record
+ * (runtime bindings: taskId/volumeId/disk figures) — the shape the owner-facing
+ * logs/monitoring routes need. 404s when the record vanished between the authz
+ * read and the inspect. */
+export async function loadOwnedWorkspaceDetail(
+  req: Request,
+  params: Promise<{ id: string }>,
+): Promise<{ ctx: OwnedWorkspace; detail: WorkspaceDetail } | NextResponse> {
+  const ctx = await loadOwnedWorkspace(req, params, "read");
+  if (isResponse(ctx)) return ctx;
+  const detail = await ctx.cp.inspect(ctx.id);
+  if (detail === null) {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
+  return { ctx, detail };
+}
+
+type WorkspaceDetail = NonNullable<Awaited<ReturnType<OwnedWorkspace["cp"]["inspect"]>>>;
+
 export async function ownedLifecycleAction(
   req: Request,
   params: Promise<{ id: string }>,

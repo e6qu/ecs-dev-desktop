@@ -65,6 +65,8 @@ export function makeWorkspaceEntity(client: DynamoDBClient, table = TABLE) {
         diskUsedBytes: { type: "number", required: false },
         diskTotalBytes: { type: "number", required: false },
         terminatedAt: { type: "string", required: false },
+        shareEnabled: { type: "boolean", required: false },
+        shareEnabledAt: { type: "string", required: false },
         // Optimistic-concurrency version: every lifecycle write is conditioned
         // on the version it read, so concurrent transitions (e.g. two wakes
         // racing) cannot both win and leak a real ECS task.

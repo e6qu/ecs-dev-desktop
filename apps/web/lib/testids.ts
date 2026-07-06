@@ -53,6 +53,12 @@ export const TESTID = {
   workspaceMonitoringLink: "workspace-monitoring-link",
   /** A metric panel on the monitoring page. Attrs: `data-metric`, `data-available`. */
   workspaceMetric: "workspace-metric",
+  /** The spectate viewer root. Attr: `data-phase` (connecting/live/ended/unavailable). */
+  spectateViewer: "spectate-viewer",
+  /** The full-viewport interaction-blocking shield over the spectate render. */
+  spectateShield: "spectate-shield",
+  /** The share (spectate) toggle on a workspace card. Attr: `data-enabled`. */
+  workspaceShareToggle: "workspace-share-toggle",
   /** A repo row in the New-session repo browser. Attrs: `data-repo`, `data-private`. */
   sessionRepoRow: "session-repo-row",
   /** "Load more repositories" button at the bottom of the repo browser list. */

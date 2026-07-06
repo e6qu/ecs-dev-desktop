@@ -5,6 +5,13 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import * as monaco from "monaco-editor";
+
+import {
+  captureFileOpened,
+  captureTabs,
+  captureTermOutput,
+  initSpectateCapture,
+} from "./spectate-capture";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import jsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
 import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
@@ -96,6 +103,8 @@ const editor = monaco.editor.create(el("editor"), {
 
 let currentPath: string | null = null;
 
+initSpectateCapture({ editor, getCurrentPath: () => currentPath });
+
 async function openFile(filePath: string, row: HTMLElement): Promise<void> {
   const res = await fetch(`api/file?path=${encodeURIComponent(filePath)}`);
   if (!res.ok) {
@@ -114,6 +123,7 @@ async function openFile(filePath: string, row: HTMLElement): Promise<void> {
   editor.updateOptions({ readOnly: false });
   for (const r of document.querySelectorAll(".file-row.active")) r.classList.remove("active");
   row.classList.add("active");
+  captureFileOpened();
 }
 
 async function save(): Promise<void> {
@@ -236,7 +246,11 @@ function openNewTerminalTab(): void {
     sock.send(JSON.stringify({ type: "resize", cols: t.cols, rows: t.rows }));
   });
   sock.addEventListener("message", (e: MessageEvent) => {
-    if (typeof e.data === "string") t.write(e.data);
+    if (typeof e.data === "string") {
+      t.write(e.data);
+      // Spectate mirror: forwarded live-only while the owner shares (no-op otherwise).
+      captureTermOutput(id, e.data);
+    }
   });
   sock.addEventListener("error", () => {
     t.write("\r\n\x1b[31m[terminal connection error]\x1b[0m\r\n");
@@ -254,6 +268,7 @@ function openNewTerminalTab(): void {
 
   tabs.push({ id, term: t, fit, sock, pane, tabButton });
   activateTab(id);
+  captureTabs(tabs.length, id);
 }
 
 function setTerminalPanelVisible(show: boolean): void {

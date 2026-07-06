@@ -48,6 +48,16 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
+- **Spectate cross-replica relay** — v1's relay is per-replica (the spectator
+  client retries until it lands on the publisher's replica; works, but retry
+  count grows with replica count). Follow-up: an internal replica-to-replica
+  bridge (publisher replica advertises itself — e.g. a DynamoDB row with its
+  task IP — and subscriber replicas relay through it; needs a tasks-SG
+  self-ingress rule on the control-plane port). See `docs/design-public-spectate.md`.
+- **Spectate for OpenVSCode sessions** — needs extension-based capture inside
+  the `edd-workspace-ui` extension (v1 mirrors Monaco + claude/codex terminal
+  modes only).
+
 - **Post-launch backlog — consolidated plan (2026-07-06, sequenced; mirrors the session
   task list).** Already shipped from the original queue: editor home links (extension +
   Monaco tabbar), the terminal-keybinding control (status bar — VS Code has no public

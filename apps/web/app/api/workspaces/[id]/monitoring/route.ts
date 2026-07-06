@@ -7,7 +7,7 @@ import { baseImage } from "@edd/core";
 import { taskDefinitionFamily } from "@edd/compute-ecs";
 import type { CloudWatchMetricReader } from "@edd/cloudwatch-metrics";
 
-import { isResponse, loadOwnedWorkspace } from "../../../../../lib/api";
+import { isResponse, loadOwnedWorkspaceDetail } from "../../../../../lib/api";
 import { getCostService, getMetricReader } from "../../../../../lib/control-plane";
 import { withObservability } from "../../../../../lib/observability";
 
@@ -48,13 +48,9 @@ async function readSeries(
 // provisioned sizing, uptime, cost so far (incl. the snapshot-storage line),
 // task utilization (Container Insights), and per-volume EBS IOPS.
 async function handleGET(req: Request, { params }: Ctx) {
-  const ctx = await loadOwnedWorkspace(req, params, "read");
-  if (isResponse(ctx)) return ctx;
-
-  const detail = await ctx.cp.inspect(ctx.id);
-  if (detail === null) {
-    return NextResponse.json({ error: "not found" }, { status: 404 });
-  }
+  const loaded = await loadOwnedWorkspaceDetail(req, params);
+  if (isResponse(loaded)) return loaded;
+  const { ctx, detail } = loaded;
   const ws = detail.workspace;
   const sizing = workspaceSizing();
 

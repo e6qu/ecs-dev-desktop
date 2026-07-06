@@ -108,7 +108,15 @@ export default async function WorkspacesPage({
       ) : (
         <div className="grid">
           {workspaces.map((ws, i) => {
-            return <WorkspaceCard key={ws.id} ws={ws} index={i} showOwner={viewAll} />;
+            return (
+              <WorkspaceCard
+                key={ws.id}
+                ws={ws}
+                index={i}
+                showOwner={viewAll}
+                canShare={ws.ownerId === principal.id}
+              />
+            );
           })}
         </div>
       )}

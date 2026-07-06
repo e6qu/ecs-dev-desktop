@@ -21,6 +21,7 @@ export function toWorkspaceDto(ws: Workspace): WorkspaceDto {
     ...(ws.diskUsedBytes === undefined ? {} : { diskUsedBytes: ws.diskUsedBytes }),
     ...(ws.diskTotalBytes === undefined ? {} : { diskTotalBytes: ws.diskTotalBytes }),
     ...(ws.terminatedAt === undefined ? {} : { terminatedAt: ws.terminatedAt }),
+    ...(ws.shareEnabled === undefined ? {} : { shareEnabled: ws.shareEnabled }),
   };
 }
 
@@ -50,6 +51,7 @@ export function toWorkspaceDetail(ws: Workspace): WorkspaceDetailDto {
     ...(ws.diskUsedBytes === undefined ? {} : { diskUsedBytes: ws.diskUsedBytes }),
     ...(ws.diskTotalBytes === undefined ? {} : { diskTotalBytes: ws.diskTotalBytes }),
     ...(ws.terminatedAt === undefined ? {} : { terminatedAt: ws.terminatedAt }),
+    ...(ws.shareEnabled === undefined ? {} : { shareEnabled: ws.shareEnabled }),
     availableActions: [...workspaceActions(ws.state)],
   };
 }

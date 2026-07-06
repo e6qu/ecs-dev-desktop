@@ -195,6 +195,53 @@ export async function authorizeWorkspace(
   return { kind: "allow", sessionExpiresAtMs };
 }
 
+/** The two spectate WebSocket roles (docs/design-public-spectate.md). */
+export type SpectateRole = "publish" | "subscribe";
+
+export type SpectateAuthz =
+  | { kind: "allow"; role: SpectateRole }
+  | { kind: "forbidden" }
+  | { kind: "unauthenticated" };
+
+/**
+ * Authorize a spectate WebSocket. `publish` is the OWNER's mirror stream (only
+ * the owner may publish — an admin must not impersonate a share). `subscribe`
+ * is any signed-in principal with a role (viewer+ — the recorded product
+ * decision: authenticated org users, no anonymous links). Both require the
+ * owner's share flag to be ON; toggling it off severs new connections
+ * immediately (live ones die with the publisher).
+ */
+export async function authorizeSpectate(
+  req: CookieBearingRequest,
+  wsId: WorkspaceId,
+  role: SpectateRole,
+): Promise<SpectateAuthz> {
+  const cookieHeader = req.headers.cookie ?? "";
+  const authSecret = process.env.AUTH_SECRET;
+  if (authSecret === undefined || authSecret === "") {
+    throw new Error("AUTH_SECRET is required to authorize spectate requests");
+  }
+  const token = await getToken({
+    req: { headers: { cookie: cookieHeader } },
+    secret: authSecret,
+    secureCookie: cookieHeader.includes(`__Secure-${SESSION_COOKIE_STEM}`),
+  });
+  if (token === null) return { kind: "unauthenticated" };
+
+  const detail = await (await getControlPlane()).inspect(wsId);
+  if (detail === null) return { kind: "forbidden" };
+  if (detail.workspace.shareEnabled !== true) return { kind: "forbidden" };
+
+  if (role === "publish") {
+    const isOwner = typeof token.uid === "string" && token.uid === detail.workspace.ownerId;
+    return isOwner ? { kind: "allow", role } : { kind: "forbidden" };
+  }
+  // subscribe: any signed-in principal with a mapped role (viewer is the floor).
+  return typeof token.role === "string" && token.role.length > 0
+    ? { kind: "allow", role }
+    : { kind: "forbidden" };
+}
+
 /**
  * Wake the workspace (idempotent) and resolve its live OpenVSCode upstream URL.
  * Throws (caller fails closed → 502) if the wake fails or no host is bound yet.

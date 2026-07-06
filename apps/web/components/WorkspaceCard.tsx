@@ -5,6 +5,7 @@ import { WORKSPACE_PATH_PREFIX } from "@edd/core";
 import { TESTID } from "../lib/testids";
 import { StatusBadge } from "./StatusBadge";
 import { WorkspaceActions } from "./WorkspaceActions";
+import { ShareToggle } from "./ShareToggle";
 import { gib, WorkspaceInfo } from "./WorkspaceInfo";
 
 const STAGGER_MS = 40;
@@ -28,12 +29,16 @@ export function WorkspaceCard({
   ws,
   index,
   showOwner,
+  canShare = false,
 }: {
   /** A workspace DTO already enriched (catalog image fields + ssh command) by the
    * server / `enrichWorkspace`, so the card is a pure renderer. */
   ws: WorkspaceDto;
   index: number;
   showOwner: boolean;
+  /** True only when the VIEWER owns this workspace: the spectate share toggle is
+   * strictly an owner control (the route re-enforces it). */
+  canShare?: boolean;
 }) {
   const imageName = ws.imageName ?? ws.baseImage;
   const imageDescription = ws.imageDescription ?? "";
@@ -129,6 +134,16 @@ export function WorkspaceCard({
             data-testid={TESTID.workspaceMonitoringLink}
           >
             Monitoring
+          </a>
+        </div>
+      )}
+      {canShare && (canOpen || ws.shareEnabled === true) && ws.state !== "stopped" && (
+        <ShareToggle id={ws.id} enabled={ws.shareEnabled === true} />
+      )}
+      {!canShare && ws.shareEnabled === true && (
+        <div className="meta-line">
+          <a className="btn" href={`/workspaces/${ws.id}/spectate`}>
+            Spectate (read-only)
           </a>
         </div>
       )}

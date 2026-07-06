@@ -80,6 +80,12 @@ export interface Workspace {
    * retention window; the purge sweep removes the tombstone (and reaps its
    * retained snapshot) once it is older than the retention. */
   readonly terminatedAt?: IsoTimestamp;
+  /** Owner-controlled spectate flag: signed-in `viewer`+ users may watch a live
+   * read-only mirror of the owner's editor session while true. Default off;
+   * cleared automatically when the session stops/deletes (sharing never
+   * outlives the live session it exposed). */
+  readonly shareEnabled?: boolean;
+  readonly shareEnabledAt?: IsoTimestamp;
 }
 
 /** Functional usability of a running workspace, self-reported by the in-workspace agent. */
@@ -138,6 +144,9 @@ export function markStopped(
     volumeId: undefined,
     taskId: undefined,
     sshHost: undefined,
+    // Sharing never outlives the live session it exposed.
+    shareEnabled: undefined,
+    shareEnabledAt: undefined,
   }));
 }
 
@@ -154,6 +163,8 @@ export function markTerminated(ws: Workspace, at: IsoTimestamp): Result<Workspac
     volumeId: undefined,
     taskId: undefined,
     sshHost: undefined,
+    shareEnabled: undefined,
+    shareEnabledAt: undefined,
   }));
 }
 
@@ -175,6 +186,33 @@ export function undeleteWorkspace(ws: Workspace, at: IsoTimestamp): Result<Works
     terminatedAt: undefined,
     lastActivity: at,
   }));
+}
+
+/** The states in which a spectate mirror can exist (a live editor session). */
+const SHAREABLE_STATES: readonly WorkspaceState[] = ["running", "idle", "provisioning"];
+
+/**
+ * Toggle the owner's spectate flag. Enabling requires a live (or launching)
+ * session — there is nothing to mirror otherwise; disabling is always legal
+ * (it must never be refusable). Pure; the route enforces WHO may toggle.
+ */
+export function setShare(
+  ws: Workspace,
+  enabled: boolean,
+  at: IsoTimestamp,
+): Result<Workspace, DomainError> {
+  if (enabled && !SHAREABLE_STATES.includes(ws.state)) {
+    return err(
+      conflictError(
+        `cannot enable spectate while '${ws.state}': only a live session can be mirrored`,
+      ),
+    );
+  }
+  return ok({
+    ...ws,
+    shareEnabled: enabled,
+    shareEnabledAt: enabled ? at : undefined,
+  });
 }
 
 /**
@@ -300,6 +338,8 @@ export function markDeleting(ws: Workspace, at: IsoTimestamp): Result<Workspace,
     state,
     desiredState: "deleted",
     deleteRequestedAt: at,
+    shareEnabled: undefined,
+    shareEnabledAt: undefined,
   }));
 }
 

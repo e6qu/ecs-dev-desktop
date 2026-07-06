@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { StateBlock } from "../../../components/StateBlock";
+import { SignedOutBlock } from "../../../components/SignedOutBlock";
 import { WorkspaceLive } from "../../../components/WorkspaceLive";
 import { getPagePrincipal } from "../../../lib/principal";
 
@@ -15,13 +15,7 @@ export default async function WorkspacePage({ params }: { params: Promise<{ id: 
   const principal = await getPagePrincipal();
   const { id } = await params;
   if (principal === null) {
-    return (
-      <StateBlock
-        title="Not signed in"
-        detail="Sign in to view your workspace."
-        action={{ href: "/login", label: "sign in" }}
-      />
-    );
+    return <SignedOutBlock detail="Sign in to view your workspace." />;
   }
 
   return (

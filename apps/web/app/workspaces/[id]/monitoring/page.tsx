@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { StateBlock } from "../../../../components/StateBlock";
+import { SignedOutBlock } from "../../../../components/SignedOutBlock";
 import { WorkspaceMonitoring } from "../../../../components/WorkspaceMonitoring";
 import { getPagePrincipal } from "../../../../lib/principal";
 
@@ -18,13 +18,7 @@ export default async function WorkspaceMonitoringPage({
   const principal = await getPagePrincipal();
   const { id } = await params;
   if (principal === null) {
-    return (
-      <StateBlock
-        title="Not signed in"
-        detail="Sign in to view workspace monitoring."
-        action={{ href: "/login", label: "sign in" }}
-      />
-    );
+    return <SignedOutBlock detail="Sign in to view workspace monitoring." />;
   }
 
   return (

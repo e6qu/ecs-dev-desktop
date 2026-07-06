@@ -13,6 +13,7 @@ import {
   markStopped,
   markTerminated,
   recordFunctional,
+  setShare,
   undeleteWorkspace,
   markTaskLost,
   markWaking,
@@ -237,5 +238,34 @@ describe("markTerminated / undeleteWorkspace (the 7-day undelete window's endpoi
 
   it("undelete is only legal from terminated", () => {
     expect(undeleteWorkspace({ ...base, latestSnapshotId: snap }, t1).ok).toBe(false);
+  });
+});
+
+describe("setShare (spectate flag)", () => {
+  it("enables only on a live session, stamping shareEnabledAt", () => {
+    const on = unwrap(setShare(base, true, t1));
+    expect(on.shareEnabled).toBe(true);
+    expect(on.shareEnabledAt).toBe(t1);
+  });
+
+  it("refuses to enable on a stopped session (nothing to mirror)", () => {
+    const stopped = unwrap(markStopped(base, { id: snapshotId("s"), at: t0 }, t0));
+    const r = setShare(stopped, true, t1);
+    expect(r.ok).toBe(false);
+  });
+
+  it("disable always succeeds and clears the timestamp", () => {
+    const on = unwrap(setShare(base, true, t1));
+    const off = unwrap(setShare(on, false, t1));
+    expect(off.shareEnabled).toBe(false);
+    expect(off.shareEnabledAt).toBeUndefined();
+  });
+
+  it("sharing never outlives the live session: stop and delete-request clear it", () => {
+    const on = unwrap(setShare(base, true, t1));
+    const stopped = unwrap(markStopped(on, { id: snapshotId("s"), at: t1 }, t1));
+    expect(stopped.shareEnabled).toBeUndefined();
+    const deleting = unwrap(markDeleting(on, t1));
+    expect(deleting.shareEnabled).toBeUndefined();
   });
 });

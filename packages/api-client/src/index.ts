@@ -182,6 +182,16 @@ export class ApiClient {
     return workspace.parse(await res.json());
   }
 
+  /** Toggle the owner's spectate (read-only mirror) flag. */
+  async setWorkspaceShare(id: string, enabled: boolean): Promise<WorkspaceDto> {
+    const res = await this.send(`/api/workspaces/${id}/share`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    });
+    return workspace.parse(await res.json());
+  }
+
   // --- Account SSH keys ---
 
   /** The caller's registered SSH public keys. */

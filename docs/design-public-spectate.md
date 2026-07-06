@@ -2,10 +2,12 @@
 
 # Design proposal: read-only workspace view ("spectate")
 
-> Status: **PROPOSAL — partially signed off** (2026-07-06). User decisions
-> received: spectators must be **authenticated EDD users with at least the
-> `viewer` role** (no anonymous/public links), and spectator count is
-> **unbounded** (no artificial cap). Remaining open decisions at the bottom.
+> Status: **IMPLEMENTED (v1)** (2026-07-06) per the decisions below; the three
+> proposed defaults (Monaco-only v1, no scrollback backfill, live-only) shipped
+> as proposed. v1 simplification: the relay is **per-replica** — the spectator
+> client retries its WebSocket (bounded, "connecting…" feedback) until it lands
+> on the replica holding the owner's publish stream; the replica-to-replica
+> internal bridge is the recorded follow-up in `DO_NEXT.md`.
 
 ## Requirement (user, 2026-07-06, refined)
 

@@ -80,6 +80,8 @@ export const workspace = z.object({
   diskTotalBytes: z.number().positive().optional(),
   /** When teardown finished — the undelete retention window counts from here. */
   terminatedAt: z.iso.datetime().optional(),
+  /** Owner-controlled spectate flag: viewers may watch a read-only mirror. */
+  shareEnabled: z.boolean().optional(),
   // Provisioned sizing (joined server-side from deployment config — the same
   // values the compute provider provisions and the cost model bills).
   resources: z
@@ -139,6 +141,10 @@ export const heartbeatRequest = z.object({
     .optional(),
 });
 export type HeartbeatRequest = z.infer<typeof heartbeatRequest>;
+
+/** Toggle the owner's spectate (read-only mirror) flag. */
+export const shareRequest = z.object({ enabled: z.boolean() });
+export type ShareRequest = z.infer<typeof shareRequest>;
 
 /** A security event reported by the in-workspace guard (agent machine-auth). */
 export const securityEventRequest = z.object({
@@ -277,6 +283,7 @@ export const workspaceDetail = z.object({
   diskUsedBytes: z.number().nonnegative().optional(),
   diskTotalBytes: z.number().positive().optional(),
   terminatedAt: z.iso.datetime().optional(),
+  shareEnabled: z.boolean().optional(),
   /** Lifecycle actions valid from this state (server-computed; see {@link workspace}). */
   availableActions: z.array(workspaceAction),
 });

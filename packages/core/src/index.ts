@@ -94,6 +94,7 @@ export {
   markProvisioned,
   markStopped,
   markTerminated,
+  setShare,
   undeleteWorkspace,
   provision,
   markTaskLost,

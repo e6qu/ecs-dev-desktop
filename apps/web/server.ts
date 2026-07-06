@@ -10,17 +10,32 @@
  */
 import { createServer } from "node:http";
 
-import { workspaceIdFromPath } from "@edd/core";
+import { workspaceId, workspaceIdFromPath, type WorkspaceId } from "@edd/core";
 import next from "next";
+import { WebSocketServer } from "ws";
 
+import { NO_PUBLISHER_CODE, spectateRelay } from "./lib/spectate-relay";
 import { PRESENCE_SWEEP_MS, sweepPresence, workspacePresence } from "./lib/workspace-presence";
 import {
+  authorizeSpectate,
   authorizeWorkspace,
   editorTokenRedirect,
   proxyWorkspaceHttp,
   proxyWorkspaceUpgrade,
   resolveWorkspaceUpstream,
+  type SpectateRole,
 } from "./lib/workspace-proxy";
+
+/** Parse `/api/spectate/<workspace-id>/(publish|subscribe)` upgrade paths. */
+function spectatePathParts(url: string): { wsId: WorkspaceId; role: SpectateRole } | undefined {
+  const m = /^\/api\/spectate\/([\w-]+)\/(publish|subscribe)$/.exec(url.split("?")[0] ?? "");
+  if (m?.[1] === undefined) return undefined;
+  // The alternation in the pattern guarantees group 2 is exactly one of the roles.
+  return { wsId: workspaceId(m[1]), role: m[2] as SpectateRole };
+}
+
+/** Spectate WebSocket endpoint (noServer: upgrades are routed manually below). */
+const spectateWss = new WebSocketServer({ noServer: true });
 
 const dev = process.env.NODE_ENV !== "production";
 const port = Number(process.env.PORT ?? "3700");
@@ -71,6 +86,44 @@ const server = createServer((req, res) => {
 });
 
 server.on("upgrade", (req, socket, head) => {
+  const spectate = spectatePathParts(req.url ?? "");
+  if (spectate !== undefined) {
+    void (async () => {
+      const authz = await authorizeSpectate(req, spectate.wsId, spectate.role);
+      if (authz.kind !== "allow") {
+        socket.write("HTTP/1.1 403 Forbidden\r\nconnection: close\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+      spectateWss.handleUpgrade(req, socket, head, (client) => {
+        if (spectate.role === "publish") {
+          const unpublish = spectateRelay.publish(spectate.wsId, client);
+          client.on("message", (data: Buffer | ArrayBuffer | Buffer[]) => {
+            const buf = Array.isArray(data)
+              ? Buffer.concat(data)
+              : data instanceof ArrayBuffer
+                ? Buffer.from(data)
+                : data;
+            spectateRelay.forward(spectate.wsId, buf.toString("utf8"));
+          });
+          client.once("close", unpublish);
+        } else {
+          const unsubscribe = spectateRelay.subscribe(spectate.wsId, client);
+          if (unsubscribe === null) {
+            // No publisher on THIS replica: tell the client to retry — a new TCP
+            // connection may land on the replica holding the owner's stream (v1
+            // per-replica relay; the internal cross-replica bridge is a follow-up).
+            client.close(NO_PUBLISHER_CODE, "no publisher on this replica");
+            return;
+          }
+          client.once("close", unsubscribe);
+          // Spectators deliberately count toward NOTHING (not presence/idle):
+          // a viewer must never keep a workspace running or billing.
+        }
+      });
+    })();
+    return;
+  }
   const wsId = workspaceIdFromPath(req.url ?? "");
   if (wsId === undefined) {
     // Next's own upgrades (Turbopack HMR in dev) — let Next handle them.
