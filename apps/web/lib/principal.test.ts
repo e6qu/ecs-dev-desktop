@@ -3,7 +3,21 @@ import { ownerId } from "@edd/core";
 import type { Session } from "next-auth";
 import { describe, expect, it } from "vitest";
 
-import { principalFromSession, withPersona } from "./principal";
+import { cookieValue, principalFromSession, withPersona } from "./principal";
+
+describe("cookieValue", () => {
+  it("returns a malformed percent-escape raw instead of throwing (fuzz counterexample)", () => {
+    // Pinned fast-check counterexample (seed 929992131): decodeURIComponent
+    // throws URIError on a truncated escape, and the Cookie header is
+    // attacker-controlled on every request -- this must never crash a handler.
+    expect(cookieValue("_=%", "_")).toBe("%");
+    expect(cookieValue("edd-persona=%E0%A4%A", "edd-persona")).toBe("%E0%A4%A");
+  });
+
+  it("still URL-decodes well-formed values", () => {
+    expect(cookieValue("a=hello%20world; b=2", "a")).toBe("hello world");
+  });
+});
 
 describe("principalFromSession", () => {
   it("returns null when there is no session", () => {

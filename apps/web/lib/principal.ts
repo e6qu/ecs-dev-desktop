@@ -49,13 +49,24 @@ export function principalFromSession(session: Session | null): Principal | null 
 }
 
 /** Parse one cookie's value out of a `Cookie:` header (URL-decoded), or undefined
- * when absent. Exported for property testing (never throws on a malformed header). */
+ * when absent. Exported for property testing (never throws on a malformed header:
+ * `decodeURIComponent` throws a URIError on truncated percent-escapes like a bare
+ * `%` — and the Cookie header is attacker-controlled on every request — so a value
+ * that fails to decode is returned raw instead; downstream validators reject
+ * garbage values anyway). */
 export function cookieValue(cookieHeader: string | null, name: string): string | undefined {
   if (cookieHeader === null) return undefined;
   for (const part of cookieHeader.split(";")) {
     const eq = part.indexOf("=");
     if (eq === -1) continue;
-    if (part.slice(0, eq).trim() === name) return decodeURIComponent(part.slice(eq + 1).trim());
+    if (part.slice(0, eq).trim() === name) {
+      const raw = part.slice(eq + 1).trim();
+      try {
+        return decodeURIComponent(raw);
+      } catch {
+        return raw;
+      }
+    }
   }
   return undefined;
 }
