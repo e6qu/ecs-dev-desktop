@@ -6,8 +6,8 @@
 post-launch feature wave is COMPLETE and deployed — connection-based idle (5-min
 cooldown), per-workspace monitoring, claude/codex agent-first editor modes, 4h rolling
 sessions, 7-day undelete, and spectate v1 (owner-shared read-only mirror, viewer+
-only). Remaining: user live-testing, the legacy-snapshot keep/delete call, and the PR
-decision; branch `fix/install-missing-param-logic` still unmerged/no PR by request.), per-workspace
+only). Remaining: user live-testing; the legacy snapshot was deleted on user decision and
+the branch is up as PR #192.), per-workspace
 monitoring, claude/codex agent-first editor modes, 4h rolling sessions, and 7-day
 undelete (terminated tombstones + reconciler retention purge); the live-found
 reconciler `dynamodb:DeleteItem` gap that stalled ALL deletions is fixed; spectate
