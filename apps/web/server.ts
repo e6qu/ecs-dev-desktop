@@ -39,9 +39,17 @@ const spectateWss = new WebSocketServer({ noServer: true });
 
 const dev = process.env.NODE_ENV !== "production";
 const port = Number(process.env.PORT ?? "3700");
-const hostname = process.env.HOSTNAME ?? "0.0.0.0";
+// Bind ALL interfaces (0.0.0.0), NOT process.env.HOSTNAME. ECS/Docker injects the
+// container's own hostname into HOSTNAME, so reading it here bound the server to a
+// single interface (the task ENI) — the ALB (hitting the ENI IP) still worked, but
+// the container health check hits `localhost:3000`, which the server was no longer
+// listening on, so ECS marked tasks UNHEALTHY and SIGTERM-killed them mid-rollout
+// (exit 143) → deployment circuit-breaker → failed deploys. 0.0.0.0 covers both the
+// ENI IP (ALB) and loopback (health check). Override only via an explicit, non-ECS
+// env for local edge cases.
+const bindHost = process.env.EDD_BIND_HOST ?? "0.0.0.0";
 
-const app = next({ dev, hostname, port });
+const app = next({ dev, hostname: bindHost, port });
 await app.prepare();
 // Both handlers must be obtained AFTER prepare() — they touch the initialized server.
 const handleRequest = app.getRequestHandler();
@@ -159,5 +167,5 @@ setInterval(() => {
   void sweepPresence();
 }, PRESENCE_SWEEP_MS).unref();
 
-server.listen(port, hostname);
-process.stdout.write(`edd control plane listening on http://${hostname}:${String(port)}\n`);
+server.listen(port, bindHost);
+process.stdout.write(`edd control plane listening on http://${bindHost}:${String(port)}\n`);

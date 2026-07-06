@@ -58,6 +58,13 @@ repo=$(cd "$here/.." && pwd)
 registry="${account}.dkr.ecr.${region}.amazonaws.com"
 archs="${EDD_BUILD_ARCHS:-amd64 arm64}"
 
+# Deploy provenance baked into the control-plane image: the commit it was built
+# from (the image tag is the short sha) and the UTC build time. Surfaced in the
+# app footer so operators can see, at a glance, which build is live and how old
+# it is. Computed once here so both arch builds carry the same timestamp.
+build_sha="${tag}"
+build_time="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
 if ! command -v docker >/dev/null 2>&1; then
   echo "edd: docker (or podman aliased as docker) not found on PATH" >&2
   exit 1
@@ -147,7 +154,8 @@ push_manifest() { # <repo-short>
 }
 
 # 1. Control-plane app (also the reconciler image — same image, command override).
-build_push_arch control-plane "$repo/apps/web/Dockerfile" "$repo"
+build_push_arch control-plane "$repo/apps/web/Dockerfile" "$repo" \
+  --build-arg "EDD_BUILD_SHA=${build_sha}" --build-arg "EDD_BUILD_TIME=${build_time}"
 
 # 2. SSH gateway (IMMUTABLE ECR repo: each tag is pushed ONCE; never overwrite).
 # Context is the repo root, matching Dockerfile.proxy's repo-root-relative COPY paths

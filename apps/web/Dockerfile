@@ -47,5 +47,11 @@ WORKDIR /repo/apps/web
 # 0.0.0.0 so it is reachable in-network. The custom server (server.ts, run via tsx)
 # serves the app AND the path-based `/w/<id>/` workspace editor proxy.
 EXPOSE 3700
-ENV NODE_ENV=production PORT=3700 HOSTNAME=0.0.0.0
+# Deploy provenance, baked at build so the running image self-reports which commit
+# it was built from and when (surfaced in the app footer). Empty in a plain local
+# build; the publish pipeline passes the short git sha + UTC build timestamp.
+ARG EDD_BUILD_SHA=""
+ARG EDD_BUILD_TIME=""
+ENV NODE_ENV=production PORT=3700 HOSTNAME=0.0.0.0 \
+    EDD_BUILD_SHA=$EDD_BUILD_SHA EDD_BUILD_TIME=$EDD_BUILD_TIME
 CMD ["pnpm", "exec", "tsx", "server.ts"]

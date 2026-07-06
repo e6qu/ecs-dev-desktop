@@ -122,6 +122,13 @@ export const entra = {
  */
 export const SSH_BASE_DOMAIN = process.env.EDD_SSH_BASE_DOMAIN ?? "";
 
+/** Deploy provenance baked into the control-plane image at build time (see
+ * apps/web/Dockerfile + publish-images.sh): the short git sha it was built from and
+ * the UTC build timestamp (ISO-8601). Empty strings in a plain local/dev build. The
+ * app footer surfaces these so operators can see which build is live and how old. */
+export const DEPLOY_SHA = process.env.EDD_BUILD_SHA ?? "";
+export const DEPLOY_TIME = process.env.EDD_BUILD_TIME ?? "";
+
 /** How stale the cost-rollup checkpoints may get before the reconciler regenerates them.
  * Bounds the report's replay tail (so a cost read stays O(recent) instead of full-scanning
  * the whole append-only ledger) without pricing the entire ledger every single sweep. */

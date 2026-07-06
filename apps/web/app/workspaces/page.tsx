@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { WorkspaceDto } from "@edd/api-contracts";
 import { defineAbilityFor } from "@edd/authz";
+import { DEPLOY_SHA, DEPLOY_TIME } from "@edd/config";
 import Link from "next/link";
 
+import { DeployFooter } from "../../components/DeployFooter";
 import { LiveRefresh } from "../../components/LiveRefresh";
 import { StateBlock } from "../../components/StateBlock";
 import { WorkspaceCard } from "../../components/WorkspaceCard";
@@ -135,6 +137,8 @@ export default async function WorkspacesPage({
           </div>
         </section>
       )}
+
+      <DeployFooter sha={DEPLOY_SHA} time={DEPLOY_TIME} />
     </>
   );
 }
