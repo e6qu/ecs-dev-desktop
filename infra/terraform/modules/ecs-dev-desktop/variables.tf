@@ -388,9 +388,9 @@ variable "reconciler_memory" {
 # ---- Scale-to-zero tuning (injected into both the reconciler and workspace tasks) ----
 
 variable "idle_threshold_ms" {
-  description = "Milliseconds of inactivity before a running workspace is scaled to zero. Default: 15 min (product decision, 2026-07-06)."
+  description = "Milliseconds after a workspace stops being LOADED (no editor tab incl. background tabs, no SSH session, no in-container activity) before it is snapshotted and scaled to zero. Default: 5 min (product decision, 2026-07-06)."
   type        = number
-  default     = 900000
+  default     = 300000
 }
 
 variable "snapshot_interval_ms" {

@@ -58,9 +58,14 @@ describe("authorizeWorkspace (in-app proxy authz glue)", () => {
   });
 
   it("allows the owner (session uid === workspace ownerId)", async () => {
-    getTokenMock.mockResolvedValue({ uid: "u-1" });
+    getTokenMock.mockResolvedValue({ uid: "u-1", exp: 1_900_000_000 });
     inspectMock.mockResolvedValue({ workspace: { ownerId: "u-1" } });
-    expect(await authorizeWorkspace(req(), WS)).toEqual({ kind: "allow" });
+    // `allow` carries the session's exp (seconds -> ms) so presence tracking can
+    // cap how long a held connection counts as "user present".
+    expect(await authorizeWorkspace(req(), WS)).toEqual({
+      kind: "allow",
+      sessionExpiresAtMs: 1_900_000_000_000,
+    });
   });
 
   it("forbids a different authenticated user", async () => {
@@ -72,7 +77,7 @@ describe("authorizeWorkspace (in-app proxy authz glue)", () => {
   it("allows an admin to reach a workspace they do not own", async () => {
     getTokenMock.mockResolvedValue({ uid: "u-1", role: "admin" });
     inspectMock.mockResolvedValue({ workspace: { ownerId: "u-2" } });
-    expect(await authorizeWorkspace(req(), WS)).toEqual({ kind: "allow" });
+    expect(await authorizeWorkspace(req(), WS)).toMatchObject({ kind: "allow" });
   });
 
   it("forbids a non-admin whose session carries no subject (fails closed)", async () => {

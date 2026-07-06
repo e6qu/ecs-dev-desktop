@@ -192,11 +192,19 @@ resource "aws_appautoscaling_policy" "control_plane_cpu" {
 resource "aws_ecs_task_definition" "reconciler" {
   family                   = "${var.name}-reconciler"
   requires_compatibilities = ["FARGATE"]
-  network_mode             = "awsvpc"
-  cpu                      = tostring(var.reconciler_cpu)
-  memory                   = tostring(var.reconciler_memory)
-  execution_role_arn       = aws_iam_role.execution.arn
-  task_role_arn            = aws_iam_role.reconciler.arn
+  # Keep the old revision ACTIVE when a new one replaces it: the EventBridge
+  # schedule targets a SPECIFIC revision, and terraform updates the schedule
+  # only after replacing the task definition -- without skip_destroy, every
+  # apply had a window where the schedule launched a just-deregistered revision
+  # and the run silently landed in the DLQ instead of sweeping (found live: 21
+  # accumulated DLQ messages, each a missed reconciler run). Old revisions are
+  # inert (nothing launches them once the schedule repoints).
+  skip_destroy       = true
+  network_mode       = "awsvpc"
+  cpu                = tostring(var.reconciler_cpu)
+  memory             = tostring(var.reconciler_memory)
+  execution_role_arn = aws_iam_role.execution.arn
+  task_role_arn      = aws_iam_role.reconciler.arn
 
   container_definitions = jsonencode([{
     name        = "reconciler"

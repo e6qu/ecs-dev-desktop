@@ -19,6 +19,9 @@
 #      touches a PTY (e.g. editing a buffer with the mouse and command palette).
 #   3. CPU load — 1-minute loadavg at/above a threshold. Catches genuinely
 #      running compute detached from any terminal (background builds, tests).
+#   4. An ESTABLISHED SSH connection — an attached session counts as "loaded"
+#      even while quiet (same rule as a background editor tab), read from
+#      /proc/net/tcp{,6} so it needs no extra tooling in the image.
 #
 # This script runs INSIDE the Debian-based golden image only (GNU coreutils
 # guaranteed); it is not one of the repo's host-portable scripts.
@@ -74,6 +77,14 @@ newest_mtime() {
   printf '%s' "${_newest}"
 }
 
+# Any ESTABLISHED TCP connection with local port 22 (hex 0016, state 01) — an
+# attached SSH session. /proc/net/tcp columns: local_address is $2 ("ADDR:PORT"
+# in hex), connection state is $4.
+ssh_established() {
+  awk 'FNR > 1 { split($2, l, ":"); if (l[2] == "0016" && $4 == "01") found = 1 } END { exit !found }' \
+    /proc/net/tcp /proc/net/tcp6 2>/dev/null
+}
+
 # "true" when the workspace saw real usage within ACTIVITY_WINDOW_S — see header.
 active_json() {
   _now=$(date +%s)
@@ -87,6 +98,12 @@ active_json() {
 
   # loadavg comparison in awk (sh has no float arithmetic).
   if awk -v min="${LOAD_MIN}" '{exit !($1 >= min)}' /proc/loadavg 2>/dev/null; then
+    printf 'true'
+    return 0
+  fi
+
+  # An attached SSH session counts as "loaded" even while quiet.
+  if ssh_established; then
     printf 'true'
     return 0
   fi

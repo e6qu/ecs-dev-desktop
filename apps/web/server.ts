@@ -13,6 +13,7 @@ import { createServer } from "node:http";
 import { workspaceIdFromPath } from "@edd/core";
 import next from "next";
 
+import { PRESENCE_SWEEP_MS, sweepPresence, workspacePresence } from "./lib/workspace-presence";
 import {
   authorizeWorkspace,
   editorTokenRedirect,
@@ -83,6 +84,12 @@ server.on("upgrade", (req, socket, head) => {
       socket.destroy();
       return;
     }
+    // Presence: this live editor socket means a user has the workspace LOADED (a
+    // background tab counts) — tracked until the socket closes or the authorizing
+    // session expires, whichever is first. The periodic sweep below turns tracked
+    // presence into activity heartbeats so the reconciler keeps the workspace up.
+    const untrack = workspacePresence.track(wsId, authz.sessionExpiresAtMs);
+    socket.once("close", untrack);
     try {
       proxyWorkspaceUpgrade(await resolveWorkspaceUpstream(wsId), req, socket, head);
     } catch {
@@ -91,6 +98,13 @@ server.on("upgrade", (req, socket, head) => {
     }
   })();
 });
+
+// Presence sweep: refresh lastActivity for every workspace with a live editor
+// socket on THIS replica (each replica sweeps its own connections). unref() so
+// the timer never holds the process open on shutdown.
+setInterval(() => {
+  void sweepPresence();
+}, PRESENCE_SWEEP_MS).unref();
 
 server.listen(port, hostname);
 process.stdout.write(`edd control plane listening on http://${hostname}:${String(port)}\n`);
