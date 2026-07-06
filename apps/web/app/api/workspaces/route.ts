@@ -58,8 +58,9 @@ async function handlePOST(req: Request) {
   const catalog = getCatalog();
   const enabled = await catalog.assertEnabled(image);
   if (!enabled.ok) return domainErrorResponse(enabled.error);
-  // The editor is the base-image's choice (OpenVSCode by default) — flows to EDD_EDITOR_MODE.
-  const editor = await catalog.editorForImage(image);
+  // The editor: the caller's per-session choice, else the base-image's catalog
+  // default (OpenVSCode when neither specifies) — flows to EDD_EDITOR_MODE.
+  const editor = parsed.data.editor ?? (await catalog.editorForImage(image));
 
   const cp = await getControlPlane();
 

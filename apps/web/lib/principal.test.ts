@@ -3,7 +3,13 @@ import { ownerId } from "@edd/core";
 import type { Session } from "next-auth";
 import { describe, expect, it } from "vitest";
 
-import { cookieValue, principalFromSession, withPersona } from "./principal";
+import {
+  cookieValue,
+  decodePersonaCookie,
+  encodePersonaCookie,
+  principalFromSession,
+  withPersona,
+} from "./principal";
 
 describe("cookieValue", () => {
   it("returns a malformed percent-escape raw instead of throwing (fuzz counterexample)", () => {
@@ -33,6 +39,20 @@ describe("principalFromSession", () => {
   });
 });
 
+describe("persona cookie schema (encode/decode)", () => {
+  it("round-trips the current version", () => {
+    expect(decodePersonaCookie(encodePersonaCookie("viewer"))).toBe("viewer");
+  });
+
+  it("reads any non-current shape as absent — never an error (§6.5a)", () => {
+    expect(decodePersonaCookie(undefined)).toBeUndefined();
+    expect(decodePersonaCookie("viewer")).toBeUndefined(); // legacy un-versioned value
+    expect(decodePersonaCookie("999:viewer")).toBeUndefined(); // future/foreign version
+    expect(decodePersonaCookie("")).toBeUndefined();
+    expect(decodePersonaCookie("::")).toBeUndefined();
+  });
+});
+
 describe("withPersona", () => {
   const admin = { id: ownerId("u1"), role: "admin" as const };
 
@@ -41,15 +61,20 @@ describe("withPersona", () => {
   });
 
   it("downgrades role and records realRole when a lower persona is set", () => {
-    expect(withPersona(admin, "viewer")).toEqual({ ...admin, role: "viewer", realRole: "admin" });
+    expect(withPersona(admin, encodePersonaCookie("viewer"))).toEqual({
+      ...admin,
+      role: "viewer",
+      realRole: "admin",
+    });
   });
 
   it("ignores a persona that would escalate above the real role", () => {
     const member = { id: ownerId("u2"), role: "member" as const };
-    expect(withPersona(member, "admin")).toBe(member);
+    expect(withPersona(member, encodePersonaCookie("admin"))).toBe(member);
   });
 
-  it("ignores an invalid persona cookie value", () => {
-    expect(withPersona(admin, "root")).toBe(admin);
+  it("ignores an invalid or legacy-schema persona cookie value", () => {
+    expect(withPersona(admin, encodePersonaCookie("root"))).toBe(admin);
+    expect(withPersona(admin, "viewer")).toBe(admin); // pre-versioning value → no override
   });
 });

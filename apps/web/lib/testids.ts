@@ -38,6 +38,8 @@ export const TESTID = {
   sessionModeOption: "session-mode-option",
   /** The single prominent Start button on New session. */
   sessionStart: "session-start",
+  /** The interface (editor/agent) selector on New session. Attr: `data-editor`. */
+  sessionEditor: "session-editor",
   /** The live per-workspace status hero on /workspaces/[id]. Attrs: `data-status`
    * (state), `data-ready` ("1" once the functional self-report is ok). */
   workspaceStatusHero: "workspace-status-hero",

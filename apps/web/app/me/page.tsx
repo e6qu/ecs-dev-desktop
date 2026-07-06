@@ -5,6 +5,7 @@ import Link from "next/link";
 import { PersonaSwitcher } from "../../components/PersonaSwitcher";
 import { StateBlock } from "../../components/StateBlock";
 import { getPagePrincipal } from "../../lib/principal";
+import { resetCookiesAction } from "../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -64,6 +65,18 @@ export default async function MePage() {
             manage SSH keys
           </Link>
         </p>
+      </section>
+      <section className="stack" style={{ gap: 10 }}>
+        <h2>Session &amp; cookies</h2>
+        <p className="mono" style={{ color: "var(--dim)", fontSize: 12 }}>
+          Sessions last 4 hours and refresh automatically while you&apos;re active. If anything ever
+          looks stuck, reset the app&apos;s cookies — it signs you out and gives you a clean slate.
+        </p>
+        <form action={resetCookiesAction}>
+          <button className="btn" type="submit">
+            reset cookies
+          </button>
+        </form>
       </section>
     </>
   );

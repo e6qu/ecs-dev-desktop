@@ -2,6 +2,7 @@
 "use client";
 
 import { ApiClient } from "@edd/api-client";
+import { editorKind, type EditorKindDto } from "@edd/api-contracts";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -54,6 +55,8 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
   const router = useRouter();
   const [image, setImage] = useState(images[0]?.image ?? "");
   const [mode, setMode] = useState<StartMode>("blank");
+  // Per-session interface override; "" = the base image's catalog default.
+  const [editor, setEditor] = useState<"" | EditorKindDto>("");
   const [namespaces, setNamespaces] = useState<Namespace[]>([]);
   const [ghConnected, setGhConnected] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -147,6 +150,7 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
   async function launch(repoUrl?: string, repoRef?: string): Promise<string> {
     const ws = await api.createWorkspace({
       baseImage: image,
+      ...(editor === "" ? {} : { editor }),
       ...(repoUrl !== undefined ? { repoUrl } : {}),
       ...(repoRef !== undefined ? { repoRef } : {}),
     });
@@ -429,6 +433,31 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
             )}
           </div>
         )}
+      </section>
+
+      <section className="stack" style={{ gap: 12 }}>
+        <div className="mono" style={{ color: "var(--dim)", fontSize: 12 }}>
+          interface
+        </div>
+        <select
+          className="select"
+          aria-label="session interface"
+          data-testid={TESTID.sessionEditor}
+          data-editor={editor}
+          value={editor}
+          onChange={(e) => {
+            // Zod-narrow instead of a cast (§6.1): an unknown value falls back to default.
+            const parsed = editorKind.safeParse(e.target.value);
+            setEditor(parsed.success ? parsed.data : "");
+          }}
+          style={{ alignSelf: "flex-start" }}
+        >
+          <option value="">environment default</option>
+          <option value="openvscode">OpenVSCode — full IDE in the browser</option>
+          <option value="monaco">Monaco — lightweight first-party editor</option>
+          <option value="claude">Claude Code — agent-first terminal session</option>
+          <option value="codex">Codex — agent-first terminal session</option>
+        </select>
       </section>
 
       <section className="stack" style={{ gap: 8 }}>

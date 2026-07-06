@@ -34,9 +34,11 @@ export type DesiredStateDto = z.infer<typeof desiredState>;
 export const workspaceAction = z.enum(["start", "stop", "snapshot", "delete"]);
 export type WorkspaceActionDto = z.infer<typeof workspaceAction>;
 
-/** Which editor a workspace serves (openvscode = OpenVSCode Server; monaco = the first-party
- * lightweight editor). Mirrors `@edd/core`'s EditorKind across the API boundary. */
-export const editorKind = z.enum(["openvscode", "monaco"]);
+/** Which primary interface a workspace serves (mirrors `@edd/core`'s EditorKind):
+ * openvscode = OpenVSCode Server; monaco = the first-party lightweight editor;
+ * claude / codex = agent-first sessions (the Monaco terminal boots straight into
+ * the CLI — neither vendor ships a self-hostable web UI). */
+export const editorKind = z.enum(["openvscode", "monaco", "claude", "codex"]);
 export type EditorKindDto = z.infer<typeof editorKind>;
 
 /** The RBAC roles (mirrors `@edd/authz` `ROLES` — kept here so the contract has no dep on authz;
@@ -136,6 +138,8 @@ export const createWorkspaceRequest = z.object({
   repoUrl: z.url().startsWith("https://").optional(),
   /** Optional branch/tag/SHA to check out (defaults to the repo's default). */
   repoRef: z.string().trim().min(1).max(255).optional(),
+  /** Per-session interface override; absent = the base image's catalog choice. */
+  editor: editorKind.optional(),
 });
 export type CreateWorkspaceRequest = z.infer<typeof createWorkspaceRequest>;
 

@@ -13,6 +13,12 @@ interface TerminalDeps {
   readonly root: string;
   readonly basePath: string;
   readonly token?: string;
+  /** Program each terminal boots into instead of a plain shell — the agent-first
+   * editor modes (`claude` / `codex`) set this via EDD_TERMINAL_COMMAND. Runs
+   * under a login shell (`$SHELL -lc "exec …"`) so it gets the image's full PATH;
+   * when it exits, the PTY (and tab) closes — a new tab starts it fresh. Trusted
+   * operator config from the container entrypoint, never user input. */
+  readonly command?: string;
 }
 
 /** Decode a ws frame (Buffer / ArrayBuffer / Buffer[]) to a UTF-8 string. */
@@ -72,7 +78,7 @@ async function loadPty(): Promise<typeof import("node-pty") | null> {
 const WELCOME_BANNER =
   "\x1b[2mTip: when 'claude' or 'codex' asks you to sign in, the browser redirect can't reach this remote workspace -- paste the code shown in the browser instead of waiting for it.\x1b[0m\r\n";
 
-async function startShell(ws: WebSocket, root: string): Promise<void> {
+async function startShell(ws: WebSocket, root: string, command?: string): Promise<void> {
   const nodePty = await loadPty();
   if (nodePty === null) {
     ws.close(1011, "terminal unavailable");
@@ -80,7 +86,11 @@ async function startShell(ws: WebSocket, root: string): Promise<void> {
   }
   if (ws.readyState === ws.OPEN) ws.send(WELCOME_BANNER);
   const shell = process.env.SHELL ?? "/bin/bash";
-  const pty = nodePty.spawn(shell, [], {
+  // Agent-first modes boot the terminal straight into the configured program via a
+  // login shell (full image PATH); `exec` replaces the shell so the program's exit
+  // closes the PTY. A plain shell otherwise.
+  const args = command === undefined ? [] : ["-lc", `exec ${command}`];
+  const pty = nodePty.spawn(shell, args, {
     name: "xterm-color",
     cwd: root,
     env: process.env,
@@ -130,7 +140,7 @@ export function attachTerminal(server: Server, deps: TerminalDeps): void {
       }
     }
     wss.handleUpgrade(req, socket, head, (ws) => {
-      void startShell(ws, deps.root);
+      void startShell(ws, deps.root, deps.command);
     });
   });
 }

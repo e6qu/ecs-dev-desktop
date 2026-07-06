@@ -7,6 +7,7 @@ import { TopNav } from "../components/TopNav";
 import { HelpToggle } from "../components/HelpToggle";
 import { PersonaSwitcher } from "../components/PersonaSwitcher";
 import { getPagePrincipal } from "../lib/principal";
+import { resetCookiesAction } from "./actions";
 import { signOutAction } from "./login/actions";
 import "./globals.css";
 
@@ -45,6 +46,15 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                 role={principal.role}
                 realRole={principal.realRole ?? principal.role}
               />
+              <form action={resetCookiesAction}>
+                <button
+                  className="btn"
+                  type="submit"
+                  title="Delete all of this app's cookies and start over at the login page"
+                >
+                  reset cookies
+                </button>
+              </form>
               <Link href="/settings/ssh-keys" className="btn">
                 ssh keys
               </Link>

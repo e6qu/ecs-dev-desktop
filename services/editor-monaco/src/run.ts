@@ -21,11 +21,16 @@ const token =
 // The SPA is bundled next to this server (dist/spa) at image build.
 const spaDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "spa");
 
+// Agent-first editor modes (EDD_EDITOR_MODE=claude|codex): the entrypoint sets
+// EDD_TERMINAL_COMMAND so every terminal boots straight into the agent CLI.
+const terminalCommand = process.env.EDD_TERMINAL_COMMAND;
+
 const server = createEditorServer({
   root,
   basePath,
   spaDir,
   ...(token === undefined || token === "" ? {} : { token }),
+  ...(terminalCommand === undefined || terminalCommand === "" ? {} : { terminalCommand }),
 });
 
 server.listen(port, () => {

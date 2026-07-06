@@ -21,6 +21,12 @@ export const DEV_ROLE_COOKIE = "edd-dev-role";
  * every time it's read). Applies in both dev-auth and production, independent of
  * the IdP/session mechanism. */
 export const PERSONA_COOKIE = "edd-persona";
+/** Schema version prefix inside the persona cookie's value (`<version>:<role>`),
+ * per §6.5a: persisted state that outlives code changes carries a version, and a
+ * reader accepts ONLY the current one — any other shape reads as "no override"
+ * (fail-soft; the next write replaces it), never an error the user must clear
+ * cookies to escape. Bump when the value shape changes. */
+export const PERSONA_COOKIE_SCHEMA_VERSION = "1";
 
 /** Comma-separated IdP group ids/slugs that grant the admin role. */
 export const ADMIN_GROUPS_ENV = "EDD_ADMIN_GROUPS";

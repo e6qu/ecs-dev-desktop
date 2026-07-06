@@ -9,6 +9,7 @@ import {
   DEV_ROLE_COOKIE,
   DEV_USER_COOKIE,
   PERSONA_COOKIE,
+  PERSONA_COOKIE_SCHEMA_VERSION,
   ROLE_HEADER,
   USER_ID_HEADER,
 } from "./constants";
@@ -18,14 +19,32 @@ export function devAuthEnabled(): boolean {
   return process.env[DEV_AUTH_ENV] === DEV_AUTH_ENABLED;
 }
 
+/** Decode the persona cookie's `<version>:<role>` value. Any shape other than the
+ * CURRENT schema version — a legacy un-prefixed value, a future version, or plain
+ * garbage — reads as "no override" (§6.5a: loaders accept only the current
+ * version, and a stale cookie must degrade, never block, the user; the next
+ * persona write replaces it). Exported for property testing. */
+export function decodePersonaCookie(raw: string | undefined): string | undefined {
+  if (raw === undefined) return undefined;
+  const sep = raw.indexOf(":");
+  if (sep === -1) return undefined;
+  if (raw.slice(0, sep) !== PERSONA_COOKIE_SCHEMA_VERSION) return undefined;
+  return raw.slice(sep + 1);
+}
+
+/** Encode a persona role into the cookie's current `<version>:<role>` shape. */
+export function encodePersonaCookie(role: string): string {
+  return `${PERSONA_COOKIE_SCHEMA_VERSION}:${role}`;
+}
+
 /** Apply a "view as" persona override on top of the real principal (downgrade-only,
- * see {@link effectiveRole}). Unchanged when no override cookie is present or it
- * doesn't differ from the real role. */
+ * see {@link effectiveRole}). Unchanged when no override cookie is present, it has
+ * a stale/foreign schema, or it doesn't differ from the real role. */
 export function withPersona(
   principal: Principal,
   personaCookieValue: string | undefined,
 ): Principal {
-  const effective = effectiveRole(principal.role, personaCookieValue);
+  const effective = effectiveRole(principal.role, decodePersonaCookie(personaCookieValue));
   return effective === principal.role
     ? principal
     : { ...principal, role: effective, realRole: principal.role };

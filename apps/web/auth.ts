@@ -25,6 +25,11 @@ import { errorField, log } from "./lib/logger";
  */
 const githubEnterpriseUrl = process.env[GITHUB_URL_ENV];
 
+/** Session lifetime: 4 hours, rolling (see the `session` block below). */
+const SESSION_MAX_AGE_S = 4 * 60 * 60;
+/** Re-issue (roll) the session cookie when used more than 30 min after its last issue. */
+const SESSION_UPDATE_AGE_S = 30 * 60;
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
     GitHub({
@@ -49,7 +54,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       client: { token_endpoint_auth_method: "client_secret_post" },
     }),
   ],
-  session: { strategy: "jwt" },
+  // 4-hour sessions with a rolling refresh (product decision, 2026-07-06): a JWT
+  // session cookie is re-issued with a fresh expiry whenever it's used more than
+  // `updateAge` after its last issue -- so an ACTIVE user is never logged out
+  // mid-work, while an idle session expires 4 h after its last refresh. This is
+  // Auth.js's built-in rolling mechanism, no persistent session store needed; a
+  // DB-backed session (revocation, true refresh tokens) can be layered on later
+  // via the DynamoDB adapter if required. An expired/undecodable session cookie
+  // is treated by Auth.js as signed-out -- never an error page -- so a stale
+  // cookie can't block a user (they just land on /login).
+  session: { strategy: "jwt", maxAge: SESSION_MAX_AGE_S, updateAge: SESSION_UPDATE_AGE_S },
   callbacks: {
     async jwt({ token, account, profile }) {
       if (account && profile) {

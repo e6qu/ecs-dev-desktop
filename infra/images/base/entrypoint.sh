@@ -125,14 +125,27 @@ fi
 # user's own extensions still install into the volume's extensions dir below.)
 
 # Editor selection. The control plane sets EDD_EDITOR_MODE from the workspace's editor choice
-# (its base-image catalog entry): "monaco" -> the first-party Monaco editor server; anything else
-# (including unset) -> OpenVSCode Server, the historical default. The Monaco server (bundled into
-# the image at /opt/edd-editor-monaco) listens on :3000 under /w/<id>/ and reads the same
-# coordinates from the environment (EDD_WORKSPACE_ID, CONNECTION_TOKEN,
-# EDD_DISABLE_CONNECTION_TOKEN), so the in-app proxy reaches it exactly like OpenVSCode.
-if [ "${EDD_EDITOR_MODE:-openvscode}" = "monaco" ]; then
-  exec gosu workspace node /opt/edd-editor-monaco/server.js
-fi
+# (a per-session pick at create, else its base-image catalog entry):
+#   monaco         -> the first-party Monaco editor server;
+#   claude / codex -> agent-first sessions: the same Monaco server, but every
+#                     terminal boots straight into the agent CLI (via
+#                     EDD_TERMINAL_COMMAND) instead of a shell — neither vendor
+#                     ships a self-hostable web UI, so the CLI-as-the-app
+#                     terminal is the faithful self-hosted equivalent;
+#   anything else (including unset) -> OpenVSCode Server, the historical default.
+# The Monaco server (bundled at /opt/edd-editor-monaco) listens on :3000 under
+# /w/<id>/ and reads the same coordinates from the environment (EDD_WORKSPACE_ID,
+# CONNECTION_TOKEN, EDD_DISABLE_CONNECTION_TOKEN), so the in-app proxy reaches it
+# exactly like OpenVSCode.
+case "${EDD_EDITOR_MODE:-openvscode}" in
+  monaco)
+    exec gosu workspace node /opt/edd-editor-monaco/server.js
+    ;;
+  claude | codex)
+    exec gosu workspace env EDD_TERMINAL_COMMAND="${EDD_EDITOR_MODE}" \
+      node /opt/edd-editor-monaco/server.js
+    ;;
+esac
 
 # Base server args. --disable-workspace-trust: a per-user workspace contains the
 # user's own files, so the Workspace Trust prompt is pure friction (a modal that

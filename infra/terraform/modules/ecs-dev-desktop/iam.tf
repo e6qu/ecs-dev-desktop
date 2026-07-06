@@ -326,6 +326,16 @@ data "aws_iam_policy_document" "reconciler" {
     actions   = ["ecs:ListTaskDefinitionFamilies", "ecs:ListTaskDefinitions", "ecs:DeregisterTaskDefinition"]
     resources = ["*"]
   }
+  # Read-only IAM self-check (same as the control-plane's IamSelfCheck): the
+  # reconciler asks whether its own identity holds each action it needs and logs
+  # the result at sweep start. Without this it degrades to "unknown" — found
+  # live: every real sweep logged `iam:SimulatePrincipalPolicy not permitted
+  # (AccessDenied)`. Introspection only; both actions are account-scoped ("*").
+  statement {
+    sid       = "IamSelfCheck"
+    actions   = ["iam:SimulatePrincipalPolicy", "sts:GetCallerIdentity"]
+    resources = ["*"]
+  }
 }
 
 resource "aws_iam_role" "reconciler" {
