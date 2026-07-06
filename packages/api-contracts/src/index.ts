@@ -707,3 +707,67 @@ export const gitCredentialResponse = z.object({
   token: z.string().min(1),
 });
 export type GitCredentialResponse = z.infer<typeof gitCredentialResponse>;
+
+// ---- Image builds & registry metadata (admin Images console) ----------------
+
+/** One layer of a container image, with its (compressed) size in the registry. */
+export const imageLayer = z.object({
+  digest: z.string().min(1),
+  sizeBytes: z.number().int().nonnegative(),
+});
+export type ImageLayerDto = z.infer<typeof imageLayer>;
+
+/** Registry metadata for one image tag: total compressed size, layer breakdown,
+ * architecture, and when it was pushed. Sizes are the COMPRESSED sizes ECR reports
+ * (what's stored/pulled); uncompressed size is not exposed by the registry API. */
+export const imageMetadata = z.object({
+  repo: z.string().min(1),
+  tag: z.string().min(1),
+  digest: z.string().min(1),
+  /** Total compressed image size (sum of layer + config blob sizes). */
+  compressedBytes: z.number().int().nonnegative(),
+  layerCount: z.number().int().nonnegative(),
+  layers: z.array(imageLayer),
+  architecture: z.string().optional(),
+  pushedAt: z.iso.datetime().optional(),
+});
+export type ImageMetadataDto = z.infer<typeof imageMetadata>;
+
+/** Which images a build produces (mirrors EDD_BUILD_TARGET). */
+export const buildTarget = z.enum(["web", "golden", "all"]);
+export type BuildTargetDto = z.infer<typeof buildTarget>;
+
+/** Lifecycle status of a build (mirrors CodeBuild build statuses). */
+export const buildStatus = z.enum([
+  "in_progress",
+  "succeeded",
+  "failed",
+  "faulted",
+  "timed_out",
+  "stopped",
+]);
+export type BuildStatusDto = z.infer<typeof buildStatus>;
+
+/** One entry in an image's build history (last N kept per image). */
+export const imageBuildRecord = z.object({
+  buildId: z.string().min(1),
+  target: buildTarget,
+  tag: z.string().min(1),
+  ref: z.string().optional(),
+  status: buildStatus,
+  /** Current/last CodeBuild phase (e.g. BUILD, COMPLETED). */
+  phase: z.string().optional(),
+  startedAt: z.iso.datetime(),
+  endedAt: z.iso.datetime().optional(),
+  durationMs: z.number().int().nonnegative().optional(),
+  triggeredBy: z.string().min(1),
+});
+export type ImageBuildRecordDto = z.infer<typeof imageBuildRecord>;
+
+/** A slice of a build's live log, plus a cursor to fetch the next slice. */
+export const buildLogChunk = z.object({
+  lines: z.array(z.object({ at: z.iso.datetime(), message: z.string() })),
+  /** Opaque cursor for the next poll; absent when the stream has no more (yet). */
+  nextToken: z.string().optional(),
+});
+export type BuildLogChunkDto = z.infer<typeof buildLogChunk>;

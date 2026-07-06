@@ -156,6 +156,25 @@ data "aws_iam_policy_document" "control_plane" {
     }
   }
 
+  # ---- Admin Images console (image metadata + build triggering/monitoring) ----
+  # Constructed ARNs (not resource refs) so these hold regardless of image_build_mode
+  # (the CodeBuild project + its log group are count-gated for codebuild mode only).
+  statement {
+    sid       = "ImageConsoleEcrRead"
+    actions   = ["ecr:DescribeImages", "ecr:ListImages", "ecr:BatchGetImage"]
+    resources = ["arn:${local.partition}:ecr:${local.region}:${local.account_id}:repository/${var.name}/*"]
+  }
+  statement {
+    sid       = "ImageConsoleCodeBuild"
+    actions   = ["codebuild:StartBuild", "codebuild:BatchGetBuilds", "codebuild:ListBuildsForProject"]
+    resources = ["arn:${local.partition}:codebuild:${local.region}:${local.account_id}:project/${var.name}-build-images"]
+  }
+  statement {
+    sid       = "ImageConsoleBuildLogs"
+    actions   = ["logs:GetLogEvents"]
+    resources = ["arn:${local.partition}:logs:${local.region}:${local.account_id}:log-group:/aws/codebuild/${var.name}-build-images:*"]
+  }
+
   statement {
     sid       = "PassTaskRoles"
     actions   = ["iam:PassRole"]

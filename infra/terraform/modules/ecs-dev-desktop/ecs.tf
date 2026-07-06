@@ -59,6 +59,8 @@ locals {
     AUDIT_PROVIDER = "cloudtrail"
     LOG_PROVIDER   = "cloudwatch"
     EDD_APP_NAME   = var.name
+    # Golden variants this deployment builds — the Images console lists their ECR repos.
+    EDD_GOLDEN = join(" ", var.golden_image_repos)
     # CloudWatch log group for workspace container stdout/stderr (awslogs driver).
     ECS_LOG_GROUP_WORKSPACES = aws_cloudwatch_log_group.workspaces.name
     # Scale-to-zero tuning (read by the reconciler and injected into workspace tasks).
