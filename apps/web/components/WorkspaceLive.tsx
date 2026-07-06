@@ -153,11 +153,11 @@ export function WorkspaceLive({ id }: { id: string }) {
     : booting
       ? "Starting your dev desktop — pulling the image and booting the editor (this can take a minute or two on first start)…"
       : ws.state === "provisioning"
-        ? "Waking your dev desktop from its snapshot…"
+        ? "Provisioning your dev desktop — starting the container (pulling the image + attaching storage). First start can take a few minutes; it opens itself once ready."
         : ws.state === "error"
           ? "Provisioning failed — you can retry the launch or delete this session."
           : ws.functional === "degraded"
-            ? "Running, but degraded — see the log below for what the agent reported."
+            ? "The editor is still finishing startup — this usually clears on its own within a minute. If it persists, check the log below."
             : ws.state === "stopped"
               ? resuming
                 ? "Resuming — waking your dev desktop from its snapshot…"

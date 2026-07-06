@@ -48,11 +48,33 @@ LOAD_MIN="${EDD_ACTIVITY_LOAD_MIN:-0.5}"
 # after a beat is still counted by the next one.
 ACTIVITY_WINDOW_S=$((INTERVAL + 60))
 
+# Is the editor answering on its port? (Any HTTP response — even a 4xx token-gate
+# — means "up".) Retries for a bounded window so the FIRST beat after a cold start
+# isn't a false "unreachable" while the editor is still binding: without this, the
+# very first probe fires the instant the container starts, the editor hasn't opened
+# its socket yet, and the workspace shows a scary "degraded — IDE unreachable" for a
+# full heartbeat interval (up to ~2 min) before self-healing. A healthy editor
+# answers the first probe, so later beats return instantly; only a genuinely-down
+# editor pays the full wait (acceptable on a 120s cadence).
+IDE_PROBE_TRIES="${EDD_IDE_PROBE_TRIES:-20}"
+IDE_PROBE_DELAY_S="${EDD_IDE_PROBE_DELAY_S:-3}"
+ide_up() {
+  _tries="${IDE_PROBE_TRIES}"
+  while [ "${_tries}" -gt 0 ]; do
+    if curl -s -o /dev/null --max-time 3 "http://127.0.0.1:${IDE_PORT}/" 2>/dev/null; then
+      return 0
+    fi
+    _tries=$((_tries - 1))
+    [ "${_tries}" -gt 0 ] && sleep "${IDE_PROBE_DELAY_S}"
+  done
+  return 1
+}
+
 # Functional self-report: is the desktop actually USABLE, not just "task running"?
-#   ide       — OpenVSCode answers on its port (a 4xx token-gate still means "up").
+#   ide       — the editor answers on its port (see ide_up: boot-tolerant).
 #   workspace — the home directory is writable.
 functional_json() {
-  if curl -s -o /dev/null --max-time 3 "http://127.0.0.1:${IDE_PORT}/" 2>/dev/null; then
+  if ide_up; then
     _ide=true
   else
     _ide=false
