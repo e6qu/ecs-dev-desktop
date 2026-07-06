@@ -280,9 +280,14 @@ resource "aws_iam_role" "workspace" {
 # ---- Reconciler task role (idle stop, scheduled snapshots, orphan GC) ----
 
 data "aws_iam_policy_document" "reconciler" {
+  # DeleteItem: finishDeleting removes the workspace record -- found live: EVERY
+  # deletion stalled in `deleting` forever ("finishDeleting threw ... not
+  # authorized to perform: dynamodb:DeleteItem"). BatchWriteItem: the post-sweep
+  # cost-rollup checkpoint (replaceAll) batch-writes -- same sweep logged the
+  # matching AccessDenied.
   statement {
     sid       = "DynamoSingleTable"
-    actions   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:Query", "dynamodb:Scan"]
+    actions   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:BatchWriteItem", "dynamodb:Query", "dynamodb:Scan"]
     resources = [aws_dynamodb_table.this.arn, "${aws_dynamodb_table.this.arn}/index/*"]
   }
   statement {

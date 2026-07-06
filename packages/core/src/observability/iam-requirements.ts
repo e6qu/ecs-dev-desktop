@@ -200,12 +200,16 @@ const CONTROL_PLANE_REQUIREMENTS: readonly IamRequirement[] = [
 
 const RECONCILER_REQUIREMENTS: readonly IamRequirement[] = [
   {
+    // DeleteItem: finishDeleting removes the workspace record; BatchWriteItem:
+    // the post-sweep cost-rollup checkpoint. Both found live as AccessDenied.
     sid: "DynamoSingleTable",
     resource: "dynamodb-table",
     actions: [
       "dynamodb:GetItem",
       "dynamodb:PutItem",
       "dynamodb:UpdateItem",
+      "dynamodb:DeleteItem",
+      "dynamodb:BatchWriteItem",
       "dynamodb:Query",
       "dynamodb:Scan",
     ],
