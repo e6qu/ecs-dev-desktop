@@ -55,8 +55,8 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
   const router = useRouter();
   const [image, setImage] = useState(images[0]?.image ?? "");
   const [mode, setMode] = useState<StartMode>("blank");
-  // Per-session interface override; "" = the base image's catalog default.
-  const [editor, setEditor] = useState<"" | EditorKindDto>("");
+  // Per-session interface; defaults to OpenVSCode (every curated image's default).
+  const [editor, setEditor] = useState<"" | EditorKindDto>("openvscode");
   const [namespaces, setNamespaces] = useState<Namespace[]>([]);
   const [ghConnected, setGhConnected] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -451,12 +451,13 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
           onChange={(e) => {
             // Zod-narrow instead of a cast (§6.1): an unknown value falls back to default.
             const parsed = editorKind.safeParse(e.target.value);
-            setEditor(parsed.success ? parsed.data : "");
+            setEditor(parsed.success ? parsed.data : "openvscode");
           }}
           style={{ alignSelf: "flex-start" }}
         >
-          <option value="">environment default</option>
-          <option value="openvscode">OpenVSCode — full IDE in the browser</option>
+          {/* All curated images default to OpenVSCode, so the old "environment
+              default" option was indistinguishable from picking OpenVSCode — merged. */}
+          <option value="openvscode">OpenVSCode (Default) — full IDE in the browser</option>
           <option value="monaco">Monaco — lightweight first-party editor</option>
           <option value="claude">Claude Code — agent-first terminal session</option>
           <option value="codex">Codex — agent-first terminal session</option>

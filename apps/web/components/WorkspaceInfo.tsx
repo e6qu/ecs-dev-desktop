@@ -54,61 +54,99 @@ export function WorkspaceInfo({ ws }: { ws: WorkspaceDto }) {
         <span aria-hidden="true">ⓘ</span>
       </button>
       {open && (
+        // Full-page modal (fixed, over everything) rather than a card-relative
+        // dropdown: the old absolutely-positioned panel overflowed and shoved the
+        // card layout around. A backdrop click OR the prominent × closes it.
         <div
-          role="dialog"
-          aria-label="Session details"
-          data-testid={TESTID.workspaceInfoPanel}
+          role="presentation"
+          onClick={() => {
+            setOpen(false);
+          }}
           style={{
-            position: "absolute",
-            right: 0,
-            top: "calc(100% + 6px)",
-            zIndex: 30,
-            // Wider and viewport-capped so long values (the full ECR image ref) fit,
-            // with a scroll if the rows exceed the height instead of overflowing the
-            // card. `min()` keeps it inside narrow screens.
-            width: "min(92vw, 460px)",
-            maxHeight: "min(70vh, 520px)",
-            overflowY: "auto",
-            background: "var(--panel, #1c1f1a)",
-            border: "1px solid var(--line, #333)",
-            borderRadius: 8,
-            padding: "34px 16px 16px",
-            boxShadow: "0 8px 24px rgba(0,0,0,0.45)",
+            position: "fixed",
+            inset: 0,
+            zIndex: 1000,
+            background: "rgba(0,0,0,0.55)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
           }}
         >
-          <button
-            type="button"
-            className="help-panel-close"
-            aria-label="Close session details"
-            style={{ position: "absolute", top: 8, right: 10 }}
-            onClick={() => {
-              setOpen(false);
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Session details"
+            data-testid={TESTID.workspaceInfoPanel}
+            onClick={(e) => {
+              e.stopPropagation();
             }}
-          >
-            <span aria-hidden="true">×</span>
-          </button>
-          <dl
             style={{
-              margin: 0,
-              display: "grid",
-              gridTemplateColumns: "auto minmax(0, 1fr)",
-              gap: "8px 12px",
+              position: "relative",
+              width: "min(96vw, 560px)",
+              maxHeight: "85vh",
+              overflowY: "auto",
+              background: "var(--panel, #1c1f1a)",
+              border: "1px solid var(--line, #333)",
+              borderRadius: 12,
+              padding: "20px 22px 22px",
+              boxShadow: "0 20px 60px rgba(0,0,0,0.6)",
             }}
           >
-            {rows.map(([label, value]) => (
-              <div key={label} style={{ display: "contents" }}>
-                <dt className="mono" style={{ color: "var(--dim)", fontSize: 12 }}>
-                  {label}
-                </dt>
-                <dd
-                  className="mono"
-                  style={{ margin: 0, fontSize: 13, lineHeight: 1.4, wordBreak: "break-all" }}
-                >
-                  {value}
-                </dd>
-              </div>
-            ))}
-          </dl>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 14,
+              }}
+            >
+              <h2 style={{ margin: 0, fontSize: 16 }}>Session details</h2>
+              <button
+                type="button"
+                aria-label="Close session details"
+                data-testid={TESTID.workspaceInfoClose}
+                onClick={() => {
+                  setOpen(false);
+                }}
+                style={{
+                  width: 36,
+                  height: 36,
+                  borderRadius: 8,
+                  border: "1px solid var(--line, #333)",
+                  background: "transparent",
+                  color: "var(--fg, #e6e6e6)",
+                  fontSize: 22,
+                  lineHeight: "1",
+                  cursor: "pointer",
+                }}
+              >
+                <span aria-hidden="true">×</span>
+              </button>
+            </div>
+            <dl
+              style={{
+                margin: 0,
+                display: "grid",
+                gridTemplateColumns: "auto minmax(0, 1fr)",
+                gap: "10px 14px",
+              }}
+            >
+              {rows.map(([label, value]) => (
+                <div key={label} style={{ display: "contents" }}>
+                  <dt className="mono" style={{ color: "var(--dim)", fontSize: 12 }}>
+                    {label}
+                  </dt>
+                  <dd
+                    className="mono"
+                    style={{ margin: 0, fontSize: 13, lineHeight: 1.5, wordBreak: "break-all" }}
+                  >
+                    {value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
         </div>
       )}
     </span>

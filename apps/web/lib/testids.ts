@@ -12,6 +12,8 @@ export const TESTID = {
   /** Workspace card on the portal grid. Attrs: `data-image`, `data-status` (state). */
   workspaceCard: "workspace-card",
   workspaceDegraded: "workspace-degraded",
+  /** Editor-type badge on the card. Attr: `data-editor` (openvscode/monaco/claude/codex). */
+  workspaceEditorBadge: "workspace-editor-badge",
   /** Workspace row in the admin all-workspaces table. Attrs: `data-id`, `data-status`. */
   workspaceRow: "workspace-row",
   /** Base-image card in the catalog. Attrs: `data-image`, `data-enabled`. */
@@ -53,6 +55,8 @@ export const TESTID = {
   workspaceInfoToggle: "workspace-info-toggle",
   /** The closeable session-details overlay. */
   workspaceInfoPanel: "workspace-info-panel",
+  /** The prominent close (×) on the session-details modal. */
+  workspaceInfoClose: "workspace-info-close",
   /** The "Monitoring" link on a workspace card. */
   workspaceMonitoringLink: "workspace-monitoring-link",
   /** A metric panel on the monitoring page. Attrs: `data-metric`, `data-available`. */

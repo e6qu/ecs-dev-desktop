@@ -148,6 +148,22 @@ describe("editorTokenRedirect (editor connection-token handoff)", () => {
     expect(out).toBeUndefined();
   });
 
+  it("also recognizes the Monaco server's edd-editor-token cookie (monaco/claude/codex)", () => {
+    // The Monaco editor server (claude/codex modes) sets edd-editor-token, not
+    // vscode-tkn. Without recognizing it, the proxy kept re-injecting ?tkn and then
+    // forwarded a clean request the Monaco server rejected with 401 — the live
+    // "unauthorized" on non-OpenVSCode editors.
+    const out = editorTokenRedirect(
+      {
+        method: "GET",
+        url: `/w/${WS}/`,
+        headers: docHeaders({ cookie: `edd-editor-token=${expectedTkn}` }),
+      },
+      WS,
+    );
+    expect(out).toBeUndefined();
+  });
+
   it("does not redirect the editor's own sub-resource/API requests", () => {
     const out = editorTokenRedirect(
       {

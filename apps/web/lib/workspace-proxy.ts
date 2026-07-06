@@ -18,6 +18,13 @@ import { getControlPlane } from "./control-plane";
  * sets once validated — so the proxy injects the token exactly once per session. */
 const EDITOR_TOKEN_PARAM = "tkn";
 const EDITOR_TOKEN_COOKIE = "vscode-tkn";
+// The first-party Monaco editor server (services/editor-monaco, backing the
+// monaco/claude/codex modes) sets a DIFFERENTLY-named token cookie than
+// code-server's `vscode-tkn`. The proxy must recognize it as "session
+// established" too — otherwise it keeps re-injecting `?tkn` on every document
+// nav and then forwards a clean request the Monaco server rejects with 401.
+// (Kept in sync with @edd/editor-monaco's TOKEN_COOKIE.)
+const MONACO_TOKEN_COOKIE = "edd-editor-token";
 
 /**
  * Defence-in-depth: when the editor runs with a connection token, hand the
@@ -58,7 +65,14 @@ export function editorTokenRedirect(
     return undefined;
   }
   if (url.searchParams.has(EDITOR_TOKEN_PARAM)) return undefined; // already has the token
-  if (cookiePresent(req.headers.cookie, EDITOR_TOKEN_COOKIE)) return undefined; // session established
+  // Session established once EITHER editor family has set its token cookie
+  // (code-server's vscode-tkn OR the Monaco server's edd-editor-token).
+  if (
+    cookiePresent(req.headers.cookie, EDITOR_TOKEN_COOKIE) ||
+    cookiePresent(req.headers.cookie, MONACO_TOKEN_COOKIE)
+  ) {
+    return undefined;
+  }
 
   url.searchParams.set(EDITOR_TOKEN_PARAM, deriveWorkspaceToken(secret, wsId));
   // Return a path-absolute URL (the dummy origin is dropped) the browser resolves

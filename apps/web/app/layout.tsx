@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { StartupOverlay } from "../components/StartupOverlay";
 import { TopNav } from "../components/TopNav";
 import { HelpToggle } from "../components/HelpToggle";
 import { PersonaSwitcher } from "../components/PersonaSwitcher";
@@ -22,6 +23,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
   return (
     <html lang="en">
       <body>
+        <StartupOverlay />
         <a href="#main" className="skip-link">
           Skip to content
         </a>

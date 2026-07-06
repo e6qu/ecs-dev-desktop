@@ -26,6 +26,14 @@ function restoreDaysLeft(terminatedAt: string): number {
  * wake first, so it gets a single "Resume" button that routes through the status
  * page (which wakes it, shows the load progress, and redirects into the editor when
  * ready) rather than dumping the browser on a blank proxy page during the cold start. */
+/** Short, human editor-type label for the card badge. */
+const EDITOR_LABEL: Record<string, string> = {
+  openvscode: "VS Code",
+  monaco: "Monaco",
+  claude: "Claude Web",
+  codex: "Codex Web",
+};
+
 const READY_STATES: ReadonlySet<WorkspaceStateDto> = new Set(["running", "idle"]);
 /** States with meaningful utilization/cost data for the Monitoring link. */
 const MONITORABLE_STATES: ReadonlySet<WorkspaceStateDto> = new Set(["running", "idle", "stopped"]);
@@ -72,6 +80,13 @@ export function WorkspaceCard({
       <div className="row">
         <span className="wid">{imageName}</span>
         <StatusBadge state={ws.state} />
+        <span
+          className="badge"
+          data-testid={TESTID.workspaceEditorBadge}
+          data-editor={ws.editor ?? "openvscode"}
+        >
+          {EDITOR_LABEL[ws.editor ?? "openvscode"]}
+        </span>
         <WorkspaceInfo ws={ws} />
         {ws.functional === "degraded" && (
           <span
