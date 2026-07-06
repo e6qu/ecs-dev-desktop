@@ -18,20 +18,26 @@ interface Ctx {
   params: Promise<{ id: string }>;
 }
 
-/** Optional functional self-report (IDE reachable + workspace writable). Best-effort
- * on BOTH auth paths: a missing/malformed body just means a plain liveness heartbeat. */
-async function parseFunctional(
+/** Optional self-reports: functional (IDE reachable + workspace writable) and
+ * activity (real usage since the last beat vs merely alive). Best-effort on BOTH
+ * auth paths: a missing/malformed body just means a plain activity heartbeat. */
+async function parseReport(
   req: Request,
-): Promise<{ ide: boolean; workspace: boolean } | undefined> {
+): Promise<{ functional?: { ide: boolean; workspace: boolean }; active?: boolean } | undefined> {
   try {
-    return heartbeatRequest.parse(await req.json()).functional;
+    const parsed = heartbeatRequest.parse(await req.json());
+    return {
+      ...(parsed.functional !== undefined ? { functional: parsed.functional } : {}),
+      ...(parsed.active !== undefined ? { active: parsed.active } : {}),
+    };
   } catch {
     return undefined;
   }
 }
 
-// POST /api/workspaces/:id/heartbeat — reports in-workspace activity so the
-// reconciler keeps the workspace running. Accepts two auth paths:
+// POST /api/workspaces/:id/heartbeat — reports in-workspace liveness + activity so
+// the reconciler keeps a USED workspace running (an `active: false` beat records
+// liveness without refreshing the idle window). Accepts two auth paths:
 //   1. Session auth (browser / API client with Auth.js session cookie)
 //   2. Agent machine-auth: Authorization: Bearer <HMAC-SHA256(secret, wsId)>
 //      — used by the idle-agent running inside the workspace container.
@@ -47,15 +53,15 @@ async function handlePOST(req: Request, { params }: Ctx) {
     const cp = await getControlPlane();
     const ws = await cp.get(workspaceId(id));
     if (!ws) return notFound();
-    const result = await cp.heartbeat(workspaceId(id), await parseFunctional(req));
+    const result = await cp.heartbeat(workspaceId(id), await parseReport(req));
     return result.ok ? NextResponse.json(result.value) : domainErrorResponse(result.error);
   }
 
-  // agentResult === "absent" — fall through to session auth. The functional self-report
-  // is honoured here too (a browser/API client may send it), not only on the agent path.
+  // agentResult === "absent" — fall through to session auth. The self-reports are
+  // honoured here too (a browser/API client may send them), not only on the agent path.
   const ctx = await loadOwnedWorkspace(req, params, "update");
   if (isResponse(ctx)) return ctx;
-  const result = await ctx.cp.heartbeat(ctx.id, await parseFunctional(req));
+  const result = await ctx.cp.heartbeat(ctx.id, await parseReport(req));
   return result.ok ? NextResponse.json(result.value) : domainErrorResponse(result.error);
 }
 

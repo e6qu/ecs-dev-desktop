@@ -5,6 +5,8 @@
 import { promises as fs } from "node:fs";
 import * as path from "node:path";
 
+import { touchActivity } from "./activity";
+
 export interface TreeEntry {
   /** POSIX-style path relative to the workspace root. */
   readonly path: string;
@@ -78,5 +80,8 @@ export async function readTextFile(root: string, rel: string): Promise<string> {
 export async function writeTextFile(root: string, rel: string, content: string): Promise<void> {
   const abs = resolveWithin(root, rel);
   await fs.mkdir(path.dirname(abs), { recursive: true });
+  // A save is real usage (see ./activity.ts) -- recorded before the write so even
+  // a failed save still counts as the user doing something.
+  touchActivity();
   await fs.writeFile(abs, content, "utf8");
 }

@@ -106,7 +106,8 @@ if [ ! -e "${settings_dir}/settings.json" ]; then
   cat >"${settings_dir}/settings.json" <<'JSON'
 {
   "workbench.colorTheme": "Default Dark Modern",
-  "window.menuBarVisibility": "classic"
+  "window.menuBarVisibility": "classic",
+  "files.autoSave": "afterDelay"
 }
 JSON
   chown workspace:workspace "${settings_dir}/settings.json"

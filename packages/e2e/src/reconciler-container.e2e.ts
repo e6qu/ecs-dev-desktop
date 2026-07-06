@@ -69,7 +69,7 @@ const FAKE_EBS_ROLE = "arn:aws:iam::000000000000:role/ecsInfrastructureRole";
 // (TEST-NET control plane) is exactly the "user went away" idle scenario.
 const UNREACHABLE_CP = "http://192.0.2.1:9";
 const AGENT_SECRET = "f".repeat(64);
-// Backdated past DEFAULT_IDLE_THRESHOLD_MS (30 min) so the sweep must stop it.
+// Backdated past DEFAULT_IDLE_THRESHOLD_MS (15 min) so the sweep must stop it.
 const STALE_BY_MS = 45 * 60 * 1000;
 
 const SIM = awsSimClientConfig();

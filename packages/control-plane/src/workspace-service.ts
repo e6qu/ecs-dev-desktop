@@ -807,33 +807,40 @@ export class WorkspaceService {
     }
   }
 
-  /** Idle-agent heartbeat: record activity so the reconciler doesn't scale the
-   * workspace to zero (and wake it from idle). Heartbeats are frequent and
-   * harmless, so a lost write race retries once before reporting conflict. */
+  /** Idle-agent heartbeat. `report.active === false` means "alive but unused":
+   * the functional self-report is still recorded (liveness), but `lastActivity`
+   * is NOT refreshed — that's what lets the reconciler's idle window age on an
+   * untouched workspace and scale it to zero. Absent/`true` counts as activity
+   * (a session-authed browser heartbeat IS a user action) and also wakes an
+   * `idle`-state workspace. Heartbeats are frequent and harmless, so a lost
+   * write race retries once before reporting conflict. */
   async heartbeat(
     id: WorkspaceId,
-    functional?: { ide: boolean; workspace: boolean },
+    report?: { functional?: { ide: boolean; workspace: boolean }; active?: boolean },
   ): Promise<Result<WorkspaceDto, DomainError>> {
     for (let attempt = 0; ; attempt++) {
       const found = await this.require(id);
       if (!found.ok) return found;
       const at = isoTimestamp(this.deps.clock.now());
-      const active = markActivity(found.value.ws, at);
-      if (!active.ok) return active;
+      let ws = found.value.ws;
+      if (report?.active !== false) {
+        const active = markActivity(ws, at);
+        if (!active.ok) return active;
+        ws = active.value;
+      }
       // Fold in the in-workspace agent's functional self-report (IDE reachable +
       // workspace writable), so the admin sees whether the desktop is actually usable.
-      const next = ok(
-        functional === undefined ? active.value : recordFunctional(active.value, functional, at),
-      );
+      const next =
+        report?.functional === undefined ? ws : recordFunctional(ws, report.functional, at);
       try {
-        await this.persistTransition(next.value, found.value.version);
+        await this.persistTransition(next, found.value.version);
       } catch (e) {
         if (isVersionConflict(e) && attempt === 0) continue;
         if (isVersionConflict(e))
           return err(conflictError(`heartbeat for ${id} lost concurrent updates`));
         throw e;
       }
-      return ok(toWorkspaceDto(next.value));
+      return ok(toWorkspaceDto(next));
     }
   }
 

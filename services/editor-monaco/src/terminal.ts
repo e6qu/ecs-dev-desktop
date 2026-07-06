@@ -6,6 +6,7 @@ import type { Server } from "node:http";
 
 import { WebSocketServer, type WebSocket } from "ws";
 
+import { touchActivity } from "./activity";
 import { tokenFromRequest, tokensMatch } from "./token";
 
 interface TerminalDeps {
@@ -95,8 +96,13 @@ async function startShell(ws: WebSocket, root: string): Promise<void> {
   ws.on("message", (raw: Buffer | ArrayBuffer | Buffer[]) => {
     const msg = parseMessage(rawToString(raw));
     if (msg === null) return;
-    if ("input" in msg) pty.write(msg.input);
-    else pty.resize(msg.cols, msg.rows);
+    if ("input" in msg) {
+      // Keystrokes are the definition of "in use" (see ./activity.ts).
+      touchActivity();
+      pty.write(msg.input);
+    } else {
+      pty.resize(msg.cols, msg.rows);
+    }
   });
   ws.on("close", () => {
     pty.kill();

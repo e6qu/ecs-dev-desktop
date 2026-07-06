@@ -24,7 +24,8 @@ COPY tsconfig.base.json ./
 COPY apps/web apps/web
 RUN pnpm --filter @edd/web build
 # The reconciler runs THIS image with a command override
-# (`node services/reconciler/dist/run.js`, see the module's reconciler task def), so
+# (`node /repo/services/reconciler/dist/run.js` -- ABSOLUTE, because the final
+# stage's WORKDIR is /repo/apps/web; see the module's reconciler_command var), so
 # the control-plane image must also carry the reconciler bundle. Build it here.
 RUN pnpm --filter @edd/reconciler build
 

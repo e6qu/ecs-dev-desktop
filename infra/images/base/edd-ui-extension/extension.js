@@ -17,7 +17,15 @@
 //      instead (both CLIs support that flow natively).
 "use strict";
 
+const fs = require("node:fs");
 const vscode = require("vscode");
+
+// Editor activity marker: touched (throttled) on real editor interaction so the
+// idle-agent (infra/images/base/idle-agent.sh, which also watches /dev/pts/* and
+// CPU load) can tell "in use" from "merely running" — the reconciler only keeps
+// ACTIVE workspaces from scaling to zero. tmpfs path, container-local.
+const ACTIVITY_MARKER = "/tmp/edd-activity";
+const ACTIVITY_TOUCH_THROTTLE_MS = 30_000;
 
 const OAUTH_TIP_SHOWN_KEY = "edd.oauthTipShown";
 const OAUTH_TIP =
@@ -71,6 +79,32 @@ function activate(context) {
     void context.globalState.update(OAUTH_TIP_SHOWN_KEY, true);
     void vscode.window.showInformationMessage(OAUTH_TIP);
   }
+
+  // Editor activity -> the marker the idle-agent watches. Throttled: interaction
+  // events fire per keystroke/cursor move, one touch per window is plenty.
+  let lastTouch = 0;
+  const touchActivity = () => {
+    const now = Date.now();
+    if (now - lastTouch < ACTIVITY_TOUCH_THROTTLE_MS) return;
+    lastTouch = now;
+    try {
+      fs.writeFileSync(ACTIVITY_MARKER, "");
+    } catch {
+      // Best-effort: a missing/readonly /tmp must never break the editor; the
+      // idle-agent's PTY + CPU signals still cover most real usage.
+    }
+  };
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeTextDocument(touchActivity),
+    vscode.window.onDidChangeTextEditorSelection(touchActivity),
+    vscode.window.onDidChangeActiveTextEditor(touchActivity),
+    vscode.window.onDidOpenTerminal(touchActivity),
+    vscode.window.onDidChangeWindowState((state) => {
+      if (state.focused) touchActivity();
+    }),
+  );
+  // The client just connected to load this window -- that's usage too.
+  touchActivity();
 }
 
 function deactivate() {}

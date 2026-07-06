@@ -107,7 +107,10 @@ async function openFile(filePath: string, row: HTMLElement): Promise<void> {
   el("current-file").textContent = filePath;
   const model = editor.getModel();
   if (model !== null) monaco.editor.setModelLanguage(model, languageFor(filePath));
+  // Programmatic load, not a user edit -- must not trigger the autosave below.
+  loadingFile = true;
   editor.setValue(text);
+  loadingFile = false;
   editor.updateOptions({ readOnly: false });
   for (const r of document.querySelectorAll(".file-row.active")) r.classList.remove("active");
   row.classList.add("active");
@@ -157,6 +160,20 @@ async function loadTree(): Promise<void> {
 
 editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
   void save();
+});
+
+// Autosave (default-on, matching the OpenVSCode variant's files.autoSave):
+// debounce a save shortly after the user stops typing. Ctrl/Cmd+S still forces
+// an immediate save.
+const AUTOSAVE_DELAY_MS = 1000;
+let autosaveTimer: number | undefined;
+let loadingFile = false;
+editor.onDidChangeModelContent(() => {
+  if (currentPath === null || loadingFile) return;
+  window.clearTimeout(autosaveTimer);
+  autosaveTimer = window.setTimeout(() => {
+    void save();
+  }, AUTOSAVE_DELAY_MS);
 });
 
 // ── terminal (xterm over the server's PTY WebSocket) — multiple concurrent tabs,

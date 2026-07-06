@@ -15,8 +15,8 @@ export const ID_PREFIX = {
   sshKey: "sshk-",
 } as const;
 
-/** Default idle window before scale-to-zero: 30 minutes. */
-export const DEFAULT_IDLE_THRESHOLD_MS = 30 * 60 * 1000;
+/** Default idle window before scale-to-zero: 15 minutes (product decision, 2026-07-06). */
+export const DEFAULT_IDLE_THRESHOLD_MS = 15 * 60 * 1000;
 
 /** Default interval between scheduled point-in-time snapshots: 6 hours. */
 export const DEFAULT_SNAPSHOT_INTERVAL_MS = 6 * 60 * 60 * 1000;

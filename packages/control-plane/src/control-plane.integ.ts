@@ -206,6 +206,27 @@ describe("WorkspaceService lifecycle ", () => {
     if (!afterStop.ok) expect(afterStop.error.kind).toBe("conflict");
   });
 
+  it("an active:false heartbeat records liveness without refreshing the idle window", async () => {
+    const ws = await service.create({
+      ownerId: ownerId("frank2"),
+      baseImage: baseImage("golden/node:20"),
+    });
+    unwrap(await service.heartbeat(workspaceId(ws.id)));
+    const before = await service.inspect(workspaceId(ws.id));
+
+    // Alive-but-unused: functional lands, lastActivity does NOT move — that's
+    // what lets the reconciler's idle window age on an untouched workspace.
+    const idleBeat = unwrap(
+      await service.heartbeat(workspaceId(ws.id), {
+        active: false,
+        functional: { ide: true, workspace: true },
+      }),
+    );
+    expect(idleBeat.functional).toBe("ok");
+    const after = await service.inspect(workspaceId(ws.id));
+    expect(after?.workspace.lastActivity).toBe(before?.workspace.lastActivity);
+  });
+
   it("inspect returns the full detail plus a derived timeline", async () => {
     const ws = await service.create({
       ownerId: ownerId("gina"),

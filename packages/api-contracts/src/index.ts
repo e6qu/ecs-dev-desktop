@@ -97,8 +97,15 @@ export const configSyncReport = z.object({
 });
 export type ConfigSyncReportDto = z.infer<typeof configSyncReport>;
 
-/** Optional functional self-report carried on a heartbeat (in-workspace agent). */
+/** Optional self-reports carried on a heartbeat (in-workspace agent). */
 export const heartbeatRequest = z.object({
+  /** Whether the workspace saw REAL usage since the last beat (terminal/editor
+   * interaction, running compute) — the idle-agent's activity self-report. `false`
+   * means "alive but unused": the control plane records the functional report but
+   * does NOT refresh `lastActivity`, so the reconciler's idle window keeps aging
+   * and an untouched workspace scales to zero. Absent (or `true`) counts as
+   * activity — a session-authed browser/API heartbeat IS a user action. */
+  active: z.boolean().optional(),
   functional: z
     .object({
       /** OpenVSCode reachable on the workspace port. */
