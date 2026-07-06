@@ -10,6 +10,7 @@ import { baseImage, systemClock, workspacePrincipal } from "@edd/core";
 import { createDynamoClient, dropTable, ensureTable, makeBaseImageEntity } from "@edd/db";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { sleep } from "./aws-sim";
 import { hostReachableTarget } from "./docker-host";
 import { devHeaders, startWebApp, type WebApp } from "./web-app";
 
@@ -104,8 +105,17 @@ describe("SSH wake-on-connect chain against the real control plane", { timeout: 
     });
     expect(reg.status).toBe(201);
 
-    // Scale to zero so the gateway MUST wake it for the chain to work.
+    // Scale to zero so the gateway MUST wake it for the chain to work. Manual stop
+    // is cancelable now (route -> `stopping`, detached converge -> `stopped`); wait
+    // for the converge so the workspace is genuinely scaled to zero before the wake.
     expect((await api(`/workspaces/${wsId}/stop`, { method: "POST" })).status).toBe(200);
+    const stopDeadline = Date.now() + 60_000;
+    for (;;) {
+      const cur = workspace.parse(await (await api(`/workspaces/${wsId}`)).json());
+      if (cur.state === "stopped") break;
+      if (Date.now() > stopDeadline) throw new Error(`stop never converged (state: ${cur.state})`);
+      await sleep(2_000);
+    }
 
     // Gateway proxy container, pointed at the real control plane via the host alias.
     const port = new URL(web.baseUrl).port;

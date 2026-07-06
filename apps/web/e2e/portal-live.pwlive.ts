@@ -83,9 +83,12 @@ test("member lifecycle in the browser acts on real ECS tasks (create → stop �
     `/w/${created.id}/`,
   );
 
-  // Stop: snapshot + real task teardown.
+  // Stop: snapshot + real task teardown. Cancelable now — the card first shows
+  // `stopping` (session still up through the grace), then the converge scales it to
+  // zero. On real AWS the snapshot + StopTask take longer, so allow a wide window.
   await card.getByRole("button", { name: "stop" }).click();
-  await expect(card).toHaveAttribute("data-status", "stopped");
+  await expect(card).toHaveAttribute("data-status", "stopping");
+  await expect(card).toHaveAttribute("data-status", "stopped", { timeout: 120_000 });
 
   // Resume: a stopped workspace now shows ONE button — "Resume" — which routes to
   // the per-workspace status page. That page wakes the workspace (a NEW task

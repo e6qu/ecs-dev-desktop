@@ -232,13 +232,21 @@ describe(
     });
 
     it("stop scales to zero: the sim ECS task really stops, bindings clear", async () => {
+      // Manual stop is cancelable now: the route moves to `stopping` and a detached
+      // converge snapshots + tears down after a short grace. Await the converge.
       const res = await expectStatus(
         await api(`/workspaces/${wsId}/stop`, { method: "POST" }),
         200,
       );
-      expect(workspace.parse(await res.json()).state).toBe("stopped");
+      expect(workspace.parse(await res.json()).state).toBe("stopping");
 
-      const detail = await inspect();
+      const deadline = Date.now() + 60_000;
+      let detail = await inspect();
+      while (detail.state !== "stopped") {
+        if (Date.now() > deadline) throw new Error(`stop never converged (state: ${detail.state})`);
+        await sleep(2_000);
+        detail = await inspect();
+      }
       expect(detail.taskId).toBeUndefined();
       expect(detail.volumeId).toBeUndefined();
       expect(detail.latestSnapshotId).toMatch(/^snap-/);
