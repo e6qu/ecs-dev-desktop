@@ -49,6 +49,7 @@ export function makeWorkspaceEntity(client: DynamoDBClient, table = TABLE) {
         // When a delete was requested (the `deleting` tombstone began).
         deleteRequestedAt: { type: "string", required: false },
         stopRequestedAt: { type: "string", required: false },
+        stopRequestedBy: { type: "string", required: false },
         lastActivity: { type: "string", required: true },
         createdAt: { type: "string", required: true },
         // Runtime bindings (absent while stopped/scaled-to-zero).

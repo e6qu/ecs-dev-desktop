@@ -44,7 +44,7 @@ describe("admin cost report", () => {
 
   it("records the stop on the ledger via the control plane (no route-level emit)", async () => {
     const id = await createWorkspaceFor("bob");
-    await stopWorkspaceFor(id);
+    await stopWorkspaceFor(id, "bob");
 
     const res = await auditFeed(
       new Request("http://localhost/api/admin/audit", { headers: admin("root") }),

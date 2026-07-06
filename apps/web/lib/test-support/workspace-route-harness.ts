@@ -119,7 +119,7 @@ export async function createWorkspaceFor(owner: string): Promise<string> {
  * this awaits the converge deterministically (finishStop with no grace) — tests
  * that need a stopped fixture stay fast and race-free.
  */
-export async function stopWorkspaceFor(id: string): Promise<void> {
+export async function stopWorkspaceFor(id: string, actor?: string): Promise<void> {
   // Drive the workspace to `stopped` via the control plane DIRECTLY (like
   // createWorkspaceFor drives the launch) — a fixture must not go through the
   // owner-scoped stop route (it isn't the owner → 403). Manual stop is async
@@ -129,7 +129,7 @@ export async function stopWorkspaceFor(id: string): Promise<void> {
   const wsid = workspaceId(id);
   const current = await cp.get(wsid);
   if (current?.state === "running" || current?.state === "idle") {
-    expect((await cp.requestStop(wsid)).ok).toBe(true);
+    expect((await cp.requestStop(wsid, actor)).ok).toBe(true);
   }
   expect((await cp.finishStop(wsid, { ignoreGrace: true })).ok).toBe(true);
 }

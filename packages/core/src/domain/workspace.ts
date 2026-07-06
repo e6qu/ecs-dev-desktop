@@ -79,6 +79,9 @@ export interface Workspace {
   /** When a manual stop was requested (state became `stopping`) — the converge
    * finishes the stop after a short grace unless the user cancels first. */
   readonly stopRequestedAt?: IsoTimestamp;
+  /** WHO requested the manual stop — so the async converge attributes the
+   * `session.stop` audit to the user who initiated it, not the system sweep. */
+  readonly stopRequestedBy?: string;
   /** When teardown finished (state became `terminated`) — starts the undelete
    * retention window; the purge sweep removes the tombstone (and reaps its
    * retained snapshot) once it is older than the retention. */
@@ -164,11 +167,16 @@ export function provision(params: ProvisionParams): Workspace {
  * tears down after a short grace, or {@link cancelStopping} resumes it. Distinct
  * from the direct {@link markStopped} the idle auto-shutdown uses.
  */
-export function markStopping(ws: Workspace, at: IsoTimestamp): Result<Workspace, DomainError> {
+export function markStopping(
+  ws: Workspace,
+  at: IsoTimestamp,
+  by?: string,
+): Result<Workspace, DomainError> {
   return map(transition(ws.state, "requestStop"), (state) => ({
     ...ws,
     state,
     stopRequestedAt: at,
+    stopRequestedBy: by,
     // Deliberately keeps volumeId/taskId/sshHost — the session is still running.
   }));
 }
@@ -181,6 +189,7 @@ export function cancelStopping(ws: Workspace, at: IsoTimestamp): Result<Workspac
     state,
     lastActivity: at,
     stopRequestedAt: undefined,
+    stopRequestedBy: undefined,
   }));
 }
 
@@ -199,6 +208,7 @@ export function markStopped(
     taskId: undefined,
     sshHost: undefined,
     stopRequestedAt: undefined,
+    stopRequestedBy: undefined,
     // Sharing never outlives the live session it exposed.
     shareEnabled: undefined,
     shareEnabledAt: undefined,

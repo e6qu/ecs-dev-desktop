@@ -121,7 +121,7 @@ describe("POST /api/workspaces/:id/connect — wake-on-connect (DynamoDB Local)"
 
   it("wakes a scaled-to-zero workspace from its snapshot, idempotently", async () => {
     const id = await createWorkspaceFor("conn-b");
-    expect((await doStop("conn-b", id)).status).toBe(200);
+    await stopWorkspaceFor(id);
     const stopped = await detail(id);
     expect(stopped.state).toBe("stopped");
 

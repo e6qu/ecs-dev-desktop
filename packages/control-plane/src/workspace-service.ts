@@ -265,6 +265,7 @@ interface WorkspaceRecord {
   desiredState?: DesiredState;
   deleteRequestedAt?: string;
   stopRequestedAt?: string;
+  stopRequestedBy?: string;
   createdAt: string;
   lastActivity: string;
   volumeId?: string;
@@ -784,14 +785,12 @@ export class WorkspaceService {
     const found = await this.require(id);
     if (!found.ok) return found;
     const { ws, version } = found.value;
-    const next = markStopping(ws, isoTimestamp(this.deps.clock.now()));
+    const next = markStopping(ws, isoTimestamp(this.deps.clock.now()), actor);
     if (!next.ok) return next;
     // NO billing audit here: the task keeps running (and billing) through the
     // `stopping` grace, so `session.stop` (which closes the running interval) is
-    // emitted by finishStop when the task is ACTUALLY torn down — not here.
-    // `actor` is unused until a stop-requested audit action exists; keep the param
-    // for the route/signature symmetry with the other lifecycle methods.
-    void actor;
+    // emitted by finishStop when the task is ACTUALLY torn down — attributed to
+    // `actor` via the persisted stopRequestedBy.
     try {
       await this.persistTransition(next.value, version);
     } catch (e) {
@@ -847,7 +846,7 @@ export class WorkspaceService {
       await this.persistTransition(next.value, version, {
         action: "session.stop",
         target: id,
-        actor: SYSTEM_ACTOR,
+        actor: ws.stopRequestedBy ?? SYSTEM_ACTOR,
         detail: "scaled to zero",
       });
     } catch (e) {
