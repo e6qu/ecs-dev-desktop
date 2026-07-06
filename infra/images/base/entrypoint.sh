@@ -18,7 +18,21 @@ if ! printf '%s' "${EDD_WORKSPACE_ID}" | grep -Eq '^[a-z0-9][a-z0-9-]{0,38}$'; t
 fi
 
 install -d -o root -g root -m 0755 /run/sshd
-install -d -o workspace -g workspace -m 0755 /home/workspace
+# Each path below is its own `install -d` argument, not a single nested path --
+# GNU coreutils' `install -d` only chowns/chmods the LEAF of a given path,
+# creating any missing intermediate components with the default mode (root-
+# owned, since this script still runs as root here). A single call for the
+# nested `.openvscode-server/data/User` (as the settings-seed step below used
+# to do alone) left `.openvscode-server` and `data` themselves root-owned —
+# found live: OpenVSCode Server (running as `workspace`) failed on its very
+# first `mkdir '/home/workspace/.openvscode-server/extensions'` with EACCES,
+# and every extension install/data-dir (`data/logs`, `data/Machine`, the user
+# extensions dir) failed the same way, so the editor never finished loading.
+install -d -o workspace -g workspace -m 0755 \
+  /home/workspace \
+  /home/workspace/.openvscode-server \
+  /home/workspace/.openvscode-server/data \
+  /home/workspace/.openvscode-server/extensions
 
 # Persist the coordinates the registered-key AuthorizedKeysCommand needs (sshd
 # strips its environment). Root-only (0600): the command runs as root, and the
@@ -91,11 +105,44 @@ if [ ! -e "${settings_dir}/settings.json" ]; then
   install -d -o workspace -g workspace -m 0755 "${settings_dir}"
   cat >"${settings_dir}/settings.json" <<'JSON'
 {
-  "workbench.colorTheme": "Default Dark Modern"
+  "workbench.colorTheme": "Default Dark Modern",
+  "window.menuBarVisibility": "classic"
 }
 JSON
   chown workspace:workspace "${settings_dir}/settings.json"
   chmod 0644 "${settings_dir}/settings.json"
+fi
+
+# Seed a folder-open task (first boot only, same write-if-absent rule as the
+# settings above) into the default-opened folder (/home/workspace, see
+# --default-folder below). A shell task's output panel opens automatically when
+# the task runs, which is the only VS Code/OpenVSCode mechanism that opens the
+# terminal panel on load without a custom extension — settings.json alone can't
+# auto-open it. Doubles as the natural place for a one-time orientation tip:
+# claude/codex's OAuth login opens a browser redirect to a localhost port that's
+# inside THIS remote container, not the user's machine — unreachable from their
+# browser. Both CLIs already support pasting the code shown in the browser instead
+# of waiting for the redirect; users just need to know to expect it.
+tasks_dir=/home/workspace/.vscode
+if [ ! -e "${tasks_dir}/tasks.json" ]; then
+  install -d -o workspace -g workspace -m 0755 "${tasks_dir}"
+  cat >"${tasks_dir}/tasks.json" <<'JSON'
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "EDD workspace ready",
+      "type": "shell",
+      "command": "echo \"Workspace ready. Tip: when 'claude' or 'codex' asks you to sign in, the browser redirect can't reach this remote workspace -- paste the code shown in the browser instead of waiting for it.\"",
+      "runOptions": { "runOn": "folderOpen" },
+      "presentation": { "reveal": "always", "panel": "shared", "focus": false, "close": false },
+      "problemMatcher": []
+    }
+  ]
+}
+JSON
+  chown workspace:workspace "${tasks_dir}/tasks.json"
+  chmod 0644 "${tasks_dir}/tasks.json"
 fi
 
 # (Default extensions — the AI agents + dev extensions — are baked into OpenVSCode's

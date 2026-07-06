@@ -122,19 +122,9 @@ RUN gjf_ver="$(curl -fsS -o /dev/null -w '%{url_effective}' -L \
     && chmod 0755 /usr/local/bin/google-java-format \
     && google-java-format --version
 
-# AI coding agents (OMNIBUS only — kept out of base/slim variants since they bundle
-# ~1 GB of native binaries): the Claude Code agent CLI (system-wide to /usr/local,
-# overriding the inherited home npm prefix) + the agent VS Code extensions into the
-# built-in dir (alongside the language extensions seeded below).
-RUN export NPM_CONFIG_PREFIX=/usr/local \
-    && npm install -g @anthropic-ai/claude-code \
-    && command -v claude
-
-# VS Code extensions into the built-in extensions dir: the AI agents (omnibus-only,
-# moved out of base) + every language's (base already baked the cross-cutting
-# formatter/linter/GitHub ones).
+# VS Code extensions into the built-in extensions dir: every language's (base
+# already baked the cross-cutting formatter/linter/GitHub ones + the AI agents).
 RUN for ext in \
-      anthropic.claude-code openai.chatgpt \
       ms-python.python detachhead.basedpyright charliermarsh.ruff astral-sh.ty semgrep.semgrep \
       golang.go redhat.java rust-lang.rust-analyzer ms-playwright.playwright ; do \
       openvscode-server --install-extension "$ext" --extensions-dir /opt/openvscode-server/extensions ; \

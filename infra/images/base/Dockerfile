@@ -55,21 +55,21 @@ RUN arch="$(dpkg --print-architecture)" \
     && ln -s /opt/openvscode-server/bin/openvscode-server /usr/local/bin/openvscode-server
 
 # Default VS Code extensions (from Open VSX — OpenVSCode Server's default gallery):
-# the cross-cutting dev extensions (formatter/linter/GitHub). The AI coding agents
-# (Claude Code + Codex) are NOT here — they bundle ~1 GB of native binaries and now
-# live in OMNIBUS only, so the slim per-language variants stay lean (a slim-variant
-# user can still install the agent CLI/extension at runtime via the user-CLI path,
-# #90/#91). Installed into OpenVSCode's BUILT-IN extensions dir (/opt/openvscode-
-# server/extensions) — NOT the user extensions dir, which is under /home/workspace
-# and shadowed by the EBS volume at runtime. Built-in extensions load read-only with
-# no runtime copy (a first-boot copy would slow every workspace start); the user
-# still installs their own into the volume's extensions dir. Variants add their
-# language extensions (and omnibus the agents) to the same built-in dir.
+# the cross-cutting dev extensions (formatter/linter/GitHub) + the AI coding agent
+# companions (Claude Code, Codex/ChatGPT) — every variant gets both agent CLIs and
+# their VS Code panels, not just omnibus. Installed into OpenVSCode's BUILT-IN
+# extensions dir (/opt/openvscode-server/extensions) — NOT the user extensions dir,
+# which is under /home/workspace and shadowed by the EBS volume at runtime.
+# Built-in extensions load read-only with no runtime copy (a first-boot copy would
+# slow every workspace start); the user still installs their own into the volume's
+# extensions dir. Variants add their own language extensions to the same built-in dir.
 RUN for ext in \
       esbenp.prettier-vscode \
       dbaeumer.vscode-eslint \
       github.vscode-pull-request-github \
-      github.vscode-github-actions ; do \
+      github.vscode-github-actions \
+      anthropic.claude-code \
+      openai.chatgpt ; do \
       openvscode-server --install-extension "$ext" --extensions-dir /opt/openvscode-server/extensions ; \
     done \
     && chmod -R a+rX /opt/openvscode-server/extensions
@@ -77,10 +77,12 @@ RUN for ext in \
 # Cross-cutting CLIs (installed system-wide to /usr/local BEFORE the home npm prefix
 # is set below, so they land in /usr/local — on PATH for every shell): the JS/TS
 # lint/format/dead-code/CPD tools that match this repo's own CI (prettier, eslint,
-# knip, jscpd). The Claude Code agent CLI is installed in OMNIBUS only (see above).
-RUN npm install -g prettier eslint knip jscpd \
+# knip, jscpd), and the AI coding agent CLIs (Claude Code, Codex) — every variant
+# carries both, not just omnibus.
+RUN npm install -g prettier eslint knip jscpd @anthropic-ai/claude-code @openai/codex \
     && prettier --version && eslint --version \
-    && knip --version && jscpd --version
+    && knip --version && jscpd --version \
+    && command -v claude && command -v codex
 
 # Cross-cutting security scanner: Trivy (vuln/secret/misconfig/IaC), the same tool
 # this repo's CI security gate uses (`.trivyignore.yaml`) — so a workspace can scan
