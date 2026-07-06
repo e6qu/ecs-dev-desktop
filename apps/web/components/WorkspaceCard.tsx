@@ -4,6 +4,7 @@ import { WORKSPACE_PATH_PREFIX } from "@edd/core";
 
 import { gib } from "../lib/format";
 import { TESTID } from "../lib/testids";
+import { PurgeButton } from "./PurgeButton";
 import { ShareToggle } from "./ShareToggle";
 import { StatusBadge } from "./StatusBadge";
 import { WorkspaceActions } from "./WorkspaceActions";
@@ -41,14 +42,12 @@ const MONITORABLE_STATES: ReadonlySet<WorkspaceStateDto> = new Set(["running", "
 export function WorkspaceCard({
   ws,
   index,
-  showOwner,
   canShare = false,
 }: {
   /** A workspace DTO already enriched (catalog image fields + ssh command) by the
    * server / `enrichWorkspace`, so the card is a pure renderer. */
   ws: WorkspaceDto;
   index: number;
-  showOwner: boolean;
   /** True only when the VIEWER owns this workspace: the spectate share toggle is
    * strictly an owner control (the route re-enforces it). */
   canShare?: boolean;
@@ -87,6 +86,15 @@ export function WorkspaceCard({
         >
           {EDITOR_LABEL[ws.editor ?? "openvscode"]}
         </span>
+        {ws.shareEnabled === true && (
+          <span
+            className="badge accent"
+            data-testid={TESTID.workspaceViewableBadge}
+            title="Others can watch this session (spectate)"
+          >
+            viewable
+          </span>
+        )}
         <WorkspaceInfo ws={ws} />
         {ws.functional === "degraded" && (
           <span
@@ -133,7 +141,9 @@ export function WorkspaceCard({
           ))}
         </div>
       )}
-      {showOwner && <div className="owner">owner · {ws.ownerId}</div>}
+      <div className="owner" data-testid={TESTID.workspaceOwner}>
+        started by · {ws.ownerEmail ?? ws.ownerId}
+      </div>
       {sshCommand !== undefined && (
         <div className="meta-line">
           <span className="meta-label">ssh</span>
@@ -198,6 +208,11 @@ export function WorkspaceCard({
         </div>
       )}
       <WorkspaceActions id={ws.id} actions={cardActions} />
+      {ws.state === "terminated" && (
+        <div className="meta-line">
+          <PurgeButton id={ws.id} />
+        </div>
+      )}
     </article>
   );
 }

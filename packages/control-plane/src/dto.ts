@@ -10,6 +10,7 @@ export function toWorkspaceDto(ws: Workspace): WorkspaceDto {
   return {
     id: ws.id,
     ownerId: ws.ownerId,
+    ...(ws.ownerEmail === undefined ? {} : { ownerEmail: ws.ownerEmail }),
     ...(ws.ownerRole === undefined ? {} : { ownerRole: ws.ownerRole }),
     ...(ws.repoUrl === undefined ? {} : { repoUrl: ws.repoUrl }),
     baseImage: ws.baseImage,

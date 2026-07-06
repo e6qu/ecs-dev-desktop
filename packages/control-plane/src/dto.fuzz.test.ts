@@ -88,7 +88,10 @@ describe("toWorkspaceDto (fuzz)", () => {
         expect(dto).not.toHaveProperty("volumeId");
         expect(dto).not.toHaveProperty("taskId");
         expect(dto).not.toHaveProperty("sshHost");
-        expect(dto).not.toHaveProperty("ownerEmail");
+        // ownerEmail is DELIBERATELY exposed since the "who started it" work: it's
+        // the owner's own identity (the list is owner-scoped for non-admins), not a
+        // runtime binding. Mirrored when it's present on the source record.
+        if (opts.hasOwnerEmail) expect(dto.ownerEmail).toBe("alice@example.com");
         expect(dto).not.toHaveProperty("desiredState");
         expect(dto).not.toHaveProperty("deleteRequestedAt");
         // lastActivity is DELIBERATELY carried since the instant-create work:

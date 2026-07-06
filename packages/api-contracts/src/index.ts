@@ -53,6 +53,8 @@ export const workspace = z.object({
   // The owner's role at create time — lets the admin quota view flag a workspace against its
   // owner's per-role limit. Absent on records predating the field.
   ownerRole: role.optional(),
+  /** Who started the workspace (email when known) — shown on the card/status. */
+  ownerEmail: z.email().optional(),
   baseImage: z.string(),
   editor: editorKind.optional(),
   state: workspaceState,

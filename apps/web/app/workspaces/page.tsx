@@ -111,13 +111,7 @@ export default async function WorkspacesPage({
         <div className="grid">
           {workspaces.map((ws, i) => {
             return (
-              <WorkspaceCard
-                key={ws.id}
-                ws={ws}
-                index={i}
-                showOwner={viewAll}
-                canShare={ws.ownerId === principal.id}
-              />
+              <WorkspaceCard key={ws.id} ws={ws} index={i} canShare={ws.ownerId === principal.id} />
             );
           })}
         </div>
@@ -132,7 +126,7 @@ export default async function WorkspacesPage({
           </p>
           <div className="grid">
             {deleted.map((ws, i) => {
-              return <WorkspaceCard key={ws.id} ws={ws} index={i} showOwner={viewAll} />;
+              return <WorkspaceCard key={ws.id} ws={ws} index={i} />;
             })}
           </div>
         </section>

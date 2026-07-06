@@ -14,6 +14,14 @@ export const TESTID = {
   workspaceDegraded: "workspace-degraded",
   /** Editor-type badge on the card. Attr: `data-editor` (openvscode/monaco/claude/codex). */
   workspaceEditorBadge: "workspace-editor-badge",
+  /** "viewable" badge shown when spectate sharing is enabled. */
+  workspaceViewableBadge: "workspace-viewable-badge",
+  /** The "started by" owner line on the card. */
+  workspaceOwner: "workspace-owner",
+  /** "Delete permanently" button on a terminated workspace card. */
+  workspacePurge: "workspace-purge",
+  /** The type-to-confirm block for permanent delete. */
+  workspacePurgeConfirm: "workspace-purge-confirm",
   /** Workspace row in the admin all-workspaces table. Attrs: `data-id`, `data-status`. */
   workspaceRow: "workspace-row",
   /** Base-image card in the catalog. Attrs: `data-image`, `data-enabled`. */

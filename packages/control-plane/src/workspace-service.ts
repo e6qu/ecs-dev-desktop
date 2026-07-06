@@ -1366,42 +1366,82 @@ export class WorkspaceService {
       if (r.state !== "terminated") continue;
       const terminatedAtMs = Date.parse(r.terminatedAt ?? r.lastActivity);
       if (!Number.isFinite(terminatedAtMs) || nowMs - terminatedAtMs < retentionMs) continue;
-      // Snapshot first: if the reap fails transiently, the tombstone stays and the
-      // next sweep retries — never a record-less snapshot leak.
-      if (r.latestSnapshotId !== undefined) {
-        try {
-          await this.deps.storage.deleteSnapshot(snapshotId(r.latestSnapshotId));
-        } catch (e) {
-          if (!isResourceGoneError(e)) throw e;
-        }
-      }
-      const audit = this.auditItem({
-        action: "session.purged",
-        target: workspaceId(r.id),
-        actor: SYSTEM_ACTOR,
-        detail: "retention window elapsed — tombstone and retained snapshot removed",
-      });
-      if (audit !== undefined) {
-        const result = await writeTransaction(
-          { ws: this.deps.workspaces, ev: audit.entity },
-          ({ ws: wsE, ev }) => [
-            wsE
-              .delete({ id: r.id })
-              .where(({ version: v }, { eq }) => eq(v, r.version))
-              .commit(),
-            ev.put(audit.attrs).commit(),
-          ],
-        ).go();
-        if (result.canceled) continue; // raced (e.g. an undelete) — skip, converged elsewhere
-      } else {
-        await this.deps.workspaces
-          .delete({ id: r.id })
-          .where(({ version: v }, { eq }) => eq(v, r.version))
-          .go();
-      }
-      purged += 1;
+      if (await this.purgeTombstoneRecord(r, "retention window elapsed")) purged += 1;
     }
     return purged;
+  }
+
+  /**
+   * Owner/admin-initiated PERMANENT delete of a terminated (deleted) workspace,
+   * BEFORE its retention window elapses — the irreversible counterpart of undelete.
+   * Only valid from `terminated` (a live/stopped workspace must be deleted first,
+   * which snapshots + tombstones it). Reaps the retained snapshot + removes the
+   * record + audits `session.purged`. The route enforces the anti-accident confirm.
+   */
+  async purgeNow(
+    id: WorkspaceId,
+    actor: string = SYSTEM_ACTOR,
+  ): Promise<Result<void, DomainError>> {
+    const found = await this.find(id);
+    if (found === null) return ok(undefined); // already gone — idempotent
+    const { ws, version } = found;
+    if (ws.state !== "terminated") {
+      return err(
+        conflictError(
+          `cannot permanently delete ${id}: it is '${ws.state}', not a deleted session`,
+        ),
+      );
+    }
+    await this.purgeTombstoneRecord(
+      { id: ws.id, latestSnapshotId: ws.latestSnapshotId, version },
+      `permanently deleted by ${actor}`,
+      actor,
+    );
+    return ok(undefined);
+  }
+
+  /** Reap a terminated tombstone's retained snapshot (first — no record-less leak),
+   * then remove the record + audit `session.purged`. Returns false on a lost race
+   * (a concurrent undelete/purge), true when this call removed it. Shared by the
+   * retention sweep and the owner-initiated `purgeNow`. */
+  private async purgeTombstoneRecord(
+    r: { id: string; latestSnapshotId?: string; version: number },
+    reason: string,
+    actor: string = SYSTEM_ACTOR,
+  ): Promise<boolean> {
+    // Snapshot first: if the reap fails transiently, the tombstone stays and a
+    // later sweep/retry cleans it — never a record-less snapshot leak.
+    if (r.latestSnapshotId !== undefined) {
+      try {
+        await this.deps.storage.deleteSnapshot(snapshotId(r.latestSnapshotId));
+      } catch (e) {
+        if (!isResourceGoneError(e)) throw e;
+      }
+    }
+    const audit = this.auditItem({
+      action: "session.purged",
+      target: workspaceId(r.id),
+      actor,
+      detail: `tombstone and retained snapshot removed — ${reason}`,
+    });
+    if (audit !== undefined) {
+      const result = await writeTransaction(
+        { ws: this.deps.workspaces, ev: audit.entity },
+        ({ ws: wsE, ev }) => [
+          wsE
+            .delete({ id: r.id })
+            .where(({ version: v }, { eq }) => eq(v, r.version))
+            .commit(),
+          ev.put(audit.attrs).commit(),
+        ],
+      ).go();
+      return !result.canceled;
+    }
+    await this.deps.workspaces
+      .delete({ id: r.id })
+      .where(({ version: v }, { eq }) => eq(v, r.version))
+      .go();
+    return true;
   }
 
   /**

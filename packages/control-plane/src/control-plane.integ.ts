@@ -319,6 +319,32 @@ describe("WorkspaceService lifecycle ", () => {
     expect((await flaky.get(workspaceId(dto.id)))?.state).toBe("running");
   });
 
+  it("purgeNow permanently deletes a terminated workspace (reaps snapshot, removes record)", async () => {
+    const ws = await service.create({ ownerId: ownerId("purgenow"), baseImage: baseImage("img") });
+    expect((await service.remove(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.finishDeleting(workspaceId(ws.id))).ok).toBe(true);
+    const snapId = (await service.inspect(workspaceId(ws.id)))?.workspace.latestSnapshotId;
+    expect(snapId).toBeDefined();
+    expect((await service.get(workspaceId(ws.id)))?.state).toBe("terminated");
+
+    // Owner-initiated permanent delete, BEFORE the retention window.
+    const purged = await service.purgeNow(workspaceId(ws.id), "owner@example.com");
+    expect(purged.ok).toBe(true);
+    expect(await service.get(workspaceId(ws.id))).toBeNull();
+    expect((await storage.listSnapshots()).some((sn) => sn.id === snapId)).toBe(false);
+    // Idempotent: purging an already-gone workspace is a no-op success.
+    expect((await service.purgeNow(workspaceId(ws.id))).ok).toBe(true);
+  });
+
+  it("purgeNow refuses a workspace that is not terminated (must be deleted first)", async () => {
+    const ws = await service.create({ ownerId: ownerId("purgelive"), baseImage: baseImage("img") });
+    const r = await service.purgeNow(workspaceId(ws.id));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.kind).toBe("conflict");
+    // Still there, untouched.
+    expect((await service.get(workspaceId(ws.id)))?.state).toBe("running");
+  });
+
   it("undelete restores a terminated workspace to stopped, and it can start again", async () => {
     const ws = await service.create({ ownerId: ownerId("undel"), baseImage: baseImage("img") });
     expect((await service.remove(workspaceId(ws.id))).ok).toBe(true);

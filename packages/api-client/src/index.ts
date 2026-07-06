@@ -176,6 +176,11 @@ export class ApiClient {
     await this.send(`/api/workspaces/${id}`, { method: "DELETE" });
   }
 
+  /** Permanently delete a terminated workspace (irreversible; reaps its snapshot). */
+  async purgeWorkspace(id: string): Promise<void> {
+    await this.send(`/api/workspaces/${id}/purge`, { method: "POST" });
+  }
+
   /** Restore a deleted (terminated) workspace within the undelete-retention window. */
   async undeleteWorkspace(id: string): Promise<WorkspaceDto> {
     const res = await this.send(`/api/workspaces/${id}/undelete`, { method: "POST" });
