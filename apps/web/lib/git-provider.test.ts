@@ -106,9 +106,10 @@ describe("InstallationGitProvider (via getGitProvider in App mode)", () => {
     enableApp();
     stubGitHubApp();
     const provider = await getGitProvider(ownerId("ignored-in-app-mode"));
-    const repos = await provider?.listRepos();
-    expect(repos?.map((r) => r.fullName)).toEqual(["acme/web"]);
-    expect(repos?.[0]?.private).toBe(true);
+    const page = await provider?.listRepos();
+    expect(page?.repos.map((r) => r.fullName)).toEqual(["acme/web"]);
+    expect(page?.repos[0]?.private).toBe(true);
+    expect(page?.hasMore).toBe(false);
   });
 
   it("maps installations to namespaces with canCreate from the administration permission", async () => {

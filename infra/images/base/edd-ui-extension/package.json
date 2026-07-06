@@ -1,0 +1,23 @@
+{
+  "name": "edd-workspace-ui",
+  "displayName": "EDD Workspace",
+  "description": "ecs-dev-desktop workspace niceties: a link back to the EDD portal, a visible open-terminal control with its keybinding, terminal-open-on-startup, and a one-time remote-OAuth tip for the claude/codex CLIs.",
+  "version": "1.0.0",
+  "publisher": "edd",
+  "license": "AGPL-3.0-or-later",
+  "engines": {
+    "vscode": "^1.70.0"
+  },
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "edd.openPortal",
+        "title": "EDD: Back to portal"
+      }
+    ]
+  }
+}

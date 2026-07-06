@@ -206,6 +206,27 @@ describe("WorkspaceService lifecycle ", () => {
     if (!afterStop.ok) expect(afterStop.error.kind).toBe("conflict");
   });
 
+  it("an active:false heartbeat records liveness without refreshing the idle window", async () => {
+    const ws = await service.create({
+      ownerId: ownerId("frank2"),
+      baseImage: baseImage("golden/node:20"),
+    });
+    unwrap(await service.heartbeat(workspaceId(ws.id)));
+    const before = await service.inspect(workspaceId(ws.id));
+
+    // Alive-but-unused: functional lands, lastActivity does NOT move — that's
+    // what lets the reconciler's idle window age on an untouched workspace.
+    const idleBeat = unwrap(
+      await service.heartbeat(workspaceId(ws.id), {
+        active: false,
+        functional: { ide: true, workspace: true },
+      }),
+    );
+    expect(idleBeat.functional).toBe("ok");
+    const after = await service.inspect(workspaceId(ws.id));
+    expect(after?.workspace.lastActivity).toBe(before?.workspace.lastActivity);
+  });
+
   it("inspect returns the full detail plus a derived timeline", async () => {
     const ws = await service.create({
       ownerId: ownerId("gina"),
@@ -226,16 +247,80 @@ describe("WorkspaceService lifecycle ", () => {
     if (!result.ok) expect(result.error.kind).toBe("conflict");
   });
 
-  it("removes a workspace: tombstones it, then finishDeleting removes the record", async () => {
+  it("removes a workspace: tombstones it, then finishDeleting keeps a terminated tombstone (restorable)", async () => {
     const ws = await service.create({ ownerId: ownerId("dave"), baseImage: baseImage("img") });
     // remove() is async now: it marks the `deleting` tombstone (record persists).
     expect((await service.remove(workspaceId(ws.id))).ok).toBe(true);
     const tombstoned = await service.get(workspaceId(ws.id));
     expect(tombstoned?.state).toBe("deleting");
     expect((await service.listDeleting()).map((w) => w.id)).toContain(ws.id);
-    // The reconciler's finishDeleting converges teardown and removes the record.
+    // The reconciler's finishDeleting converges teardown; the record STAYS as a
+    // `terminated` tombstone (with its retained snapshot) for the undelete window.
     expect((await service.finishDeleting(workspaceId(ws.id))).ok).toBe(true);
-    expect(await service.get(workspaceId(ws.id))).toBeNull();
+    const terminated = await service.get(workspaceId(ws.id));
+    expect(terminated?.state).toBe("terminated");
+    expect(terminated?.terminatedAt).toBeDefined();
+    expect(terminated?.availableActions).toEqual(["undelete"]);
+  });
+
+  it("undelete restores a terminated workspace to stopped, and it can start again", async () => {
+    const ws = await service.create({ ownerId: ownerId("undel"), baseImage: baseImage("img") });
+    expect((await service.remove(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.finishDeleting(workspaceId(ws.id))).ok).toBe(true);
+
+    const restored = await service.undelete(workspaceId(ws.id));
+    expect(restored.ok).toBe(true);
+    const after = await service.get(workspaceId(ws.id));
+    expect(after?.state).toBe("stopped");
+    // The full recovery: a restored workspace wakes from its retained snapshot.
+    expect((await service.start(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.get(workspaceId(ws.id)))?.state).toBe("running");
+  });
+
+  it("undelete refuses once the retention window has passed", async () => {
+    const ws = await service.create({ ownerId: ownerId("late"), baseImage: baseImage("img") });
+    expect((await service.remove(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.finishDeleting(workspaceId(ws.id))).ok).toBe(true);
+
+    // A service whose clock is 8 days later (past the 7-day default window).
+    const later = new WorkspaceService({
+      workspaces: makeWorkspaceEntity(client, TEST_TABLE),
+      storage,
+      compute: new FakeComputeProvider(storage),
+      clock: fixedClock("2026-06-09T00:00:00.000Z"),
+    });
+    const result = await later.undelete(workspaceId(ws.id));
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.kind).toBe("conflict");
+      expect(result.error.kind === "conflict" && result.error.reason).toContain("retention window");
+    }
+  });
+
+  it("purgeExpiredTombstones reaps the retained snapshot and removes the record past retention — and ONLY past it", async () => {
+    const ws = await service.create({ ownerId: ownerId("purge"), baseImage: baseImage("img") });
+    expect((await service.remove(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.finishDeleting(workspaceId(ws.id))).ok).toBe(true);
+    // The tombstone's retained snapshot — the exact resource the purge must reap.
+    const snapId = (await service.inspect(workspaceId(ws.id)))?.workspace.latestSnapshotId;
+    expect(snapId).toBeDefined();
+
+    // Within the window: nothing purged, snapshot + tombstone intact.
+    expect(await service.purgeExpiredTombstones(7 * 24 * 60 * 60 * 1000)).toBe(0);
+    expect((await service.get(workspaceId(ws.id)))?.state).toBe("terminated");
+
+    // Past the window (clock 8 days on): purged — THIS record gone, THIS snapshot
+    // reaped. (Count/other-snapshot assertions are deliberately target-scoped: the
+    // shared table holds other tests' tombstones, which purge too.)
+    const later = new WorkspaceService({
+      workspaces: makeWorkspaceEntity(client, TEST_TABLE),
+      storage,
+      compute: new FakeComputeProvider(storage),
+      clock: fixedClock("2026-06-09T00:00:00.000Z"),
+    });
+    expect(await later.purgeExpiredTombstones(7 * 24 * 60 * 60 * 1000)).toBeGreaterThanOrEqual(1);
+    expect(await later.get(workspaceId(ws.id))).toBeNull();
+    expect((await storage.listSnapshots()).some((sn) => sn.id === snapId)).toBe(false);
   });
 
   it("finishDeleting retains a final data-safety snapshot (Middle policy)", async () => {

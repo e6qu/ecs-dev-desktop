@@ -19,6 +19,10 @@ import {
   markSnapshotLost,
   markStopped,
   markTaskLost,
+  markTerminated,
+  setShare,
+  DEFAULT_UNDELETE_RETENTION_MS,
+  undeleteWorkspace,
   recordFunctional,
   markWaking,
   METRIC_SECURITY_PRIVILEGE_ATTEMPT,
@@ -126,6 +130,10 @@ type AuditAction =
   | "session.delete"
   | "session.terminated"
   | "session.recover"
+  | "session.undelete"
+  | "session.purged"
+  | "session.share_enabled"
+  | "session.share_disabled"
   | "session.snapshot_lost"
   | "security.privilege_attempt";
 
@@ -260,6 +268,11 @@ interface WorkspaceRecord {
   functional?: FunctionalStatus;
   functionalDetail?: string;
   functionalAt?: string;
+  diskUsedBytes?: number;
+  diskTotalBytes?: number;
+  terminatedAt?: string;
+  shareEnabled?: boolean;
+  shareEnabledAt?: string;
   version: number;
 }
 
@@ -309,6 +322,11 @@ function toWorkspace(r: WorkspaceRecord): Workspace {
     functional: r.functional,
     functionalDetail: r.functionalDetail,
     functionalAt: r.functionalAt === undefined ? undefined : isoTimestamp(r.functionalAt),
+    diskUsedBytes: r.diskUsedBytes,
+    diskTotalBytes: r.diskTotalBytes,
+    terminatedAt: r.terminatedAt === undefined ? undefined : isoTimestamp(r.terminatedAt),
+    shareEnabled: r.shareEnabled,
+    shareEnabledAt: r.shareEnabledAt === undefined ? undefined : isoTimestamp(r.shareEnabledAt),
   };
 }
 
@@ -533,6 +551,9 @@ export class WorkspaceService {
     const actual = new Map<string, number>();
     const { data: records } = await this.deps.workspaces.scan.go({ pages: "all" });
     records.forEach((r: WorkspaceRecord) => {
+      // Terminated tombstones already freed their quota at finishDeleting —
+      // counting them would drift every counter upward each sweep.
+      if (r.state === "terminated") return;
       actual.set(r.ownerId, (actual.get(r.ownerId) ?? 0) + 1);
     });
     const { data: counters } = await oc.scan.go({ pages: "all" });
@@ -807,33 +828,47 @@ export class WorkspaceService {
     }
   }
 
-  /** Idle-agent heartbeat: record activity so the reconciler doesn't scale the
-   * workspace to zero (and wake it from idle). Heartbeats are frequent and
-   * harmless, so a lost write race retries once before reporting conflict. */
+  /** Idle-agent heartbeat. `report.active === false` means "alive but unused":
+   * the functional self-report is still recorded (liveness), but `lastActivity`
+   * is NOT refreshed — that's what lets the reconciler's idle window age on an
+   * untouched workspace and scale it to zero. Absent/`true` counts as activity
+   * (a session-authed browser heartbeat IS a user action) and also wakes an
+   * `idle`-state workspace. Heartbeats are frequent and harmless, so a lost
+   * write race retries once before reporting conflict. */
   async heartbeat(
     id: WorkspaceId,
-    functional?: { ide: boolean; workspace: boolean },
+    report?: {
+      functional?: {
+        ide: boolean;
+        workspace: boolean;
+        disk?: { usedBytes: number; totalBytes: number };
+      };
+      active?: boolean;
+    },
   ): Promise<Result<WorkspaceDto, DomainError>> {
     for (let attempt = 0; ; attempt++) {
       const found = await this.require(id);
       if (!found.ok) return found;
       const at = isoTimestamp(this.deps.clock.now());
-      const active = markActivity(found.value.ws, at);
-      if (!active.ok) return active;
+      let ws = found.value.ws;
+      if (report?.active !== false) {
+        const active = markActivity(ws, at);
+        if (!active.ok) return active;
+        ws = active.value;
+      }
       // Fold in the in-workspace agent's functional self-report (IDE reachable +
       // workspace writable), so the admin sees whether the desktop is actually usable.
-      const next = ok(
-        functional === undefined ? active.value : recordFunctional(active.value, functional, at),
-      );
+      const next =
+        report?.functional === undefined ? ws : recordFunctional(ws, report.functional, at);
       try {
-        await this.persistTransition(next.value, found.value.version);
+        await this.persistTransition(next, found.value.version);
       } catch (e) {
         if (isVersionConflict(e) && attempt === 0) continue;
         if (isVersionConflict(e))
           return err(conflictError(`heartbeat for ${id} lost concurrent updates`));
         throw e;
       }
-      return ok(toWorkspaceDto(next.value));
+      return ok(toWorkspaceDto(next));
     }
   }
 
@@ -1001,27 +1036,44 @@ export class WorkspaceService {
       }
     }
     const oc = this.deps.ownerCounts;
-    // Record teardown COMPLETION (ends billing — the volume + snapshot stopped costing
-    // money) atomically with the hard-delete, so a delete that loses the version race
+    // Record teardown COMPLETION (ends billing — the volume stopped costing money;
+    // the retained snapshot persists through the undelete-retention window)
+    // atomically with the tombstone write, so a delete that loses the version race
     // records no terminate event. Absent only when no audit ledger is wired.
+    // The record is KEPT as a `terminated` tombstone (not hard-deleted) so the
+    // owner can undelete within the retention window; the purge sweep removes it
+    // (and reaps the snapshot) after. Quota is freed here — undelete re-admits
+    // through the same atomic counter condition as create.
     const term = this.auditItem({
       action: "session.terminated",
       target: id,
       actor: SYSTEM_ACTOR,
-      detail: "teardown complete",
+      detail: "teardown complete — restorable until the retention purge",
     });
+    const terminated = markTerminated(ws, now);
+    if (!terminated.ok) return terminated;
+    const detail = toWorkspaceDetail(terminated.value);
+    const clearable = ["volumeId", "taskId", "sshHost"] as const; // snapshot fields KEPT
+    const cleared = clearable.filter((field) => detail[field] === undefined);
+    const { id: _detailId, ...fields } = detail;
+    const patched = { ...fields, version: version + 1 };
+    // The version-conditioned tombstone patch is inlined per branch: inside a
+    // writeTransaction the container hands back a TransactWriteEntity (whose
+    // chain ends in .commit()), a different type from the plain entity used in
+    // the transactionless branch — mirroring persistTransition's composition.
     // The quota decrement is UNCONDITIONAL (no `where`): it must never block the delete
     // — a counter drift only weakens enforcement and self-heals (create path +
-    // reconcileOwnerCounts) — so the delete's own version condition is the only cancel.
+    // reconcileOwnerCounts) — so the tombstone's own version condition is the only cancel.
     try {
       if (term !== undefined && oc !== undefined) {
         const result = await writeTransaction(
           { ws: this.deps.workspaces, oc, ev: term.entity },
           ({ ws: wsE, oc: ocE, ev }) => [
-            wsE
-              .delete({ id })
-              .where(({ version: v }, { eq }) => eq(v, version))
-              .commit(),
+            (() => {
+              const m = wsE.patch({ id }).set(patched);
+              const op = cleared.length > 0 ? m.remove([...cleared]) : m;
+              return op.where(({ version: v }, { eq }) => eq(v, version)).commit();
+            })(),
             ocE.update({ ownerId: ws.ownerId }).subtract({ count: 1 }).commit(),
             ev.put(term.attrs).commit(),
           ],
@@ -1033,10 +1085,11 @@ export class WorkspaceService {
         const result = await writeTransaction(
           { ws: this.deps.workspaces, ev: term.entity },
           ({ ws: wsE, ev }) => [
-            wsE
-              .delete({ id })
-              .where(({ version: v }, { eq }) => eq(v, version))
-              .commit(),
+            (() => {
+              const m = wsE.patch({ id }).set(patched);
+              const op = cleared.length > 0 ? m.remove([...cleared]) : m;
+              return op.where(({ version: v }, { eq }) => eq(v, version)).commit();
+            })(),
             ev.put(term.attrs).commit(),
           ],
         ).go();
@@ -1047,10 +1100,11 @@ export class WorkspaceService {
         const result = await writeTransaction(
           { ws: this.deps.workspaces, oc },
           ({ ws: wsE, oc: ocE }) => [
-            wsE
-              .delete({ id })
-              .where(({ version: v }, { eq }) => eq(v, version))
-              .commit(),
+            (() => {
+              const m = wsE.patch({ id }).set(patched);
+              const op = cleared.length > 0 ? m.remove([...cleared]) : m;
+              return op.where(({ version: v }, { eq }) => eq(v, version)).commit();
+            })(),
             ocE.update({ ownerId: ws.ownerId }).subtract({ count: 1 }).commit(),
           ],
         ).go();
@@ -1058,10 +1112,9 @@ export class WorkspaceService {
           return err(conflictError(`finishDeleting ${id} lost a concurrent update`));
         }
       } else {
-        await this.deps.workspaces
-          .delete({ id })
-          .where(({ version: v }, { eq }) => eq(v, version))
-          .go();
+        const m = this.deps.workspaces.patch({ id }).set(patched);
+        const op = cleared.length > 0 ? m.remove([...cleared]) : m;
+        await op.where(({ version: v }, { eq }) => eq(v, version)).go();
       }
     } catch (e) {
       if (!isVersionConflict(e)) throw e;
@@ -1090,6 +1143,169 @@ export class WorkspaceService {
       return err(conflictError(`recover of ${id} lost a concurrent update`));
     }
     return ok(undefined);
+  }
+
+  /**
+   * Restore a terminated (deleted) workspace to `stopped` within the undelete
+   * retention window — it wakes from its retained snapshot like any stopped
+   * workspace. Quota is re-admitted through the SAME atomic counter condition as
+   * create (when wired), so an undelete can't race an owner past their cap.
+   */
+  async undelete(
+    id: WorkspaceId,
+    opts?: { quotaLimit?: number; actor?: string; retentionMs?: number },
+  ): Promise<Result<WorkspaceDto, DomainError>> {
+    const found = await this.find(id);
+    if (found === null) return err(notFoundError("workspace", id));
+    const { ws, version } = found;
+    const now = isoTimestamp(this.deps.clock.now());
+    const retentionMs = opts?.retentionMs ?? DEFAULT_UNDELETE_RETENTION_MS;
+    const terminatedAtMs = Date.parse(ws.terminatedAt ?? ws.lastActivity);
+    if (ws.state === "terminated" && Date.parse(now) - terminatedAtMs >= retentionMs) {
+      return err(
+        conflictError(
+          `cannot undelete ${id}: the retention window has passed (snapshot purged soon)`,
+        ),
+      );
+    }
+    const next = undeleteWorkspace(ws, now);
+    if (!next.ok) return next;
+    const audit = this.auditItem({
+      action: "session.undelete",
+      target: id,
+      actor: opts?.actor ?? SYSTEM_ACTOR,
+      detail: "restored from retained snapshot within the retention window",
+    });
+    const detail = toWorkspaceDetail(next.value);
+    const clearable = ["deleteRequestedAt", "terminatedAt"] as const;
+    const cleared = clearable.filter((field) => detail[field] === undefined);
+    const { id: _detailId, ...fields } = detail;
+    const patched = { ...fields, version: version + 1 };
+    const oc = this.deps.ownerCounts;
+    const quotaLimit = opts?.quotaLimit;
+    try {
+      if (oc !== undefined && quotaLimit !== undefined && audit !== undefined) {
+        const result = await writeTransaction(
+          { ws: this.deps.workspaces, oc, ev: audit.entity },
+          ({ ws: wsE, oc: ocE, ev }) => [
+            (() => {
+              const m = wsE.patch({ id }).set(patched);
+              const op = cleared.length > 0 ? m.remove([...cleared]) : m;
+              return op.where(({ version: v }, { eq }) => eq(v, version)).commit();
+            })(),
+            ocE
+              .update({ ownerId: ws.ownerId })
+              .add({ count: 1 })
+              .where(
+                (attr, op) => `${op.notExists(attr.count)} OR ${op.lt(attr.count, quotaLimit)}`,
+              )
+              .commit(),
+            ev.put(audit.attrs).commit(),
+          ],
+        ).go();
+        if (result.canceled) throwForCanceledCreate(result, 1, ws.ownerId, quotaLimit);
+      } else {
+        await this.persistTransition(next.value, version, {
+          action: "session.undelete",
+          target: id,
+          actor: opts?.actor ?? SYSTEM_ACTOR,
+          detail: "restored from retained snapshot within the retention window",
+        });
+        if (oc !== undefined) {
+          // No cap given: still keep the live-count counter honest (unconditional,
+          // like finishDeleting's decrement; reconcileOwnerCounts self-heals drift).
+          await oc.update({ ownerId: ws.ownerId }).add({ count: 1 }).go();
+        }
+      }
+    } catch (e) {
+      if (e instanceof QuotaExceededError) throw e;
+      if (!isVersionConflict(e)) throw e;
+      return err(conflictError(`undelete of ${id} lost a concurrent update`));
+    }
+    return ok(toWorkspaceDto(next.value));
+  }
+
+  /**
+   * Toggle the owner's spectate flag (audited). Enabling requires a live
+   * session (pure guard); disabling always succeeds. The route enforces WHO
+   * may toggle (owner only).
+   */
+  async setShare(
+    id: WorkspaceId,
+    enabled: boolean,
+    actor?: string,
+  ): Promise<Result<WorkspaceDto, DomainError>> {
+    const found = await this.find(id);
+    if (found === null) return err(notFoundError("workspace", id));
+    const { ws, version } = found;
+    const next = setShare(ws, enabled, isoTimestamp(this.deps.clock.now()));
+    if (!next.ok) return next;
+    try {
+      await this.persistTransition(next.value, version, {
+        action: enabled ? "session.share_enabled" : "session.share_disabled",
+        target: id,
+        actor: actor ?? SYSTEM_ACTOR,
+        detail: enabled
+          ? "spectate enabled — signed-in viewers may watch a read-only mirror"
+          : "spectate disabled",
+      });
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+      return err(conflictError(`share toggle of ${id} lost a concurrent update`));
+    }
+    return ok(toWorkspaceDto(next.value));
+  }
+
+  /**
+   * Purge terminated tombstones older than the retention window: reap the
+   * retained snapshot (the last copy of the data — this is the irreversible
+   * step the 7-day window exists to delay), then remove the record, recording
+   * `session.purged` in the same transaction. Returns the number purged.
+   */
+  async purgeExpiredTombstones(retentionMs: number): Promise<number> {
+    const { data: records } = await this.deps.workspaces.scan.go({ pages: "all" });
+    const nowMs = Date.parse(this.deps.clock.now());
+    let purged = 0;
+    for (const r of records as readonly WorkspaceRecord[]) {
+      if (r.state !== "terminated") continue;
+      const terminatedAtMs = Date.parse(r.terminatedAt ?? r.lastActivity);
+      if (!Number.isFinite(terminatedAtMs) || nowMs - terminatedAtMs < retentionMs) continue;
+      // Snapshot first: if the reap fails transiently, the tombstone stays and the
+      // next sweep retries — never a record-less snapshot leak.
+      if (r.latestSnapshotId !== undefined) {
+        try {
+          await this.deps.storage.deleteSnapshot(snapshotId(r.latestSnapshotId));
+        } catch (e) {
+          if (!isResourceGoneError(e)) throw e;
+        }
+      }
+      const audit = this.auditItem({
+        action: "session.purged",
+        target: workspaceId(r.id),
+        actor: SYSTEM_ACTOR,
+        detail: "retention window elapsed — tombstone and retained snapshot removed",
+      });
+      if (audit !== undefined) {
+        const result = await writeTransaction(
+          { ws: this.deps.workspaces, ev: audit.entity },
+          ({ ws: wsE, ev }) => [
+            wsE
+              .delete({ id: r.id })
+              .where(({ version: v }, { eq }) => eq(v, r.version))
+              .commit(),
+            ev.put(audit.attrs).commit(),
+          ],
+        ).go();
+        if (result.canceled) continue; // raced (e.g. an undelete) — skip, converged elsewhere
+      } else {
+        await this.deps.workspaces
+          .delete({ id: r.id })
+          .where(({ version: v }, { eq }) => eq(v, r.version))
+          .go();
+      }
+      purged += 1;
+    }
+    return purged;
   }
 
   /**

@@ -67,6 +67,7 @@ locals {
     EDD_EARLY_SNAPSHOT_INTERVAL_MS = tostring(var.early_snapshot_interval_ms)
     EDD_EARLY_SESSION_MS           = tostring(var.early_session_ms)
     EDD_GC_GRACE_MS                = tostring(var.gc_grace_ms)
+    EDD_UNDELETE_RETENTION_MS      = tostring(var.undelete_retention_ms)
     EDD_PROVISIONING_TIMEOUT_MS    = tostring(var.provisioning_timeout_ms)
     EDD_HEARTBEAT_INTERVAL_S       = tostring(var.heartbeat_interval_s)
   }
@@ -138,6 +139,14 @@ resource "aws_ecs_service" "control_plane" {
     container_port   = var.control_plane_port
   }
 
+  # Zero-downtime rolling deploys: never drop below desired capacity (100%) while
+  # allowing up to double (200%) so new tasks come up and pass health checks
+  # alongside the old ones before they're drained -- explicit rather than relying
+  # on AWS's (currently identical) defaults, since the app is stateless and this
+  # is a real requirement, not an incidental default.
+  deployment_minimum_healthy_percent = 100
+  deployment_maximum_percent         = 200
+
   deployment_circuit_breaker {
     enable   = true
     rollback = true
@@ -184,11 +193,19 @@ resource "aws_appautoscaling_policy" "control_plane_cpu" {
 resource "aws_ecs_task_definition" "reconciler" {
   family                   = "${var.name}-reconciler"
   requires_compatibilities = ["FARGATE"]
-  network_mode             = "awsvpc"
-  cpu                      = tostring(var.reconciler_cpu)
-  memory                   = tostring(var.reconciler_memory)
-  execution_role_arn       = aws_iam_role.execution.arn
-  task_role_arn            = aws_iam_role.reconciler.arn
+  # Keep the old revision ACTIVE when a new one replaces it: the EventBridge
+  # schedule targets a SPECIFIC revision, and terraform updates the schedule
+  # only after replacing the task definition -- without skip_destroy, every
+  # apply had a window where the schedule launched a just-deregistered revision
+  # and the run silently landed in the DLQ instead of sweeping (found live: 21
+  # accumulated DLQ messages, each a missed reconciler run). Old revisions are
+  # inert (nothing launches them once the schedule repoints).
+  skip_destroy       = true
+  network_mode       = "awsvpc"
+  cpu                = tostring(var.reconciler_cpu)
+  memory             = tostring(var.reconciler_memory)
+  execution_role_arn = aws_iam_role.execution.arn
+  task_role_arn      = aws_iam_role.reconciler.arn
 
   container_definitions = jsonencode([{
     name        = "reconciler"

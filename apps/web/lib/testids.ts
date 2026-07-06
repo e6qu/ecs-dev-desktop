@@ -33,14 +33,38 @@ export const TESTID = {
   quotaUsageRow: "quota-usage-row",
   /** The "admins only" gate shown to non-admins. */
   adminDenied: "admin-denied",
+  /** A start-mode radio on New session (blank / existing repo / new repo). Attrs:
+   * `data-mode`, `data-selected`. */
+  sessionModeOption: "session-mode-option",
+  /** The single prominent Start button on New session. */
+  sessionStart: "session-start",
+  /** The interface (editor/agent) selector on New session. Attr: `data-editor`. */
+  sessionEditor: "session-editor",
+  /** The live per-workspace status hero on /workspaces/[id]. Attrs: `data-status`
+   * (state), `data-ready` ("1" once the functional self-report is ok). */
+  workspaceStatusHero: "workspace-status-hero",
+  /** The boot/runtime log panel on /workspaces/[id]. Attr: `data-available`. */
+  workspaceBootLog: "workspace-boot-log",
+  /** The ⓘ session-details toggle on a workspace card. */
+  workspaceInfoToggle: "workspace-info-toggle",
+  /** The closeable session-details overlay. */
+  workspaceInfoPanel: "workspace-info-panel",
+  /** The "Monitoring" link on a workspace card. */
+  workspaceMonitoringLink: "workspace-monitoring-link",
+  /** A metric panel on the monitoring page. Attrs: `data-metric`, `data-available`. */
+  workspaceMetric: "workspace-metric",
+  /** The spectate viewer root. Attr: `data-phase` (connecting/live/ended/unavailable). */
+  spectateViewer: "spectate-viewer",
+  /** The full-viewport interaction-blocking shield over the spectate render. */
+  spectateShield: "spectate-shield",
+  /** The share (spectate) toggle on a workspace card. Attr: `data-enabled`. */
+  workspaceShareToggle: "workspace-share-toggle",
   /** A repo row in the New-session repo browser. Attrs: `data-repo`, `data-private`. */
   sessionRepoRow: "session-repo-row",
-  /** "Start session" button on a repo row / panel. */
-  startSession: "start-session",
+  /** "Load more repositories" button at the bottom of the repo browser list. */
+  sessionRepoLoadMore: "session-repo-load-more",
   /** The create-repository panel on New session. Attr: `data-enabled`. */
   createRepoPanel: "create-repo-panel",
-  /** Start a blank/scratch session (no repo). */
-  blankSession: "blank-session",
   /** A fleet-total cost tile on the admin Costs page. Attrs: `data-cost` (kind), `data-usd`. */
   costTile: "cost-tile",
   /** A per-user cost row on the admin Costs page. Attrs: `data-owner`, `data-usd`. */
@@ -72,10 +96,15 @@ export const TESTID = {
   loginPassword: "login-password",
   loginSubmit: "login-submit",
   loginError: "login-error",
+  /** The "view as" persona switcher in the topbar user menu. Attrs: `data-role`
+   * (effective), `data-real-role`. */
+  personaSwitcher: "persona-switcher",
   /** The ⓘ help toggle button in the topbar. Attr: `data-help-open`. */
   helpToggle: "help-toggle",
   /** The collapsible help panel below the toolbar. */
   helpPanel: "help-panel",
+  /** The close (×) button inside the help panel, top-right. */
+  helpPanelClose: "help-panel-close",
 } as const;
 
 export type TestId = (typeof TESTID)[keyof typeof TESTID];

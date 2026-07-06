@@ -48,21 +48,25 @@ rand_url() { # a URL-safe random string for Auth.js AUTH_SECRET
   openssl rand -base64 32 | tr '+/' '-_' | tr -d '='
 }
 
-# put <key> <value>: create-or-skip, print the ARN. Fails loud on any AWS error.
+# put <key> <value>: create-or-skip, print the ARN (only) to stdout. Fails loud on any
+# AWS error. Reads the ARN off whichever call actually ran (describe on skip, create on
+# new) instead of a separate follow-up describe-secret — a describe immediately after a
+# create can occasionally race Secrets Manager's own eventual consistency and 404 on a
+# secret that was just created.
 put_secret() { # <key> <value> <kind>
   key="$1"
   val="$2"
   kind="$3"
   name="${prefix}/${key}"
-  if aws secretsmanager describe-secret --secret-id "$name" --region "$region" >/dev/null 2>&1; then
-    echo "edd: $name already exists — skipping ($kind)"
+  if arn=$(aws secretsmanager describe-secret --secret-id "$name" --region "$region" \
+    --query 'ARN' --output text 2>/dev/null); then
+    echo "edd: $name already exists — skipping ($kind)" >&2
   else
-    aws secretsmanager create-secret --name "$name" --region "$region" \
-      --secret-string "$val" >/dev/null
-    echo "edd: created $name ($kind)"
+    arn=$(aws secretsmanager create-secret --name "$name" --region "$region" \
+      --secret-string "$val" --query 'ARN' --output text)
+    echo "edd: created $name ($kind)" >&2
   fi
-  aws secretsmanager describe-secret --secret-id "$name" --region "$region" \
-    --query 'ARN' --output text
+  printf '%s\n' "$arn"
 }
 
 printf '%s\n' "edd: generating crypto secrets for '${prefix}' in ${region}"
@@ -87,13 +91,13 @@ arn_AUTH_ENTRA_SECRET=""
 gh_id="${EDD_BOOTSTRAP_GITHUB_ID:-}"
 if [ -z "$gh_id" ]; then
   printf '%s' "GitHub OAuth App client id (AUTH_GITHUB_ID) [blank=skip]: "
-  read -r gh_id
+  read -r gh_id || gh_id=""
 fi
 if [ -n "$gh_id" ]; then
   gh_secret="${EDD_BOOTSTRAP_GITHUB_SECRET:-}"
   if [ -z "$gh_secret" ]; then
     printf '%s' "GitHub OAuth App client secret (AUTH_GITHUB_SECRET): "
-    read -r gh_secret
+    read -r gh_secret || gh_secret=""
   fi
   [ -n "$gh_secret" ] || {
     echo "edd: EDD_BOOTSTRAP_GITHUB_ID set but no secret provided — aborting" >&2
@@ -106,13 +110,13 @@ fi
 entra_id="${EDD_BOOTSTRAP_ENTRA_ID:-}"
 if [ -z "$entra_id" ]; then
   printf '%s' "Azure Entra app client id (AUTH_MICROSOFT_ENTRA_ID_ID) [blank=skip]: "
-  read -r entra_id
+  read -r entra_id || entra_id=""
 fi
 if [ -n "$entra_id" ]; then
   entra_secret="${EDD_BOOTSTRAP_ENTRA_SECRET:-}"
   if [ -z "$entra_secret" ]; then
     printf '%s' "Azure Entra app client secret (AUTH_MICROSOFT_ENTRA_ID_SECRET): "
-    read -r entra_secret
+    read -r entra_secret || entra_secret=""
   fi
   [ -n "$entra_secret" ] || {
     echo "edd: EDD_BOOTSTRAP_ENTRA_ID set but no secret provided — aborting" >&2
@@ -140,5 +144,10 @@ for kv in \
   "AUTH_MICROSOFT_ENTRA_ID_ID=$arn_AUTH_ENTRA_ID" \
   "AUTH_MICROSOFT_ENTRA_ID_SECRET=$arn_AUTH_ENTRA_SECRET"; do
   val="${kv#*=}"
-  [ -n "$val" ] && printf '  %s = "%s"\n' "${kv%%=*}" "$val"
+  # `if`, not `[ -n ] && printf` — a false test as the loop's LAST statement would make
+  # that its exit status (and thus the whole script's), regardless of success, whenever
+  # the last-listed provider (Entra) happens to be the one left blank.
+  if [ -n "$val" ]; then
+    printf '  %s = "%s"\n' "${kv%%=*}" "$val"
+  fi
 done

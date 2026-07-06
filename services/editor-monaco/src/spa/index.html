@@ -14,18 +14,33 @@
       </aside>
       <section id="main">
         <div id="tabbar">
+          <a id="edd-home" href="/workspaces" title="Back to the EDD portal (your workspaces)">
+            ⌂ EDD home
+          </a>
           <span id="current-file">no file open</span>
           <button
             type="button"
             id="toggle-terminal"
             aria-controls="terminal-panel"
-            aria-expanded="false"
+            aria-expanded="true"
           >
-            Terminal
+            Terminal <kbd>Ctrl+`</kbd>
           </button>
         </div>
         <div id="editor"></div>
-        <div id="terminal-panel" hidden><div id="terminal"></div></div>
+        <div id="terminal-panel">
+          <div id="terminal-tabs" role="tablist" aria-label="Terminal sessions">
+            <button
+              type="button"
+              id="new-terminal-tab"
+              aria-label="New terminal tab"
+              title="New terminal tab (Ctrl+Shift+`)"
+            >
+              +
+            </button>
+          </div>
+          <div id="terminal-panes"></div>
+        </div>
       </section>
     </div>
     <div id="status" role="status"></div>

@@ -87,19 +87,56 @@ resource "aws_iam_role_policy_attachment" "ecs_infrastructure" {
 data "aws_iam_policy_document" "control_plane" {
   statement {
     sid       = "DynamoSingleTable"
-    actions   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:Scan", "dynamodb:BatchGetItem", "dynamodb:BatchWriteItem", "dynamodb:ConditionCheckItem"]
+    actions   = ["dynamodb:DescribeTable", "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:Query", "dynamodb:Scan", "dynamodb:BatchGetItem", "dynamodb:BatchWriteItem", "dynamodb:ConditionCheckItem"]
     resources = [aws_dynamodb_table.this.arn, "${aws_dynamodb_table.this.arn}/index/*"]
+  }
+
+  # The single table is encrypted with our customer-managed KMS key; unlike the
+  # execution role's DecryptForInjection (Secrets Manager, at container launch), the
+  # RUNNING APP's own DynamoDB calls go through this task role, which needs its own
+  # direct KMS grant (DynamoDB does not proxy CMK access via a service-only grant the
+  # way CloudWatch Logs does) — found live: /workspaces failed with
+  # `kms:Decrypt ... AccessDeniedException` on the first real DynamoDB read.
+  statement {
+    sid       = "DecryptSingleTable"
+    actions   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
+    resources = [aws_kms_key.this.arn]
   }
 
   statement {
     sid       = "RunAndManageWorkspaceTasks"
-    actions   = ["ecs:RunTask", "ecs:StopTask", "ecs:DescribeTasks", "ecs:ListTasks", "ecs:RegisterTaskDefinition", "ecs:DescribeTaskDefinition", "ecs:TagResource"]
+    actions   = ["ecs:RunTask", "ecs:StopTask", "ecs:DescribeTasks", "ecs:ListTasks", "ecs:TagResource"]
     resources = ["*"]
     condition {
       test     = "StringEquals"
       variable = "ecs:cluster"
       values   = [aws_ecs_cluster.this.arn]
     }
+  }
+
+  # RegisterTaskDefinition/DescribeTaskDefinition are NOT cluster-scoped (task
+  # definitions are account/region-level resources, registered independent of any
+  # cluster). Grouping them under the `ecs:cluster` condition above (as a prior
+  # version of this file did) meant that key was never populated in their request
+  # context, so the condition could never be satisfied — every real
+  # RegisterTaskDefinition call was silently denied. Found live: the first real
+  # workspace launch failed with "not authorized to perform:
+  # ecs:RegisterTaskDefinition ... no identity-based policy allows the
+  # ecs:RegisterTaskDefinition action". Per AWS's IAM condition-key reference:
+  # RegisterTaskDefinition supports the `task-definition` resource type (scoped to
+  # the workspace family prefix, WORKSPACE_TASKDEF_FAMILY_PREFIX in
+  # @edd/compute-ecs); DescribeTaskDefinition supports no resource types or
+  # condition keys at all (wildcard-only), so it gets its own unscoped statement.
+  statement {
+    sid       = "RegisterWorkspaceTaskDefinitions"
+    actions   = ["ecs:RegisterTaskDefinition"]
+    resources = ["arn:${local.partition}:ecs:${local.region}:${local.account_id}:task-definition/edd-ws-*:*"]
+  }
+
+  statement {
+    sid       = "DescribeTaskDefinitions"
+    actions   = ["ecs:DescribeTaskDefinition"]
+    resources = ["*"]
   }
 
   statement {
@@ -147,13 +184,51 @@ data "aws_iam_policy_document" "control_plane" {
 
   statement {
     sid       = "Logs"
-    actions   = ["logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogGroups", "logs:DescribeLogStreams", "logs:GetLogEvents", "logs:FilterLogEvents"]
+    actions   = ["logs:CreateLogStream", "logs:PutLogEvents", "logs:DescribeLogStreams", "logs:GetLogEvents", "logs:FilterLogEvents"]
     resources = ["${aws_cloudwatch_log_group.workspaces.arn}:*", "${aws_cloudwatch_log_group.control_plane.arn}:*", "${aws_cloudwatch_log_group.reconciler.arn}:*"]
+  }
+
+  # DescribeLogGroups supports no resource types or condition keys at all (it lists
+  # every log group in the account) -- grouping it under the log-group-scoped Logs
+  # statement above meant it was silently denied. Found live via the admin
+  # infrastructure config-sync check: "iam-permissions:control-plane(drift) -- ...
+  # logs:DescribeLogGroups" denied.
+  statement {
+    sid       = "DescribeLogGroups"
+    actions   = ["logs:DescribeLogGroups"]
+    resources = ["*"]
   }
 
   statement {
     sid       = "CloudTrailLookup"
     actions   = ["cloudtrail:LookupEvents"]
+    resources = ["*"]
+  }
+
+  # Per-workspace monitoring reads (Container Insights task utilization, EBS
+  # volume IOPS). CloudWatch metrics support no resource-level scoping --
+  # GetMetricData is account-wide by design.
+  statement {
+    sid       = "CloudWatchMetricsRead"
+    actions   = ["cloudwatch:GetMetricData"]
+    resources = ["*"]
+  }
+
+  # Read-only cluster/AZ introspection for the admin health board (compute + storage
+  # provider health checks). DescribeClusters supports the `cluster` resource type;
+  # DescribeAvailabilityZones is account/region-wide (no resource type at all, per
+  # AWS's EC2 IAM reference -- the API call itself takes no resource identifier).
+  # Found live: /admin/health reported both "compute" and "storage" DOWN with
+  # AccessDeniedException -- neither action had ever been granted.
+  statement {
+    sid       = "DescribeWorkspacesCluster"
+    actions   = ["ecs:DescribeClusters"]
+    resources = [aws_ecs_cluster.this.arn]
+  }
+
+  statement {
+    sid       = "DescribeAvailabilityZones"
+    actions   = ["ec2:DescribeAvailabilityZones"]
     resources = ["*"]
   }
 
@@ -205,10 +280,20 @@ resource "aws_iam_role" "workspace" {
 # ---- Reconciler task role (idle stop, scheduled snapshots, orphan GC) ----
 
 data "aws_iam_policy_document" "reconciler" {
+  # DeleteItem: finishDeleting removes the workspace record -- found live: EVERY
+  # deletion stalled in `deleting` forever ("finishDeleting threw ... not
+  # authorized to perform: dynamodb:DeleteItem"). BatchWriteItem: the post-sweep
+  # cost-rollup checkpoint (replaceAll) batch-writes -- same sweep logged the
+  # matching AccessDenied.
   statement {
     sid       = "DynamoSingleTable"
-    actions   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:Query", "dynamodb:Scan"]
+    actions   = ["dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:UpdateItem", "dynamodb:DeleteItem", "dynamodb:BatchWriteItem", "dynamodb:Query", "dynamodb:Scan"]
     resources = [aws_dynamodb_table.this.arn, "${aws_dynamodb_table.this.arn}/index/*"]
+  }
+  statement {
+    sid       = "DecryptSingleTable"
+    actions   = ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"]
+    resources = [aws_kms_key.this.arn]
   }
   statement {
     sid       = "StopIdleTasks"
@@ -253,6 +338,16 @@ data "aws_iam_policy_document" "reconciler" {
   statement {
     sid       = "PruneWorkspaceTaskDefinitions"
     actions   = ["ecs:ListTaskDefinitionFamilies", "ecs:ListTaskDefinitions", "ecs:DeregisterTaskDefinition"]
+    resources = ["*"]
+  }
+  # Read-only IAM self-check (same as the control-plane's IamSelfCheck): the
+  # reconciler asks whether its own identity holds each action it needs and logs
+  # the result at sweep start. Without this it degrades to "unknown" — found
+  # live: every real sweep logged `iam:SimulatePrincipalPolicy not permitted
+  # (AccessDenied)`. Introspection only; both actions are account-scoped ("*").
+  statement {
+    sid       = "IamSelfCheck"
+    actions   = ["iam:SimulatePrincipalPolicy", "sts:GetCallerIdentity"]
     resources = ["*"]
   }
 }

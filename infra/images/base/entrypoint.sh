@@ -18,7 +18,21 @@ if ! printf '%s' "${EDD_WORKSPACE_ID}" | grep -Eq '^[a-z0-9][a-z0-9-]{0,38}$'; t
 fi
 
 install -d -o root -g root -m 0755 /run/sshd
-install -d -o workspace -g workspace -m 0755 /home/workspace
+# Each path below is its own `install -d` argument, not a single nested path --
+# GNU coreutils' `install -d` only chowns/chmods the LEAF of a given path,
+# creating any missing intermediate components with the default mode (root-
+# owned, since this script still runs as root here). A single call for the
+# nested `.openvscode-server/data/User` (as the settings-seed step below used
+# to do alone) left `.openvscode-server` and `data` themselves root-owned —
+# found live: OpenVSCode Server (running as `workspace`) failed on its very
+# first `mkdir '/home/workspace/.openvscode-server/extensions'` with EACCES,
+# and every extension install/data-dir (`data/logs`, `data/Machine`, the user
+# extensions dir) failed the same way, so the editor never finished loading.
+install -d -o workspace -g workspace -m 0755 \
+  /home/workspace \
+  /home/workspace/.openvscode-server \
+  /home/workspace/.openvscode-server/data \
+  /home/workspace/.openvscode-server/extensions
 
 # Persist the coordinates the registered-key AuthorizedKeysCommand needs (sshd
 # strips its environment). Root-only (0600): the command runs as root, and the
@@ -91,26 +105,47 @@ if [ ! -e "${settings_dir}/settings.json" ]; then
   install -d -o workspace -g workspace -m 0755 "${settings_dir}"
   cat >"${settings_dir}/settings.json" <<'JSON'
 {
-  "workbench.colorTheme": "Default Dark Modern"
+  "workbench.colorTheme": "Default Dark Modern",
+  "window.menuBarVisibility": "classic",
+  "files.autoSave": "afterDelay"
 }
 JSON
   chown workspace:workspace "${settings_dir}/settings.json"
   chmod 0644 "${settings_dir}/settings.json"
 fi
 
+# (Terminal-open-on-startup, the "EDD home" portal link, the visible open-terminal
+# keybinding control, and the one-time claude/codex remote-OAuth tip all live in the
+# first-party edd-workspace-ui extension, baked into the built-in extensions dir at
+# image build — an extension opens a real interactive shell, unlike the earlier
+# folder-open-task approach, which only surfaced a read-only task-output panel.)
+
 # (Default extensions — the AI agents + dev extensions — are baked into OpenVSCode's
 # built-in extensions dir at image build, so they load with no runtime copy. The
 # user's own extensions still install into the volume's extensions dir below.)
 
 # Editor selection. The control plane sets EDD_EDITOR_MODE from the workspace's editor choice
-# (its base-image catalog entry): "monaco" -> the first-party Monaco editor server; anything else
-# (including unset) -> OpenVSCode Server, the historical default. The Monaco server (bundled into
-# the image at /opt/edd-editor-monaco) listens on :3000 under /w/<id>/ and reads the same
-# coordinates from the environment (EDD_WORKSPACE_ID, CONNECTION_TOKEN,
-# EDD_DISABLE_CONNECTION_TOKEN), so the in-app proxy reaches it exactly like OpenVSCode.
-if [ "${EDD_EDITOR_MODE:-openvscode}" = "monaco" ]; then
-  exec gosu workspace node /opt/edd-editor-monaco/server.js
-fi
+# (a per-session pick at create, else its base-image catalog entry):
+#   monaco         -> the first-party Monaco editor server;
+#   claude / codex -> agent-first sessions: the same Monaco server, but every
+#                     terminal boots straight into the agent CLI (via
+#                     EDD_TERMINAL_COMMAND) instead of a shell — neither vendor
+#                     ships a self-hostable web UI, so the CLI-as-the-app
+#                     terminal is the faithful self-hosted equivalent;
+#   anything else (including unset) -> OpenVSCode Server, the historical default.
+# The Monaco server (bundled at /opt/edd-editor-monaco) listens on :3000 under
+# /w/<id>/ and reads the same coordinates from the environment (EDD_WORKSPACE_ID,
+# CONNECTION_TOKEN, EDD_DISABLE_CONNECTION_TOKEN), so the in-app proxy reaches it
+# exactly like OpenVSCode.
+case "${EDD_EDITOR_MODE:-openvscode}" in
+  monaco)
+    exec gosu workspace node /opt/edd-editor-monaco/server.js
+    ;;
+  claude | codex)
+    exec gosu workspace env EDD_TERMINAL_COMMAND="${EDD_EDITOR_MODE}" \
+      node /opt/edd-editor-monaco/server.js
+    ;;
+esac
 
 # Base server args. --disable-workspace-trust: a per-user workspace contains the
 # user's own files, so the Workspace Trust prompt is pure friction (a modal that

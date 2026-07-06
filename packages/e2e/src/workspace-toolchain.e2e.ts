@@ -157,14 +157,16 @@ describe("golden workspace user-CLI + defaults", { timeout: 60_000 }, () => {
   });
 });
 
-// #93/#95 — the omnibus ships the AI coding agents (CLI + seeded extensions) and a
-// curated cross-language dev-tooling set out of the box.
+// #93/#95 — every golden variant (base) ships the AI coding agents (CLI + seeded
+// extensions) and omnibus adds a curated cross-language dev-tooling set on top.
 describe("golden omnibus: AI agents + dev tooling", { timeout: 60_000 }, () => {
-  it("ships the Claude Code agent CLI and bakes in the agent extensions [#93]", () => {
+  it("ships the Claude Code + Codex agent CLIs and bakes in the agent extensions [#93]", () => {
     expect(sh("command -v claude")).toContain("claude");
+    expect(sh("command -v codex")).toContain("codex");
     const builtin = sh("ls /opt/openvscode-server/extensions");
     expect(builtin).toContain("anthropic.claude-code");
     expect(builtin).toContain("openai.chatgpt");
+    expect(builtin).toContain("edd-workspace-ui");
   });
 
   it("ships curated linters/formatters/SAST across languages [#95]", () => {

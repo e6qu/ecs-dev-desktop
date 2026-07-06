@@ -362,9 +362,15 @@ variable "reconciler_schedule" {
 }
 
 variable "reconciler_command" {
+  # ABSOLUTE path on purpose: the control-plane image's final WORKDIR is
+  # /repo/apps/web (where the custom server runs), so the previous relative
+  # `services/reconciler/dist/run.js` resolved to a nonexistent
+  # /repo/apps/web/services/... -- found live: every scheduled reconciler run
+  # since the first production deploy crashed on boot with MODULE_NOT_FOUND, so
+  # no idle sweep ever ran and no workspace was ever scaled to zero.
   description = "Container command for the reconciler task (overrides the image's default)."
   type        = list(string)
-  default     = ["node", "services/reconciler/dist/run.js"]
+  default     = ["node", "/repo/services/reconciler/dist/run.js"]
 }
 
 variable "reconciler_cpu" {
@@ -382,9 +388,9 @@ variable "reconciler_memory" {
 # ---- Scale-to-zero tuning (injected into both the reconciler and workspace tasks) ----
 
 variable "idle_threshold_ms" {
-  description = "Milliseconds of inactivity before a running workspace is scaled to zero. Default: 30 min."
+  description = "Milliseconds after a workspace stops being LOADED (no editor tab incl. background tabs, no SSH session, no in-container activity) before it is snapshotted and scaled to zero. Default: 5 min (product decision, 2026-07-06)."
   type        = number
-  default     = 1800000
+  default     = 300000
 }
 
 variable "snapshot_interval_ms" {
@@ -403,6 +409,12 @@ variable "early_session_ms" {
   description = "How long a workspace counts as 'young' for the shorter snapshot cadence. Default: 1 h."
   type        = number
   default     = 3600000
+}
+
+variable "undelete_retention_ms" {
+  description = "How long a deleted workspace stays restorable (undelete) before its tombstone and retained snapshot are purged. Default 7 days."
+  type        = number
+  default     = 604800000
 }
 
 variable "gc_grace_ms" {

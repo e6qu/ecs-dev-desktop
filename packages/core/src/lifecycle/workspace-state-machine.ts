@@ -27,6 +27,7 @@ export type WorkspaceEvent =
   | "terminate" // permanent deletion (legacy synchronous path; kept for back-compat)
   | "requestDelete" // mark for deletion → `deleting` tombstone (reconciler finishes)
   | "recover" // error → stopped when a snapshot exists (self-recovery)
+  | "undelete" // terminated → stopped within the retention window (snapshot restores it)
   | "fail"; // unrecoverable error
 
 const TRANSITIONS: Record<WorkspaceState, Partial<Record<WorkspaceEvent, WorkspaceState>>> = {
@@ -61,9 +62,13 @@ const TRANSITIONS: Record<WorkspaceState, Partial<Record<WorkspaceEvent, Workspa
     fail: "error",
     requestDelete: "deleting",
   },
-  // A delete in progress; the only forward move is `terminate` (finish → record removed).
+  // A delete in progress; the only forward move is `terminate` (finish → tombstone kept).
   deleting: { terminate: "terminated" },
-  terminated: {},
+  // Terminated keeps its retained snapshot for the undelete-retention window
+  // (default 7 days): `undelete` restores it to `stopped` (wake-able). The
+  // reconciler purges tombstones (and reaps their snapshots) past the window,
+  // after which the record is gone and nothing can leave `terminated`.
+  terminated: { undelete: "stopped" },
   // Self-recovery: an `error` workspace with a snapshot can `recover` to `stopped`
   // (wake-able again); otherwise it can only be deleted.
   error: { recover: "stopped", terminate: "terminated", requestDelete: "deleting" },
@@ -88,7 +93,7 @@ export function can(state: WorkspaceState, event: WorkspaceEvent): boolean {
 }
 
 /** A user-initiated lifecycle operation offered for a workspace in the UI. */
-export type WorkspaceAction = "start" | "stop" | "snapshot" | "delete";
+export type WorkspaceAction = "start" | "stop" | "snapshot" | "delete" | "undelete";
 
 /**
  * The lifecycle actions valid from a state — the single source of truth for which
@@ -108,8 +113,12 @@ export function workspaceActions(state: WorkspaceState): readonly WorkspaceActio
     case "error":
       return ["delete"];
     case "deleting":
-    case "terminated":
-      // Already being torn down / gone — no further user actions.
+      // Being torn down — no user action until the tombstone lands.
       return [];
+    case "terminated":
+      // Restorable from the retained snapshot until the retention purge; the
+      // service enforces the window + snapshot presence (a clear conflict
+      // message past either), the UI just offers the button.
+      return ["undelete"];
   }
 }

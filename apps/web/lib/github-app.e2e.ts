@@ -55,8 +55,8 @@ suite("GitHub App flow (app JWT → installation token → REST), coordinate-dri
     // GET /installation/repositories. We assert the call succeeds (the
     // installation can enumerate its repos); contents depend on what the
     // installation is granted, which the coordinates own.
-    const repos = await provider?.listRepos();
-    expect(Array.isArray(repos)).toBe(true);
+    const page = await provider?.listRepos();
+    expect(Array.isArray(page?.repos)).toBe(true);
 
     const cred = await provider?.gitCredential(coords.org);
     expect(cred?.username).toBe("x-access-token");

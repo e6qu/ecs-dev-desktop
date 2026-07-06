@@ -44,7 +44,10 @@ export type IamResourceScope =
   | "dynamodb-table"
   | "log-groups"
   | "workspace-secrets"
-  | "task-roles";
+  | "task-roles"
+  | "workspace-task-definitions"
+  | "cluster"
+  | "kms-key";
 
 /** One policy statement's worth of required actions + the context it needs. */
 export interface IamRequirement {
@@ -66,6 +69,7 @@ const CONTROL_PLANE_REQUIREMENTS: readonly IamRequirement[] = [
     sid: "DynamoSingleTable",
     resource: "dynamodb-table",
     actions: [
+      "dynamodb:DescribeTable",
       "dynamodb:GetItem",
       "dynamodb:PutItem",
       "dynamodb:UpdateItem",
@@ -78,6 +82,15 @@ const CONTROL_PLANE_REQUIREMENTS: readonly IamRequirement[] = [
     ],
   },
   {
+    // Scoped to the table's customer-managed key in terraform — simulating
+    // against "*" would false-deny a key-scoped grant (same class as the
+    // RegisterTaskDefinition false drift), so the preflight resolves the real
+    // key ARN from EDD_KMS_KEY_ARN.
+    sid: "DecryptSingleTable",
+    resource: "kms-key",
+    actions: ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"],
+  },
+  {
     sid: "RunAndManageWorkspaceTasks",
     resource: "any",
     actions: [
@@ -85,11 +98,25 @@ const CONTROL_PLANE_REQUIREMENTS: readonly IamRequirement[] = [
       "ecs:StopTask",
       "ecs:DescribeTasks",
       "ecs:ListTasks",
-      "ecs:RegisterTaskDefinition",
-      "ecs:DescribeTaskDefinition",
       "ecs:TagResource",
     ],
     context: [{ key: "ecs:cluster", values: [IAM_CONTEXT_TOKENS.ecsClusterArn], type: "string" }],
+  },
+  {
+    // Not cluster-scoped (task definitions are account/region-level, independent of
+    // any cluster) — per AWS's IAM condition-key reference, RegisterTaskDefinition
+    // supports only the task-definition resource type (no ecs:cluster condition, no
+    // "Resource: *" + condition row the way RunTask/StopTask/DescribeTasks/ListTasks
+    // each have); DescribeTaskDefinition supports no resource types or condition
+    // keys at all.
+    sid: "RegisterWorkspaceTaskDefinitions",
+    resource: "workspace-task-definitions",
+    actions: ["ecs:RegisterTaskDefinition"],
+  },
+  {
+    sid: "DescribeTaskDefinitions",
+    resource: "any",
+    actions: ["ecs:DescribeTaskDefinition"],
   },
   {
     sid: "ManagedEbsLifecycle",
@@ -132,30 +159,69 @@ const CONTROL_PLANE_REQUIREMENTS: readonly IamRequirement[] = [
     actions: [
       "logs:CreateLogStream",
       "logs:PutLogEvents",
-      "logs:DescribeLogGroups",
       "logs:DescribeLogStreams",
       "logs:GetLogEvents",
       "logs:FilterLogEvents",
     ],
   },
   {
+    // DescribeLogGroups lists every log group in the account -- it supports no
+    // resource types or condition keys at all, so it can't share the log-group-scoped
+    // Logs statement above.
+    sid: "DescribeLogGroups",
+    resource: "any",
+    actions: ["logs:DescribeLogGroups"],
+  },
+  {
     sid: "CloudTrailLookup",
     resource: "any",
     actions: ["cloudtrail:LookupEvents"],
+  },
+  {
+    // Per-workspace monitoring reads; CloudWatch metrics have no resource-level
+    // scoping, so account-wide "*" is the only shape this action supports.
+    sid: "CloudWatchMetricsRead",
+    resource: "any",
+    actions: ["cloudwatch:GetMetricData"],
+  },
+  {
+    sid: "DescribeWorkspacesCluster",
+    resource: "cluster",
+    actions: ["ecs:DescribeClusters"],
+  },
+  {
+    // Account/region-wide, no resource type at all (the API call takes no resource
+    // identifier).
+    sid: "DescribeAvailabilityZones",
+    resource: "any",
+    actions: ["ec2:DescribeAvailabilityZones"],
   },
 ];
 
 const RECONCILER_REQUIREMENTS: readonly IamRequirement[] = [
   {
+    // DeleteItem: finishDeleting removes the workspace record; BatchWriteItem:
+    // the post-sweep cost-rollup checkpoint. Both found live as AccessDenied.
     sid: "DynamoSingleTable",
     resource: "dynamodb-table",
     actions: [
       "dynamodb:GetItem",
       "dynamodb:PutItem",
       "dynamodb:UpdateItem",
+      "dynamodb:DeleteItem",
+      "dynamodb:BatchWriteItem",
       "dynamodb:Query",
       "dynamodb:Scan",
     ],
+  },
+  {
+    // Scoped to the table's customer-managed key in terraform — simulating
+    // against "*" would false-deny a key-scoped grant (same class as the
+    // RegisterTaskDefinition false drift), so the preflight resolves the real
+    // key ARN from EDD_KMS_KEY_ARN.
+    sid: "DecryptSingleTable",
+    resource: "kms-key",
+    actions: ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"],
   },
   {
     sid: "StopIdleTasks",

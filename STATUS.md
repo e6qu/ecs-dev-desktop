@@ -2,7 +2,59 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-04 (PR #180 merged; wave-4 adversarial probes in progress on `feat/adversarial-probes-wave4`.)
+**Last updated:** 2026-07-06 (live at `https://app.edd.e6qu.dev`, tag `fe7cc2b`; the
+post-launch feature wave is COMPLETE and deployed — connection-based idle (5-min
+cooldown), per-workspace monitoring, claude/codex agent-first editor modes, 4h rolling
+sessions, 7-day undelete, and spectate v1 (owner-shared read-only mirror, viewer+
+only). Remaining: user live-testing; the legacy snapshot was deleted on user decision and
+the branch is up as PR #192.), per-workspace
+monitoring, claude/codex agent-first editor modes, 4h rolling sessions, and 7-day
+undelete (terminated tombstones + reconciler retention purge); the live-found
+reconciler `dynamodb:DeleteItem` gap that stalled ALL deletions is fixed; spectate
+design signed off except 3 small defaults (`docs/design-public-spectate.md`),
+implementation queued next; branch `fix/install-missing-param-logic` still
+unmerged/no PR by request.)
+
+## Real AWS production deploy — LIVE (2026-07-05/06), still hardening post-launch
+
+The AWS account/domain decisions (`DO_NEXT.md` #1/#2) are resolved and the platform is
+**deployed and verified on real AWS**: region `eu-west-1`, stack name `edd-prod`,
+domain `edd.e6qu.dev` (delegated from Namecheap-registered `e6qu.dev`), GitHub OAuth
+via org `e6qu-org`. `scripts/install.sh --verify` is fully green (ALB health 200,
+control-plane service 2/2 healthy, reconciler schedule enabled, `/api/readyz` 200,
+no Terraform drift), and GitHub sign-in is confirmed working end-to-end.
+
+This was the first-ever real execution of the install/deploy path (previously only
+shellchecked/sim-validated), and it surfaced **9 genuine bugs** across
+`scripts/install.sh`, `scripts/bootstrap-secrets.sh`, `scripts/publish-images.sh`, the
+Terraform module, and `apps/web/Dockerfile` — none exercisable against the sockerless
+sim or via static checks alone. All fixed and verified live on
+`fix/install-missing-param-logic` (pushed, **not yet merged/PR'd** — per the
+one-PR-at-a-time rule, ask before opening); full detail in `BUGS.md` → Resolved (repo) and
+the 2026-07-05/06 entries in `WHAT_WE_DID.md`. Highlights: an inverted parameter-validation
+check in `install.sh`, a Secrets Manager eventual-consistency race, an unclosed-HCL-list
+`sed` bug, a missing KMS key policy for CloudWatch Logs, a non-ASCII security-group
+description, a Free-Tier-ineligible NAT instance type, a wrong Docker build context for
+the SSH gateway, CodeBuild's default image lacking a modern-enough Node/glibc, a missing
+`dynamodb:DescribeTable` IAM grant, and (the one affecting real users) Auth.js building
+the GitHub OAuth `redirect_uri` from the container's internal ECS hostname instead of
+the public domain — fixed by setting `AUTH_URL` explicitly.
+
+**Since launch, real usage surfaced (and fixed) several more live-only issues**: a wrongly
+cluster-conditioned `ecs:RegisterTaskDefinition`/`DescribeTaskDefinition` grant (blocked
+every real workspace creation until fixed — verified against AWS's own IAM condition-key
+reference, not guessed), `logs:DescribeLogGroups`/`ecs:DescribeClusters`/
+`ec2:DescribeAvailabilityZones` gaps (`/admin/health` + `/admin/infrastructure`), and a
+workspace-id validation gap a fuzz test caught on this session's first real `pnpm test`
+run. Shipped two new features (persona "view as" switcher + `/me` page; a collapsible,
+paginated repo browser) — both live. Then a real user hit a live-breaking golden-image bug
+("editor could not be opened") — root-caused via CloudWatch logs (no exec needed) to an
+`install -d` leaf-only-chown gotcha in `entrypoint.sh` leaving `.openvscode-server`
+root-owned; fixed, plus AI agent CLIs (Claude Code + the previously-missing Codex) moved
+to every golden variant, terminal-open-by-default + a `claude`/`codex` OAuth-redirect tip
+for both OpenVSCode and the first-party Monaco editor, and explicit zero-downtime
+control-plane deploy config. Golden image rebuild for these fixes is in flight as of this
+writing — see `DO_NEXT.md` for what still needs live verification once it lands.
 
 ## PR #180 merged — wave-3 probes shipped, all CI green
 
@@ -1112,13 +1164,13 @@ and the submodule pin bumped to `9d43f3d`; none of it touches our surfaces
 
 ## Deployed
 
-Nothing on AWS — no cloud infrastructure provisioned.
+**Live on real AWS** — see the top-of-file section for current detail (superseding this
+stale "nothing deployed" note from before the first real `apply`).
 
 ## Immediate focus
 
-1. **AWS account/region decision** (`DO_NEXT` #1) — the top blocker; unlocks
-   everything real.
-2. **Live-test candidates exhausted** (`docs/simulator-live-coverage.md`): the
-   in-app path-based editor proxy is browser-covered by the vscode e2e (Chromium drives
-   the editor under `/w/<id>/`), alongside `test:pw:live` (browser lifecycle on real ECS
-   compute). Only the optional ECS Exec workspace probe remains, gated on a product decision.
+See `DO_NEXT.md` — the AWS account/region and domain decisions (formerly #1/#2 here)
+are resolved and live; current priorities are the still-queued UI/UX requests
+(session-creation flow redesign with a live status/logs page, an "open terminal with
+`<keybinding>`" OpenVSCode title-bar element, whitelisted extension installs) and
+confirming the in-flight golden-image rebuild once it lands.

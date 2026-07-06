@@ -22,7 +22,13 @@ import { withObservability } from "../../../../lib/observability";
  */
 const NOT_CONNECTED = "GitHub account not connected — sign in with GitHub";
 
-// GET /api/github/repos — repos the authenticated caller can access.
+/** `?page=` is 1-indexed; anything absent/non-positive/non-integer falls back to 1. */
+function parsePage(req: Request): number {
+  const raw = Number(new URL(req.url).searchParams.get("page"));
+  return Number.isInteger(raw) && raw >= 1 ? raw : 1;
+}
+
+// GET /api/github/repos — one page of repos the authenticated caller can access.
 async function handleGET(req: Request) {
   const principal = await authenticate(req);
   if (isResponse(principal)) return principal;
@@ -30,8 +36,8 @@ async function handleGET(req: Request) {
   const provider = await getGitProvider(principal.id);
   if (provider === null) return conflict(NOT_CONNECTED);
 
-  const repos = await provider.listRepos();
-  return NextResponse.json({ repos });
+  const { repos, hasMore } = await provider.listRepos(parsePage(req));
+  return NextResponse.json({ repos, hasMore });
 }
 
 const createRepoRequest = z.object({

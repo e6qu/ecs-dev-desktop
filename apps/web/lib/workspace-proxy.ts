@@ -71,6 +71,10 @@ function headerValue(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
 }
 
+/** Presence cap for a session token missing `exp` (should not happen — Auth.js
+ * always sets it): 30 min, the session's rolling-refresh window. */
+const FALLBACK_PRESENCE_GRANT_MS = 30 * 60 * 1000;
+
 /** Auth.js session-cookie name stems (plain + `__Secure-`/`__Host-` prefixes, and the
  * chunked `.0`/`.1` suffixes Auth.js uses for large JWE sessions). */
 const SESSION_COOKIE_STEM = "authjs.session-token";
@@ -126,9 +130,12 @@ function cookiePresent(cookieHeader: string | undefined, name: string): boolean 
  * app the control plane already runs.
  */
 
-/** The outcome of authorizing a workspace-proxy request. */
+/** The outcome of authorizing a workspace-proxy request. `allow` carries the
+ * authorizing session's expiry so the presence registry can cap how long a held
+ * connection counts as "user present" (a background tab never rolls its session,
+ * so tab-parked workspaces live at most one session length). */
 export type WorkspaceAuthz =
-  | { readonly kind: "allow" }
+  | { readonly kind: "allow"; readonly sessionExpiresAtMs: number }
   | { readonly kind: "unauthenticated" } // no/invalid session → redirect to login
   | { readonly kind: "forbidden" }; // authenticated, not owner/admin, or unknown ws
 
@@ -179,7 +186,60 @@ export async function authorizeWorkspace(
     callerIsAdmin: token.role === "admin",
     ownerId: detail.workspace.ownerId,
   });
-  return granted ? { kind: "allow" } : { kind: "forbidden" };
+  if (!granted) return { kind: "forbidden" };
+  // The JWT's exp (NumericDate, seconds) is when this session stops vouching for a
+  // held connection. Auth.js always sets it; if a token somehow lacks one, cap the
+  // grant conservatively at the rolling-refresh window rather than forever.
+  const sessionExpiresAtMs =
+    typeof token.exp === "number" ? token.exp * 1000 : Date.now() + FALLBACK_PRESENCE_GRANT_MS;
+  return { kind: "allow", sessionExpiresAtMs };
+}
+
+/** The two spectate WebSocket roles (docs/design-public-spectate.md). */
+export type SpectateRole = "publish" | "subscribe";
+
+export type SpectateAuthz =
+  | { kind: "allow"; role: SpectateRole }
+  | { kind: "forbidden" }
+  | { kind: "unauthenticated" };
+
+/**
+ * Authorize a spectate WebSocket. `publish` is the OWNER's mirror stream (only
+ * the owner may publish — an admin must not impersonate a share). `subscribe`
+ * is any signed-in principal with a role (viewer+ — the recorded product
+ * decision: authenticated org users, no anonymous links). Both require the
+ * owner's share flag to be ON; toggling it off severs new connections
+ * immediately (live ones die with the publisher).
+ */
+export async function authorizeSpectate(
+  req: CookieBearingRequest,
+  wsId: WorkspaceId,
+  role: SpectateRole,
+): Promise<SpectateAuthz> {
+  const cookieHeader = req.headers.cookie ?? "";
+  const authSecret = process.env.AUTH_SECRET;
+  if (authSecret === undefined || authSecret === "") {
+    throw new Error("AUTH_SECRET is required to authorize spectate requests");
+  }
+  const token = await getToken({
+    req: { headers: { cookie: cookieHeader } },
+    secret: authSecret,
+    secureCookie: cookieHeader.includes(`__Secure-${SESSION_COOKIE_STEM}`),
+  });
+  if (token === null) return { kind: "unauthenticated" };
+
+  const detail = await (await getControlPlane()).inspect(wsId);
+  if (detail === null) return { kind: "forbidden" };
+  if (detail.workspace.shareEnabled !== true) return { kind: "forbidden" };
+
+  if (role === "publish") {
+    const isOwner = typeof token.uid === "string" && token.uid === detail.workspace.ownerId;
+    return isOwner ? { kind: "allow", role } : { kind: "forbidden" };
+  }
+  // subscribe: any signed-in principal with a mapped role (viewer is the floor).
+  return typeof token.role === "string" && token.role.length > 0
+    ? { kind: "allow", role }
+    : { kind: "forbidden" };
 }
 
 /**

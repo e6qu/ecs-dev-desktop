@@ -43,6 +43,7 @@ function fakeService(overrides: Partial<ReconcilerService> = {}): ReconcilerServ
     listSnapshotReferences: () => Promise.resolve([]),
     markSnapshotLostFor: () => Promise.reject(new Error("markSnapshotLostFor not expected")),
     reconcileOwnerCounts: () => Promise.resolve(0),
+    purgeExpiredTombstones: () => Promise.resolve(0),
     ...overrides,
   };
 }

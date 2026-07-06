@@ -11,7 +11,10 @@ import {
   markRecovered,
   markSnapshotLost,
   markStopped,
+  markTerminated,
   recordFunctional,
+  setShare,
+  undeleteWorkspace,
   markTaskLost,
   markWaking,
   provision,
@@ -191,5 +194,78 @@ describe("workspace domain (functional core)", () => {
     const r2 = recordFunctional(base, { ide: false, workspace: false }, t1);
     expect(r2.functionalDetail).toContain("IDE unreachable");
     expect(r2.functionalDetail).toContain("not writable");
+  });
+});
+
+describe("markTerminated / undeleteWorkspace (the 7-day undelete window's endpoints)", () => {
+  const snap = snapshotId("snap-final");
+  const deletingWithSnapshot = {
+    ...unwrap(markDeleting(base, t0)),
+    latestSnapshotId: snap,
+    latestSnapshotAt: t0,
+  };
+
+  it("markTerminated keeps the tombstone restorable: snapshot kept, runtime cleared, terminatedAt stamped", () => {
+    const t = unwrap(markTerminated(deletingWithSnapshot, t1));
+    expect(t.state).toBe("terminated");
+    expect(t.terminatedAt).toBe(t1);
+    expect(t.latestSnapshotId).toBe(snap);
+    expect(t.volumeId).toBeUndefined();
+    expect(t.taskId).toBeUndefined();
+    expect(t.sshHost).toBeUndefined();
+  });
+
+  it("undelete restores a terminated workspace to stopped (wake-able), clearing the delete intent", () => {
+    const t = unwrap(markTerminated(deletingWithSnapshot, t1));
+    const restored = unwrap(undeleteWorkspace(t, t1));
+    expect(restored.state).toBe("stopped");
+    expect(restored.desiredState).toBe("present");
+    expect(restored.deleteRequestedAt).toBeUndefined();
+    expect(restored.terminatedAt).toBeUndefined();
+    expect(restored.latestSnapshotId).toBe(snap); // what start() hydrates from
+  });
+
+  it("undelete refuses without a retained snapshot (nothing to restore from)", () => {
+    const t = unwrap(markTerminated(unwrap(markDeleting(base, t0)), t1));
+    const bare = { ...t, latestSnapshotId: undefined, latestSnapshotAt: undefined };
+    const r = undeleteWorkspace(bare, t1);
+    expect(r.ok).toBe(false);
+    if (!r.ok) {
+      expect(r.error.kind).toBe("conflict");
+      expect(r.error.kind === "conflict" && r.error.reason).toContain("no retained snapshot");
+    }
+  });
+
+  it("undelete is only legal from terminated", () => {
+    expect(undeleteWorkspace({ ...base, latestSnapshotId: snap }, t1).ok).toBe(false);
+  });
+});
+
+describe("setShare (spectate flag)", () => {
+  it("enables only on a live session, stamping shareEnabledAt", () => {
+    const on = unwrap(setShare(base, true, t1));
+    expect(on.shareEnabled).toBe(true);
+    expect(on.shareEnabledAt).toBe(t1);
+  });
+
+  it("refuses to enable on a stopped session (nothing to mirror)", () => {
+    const stopped = unwrap(markStopped(base, { id: snapshotId("s"), at: t0 }, t0));
+    const r = setShare(stopped, true, t1);
+    expect(r.ok).toBe(false);
+  });
+
+  it("disable always succeeds and clears the timestamp", () => {
+    const on = unwrap(setShare(base, true, t1));
+    const off = unwrap(setShare(on, false, t1));
+    expect(off.shareEnabled).toBe(false);
+    expect(off.shareEnabledAt).toBeUndefined();
+  });
+
+  it("sharing never outlives the live session: stop and delete-request clear it", () => {
+    const on = unwrap(setShare(base, true, t1));
+    const stopped = unwrap(markStopped(on, { id: snapshotId("s"), at: t1 }, t1));
+    expect(stopped.shareEnabled).toBeUndefined();
+    const deleting = unwrap(markDeleting(on, t1));
+    expect(deleting.shareEnabled).toBeUndefined();
   });
 });

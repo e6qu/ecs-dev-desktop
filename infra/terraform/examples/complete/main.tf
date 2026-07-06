@@ -33,6 +33,7 @@ module "ecs_dev_desktop" {
   # (a stack happening to be named "...-prod" must not silently switch NAT modes).
   nat_mode           = var.nat_mode
   single_nat_gateway = var.single_nat_gateway
+  nat_instance_type  = var.nat_instance_type
 
   # Build mode: "local" makes this a true one-apply self-bootstrap — terraform runs
   # scripts/publish-images.sh during apply (docker + source checkout required). Use
@@ -42,13 +43,14 @@ module "ecs_dev_desktop" {
   image_build_mode      = var.image_build_mode
   image_tag             = var.image_tag
   codebuild_source_repo = var.codebuild_source_repo
+  codebuild_source_ref  = var.codebuild_source_ref
 
   # Curated golden base images users launch workspaces from. These must match the
   # variant folder names under infra/images/ (omnibus, typescript, python, go, java, rust).
   golden_image_repos = var.golden_image_repos
 
   # Seed a default catalog entry so users can create workspaces immediately.
-  seed_default_catalog = true
+  seed_default_catalog = var.seed_default_catalog
 
   # DNS + a single-host ACM cert for the path-based editor proxy (`app.<domain>/w/<id>/`) — no
   # wildcard DNS/TLS (omit this whole block for an HTTP-only dev stack).

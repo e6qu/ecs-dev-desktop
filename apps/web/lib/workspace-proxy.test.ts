@@ -14,15 +14,16 @@ import type { CookieBearingRequest } from "./workspace-proxy";
 // owner/admin/other map to the right outcome. Both edges are mocked so the test is
 // hermetic and controls its own inputs (no DB, no real cookie).
 const { getTokenMock, inspectMock } = vi.hoisted(() => ({
-  getTokenMock: vi.fn<() => Promise<{ uid?: string; role?: string } | null>>(),
-  inspectMock: vi.fn<() => Promise<{ workspace: { ownerId: string } } | null>>(),
+  getTokenMock: vi.fn<() => Promise<{ uid?: string; role?: string; exp?: number } | null>>(),
+  inspectMock:
+    vi.fn<() => Promise<{ workspace: { ownerId: string; shareEnabled?: boolean } } | null>>(),
 }));
 vi.mock("next-auth/jwt", () => ({ getToken: getTokenMock }));
 vi.mock("./control-plane", () => ({
   getControlPlane: vi.fn(() => Promise.resolve({ inspect: inspectMock })),
 }));
 
-const { authorizeWorkspace, editorTokenRedirect, stripSessionCookie } =
+const { authorizeSpectate, authorizeWorkspace, editorTokenRedirect, stripSessionCookie } =
   await import("./workspace-proxy");
 
 const WS = workspaceId("ws-abc123");
@@ -58,9 +59,14 @@ describe("authorizeWorkspace (in-app proxy authz glue)", () => {
   });
 
   it("allows the owner (session uid === workspace ownerId)", async () => {
-    getTokenMock.mockResolvedValue({ uid: "u-1" });
+    getTokenMock.mockResolvedValue({ uid: "u-1", exp: 1_900_000_000 });
     inspectMock.mockResolvedValue({ workspace: { ownerId: "u-1" } });
-    expect(await authorizeWorkspace(req(), WS)).toEqual({ kind: "allow" });
+    // `allow` carries the session's exp (seconds -> ms) so presence tracking can
+    // cap how long a held connection counts as "user present".
+    expect(await authorizeWorkspace(req(), WS)).toEqual({
+      kind: "allow",
+      sessionExpiresAtMs: 1_900_000_000_000,
+    });
   });
 
   it("forbids a different authenticated user", async () => {
@@ -72,7 +78,7 @@ describe("authorizeWorkspace (in-app proxy authz glue)", () => {
   it("allows an admin to reach a workspace they do not own", async () => {
     getTokenMock.mockResolvedValue({ uid: "u-1", role: "admin" });
     inspectMock.mockResolvedValue({ workspace: { ownerId: "u-2" } });
-    expect(await authorizeWorkspace(req(), WS)).toEqual({ kind: "allow" });
+    expect(await authorizeWorkspace(req(), WS)).toMatchObject({ kind: "allow" });
   });
 
   it("forbids a non-admin whose session carries no subject (fails closed)", async () => {
@@ -191,5 +197,40 @@ describe("stripSessionCookie", () => {
 
   it("passes a session-free cookie header through unchanged", () => {
     expect(stripSessionCookie("vscode-tkn=xyz; theme=dark")).toBe("vscode-tkn=xyz; theme=dark");
+  });
+});
+
+describe("authorizeSpectate (read-only mirror authz)", () => {
+  const shared = { workspace: { ownerId: "u-owner", shareEnabled: true } };
+
+  it("forbids everyone when the owner's share flag is off — regardless of role", async () => {
+    getTokenMock.mockResolvedValue({ uid: "u-owner", role: "admin" });
+    inspectMock.mockResolvedValue({ workspace: { ownerId: "u-owner", shareEnabled: false } });
+    expect(await authorizeSpectate(req(), WS, "subscribe")).toEqual({ kind: "forbidden" });
+    expect(await authorizeSpectate(req(), WS, "publish")).toEqual({ kind: "forbidden" });
+  });
+
+  it("publish is OWNER-only: an admin may not impersonate the mirror stream", async () => {
+    getTokenMock.mockResolvedValue({ uid: "u-admin", role: "admin" });
+    inspectMock.mockResolvedValue(shared);
+    expect(await authorizeSpectate(req(), WS, "publish")).toEqual({ kind: "forbidden" });
+    getTokenMock.mockResolvedValue({ uid: "u-owner", role: "member" });
+    expect(await authorizeSpectate(req(), WS, "publish")).toEqual({
+      kind: "allow",
+      role: "publish",
+    });
+  });
+
+  it("subscribe admits any signed-in principal WITH a role (viewer floor), and no one without", async () => {
+    inspectMock.mockResolvedValue(shared);
+    getTokenMock.mockResolvedValue({ uid: "u-someone", role: "viewer" });
+    expect(await authorizeSpectate(req(), WS, "subscribe")).toEqual({
+      kind: "allow",
+      role: "subscribe",
+    });
+    getTokenMock.mockResolvedValue({ uid: "u-roleless" }); // authenticated but no mapped role
+    expect(await authorizeSpectate(req(), WS, "subscribe")).toEqual({ kind: "forbidden" });
+    getTokenMock.mockResolvedValue(null); // no session at all
+    expect(await authorizeSpectate(req(), WS, "subscribe")).toEqual({ kind: "unauthenticated" });
   });
 });

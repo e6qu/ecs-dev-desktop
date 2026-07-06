@@ -1222,14 +1222,20 @@ jobs:
           # ecs:RunTask on a different cluster must be denied (condition not satisfied).
           assert_iam "ecs:RunTask on foreign cluster denied" "implicitDeny" \
             --action-names "ecs:RunTask" --resource-arns "arn:aws:ecs:us-east-1:123456789012:cluster/other"
-          # ecs:RegisterTaskDefinition is in the same statement with ecs:cluster condition;
-          # with the cluster context provided (as ECS injects when the caller runs in-cluster)
-          # it must be allowed.
+          # ecs:RegisterTaskDefinition is NOT cluster-scoped (task definitions are
+          # account/region-level; the old cluster-conditioned statement silently denied
+          # every real registration — found live). The corrected policy scopes it to the
+          # edd-ws-* task-definition family prefix, so a representative ARN under that
+          # prefix must be allowed and a foreign family denied.
           EXEC_ROLE_ARN=$(aws --endpoint-url "${ENDPT}" iam get-role \
             --role-name eddsim-task-execution --query 'Role.Arn' --output text)
-          assert_iam "ecs:RegisterTaskDefinition with cluster context allowed" "allowed" \
-            --action-names "ecs:RegisterTaskDefinition" --resource-arns "*" \
-            --context-entries "ContextKeyName=ecs:cluster,ContextKeyValues=${CLUSTER_ARN},ContextKeyType=arn"
+          ACCOUNT_ID=$(printf '%s' "${EXEC_ROLE_ARN}" | cut -d: -f5)
+          assert_iam "ecs:RegisterTaskDefinition on edd-ws-* family allowed" "allowed" \
+            --action-names "ecs:RegisterTaskDefinition" \
+            --resource-arns "arn:aws:ecs:us-east-1:${ACCOUNT_ID}:task-definition/edd-ws-ci-probe:1"
+          assert_iam "ecs:RegisterTaskDefinition on foreign family denied" "implicitDeny" \
+            --action-names "ecs:RegisterTaskDefinition" \
+            --resource-arns "arn:aws:ecs:us-east-1:${ACCOUNT_ID}:task-definition/other-family:1"
           # logs:PutLogEvents allowed on owned log groups.
           CP_LOG_ARN=$(aws --endpoint-url "${ENDPT}" logs describe-log-groups \
             --log-group-name-prefix "/eddsim/control-plane" \

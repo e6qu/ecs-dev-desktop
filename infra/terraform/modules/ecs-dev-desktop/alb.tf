@@ -34,6 +34,15 @@ resource "aws_lb_target_group" "control_plane" {
     timeout             = 5
   }
 
+  # Longer than the AWS default (300s): this target group also carries every
+  # workspace editor's proxied HTTP/WebSocket traffic (/w/<id>/), not just page
+  # requests. A deploy deregisters the old task, but an in-flight editor/terminal
+  # session should keep working through the drain window rather than being cut
+  # off mid-deploy -- the client (OpenVSCode's own multi-hour reconnection grace,
+  # or a plain WS reconnect) then transparently resumes against a new task, since
+  # routing is by workspace id/host, not tied to which control-plane task served it.
+  deregistration_delay = 900
+
   tags = local.tags
 }
 

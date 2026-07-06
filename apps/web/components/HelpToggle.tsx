@@ -57,6 +57,17 @@ export function HelpToggle() {
           aria-label="Help for this page"
           data-testid={TESTID.helpPanel}
         >
+          <button
+            type="button"
+            className="help-panel-close"
+            aria-label="Close help"
+            data-testid={TESTID.helpPanelClose}
+            onClick={() => {
+              setOpen(false);
+            }}
+          >
+            <span aria-hidden="true">×</span>
+          </button>
           <div className="help-panel-inner">{content}</div>
         </div>
       )}

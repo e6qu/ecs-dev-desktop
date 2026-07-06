@@ -21,6 +21,8 @@ import {
   sshConnectInfo,
   updateBaseImageRequest,
   workspace,
+  workspaceLogs,
+  workspaceMonitoring,
   workspaceInspection,
   type AuditFeedResponse,
   type BaseImageEntryDto,
@@ -42,6 +44,8 @@ import {
   type SshKeyDto,
   type UpdateBaseImageRequest,
   type WorkspaceDto,
+  type WorkspaceLogsDto,
+  type WorkspaceMonitoringDto,
   type WorkspaceInspectionDto,
 } from "@edd/api-contracts";
 
@@ -120,6 +124,18 @@ export class ApiClient {
     return workspace.parse(await res.json());
   }
 
+  /** The owner-facing slice of one workspace's container (boot/runtime) logs. */
+  async getWorkspaceLogs(id: string): Promise<WorkspaceLogsDto> {
+    const res = await this.send(`/api/workspaces/${id}/logs`);
+    return workspaceLogs.parse(await res.json());
+  }
+
+  /** Per-workspace monitoring: sizing, uptime, cost so far, utilization + IOPS. */
+  async getWorkspaceMonitoring(id: string): Promise<WorkspaceMonitoringDto> {
+    const res = await this.send(`/api/workspaces/${id}/monitoring`);
+    return workspaceMonitoring.parse(await res.json());
+  }
+
   async stopWorkspace(id: string): Promise<WorkspaceDto> {
     const res = await this.send(`/api/workspaces/${id}/stop`, { method: "POST" });
     return workspace.parse(await res.json());
@@ -158,6 +174,22 @@ export class ApiClient {
 
   async deleteWorkspace(id: string): Promise<void> {
     await this.send(`/api/workspaces/${id}`, { method: "DELETE" });
+  }
+
+  /** Restore a deleted (terminated) workspace within the undelete-retention window. */
+  async undeleteWorkspace(id: string): Promise<WorkspaceDto> {
+    const res = await this.send(`/api/workspaces/${id}/undelete`, { method: "POST" });
+    return workspace.parse(await res.json());
+  }
+
+  /** Toggle the owner's spectate (read-only mirror) flag. */
+  async setWorkspaceShare(id: string, enabled: boolean): Promise<WorkspaceDto> {
+    const res = await this.send(`/api/workspaces/${id}/share`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    });
+    return workspace.parse(await res.json());
   }
 
   // --- Account SSH keys ---

@@ -6,14 +6,7 @@
 
 ## Open decisions (need the user)
 
-1. **AWS account/region & data-residency** — **the top blocker.** Gates real Terraform
-   apply, Phase 1 deploy, SSH/proxy real federation, reconciler cron, real CloudTrail/
-   CloudWatch, Phase 7, `e2e-aws`.
-2. **Domain & DNS owner** — base domain + cert/DNS delegation. The browser editor proxy is now
-   **path-based on a single domain** (`app.<domain>/w/<id>/`), so it no longer needs wildcard DNS
-   or a wildcard TLS cert (a single-host ACM cert suffices); the SSH gateway still wants its own
-   `<ws-id>.<ssh-base-domain>` zone. Gates ACM cert issuance + the SSH zone.
-3. **Heartbeat interval & idle threshold** — scale-to-zero tuning. The knobs
+1. **Heartbeat interval & idle threshold** — scale-to-zero tuning. The knobs
    now exist (`EDD_HEARTBEAT_INTERVAL_S` injected into workspace tasks;
    `EDD_IDLE_THRESHOLD_MS`/`EDD_SNAPSHOT_INTERVAL_MS`/`EDD_EARLY_SNAPSHOT_INTERVAL_MS`/
    `EDD_EARLY_SESSION_MS`/`EDD_GC_GRACE_MS` on the reconciler) — the open decision is
@@ -28,6 +21,14 @@ browser→editor proxy was **folded into the Next.js control-plane app** — pat
 (`app.<domain>/w/<id>/`), authorized in-process by the Auth.js session (uid-ownership/admin); no
 wildcard DNS/TLS, no PDP round-trip, no gate machine-auth (`apps/web/server.ts` +
 `apps/web/lib/workspace-proxy.ts`; see `WHAT_WE_DID.md` 2026-06-20 + `BUGS.md`).
+**AWS account/region — DONE (2026-07-05/06).** Region `eu-west-1`, deployed as
+`edd-prod`. **Domain & DNS — DONE.** `e6qu.dev` registered (Namecheap); a delegated
+Route53 zone `edd.e6qu.dev` hosts `app.edd.e6qu.dev` (control plane) and
+`ssh.edd.e6qu.dev` (SSH front door), NS-delegated from the Namecheap-hosted apex
+so `e6qu.dev` itself stays free for other future use. Real production stack is
+**live**: see `STATUS.md` and `WHAT_WE_DID.md` 2026-07-05/06 for the full deploy
+narrative (9+ real bugs found and fixed along the way, all in `BUGS.md` →
+Resolved (repo)).
 
 ---
 
@@ -46,6 +47,56 @@ load, live `e2e-aws` enforcement) stays under decision #1 above — that is an e
 deferral by choice.
 
 ## Available now (decision-free — immediate)
+
+- **Spectate cross-replica relay** — v1's relay is per-replica (the spectator
+  client retries until it lands on the publisher's replica; works, but retry
+  count grows with replica count). Follow-up: an internal replica-to-replica
+  bridge (publisher replica advertises itself — e.g. a DynamoDB row with its
+  task IP — and subscriber replicas relay through it; needs a tasks-SG
+  self-ingress rule on the control-plane port). See `docs/design-public-spectate.md`.
+- **Spectate for OpenVSCode sessions** — needs extension-based capture inside
+  the `edd-workspace-ui` extension (v1 mirrors Monaco + claude/codex terminal
+  modes only).
+
+- **Post-launch backlog — consolidated plan (2026-07-06, sequenced; mirrors the session
+  task list).** Already shipped from the original queue: editor home links (extension +
+  Monaco tabbar), the terminal-keybinding control (status bar — VS Code has no public
+  title-bar API), terminal-open-by-default in both editors, autosave-by-default in both
+  editors, the claude/codex remote-OAuth tip, the scale-to-zero double fix (crashed
+  reconciler + liveness-recorded-as-activity; 15-min idle threshold), and the cookieValue
+  crash fix. Remaining, in order:
+  1. **Verify the c814221 deploy** — reconciler actually sweeps (CloudWatch), heartbeats
+     carry `active`, an untouched workspace stops after ~15 min with a snapshot. NB: a
+     workspace created from the OLD image keeps the old unconditional agent until recreated.
+  2. **NewSession redesign + per-workspace live status page** — radio modes
+     (blank/existing repo/create repo) + "a dev desktop is backed by a git repo you can
+     access" explanation + org/user-namespace owner selector + ONE prominent Start button
+     with loading UI → redirect to a new `/workspaces/[id]` page: live status polled off
+     `functional` (NOT `state` — create lands straight in "running"), boot logs via an
+     owner-scoped log route (CloudWatchLogSource already filters by taskId for /admin/logs),
+     ECS task state, the workspace URL.
+  3. **Editor selection at creation**: OpenVSCode | Monaco (mostly UI — the `editor`
+     catalog field + `EDD_EDITOR_MODE` already exist) — plus **Claude Code web app** and
+     **Codex web app** as options (research first: what web mode each CLI serves,
+     base-path and proxy compatibility, auth).
+  4. **Workspace card metrics + Monitoring page**: CPU/MEM/disk on the card; ⓘ overlay
+     (settings + image size); "Monitoring" → per-workspace utilization (Container Insights),
+     uptime total+graph, cost so far incl. **per-workspace snapshot cost**, disk size/usage
+     (extend the idle-agent's functional report with `df`), IOPS allocation (gp3 baseline)
+     and utilization (EBS metrics), and a disk-increase action (ModifyVolume + resize —
+     provider support needed, may trail).
+  5. **Session/cookie resilience**: 4-hour sessions + rolling refresh (JWT maxAge/updateAge;
+     evaluate the DynamoDB Auth.js adapter if a true refresh token is wanted),
+     schema-versioned app cookies that fail-soft (never block the user or force a manual
+     cookie reset), and a "reset cookies" button in the persona/user menu.
+  6. **Public read-only spectate** (default-off toggle on the card, incl. mouse/focus/
+     keystroke visibility): needs a security design first — share flag + unguessable token,
+     read-only proxy path, revocation, audit. Likely Monaco-first (OpenVSCode has no native
+     spectate mode).
+  7. **Live verifications** once the user recreates a workspace: extension installs from
+     Open VSX (EACCES fix should suffice; whitelist only if policy needs it), claude/codex
+     paste-code login flows in both editors, and editor-session survival across a
+     control-plane deploy (drain window shipped).
 
 - **Third adversarial spec-fidelity probe wave — DONE; CloudWatch probe FIXED + sockerless #767 bump (2026-07-03).** PR #179 merged the sockerless #737 bump and all ten probe slices. PR #180 removes the SQS-receipt workaround and fails loudly. The "SNS delivery succeeded but ReceiveMessage empty" issue was **our bug**: `echo "$raw"` corrupts backslash sequences in the nested-JSON SQS Body (POSIX `echo` interprets `\\`). Fixed with `printf '%s\n'` and proper nested-JSON parsing. The sim was correct all along (sockerless #766 was not a sim bug — closed). sockerless **#767** (`f0d96ec3`) also fixes bleephub team creator auto-maintainer (#763/#765). All probe slices pass locally.
 

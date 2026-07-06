@@ -161,15 +161,24 @@ describe.skipIf(!HAVE_VARIANT_IMAGES)(
           expect(builtin, `${v.name}: extension ${ext} not baked in`).toContain(ext);
         }
 
-        // Agents are OMNIBUS-only (~1 GB native) — a slim variant must NOT carry the
-        // Claude Code CLI or the agent extensions (a slim-variant user installs them
-        // at runtime if wanted, #90/#91). This keeps the variants lean.
+        // AI coding agents (Claude Code + Codex) live in base, so every variant --
+        // slim or omnibus -- carries both CLIs and their VS Code extensions.
         const claude = sh(
           "command -v claude >/dev/null 2>&1 && echo PRESENT || echo ABSENT",
         ).trim();
-        expect(claude, `${v.name}: agent CLI should be omnibus-only`).toBe("ABSENT");
-        expect(builtin, `${v.name}: agent extension should be omnibus-only`).not.toContain(
+        expect(claude, `${v.name}: agent CLI should be in every variant`).toBe("PRESENT");
+        const codex = sh("command -v codex >/dev/null 2>&1 && echo PRESENT || echo ABSENT").trim();
+        expect(codex, `${v.name}: agent CLI should be in every variant`).toBe("PRESENT");
+        expect(builtin, `${v.name}: agent extension should be in every variant`).toContain(
           "anthropic.claude-code",
+        );
+        expect(builtin, `${v.name}: agent extension should be in every variant`).toContain(
+          "openai.chatgpt",
+        );
+        // First-party EDD workspace extension (portal link, terminal control,
+        // remote-OAuth tip) is baked into base, so every variant carries it.
+        expect(builtin, `${v.name}: edd-workspace-ui should be in every variant`).toContain(
+          "edd-workspace-ui",
         );
 
         // Privilege guard (base): a tool needing privileges the sandbox doesn't grant

@@ -5,8 +5,20 @@ import { WORKSPACE_PATH_PREFIX } from "@edd/core";
 import { TESTID } from "../lib/testids";
 import { StatusBadge } from "./StatusBadge";
 import { WorkspaceActions } from "./WorkspaceActions";
+import { ShareToggle } from "./ShareToggle";
+import { gib, WorkspaceInfo } from "./WorkspaceInfo";
 
 const STAGGER_MS = 40;
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** Mirrors DEFAULT_UNDELETE_RETENTION_MS (a UI hint only — the service enforces it). */
+const UNDELETE_RETENTION_DAYS = 7;
+
+/** Whole days of the undelete window left, floored at 0 (purge imminent). */
+function restoreDaysLeft(terminatedAt: string): number {
+  const elapsed = Date.now() - Date.parse(terminatedAt);
+  return Math.max(0, Math.ceil(UNDELETE_RETENTION_DAYS - elapsed / DAY_MS));
+}
 
 /** States from which the editor is reachable through the in-app `/w/<id>/` proxy:
  * running/idle serve immediately; a stopped workspace wakes on connect. The other
@@ -17,12 +29,16 @@ export function WorkspaceCard({
   ws,
   index,
   showOwner,
+  canShare = false,
 }: {
   /** A workspace DTO already enriched (catalog image fields + ssh command) by the
    * server / `enrichWorkspace`, so the card is a pure renderer. */
   ws: WorkspaceDto;
   index: number;
   showOwner: boolean;
+  /** True only when the VIEWER owns this workspace: the spectate share toggle is
+   * strictly an owner control (the route re-enforces it). */
+  canShare?: boolean;
 }) {
   const imageName = ws.imageName ?? ws.baseImage;
   const imageDescription = ws.imageDescription ?? "";
@@ -42,6 +58,7 @@ export function WorkspaceCard({
       <div className="row">
         <span className="wid">{imageName}</span>
         <StatusBadge state={ws.state} />
+        <WorkspaceInfo ws={ws} />
         {ws.functional === "degraded" && (
           <span
             className="badge"
@@ -56,6 +73,26 @@ export function WorkspaceCard({
         )}
       </div>
       <div className="subhead mono">{ws.id}</div>
+      {ws.state === "terminated" && ws.terminatedAt !== undefined && (
+        <div className="meta-line">
+          <span className="meta-label">deleted</span>
+          <span className="meta-value mono">
+            {new Date(ws.terminatedAt).toLocaleString()} — restorable for{" "}
+            {restoreDaysLeft(ws.terminatedAt)} more day(s)
+          </span>
+        </div>
+      )}
+      {ws.resources !== undefined && (
+        <div className="meta-line">
+          <span className="meta-label">size</span>
+          <span className="meta-value mono">
+            {ws.resources.vcpu} vCPU · {ws.resources.memoryGib} GiB mem ·{" "}
+            {ws.diskUsedBytes !== undefined
+              ? `disk ${gib(ws.diskUsedBytes)} / ${ws.resources.volumeGib} GiB`
+              : `${ws.resources.volumeGib} GiB disk`}
+          </span>
+        </div>
+      )}
       <div className="img">{ws.baseImage}</div>
       {imageDescription !== "" && <div className="desc">{imageDescription}</div>}
       {imageTags.length > 0 && (
@@ -82,7 +119,7 @@ export function WorkspaceCard({
         </div>
       )}
       {canOpen && (
-        <div className="meta-line">
+        <div className="meta-line" style={{ display: "flex", gap: 8 }}>
           <a
             className="btn primary"
             href={editorHref}
@@ -90,6 +127,23 @@ export function WorkspaceCard({
             data-href={editorHref}
           >
             Open editor
+          </a>
+          <a
+            className="btn"
+            href={`/workspaces/${ws.id}/monitoring`}
+            data-testid={TESTID.workspaceMonitoringLink}
+          >
+            Monitoring
+          </a>
+        </div>
+      )}
+      {canShare && (canOpen || ws.shareEnabled === true) && ws.state !== "stopped" && (
+        <ShareToggle id={ws.id} enabled={ws.shareEnabled === true} />
+      )}
+      {!canShare && ws.shareEnabled === true && (
+        <div className="meta-line">
+          <a className="btn" href={`/workspaces/${ws.id}/spectate`}>
+            Spectate (read-only)
           </a>
         </div>
       )}

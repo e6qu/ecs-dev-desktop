@@ -4,6 +4,41 @@
 
 ## Open
 
+- **Cost model doesn't price the undelete window or restored sessions** (2026-07-06).
+  Deleted workspaces now keep a retained snapshot for the 7-day undelete window —
+  that snapshot storage bills in AWS but `deriveBillingIntervals` treats
+  `session.terminated` as the end of all billing, and `session.undelete` is not a
+  billing event (a restored session's later intervals are dropped because the
+  timeline was closed as terminated). Under-attribution only (fleet totals from
+  real AWS billing are unaffected); fix = model a `retained` interval terminated →
+  purge/undelete, and reopen the timeline on `session.undelete`.
+
+- **Golden-image updates never reach existing catalog entries — rollout gap (2026-07-06).**
+  The seeded base-image catalog row (`catalog-seed.tf`) is created once with `image = <repo>:<image_tag>`
+  and then `lifecycle.ignore_changes = [item]` (deliberate — the admin owns the catalog after seeding), and
+  ECR repos are immutable so a fixed tag like `:main` can never be re-pushed. Net effect found live: every
+  golden-image fix built after the first deploy (new tags `11c81ec`, `c892532b`, `c814221`, …) sat unused in
+  ECR while the catalog kept launching workspaces from the original broken `:main` image. **Operational
+  workaround**: after each golden rebuild, repoint the catalog entry's `image` to the new tag (admin
+  `/admin/catalog` edit, or operator `aws dynamodb update-item` on `$edd#id-img-seed-<variant>`). A proper
+  fix needs a product decision: have `install.sh` update the catalog row post-build (fights the
+  admin-owns-catalog model), keep a mutable alias repo for `latest`, or add an explicit "roll golden images"
+  admin action. Existing workspaces additionally pin their image ref at create time — a stopped workspace
+  wakes on its OLD image; only a fresh create picks up the repointed catalog.
+
+- **CodeBuild image rebuild silently no-ops on a re-run against the same branch — known footgun (2026-07-06).**
+  `terraform_data.build_images_codebuild`'s `triggers_replace` (`infra/terraform/modules/ecs-dev-desktop/build-codebuild.tf`)
+  is keyed on the literal `var.image_tag`/`var.codebuild_source_ref` **strings**, not the commit the ref
+  resolves to. Re-running `scripts/install.sh` with `EDD_CODEBUILD_SOURCE_REF` set to the same branch name
+  after pushing new commits to that branch reports `Apply complete! Resources: 0 added, 0 changed, 0 destroyed`
+  and does **not** rebuild or redeploy anything — the live images stay pinned to whatever commit the last
+  build actually used. Separately, `EDD_CODEBUILD_SOURCE_REF` must be a real branch/tag name: the buildspec's
+  `git clone -b "$SOURCE_REF"` rejects a raw commit SHA (`-b` only accepts branch/tag refs), so passing a SHA
+  there fails the build immediately. **Workaround**: keep `EDD_CODEBUILD_SOURCE_REF` as the branch name, and
+  bump `EDD_IMAGE_TAG` to a new distinct value (e.g. the short commit SHA) every time you want a rebuild to
+  actually pick up new commits on the same branch — that's the only field in `triggers_replace` meant to be
+  varied per-rebuild. Not filed upstream (this is our own terraform, not a sockerless gap).
+
 - **`terraform-sim` CloudWatch Logs `ResourceAlreadyExistsException` flake (2026-06-29).** The first CI run of PR #175 failed in the `terraform-sim` job during `validate-sockerless-713.sh` apply with `ResourceAlreadyExistsException: The specified log group already exists: /eddsim/control-plane`. The preceding DNS/TLS step had reported a successful destroy (`95 destroyed`). A re-run passed. Local attempts to reproduce the exact sequence have not yet succeeded. Mitigated (boyscout rule) with: (1) failure-time sockerless container logs in CI, (2) a pre-apply `describe-log-groups` dump in the probe script, (3) standard-API cleanup of the three module log groups before apply in `validate-sockerless-713.sh`, and (4) a post-bring-up sim health wait in the `terraform-sim` CI job. Root cause unknown — under investigation; will file upstream on `e6qu/sockerless` only once a reproduction or clear evidence is in hand.
 
 - **Cross-arch golden-image builds require QEMU/binfmt on the build host (2026-06-28).**
@@ -416,6 +451,167 @@ concurrent-wake race, TLS storage adapter). PR #550 is bleephub-Actions-only;
 no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
+
+- **The control-plane and reconciler task roles could read/write DynamoDB items but
+  couldn't decrypt them (2026-07-06, found by a real user hitting `/workspaces` right
+  after the DescribeTable/AUTH_URL fixes went live).** The single table is encrypted
+  with the module's own customer-managed KMS key; the ONLY existing `kms:Decrypt`
+  grant was on the task-EXECUTION role (`DecryptForInjection`, for the ECS agent to
+  decrypt Secrets Manager values at container launch) — the task ROLE the running
+  app actually uses for its own DynamoDB calls had no KMS grant at all. Unlike
+  CloudWatch Logs (a genuine service-principal grant on the key policy), DynamoDB
+  with a customer-managed CMK requires the CALLING PRINCIPAL to hold direct
+  `kms:Decrypt`/`kms:GenerateDataKey`/`kms:DescribeKey` on the key — confirmed via
+  the exact error: `AccessDeniedException ... is not authorized to perform:
+kms:Decrypt on resource: arn:aws:kms:...` thrown from `ElectroError` in
+  `workspace-service.ts`'s `list()`. Added a `DecryptSingleTable` statement granting
+  those three actions on `aws_kms_key.this.arn` to both `control_plane` and
+  `reconciler` task-role policy documents, and the matching entries to both
+  components' `IAM_REQUIREMENTS` manifest entries in `packages/core`. The
+  `iam-policy-drift` test (terraform grants ⊇ manifest) passes; `terraform fmt`/
+  `validate` clean.
+
+- **The `codebuild` build-mode CodeBuild project's default image couldn't run the
+  golden-image build's Node.js step (2026-07-05, same deploy).** The golden image
+  build stages `@edd/editor-monaco` (`tsc`/`vite`/`esbuild`) directly on the CodeBuild
+  host, not inside a container. `aws/codebuild/amazonlinux2-x86_64-standard:5.0`
+  defaults to Node 18.20.8, and Vite 8 requires 20.19+/22.12+ — failed with
+  `ReferenceError: CustomEvent is not defined`. Worse, Amazon Linux 2's glibc (2.26) is
+  too old to run official Node.js 20+/22+ binaries **at all**, so no version-manager
+  trick on that base image would have fixed it. Fixed by switching the CodeBuild
+  project's image to `aws/codebuild/standard:7.0` (Ubuntu, modern glibc) and
+  explicitly selecting Node 22 in the buildspec (`n 22`) before `corepack`/`pnpm`.
+  `terraform fmt`/`validate` clean; confirmed working on the next live CodeBuild run
+  (control-plane, ssh-gateway, and the omnibus golden image all built and pushed
+  successfully under Node 22).
+
+- **`publish-images.sh`'s ssh-gateway build passed the wrong Docker build context
+  (2026-07-05, same deploy).** `build_push_arch ssh-gateway "$repo/services/ssh-gateway/Dockerfile.proxy"
+"$repo/services/ssh-gateway"` used the `services/ssh-gateway/` subdirectory itself as
+  context, but `Dockerfile.proxy`'s `COPY` paths are repo-root-relative
+  (`services/ssh-gateway/sshd_config.proxy`, etc. — the same convention as the
+  control-plane Dockerfile), so every `COPY` failed with `"...": not found`. This build
+  path had never been exercised: local `image_build_mode` never got past the
+  control-plane image (see above), and this was the first time `codebuild` mode ever
+  reached the ssh-gateway step. Fixed by passing the repo root as context, matching
+  the control-plane `build_push_arch` call. Also declared `seed_default_catalog` as a
+  proper passthrough variable in `examples/complete` (Terraform warned "does not
+  declare a variable named seed_default_catalog" — `main.tf` hardcoded it instead of
+  taking a variable, the same undeclared-passthrough pattern PR #191 already fixed for
+  `nat_mode`/`image_build_mode`/`golden_image_repos`); cross-checked every other key
+  `install.sh` writes into `install.tfvars` against `examples/complete`'s declared
+  variables and found no further gaps. Verified: `shellcheck`, `terraform fmt`/
+  `validate`, and a direct local `docker buildx build` of the ssh-gateway image with
+  the corrected context (all `COPY` steps succeed).
+
+- **`apps/web/Dockerfile` had never actually been built until this exact real deploy
+  (2026-07-05) — only `scripts/release.yml` (gated dormant until now) ever invokes
+  it, via `scripts/publish-images.sh`.** The image build failed during
+  `pnpm install --frozen-lockfile`: `node-gyp` couldn't compile
+  `services/editor-monaco`'s `node-pty` native binding — `gyp ERR! Could not find any
+Python installation to use`. The workspace-wide install pulls in every package's
+  deps (including `editor-monaco`'s, even though `apps/web`'s runtime doesn't use it),
+  and the `node:22-bookworm-slim` base image has no Python or C/C++ toolchain by
+  default. Fixed by installing `python3 make g++` in the builder stage before
+  `pnpm install`. Verified with a direct local
+  `docker buildx build --platform linux/arm64 -f apps/web/Dockerfile .` — full build
+  (install, `@edd/web` build, `@edd/reconciler` build, runner stage) now completes
+  clean.
+
+- **Two more real Terraform-module bugs found once `terraform apply` was actually
+  running against real AWS (2026-07-05, same first-ever real deploy) — never
+  exercisable against the sockerless sim:**
+  1. **`aws_kms_key.this` (`data.tf`) had no explicit key policy**, so AWS applied the
+     default root-only policy. DynamoDB/EBS/Secrets Manager encryption with this key
+     works fine under the default policy (each service authorizes via the CALLING
+     principal's own IAM permissions and a dynamically-created KMS grant), but
+     CloudWatch Logs log-group encryption calls KMS as the
+     `logs.<region>.amazonaws.com` SERVICE principal, which the default policy doesn't
+     cover — all four log groups (`control-plane`/`reconciler`/`workspaces`/
+     `ssh-gateway`) failed with `AccessDeniedException: The specified KMS key does not
+exist or is not allowed to be used`. Fixed by giving the key an explicit policy:
+     the standard "Enable IAM User Permissions" root statement plus a service-principal
+     grant for `logs.<region>.amazonaws.com` (Encrypt/Decrypt/ReEncrypt/
+     GenerateDataKey/Describe, scoped via an `ArnLike` condition on
+     `kms:EncryptionContext:aws:logs:arn`). (The sim doesn't enforce KMS key-policy
+     access control at all per sockerless#732, so this was structurally
+     unexercisable before a real account existed.)
+  2. **The SSH-gateway security group's `description` contained a non-ASCII em-dash**
+     (`ssh-ingress.tf`), and `CreateSecurityGroup`'s `GroupDescription` is
+     ASCII-only on real AWS — real AWS rejected it with
+     `InvalidParameterValue: ... Character sets beyond ASCII are not supported`
+     (the other three security groups in the module don't use non-ASCII characters
+     in their descriptions, so this was isolated). Fixed by replacing the em-dash
+     with a plain hyphen.
+     Both verified via `terraform fmt`/`validate`; the KMS fix's actual effect (log
+     groups creating successfully) was confirmed on the next live re-run.
+
+- **fck-nat's default NAT instance type isn't viable on a fresh/Free-Tier-restricted
+  AWS account (2026-07-05, same deploy).** `RunInstances` for the `t4g.nano` fck-nat
+  instance failed with `InvalidParameterCombination: The specified instance type is
+not eligible for Free Tier` — this AWS account hadn't yet graduated past AWS's
+  Free-Tier EC2 instance-type restriction (the same class of account-level
+  restriction that blocks Route53 Domains registration; see `DO_NEXT.md`). Not a code
+  bug, but the module offered no way to override the instance type through the
+  standard install path. Added `nat_instance_type` as a passthrough variable
+  (`examples/complete`, default `t4g.nano` — unchanged for graduated accounts) and
+  `EDD_NAT_INSTANCE_TYPE` to `install.sh` (default `t4g.nano`); this deploy uses
+  `t4g.micro`, confirmed free-tier-eligible via
+  `aws ec2 describe-instance-types --filters Name=free-tier-eligible,Values=true`
+  and same Graviton family as the default, so no architecture change.
+
+- **`scripts/install.sh`/`bootstrap-secrets.sh` had four real bugs, all found on the
+  first-ever real execution of the install path (2026-07-05, right after the AWS
+  account/domain decisions unblocked it).** The script had only ever been
+  shellchecked/statically validated before, never actually run against real inputs, so
+  all four went undetected until this exact first live run:
+  1. **`install.sh`'s `missing()` helper had inverted logic.** `[ -n "$1" ] || return 0`
+     returned SUCCESS when the parameter was empty (silently passing an actually-missing
+     required var) and FAILURE when the parameter WAS set (aborting with
+     `edd: missing required parameter edd-prod` — printing the VALUE, not even the
+     name, since the value was all it was ever passed) — the exact opposite of the
+     intended check. Fixed by taking `<name> <value>`, testing `[ -n "$2" ] && return 0`,
+     and passing the variable name at every call site so the error message is useful.
+  2. **`bootstrap-secrets.sh`'s `put_secret` raced Secrets Manager's own eventual
+     consistency.** It created a secret, then immediately ran a SEPARATE
+     `describe-secret --query ARN` to fetch its ARN; that follow-up call intermittently
+     404'd right after a genuine successful create (reproduced live: `AUTH_SECRET`/
+     `EDD_TOKEN_ENC_KEY`/`EDD_GATEWAY_SECRET` created fine, then `EDD_AGENT_SECRET`'s
+     immediate re-describe 404'd — confirmed via direct `describe-secret` calls both
+     immediately and well after: it never existed at that point, so the create's result
+     hadn't propagated to the follow-up read yet). Fixed by removing the redundant call
+     entirely — `create-secret`'s own response already includes the ARN
+     (`--query ARN --output text` works on it directly), so there's no follow-up call
+     left to race. Also routed the "already exists"/"created" status lines to stderr
+     (they were being silently captured into the ARN variable via command substitution
+     and never shown live — how the race went unnoticed for a moment).
+  3. **A skipped IdP prompt could abort the whole script under `set -eu`
+     (deployment-blocking for this exact GitHub-only deploy).** `read -r entra_id` with
+     no env var set and no interactive TTY hits EOF, returns non-zero, and — unguarded —
+     aborted the script even though the docs say "blank = skip". Separately, the final
+     ARN-summary loop's last statement was `[ -n "$val" ] && printf ...`; when the LAST
+     item in that fixed list (`AUTH_MICROSOFT_ENTRA_ID_SECRET`) is blank — our own exact
+     case, GitHub-only, no Entra — that failing test became the whole script's exit
+     status, regardless of whether everything actually succeeded. Fixed both: `read ...
+|| var=""` treats EOF the same as a blank line (skip), and the summary loop uses a
+     proper `if` block (which returns 0 on a false condition with no `else`) instead of
+     `&&`, so the exit code no longer depends on which optional field happened to be
+     listed last.
+  4. **`install.sh`'s `EDD_AZS` → HCL-list `sed` pipeline always emitted an unclosed
+     list.** `sed 's/,*$/,/; s/,/","/g; s/^/["/; s/,$/"]/'` first force-appends a
+     trailing comma (even when one already wasn't there), then globally quotes every
+     comma including that one (turning it into `","`, not a bare `,` anymore) — so the
+     final `s/,$/"]/ ` has no bare trailing comma left to convert, permanently leaving
+     e.g. `["eu-west-1a","eu-west-1b","` unclosed. This reached `terraform apply` as a
+     literal syntax error (`Invalid multi-line string`) that cascaded into a parse
+     failure on every subsequent line of the generated `install.tfvars`. Fixed with the
+     simpler, correct `sed 's/,/","/g; s/^/["/; s/$/"]/'`. Verified:
+     `["eu-west-1a","eu-west-1b"]`.
+     All four verified live against the real AWS account (eu-west-1) mid-deploy:
+     `shellcheck` clean on both scripts, a direct functional re-run of
+     `bootstrap-secrets.sh` with closed stdin and no IdP env vars completes with exit 0
+     and correctly reports every already-created secret's ARN, and the corrected
+     `azs_list` sed pipeline produces valid HCL.
 
 - **`pages` deploy workflow could never recover from a transient `deploy-pages`
   failure without a fresh run (2026-07-05).** The `pages` workflow's push-to-`main`

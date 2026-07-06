@@ -24,6 +24,9 @@ export interface EditorServerOptions {
   readonly spaDir: string;
   /** Expected connection token; undefined disables auth (dev/standalone only). */
   readonly token?: string;
+  /** Program each terminal boots into instead of a plain shell (agent-first
+   * modes; see TerminalDeps.command). */
+  readonly terminalCommand?: string;
 }
 
 const MIME: Record<string, string> = {
@@ -89,6 +92,7 @@ export function createEditorServer(opts: EditorServerOptions): Server {
     root: opts.root,
     basePath: base,
     ...(opts.token === undefined ? {} : { token: opts.token }),
+    ...(opts.terminalCommand === undefined ? {} : { command: opts.terminalCommand }),
   });
   return server;
 

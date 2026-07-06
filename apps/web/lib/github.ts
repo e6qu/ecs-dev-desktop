@@ -62,21 +62,37 @@ export function toRepoSummary(r: z.infer<typeof repoSchema>): RepoSummary {
   };
 }
 
-/** Repos the user can access (owner/collaborator/org-member), most-recent first.
- * One page of 100 (a fuller browser would paginate via the Link header). */
+export interface RepoPage {
+  readonly repos: RepoSummary[];
+  /** Whether a further page exists (from the response's `Link: rel="next"`). */
+  readonly hasMore: boolean;
+}
+
+const REPOS_PER_PAGE = 30;
+
+/** Whether a GitHub `Link` response header advertises a `rel="next"` page. */
+function hasNextPage(linkHeader: string | null): boolean {
+  if (linkHeader === null) return false;
+  return linkHeader.split(",").some((part) => part.includes('rel="next"'));
+}
+
+/** One page of repos the user can access (owner/collaborator/org-member),
+ * most-recent first. `page` is 1-indexed. */
 export async function listRepos(
   token: string,
+  page = 1,
   fetchImpl: typeof fetch = fetch,
-): Promise<RepoSummary[]> {
+): Promise<RepoPage> {
   const res = await fetchImpl(
-    `${apiBase()}/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator,organization_member`,
+    `${apiBase()}/user/repos?per_page=${String(REPOS_PER_PAGE)}&page=${String(page)}&sort=updated&affiliation=owner,collaborator,organization_member`,
     { headers: ghHeaders(token) },
   );
   if (!res.ok) throw new Error(`GitHub /user/repos failed: ${String(res.status)}`);
-  return z
+  const repos = z
     .array(repoSchema)
     .parse(await res.json())
     .map(toRepoSummary);
+  return { repos, hasMore: hasNextPage(res.headers.get("link")) };
 }
 
 const NO_SCOPE_REASON = "the GitHub authorization is missing the 'repo' scope";

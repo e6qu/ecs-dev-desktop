@@ -104,9 +104,16 @@ resource "aws_codebuild_project" "build_images" {
   # beyond the ECR-push role above.
   # trivy:ignore:AVD-AWS-0037
   environment {
-    compute_type                = var.codebuild_compute_type
-    type                        = "LINUX_CONTAINER"
-    image                       = "aws/codebuild/amazonlinux2-x86_64-standard:5.0"
+    compute_type = var.codebuild_compute_type
+    type         = "LINUX_CONTAINER"
+    # Amazon Linux 2's glibc (2.26) is too old to run official Node.js 20+/22+
+    # binaries at all (regardless of version-manager tooling) — golden-image builds
+    # run @edd/editor-monaco's build (tsc/vite/esbuild, needs Node >=22) directly on
+    # the CodeBuild host, not inside a container. standard:7.0 (Ubuntu, modern glibc)
+    # plus explicitly selecting Node 22 below is required; found on the first real
+    # codebuild-mode run (amazonlinux2-x86_64-standard:5.0 defaults to Node 18.20.8,
+    # and Vite 8 needs 20.19+/22.12+).
+    image                       = "aws/codebuild/standard:7.0"
     privileged_mode             = true
     image_pull_credentials_type = "CODEBUILD"
   }
@@ -130,6 +137,7 @@ resource "aws_codebuild_project" "build_images" {
           commands:
             - set -eu
             - aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "$AWS_ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com"
+            - n 22
             - git clone "$SOURCE_REPO" -b "$SOURCE_REF" repo
             - cd repo
             - corepack enable && corepack prepare pnpm@10.33.3 --activate

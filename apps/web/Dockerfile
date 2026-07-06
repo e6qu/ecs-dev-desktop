@@ -8,6 +8,11 @@ FROM node:22-bookworm-slim AS builder
 WORKDIR /repo
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN corepack enable && corepack prepare pnpm@10.33.3 --activate
+# node-gyp (needed to compile services/editor-monaco's node-pty native binding, pulled
+# in by the workspace-wide install below even though apps/web doesn't use it directly)
+# requires python3 + a C/C++ toolchain, absent from the slim base image.
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
 # Workspace manifests first for a cached install layer.
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY apps/web/package.json apps/web/
@@ -19,7 +24,8 @@ COPY tsconfig.base.json ./
 COPY apps/web apps/web
 RUN pnpm --filter @edd/web build
 # The reconciler runs THIS image with a command override
-# (`node services/reconciler/dist/run.js`, see the module's reconciler task def), so
+# (`node /repo/services/reconciler/dist/run.js` -- ABSOLUTE, because the final
+# stage's WORKDIR is /repo/apps/web; see the module's reconciler_command var), so
 # the control-plane image must also carry the reconciler bundle. Build it here.
 RUN pnpm --filter @edd/reconciler build
 

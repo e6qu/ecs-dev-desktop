@@ -3,7 +3,16 @@ import { describe, expect, it } from "vitest";
 
 import { ownerId } from "@edd/core";
 
-import { defineAbilityFor, ROLES, type Action, type Role, type Subject } from "./index";
+import {
+  defineAbilityFor,
+  effectiveRole,
+  isRole,
+  personasFor,
+  ROLES,
+  type Action,
+  type Role,
+  type Subject,
+} from "./index";
 
 const ACTIONS: Action[] = ["create", "read", "update", "delete", "manage"];
 const SUBJECTS: Subject[] = ["Workspace", "User", "BaseImage", "all"];
@@ -59,5 +68,49 @@ describe("RBAC ability matrix (every role × action × subject)", () => {
       expect(a.can(action, "Workspace")).toBe(false);
       expect(a.can(action, "BaseImage")).toBe(false);
     }
+  });
+});
+
+describe("isRole", () => {
+  it("accepts every real role, rejects everything else", () => {
+    for (const r of ROLES) expect(isRole(r)).toBe(true);
+    for (const bad of ["", "root", "Admin", "admin ", "viewer,member"]) {
+      expect(isRole(bad)).toBe(false);
+    }
+  });
+});
+
+describe("effectiveRole (persona clamp)", () => {
+  it("a persona at or below the real role is honored", () => {
+    expect(effectiveRole("admin", "admin")).toBe("admin");
+    expect(effectiveRole("admin", "member")).toBe("member");
+    expect(effectiveRole("admin", "viewer")).toBe("viewer");
+    expect(effectiveRole("member", "viewer")).toBe("viewer");
+    expect(effectiveRole("member", "member")).toBe("member");
+  });
+
+  it("never escalates above the real role", () => {
+    expect(effectiveRole("viewer", "member")).toBe("viewer");
+    expect(effectiveRole("viewer", "admin")).toBe("viewer");
+    expect(effectiveRole("member", "admin")).toBe("member");
+  });
+
+  it("an absent or invalid persona resolves to the real role unchanged", () => {
+    expect(effectiveRole("admin", undefined)).toBe("admin");
+    expect(effectiveRole("admin", "")).toBe("admin");
+    expect(effectiveRole("admin", "Admin")).toBe("admin");
+    expect(effectiveRole("admin", "root")).toBe("admin");
+  });
+});
+
+describe("personasFor", () => {
+  it("admin may switch into every role", () => {
+    expect(personasFor("admin")).toEqual(["viewer", "member", "admin"]);
+  });
+  it("member may switch into member or viewer, never admin", () => {
+    expect(personasFor("member")).toEqual(["viewer", "member"]);
+  });
+  it("viewer has no lower persona (itself only)", () => {
+    expect(personasFor("viewer")).toEqual(["viewer"]);
   });
 });

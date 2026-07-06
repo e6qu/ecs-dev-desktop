@@ -5,6 +5,13 @@
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
 import * as monaco from "monaco-editor";
+
+import {
+  captureFileOpened,
+  captureTabs,
+  captureTermOutput,
+  initSpectateCapture,
+} from "./spectate-capture";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import jsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
 import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
@@ -96,6 +103,8 @@ const editor = monaco.editor.create(el("editor"), {
 
 let currentPath: string | null = null;
 
+initSpectateCapture({ editor, getCurrentPath: () => currentPath });
+
 async function openFile(filePath: string, row: HTMLElement): Promise<void> {
   const res = await fetch(`api/file?path=${encodeURIComponent(filePath)}`);
   if (!res.ok) {
@@ -107,10 +116,14 @@ async function openFile(filePath: string, row: HTMLElement): Promise<void> {
   el("current-file").textContent = filePath;
   const model = editor.getModel();
   if (model !== null) monaco.editor.setModelLanguage(model, languageFor(filePath));
+  // Programmatic load, not a user edit -- must not trigger the autosave below.
+  loadingFile = true;
   editor.setValue(text);
+  loadingFile = false;
   editor.updateOptions({ readOnly: false });
   for (const r of document.querySelectorAll(".file-row.active")) r.classList.remove("active");
   row.classList.add("active");
+  captureFileOpened();
 }
 
 async function save(): Promise<void> {
@@ -159,16 +172,72 @@ editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
   void save();
 });
 
-// ── terminal (xterm over the server's PTY WebSocket) ──
-let term: Terminal | null = null;
+// Autosave (default-on, matching the OpenVSCode variant's files.autoSave):
+// debounce a save shortly after the user stops typing. Ctrl/Cmd+S still forces
+// an immediate save.
+const AUTOSAVE_DELAY_MS = 1000;
+let autosaveTimer: number | undefined;
+let loadingFile = false;
+editor.onDidChangeModelContent(() => {
+  if (currentPath === null || loadingFile) return;
+  window.clearTimeout(autosaveTimer);
+  autosaveTimer = window.setTimeout(() => {
+    void save();
+  }, AUTOSAVE_DELAY_MS);
+});
 
-function setupTerminal(): void {
-  if (term !== null) return;
+// ── terminal (xterm over the server's PTY WebSocket) — multiple concurrent tabs,
+// each its own PTY (the server spawns one per WebSocket connection, so opening a
+// second tab is just opening a second connection). Starts open with one tab by
+// default; Ctrl+`/Cmd+` toggles the panel, +Shift opens a new tab — the same
+// keybinding convention as VS Code, shown as a hint on the toggle button.
+interface TerminalTab {
+  id: number;
+  term: Terminal;
+  fit: FitAddon;
+  sock: WebSocket;
+  pane: HTMLElement;
+  tabButton: HTMLElement;
+}
+
+const tabs: TerminalTab[] = [];
+let activeTabId: number | null = null;
+let nextTabId = 1;
+
+function activateTab(id: number): void {
+  activeTabId = id;
+  for (const t of tabs) {
+    const isActive = t.id === id;
+    t.pane.hidden = !isActive;
+    t.tabButton.classList.toggle("active", isActive);
+    t.tabButton.setAttribute("aria-selected", String(isActive));
+  }
+  const active = tabs.find((t) => t.id === id);
+  active?.fit.fit();
+  active?.term.focus();
+}
+
+function openNewTerminalTab(): void {
+  const id = nextTabId++;
+  const pane = document.createElement("div");
+  pane.className = "terminal-pane";
+  pane.hidden = true;
+  el("terminal-panes").append(pane);
+
+  const tabButton = document.createElement("button");
+  tabButton.type = "button";
+  tabButton.className = "terminal-tab";
+  tabButton.setAttribute("role", "tab");
+  tabButton.textContent = String(tabs.length + 1);
+  tabButton.addEventListener("click", () => {
+    activateTab(id);
+  });
+  el("new-terminal-tab").before(tabButton);
+
   const t = new Terminal({ fontSize: 13, cursorBlink: true, theme: { background: "#1e1e1e" } });
   const fit = new FitAddon();
   t.loadAddon(fit);
-  t.open(el("terminal"));
-  fit.fit();
+  t.open(pane);
 
   const wsUrl = new URL("terminal", document.baseURI);
   wsUrl.protocol = wsUrl.protocol === "https:" ? "wss:" : "ws:";
@@ -177,7 +246,11 @@ function setupTerminal(): void {
     sock.send(JSON.stringify({ type: "resize", cols: t.cols, rows: t.rows }));
   });
   sock.addEventListener("message", (e: MessageEvent) => {
-    if (typeof e.data === "string") t.write(e.data);
+    if (typeof e.data === "string") {
+      t.write(e.data);
+      // Spectate mirror: forwarded live-only while the owner shares (no-op otherwise).
+      captureTermOutput(id, e.data);
+    }
   });
   sock.addEventListener("error", () => {
     t.write("\r\n\x1b[31m[terminal connection error]\x1b[0m\r\n");
@@ -192,21 +265,46 @@ function setupTerminal(): void {
     if (sock.readyState === WebSocket.OPEN)
       sock.send(JSON.stringify({ type: "resize", cols, rows }));
   });
-  window.addEventListener("resize", () => {
-    fit.fit();
-  });
-  term = t;
+
+  tabs.push({ id, term: t, fit, sock, pane, tabButton });
+  activateTab(id);
+  captureTabs(tabs.length, id);
 }
 
-el("toggle-terminal").addEventListener("click", () => {
+function setTerminalPanelVisible(show: boolean): void {
   const panel = el("terminal-panel");
-  const show = panel.hidden;
   panel.hidden = !show;
   el("toggle-terminal").setAttribute("aria-expanded", String(show));
   if (show) {
-    setupTerminal();
-    term?.focus();
+    if (tabs.length === 0) openNewTerminalTab();
+    else if (activeTabId !== null) activateTab(activeTabId);
+  }
+}
+
+window.addEventListener("resize", () => {
+  tabs.find((t) => t.id === activeTabId)?.fit.fit();
+});
+
+el("toggle-terminal").addEventListener("click", () => {
+  setTerminalPanelVisible(el("terminal-panel").hidden === true);
+});
+el("new-terminal-tab").addEventListener("click", () => {
+  setTerminalPanelVisible(true);
+  openNewTerminalTab();
+});
+
+window.addEventListener("keydown", (e: KeyboardEvent) => {
+  if (e.key !== "`" || !(e.ctrlKey || e.metaKey)) return;
+  e.preventDefault();
+  if (e.shiftKey) {
+    setTerminalPanelVisible(true);
+    openNewTerminalTab();
+  } else {
+    setTerminalPanelVisible(el("terminal-panel").hidden === true);
   }
 });
+
+// The terminal starts open with one tab, matching a normal dev environment.
+setTerminalPanelVisible(true);
 
 void loadTree();

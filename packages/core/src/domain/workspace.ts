@@ -73,6 +73,19 @@ export interface Workspace {
   readonly functional?: FunctionalStatus;
   readonly functionalDetail?: string;
   readonly functionalAt?: IsoTimestamp;
+  /** Home-volume usage from the same self-report (bytes), when the agent measured it. */
+  readonly diskUsedBytes?: number;
+  readonly diskTotalBytes?: number;
+  /** When teardown finished (state became `terminated`) — starts the undelete
+   * retention window; the purge sweep removes the tombstone (and reaps its
+   * retained snapshot) once it is older than the retention. */
+  readonly terminatedAt?: IsoTimestamp;
+  /** Owner-controlled spectate flag: signed-in `viewer`+ users may watch a live
+   * read-only mirror of the owner's editor session while true. Default off;
+   * cleared automatically when the session stops/deletes (sharing never
+   * outlives the live session it exposed). */
+  readonly shareEnabled?: boolean;
+  readonly shareEnabledAt?: IsoTimestamp;
 }
 
 /** Functional usability of a running workspace, self-reported by the in-workspace agent. */
@@ -131,7 +144,75 @@ export function markStopped(
     volumeId: undefined,
     taskId: undefined,
     sshHost: undefined,
+    // Sharing never outlives the live session it exposed.
+    shareEnabled: undefined,
+    shareEnabledAt: undefined,
   }));
+}
+
+/**
+ * Teardown finished: keep the record as a `terminated` tombstone (with its
+ * retained snapshot reference) so the owner can undelete it within the retention
+ * window; the purge sweep removes it after. Runtime bindings are cleared.
+ */
+export function markTerminated(ws: Workspace, at: IsoTimestamp): Result<Workspace, DomainError> {
+  return map(transition(ws.state, "terminate"), (state) => ({
+    ...ws,
+    state,
+    terminatedAt: at,
+    volumeId: undefined,
+    taskId: undefined,
+    sshHost: undefined,
+    shareEnabled: undefined,
+    shareEnabledAt: undefined,
+  }));
+}
+
+/**
+ * Restore a terminated workspace to `stopped` (wake-able from its retained
+ * snapshot). Pure guards: legal transition + a snapshot to restore from. The
+ * retention-window check is the shell's (it owns the clock and the configured
+ * retention); quota re-admission is enforced atomically by the service.
+ */
+export function undeleteWorkspace(ws: Workspace, at: IsoTimestamp): Result<Workspace, DomainError> {
+  if (ws.latestSnapshotId === undefined) {
+    return err(conflictError(`cannot undelete ${ws.id}: no retained snapshot to restore from`));
+  }
+  return map(transition(ws.state, "undelete"), (state) => ({
+    ...ws,
+    state,
+    desiredState: "present" as const,
+    deleteRequestedAt: undefined,
+    terminatedAt: undefined,
+    lastActivity: at,
+  }));
+}
+
+/** The states in which a spectate mirror can exist (a live editor session). */
+const SHAREABLE_STATES: readonly WorkspaceState[] = ["running", "idle", "provisioning"];
+
+/**
+ * Toggle the owner's spectate flag. Enabling requires a live (or launching)
+ * session — there is nothing to mirror otherwise; disabling is always legal
+ * (it must never be refusable). Pure; the route enforces WHO may toggle.
+ */
+export function setShare(
+  ws: Workspace,
+  enabled: boolean,
+  at: IsoTimestamp,
+): Result<Workspace, DomainError> {
+  if (enabled && !SHAREABLE_STATES.includes(ws.state)) {
+    return err(
+      conflictError(
+        `cannot enable spectate while '${ws.state}': only a live session can be mirrored`,
+      ),
+    );
+  }
+  return ok({
+    ...ws,
+    shareEnabled: enabled,
+    shareEnabledAt: enabled ? at : undefined,
+  });
 }
 
 /**
@@ -219,7 +300,7 @@ export function markActivity(ws: Workspace, at: IsoTimestamp): Result<Workspace,
  */
 export function recordFunctional(
   ws: Workspace,
-  probes: { ide: boolean; workspace: boolean },
+  probes: { ide: boolean; workspace: boolean; disk?: { usedBytes: number; totalBytes: number } },
   at: IsoTimestamp,
 ): Workspace {
   const failures: string[] = [];
@@ -230,6 +311,11 @@ export function recordFunctional(
     functional: failures.length === 0 ? "ok" : "degraded",
     functionalDetail: failures.length === 0 ? "IDE + workspace healthy" : failures.join("; "),
     functionalAt: at,
+    // Disk usage rides the same report; an omitted measurement keeps the last one
+    // (a transient df failure must not blank a previously known figure).
+    ...(probes.disk === undefined
+      ? {}
+      : { diskUsedBytes: probes.disk.usedBytes, diskTotalBytes: probes.disk.totalBytes }),
   };
 }
 
@@ -252,6 +338,8 @@ export function markDeleting(ws: Workspace, at: IsoTimestamp): Result<Workspace,
     state,
     desiredState: "deleted",
     deleteRequestedAt: at,
+    shareEnabled: undefined,
+    shareEnabledAt: undefined,
   }));
 }
 

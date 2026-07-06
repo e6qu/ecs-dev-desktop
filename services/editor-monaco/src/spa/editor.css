@@ -111,7 +111,21 @@ body {
 }
 
 #tabbar {
-  justify-content: space-between;
+  gap: 12px;
+}
+#edd-home {
+  color: var(--accent);
+  text-decoration: none;
+  white-space: nowrap;
+}
+#edd-home:hover {
+  text-decoration: underline;
+}
+#current-file {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 #toggle-terminal {
   background: none;
@@ -125,13 +139,74 @@ body {
 #toggle-terminal:hover {
   color: var(--text);
 }
+#toggle-terminal kbd {
+  margin-left: 6px;
+  font:
+    11px ui-monospace,
+    monospace;
+  color: var(--dim);
+  background: #0000004d;
+  border: 1px solid var(--border-control);
+  border-radius: 3px;
+  padding: 0 4px;
+}
 #terminal-panel {
   height: 220px;
   flex: none;
+  display: flex;
+  flex-direction: column;
   border-top: 1px solid var(--border);
   background: #1e1e1e;
 }
-#terminal {
-  height: 100%;
+#terminal-tabs {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 6px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.terminal-tab {
+  background: none;
+  border: 1px solid transparent;
+  color: var(--dim);
+  border-radius: 4px;
+  padding: 2px 8px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.terminal-tab:hover {
+  color: var(--text);
+}
+.terminal-tab.active {
+  color: var(--text);
+  background: #37373d;
+}
+#new-terminal-tab {
+  background: none;
+  border: 1px solid var(--border-control);
+  color: var(--dim);
+  border-radius: 4px;
+  padding: 0px 8px;
+  font: inherit;
+  cursor: pointer;
+  margin-left: 4px;
+}
+#new-terminal-tab:hover {
+  color: var(--text);
+}
+#terminal-panes {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+}
+.terminal-pane {
+  position: absolute;
+  inset: 0;
   padding: 4px 8px;
+}
+.terminal-pane[hidden] {
+  display: none;
 }

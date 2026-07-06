@@ -85,15 +85,21 @@ test("member creates, stops, and deletes a workspace from the catalog", async ({
 
   await expect(page.getByRole("heading", { name: "Start a session" })).toBeVisible();
 
-  // Launch from the catalog picker.
+  // Launch from the catalog picker: blank mode is the default; ONE Start button.
   await page
     .locator(sel(TESTID.catalogPickerOption, { "data-image": NODE_IMAGE }))
     .first()
     .click();
-  await page.getByRole("button", { name: "blank session" }).click();
+  await page.locator(sel(TESTID.sessionStart)).click();
 
-  await expect(page).toHaveURL(`${BASE_URL}/workspaces`);
+  // Lands on the per-workspace live status page, which follows the boot.
+  await expect(page).toHaveURL(new RegExp(`${BASE_URL}/workspaces/ws-`));
+  const hero = page.locator(sel(TESTID.workspaceStatusHero));
+  await expect(hero).toBeVisible();
+  await expect(hero).toHaveAttribute("data-status", "running");
 
+  // The rest of the lifecycle is exercised from the fleet list.
+  await page.goto("/workspaces");
   const card = page.locator(sel(TESTID.workspaceCard, { "data-image": NODE_IMAGE })).first();
   await expect(card).toBeVisible();
   await expect(card).toHaveAttribute("data-status", "running");

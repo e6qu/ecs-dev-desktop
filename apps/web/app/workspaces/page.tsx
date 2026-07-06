@@ -45,9 +45,13 @@ export default async function WorkspacesPage({
   // Enrich each workspace with its catalog image + ssh command (the same join the
   // API route does), then sort — so the card is a pure renderer of the DTO.
   const byImage = catalogByImage(await getCatalog().list());
-  const workspaces = raw
+  const enriched = raw
     .map((ws) => enrichWorkspace(ws, byImage))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  // Deleted-but-restorable tombstones render in their own section below the live
+  // grid — present (the user can undelete) but never mixed in with active work.
+  const workspaces = enriched.filter((w) => w.state !== "terminated");
+  const deleted = enriched.filter((w) => w.state === "terminated");
   const hasTransitional = workspaces.some((w) => TRANSITIONAL_STATES.has(w.state));
 
   return (
@@ -104,9 +108,32 @@ export default async function WorkspacesPage({
       ) : (
         <div className="grid">
           {workspaces.map((ws, i) => {
-            return <WorkspaceCard key={ws.id} ws={ws} index={i} showOwner={viewAll} />;
+            return (
+              <WorkspaceCard
+                key={ws.id}
+                ws={ws}
+                index={i}
+                showOwner={viewAll}
+                canShare={ws.ownerId === principal.id}
+              />
+            );
           })}
         </div>
+      )}
+
+      {deleted.length > 0 && (
+        <section style={{ marginTop: 32 }}>
+          <h2 style={{ fontSize: 16 }}>Recently deleted</h2>
+          <p className="state-note">
+            Deleted sessions stay restorable from their last snapshot for 7 days, then are purged
+            for good.
+          </p>
+          <div className="grid">
+            {deleted.map((ws, i) => {
+              return <WorkspaceCard key={ws.id} ws={ws} index={i} showOwner={viewAll} />;
+            })}
+          </div>
+        </section>
       )}
     </>
   );

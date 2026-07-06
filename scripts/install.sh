@@ -29,9 +29,13 @@
 #   EDD_SSH_DOMAIN      optional  base domain for *.<ssh> (empty = no SSH ingress)
 #   EDD_SSH_ZONE        optional  Route53 zone id for EDD_SSH_DOMAIN (required if SSH)
 #   EDD_NAT_MODE        optional  private-subnet egress: instance (fck-nat, default) | gateway
+#   EDD_NAT_INSTANCE_TYPE optional fck-nat EC2 type (default: t4g.nano; bump to a
+#                         free-tier-eligible type, e.g. t4g.micro, if the account is
+#                         still Free-Tier-restricted — RunInstances then rejects t4g.nano)
 #   EDD_IMAGE_TAG       optional  image tag (default: main)
 #   EDD_IMAGE_BUILD_MODE optional image build mode: local | codebuild | pre-published
 #   EDD_CODEBUILD_SOURCE_REPO  optional  git URL for codebuild mode (e.g. https://github.com/...)
+#   EDD_CODEBUILD_SOURCE_REF   optional  git ref for codebuild mode (default: main)
 #   EDD_GOLDEN          optional  golden variants (space-separated; default: omnibus)
 #   EDD_ADMIN_GROUPS    REQUIRED  IdP group(s) granting admin (CSV; without it NO admin)
 #   EDD_MEMBER_GROUPS   optional  IdP group(s) granting member (CSV)
@@ -69,9 +73,11 @@ EDD_ROUTE53_ZONE="${EDD_ROUTE53_ZONE:-}"
 EDD_SSH_DOMAIN="${EDD_SSH_DOMAIN:-}"
 EDD_SSH_ZONE="${EDD_SSH_ZONE:-}"
 EDD_NAT_MODE="${EDD_NAT_MODE:-instance}"
+EDD_NAT_INSTANCE_TYPE="${EDD_NAT_INSTANCE_TYPE:-t4g.nano}"
 EDD_TAG="${EDD_IMAGE_TAG:-main}"
 EDD_IMAGE_BUILD_MODE="${EDD_IMAGE_BUILD_MODE:-local}"
 EDD_CODEBUILD_SOURCE_REPO="${EDD_CODEBUILD_SOURCE_REPO:-}"
+EDD_CODEBUILD_SOURCE_REF="${EDD_CODEBUILD_SOURCE_REF:-main}"
 EDD_GOLDEN="${EDD_GOLDEN:-omnibus}"
 EDD_ADMIN_GROUPS="${EDD_ADMIN_GROUPS:-}"
 EDD_MEMBER_GROUPS="${EDD_MEMBER_GROUPS:-}"
@@ -81,30 +87,40 @@ export EDD_BOOTSTRAP_GITHUB_SECRET="${EDD_BOOTSTRAP_GITHUB_SECRET:-}"
 export EDD_BOOTSTRAP_ENTRA_ID="${EDD_BOOTSTRAP_ENTRA_ID:-}"
 export EDD_BOOTSTRAP_ENTRA_SECRET="${EDD_BOOTSTRAP_ENTRA_SECRET:-}"
 
-missing() { # <name>
-  [ -n "$1" ] || return 0
+missing() { # <name> <value>
+  [ -n "$2" ] && return 0
   echo "edd: missing required parameter $1 (set it as an env var)" >&2
   return 1
 }
-missing "$EDD_NAME" || exit 1
-missing "$EDD_REGION" || exit 1
-missing "$EDD_AZS" || exit 1
-missing "$EDD_ADMIN_GROUPS" || exit 1
-if [ "$EDD_IMAGE_BUILD_MODE" != "local" ] && [ "$EDD_IMAGE_BUILD_MODE" != "codebuild" ] && [ "$EDD_IMAGE_BUILD_MODE" != "pre-published" ]; then
-  echo "edd: EDD_IMAGE_BUILD_MODE must be local, codebuild, or pre-published" >&2
-  exit 1
+missing EDD_NAME "$EDD_NAME" || exit 1
+missing EDD_REGION "$EDD_REGION" || exit 1
+# The rest (AZs, admin groups, build-mode/nat-mode shape, domain/SSH zone pairing) are
+# install-only concerns — `--verify` is read-only and never writes a tfvars file, so
+# requiring the full install parameter set for it (as a prior version of this script
+# did unconditionally) broke the documented "just EDD_NAME/EDD_REGION" verify usage.
+if [ "$mode" = "install" ]; then
+  missing EDD_AZS "$EDD_AZS" || exit 1
+  missing EDD_ADMIN_GROUPS "$EDD_ADMIN_GROUPS" || exit 1
+  if [ "$EDD_IMAGE_BUILD_MODE" != "local" ] && [ "$EDD_IMAGE_BUILD_MODE" != "codebuild" ] && [ "$EDD_IMAGE_BUILD_MODE" != "pre-published" ]; then
+    echo "edd: EDD_IMAGE_BUILD_MODE must be local, codebuild, or pre-published" >&2
+    exit 1
+  fi
+  if [ "$EDD_NAT_MODE" != "instance" ] && [ "$EDD_NAT_MODE" != "gateway" ]; then
+    echo "edd: EDD_NAT_MODE must be instance or gateway" >&2
+    exit 1
+  fi
+  if [ "$EDD_IMAGE_BUILD_MODE" = "codebuild" ]; then
+    missing EDD_CODEBUILD_SOURCE_REPO "$EDD_CODEBUILD_SOURCE_REPO" || exit 1
+  fi
+  if [ -n "$EDD_DOMAIN" ]; then missing EDD_ROUTE53_ZONE "$EDD_ROUTE53_ZONE" || exit 1; fi
+  if [ -n "$EDD_SSH_DOMAIN" ]; then missing EDD_SSH_ZONE "$EDD_SSH_ZONE" || exit 1; fi
 fi
-if [ "$EDD_NAT_MODE" != "instance" ] && [ "$EDD_NAT_MODE" != "gateway" ]; then
-  echo "edd: EDD_NAT_MODE must be instance or gateway" >&2
-  exit 1
-fi
-if [ "$EDD_IMAGE_BUILD_MODE" = "codebuild" ]; then
-  missing "$EDD_CODEBUILD_SOURCE_REPO" || exit 1
-fi
-if [ -n "$EDD_DOMAIN" ]; then missing "$EDD_ROUTE53_ZONE" || exit 1; fi
-if [ -n "$EDD_SSH_DOMAIN" ]; then missing "$EDD_SSH_ZONE" || exit 1; fi
 
-azs_list=$(printf '%s' "$EDD_AZS" | sed 's/,*$/,/; s/,/","/g; s/^/["/; s/,$/"]/')
+# "a,b" -> ["a","b"]. (The previous version forced a trailing comma before quoting
+# every comma, which turned that same trailing comma into a closing `","` and left
+# nothing for the final substitution to convert into `"]` — always emitting an
+# unclosed HCL list, e.g. ["eu-west-1a","eu-west-1b","; found on the first real apply.)
+azs_list=$(printf '%s' "$EDD_AZS" | sed 's/,/","/g; s/^/["/; s/$/"]/')
 state_bucket="edd-tfstate-${EDD_NAME}"
 
 banner() { printf '\n\033[1m=== edd: %s ===\033[0m\n' "$*"; }
@@ -225,16 +241,26 @@ tfvars="$tfdir/install.tfvars"
   printf 'ssh_base_domain = "%s"\n' "$EDD_SSH_DOMAIN"
   printf 'route53_ssh_zone_id = "%s"\n' "$EDD_SSH_ZONE"
   printf 'nat_mode = "%s"\n' "$EDD_NAT_MODE"
+  printf 'nat_instance_type = "%s"\n' "$EDD_NAT_INSTANCE_TYPE"
   printf 'image_build_mode = "%s"\n' "$EDD_IMAGE_BUILD_MODE"
   printf 'image_tag = "%s"\n' "$EDD_TAG"
   printf 'golden_image_repos = ["%s"]\n' "$(printf '%s' "$EDD_GOLDEN" | sed 's/ /", "/g')"
   printf 'seed_default_catalog = true\n'
   printf 'codebuild_source_repo = "%s"\n' "$EDD_CODEBUILD_SOURCE_REPO"
+  printf 'codebuild_source_ref = "%s"\n' "$EDD_CODEBUILD_SOURCE_REF"
   printf 'auth_secret_arns = {\n%s}\n' "$secret_map"
   printf 'extra_environment = {\n'
   printf '  EDD_ADMIN_GROUPS = "%s"\n' "$EDD_ADMIN_GROUPS"
   [ -n "$EDD_MEMBER_GROUPS" ] && printf '  EDD_MEMBER_GROUPS = "%s"\n' "$EDD_MEMBER_GROUPS"
   printf '  AUTH_TRUST_HOST = "true"\n'
+  # AUTH_TRUST_HOST alone isn't sufficient for this app's custom server
+  # (apps/web/server.ts passes hostname/port to next(), which Next appears to use
+  # for its own request-URL construction ahead of Auth.js's trustHost/header logic) —
+  # Auth.js built the GitHub OAuth redirect_uri from the container's internal ECS
+  # hostname instead of the public domain, and GitHub correctly rejected it
+  # (redirect_uri_mismatch). Set AUTH_URL explicitly so there's no ambiguity; found
+  # on the first real sign-in attempt against this deploy.
+  [ -n "$EDD_DOMAIN" ] && printf '  AUTH_URL = "https://app.%s"\n' "$EDD_DOMAIN"
   printf '}\n'
 } >"$tfvars"
 

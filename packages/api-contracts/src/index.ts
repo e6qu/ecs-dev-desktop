@@ -31,12 +31,14 @@ export const desiredState = z.enum(["present", "deleted"]);
 export type DesiredStateDto = z.infer<typeof desiredState>;
 
 /** A user-initiated lifecycle operation the UI may offer for a workspace. */
-export const workspaceAction = z.enum(["start", "stop", "snapshot", "delete"]);
+export const workspaceAction = z.enum(["start", "stop", "snapshot", "delete", "undelete"]);
 export type WorkspaceActionDto = z.infer<typeof workspaceAction>;
 
-/** Which editor a workspace serves (openvscode = OpenVSCode Server; monaco = the first-party
- * lightweight editor). Mirrors `@edd/core`'s EditorKind across the API boundary. */
-export const editorKind = z.enum(["openvscode", "monaco"]);
+/** Which primary interface a workspace serves (mirrors `@edd/core`'s EditorKind):
+ * openvscode = OpenVSCode Server; monaco = the first-party lightweight editor;
+ * claude / codex = agent-first sessions (the Monaco terminal boots straight into
+ * the CLI — neither vendor ships a self-hostable web UI). */
+export const editorKind = z.enum(["openvscode", "monaco", "claude", "codex"]);
 export type EditorKindDto = z.infer<typeof editorKind>;
 
 /** The RBAC roles (mirrors `@edd/authz` `ROLES` — kept here so the contract has no dep on authz;
@@ -73,6 +75,22 @@ export const workspace = z.object({
   // Functional usability self-report (is the desktop actually usable, not just
   // "running"): surfaced on the owner's card so a degraded-but-running workspace shows.
   functional: z.enum(["ok", "degraded"]).optional(),
+  // Home-volume usage from the agent's functional self-report (bytes).
+  diskUsedBytes: z.number().nonnegative().optional(),
+  diskTotalBytes: z.number().positive().optional(),
+  /** When teardown finished — the undelete retention window counts from here. */
+  terminatedAt: z.iso.datetime().optional(),
+  /** Owner-controlled spectate flag: viewers may watch a read-only mirror. */
+  shareEnabled: z.boolean().optional(),
+  // Provisioned sizing (joined server-side from deployment config — the same
+  // values the compute provider provisions and the cost model bills).
+  resources: z
+    .object({
+      vcpu: z.number().positive(),
+      memoryGib: z.number().positive(),
+      volumeGib: z.number().positive(),
+    })
+    .optional(),
 });
 export type WorkspaceDto = z.infer<typeof workspace>;
 
@@ -97,18 +115,36 @@ export const configSyncReport = z.object({
 });
 export type ConfigSyncReportDto = z.infer<typeof configSyncReport>;
 
-/** Optional functional self-report carried on a heartbeat (in-workspace agent). */
+/** Optional self-reports carried on a heartbeat (in-workspace agent). */
 export const heartbeatRequest = z.object({
+  /** Whether the workspace saw REAL usage since the last beat (terminal/editor
+   * interaction, running compute) — the idle-agent's activity self-report. `false`
+   * means "alive but unused": the control plane records the functional report but
+   * does NOT refresh `lastActivity`, so the reconciler's idle window keeps aging
+   * and an untouched workspace scales to zero. Absent (or `true`) counts as
+   * activity — a session-authed browser/API heartbeat IS a user action. */
+  active: z.boolean().optional(),
   functional: z
     .object({
       /** OpenVSCode reachable on the workspace port. */
       ide: z.boolean(),
       /** The workspace home directory is writable. */
       workspace: z.boolean(),
+      /** Home-volume (EBS) usage, bytes — measured in-container with df. */
+      disk: z
+        .object({
+          usedBytes: z.number().nonnegative(),
+          totalBytes: z.number().positive(),
+        })
+        .optional(),
     })
     .optional(),
 });
 export type HeartbeatRequest = z.infer<typeof heartbeatRequest>;
+
+/** Toggle the owner's spectate (read-only mirror) flag. */
+export const shareRequest = z.object({ enabled: z.boolean() });
+export type ShareRequest = z.infer<typeof shareRequest>;
 
 /** A security event reported by the in-workspace guard (agent machine-auth). */
 export const securityEventRequest = z.object({
@@ -129,6 +165,8 @@ export const createWorkspaceRequest = z.object({
   repoUrl: z.url().startsWith("https://").optional(),
   /** Optional branch/tag/SHA to check out (defaults to the repo's default). */
   repoRef: z.string().trim().min(1).max(255).optional(),
+  /** Per-session interface override; absent = the base image's catalog choice. */
+  editor: editorKind.optional(),
 });
 export type CreateWorkspaceRequest = z.infer<typeof createWorkspaceRequest>;
 
@@ -136,6 +174,76 @@ export const listWorkspacesResponse = z.object({
   workspaces: z.array(workspace),
 });
 export type ListWorkspacesResponse = z.infer<typeof listWorkspacesResponse>;
+
+/** One workspace's container (boot/runtime) log lines — the owner-facing slice of
+ * the CloudWatch container stream, surfaced on the workspace status page.
+ * `available` is explicit so the UI can distinguish "no lines yet" from "no log
+ * source in this environment" (the `note` says which). */
+export const workspaceLogs = z.object({
+  available: z.boolean(),
+  note: z.string(),
+  lines: z.array(
+    z.object({
+      at: z.iso.datetime(),
+      level: z.enum(["info", "warn", "error"]),
+      source: z.string(),
+      message: z.string(),
+    }),
+  ),
+});
+export type WorkspaceLogsDto = z.infer<typeof workspaceLogs>;
+
+/** One metric series for the workspace monitoring view. `available` is explicit
+ * (§6.5): false + note when this environment has no metrics source (fakes/sim) or
+ * the read failed; true with empty points just means no datapoints yet. */
+export const monitoringSeries = z.object({
+  available: z.boolean(),
+  note: z.string(),
+  points: z.array(z.object({ at: z.iso.datetime(), value: z.number() })),
+});
+export type MonitoringSeriesDto = z.infer<typeof monitoringSeries>;
+
+/** Per-workspace monitoring: provisioned sizing, uptime, cost so far (incl. the
+ * snapshot-storage line), utilization series, and disk/IOPS detail. */
+export const workspaceMonitoring = z.object({
+  workspaceId: z.string(),
+  state: workspaceState,
+  resources: z.object({
+    vcpu: z.number().positive(),
+    memoryGib: z.number().positive(),
+    volumeGib: z.number().positive(),
+  }),
+  uptime: z.object({
+    createdAt: z.iso.datetime(),
+    runningMs: z.number().nonnegative(),
+    stoppedMs: z.number().nonnegative(),
+  }),
+  /** Absent until the workspace has any priced lifecycle events. */
+  cost: z
+    .object({
+      computeUsd: z.number(),
+      volumeUsd: z.number(),
+      snapshotUsd: z.number(),
+      totalUsd: z.number(),
+    })
+    .optional(),
+  /** Task CPU utilization, vCPU-units average (Container Insights, task-definition
+   * family scope — exact per-workspace when each workspace runs its own family). */
+  cpu: monitoringSeries,
+  /** Task memory utilization, MiB average (same source/scope as `cpu`). */
+  memory: monitoringSeries,
+  /** Per-volume EBS read/write operations (Sum per period). */
+  diskReadOps: monitoringSeries,
+  diskWriteOps: monitoringSeries,
+  /** gp3 baseline IOPS provisioned for the home volume. */
+  iopsBaseline: z.number().positive(),
+  disk: z.object({
+    volumeGib: z.number().positive(),
+    usedBytes: z.number().nonnegative().optional(),
+    totalBytes: z.number().positive().optional(),
+  }),
+});
+export type WorkspaceMonitoringDto = z.infer<typeof workspaceMonitoring>;
 
 // --- Admin: per-workspace Inspect (full detail + derived timeline) ---
 
@@ -172,6 +280,10 @@ export const workspaceDetail = z.object({
   functional: z.enum(["ok", "degraded"]).optional(),
   functionalDetail: z.string().optional(),
   functionalAt: z.iso.datetime().optional(),
+  diskUsedBytes: z.number().nonnegative().optional(),
+  diskTotalBytes: z.number().positive().optional(),
+  terminatedAt: z.iso.datetime().optional(),
+  shareEnabled: z.boolean().optional(),
   /** Lifecycle actions valid from this state (server-computed; see {@link workspace}). */
   availableActions: z.array(workspaceAction),
 });
