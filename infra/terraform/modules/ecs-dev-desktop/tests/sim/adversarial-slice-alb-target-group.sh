@@ -3,8 +3,10 @@
 # Adversarial spec-fidelity probe slice for ALB target group health-check and
 # deregistration configuration. The module's aws_lb_target_group.control_plane
 # uses /api/readyz with matcher "200", healthy=2, unhealthy=3, interval=30,
-# timeout=5, and the default 300s deregistration delay. The target group
-# health-check config round-trip is never adversarially validated.
+# timeout=5, and an explicit 900s deregistration delay (longer than the AWS
+# default, so an in-flight workspace proxy session survives a control-plane
+# deploy's drain window). The target group health-check config round-trip is
+# never adversarially validated.
 # Endpoint-only: targets AWS_ENDPOINT_URL from the environment.
 set -eu
 unset CDPATH

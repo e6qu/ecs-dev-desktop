@@ -138,6 +138,14 @@ resource "aws_ecs_service" "control_plane" {
     container_port   = var.control_plane_port
   }
 
+  # Zero-downtime rolling deploys: never drop below desired capacity (100%) while
+  # allowing up to double (200%) so new tasks come up and pass health checks
+  # alongside the old ones before they're drained -- explicit rather than relying
+  # on AWS's (currently identical) defaults, since the app is stateless and this
+  # is a real requirement, not an incidental default.
+  deployment_minimum_healthy_percent = 100
+  deployment_maximum_percent         = 200
+
   deployment_circuit_breaker {
     enable   = true
     rollback = true
