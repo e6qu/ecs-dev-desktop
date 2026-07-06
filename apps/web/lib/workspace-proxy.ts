@@ -150,9 +150,10 @@ function cookiePresent(cookieHeader: string | undefined, name: string): boolean 
  * connection counts as "user present" (a background tab never rolls its session,
  * so tab-parked workspaces live at most one session length). */
 export type WorkspaceAuthz =
-  | { readonly kind: "allow"; readonly sessionExpiresAtMs: number }
+  | { readonly kind: "allow"; readonly sessionExpiresAtMs: number; readonly subject: string }
+  // authenticated but denied — `subject` (when known) is the caller for the audit trail
   | { readonly kind: "unauthenticated" } // no/invalid session → redirect to login
-  | { readonly kind: "forbidden" }; // authenticated, not owner/admin, or unknown ws
+  | { readonly kind: "forbidden"; readonly subject?: string; readonly reason: string };
 
 /** The only slice of an incoming request the authorizer reads — the session cookie.
  * A Node {@link IncomingMessage} structurally satisfies this; narrowing the input to
@@ -193,15 +194,15 @@ export async function authorizeWorkspace(
   });
   if (token === null) return { kind: "unauthenticated" };
 
+  const callerSubject = typeof token.uid === "string" ? token.uid : undefined;
   const detail = await (await getControlPlane()).inspect(wsId);
   if (detail === null) {
     // Unknown ws — don't distinguish unknown-vs-unowned to the caller, but DO record
     // it so a "forbidden" on a workspace that actually exists is diagnosable.
-    log.warn("workspace-proxy denied: workspace not found", { wsId });
-    return { kind: "forbidden" };
+    log.warn("workspace-proxy denied: workspace not found", { wsId, callerSubject });
+    return { kind: "forbidden", subject: callerSubject, reason: "workspace not found" };
   }
 
-  const callerSubject = typeof token.uid === "string" ? token.uid : undefined;
   const callerIsAdmin = token.role === "admin";
   const granted = decideWorkspaceAccessBySubject({
     callerSubject,
@@ -213,20 +214,23 @@ export async function authorizeWorkspace(
     // Record exactly why the decision failed (never the token itself): who the
     // caller is, their role, and who owns it — so owner-mismatch (a stale/rewritten
     // uid) is instantly distinguishable from a non-admin opening someone else's.
+    const reason = `not owner and not admin (role=${
+      typeof token.role === "string" ? token.role : "(none)"
+    }, owner=${detail.workspace.ownerId})`;
     log.warn("workspace-proxy denied: not owner and not admin", {
       wsId,
       callerSubject: callerSubject ?? "(no uid on token)",
       callerRole: typeof token.role === "string" ? token.role : "(no role)",
       ownerId: detail.workspace.ownerId,
     });
-    return { kind: "forbidden" };
+    return { kind: "forbidden", subject: callerSubject, reason };
   }
   // The JWT's exp (NumericDate, seconds) is when this session stops vouching for a
   // held connection. Auth.js always sets it; if a token somehow lacks one, cap the
   // grant conservatively at the rolling-refresh window rather than forever.
   const sessionExpiresAtMs =
     typeof token.exp === "number" ? token.exp * 1000 : Date.now() + FALLBACK_PRESENCE_GRANT_MS;
-  return { kind: "allow", sessionExpiresAtMs };
+  return { kind: "allow", sessionExpiresAtMs, subject: callerSubject ?? "(no uid)" };
 }
 
 /** The two spectate WebSocket roles (docs/design-public-spectate.md). */

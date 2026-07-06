@@ -49,7 +49,7 @@ describe("authorizeWorkspace (in-app proxy authz glue)", () => {
   it("is forbidden (not 404) for an unknown workspace — does not distinguish existence", async () => {
     getTokenMock.mockResolvedValue({ uid: "u-1" });
     inspectMock.mockResolvedValue(null);
-    expect(await authorizeWorkspace(req(), WS)).toEqual({ kind: "forbidden" });
+    expect(await authorizeWorkspace(req(), WS)).toMatchObject({ kind: "forbidden" });
   });
 
   it("fails loud (throws) when AUTH_SECRET is unset — never authorizes with an empty secret", async () => {
@@ -63,7 +63,7 @@ describe("authorizeWorkspace (in-app proxy authz glue)", () => {
     inspectMock.mockResolvedValue({ workspace: { ownerId: "u-1" } });
     // `allow` carries the session's exp (seconds -> ms) so presence tracking can
     // cap how long a held connection counts as "user present".
-    expect(await authorizeWorkspace(req(), WS)).toEqual({
+    expect(await authorizeWorkspace(req(), WS)).toMatchObject({
       kind: "allow",
       sessionExpiresAtMs: 1_900_000_000_000,
     });
@@ -72,7 +72,7 @@ describe("authorizeWorkspace (in-app proxy authz glue)", () => {
   it("forbids a different authenticated user", async () => {
     getTokenMock.mockResolvedValue({ uid: "u-1" });
     inspectMock.mockResolvedValue({ workspace: { ownerId: "u-2" } });
-    expect(await authorizeWorkspace(req(), WS)).toEqual({ kind: "forbidden" });
+    expect(await authorizeWorkspace(req(), WS)).toMatchObject({ kind: "forbidden" });
   });
 
   it("allows an admin to reach a workspace they do not own", async () => {
@@ -84,7 +84,7 @@ describe("authorizeWorkspace (in-app proxy authz glue)", () => {
   it("forbids a non-admin whose session carries no subject (fails closed)", async () => {
     getTokenMock.mockResolvedValue({ role: "member" });
     inspectMock.mockResolvedValue({ workspace: { ownerId: "u-1" } });
-    expect(await authorizeWorkspace(req(), WS)).toEqual({ kind: "forbidden" });
+    expect(await authorizeWorkspace(req(), WS)).toMatchObject({ kind: "forbidden" });
   });
 });
 

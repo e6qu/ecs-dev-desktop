@@ -14,6 +14,8 @@ import { workspaceId, workspaceIdFromPath, type WorkspaceId } from "@edd/core";
 import next from "next";
 import { WebSocketServer } from "ws";
 
+import { getControlPlane } from "./lib/control-plane";
+import { log } from "./lib/logger";
 import { NO_PUBLISHER_CODE, spectateRelay } from "./lib/spectate-relay";
 import { PRESENCE_SWEEP_MS, sweepPresence, workspacePresence } from "./lib/workspace-presence";
 import {
@@ -55,6 +57,24 @@ await app.prepare();
 const handleRequest = app.getRequestHandler();
 const handleUpgrade = app.getUpgradeHandler();
 
+/** Record a workspace-editor access in the audit ledger (fire-and-forget: a proxy
+ * request must never fail because the audit write did). */
+async function auditAccess(
+  wsId: WorkspaceId,
+  actor: string,
+  outcome: "allow" | "deny",
+  detail: string,
+): Promise<void> {
+  try {
+    await (await getControlPlane()).recordAccess({ wsId, actor, outcome, detail });
+  } catch (err) {
+    log.warn("access audit write failed (non-fatal)", {
+      wsId,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 const server = createServer((req, res) => {
   const wsId = workspaceIdFromPath(req.url ?? "");
   if (wsId === undefined) {
@@ -70,6 +90,9 @@ const server = createServer((req, res) => {
       return;
     }
     if (authz.kind === "forbidden") {
+      // Durable audit trail of denied access (fire-and-forget — never blocks/needs
+      // to succeed for the 403 to be returned).
+      void auditAccess(wsId, authz.subject ?? "(unauthenticated)", "deny", authz.reason);
       res.writeHead(403, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: "forbidden" }));
       return;
@@ -78,6 +101,9 @@ const server = createServer((req, res) => {
     // the initial navigation, so the workbench loads without the user ever seeing it.
     const tokenRedirect = editorTokenRedirect(req, wsId);
     if (tokenRedirect !== undefined) {
+      // The initial document nav is the "open" — audit it once here (sub-resources,
+      // which already carry the token, don't re-trigger this branch).
+      void auditAccess(wsId, authz.subject, "allow", "editor opened");
       // `no-referrer` so the `?tkn=<connection-token>` the browser lands on is never
       // leaked in a Referer header to any sub-resource or outbound link.
       res.writeHead(302, { location: tokenRedirect, "referrer-policy": "no-referrer" });

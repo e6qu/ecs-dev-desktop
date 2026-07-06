@@ -137,6 +137,7 @@ type AuditAction =
   | "session.recover"
   | "session.undelete"
   | "session.purged"
+  | "session.access"
   | "session.share_enabled"
   | "session.share_disabled"
   | "session.snapshot_lost"
@@ -872,6 +873,28 @@ export class WorkspaceService {
       return err(conflictError(`cancel-stop of ${id} lost a concurrent update`));
     }
     return ok(toWorkspaceDto(next.value));
+  }
+
+  /**
+   * Record a workspace-editor ACCESS in the audit ledger (durable, admin-visible):
+   * who reached which workspace's editor and whether it was allowed or denied. Fired
+   * fire-and-forget by the proxy on the initial open + on any denial, so there is a
+   * queryable trail of "who opened/attempted what" — the audit log for access, next
+   * to the lifecycle events. A no-op when no audit ledger is configured.
+   */
+  async recordAccess(input: {
+    wsId: WorkspaceId;
+    actor: string;
+    outcome: "allow" | "deny";
+    detail: string;
+  }): Promise<void> {
+    const audit = this.auditItem({
+      action: "session.access",
+      target: input.wsId,
+      actor: input.actor,
+      detail: `${input.outcome}: ${input.detail}`,
+    });
+    if (audit !== undefined) await audit.entity.put(audit.attrs).go();
   }
 
   /** All workspaces mid manual-stop (the reconciler's finishStopping keep-set). */
