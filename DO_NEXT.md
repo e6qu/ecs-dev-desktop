@@ -48,6 +48,41 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
+- **Queued UI/UX requests from live post-launch usage (2026-07-06), roughly in priority order:**
+  1. A "back to EDD home" link _inside_ the OpenVSCode/Monaco editor page itself (the main
+     portal already has one in its own topbar) — needs either a proxy-level HTML injection
+     or a small custom OpenVSCode extension, since the editor occupies the full page with no
+     surrounding app chrome.
+  2. A prominent "Open terminal with `<keybinding>`" UI element in OpenVSCode's own top
+     bar, positioned after the AI chat extension's entry point — confirmed there's no
+     settings-only way to do this; needs a small custom VS Code extension bundled into the
+     golden image's built-in extensions dir (same mechanism as the existing
+     prettier/eslint/claude-code extensions). The Monaco editor's equivalent is already done
+     (terminal opens by default, keybinding shown, multi-tab — see `WHAT_WE_DID.md` 2026-07-06).
+  3. Editor selection (OpenVSCode vs Monaco) exposed to users when starting a session — a
+     per-catalog-entry `editor` field already exists (`catalog-seed.tf`'s `editor = "openvscode"`),
+     so this may mostly be a UI-surfacing task, not new backend work; needs checking.
+  4. Whitelisted VS Code extension installs — OpenVSCode Server's Open VSX gallery already
+     appears reachable (`open-vsx.org/vscode/gallery/extensionquery` was hit in a live log,
+     independent of the EACCES bug), so this may just need a `extensions.allowedExtensions`
+     settings.json entry once the EACCES fix is confirmed live; not yet investigated further.
+  5. The bigger one: redesign `apps/web/components/NewSession.tsx` from three separate
+     start-affordances (a "blank session" button, an always-there create-repo form, plus the
+     now-collapsible repo browser) into a radio-button mode selector (blank / existing repo /
+     create repo) with one shared, prominent "start" button, then redirect to a new
+     `apps/web/app/workspaces/[id]/page.tsx` (doesn't exist yet) showing live status
+     (`usePoll` + the existing `GET /api/workspaces/:id`) and, if feasible, live logs (the
+     `CloudWatchLogSource`/`getLogSource()` machinery already supports narrowing to one
+     workspace's `taskId` — reused by `/admin/logs` today, would need a non-admin-gated route
+     for the owner). Note: a freshly-created workspace's DB `state` goes straight to
+     `"running"` the moment `ecs:RunTask` is called (no `"provisioning"` state on the create
+     path, only on scale-to-zero wake) — the only "is it actually usable yet" signal today is
+     the separate `functional: "ok" | "degraded" | undefined` field (set by the in-workspace
+     agent's first heartbeat), so the new status page needs to key off `functional`, not `state`.
+  - Confirm the in-flight golden-image rebuild (EACCES fix + AI-tooling-in-every-variant +
+    Monaco terminal changes) lands clean and the editor opens correctly for a real user
+    before considering this session's work fully closed out.
+
 - **Third adversarial spec-fidelity probe wave — DONE; CloudWatch probe FIXED + sockerless #767 bump (2026-07-03).** PR #179 merged the sockerless #737 bump and all ten probe slices. PR #180 removes the SQS-receipt workaround and fails loudly. The "SNS delivery succeeded but ReceiveMessage empty" issue was **our bug**: `echo "$raw"` corrupts backslash sequences in the nested-JSON SQS Body (POSIX `echo` interprets `\\`). Fixed with `printf '%s\n'` and proper nested-JSON parsing. The sim was correct all along (sockerless #766 was not a sim bug — closed). sockerless **#767** (`f0d96ec3`) also fixes bleephub team creator auto-maintainer (#763/#765). All probe slices pass locally.
 
 - **Verify PR #180 in CI and merge if green.** CI should now pass on all jobs including `terraform-sim`, `e2e`, and `e2e-https`.

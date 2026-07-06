@@ -4,6 +4,19 @@
 
 ## Open
 
+- **CodeBuild image rebuild silently no-ops on a re-run against the same branch — known footgun (2026-07-06).**
+  `terraform_data.build_images_codebuild`'s `triggers_replace` (`infra/terraform/modules/ecs-dev-desktop/build-codebuild.tf`)
+  is keyed on the literal `var.image_tag`/`var.codebuild_source_ref` **strings**, not the commit the ref
+  resolves to. Re-running `scripts/install.sh` with `EDD_CODEBUILD_SOURCE_REF` set to the same branch name
+  after pushing new commits to that branch reports `Apply complete! Resources: 0 added, 0 changed, 0 destroyed`
+  and does **not** rebuild or redeploy anything — the live images stay pinned to whatever commit the last
+  build actually used. Separately, `EDD_CODEBUILD_SOURCE_REF` must be a real branch/tag name: the buildspec's
+  `git clone -b "$SOURCE_REF"` rejects a raw commit SHA (`-b` only accepts branch/tag refs), so passing a SHA
+  there fails the build immediately. **Workaround**: keep `EDD_CODEBUILD_SOURCE_REF` as the branch name, and
+  bump `EDD_IMAGE_TAG` to a new distinct value (e.g. the short commit SHA) every time you want a rebuild to
+  actually pick up new commits on the same branch — that's the only field in `triggers_replace` meant to be
+  varied per-rebuild. Not filed upstream (this is our own terraform, not a sockerless gap).
+
 - **`terraform-sim` CloudWatch Logs `ResourceAlreadyExistsException` flake (2026-06-29).** The first CI run of PR #175 failed in the `terraform-sim` job during `validate-sockerless-713.sh` apply with `ResourceAlreadyExistsException: The specified log group already exists: /eddsim/control-plane`. The preceding DNS/TLS step had reported a successful destroy (`95 destroyed`). A re-run passed. Local attempts to reproduce the exact sequence have not yet succeeded. Mitigated (boyscout rule) with: (1) failure-time sockerless container logs in CI, (2) a pre-apply `describe-log-groups` dump in the probe script, (3) standard-API cleanup of the three module log groups before apply in `validate-sockerless-713.sh`, and (4) a post-bring-up sim health wait in the `terraform-sim` CI job. Root cause unknown — under investigation; will file upstream on `e6qu/sockerless` only once a reproduction or clear evidence is in hand.
 
 - **Cross-arch golden-image builds require QEMU/binfmt on the build host (2026-06-28).**
