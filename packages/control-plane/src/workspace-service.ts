@@ -798,31 +798,41 @@ export class WorkspaceService {
       if (!isVersionConflict(e)) throw e;
       return err(conflictError(`stop of ${id} lost a concurrent update`));
     }
-    // Detached converge after the grace. Never rejects (finishStop returns a
-    // Result); a throw here would be an owner-less rejection.
-    void this.finishStop(id, { graceMs: DEFAULT_STOP_GRACE_MS }).catch(() => {
-      /* the reconciler's finishStopping sweep is the backstop */
-    });
+    // Convergence is driven by the long-lived server's stopping-sweep (and the
+    // reconciler backstop) — NOT a detached promise here. A floating promise in a
+    // Next route handler isn't reliably run after the response is sent, so a manual
+    // stop could otherwise hang at `stopping` until the 5-min reconciler sweep.
+    void actor;
     return ok(toWorkspaceDto(next.value));
   }
 
   /**
-   * Converge a `stopping` workspace to `stopped`: after an optional grace (the
-   * cancel window), re-read and — only if STILL stopping — snapshot + tear down +
-   * mark stopped. Re-reads a second time AFTER the (slow) snapshot and before
-   * killing the task, so a cancel that lands mid-snapshot never tears down a
-   * resumed session. Idempotent: a canceled/already-stopped workspace is a no-op
-   * success. Used by requestStop (detached, with grace) and the reconciler
-   * backstop (graceMs 0).
+   * Converge a `stopping` workspace to `stopped`: once the cancel grace since the
+   * stop request has elapsed, re-read and — only if STILL stopping — snapshot + tear
+   * down + mark stopped. Re-reads a second time AFTER the (slow) snapshot and before
+   * killing the task, so a cancel that lands mid-snapshot never tears down a resumed
+   * session. Idempotent + safe to call repeatedly: a workspace still inside the grace
+   * (or already canceled/stopped) is a no-op success — so a periodic sweep converges
+   * it exactly when due. `ignoreGrace` forces immediate convergence (reconciler
+   * backstop for a stuck workspace, and deterministic tests).
    */
   async finishStop(
     id: WorkspaceId,
-    opts?: { graceMs?: number },
+    opts?: { ignoreGrace?: boolean },
   ): Promise<Result<void, DomainError>> {
-    if (opts?.graceMs !== undefined && opts.graceMs > 0) await sleep(opts.graceMs);
     const found = await this.find(id);
     if (found === null) return ok(undefined);
     if (found.ws.state !== "stopping") return ok(undefined); // canceled / already done
+    // Honor the cancel window off the persisted request time (not a sleep): the
+    // sweep calls this every few seconds and it no-ops until the grace elapses.
+    if (opts?.ignoreGrace !== true) {
+      const reqAt = found.ws.stopRequestedAt;
+      const elapsedMs =
+        reqAt === undefined
+          ? Number.POSITIVE_INFINITY
+          : Date.parse(this.deps.clock.now()) - Date.parse(reqAt);
+      if (elapsedMs < DEFAULT_STOP_GRACE_MS) return ok(undefined);
+    }
     const at = isoTimestamp(this.deps.clock.now());
     const snapped = await this.snapshotBeforeStop(id, found.ws, found.version, at);
     if (!snapped.ok) return snapped;

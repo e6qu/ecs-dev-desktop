@@ -9,7 +9,6 @@ import { createDynamoClient, dropTable, dynamodb, ensureTable, makeBaseImageEnti
 import { afterAll, beforeAll, expect } from "vitest";
 
 import { POST as createWorkspace } from "../../app/api/workspaces/route";
-import { POST as stopWorkspace } from "../../app/api/workspaces/[id]/stop/route";
 import { DEV_AUTH_ENABLED, DEV_AUTH_ENV, ROLE_HEADER, USER_ID_HEADER } from "../constants";
 import { getControlPlane } from "../control-plane";
 
@@ -121,11 +120,16 @@ export async function createWorkspaceFor(owner: string): Promise<string> {
  * that need a stopped fixture stay fast and race-free.
  */
 export async function stopWorkspaceFor(id: string): Promise<void> {
-  const res = await stopWorkspace(
-    new Request(`${apiBase}/${id}/stop`, { method: "POST", headers: member("stopper") }),
-    routeCtx(id),
-  );
-  expect(res.status).toBe(200);
-  const done = await (await getControlPlane()).finishStop(workspaceId(id));
-  expect(done.ok).toBe(true);
+  // Drive the workspace to `stopped` via the control plane DIRECTLY (like
+  // createWorkspaceFor drives the launch) — a fixture must not go through the
+  // owner-scoped stop route (it isn't the owner → 403). Manual stop is async
+  // (running/idle → `stopping`), so request-then-finish; tolerate a workspace the
+  // caller already moved to `stopping` via the route (skip the request, just finish).
+  const cp = await getControlPlane();
+  const wsid = workspaceId(id);
+  const current = await cp.get(wsid);
+  if (current?.state === "running" || current?.state === "idle") {
+    expect((await cp.requestStop(wsid)).ok).toBe(true);
+  }
+  expect((await cp.finishStop(wsid, { ignoreGrace: true })).ok).toBe(true);
 }

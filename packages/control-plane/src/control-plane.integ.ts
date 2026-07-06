@@ -345,7 +345,7 @@ describe("WorkspaceService lifecycle ", () => {
     expect(req.ok).toBe(true);
     expect((await service.get(workspaceId(ws.id)))?.state).toBe("stopping");
     // Converge immediately (no grace) — snapshot + teardown -> stopped.
-    expect((await service.finishStop(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.finishStop(workspaceId(ws.id), { ignoreGrace: true })).ok).toBe(true);
     const stopped = await service.inspect(workspaceId(ws.id));
     expect(stopped?.workspace.state).toBe("stopped");
     expect(stopped?.workspace.latestSnapshotId).toMatch(/^snap-/); // resume-from data
@@ -368,7 +368,7 @@ describe("WorkspaceService lifecycle ", () => {
     expect((await service.requestStop(workspaceId(ws.id))).ok).toBe(true);
     expect((await service.cancelStop(workspaceId(ws.id))).ok).toBe(true);
     // A late converge (e.g. the detached call after cancel) must NOT stop it.
-    expect((await service.finishStop(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.finishStop(workspaceId(ws.id), { ignoreGrace: true })).ok).toBe(true);
     expect((await service.get(workspaceId(ws.id)))?.state).toBe("running");
   });
 

@@ -139,6 +139,11 @@ export const COST_ROLLUP_CADENCE_MS = 15 * 60 * 1000;
  * must not leave the client socket hung open indefinitely. */
 export const WORKSPACE_PROXY_UPSTREAM_TIMEOUT_MS = 30000;
 
+/** How often the server converges workspaces in the cancelable `stopping` state to
+ * `stopped` (finishStop is grace-honoring + idempotent, so a tight tick is safe).
+ * Convergence lands within ~DEFAULT_STOP_GRACE_MS + this interval. */
+export const STOPPING_SWEEP_MS = 3000;
+
 /**
  * Cost model rates (USD), as published for **us-east-1 on-demand** at the time
  * of writing — each overridable via the matching `EDD_PRICE_*` env var so a

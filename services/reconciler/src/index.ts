@@ -78,7 +78,7 @@ export interface ReconcilerService {
   listStopping(): Promise<readonly { readonly id: WorkspaceId }[]>;
   /** Converge a `stopping` workspace to stopped (snapshot + teardown; no grace —
    * a stopping record the reconciler sees has already outlived the cancel window). */
-  finishStop(id: WorkspaceId): Promise<Result<unknown, DomainError>>;
+  finishStop(id: WorkspaceId, opts?: { ignoreGrace?: boolean }): Promise<Result<unknown, DomainError>>;
   /** `error` workspaces that still have a snapshot — the recover keep-set. */
   listRecoverableErrors(): Promise<readonly { readonly id: WorkspaceId }[]>;
   /** Move a recoverable `error` workspace back to `stopped` (wake-able). */
@@ -404,7 +404,7 @@ export class Reconciler {
     let failed = 0;
     for (const ws of stopping.slice(0, this.convergeBudget)) {
       try {
-        if ((await this.deps.service.finishStop(ws.id)).ok) acted += 1;
+        if ((await this.deps.service.finishStop(ws.id, { ignoreGrace: true })).ok) acted += 1;
         else skipped += 1;
       } catch (err) {
         failed += 1;
