@@ -48,40 +48,45 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **Queued UI/UX requests from live post-launch usage (2026-07-06), roughly in priority order:**
-  1. A "back to EDD home" link _inside_ the OpenVSCode/Monaco editor page itself (the main
-     portal already has one in its own topbar) — needs either a proxy-level HTML injection
-     or a small custom OpenVSCode extension, since the editor occupies the full page with no
-     surrounding app chrome.
-  2. A prominent "Open terminal with `<keybinding>`" UI element in OpenVSCode's own top
-     bar, positioned after the AI chat extension's entry point — confirmed there's no
-     settings-only way to do this; needs a small custom VS Code extension bundled into the
-     golden image's built-in extensions dir (same mechanism as the existing
-     prettier/eslint/claude-code extensions). The Monaco editor's equivalent is already done
-     (terminal opens by default, keybinding shown, multi-tab — see `WHAT_WE_DID.md` 2026-07-06).
-  3. Editor selection (OpenVSCode vs Monaco) exposed to users when starting a session — a
-     per-catalog-entry `editor` field already exists (`catalog-seed.tf`'s `editor = "openvscode"`),
-     so this may mostly be a UI-surfacing task, not new backend work; needs checking.
-  4. Whitelisted VS Code extension installs — OpenVSCode Server's Open VSX gallery already
-     appears reachable (`open-vsx.org/vscode/gallery/extensionquery` was hit in a live log,
-     independent of the EACCES bug), so this may just need a `extensions.allowedExtensions`
-     settings.json entry once the EACCES fix is confirmed live; not yet investigated further.
-  5. The bigger one: redesign `apps/web/components/NewSession.tsx` from three separate
-     start-affordances (a "blank session" button, an always-there create-repo form, plus the
-     now-collapsible repo browser) into a radio-button mode selector (blank / existing repo /
-     create repo) with one shared, prominent "start" button, then redirect to a new
-     `apps/web/app/workspaces/[id]/page.tsx` (doesn't exist yet) showing live status
-     (`usePoll` + the existing `GET /api/workspaces/:id`) and, if feasible, live logs (the
-     `CloudWatchLogSource`/`getLogSource()` machinery already supports narrowing to one
-     workspace's `taskId` — reused by `/admin/logs` today, would need a non-admin-gated route
-     for the owner). Note: a freshly-created workspace's DB `state` goes straight to
-     `"running"` the moment `ecs:RunTask` is called (no `"provisioning"` state on the create
-     path, only on scale-to-zero wake) — the only "is it actually usable yet" signal today is
-     the separate `functional: "ok" | "degraded" | undefined` field (set by the in-workspace
-     agent's first heartbeat), so the new status page needs to key off `functional`, not `state`.
-  - Confirm the in-flight golden-image rebuild (EACCES fix + AI-tooling-in-every-variant +
-    Monaco terminal changes) lands clean and the editor opens correctly for a real user
-    before considering this session's work fully closed out.
+- **Post-launch backlog — consolidated plan (2026-07-06, sequenced; mirrors the session
+  task list).** Already shipped from the original queue: editor home links (extension +
+  Monaco tabbar), the terminal-keybinding control (status bar — VS Code has no public
+  title-bar API), terminal-open-by-default in both editors, autosave-by-default in both
+  editors, the claude/codex remote-OAuth tip, the scale-to-zero double fix (crashed
+  reconciler + liveness-recorded-as-activity; 15-min idle threshold), and the cookieValue
+  crash fix. Remaining, in order:
+  1. **Verify the c814221 deploy** — reconciler actually sweeps (CloudWatch), heartbeats
+     carry `active`, an untouched workspace stops after ~15 min with a snapshot. NB: a
+     workspace created from the OLD image keeps the old unconditional agent until recreated.
+  2. **NewSession redesign + per-workspace live status page** — radio modes
+     (blank/existing repo/create repo) + "a dev desktop is backed by a git repo you can
+     access" explanation + org/user-namespace owner selector + ONE prominent Start button
+     with loading UI → redirect to a new `/workspaces/[id]` page: live status polled off
+     `functional` (NOT `state` — create lands straight in "running"), boot logs via an
+     owner-scoped log route (CloudWatchLogSource already filters by taskId for /admin/logs),
+     ECS task state, the workspace URL.
+  3. **Editor selection at creation**: OpenVSCode | Monaco (mostly UI — the `editor`
+     catalog field + `EDD_EDITOR_MODE` already exist) — plus **Claude Code web app** and
+     **Codex web app** as options (research first: what web mode each CLI serves,
+     base-path and proxy compatibility, auth).
+  4. **Workspace card metrics + Monitoring page**: CPU/MEM/disk on the card; ⓘ overlay
+     (settings + image size); "Monitoring" → per-workspace utilization (Container Insights),
+     uptime total+graph, cost so far incl. **per-workspace snapshot cost**, disk size/usage
+     (extend the idle-agent's functional report with `df`), IOPS allocation (gp3 baseline)
+     and utilization (EBS metrics), and a disk-increase action (ModifyVolume + resize —
+     provider support needed, may trail).
+  5. **Session/cookie resilience**: 4-hour sessions + rolling refresh (JWT maxAge/updateAge;
+     evaluate the DynamoDB Auth.js adapter if a true refresh token is wanted),
+     schema-versioned app cookies that fail-soft (never block the user or force a manual
+     cookie reset), and a "reset cookies" button in the persona/user menu.
+  6. **Public read-only spectate** (default-off toggle on the card, incl. mouse/focus/
+     keystroke visibility): needs a security design first — share flag + unguessable token,
+     read-only proxy path, revocation, audit. Likely Monaco-first (OpenVSCode has no native
+     spectate mode).
+  7. **Live verifications** once the user recreates a workspace: extension installs from
+     Open VSX (EACCES fix should suffice; whitelist only if policy needs it), claude/codex
+     paste-code login flows in both editors, and editor-session survival across a
+     control-plane deploy (drain window shipped).
 
 - **Third adversarial spec-fidelity probe wave — DONE; CloudWatch probe FIXED + sockerless #767 bump (2026-07-03).** PR #179 merged the sockerless #737 bump and all ten probe slices. PR #180 removes the SQS-receipt workaround and fails loudly. The "SNS delivery succeeded but ReceiveMessage empty" issue was **our bug**: `echo "$raw"` corrupts backslash sequences in the nested-JSON SQS Body (POSIX `echo` interprets `\\`). Fixed with `printf '%s\n'` and proper nested-JSON parsing. The sim was correct all along (sockerless #766 was not a sim bug — closed). sockerless **#767** (`f0d96ec3`) also fixes bleephub team creator auto-maintainer (#763/#765). All probe slices pass locally.
 
