@@ -2,18 +2,18 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-06 (live at `https://app.edd.e6qu.dev`, tag `fe7cc2b`; the
-post-launch feature wave is COMPLETE and deployed — connection-based idle (5-min
-cooldown), per-workspace monitoring, claude/codex agent-first editor modes, 4h rolling
-sessions, 7-day undelete, and spectate v1 (owner-shared read-only mirror, viewer+
-only). Remaining: user live-testing; the legacy snapshot was deleted on user decision and
-the branch is up as PR #192.), per-workspace
-monitoring, claude/codex agent-first editor modes, 4h rolling sessions, and 7-day
-undelete (terminated tombstones + reconciler retention purge); the live-found
-reconciler `dynamodb:DeleteItem` gap that stalled ALL deletions is fixed; spectate
-design signed off except 3 small defaults (`docs/design-public-spectate.md`),
-implementation queued next; branch `fix/install-missing-param-logic` still
-unmerged/no PR by request.)
+**Last updated:** 2026-07-06 (live at `https://app.edd.e6qu.dev`, control-plane tag
+`ef86f2c`, golden image `fe7cc2b`). The whole post-launch feature wave (PR #192,
+MERGED earlier today) is deployed: connection-based idle (5-min cooldown),
+per-workspace monitoring, claude/codex agent-first editor modes, 4h rolling sessions,
+7-day undelete (tombstones + reconciler retention purge), and spectate v1 (owner-shared
+read-only mirror, viewer+ only). Since then: **instant workspace create** shipped —
+`reserveWorkspace` returns the pre-generated URL in <1s and the launch runs detached
+(fixes a live 504 where the 123s blocking create outran the ALB's 60s idle timeout);
+the status page shows the URL + a provisioning phase stepper + live boot logs and
+auto-opens the editor on ready. On branch `feat/instant-create-provisioning-ux`
+(deployed as `ef86f2c`), unmerged/no PR yet per the one-PR rule. Remaining: user
+live-testing.)
 
 ## Real AWS production deploy — LIVE (2026-07-05/06), still hardening post-launch
 
