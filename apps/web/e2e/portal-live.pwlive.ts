@@ -48,15 +48,20 @@ test("member lifecycle in the browser acts on real ECS tasks (create → stop �
   await page.goto("/sessions/new");
   await expect(page.getByRole("heading", { name: "Start a session" })).toBeVisible();
 
-  // Launch from the catalog picker — blocks until the sim task's managed EBS
-  // volume is attached, so the card appears with a real running task behind it.
+  // Launch through the redesigned session launcher: pick the environment, keep
+  // the default "blank" start mode, and press the single Start button — the
+  // create call blocks until the sim task's managed EBS volume is attached, then
+  // the launcher redirects to the workspace's live status page.
   await page
     .locator(sel(TESTID.catalogPickerOption, { "data-image": WORKSPACE_IMAGE }))
     .first()
     .click();
-  await page.getByRole("button", { name: "blank session" }).click();
-  await expect(page).toHaveURL(`${BASE_URL}/workspaces`);
+  await page.locator(sel(TESTID.sessionModeOption, { "data-mode": "blank" })).click();
+  await page.locator(sel(TESTID.sessionStart)).click();
+  await expect(page).toHaveURL(/\/workspaces\/ws-/);
 
+  // The card (with its actions) lives on the workspaces grid.
+  await page.goto("/workspaces");
   const card = page.locator(sel(TESTID.workspaceCard, { "data-image": WORKSPACE_IMAGE })).first();
   await expect(card).toBeVisible();
   await expect(card).toHaveAttribute("data-status", "running");

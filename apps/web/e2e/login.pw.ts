@@ -22,8 +22,14 @@ test("admin signs in and reaches the admin console", async ({ page }) => {
   await page.waitForURL("**/admin/overview");
 
   // The admin Overview renders (stat tiles) and the top-bar shows the admin nav.
+  // The link lookup is SCOPED to the primary nav: the signed-in user's own name is
+  // "admin" here, and their /me account link would otherwise be a second role=link
+  // match (getByRole name matching is substring-based) — the nav entry is what this
+  // asserts, not any text that happens to say "admin".
   await expect(page.locator(sel(TESTID.statTile)).first()).toBeVisible();
-  await expect(page.getByRole("link", { name: "admin" })).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "admin" }),
+  ).toBeVisible();
 });
 
 test("member signs in but is denied the admin console", async ({ page }) => {

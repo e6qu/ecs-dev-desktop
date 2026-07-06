@@ -38,7 +38,11 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           <HelpToggle />
           {principal ? (
             <span className="who">
-              <Link href="/me" className="mono">
+              {/* The username doubles as the /me link; its ACCESSIBLE name is
+                  distinct ("account: <id>") so it can never collide with a nav
+                  link whose label equals a username (e.g. the admin user vs the
+                  /admin nav — a locator/screen-reader ambiguity found in CI). */}
+              <Link href="/me" className="mono" aria-label={`account: ${principal.id}`}>
                 {principal.id}
               </Link>
               <span className="badge accent">{principal.role}</span>
