@@ -13,6 +13,7 @@ import { getToken } from "next-auth/jwt";
 
 import { CONNECTION_SECRET_ENV } from "./constants";
 import { getControlPlane } from "./control-plane";
+import { log } from "./logger";
 
 /** The OpenVSCode query param that carries the connection token, and the cookie it
  * sets once validated — so the proxy injects the token exactly once per session. */
@@ -193,14 +194,33 @@ export async function authorizeWorkspace(
   if (token === null) return { kind: "unauthenticated" };
 
   const detail = await (await getControlPlane()).inspect(wsId);
-  if (detail === null) return { kind: "forbidden" }; // unknown ws — don't distinguish
+  if (detail === null) {
+    // Unknown ws — don't distinguish unknown-vs-unowned to the caller, but DO record
+    // it so a "forbidden" on a workspace that actually exists is diagnosable.
+    log.warn("workspace-proxy denied: workspace not found", { wsId });
+    return { kind: "forbidden" };
+  }
 
+  const callerSubject = typeof token.uid === "string" ? token.uid : undefined;
+  const callerIsAdmin = token.role === "admin";
   const granted = decideWorkspaceAccessBySubject({
-    callerSubject: typeof token.uid === "string" ? token.uid : undefined,
-    callerIsAdmin: token.role === "admin",
+    callerSubject,
+    callerIsAdmin,
     ownerId: detail.workspace.ownerId,
   });
-  if (!granted) return { kind: "forbidden" };
+  if (!granted) {
+    // The recurring "Forbidden on my own/again" reports had no server-side trace.
+    // Record exactly why the decision failed (never the token itself): who the
+    // caller is, their role, and who owns it — so owner-mismatch (a stale/rewritten
+    // uid) is instantly distinguishable from a non-admin opening someone else's.
+    log.warn("workspace-proxy denied: not owner and not admin", {
+      wsId,
+      callerSubject: callerSubject ?? "(no uid on token)",
+      callerRole: typeof token.role === "string" ? token.role : "(no role)",
+      ownerId: detail.workspace.ownerId,
+    });
+    return { kind: "forbidden" };
+  }
   // The JWT's exp (NumericDate, seconds) is when this session stops vouching for a
   // held connection. Auth.js always sets it; if a token somehow lacks one, cap the
   // grant conservatively at the rolling-refresh window rather than forever.

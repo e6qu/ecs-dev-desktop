@@ -5,11 +5,10 @@ import { describe, expect, it } from "vitest";
 import {
   admin,
   createWorkspaceFor,
-  postLifecycle,
+  stopWorkspaceFor,
   useWorkspaceTable,
 } from "../../../../lib/test-support/workspace-route-harness";
 import { GET as auditFeed } from "../audit/route";
-import { POST as stopWorkspace } from "../../workspaces/[id]/stop/route";
 import { GET } from "./route";
 
 /**
@@ -26,8 +25,7 @@ const costs = () =>
 describe("admin cost report", () => {
   it("prices a created-then-stopped session and rolls it up per user", async () => {
     const id = await createWorkspaceFor("alice");
-    const stopRes = await postLifecycle(stopWorkspace, "stop", "alice", id);
-    expect(stopRes.status).toBe(200);
+    await stopWorkspaceFor(id);
 
     const res = await costs();
     expect(res.status).toBe(200);
@@ -46,7 +44,7 @@ describe("admin cost report", () => {
 
   it("records the stop on the ledger via the control plane (no route-level emit)", async () => {
     const id = await createWorkspaceFor("bob");
-    await postLifecycle(stopWorkspace, "stop", "bob", id);
+    await stopWorkspaceFor(id);
 
     const res = await auditFeed(
       new Request("http://localhost/api/admin/audit", { headers: admin("root") }),
@@ -60,7 +58,7 @@ describe("admin cost report", () => {
 
   it("scopes the report to a time window via ?window= (last 24h includes a just-run session)", async () => {
     const id = await createWorkspaceFor("dana");
-    expect((await postLifecycle(stopWorkspace, "stop", "dana", id)).status).toBe(200);
+    await stopWorkspaceFor(id);
 
     const res = await GET(
       new Request("http://localhost/api/admin/costs?window=1d", { headers: admin("root") }),

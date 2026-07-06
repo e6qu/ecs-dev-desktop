@@ -9,6 +9,7 @@ import { describe, expect, it } from "vitest";
 import {
   admin,
   createWorkspaceFor,
+  stopWorkspaceFor,
   postLifecycle,
   useWorkspaceTable,
 } from "../../../../lib/test-support/workspace-route-harness";
@@ -43,7 +44,9 @@ async function expectState(res: Response, state: string): Promise<void> {
 describe("POST /api/workspaces/:id/stop (DynamoDB Local)", () => {
   it("stops a running workspace: snapshot recorded, task+volume released", async () => {
     const id = await createWorkspaceFor("stop-a");
-    await expectState(await doStop("stop-a", id), "stopped");
+    // Manual stop is async now (route -> `stopping`, converge -> stopped).
+    expect((await doStop("stop-a", id)).status).toBe(200);
+    await stopWorkspaceFor(id); // finish the converge deterministically
 
     const d = await detail(id);
     expect(d.latestSnapshotId).toBeDefined();
@@ -54,7 +57,7 @@ describe("POST /api/workspaces/:id/stop (DynamoDB Local)", () => {
 
   it("rejects stopping an already-stopped workspace (409)", async () => {
     const id = await createWorkspaceFor("stop-b");
-    expect((await doStop("stop-b", id)).status).toBe(200);
+    await stopWorkspaceFor(id);
     expect((await doStop("stop-b", id)).status).toBe(409);
   });
 });
@@ -63,7 +66,7 @@ describe("POST /api/workspaces/:id/start (DynamoDB Local)", () => {
   it("wakes a stopped workspace: fresh task+volume hydrated from the stop snapshot", async () => {
     const id = await createWorkspaceFor("start-a");
     const before = await detail(id);
-    expect((await doStop("start-a", id)).status).toBe(200);
+    await stopWorkspaceFor(id);
     const stopped = await detail(id);
 
     await expectState(await doStart("start-a", id), "running");
@@ -99,7 +102,7 @@ describe("POST /api/workspaces/:id/snapshot (DynamoDB Local)", () => {
 
   it("rejects snapshotting a stopped workspace — no active volume (409)", async () => {
     const id = await createWorkspaceFor("snap-b");
-    expect((await doStop("snap-b", id)).status).toBe(200);
+    await stopWorkspaceFor(id);
     expect((await doSnapshot("snap-b", id)).status).toBe(409);
   });
 });

@@ -7,13 +7,13 @@ import {
   admin,
   apiBase,
   createWorkspaceFor,
+  stopWorkspaceFor,
   member,
   routeCtx,
   useWorkspaceTable,
 } from "../../../../../lib/test-support/workspace-route-harness";
 import { AGENT_SECRET_ENV } from "../../../../../lib/constants";
 import { GET as inspect } from "../../../admin/workspaces/[id]/route";
-import { POST as stop } from "../stop/route";
 import { POST as heartbeat } from "./route";
 
 useWorkspaceTable("ecs-dev-desktop-web-heartbeat-integ");
@@ -49,14 +49,7 @@ describe("POST /api/workspaces/:id/heartbeat (DynamoDB Local)", () => {
 
   it("rejects a heartbeat on a stopped workspace (409, not 500)", async () => {
     const id = await createWorkspaceFor("alice");
-    expect(
-      (
-        await stop(
-          new Request(`${apiBase}/${id}/stop`, { method: "POST", headers: member("alice") }),
-          routeCtx(id),
-        )
-      ).status,
-    ).toBe(200);
+    await stopWorkspaceFor(id);
     // markActivity returns a `conflict` DomainError while the workspace is 'stopped';
     // the route's central mapper turns that into 409 — it never escapes as a 500.
     const res = await beat("alice", id);

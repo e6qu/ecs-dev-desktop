@@ -785,13 +785,14 @@ export class WorkspaceService {
     const { ws, version } = found.value;
     const next = markStopping(ws, isoTimestamp(this.deps.clock.now()));
     if (!next.ok) return next;
+    // NO billing audit here: the task keeps running (and billing) through the
+    // `stopping` grace, so `session.stop` (which closes the running interval) is
+    // emitted by finishStop when the task is ACTUALLY torn down — not here.
+    // `actor` is unused until a stop-requested audit action exists; keep the param
+    // for the route/signature symmetry with the other lifecycle methods.
+    void actor;
     try {
-      await this.persistTransition(next.value, version, {
-        action: "session.stop",
-        target: id,
-        actor,
-        detail: "stop requested (cancelable)",
-      });
+      await this.persistTransition(next.value, version);
     } catch (e) {
       if (!isVersionConflict(e)) throw e;
       return err(conflictError(`stop of ${id} lost a concurrent update`));

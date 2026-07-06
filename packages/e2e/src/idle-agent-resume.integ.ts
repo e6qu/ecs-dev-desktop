@@ -78,6 +78,9 @@ function spawnAgent(port: number): ChildProcess {
       EDD_CONTROL_PLANE_URL: `http://127.0.0.1:${String(port)}`,
       EDD_AGENT_TOKEN: "resume-test-token",
       EDD_HEARTBEAT_INTERVAL_S: String(HEARTBEAT_INTERVAL_S),
+      // No real editor runs here, so the boot-tolerant IDE probe would otherwise
+      // retry ~60s and delay the first beat past this test's wait. One probe.
+      EDD_IDE_PROBE_TRIES: "1",
     },
     stdio: "ignore",
   });

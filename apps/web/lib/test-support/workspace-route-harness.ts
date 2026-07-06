@@ -9,6 +9,7 @@ import { createDynamoClient, dropTable, dynamodb, ensureTable, makeBaseImageEnti
 import { afterAll, beforeAll, expect } from "vitest";
 
 import { POST as createWorkspace } from "../../app/api/workspaces/route";
+import { POST as stopWorkspace } from "../../app/api/workspaces/[id]/stop/route";
 import { DEV_AUTH_ENABLED, DEV_AUTH_ENV, ROLE_HEADER, USER_ID_HEADER } from "../constants";
 import { getControlPlane } from "../control-plane";
 
@@ -111,4 +112,20 @@ export async function createWorkspaceFor(owner: string): Promise<string> {
     await cp.launchReserved(wsId);
   }
   throw new Error(`workspace ${id} did not reach running within the launch budget`);
+}
+
+/**
+ * Drive a workspace to the `stopped` state via the stop route. Manual stop is now
+ * async (route → `stopping`, a detached converge finishes it after a grace), so
+ * this awaits the converge deterministically (finishStop with no grace) — tests
+ * that need a stopped fixture stay fast and race-free.
+ */
+export async function stopWorkspaceFor(id: string): Promise<void> {
+  const res = await stopWorkspace(
+    new Request(`${apiBase}/${id}/stop`, { method: "POST", headers: member("stopper") }),
+    routeCtx(id),
+  );
+  expect(res.status).toBe(200);
+  const done = await (await getControlPlane()).finishStop(workspaceId(id));
+  expect(done.ok).toBe(true);
 }
