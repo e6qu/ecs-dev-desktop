@@ -73,6 +73,9 @@ export interface Workspace {
   readonly functional?: FunctionalStatus;
   readonly functionalDetail?: string;
   readonly functionalAt?: IsoTimestamp;
+  /** Home-volume usage from the same self-report (bytes), when the agent measured it. */
+  readonly diskUsedBytes?: number;
+  readonly diskTotalBytes?: number;
 }
 
 /** Functional usability of a running workspace, self-reported by the in-workspace agent. */
@@ -219,7 +222,7 @@ export function markActivity(ws: Workspace, at: IsoTimestamp): Result<Workspace,
  */
 export function recordFunctional(
   ws: Workspace,
-  probes: { ide: boolean; workspace: boolean },
+  probes: { ide: boolean; workspace: boolean; disk?: { usedBytes: number; totalBytes: number } },
   at: IsoTimestamp,
 ): Workspace {
   const failures: string[] = [];
@@ -230,6 +233,11 @@ export function recordFunctional(
     functional: failures.length === 0 ? "ok" : "degraded",
     functionalDetail: failures.length === 0 ? "IDE + workspace healthy" : failures.join("; "),
     functionalAt: at,
+    // Disk usage rides the same report; an omitted measurement keeps the last one
+    // (a transient df failure must not blank a previously known figure).
+    ...(probes.disk === undefined
+      ? {}
+      : { diskUsedBytes: probes.disk.usedBytes, diskTotalBytes: probes.disk.totalBytes }),
   };
 }
 

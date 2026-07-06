@@ -75,6 +75,18 @@ export const workspace = z.object({
   // Functional usability self-report (is the desktop actually usable, not just
   // "running"): surfaced on the owner's card so a degraded-but-running workspace shows.
   functional: z.enum(["ok", "degraded"]).optional(),
+  // Home-volume usage from the agent's functional self-report (bytes).
+  diskUsedBytes: z.number().nonnegative().optional(),
+  diskTotalBytes: z.number().positive().optional(),
+  // Provisioned sizing (joined server-side from deployment config — the same
+  // values the compute provider provisions and the cost model bills).
+  resources: z
+    .object({
+      vcpu: z.number().positive(),
+      memoryGib: z.number().positive(),
+      volumeGib: z.number().positive(),
+    })
+    .optional(),
 });
 export type WorkspaceDto = z.infer<typeof workspace>;
 
@@ -114,6 +126,13 @@ export const heartbeatRequest = z.object({
       ide: z.boolean(),
       /** The workspace home directory is writable. */
       workspace: z.boolean(),
+      /** Home-volume (EBS) usage, bytes — measured in-container with df. */
+      disk: z
+        .object({
+          usedBytes: z.number().nonnegative(),
+          totalBytes: z.number().positive(),
+        })
+        .optional(),
     })
     .optional(),
 });
@@ -166,6 +185,58 @@ export const workspaceLogs = z.object({
 });
 export type WorkspaceLogsDto = z.infer<typeof workspaceLogs>;
 
+/** One metric series for the workspace monitoring view. `available` is explicit
+ * (§6.5): false + note when this environment has no metrics source (fakes/sim) or
+ * the read failed; true with empty points just means no datapoints yet. */
+export const monitoringSeries = z.object({
+  available: z.boolean(),
+  note: z.string(),
+  points: z.array(z.object({ at: z.iso.datetime(), value: z.number() })),
+});
+export type MonitoringSeriesDto = z.infer<typeof monitoringSeries>;
+
+/** Per-workspace monitoring: provisioned sizing, uptime, cost so far (incl. the
+ * snapshot-storage line), utilization series, and disk/IOPS detail. */
+export const workspaceMonitoring = z.object({
+  workspaceId: z.string(),
+  state: workspaceState,
+  resources: z.object({
+    vcpu: z.number().positive(),
+    memoryGib: z.number().positive(),
+    volumeGib: z.number().positive(),
+  }),
+  uptime: z.object({
+    createdAt: z.iso.datetime(),
+    runningMs: z.number().nonnegative(),
+    stoppedMs: z.number().nonnegative(),
+  }),
+  /** Absent until the workspace has any priced lifecycle events. */
+  cost: z
+    .object({
+      computeUsd: z.number(),
+      volumeUsd: z.number(),
+      snapshotUsd: z.number(),
+      totalUsd: z.number(),
+    })
+    .optional(),
+  /** Task CPU utilization, vCPU-units average (Container Insights, task-definition
+   * family scope — exact per-workspace when each workspace runs its own family). */
+  cpu: monitoringSeries,
+  /** Task memory utilization, MiB average (same source/scope as `cpu`). */
+  memory: monitoringSeries,
+  /** Per-volume EBS read/write operations (Sum per period). */
+  diskReadOps: monitoringSeries,
+  diskWriteOps: monitoringSeries,
+  /** gp3 baseline IOPS provisioned for the home volume. */
+  iopsBaseline: z.number().positive(),
+  disk: z.object({
+    volumeGib: z.number().positive(),
+    usedBytes: z.number().nonnegative().optional(),
+    totalBytes: z.number().positive().optional(),
+  }),
+});
+export type WorkspaceMonitoringDto = z.infer<typeof workspaceMonitoring>;
+
 // --- Admin: per-workspace Inspect (full detail + derived timeline) ---
 
 export const workspaceDetail = z.object({
@@ -201,6 +272,8 @@ export const workspaceDetail = z.object({
   functional: z.enum(["ok", "degraded"]).optional(),
   functionalDetail: z.string().optional(),
   functionalAt: z.iso.datetime().optional(),
+  diskUsedBytes: z.number().nonnegative().optional(),
+  diskTotalBytes: z.number().positive().optional(),
   /** Lifecycle actions valid from this state (server-computed; see {@link workspace}). */
   availableActions: z.array(workspaceAction),
 });

@@ -14,7 +14,7 @@ import type { CookieBearingRequest } from "./workspace-proxy";
 // owner/admin/other map to the right outcome. Both edges are mocked so the test is
 // hermetic and controls its own inputs (no DB, no real cookie).
 const { getTokenMock, inspectMock } = vi.hoisted(() => ({
-  getTokenMock: vi.fn<() => Promise<{ uid?: string; role?: string } | null>>(),
+  getTokenMock: vi.fn<() => Promise<{ uid?: string; role?: string; exp?: number } | null>>(),
   inspectMock: vi.fn<() => Promise<{ workspace: { ownerId: string } } | null>>(),
 }));
 vi.mock("next-auth/jwt", () => ({ getToken: getTokenMock }));

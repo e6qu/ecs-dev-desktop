@@ -260,6 +260,8 @@ interface WorkspaceRecord {
   functional?: FunctionalStatus;
   functionalDetail?: string;
   functionalAt?: string;
+  diskUsedBytes?: number;
+  diskTotalBytes?: number;
   version: number;
 }
 
@@ -309,6 +311,8 @@ function toWorkspace(r: WorkspaceRecord): Workspace {
     functional: r.functional,
     functionalDetail: r.functionalDetail,
     functionalAt: r.functionalAt === undefined ? undefined : isoTimestamp(r.functionalAt),
+    diskUsedBytes: r.diskUsedBytes,
+    diskTotalBytes: r.diskTotalBytes,
   };
 }
 
@@ -816,7 +820,14 @@ export class WorkspaceService {
    * write race retries once before reporting conflict. */
   async heartbeat(
     id: WorkspaceId,
-    report?: { functional?: { ide: boolean; workspace: boolean }; active?: boolean },
+    report?: {
+      functional?: {
+        ide: boolean;
+        workspace: boolean;
+        disk?: { usedBytes: number; totalBytes: number };
+      };
+      active?: boolean;
+    },
   ): Promise<Result<WorkspaceDto, DomainError>> {
     for (let attempt = 0; ; attempt++) {
       const found = await this.require(id);

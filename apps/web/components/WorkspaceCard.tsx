@@ -5,6 +5,7 @@ import { WORKSPACE_PATH_PREFIX } from "@edd/core";
 import { TESTID } from "../lib/testids";
 import { StatusBadge } from "./StatusBadge";
 import { WorkspaceActions } from "./WorkspaceActions";
+import { gib, WorkspaceInfo } from "./WorkspaceInfo";
 
 const STAGGER_MS = 40;
 
@@ -42,6 +43,7 @@ export function WorkspaceCard({
       <div className="row">
         <span className="wid">{imageName}</span>
         <StatusBadge state={ws.state} />
+        <WorkspaceInfo ws={ws} />
         {ws.functional === "degraded" && (
           <span
             className="badge"
@@ -56,6 +58,17 @@ export function WorkspaceCard({
         )}
       </div>
       <div className="subhead mono">{ws.id}</div>
+      {ws.resources !== undefined && (
+        <div className="meta-line">
+          <span className="meta-label">size</span>
+          <span className="meta-value mono">
+            {ws.resources.vcpu} vCPU · {ws.resources.memoryGib} GiB mem ·{" "}
+            {ws.diskUsedBytes !== undefined
+              ? `disk ${gib(ws.diskUsedBytes)} / ${ws.resources.volumeGib} GiB`
+              : `${ws.resources.volumeGib} GiB disk`}
+          </span>
+        </div>
+      )}
       <div className="img">{ws.baseImage}</div>
       {imageDescription !== "" && <div className="desc">{imageDescription}</div>}
       {imageTags.length > 0 && (
@@ -82,7 +95,7 @@ export function WorkspaceCard({
         </div>
       )}
       {canOpen && (
-        <div className="meta-line">
+        <div className="meta-line" style={{ display: "flex", gap: 8 }}>
           <a
             className="btn primary"
             href={editorHref}
@@ -90,6 +103,13 @@ export function WorkspaceCard({
             data-href={editorHref}
           >
             Open editor
+          </a>
+          <a
+            className="btn"
+            href={`/workspaces/${ws.id}/monitoring`}
+            data-testid={TESTID.workspaceMonitoringLink}
+          >
+            Monitoring
           </a>
         </div>
       )}

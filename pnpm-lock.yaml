@@ -308,13 +308,13 @@ importers:
 
   packages/cloudwatch-metrics:
     dependencies:
+      '@aws-sdk/client-cloudwatch':
+        specifier: ^3.1079.0
+        version: 3.1079.0
       '@edd/core':
         specifier: workspace:*
         version: link:../core
     devDependencies:
-      '@aws-sdk/client-cloudwatch':
-        specifier: ^3.1079.0
-        version: 3.1079.0
       '@aws-sdk/client-cloudwatch-logs':
         specifier: ^3.1079.0
         version: 3.1079.0

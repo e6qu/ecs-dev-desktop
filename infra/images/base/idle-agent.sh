@@ -63,7 +63,12 @@ functional_json() {
   else
     _ws=false
   fi
-  printf '{"ide":%s,"workspace":%s}' "${_ide}" "${_ws}"
+  # Home-volume (EBS) usage in bytes, for the workspace card/monitoring view.
+  # Omitted (not zeroed) when df fails, so a transient failure never blanks the
+  # control plane's last known figure.
+  _disk=$(df -B1 "${HOME}" 2>/dev/null |
+    awk 'NR == 2 && $2 > 0 { printf ",\"disk\":{\"usedBytes\":%s,\"totalBytes\":%s}", $3, $2 }')
+  printf '{"ide":%s,"workspace":%s%s}' "${_ide}" "${_ws}" "${_disk}"
 }
 
 # Newest mtime (epoch seconds) among the given paths, or 0 when none exist.

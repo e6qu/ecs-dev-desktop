@@ -205,6 +205,15 @@ data "aws_iam_policy_document" "control_plane" {
     resources = ["*"]
   }
 
+  # Per-workspace monitoring reads (Container Insights task utilization, EBS
+  # volume IOPS). CloudWatch metrics support no resource-level scoping --
+  # GetMetricData is account-wide by design.
+  statement {
+    sid       = "CloudWatchMetricsRead"
+    actions   = ["cloudwatch:GetMetricData"]
+    resources = ["*"]
+  }
+
   # Read-only cluster/AZ introspection for the admin health board (compute + storage
   # provider health checks). DescribeClusters supports the `cluster` resource type;
   # DescribeAvailabilityZones is account/region-wide (no resource type at all, per

@@ -45,6 +45,14 @@ export const TESTID = {
   workspaceStatusHero: "workspace-status-hero",
   /** The boot/runtime log panel on /workspaces/[id]. Attr: `data-available`. */
   workspaceBootLog: "workspace-boot-log",
+  /** The ⓘ session-details toggle on a workspace card. */
+  workspaceInfoToggle: "workspace-info-toggle",
+  /** The closeable session-details overlay. */
+  workspaceInfoPanel: "workspace-info-panel",
+  /** The "Monitoring" link on a workspace card. */
+  workspaceMonitoringLink: "workspace-monitoring-link",
+  /** A metric panel on the monitoring page. Attrs: `data-metric`, `data-available`. */
+  workspaceMetric: "workspace-metric",
   /** A repo row in the New-session repo browser. Attrs: `data-repo`, `data-private`. */
   sessionRepoRow: "session-repo-row",
   /** "Load more repositories" button at the bottom of the repo browser list. */

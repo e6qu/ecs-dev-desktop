@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { CloudTrailAuditSource } from "@edd/cloudtrail-audit";
 import { CloudWatchLogSource } from "@edd/cloudwatch-logs";
+import { CloudWatchMetricReader } from "@edd/cloudwatch-metrics";
 import { metricSinkFromEnv } from "@edd/cloudwatch-metrics";
 import { EcsComputeProvider } from "@edd/compute-ecs";
 import {
@@ -232,6 +233,13 @@ export function getAuditSource(): CloudTrailAuditSource | DerivedAuditSource {
   return new DerivedAuditSource({
     workspaces: makeWorkspaceEntity(createDynamoClient(), tableName()),
   });
+}
+
+/** Per-workspace utilization/IOPS series: CloudWatch on AWS; null locally (the
+ * monitoring view then shows an explicit "streams from CloudWatch on AWS" note,
+ * mirroring the log source's behavior — §6.5, no silent empty). */
+export function getMetricReader(): CloudWatchMetricReader | null {
+  return process.env.LOG_PROVIDER === "cloudwatch" ? CloudWatchMetricReader.fromEnv() : null;
 }
 
 /** Admin log streams: CloudWatch on AWS; derived from state locally. */

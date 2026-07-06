@@ -22,6 +22,7 @@ import {
   updateBaseImageRequest,
   workspace,
   workspaceLogs,
+  workspaceMonitoring,
   workspaceInspection,
   type AuditFeedResponse,
   type BaseImageEntryDto,
@@ -44,6 +45,7 @@ import {
   type UpdateBaseImageRequest,
   type WorkspaceDto,
   type WorkspaceLogsDto,
+  type WorkspaceMonitoringDto,
   type WorkspaceInspectionDto,
 } from "@edd/api-contracts";
 
@@ -126,6 +128,12 @@ export class ApiClient {
   async getWorkspaceLogs(id: string): Promise<WorkspaceLogsDto> {
     const res = await this.send(`/api/workspaces/${id}/logs`);
     return workspaceLogs.parse(await res.json());
+  }
+
+  /** Per-workspace monitoring: sizing, uptime, cost so far, utilization + IOPS. */
+  async getWorkspaceMonitoring(id: string): Promise<WorkspaceMonitoringDto> {
+    const res = await this.send(`/api/workspaces/${id}/monitoring`);
+    return workspaceMonitoring.parse(await res.json());
   }
 
   async stopWorkspace(id: string): Promise<WorkspaceDto> {

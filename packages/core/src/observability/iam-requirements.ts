@@ -173,6 +173,13 @@ const CONTROL_PLANE_REQUIREMENTS: readonly IamRequirement[] = [
     actions: ["cloudtrail:LookupEvents"],
   },
   {
+    // Per-workspace monitoring reads; CloudWatch metrics have no resource-level
+    // scoping, so account-wide "*" is the only shape this action supports.
+    sid: "CloudWatchMetricsRead",
+    resource: "any",
+    actions: ["cloudwatch:GetMetricData"],
+  },
+  {
     sid: "DescribeWorkspacesCluster",
     resource: "cluster",
     actions: ["ecs:DescribeClusters"],
