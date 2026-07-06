@@ -175,6 +175,11 @@ describe.skipIf(!HAVE_VARIANT_IMAGES)(
         expect(builtin, `${v.name}: agent extension should be in every variant`).toContain(
           "openai.chatgpt",
         );
+        // First-party EDD workspace extension (portal link, terminal control,
+        // remote-OAuth tip) is baked into base, so every variant carries it.
+        expect(builtin, `${v.name}: edd-workspace-ui should be in every variant`).toContain(
+          "edd-workspace-ui",
+        );
 
         // Privilege guard (base): a tool needing privileges the sandbox doesn't grant
         // (docker, sudo, …) is BLOCKED + warned + recorded, not silently run. The

@@ -74,6 +74,15 @@ RUN for ext in \
     done \
     && chmod -R a+rX /opt/openvscode-server/extensions
 
+# First-party EDD workspace extension (plain CommonJS, no build step): the
+# "EDD home" portal link (from EDD_CONTROL_PLANE_URL at runtime -- never a
+# hardcoded URL), a visible "Open terminal (Ctrl+`)" control, terminal-open on
+# startup, and the once-per-workspace claude/codex remote-OAuth tip. Copied as an
+# unpacked folder into the same built-in extensions dir -- the scanner loads
+# plain folders exactly like the stock built-ins (git, emmet, ...).
+COPY edd-ui-extension /opt/openvscode-server/extensions/edd-workspace-ui
+RUN chmod -R a+rX /opt/openvscode-server/extensions/edd-workspace-ui
+
 # Cross-cutting CLIs (installed system-wide to /usr/local BEFORE the home npm prefix
 # is set below, so they land in /usr/local — on PATH for every shell): the JS/TS
 # lint/format/dead-code/CPD tools that match this repo's own CI (prettier, eslint,

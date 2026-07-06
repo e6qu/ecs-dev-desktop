@@ -166,6 +166,7 @@ describe("golden omnibus: AI agents + dev tooling", { timeout: 60_000 }, () => {
     const builtin = sh("ls /opt/openvscode-server/extensions");
     expect(builtin).toContain("anthropic.claude-code");
     expect(builtin).toContain("openai.chatgpt");
+    expect(builtin).toContain("edd-workspace-ui");
   });
 
   it("ships curated linters/formatters/SAST across languages [#95]", () => {

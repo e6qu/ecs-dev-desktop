@@ -113,37 +113,11 @@ JSON
   chmod 0644 "${settings_dir}/settings.json"
 fi
 
-# Seed a folder-open task (first boot only, same write-if-absent rule as the
-# settings above) into the default-opened folder (/home/workspace, see
-# --default-folder below). A shell task's output panel opens automatically when
-# the task runs, which is the only VS Code/OpenVSCode mechanism that opens the
-# terminal panel on load without a custom extension — settings.json alone can't
-# auto-open it. Doubles as the natural place for a one-time orientation tip:
-# claude/codex's OAuth login opens a browser redirect to a localhost port that's
-# inside THIS remote container, not the user's machine — unreachable from their
-# browser. Both CLIs already support pasting the code shown in the browser instead
-# of waiting for the redirect; users just need to know to expect it.
-tasks_dir=/home/workspace/.vscode
-if [ ! -e "${tasks_dir}/tasks.json" ]; then
-  install -d -o workspace -g workspace -m 0755 "${tasks_dir}"
-  cat >"${tasks_dir}/tasks.json" <<'JSON'
-{
-  "version": "2.0.0",
-  "tasks": [
-    {
-      "label": "EDD workspace ready",
-      "type": "shell",
-      "command": "echo \"Workspace ready. Tip: when 'claude' or 'codex' asks you to sign in, the browser redirect can't reach this remote workspace -- paste the code shown in the browser instead of waiting for it.\"",
-      "runOptions": { "runOn": "folderOpen" },
-      "presentation": { "reveal": "always", "panel": "shared", "focus": false, "close": false },
-      "problemMatcher": []
-    }
-  ]
-}
-JSON
-  chown workspace:workspace "${tasks_dir}/tasks.json"
-  chmod 0644 "${tasks_dir}/tasks.json"
-fi
+# (Terminal-open-on-startup, the "EDD home" portal link, the visible open-terminal
+# keybinding control, and the one-time claude/codex remote-OAuth tip all live in the
+# first-party edd-workspace-ui extension, baked into the built-in extensions dir at
+# image build — an extension opens a real interactive shell, unlike the earlier
+# folder-open-task approach, which only surfaced a read-only task-output panel.)
 
 # (Default extensions — the AI agents + dev extensions — are baked into OpenVSCode's
 # built-in extensions dir at image build, so they load with no runtime copy. The
