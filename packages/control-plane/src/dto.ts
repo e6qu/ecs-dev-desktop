@@ -42,6 +42,8 @@ export function toWorkspaceDetail(ws: Workspace): WorkspaceDetailDto {
     state: ws.state,
     ...(ws.desiredState === undefined ? {} : { desiredState: ws.desiredState }),
     ...(ws.deleteRequestedAt === undefined ? {} : { deleteRequestedAt: ws.deleteRequestedAt }),
+    ...(ws.stopRequestedAt === undefined ? {} : { stopRequestedAt: ws.stopRequestedAt }),
+    ...(ws.stopRequestedBy === undefined ? {} : { stopRequestedBy: ws.stopRequestedBy }),
     createdAt: ws.createdAt,
     lastActivity: ws.lastActivity,
     ...(ws.volumeId === undefined ? {} : { volumeId: ws.volumeId }),

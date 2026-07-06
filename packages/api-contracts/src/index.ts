@@ -285,6 +285,8 @@ export const workspaceDetail = z.object({
   desiredState: desiredState.optional(),
   /** When a delete was requested (the `deleting` tombstone began), if any. */
   deleteRequestedAt: z.iso.datetime().optional(),
+  stopRequestedAt: z.iso.datetime().optional(),
+  stopRequestedBy: z.string().optional(),
   createdAt: z.iso.datetime(),
   lastActivity: z.iso.datetime(),
   volumeId: z.string().optional(),
