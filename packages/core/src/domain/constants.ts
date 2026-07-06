@@ -21,6 +21,10 @@ export const ID_PREFIX = {
  * by the auth session's 4-h validity, so this only starts once truly unloaded). */
 export const DEFAULT_IDLE_THRESHOLD_MS = 5 * 60 * 1000;
 
+/** How long a deleted (terminated) workspace stays restorable before its
+ * tombstone + retained snapshot are purged: 7 days (product decision, 2026-07-06). */
+export const DEFAULT_UNDELETE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+
 /** Default interval between scheduled point-in-time snapshots: 6 hours. */
 export const DEFAULT_SNAPSHOT_INTERVAL_MS = 6 * 60 * 60 * 1000;
 

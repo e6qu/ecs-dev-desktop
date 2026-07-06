@@ -9,6 +9,16 @@ import { gib, WorkspaceInfo } from "./WorkspaceInfo";
 
 const STAGGER_MS = 40;
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** Mirrors DEFAULT_UNDELETE_RETENTION_MS (a UI hint only — the service enforces it). */
+const UNDELETE_RETENTION_DAYS = 7;
+
+/** Whole days of the undelete window left, floored at 0 (purge imminent). */
+function restoreDaysLeft(terminatedAt: string): number {
+  const elapsed = Date.now() - Date.parse(terminatedAt);
+  return Math.max(0, Math.ceil(UNDELETE_RETENTION_DAYS - elapsed / DAY_MS));
+}
+
 /** States from which the editor is reachable through the in-app `/w/<id>/` proxy:
  * running/idle serve immediately; a stopped workspace wakes on connect. The other
  * states (provisioning/deleting/terminated/error) have no editor to open. */
@@ -58,6 +68,15 @@ export function WorkspaceCard({
         )}
       </div>
       <div className="subhead mono">{ws.id}</div>
+      {ws.state === "terminated" && ws.terminatedAt !== undefined && (
+        <div className="meta-line">
+          <span className="meta-label">deleted</span>
+          <span className="meta-value mono">
+            {new Date(ws.terminatedAt).toLocaleString()} — restorable for{" "}
+            {restoreDaysLeft(ws.terminatedAt)} more day(s)
+          </span>
+        </div>
+      )}
       {ws.resources !== undefined && (
         <div className="meta-line">
           <span className="meta-label">size</span>

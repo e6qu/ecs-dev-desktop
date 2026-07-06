@@ -54,10 +54,16 @@ describe("workspace state machine — properties", () => {
     );
   });
 
-  it("`terminated` is absorbing — no event leaves it", () => {
+  it("`terminated` admits ONLY `undelete` (→ stopped) — everything else is absorbed", () => {
     fc.assert(
       fc.property(eventArb, (e) => {
-        expect(isErr(transition("terminated", e))).toBe(true);
+        const r = transition("terminated", e);
+        if (e === "undelete") {
+          expect(isOk(r)).toBe(true);
+          if (isOk(r)) expect(r.value).toBe("stopped");
+        } else {
+          expect(isErr(r)).toBe(true);
+        }
       }),
     );
   });
@@ -67,6 +73,7 @@ describe("workspace state machine — properties", () => {
       start: "wake",
       stop: "stop",
       delete: "requestDelete",
+      undelete: "undelete",
     };
     fc.assert(
       fc.property(stateArb, (s) => {

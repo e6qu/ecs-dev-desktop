@@ -68,11 +68,14 @@ async function handlePOST(req: Request) {
   // (plus a denial count when rejected) — the create path is the one place that
   // knows both the owner's current count and their role-derived limit.
   const owned = await cp.list({ ownerId: principal.id });
+  // Terminated tombstones (deleted, awaiting the undelete-retention purge) freed
+  // their quota at teardown — they must not count against a new create.
+  const live = owned.filter((w) => w.state !== "terminated").length;
   const limit = workspaceLimit(principal.role);
-  const allowed = withinWorkspaceQuota(owned.length, limit);
-  recordQuotaUsage(getMetrics(), { owned: owned.length, limit, role: principal.role, allowed });
+  const allowed = withinWorkspaceQuota(live, limit);
+  recordQuotaUsage(getMetrics(), { owned: live, limit, role: principal.role, allowed });
   if (!allowed) {
-    return conflict(`workspace quota reached (${owned.length.toString()})`);
+    return conflict(`workspace quota reached (${live.toString()})`);
   }
 
   // Record the owner's email so the proxy can match a caller to this workspace. A

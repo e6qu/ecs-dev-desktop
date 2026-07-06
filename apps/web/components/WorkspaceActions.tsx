@@ -9,7 +9,7 @@ import { useState } from "react";
 const api = new ApiClient({ baseUrl: "" });
 
 function classFor(action: WorkspaceActionDto): string {
-  if (action === "start") return "btn primary";
+  if (action === "start" || action === "undelete") return "btn primary";
   if (action === "delete") return "btn danger";
   return "btn";
 }
@@ -25,8 +25,9 @@ export function WorkspaceActions({
   const router = useRouter();
   const [busy, setBusy] = useState<WorkspaceActionDto | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Delete is irreversible (the workspace AND its EBS volume/snapshot are lost), so it
-  // takes a second click to confirm — a mis-click on the wrong card can't destroy data.
+  // Delete tears the workspace down (it stays restorable from its retained snapshot
+  // for the 7-day undelete window, then is purged for good), so it takes a second
+  // click to confirm — a mis-click on the wrong card can't tear down a live session.
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   async function run(action: WorkspaceActionDto): Promise<void> {
@@ -45,6 +46,9 @@ export function WorkspaceActions({
           break;
         case "delete":
           await api.deleteWorkspace(id);
+          break;
+        case "undelete":
+          await api.undeleteWorkspace(id);
           break;
       }
       router.refresh();
@@ -72,7 +76,8 @@ export function WorkspaceActions({
     <div className="foot">
       {confirmingDelete && busy === null && (
         <span className="sr-only" role="status">
-          Click delete again to confirm — this destroys the workspace and its data.
+          Click delete again to confirm — the workspace shuts down and stays restorable for 7 days,
+          after which its data is purged.
         </span>
       )}
       {actions.map((action) => {

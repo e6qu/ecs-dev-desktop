@@ -176,6 +176,12 @@ export class ApiClient {
     await this.send(`/api/workspaces/${id}`, { method: "DELETE" });
   }
 
+  /** Restore a deleted (terminated) workspace within the undelete-retention window. */
+  async undeleteWorkspace(id: string): Promise<WorkspaceDto> {
+    const res = await this.send(`/api/workspaces/${id}/undelete`, { method: "POST" });
+    return workspace.parse(await res.json());
+  }
+
   // --- Account SSH keys ---
 
   /** The caller's registered SSH public keys. */

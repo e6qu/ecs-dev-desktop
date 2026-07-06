@@ -92,11 +92,12 @@ describe("lifecycle audit ledger is exact (atomic with the transition)", () => {
     const id = await running("atom-d");
     expect((await service.stop(workspaceId(id))).ok).toBe(true);
     // remove() tombstones (records session.delete = the delete request atomically);
-    // finishDeleting removes the record AND records session.terminated (teardown
-    // complete, ends billing). The append-only events outlive the record.
+    // finishDeleting keeps a `terminated` tombstone (restorable for the undelete
+    // window) AND records session.terminated (teardown complete, ends billing).
+    // The append-only events outlive even the eventual retention purge.
     expect((await service.remove(workspaceId(id))).ok).toBe(true);
     expect((await service.finishDeleting(workspaceId(id))).ok).toBe(true);
-    expect(await service.get(workspaceId(id))).toBeNull();
+    expect((await service.get(workspaceId(id)))?.state).toBe("terminated");
     expect(await eventsFor(id, "session.create")).toHaveLength(1);
     expect(await eventsFor(id, "session.stop")).toHaveLength(1);
     expect(await eventsFor(id, "session.delete")).toHaveLength(1);

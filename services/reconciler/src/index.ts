@@ -5,6 +5,7 @@ import {
   DEFAULT_EARLY_SNAPSHOT_INTERVAL_MS,
   DEFAULT_GC_GRACE_MS,
   DEFAULT_IDLE_THRESHOLD_MS,
+  DEFAULT_UNDELETE_RETENTION_MS,
   DEFAULT_PROVISIONING_TIMEOUT_MS,
   DEFAULT_SNAPSHOT_INTERVAL_MS,
   DEFAULT_TASKDEF_KEEP_REVISIONS,
@@ -87,6 +88,9 @@ export interface ReconcilerService {
   /** Self-heal the per-owner quota counters against actual records; returns the
    * number corrected (0 when quota counters aren't wired). */
   reconcileOwnerCounts(): Promise<number>;
+  /** Purge terminated tombstones older than the retention window (reaps the retained
+   * snapshot, then removes the record). Returns the number purged. */
+  purgeExpiredTombstones(retentionMs: number): Promise<number>;
 }
 
 /** Pure: the ids of workspaces idle for at least `idleThresholdMs`. */
@@ -132,6 +136,9 @@ export interface ReconcilerDeps {
   convergeBudget?: number;
   /** Grace window before an orphan is reaped; defaults to `DEFAULT_GC_GRACE_MS`. */
   gcGraceMs?: number;
+  /** How long a deleted workspace stays restorable before its tombstone + retained
+   * snapshot are purged; defaults to `DEFAULT_UNDELETE_RETENTION_MS` (7 days). */
+  undeleteRetentionMs?: number;
   /** How long a record may sit in `provisioning` before its crashed wake is reverted
    * to `stopped`; defaults to `DEFAULT_PROVISIONING_TIMEOUT_MS`. */
   provisioningTimeoutMs?: number;
@@ -219,6 +226,8 @@ export interface MaintenanceResult {
   secrets: ReapResult;
   taskDefs: { deregistered: number; failed: number };
   gc: GcResult;
+  /** Tombstones past the undelete-retention window purged this sweep. */
+  purged: number;
   /** Per-owner quota counters corrected against actual records this sweep. */
   quotaDriftCorrected: number;
 }
@@ -235,6 +244,7 @@ export class Reconciler {
   private readonly taskDefKeep: number;
   private readonly convergeBudget: number;
   private readonly gcGraceMs: number;
+  private readonly undeleteRetentionMs: number;
   private readonly provisioningTimeoutMs: number;
 
   constructor(private readonly deps: ReconcilerDeps) {
@@ -246,6 +256,7 @@ export class Reconciler {
     this.taskDefKeep = deps.taskDefKeep ?? DEFAULT_TASKDEF_KEEP_REVISIONS;
     this.convergeBudget = deps.convergeBudget ?? DEFAULT_CONVERGE_BUDGET;
     this.gcGraceMs = deps.gcGraceMs ?? DEFAULT_GC_GRACE_MS;
+    this.undeleteRetentionMs = deps.undeleteRetentionMs ?? DEFAULT_UNDELETE_RETENTION_MS;
     this.provisioningTimeoutMs = deps.provisioningTimeoutMs ?? DEFAULT_PROVISIONING_TIMEOUT_MS;
   }
 
@@ -627,6 +638,9 @@ export class Reconciler {
     // are cleaned this same sweep.
     const recovered = await this.recoverErrors();
     const deletions = await this.finishDeletions();
+    // Purge tombstones past the undelete-retention window: reaps the retained
+    // snapshot (the irreversible step the window delays), then removes the record.
+    const purged = await this.purgeTombstones();
     const idle = await this.runOnce();
     const snapshots = await this.snapshotDue();
     // Reap orphaned tasks before GC: stopping an orphan releases its managed volume
@@ -647,6 +661,7 @@ export class Reconciler {
       storageDrift,
       recovered,
       deletions,
+      purged,
       idle,
       snapshots,
       tasks,
@@ -655,6 +670,25 @@ export class Reconciler {
       gc,
       quotaDriftCorrected,
     };
+  }
+
+  /** Purge terminated tombstones older than the undelete-retention window
+   * (delegates to the control plane, which reaps the retained snapshot first). A
+   * failure is logged and retried next sweep, never thrown (isolated like every
+   * other step). */
+  async purgeTombstones(): Promise<number> {
+    try {
+      const purged = await this.deps.service.purgeExpiredTombstones(this.undeleteRetentionMs);
+      if (purged > 0) {
+        this.deps.logger?.warn("undelete-retention: purged expired tombstones", { purged });
+      }
+      return purged;
+    } catch (err) {
+      this.deps.logger?.warn("undelete-retention: purge failed (retried next sweep)", {
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return 0;
+    }
   }
 
   /** Self-heal the per-owner quota counters (delegates to the control plane); a

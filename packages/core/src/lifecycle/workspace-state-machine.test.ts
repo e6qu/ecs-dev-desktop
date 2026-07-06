@@ -102,8 +102,10 @@ describe("workspaceActions", () => {
     expect(workspaceActions("provisioning")).toEqual(["delete"]);
     expect(workspaceActions("error")).toEqual(["delete"]);
   });
-  it("offers no actions while deleting/terminated (already torn down)", () => {
+  it("offers no actions while deleting (teardown in progress)", () => {
     expect(workspaceActions("deleting")).toEqual([]);
-    expect(workspaceActions("terminated")).toEqual([]);
+  });
+  it("offers only undelete once terminated (restorable until the retention purge)", () => {
+    expect(workspaceActions("terminated")).toEqual(["undelete"]);
   });
 });

@@ -67,6 +67,7 @@ locals {
     EDD_EARLY_SNAPSHOT_INTERVAL_MS = tostring(var.early_snapshot_interval_ms)
     EDD_EARLY_SESSION_MS           = tostring(var.early_session_ms)
     EDD_GC_GRACE_MS                = tostring(var.gc_grace_ms)
+    EDD_UNDELETE_RETENTION_MS      = tostring(var.undelete_retention_ms)
     EDD_PROVISIONING_TIMEOUT_MS    = tostring(var.provisioning_timeout_ms)
     EDD_HEARTBEAT_INTERVAL_S       = tostring(var.heartbeat_interval_s)
   }

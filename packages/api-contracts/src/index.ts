@@ -31,7 +31,7 @@ export const desiredState = z.enum(["present", "deleted"]);
 export type DesiredStateDto = z.infer<typeof desiredState>;
 
 /** A user-initiated lifecycle operation the UI may offer for a workspace. */
-export const workspaceAction = z.enum(["start", "stop", "snapshot", "delete"]);
+export const workspaceAction = z.enum(["start", "stop", "snapshot", "delete", "undelete"]);
 export type WorkspaceActionDto = z.infer<typeof workspaceAction>;
 
 /** Which primary interface a workspace serves (mirrors `@edd/core`'s EditorKind):
@@ -78,6 +78,8 @@ export const workspace = z.object({
   // Home-volume usage from the agent's functional self-report (bytes).
   diskUsedBytes: z.number().nonnegative().optional(),
   diskTotalBytes: z.number().positive().optional(),
+  /** When teardown finished — the undelete retention window counts from here. */
+  terminatedAt: z.iso.datetime().optional(),
   // Provisioned sizing (joined server-side from deployment config — the same
   // values the compute provider provisions and the cost model bills).
   resources: z
@@ -274,6 +276,7 @@ export const workspaceDetail = z.object({
   functionalAt: z.iso.datetime().optional(),
   diskUsedBytes: z.number().nonnegative().optional(),
   diskTotalBytes: z.number().positive().optional(),
+  terminatedAt: z.iso.datetime().optional(),
   /** Lifecycle actions valid from this state (server-computed; see {@link workspace}). */
   availableActions: z.array(workspaceAction),
 });

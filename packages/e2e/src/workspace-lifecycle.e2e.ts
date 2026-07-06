@@ -89,12 +89,13 @@ describe("workspace lifecycle through WorkspaceService on the sim (real ECS + EB
     expect(again.state).toBe("running");
 
     // Delete is async now: remove() tombstones (state → `deleting`); the reconciler's
-    // finishDeleting converges teardown and removes the record. Drive both to prove the
-    // full create→…→remove lifecycle reaches a clean end.
+    // finishDeleting converges teardown into a `terminated` tombstone (restorable for
+    // the 7-day undelete window; the retention purge removes it later). Drive both to
+    // prove the full create→…→remove lifecycle reaches its resting state.
     expect((await service.remove(workspaceId(ws.id))).ok).toBe(true);
     expect((await service.get(workspaceId(ws.id)))?.state).toBe("deleting");
     expect((await service.finishDeleting(workspaceId(ws.id))).ok).toBe(true);
-    expect(await service.get(workspaceId(ws.id))).toBeNull();
+    expect((await service.get(workspaceId(ws.id)))?.state).toBe("terminated");
   });
 
   it("CloudTrail captures RunTask, StopTask, and CreateSnapshot from the workspace lifecycle", async () => {

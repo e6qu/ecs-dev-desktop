@@ -9,6 +9,7 @@
  * DYNAMODB_ENDPOINT — same as the rest of the platform.
  * Optional tuning (defaults in @edd/core; overridable via Terraform variables):
  * EDD_IDLE_THRESHOLD_MS, EDD_SNAPSHOT_INTERVAL_MS, EDD_EARLY_SNAPSHOT_INTERVAL_MS,
+ * EDD_UNDELETE_RETENTION_MS,
  * EDD_EARLY_SESSION_MS, EDD_GC_GRACE_MS, EDD_PROVISIONING_TIMEOUT_MS,
  * EDD_CONVERGE_BUDGET.
  */
@@ -101,6 +102,7 @@ const earlySnapshotIntervalMs = tuningMs("EDD_EARLY_SNAPSHOT_INTERVAL_MS");
 const earlySessionMs = tuningMs("EDD_EARLY_SESSION_MS");
 const convergeBudget = tuningCount("EDD_CONVERGE_BUDGET");
 const gcGraceMs = tuningMs("EDD_GC_GRACE_MS");
+const undeleteRetentionMs = tuningMs("EDD_UNDELETE_RETENTION_MS");
 const provisioningTimeoutMs = tuningMs("EDD_PROVISIONING_TIMEOUT_MS");
 
 const dynamo = createDynamoClient();
@@ -165,6 +167,7 @@ const reconciler = new Reconciler({
   ...(earlySessionMs === undefined ? {} : { earlySessionMs }),
   ...(convergeBudget === undefined ? {} : { convergeBudget }),
   ...(gcGraceMs === undefined ? {} : { gcGraceMs }),
+  ...(undeleteRetentionMs === undefined ? {} : { undeleteRetentionMs }),
   ...(provisioningTimeoutMs === undefined ? {} : { provisioningTimeoutMs }),
 });
 

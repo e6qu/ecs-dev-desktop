@@ -411,6 +411,12 @@ variable "early_session_ms" {
   default     = 3600000
 }
 
+variable "undelete_retention_ms" {
+  description = "How long a deleted workspace stays restorable (undelete) before its tombstone and retained snapshot are purged. Default 7 days."
+  type        = number
+  default     = 604800000
+}
+
 variable "gc_grace_ms" {
   description = "Grace window (ms) before an unreferenced volume/snapshot becomes GC-eligible. Guards against create/persist races. Default: 1 h."
   type        = number

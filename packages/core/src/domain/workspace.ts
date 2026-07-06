@@ -76,6 +76,10 @@ export interface Workspace {
   /** Home-volume usage from the same self-report (bytes), when the agent measured it. */
   readonly diskUsedBytes?: number;
   readonly diskTotalBytes?: number;
+  /** When teardown finished (state became `terminated`) — starts the undelete
+   * retention window; the purge sweep removes the tombstone (and reaps its
+   * retained snapshot) once it is older than the retention. */
+  readonly terminatedAt?: IsoTimestamp;
 }
 
 /** Functional usability of a running workspace, self-reported by the in-workspace agent. */
@@ -134,6 +138,42 @@ export function markStopped(
     volumeId: undefined,
     taskId: undefined,
     sshHost: undefined,
+  }));
+}
+
+/**
+ * Teardown finished: keep the record as a `terminated` tombstone (with its
+ * retained snapshot reference) so the owner can undelete it within the retention
+ * window; the purge sweep removes it after. Runtime bindings are cleared.
+ */
+export function markTerminated(ws: Workspace, at: IsoTimestamp): Result<Workspace, DomainError> {
+  return map(transition(ws.state, "terminate"), (state) => ({
+    ...ws,
+    state,
+    terminatedAt: at,
+    volumeId: undefined,
+    taskId: undefined,
+    sshHost: undefined,
+  }));
+}
+
+/**
+ * Restore a terminated workspace to `stopped` (wake-able from its retained
+ * snapshot). Pure guards: legal transition + a snapshot to restore from. The
+ * retention-window check is the shell's (it owns the clock and the configured
+ * retention); quota re-admission is enforced atomically by the service.
+ */
+export function undeleteWorkspace(ws: Workspace, at: IsoTimestamp): Result<Workspace, DomainError> {
+  if (ws.latestSnapshotId === undefined) {
+    return err(conflictError(`cannot undelete ${ws.id}: no retained snapshot to restore from`));
+  }
+  return map(transition(ws.state, "undelete"), (state) => ({
+    ...ws,
+    state,
+    desiredState: "present" as const,
+    deleteRequestedAt: undefined,
+    terminatedAt: undefined,
+    lastActivity: at,
   }));
 }
 
