@@ -9,7 +9,7 @@ import { useState } from "react";
 const api = new ApiClient({ baseUrl: "" });
 
 function classFor(action: WorkspaceActionDto): string {
-  if (action === "start" || action === "undelete") return "btn primary";
+  if (action === "start" || action === "undelete" || action === "retry") return "btn primary";
   if (action === "delete") return "btn danger";
   return "btn";
 }
@@ -49,6 +49,9 @@ export function WorkspaceActions({
           break;
         case "undelete":
           await api.undeleteWorkspace(id);
+          break;
+        case "retry":
+          await api.retryWorkspace(id);
           break;
       }
       router.refresh();

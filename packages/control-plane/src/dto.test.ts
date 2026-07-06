@@ -29,6 +29,8 @@ describe("toWorkspaceDto", () => {
       editor: "openvscode",
       state: "running",
       createdAt: "2026-06-01T00:00:00.000Z",
+      // Deliberately public: the status page's phase-elapsed timer counts from it.
+      lastActivity: "2026-06-01T00:00:00.000Z",
       // Server-computed from the state machine so the UI renders buttons from data.
       availableActions: ["snapshot", "stop", "delete"],
     });

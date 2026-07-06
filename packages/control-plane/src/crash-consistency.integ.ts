@@ -98,14 +98,18 @@ describe("crash-consistency: persist failure compensates the launched task", () 
     await dropTable(client, TABLE);
   });
 
-  it("create(): persist failure stops the just-launched task and surfaces the error", async () => {
+  it("create(): persist failure launches NO task (record-first ordering) and surfaces the error", async () => {
     outage.failWrites = true;
     await expect(
       service.create({ ownerId: ownerId("crash-a"), baseImage: baseImage("golden/node:20") }),
     ).rejects.toThrow(OUTAGE_MESSAGE);
 
-    expect(compute.launched).toHaveLength(1);
-    expect(compute.stopped).toEqual(compute.launched);
+    // Instant create persists the record BEFORE any compute exists, so a write
+    // outage means nothing was ever launched — there is no task to clean up.
+    // (The record-changed-mid-launch case is covered by launchReserved's
+    // version-conflict path, which stops the fresh task.)
+    expect(compute.launched).toHaveLength(0);
+    expect(compute.stopped).toHaveLength(0);
 
     // No half-created record is visible afterwards.
     outage.failWrites = false;

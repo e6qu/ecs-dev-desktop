@@ -155,11 +155,15 @@ describe("WorkspaceService lifecycle ", () => {
     });
 
     // create(): a launch failure is thrown as a typed ComputeUnavailableError (the
-    // route maps it to 503), not a raw error — and no record is left behind.
+    // route maps it to 503). The reserved record deliberately REMAINS, parked in
+    // `error` with the reason and a retry action — the instant-create UX gives the
+    // user the URL before the launch, so the page they are on must stay actionable.
     await expect(
       failing.create({ ownerId: ownerId("noecs"), baseImage: baseImage("golden/node:20") }),
     ).rejects.toBeInstanceOf(ComputeUnavailableError);
-    expect(await failing.list({ ownerId: ownerId("noecs") })).toHaveLength(0);
+    const [errored] = await failing.list({ ownerId: ownerId("noecs") });
+    expect(errored?.state).toBe("error");
+    expect(errored?.availableActions).toContain("retry");
 
     // start(): a launch failure returns a typed `unavailable` Result (→ 503) and
     // rolls the claim back to stopped, so the workspace stays wake-able.
@@ -261,6 +265,58 @@ describe("WorkspaceService lifecycle ", () => {
     expect(terminated?.state).toBe("terminated");
     expect(terminated?.terminatedAt).toBeDefined();
     expect(terminated?.availableActions).toEqual(["undelete"]);
+  });
+
+  it("instant create: the record (and its URL) exists before compute launches; launchReserved binds it", async () => {
+    const dto = await service.reserveWorkspace({
+      ownerId: ownerId("instant"),
+      baseImage: baseImage("img"),
+    });
+    // Visible immediately — this is what the browser navigates to.
+    const reserved = await service.get(workspaceId(dto.id));
+    expect(reserved?.state).toBe("provisioning");
+    expect((await service.inspect(workspaceId(dto.id)))?.workspace.taskId).toBeUndefined();
+
+    const launched = await service.launchReserved(workspaceId(dto.id));
+    expect(launched.ok).toBe(true);
+    const bound = await service.inspect(workspaceId(dto.id));
+    expect(bound?.workspace.state).toBe("running");
+    expect(bound?.workspace.taskId).toBeDefined();
+    // Idempotent: a second launch call is a no-op success, not a second task.
+    expect((await service.launchReserved(workspaceId(dto.id))).ok).toBe(true);
+  });
+
+  it("a failed launch lands as error + reason, and retry() relaunches it to running", async () => {
+    const dto = await service.reserveWorkspace({
+      ownerId: ownerId("retrier"),
+      baseImage: baseImage("img"),
+    });
+    // A compute port that fails once, then works — the transient-capacity shape.
+    let calls = 0;
+    const flakyCompute = new FakeComputeProvider(storage);
+    const realRunTask = flakyCompute.runTask.bind(flakyCompute);
+    flakyCompute.runTask = (input) => {
+      calls += 1;
+      if (calls === 1) throw new Error("capacity unavailable (transient)");
+      return realRunTask(input);
+    };
+    const flaky = new WorkspaceService({
+      workspaces: makeWorkspaceEntity(client, TEST_TABLE),
+      storage,
+      compute: flakyCompute,
+      clock: fixedClock(),
+    });
+
+    const failed = await flaky.launchReserved(workspaceId(dto.id));
+    expect(failed.ok).toBe(false);
+    const errored = await flaky.get(workspaceId(dto.id));
+    expect(errored?.state).toBe("error");
+    expect(errored?.availableActions).toContain("retry");
+    expect(errored?.functionalDetail).toContain("capacity unavailable");
+
+    const retried = await flaky.retry(workspaceId(dto.id));
+    expect(retried.ok).toBe(true);
+    expect((await flaky.get(workspaceId(dto.id)))?.state).toBe("running");
   });
 
   it("undelete restores a terminated workspace to stopped, and it can start again", async () => {

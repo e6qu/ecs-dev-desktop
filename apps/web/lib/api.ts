@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { NextResponse } from "next/server";
 
+import { withObservability } from "./observability";
+
 import type { WorkspaceDto } from "@edd/api-contracts";
 import { defineAbilityFor, type Action, type Principal } from "@edd/authz";
 import type { WorkspaceService } from "@edd/control-plane";
@@ -119,7 +121,22 @@ export async function loadOwnedWorkspaceDetail(
 
 type WorkspaceDetail = NonNullable<Awaited<ReturnType<OwnedWorkspace["cp"]["inspect"]>>>;
 
-export async function ownedLifecycleAction(
+/**
+ * The POST handler for a one-verb owned-lifecycle route (start/stop/snapshot/
+ * retry/...): the same authz + Result-mapping shell, differing only in the
+ * observability name and which service call runs. Collapses the per-route
+ * boilerplate the tiny route files would otherwise clone.
+ */
+export function lifecyclePOST(
+  name: string,
+  run: (ctx: OwnedWorkspace) => Promise<Result<WorkspaceDto, DomainError>>,
+) {
+  return withObservability(name, (req: Request, { params }: { params: Promise<{ id: string }> }) =>
+    ownedLifecycleAction(req, params, run),
+  );
+}
+
+async function ownedLifecycleAction(
   req: Request,
   params: Promise<{ id: string }>,
   run: (ctx: OwnedWorkspace) => Promise<Result<WorkspaceDto, DomainError>>,

@@ -182,6 +182,12 @@ export class ApiClient {
     return workspace.parse(await res.json());
   }
 
+  /** Retry a failed launch (error state → relaunch, or recover+start with a snapshot). */
+  async retryWorkspace(id: string): Promise<WorkspaceDto> {
+    const res = await this.send(`/api/workspaces/${id}/retry`, { method: "POST" });
+    return workspace.parse(await res.json());
+  }
+
   /** Toggle the owner's spectate (read-only mirror) flag. */
   async setWorkspaceShare(id: string, enabled: boolean): Promise<WorkspaceDto> {
     const res = await this.send(`/api/workspaces/${id}/share`, {

@@ -31,7 +31,7 @@ export const desiredState = z.enum(["present", "deleted"]);
 export type DesiredStateDto = z.infer<typeof desiredState>;
 
 /** A user-initiated lifecycle operation the UI may offer for a workspace. */
-export const workspaceAction = z.enum(["start", "stop", "snapshot", "delete", "undelete"]);
+export const workspaceAction = z.enum(["start", "stop", "snapshot", "delete", "undelete", "retry"]);
 export type WorkspaceActionDto = z.infer<typeof workspaceAction>;
 
 /** Which primary interface a workspace serves (mirrors `@edd/core`'s EditorKind):
@@ -57,6 +57,9 @@ export const workspace = z.object({
   editor: editorKind.optional(),
   state: workspaceState,
   createdAt: z.iso.datetime(),
+  /** Last activity/transition timestamp — what the status page's phase-elapsed
+   * timer counts from (resets on wake, so it times the current launch). */
+  lastActivity: z.iso.datetime().optional(),
   // The repo cloned into the session ("one repo per session"), when any. Lets
   // the credential broker pick the right GitHub App installation by repo owner.
   repoUrl: z.string().optional(),
@@ -75,6 +78,8 @@ export const workspace = z.object({
   // Functional usability self-report (is the desktop actually usable, not just
   // "running"): surfaced on the owner's card so a degraded-but-running workspace shows.
   functional: z.enum(["ok", "degraded"]).optional(),
+  /** Why the workspace is degraded / failed to launch (agent report or launch error). */
+  functionalDetail: z.string().optional(),
   // Home-volume usage from the agent's functional self-report (bytes).
   diskUsedBytes: z.number().nonnegative().optional(),
   diskTotalBytes: z.number().positive().optional(),

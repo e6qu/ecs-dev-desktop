@@ -106,6 +106,31 @@ export interface ProvisionParams {
 }
 
 /** A freshly-provisioned, running workspace. */
+/**
+ * The instant-create record: persisted (and its URL handed to the browser)
+ * BEFORE any compute is launched, so navigation to the workspace page is
+ * immediate. State starts at `provisioning` with no runtime bindings; the
+ * detached launch binds them via {@link markProvisioned} (→ running), or
+ * {@link markProvisioningFailed} records why it could not.
+ */
+export function reserve(
+  params: Omit<ProvisionParams, "volumeId" | "taskId" | "sshHost">,
+): Workspace {
+  return {
+    id: params.id,
+    ownerId: params.ownerId,
+    ownerEmail: params.ownerEmail,
+    ownerRole: params.ownerRole,
+    repoUrl: params.repoUrl,
+    baseImage: params.baseImage,
+    editor: params.editor ?? DEFAULT_EDITOR,
+    state: "provisioning",
+    desiredState: "present",
+    createdAt: params.at,
+    lastActivity: params.at,
+  };
+}
+
 export function provision(params: ProvisionParams): Workspace {
   return {
     id: params.id,
@@ -244,6 +269,42 @@ export function markProvisioned(
     volumeId,
     taskId,
     sshHost,
+  }));
+}
+
+/**
+ * A detached launch (or retry) failed: move to `error` carrying the reason.
+ * The reason rides `functionalDetail` — the DTO's existing free-text "why is
+ * this workspace not usable" slot the status page already renders.
+ */
+export function markProvisioningFailed(
+  ws: Workspace,
+  reason: string,
+  at: IsoTimestamp,
+): Result<Workspace, DomainError> {
+  return map(transition(ws.state, "fail"), (state) => ({
+    ...ws,
+    state,
+    lastActivity: at,
+    functional: "degraded" as const,
+    functionalDetail: reason,
+    functionalAt: at,
+  }));
+}
+
+/**
+ * User-initiated retry of a failed launch: error → provisioning, clearing the
+ * failure report. The shell relaunches compute (or recover+start when a
+ * snapshot survives — its data must not be discarded by a fresh volume).
+ */
+export function retryProvisioning(ws: Workspace, at: IsoTimestamp): Result<Workspace, DomainError> {
+  return map(transition(ws.state, "retry"), (state) => ({
+    ...ws,
+    state,
+    lastActivity: at,
+    functional: undefined,
+    functionalDetail: undefined,
+    functionalAt: undefined,
   }));
 }
 

@@ -45,6 +45,10 @@ export const TESTID = {
   workspaceStatusHero: "workspace-status-hero",
   /** The boot/runtime log panel on /workspaces/[id]. Attr: `data-available`. */
   workspaceBootLog: "workspace-boot-log",
+  /** The workspace's own copyable URL on the status hero. */
+  workspaceUrl: "workspace-url",
+  /** The provisioning phase stepper. Per-step attr: `data-step` (done/active/pending/failed). */
+  workspaceSteps: "workspace-steps",
   /** The ⓘ session-details toggle on a workspace card. */
   workspaceInfoToggle: "workspace-info-toggle",
   /** The closeable session-details overlay. */

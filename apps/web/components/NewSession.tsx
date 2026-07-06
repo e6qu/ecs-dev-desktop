@@ -199,7 +199,10 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
         wsId = await launch();
       }
       // Land on the live status page — it follows the boot and opens the editor.
-      router.push(`/workspaces/${wsId}`);
+      // autoopen=1: the status page opens the editor itself the moment the
+      // workspace is functional (with a visible cancel) — only on this
+      // launch-initiated visit, never on later direct visits to the page.
+      router.push(`/workspaces/${wsId}?autoopen=1`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "could not start the session");
       setBusy(false);

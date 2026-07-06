@@ -28,6 +28,7 @@ export type WorkspaceEvent =
   | "requestDelete" // mark for deletion → `deleting` tombstone (reconciler finishes)
   | "recover" // error → stopped when a snapshot exists (self-recovery)
   | "undelete" // terminated → stopped within the retention window (snapshot restores it)
+  | "retry" // error → provisioning: relaunch after a failed create/launch
   | "fail"; // unrecoverable error
 
 const TRANSITIONS: Record<WorkspaceState, Partial<Record<WorkspaceEvent, WorkspaceState>>> = {
@@ -71,7 +72,12 @@ const TRANSITIONS: Record<WorkspaceState, Partial<Record<WorkspaceEvent, Workspa
   terminated: { undelete: "stopped" },
   // Self-recovery: an `error` workspace with a snapshot can `recover` to `stopped`
   // (wake-able again); otherwise it can only be deleted.
-  error: { recover: "stopped", terminate: "terminated", requestDelete: "deleting" },
+  error: {
+    recover: "stopped",
+    retry: "provisioning",
+    terminate: "terminated",
+    requestDelete: "deleting",
+  },
 };
 
 /**
@@ -93,7 +99,7 @@ export function can(state: WorkspaceState, event: WorkspaceEvent): boolean {
 }
 
 /** A user-initiated lifecycle operation offered for a workspace in the UI. */
-export type WorkspaceAction = "start" | "stop" | "snapshot" | "delete" | "undelete";
+export type WorkspaceAction = "start" | "stop" | "snapshot" | "delete" | "undelete" | "retry";
 
 /**
  * The lifecycle actions valid from a state — the single source of truth for which
@@ -110,8 +116,11 @@ export function workspaceActions(state: WorkspaceState): readonly WorkspaceActio
     case "stopped":
       return ["start", "delete"];
     case "provisioning":
-    case "error":
       return ["delete"];
+    case "error":
+      // A failed launch is retryable in place (relaunch, or recover+start when a
+      // snapshot survives) — the status page offers it next to delete.
+      return ["retry", "delete"];
     case "deleting":
       // Being torn down — no user action until the tombstone lands.
       return [];

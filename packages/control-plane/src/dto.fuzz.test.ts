@@ -91,7 +91,11 @@ describe("toWorkspaceDto (fuzz)", () => {
         expect(dto).not.toHaveProperty("ownerEmail");
         expect(dto).not.toHaveProperty("desiredState");
         expect(dto).not.toHaveProperty("deleteRequestedAt");
-        expect(dto).not.toHaveProperty("lastActivity");
+        // lastActivity is DELIBERATELY carried since the instant-create work:
+        // the status page's phase-elapsed timer counts from it (it resets on
+        // wake, timing the current launch). It is the owner's own timestamp,
+        // not a runtime binding.
+        expect(dto.lastActivity).toBe(ws.lastActivity);
         expect(dto).not.toHaveProperty("latestSnapshotId");
       }),
     );

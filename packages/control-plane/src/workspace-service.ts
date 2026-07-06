@@ -15,6 +15,9 @@ import {
   markActivity,
   markDeleting,
   markProvisioned,
+  markProvisioningFailed,
+  reserve,
+  retryProvisioning,
   markRecovered,
   markSnapshotLost,
   markStopped,
@@ -32,7 +35,6 @@ import {
   ok,
   ownerId,
   planConnect,
-  provision,
   recordSnapshot,
   snapshotId,
   taskId,
@@ -355,24 +357,39 @@ export class WorkspaceService {
      * past the cap cancels and throws {@link QuotaExceededError}. */
     quotaLimit?: number;
   }): Promise<WorkspaceDto> {
+    // Blocking composition kept for callers that need the launched workspace
+    // (tests, scripted flows). The web route uses reserveWorkspace +
+    // launchReserved instead, so the browser gets the URL instantly.
+    const dto = await this.reserveWorkspace(input);
+    const launched = await this.launchReserved(workspaceId(dto.id), {
+      ...(input.repoRef === undefined ? {} : { repoRef: input.repoRef }),
+    });
+    if (!launched.ok) {
+      throw new ComputeUnavailableError(
+        launched.error.kind === "conflict" ? launched.error.reason : "launch failed",
+      );
+    }
+    return launched.value;
+  }
+
+  /**
+   * Instant create, phase 1: persist the record (id pre-generated, state
+   * `provisioning`, quota enforced atomically) and return it — the browser can
+   * navigate to the workspace URL immediately, before any compute exists. The
+   * caller then fires {@link launchReserved} (detached in the web route).
+   */
+  async reserveWorkspace(input: {
+    ownerId: OwnerId;
+    ownerEmail?: Email;
+    ownerRole?: WorkspaceOwnerRole;
+    baseImage: BaseImage;
+    editor?: EditorKind;
+    repoUrl?: string;
+    quotaLimit?: number;
+  }): Promise<WorkspaceDto> {
     const id = newWorkspaceId();
     const at = isoTimestamp(this.deps.clock.now());
-    // ECS creates the managed EBS volume at task launch and returns its id. The
-    // repo (if any) is cloned into the session at first boot. A launch failure is a
-    // handled, retryable condition (→ 503 at the route), not an unexpected 500.
-    let task;
-    try {
-      task = await this.deps.compute.runTask({
-        workspaceId: id,
-        baseImage: input.baseImage,
-        ...(input.editor === undefined ? {} : { editor: input.editor }),
-        ...(input.repoUrl === undefined ? {} : { repoUrl: input.repoUrl }),
-        ...(input.repoRef === undefined ? {} : { repoRef: input.repoRef }),
-      });
-    } catch (e) {
-      throw new ComputeUnavailableError(`could not launch workspace task: ${asMessage(e)}`);
-    }
-    const ws = provision({
+    const ws = reserve({
       id,
       ownerId: input.ownerId,
       ownerEmail: input.ownerEmail,
@@ -380,35 +397,114 @@ export class WorkspaceService {
       repoUrl: input.repoUrl,
       baseImage: input.baseImage,
       ...(input.editor === undefined ? {} : { editor: input.editor }),
-      volumeId: task.volumeId,
-      taskId: task.id,
       at,
-      sshHost: task.sshHost,
     });
+    await this.persistNew(
+      ws,
+      {
+        action: "session.create",
+        target: id,
+        actor: input.ownerEmail ?? input.ownerId,
+        detail: input.repoUrl === undefined ? "blank session" : `repo ${input.repoUrl}`,
+      },
+      input.quotaLimit,
+    );
+    return toWorkspaceDto(ws);
+  }
+
+  /**
+   * Instant create, phase 2: launch compute for a reserved (`provisioning`,
+   * unbound) record and bind it (→ running). NEVER throws — a failure is
+   * recorded on the record as `error` + reason (the status page renders it with
+   * Retry/Delete) and returned as a Result, so the detached web-route call
+   * cannot become an unhandled rejection. Crash mid-launch is covered by the
+   * reconciler's provisioning-timeout recovery; a record deleted while the
+   * launch was in flight gets its freshly-launched task stopped (crash
+   * consistency, reaper backstop).
+   */
+  async launchReserved(
+    id: WorkspaceId,
+    opts?: { repoRef?: string },
+  ): Promise<Result<WorkspaceDto, DomainError>> {
+    const found = await this.find(id);
+    if (found === null) return err(notFoundError("workspace", id));
+    const { ws, version } = found;
+    if (ws.state !== "provisioning" || ws.taskId !== undefined) {
+      // Already launched / already converged elsewhere — idempotent success.
+      return ok(toWorkspaceDto(ws));
+    }
+    let task: ComputeTask;
     try {
-      await this.persistNew(
-        ws,
-        {
-          action: "session.create",
-          target: id,
-          actor: input.ownerEmail ?? input.ownerId,
-          detail: input.repoUrl === undefined ? "blank session" : `repo ${input.repoUrl}`,
-        },
-        input.quotaLimit,
-      );
-    } catch (err) {
-      // Crash-consistency: the task launched but the record never landed — stop the
-      // task so nothing real leaks. The stop is best-effort (the orphan-task reaper is
-      // the backstop if it fails); either way surface the ORIGINAL error, never let a
-      // cleanup failure mask the real cause or swallow it.
+      task = await this.deps.compute.runTask({
+        workspaceId: id,
+        baseImage: ws.baseImage,
+        ...(ws.editor === undefined ? {} : { editor: ws.editor }),
+        ...(ws.repoUrl === undefined ? {} : { repoUrl: ws.repoUrl }),
+        ...(opts?.repoRef === undefined ? {} : { repoRef: opts.repoRef }),
+      });
+    } catch (e) {
+      return this.recordLaunchFailure(id, `could not launch workspace task: ${asMessage(e)}`);
+    }
+    const at = isoTimestamp(this.deps.clock.now());
+    const bound = markProvisioned(ws, task.volumeId, task.id, at, task.sshHost);
+    if (!bound.ok) return bound;
+    try {
+      await this.persistTransition(bound.value, version);
+    } catch (e) {
+      // The record moved while we launched (most likely a delete): stop the
+      // fresh task so nothing real leaks; the reaper is the backstop.
       try {
         await this.deps.compute.stopTask(task.id);
       } catch {
-        /* reaper backstop reaps the leaked RUNNING task by its workspace tag */
+        /* reaper backstop reaps the leaked task by its workspace tag */
       }
-      throw err;
+      if (!isVersionConflict(e)) throw e;
+      return err(conflictError(`launch of ${id} lost a concurrent update`));
     }
-    return toWorkspaceDto(ws);
+    return ok(toWorkspaceDto(bound.value));
+  }
+
+  /** Record a failed launch on the reserved record: → `error` + reason. */
+  private async recordLaunchFailure(
+    id: WorkspaceId,
+    reason: string,
+  ): Promise<Result<WorkspaceDto, DomainError>> {
+    const found = await this.find(id);
+    if (found === null) return err(notFoundError("workspace", id));
+    const failed = markProvisioningFailed(found.ws, reason, isoTimestamp(this.deps.clock.now()));
+    if (!failed.ok) return failed;
+    try {
+      await this.persistTransition(failed.value, found.version);
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+    }
+    return err(unavailableError(reason));
+  }
+
+  /**
+   * User-initiated retry of a failed launch (the status page's Retry button).
+   * A snapshot-less error (failed create) relaunches fresh; an error that still
+   * has a snapshot recovers to `stopped` and starts — its data must not be
+   * discarded by a fresh volume.
+   */
+  async retry(id: WorkspaceId): Promise<Result<WorkspaceDto, DomainError>> {
+    const found = await this.find(id);
+    if (found === null) return err(notFoundError("workspace", id));
+    const { ws, version } = found;
+    if (ws.latestSnapshotId !== undefined) {
+      const recovered = await this.recoverError(id);
+      if (!recovered.ok) return recovered;
+      return this.start(id);
+    }
+    const next = retryProvisioning(ws, isoTimestamp(this.deps.clock.now()));
+    if (!next.ok) return next;
+    try {
+      await this.persistTransition(next.value, version);
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+      return err(conflictError(`retry of ${id} lost a concurrent update`));
+    }
+    return this.launchReserved(id);
   }
 
   async list(filter?: { ownerId?: OwnerId }): Promise<WorkspaceDto[]> {

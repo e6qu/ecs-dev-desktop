@@ -74,6 +74,7 @@ describe("workspace state machine — properties", () => {
       stop: "stop",
       delete: "requestDelete",
       undelete: "undelete",
+      retry: "retry",
     };
     fc.assert(
       fc.property(stateArb, (s) => {
