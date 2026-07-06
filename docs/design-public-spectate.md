@@ -56,6 +56,12 @@ enabledAt }`. No share token needed — access is gated on the Auth.js
    `spectate-subscribe` WebSocket fed ONLY by the owner's publish stream.
    Spectators receive rendered state; there is **no request path from
    spectator to workspace** — read-only by construction, not by filtering.
+   **DECIDED (user, 2026-07-06): the spectator page carries a full-viewport
+   interaction-blocking overlay** — a transparent shield capturing all
+   pointer/keyboard/touch events over the mirrored editor render, plus a
+   persistent "Viewing <owner>'s session — read-only" banner. The overlay is
+   UX + defense-in-depth (spectators can't even toggle local view state);
+   the security boundary remains the absent write path, never the overlay.
 4. **Keystrokes**: what the owner types appears via the mirrored terminal
    output/editor deltas (the requirement's intent) — spectators never see raw
    input events beyond what the mirror renders.
@@ -86,6 +92,8 @@ enabledAt }`. No share token needed — access is gated on the Auth.js
 - **DECIDED (user, 2026-07-06)**: spectators are authenticated EDD users with
   at least the `viewer` role — no anonymous/public links, no share tokens.
 - **DECIDED (user, 2026-07-06)**: no cap on concurrent spectators.
+- **DECIDED (user, 2026-07-06)**: spectator view renders behind a full-page
+  interaction-blocking overlay (read-only shield + banner).
 
 ## Still open (need the user)
 
