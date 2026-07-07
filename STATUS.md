@@ -29,8 +29,13 @@ opening a new PR). Shipped + live this stretch, on top of the merged post-launch
   workspaces** (type-to-confirm), **"started by" + viewable badge**, editor-type badge,
   full-page info modal, startup overlay, OpenVSCode File-menu default (golden).
 
-CI on the branch is green (integration/playwright/code-health fixed this stretch).
-Remaining: user live-testing; the real agent web UIs (see `DO_NEXT.md`).
+Local verification on the branch is green after the PR #193 e2e fixes: `pnpm test`,
+`pnpm lint`, `pnpm test:integ:local`, `pnpm test:e2e:local`, `pnpm check-deps`,
+`pnpm dead-code`, and `pnpm cpd` all pass (with the existing jscpd clone report/config
+warning). Remaining: user live-testing; replacing the `claude`/`codex`
+Monaco-terminal fallback with the vendor harnesses now explicitly chosen by the user
+(Anthropic Remote Control / `claude.ai/code` for Claude Code; OpenAI `codex
+app-server` / first-party local client protocol for Codex).
 
 ## Real AWS production deploy — LIVE (2026-07-05/06), still hardening post-launch
 

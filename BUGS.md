@@ -4,20 +4,25 @@
 
 ## Open
 
-- **`e2e` CI check (container-mode sim) red on the branch — environmental, not a code
-  regression** (2026-07-07). The `e2e` job (real containers on the GitHub ubuntu
-  runner) fails: workspaces stay `provisioning` (never `running`) and some API calls
-  return 405, cascading across the specs. Evidence it is environmental, not our logic:
-  (1) **prod works** — workspaces are created/opened live on `app.edd.e6qu.dev`;
-  (2) the same omnibus golden image **builds + deploys fine via CodeBuild** every deploy
-  this session; the e2e runner logs `golden image build failed (attempt N); retrying`
-  on the heavy Go+Rust+Java+Monaco build (~3GB) — a runner resource/flake, so tasks
-  can't launch → stuck `provisioning`; (3) **integration + playwright + code-health are
-  green** (they validate the actual control-plane logic). Not fully root-caused (the
-  exact runner build-failure line wasn't isolated; needs the full container sim to
-  reproduce, impractical without the ~3GB image + sockerless containers). Likely fixes:
-  free runner disk before the golden build, or a larger runner. NOT blocking the code
-  work; recorded per §0.5 rather than ignored.
+- **`claude`/`codex` workspace modes still use the Monaco-terminal fallback, not the
+  vendor web harnesses** (2026-07-07). Product decision is now explicit: do not build an
+  EDD-authored Claude/Codex chat UI and do not treat a terminal-booted CLI as the final
+  UX. `claude` mode should run Anthropic's Claude Code Remote Control/local-process
+  harness and direct the user to `claude.ai/code`; `codex` mode should run OpenAI's
+  Codex local harness (`codex app-server` / first-party client protocol). Current code
+  remains usable but mismatched: `infra/images/base/entrypoint.sh` still starts the
+  Monaco server with `EDD_TERMINAL_COMMAND=claude|codex`. Tracked as an implementation
+  gap in `DO_NEXT.md`.
+
+- **Shell parse sweep emits a zsh `nice(5)` warning for the base entrypoint**
+  (2026-07-07). `for f in $(git ls-files '*.sh'); do shellcheck "$f" && bash -n "$f" &&
+zsh -n "$f"; done` exits 0, but `zsh -n infra/images/base/entrypoint.sh` prints
+  `nice(5) failed: operation not permitted` for the background `sshd` and
+  `edd-idle-agent` lines. `shellcheck` and `bash -n` are clean, and the e2e golden
+  image boots successfully, so this is currently a parser/tooling warning rather
+  than a runtime failure. Keep it visible; either adjust the portable shell check
+  invocation or restructure the background process startup if CI starts treating
+  the warning as fatal.
 
 - **Cost model doesn't price the undelete window or restored sessions** (2026-07-06).
   Deleted workspaces now keep a retained snapshot for the 7-day undelete window —
@@ -466,6 +471,20 @@ concurrent-wake race, TLS storage adapter). PR #550 is bleephub-Actions-only;
 no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
+
+- **Branch e2e failures after instant-create were real async-provisioning test
+  mismatches, then fixed (2026-07-07).** The PR #193 `e2e` check had been red. Local
+  reproduction showed the first failures were not the golden-image build flake that
+  initially looked likely: several tests still assumed `POST /api/workspaces` returned
+  `running`, but instant create correctly returns `provisioning` and launches detached.
+  Updated the e2e fixtures/specs to accept `provisioning` and wait for `running`
+  before stop/connect assertions. The remaining SSH wake-chain failure was a harness
+  issue: the custom server sweep and compiled Next route handlers have separate
+  in-memory fake-storage instances, so a stop converger cannot snapshot a route-created
+  fake volume. The test now seeds a resume snapshot through the public `snapshot` API
+  before stopping, keeping the test focused on the gateway → control-plane wake
+  contract. Verified with `pnpm test:e2e:local` (20/20 Turbo tasks; `@edd/e2e`
+  46 passed, 5 image-variant skips).
 
 - **The control-plane and reconciler task roles could read/write DynamoDB items but
   couldn't decrypt them (2026-07-06, found by a real user hitting `/workspaces` right

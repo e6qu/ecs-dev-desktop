@@ -90,6 +90,20 @@ describe(
       return workspaceInspection.parse(await res.json()).workspace;
     }
 
+    async function awaitWorkspaceState(
+      status: WorkspaceDetailDto["state"],
+    ): Promise<WorkspaceDetailDto> {
+      const deadline = Date.now() + 120_000;
+      for (;;) {
+        const detail = await inspect();
+        if (detail.state === status) return detail;
+        if (Date.now() > deadline) {
+          throw new Error(`workspace ${wsId} never reached ${status} (last: ${detail.state})`);
+        }
+        await sleep(2_000);
+      }
+    }
+
     async function simTaskStatus(taskArn: string): Promise<string> {
       const out = await ecs.send(new DescribeTasksCommand({ cluster: CLUSTER, tasks: [taskArn] }));
       return required(out.tasks?.[0]?.lastStatus, "task lastStatus");
@@ -179,10 +193,11 @@ describe(
       });
       expect(res.status).toBe(201);
       const ws = workspace.parse(await res.json());
-      expect(ws.state).toBe("running");
       wsId = ws.id;
+      expect(["provisioning", "running"]).toContain(ws.state);
 
-      const detail = await inspect();
+      const detail =
+        ws.state === "running" ? await inspect() : await awaitWorkspaceState("running");
       firstTaskId = required(detail.taskId, "taskId");
       firstVolumeId = required(detail.volumeId, "volumeId");
       activityAfterCreate = detail.lastActivity;

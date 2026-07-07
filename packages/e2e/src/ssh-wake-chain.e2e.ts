@@ -2,8 +2,14 @@
 import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { spawn, spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 
-import { workspace, type WorkspaceDto } from "@edd/api-contracts";
+import {
+  workspace,
+  workspaceInspection,
+  type WorkspaceDetailDto,
+  type WorkspaceDto,
+} from "@edd/api-contracts";
 import { dynamodb } from "@edd/config";
 import { CatalogService } from "@edd/control-plane";
 import { baseImage, systemClock, workspacePrincipal } from "@edd/core";
@@ -29,7 +35,7 @@ import { devHeaders, startWebApp, type WebApp } from "./web-app";
  * is covered by services/ssh-gateway/src/ssh-proxy.e2e.ts.
  */
 
-const TABLE = "ecs-dev-desktop-ssh-wake-chain-e2e";
+const TABLE = `ecs-dev-desktop-ssh-wake-chain-e2e-${randomUUID()}`;
 const GATEWAY_SECRET = "c".repeat(64); // 32 bytes hex
 const PROXY_IMAGE = process.env.PROXY_IMAGE ?? "edd-ssh-proxy:e2e";
 const PROXY_PORT = "2224";
@@ -68,6 +74,14 @@ describe("SSH wake-on-connect chain against the real control plane", { timeout: 
     return fetch(`${web.baseUrl}/api${path}`, { headers: devHeaders(OWNER, "member"), ...init });
   }
 
+  async function inspect(): Promise<WorkspaceDetailDto> {
+    const res = await fetch(`${web.baseUrl}/api/admin/workspaces/${wsId}`, {
+      headers: devHeaders("root", "admin"),
+    });
+    expect(res.status).toBe(200);
+    return workspaceInspection.parse(await res.json()).workspace;
+  }
+
   beforeAll(async () => {
     const client = createDynamoClient();
     await dropTable(client, TABLE);
@@ -93,6 +107,19 @@ describe("SSH wake-on-connect chain against the real control plane", { timeout: 
     const ws: WorkspaceDto = workspace.parse(await created.json());
     wsId = ws.id;
     principal = workspacePrincipal(wsId);
+    const createDeadline = Date.now() + 120_000;
+    for (;;) {
+      const cur = await inspect();
+      if (cur.state === "running") {
+        expect(cur.taskId).toBeDefined();
+        expect(cur.volumeId).toBeDefined();
+        break;
+      }
+      if (Date.now() > createDeadline) {
+        throw new Error(`create never converged (state: ${cur.state})`);
+      }
+      await sleep(2_000);
+    }
 
     // Register the connecting client's SSH key for the workspace owner; the gateway
     // authorizes it via the control plane's ssh-authorize.
@@ -105,15 +132,32 @@ describe("SSH wake-on-connect chain against the real control plane", { timeout: 
     });
     expect(reg.status).toBe(201);
 
-    // Scale to zero so the gateway MUST wake it for the chain to work. Manual stop
-    // is cancelable now (route -> `stopping`, detached converge -> `stopped`); wait
-    // for the converge so the workspace is genuinely scaled to zero before the wake.
+    // Take a resume snapshot through the same API/server path that created the
+    // fake volume, then scale to zero so the gateway MUST wake it for the chain
+    // to work. The custom-server stop sweep is a separate module instance in this
+    // harness; production EBS storage is shared, but the in-memory fake is not.
+    expect((await api(`/workspaces/${wsId}/snapshot`, { method: "POST" })).status).toBe(200);
+    expect((await inspect()).latestSnapshotId).toMatch(/^snap-/);
+
+    // Manual stop is cancelable now (route -> `stopping`, converger sweep ->
+    // `stopped`); wait on the full detail record so the resume snapshot is
+    // present before the wake.
     expect((await api(`/workspaces/${wsId}/stop`, { method: "POST" })).status).toBe(200);
     const stopDeadline = Date.now() + 60_000;
     for (;;) {
-      const cur = workspace.parse(await (await api(`/workspaces/${wsId}`)).json());
-      if (cur.state === "stopped") break;
-      if (Date.now() > stopDeadline) throw new Error(`stop never converged (state: ${cur.state})`);
+      const cur = await inspect();
+      if (cur.state === "stopped" && cur.latestSnapshotId !== undefined) break;
+      if (Date.now() > stopDeadline) {
+        throw new Error(
+          [
+            "stop never converged to stopped-with-snapshot",
+            `state=${cur.state}`,
+            `taskId=${cur.taskId ?? "<none>"}`,
+            `volumeId=${cur.volumeId ?? "<none>"}`,
+            `latestSnapshotId=${cur.latestSnapshotId ?? "<none>"}`,
+          ].join("\n"),
+        );
+      }
       await sleep(2_000);
     }
 
@@ -193,22 +237,42 @@ describe("SSH wake-on-connect chain against the real control plane", { timeout: 
         PROXY_PORT,
         `${principal}@localhost`,
       ],
-      { stdio: "ignore" },
+      { stdio: ["ignore", "pipe", "pipe"] },
     );
+    const sshOutput: string[] = [];
+    const sshErrors: string[] = [];
+    ssh.stdout.setEncoding("utf8");
+    ssh.stderr.setEncoding("utf8");
+    ssh.stdout.on("data", (chunk: string) => sshOutput.push(chunk));
+    ssh.stderr.on("data", (chunk: string) => sshErrors.push(chunk));
+    let sshExit: { code: number | null; signal: NodeJS.Signals | null } | undefined;
+    ssh.on("exit", (code, signal) => {
+      sshExit = { code, signal };
+    });
 
     try {
       // The wake really happened through the gateway's machine-auth API calls — only
       // possible if the gateway first authorized the registered key.
-      const deadline = Date.now() + 30_000;
+      const deadline = Date.now() + 60_000;
       let state = before.state;
       while (Date.now() < deadline) {
         state = workspace.parse(await (await api(`/workspaces/${wsId}`)).json()).state;
         if (state === "running") break;
         await new Promise((r) => setTimeout(r, 1_000));
       }
-      expect(state, "gateway must wake the stopped workspace via the real control plane").toBe(
-        "running",
-      );
+      if (state !== "running") {
+        const logs = run("docker", ["logs", proxyContainerId], 10_000);
+        throw new Error(
+          [
+            "gateway must wake the stopped workspace via the real control plane",
+            `state=${state}`,
+            `sshExit=${JSON.stringify(sshExit)}`,
+            `sshStdout=${sshOutput.join("")}`,
+            `sshStderr=${sshErrors.join("")}`,
+            `proxyLogs=${logs.stdout}${logs.stderr}`,
+          ].join("\n"),
+        );
+      }
     } finally {
       ssh.kill("SIGKILL");
     }

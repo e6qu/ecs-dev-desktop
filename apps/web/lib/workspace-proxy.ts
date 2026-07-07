@@ -19,8 +19,9 @@ import { log } from "./logger";
  * sets once validated — so the proxy injects the token exactly once per session. */
 const EDITOR_TOKEN_PARAM = "tkn";
 const EDITOR_TOKEN_COOKIE = "vscode-tkn";
-// The first-party Monaco editor server (services/editor-monaco, backing the
-// monaco/claude/codex modes) sets a DIFFERENTLY-named token cookie than
+// The first-party Monaco editor server (services/editor-monaco; currently also
+// the fallback for claude/codex until their vendor harness launchers land) sets
+// a DIFFERENTLY-named token cookie than
 // code-server's `vscode-tkn`. The proxy must recognize it as "session
 // established" too — otherwise it keeps re-injecting `?tkn` on every document
 // nav and then forwards a clean request the Monaco server rejects with 401.

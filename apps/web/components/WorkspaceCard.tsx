@@ -31,8 +31,8 @@ function restoreDaysLeft(terminatedAt: string): number {
 const EDITOR_LABEL: Record<string, string> = {
   openvscode: "VS Code",
   monaco: "Monaco",
-  claude: "Claude Web",
-  codex: "Codex Web",
+  claude: "Claude Code",
+  codex: "Codex",
 };
 
 const READY_STATES: ReadonlySet<WorkspaceStateDto> = new Set(["running", "idle"]);

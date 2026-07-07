@@ -143,11 +143,12 @@ chmod 0644 "${settings_file}" 2>/dev/null || true
 # Editor selection. The control plane sets EDD_EDITOR_MODE from the workspace's editor choice
 # (a per-session pick at create, else its base-image catalog entry):
 #   monaco         -> the first-party Monaco editor server;
-#   claude / codex -> agent-first sessions: the same Monaco server, but every
-#                     terminal boots straight into the agent CLI (via
-#                     EDD_TERMINAL_COMMAND) instead of a shell — neither vendor
-#                     ships a self-hostable web UI, so the CLI-as-the-app
-#                     terminal is the faithful self-hosted equivalent;
+#   claude / codex -> vendor agent harness modes. Claude Code should use
+#                     Anthropic Remote Control / claude.ai/code against the local
+#                     workspace process; Codex should use OpenAI's app-server /
+#                     local client harness. Until that runtime wiring lands, the
+#                     Monaco terminal fallback keeps the mode usable but is not
+#                     the product target.
 #   anything else (including unset) -> OpenVSCode Server, the historical default.
 # The Monaco server (bundled at /opt/edd-editor-monaco) listens on :3000 under
 # /w/<id>/ and reads the same coordinates from the environment (EDD_WORKSPACE_ID,

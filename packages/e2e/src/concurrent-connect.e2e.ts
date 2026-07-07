@@ -53,6 +53,20 @@ describe(
       return out.taskArns ?? [];
     }
 
+    async function waitForRunningWorkspace(): Promise<void> {
+      const deadline = Date.now() + 120_000;
+      for (;;) {
+        const res = await api(`/workspaces/${wsId}`);
+        expect(res.status).toBe(200);
+        const ws = workspace.parse(await res.json());
+        if (ws.state === "running") return;
+        if (Date.now() > deadline) {
+          throw new Error(`workspace ${wsId} never reached running (last: ${ws.state})`);
+        }
+        await sleep(2_000);
+      }
+    }
+
     beforeAll(async () => {
       app = await startLiveEcsApp({
         runId: RUN_ID,
@@ -85,6 +99,7 @@ describe(
       }
       expect(created.status).toBe(201);
       wsId = workspace.parse(await created.json()).id;
+      await waitForRunningWorkspace();
       expect((await api(`/workspaces/${wsId}/stop`, { method: "POST" })).status).toBe(200);
 
       // Let the first task fully stop so RUNNING-task counting is unambiguous.

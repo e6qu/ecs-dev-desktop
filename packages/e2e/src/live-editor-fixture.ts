@@ -45,6 +45,28 @@ export async function startEditorApp(opts: {
   });
 }
 
+/** Poll the real HTTP API until the workspace reaches `state`. */
+async function waitForWorkspaceState(
+  app: LiveEcsApp,
+  owner: string,
+  id: string,
+  state: WorkspaceDto["state"],
+): Promise<WorkspaceDto> {
+  const deadline = Date.now() + 120_000;
+  for (;;) {
+    const res = await fetch(`${app.web.baseUrl}/api/workspaces/${id}`, {
+      headers: devHeaders(owner, "member"),
+    });
+    expect(res.status).toBe(200);
+    const ws = workspace.parse(await res.json());
+    if (ws.state === state) return ws;
+    if (Date.now() > deadline) {
+      throw new Error(`workspace ${id} never reached ${state} (last: ${ws.state})`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+}
+
 /** Create a workspace through the real HTTP API and assert it reached `running`. */
 export async function createRunningWorkspace(
   app: LiveEcsApp,
@@ -57,6 +79,6 @@ export async function createRunningWorkspace(
   });
   expect(created.status).toBe(201);
   const ws = workspace.parse(await created.json());
-  expect(ws.state).toBe("running");
-  return ws;
+  expect(["provisioning", "running"]).toContain(ws.state);
+  return ws.state === "running" ? ws : waitForWorkspaceState(app, owner, ws.id, "running");
 }

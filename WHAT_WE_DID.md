@@ -2753,3 +2753,32 @@ sockerless **#767** (`f0d96ec3`) landed with bleephub team creator auto-maintain
   (4) the workspaces page's `TRANSITIONAL_STATES` omitted `stopping`, so the card froze.
   All four were real; #3/#4 are prod bugs. Added an end-to-end proxy⇄Monaco token
   handshake test (the "unauthorized" regression guard the flow never had).
+
+**2026-07-07 — Agent web UI direction corrected: reuse vendor harnesses, no EDD
+reimplementation.** The user rejected the build-our-own agent UI path. The intended four
+workspace interfaces are OpenVSCode, Monaco, Claude Code, and Codex. For Claude Code,
+Anthropic's current docs distinguish Claude Code on the web (cloud-hosted) from Remote
+Control, where `claude.ai/code` drives a Claude Code process running locally with local
+tools/project config available; that is the target for `claude` workspaces. For Codex,
+OpenAI's current Codex manual documents `codex app-server` as the local protocol backend
+for rich clients (authentication, conversation history, approvals, streamed events);
+that is the target for `codex` workspaces. Updated code comments/UI labels and continuity
+docs to stop saying the Monaco-terminal CLI fallback is the faithful final product; it is
+now recorded as an implementation gap until runtime wiring replaces it.
+
+**2026-07-07 — PR #193 e2e fixed locally; dependency gate refreshed.** Checked the open
+PR (#193 on `feat/instant-create-provisioning-ux`) and reproduced its red `e2e` path
+locally. The failures came from tests that still assumed workspace creation returned
+`running`; instant create now correctly returns `provisioning` while launch happens
+detached. Updated the e2e helpers/specs to wait for `running` before stop/connect
+assertions. The last failure, SSH wake-chain, was a test-harness mismatch: the custom
+server sweep and compiled Next route handlers have separate in-memory fake-storage
+instances, so the stop sweep cannot snapshot a route-created fake volume. The test now
+creates a resume snapshot through the public snapshot API before stopping, then proves
+the registered-key SSH gateway wakes the stopped workspace through the real
+control-plane `/connect` path. Also improved `wake-and-forward.sh` diagnostics to log
+the `/connect` response body on non-200. `vitest` was bumped to the latest
+age-eligible `4.1.10` and the lockfile refreshed. Verified: `pnpm test`,
+`pnpm lint`, `pnpm test:integ:local`, `pnpm test:e2e:local`, `pnpm check-deps`,
+`pnpm dead-code`, `pnpm cpd`, plus shellcheck/bash/zsh parse sweeps (the zsh
+`nice(5)` warning on the base entrypoint is recorded in `BUGS.md`).
