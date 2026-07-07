@@ -965,7 +965,7 @@ jobs:
           TG_ARN=$(aws --endpoint-url "${ENDPT}" elbv2 describe-target-groups \
             --query "TargetGroups[?starts_with(TargetGroupName,'eddsim-cp')].TargetGroupArn|[0]" \
             --output text)
-          assert_eq "ALB target group health check interval 30" "30" \
+          assert_eq "ALB target group health check interval 10" "10" \
             "$(aws --endpoint-url "${ENDPT}" elbv2 describe-target-groups \
               --target-group-arns "${TG_ARN}" \
               --query 'TargetGroups[0].HealthCheckIntervalSeconds' --output text)"
