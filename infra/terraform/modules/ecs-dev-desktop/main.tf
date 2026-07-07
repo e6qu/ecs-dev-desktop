@@ -31,7 +31,8 @@ locals {
   # SSH ingress (Slice 3) is independent of the editor domain — it has its own zone.
   ssh_enabled = var.ssh_base_domain != ""
 
-  control_plane_fqdn = local.dns_enabled ? "app.${var.domain_name}" : null
+  control_plane_fqdn        = local.dns_enabled ? "app.${var.domain_name}" : null
+  github_image_webhook_path = "/api/integrations/github/image-webhook"
   # `*.<ssh_base_domain>` — every workspace is reached at `<ws-id>.<ssh_base_domain>`.
   ssh_wildcard_fqdn = local.ssh_enabled ? "*.${var.ssh_base_domain}" : null
 

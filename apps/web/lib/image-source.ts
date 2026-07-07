@@ -25,6 +25,9 @@ const DEFAULT_BRANCH = "main";
 const BUILD_TRIGGER = "edd-github-source";
 const RECENT_TRIGGER_LIMIT = 20;
 const TAG_LENGTH = 12;
+export const GITHUB_WEBHOOK_MAX_BODY_BYTES = 256 * 1024;
+const GITHUB_DELIVERY_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const GOLDEN_REBUILD_PREFIXES = ["infra/images/"] as const;
 const GOLDEN_REBUILD_FILES = [
@@ -91,6 +94,11 @@ export interface GithubPushPayload {
   readonly repository?: { readonly full_name?: string };
 }
 
+export interface GithubWebhookRejection {
+  readonly status: 400 | 401 | 413;
+  readonly error: string;
+}
+
 export function imageSourceConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ImageSourceConfig {
   const repo = env.EDD_IMAGE_SOURCE_REPO;
   if (repo === undefined || repo === "") throw new Error("EDD_IMAGE_SOURCE_REPO is required");
@@ -103,6 +111,44 @@ export function imageSourceConfigFromEnv(env: NodeJS.ProcessEnv = process.env): 
     branch: env.EDD_IMAGE_SOURCE_BRANCH ?? DEFAULT_BRANCH,
     webhookSecret,
   };
+}
+
+export function validateGithubWebhookHeaders(headers: Headers): GithubWebhookRejection | null {
+  const event = headers.get("x-github-event");
+  if (event !== "push") return { status: 400, error: "unsupported event" };
+  const delivery = headers.get("x-github-delivery");
+  if (delivery === null || !GITHUB_DELIVERY_ID_RE.test(delivery)) {
+    return { status: 400, error: "invalid delivery id" };
+  }
+  const contentType = headers.get("content-type");
+  if (contentType?.split(";")[0]?.trim().toLowerCase() !== "application/json") {
+    return { status: 400, error: "content-type must be application/json" };
+  }
+  const contentLength = headers.get("content-length");
+  if (contentLength !== null) {
+    const parsed = Number(contentLength);
+    if (!Number.isSafeInteger(parsed) || parsed < 0) {
+      return { status: 400, error: "invalid content-length" };
+    }
+    if (parsed > GITHUB_WEBHOOK_MAX_BODY_BYTES) {
+      return { status: 413, error: "payload too large" };
+    }
+  }
+  return null;
+}
+
+export function validateGithubWebhookBody(
+  rawBody: string,
+  signatureHeader: string | null,
+  secret: string,
+): GithubWebhookRejection | null {
+  if (Buffer.byteLength(rawBody, "utf8") > GITHUB_WEBHOOK_MAX_BODY_BYTES) {
+    return { status: 413, error: "payload too large" };
+  }
+  if (!verifyGithubSignature(rawBody, signatureHeader, secret)) {
+    return { status: 401, error: "invalid signature" };
+  }
+  return null;
 }
 
 export function decideImageSourceBuild(paths: readonly string[]): {

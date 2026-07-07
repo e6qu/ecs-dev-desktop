@@ -75,8 +75,11 @@ operation not permitted` on the background process lines. Recorded in `BUGS.md`;
   shows repo/branch observed-vs-handled SHAs, source trigger history, and CodeBuild
   metadata; `/api/integrations/github/image-webhook` accepts verified GitHub `push`
   webhooks and fails loudly when the repo or webhook secret is missing. There is no
-  polling fallback. To make it live: apply the CodeBuild buildspec update, roll the
-  control plane with `EDD_IMAGE_SOURCE_REPO=e6qu/ecs-dev-desktop`, create the required
+  polling fallback. Follow-up branch `feat/harden-image-webhook` narrowed the public
+  receiver with required GitHub headers, content type, body cap, HMAC-before-parse,
+  and an ALB WAF scoped to the webhook path (POST/JSON/rate checks). To make it live:
+  merge that PR, apply the CodeBuild buildspec/WAF update, roll the control plane with
+  `EDD_IMAGE_SOURCE_REPO=e6qu/ecs-dev-desktop`, create the required
   `EDD_IMAGE_SOURCE_WEBHOOK_SECRET` in Secrets Manager, configure the GitHub webhook,
   then verify the first golden build from `/admin/images`. This controls deployed
   workspace/golden image rebuilds only; CI still owns control-plane release images so

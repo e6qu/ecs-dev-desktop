@@ -147,7 +147,11 @@ Manager secret named `<EDD_NAME>/EDD_IMAGE_SOURCE_WEBHOOK_SECRET` makes it part 
 the generated `auth_secret_arns` map). The webhook is HMAC-verified via
 `X-Hub-Signature-256`; there is no polling backstop. If source sync is
 misconfigured, `/admin/images` surfaces the API error instead of presenting a
-disabled or "not configured" state.
+disabled or "not configured" state. The public receiver is intentionally narrow:
+the module attaches an AWS WAF web ACL to the control-plane ALB that blocks
+non-`POST` and non-JSON requests on the webhook path and rate-limits that path.
+The app then requires `X-GitHub-Event: push`, a UUID-shaped `X-GitHub-Delivery`,
+`application/json`, a small body, and a valid HMAC before parsing the payload.
 
 When a new commit changes workspace-image inputs (`infra/images/**`,
 `pnpm-lock.yaml`, or the image publish/build wiring), EDD starts the existing
