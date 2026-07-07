@@ -3,9 +3,9 @@
 > Where the project is right now. Update after every task; past tense at PR close.
 
 **Last updated:** 2026-07-07 (live at `https://app.edd.e6qu.dev`, control-plane tag
-`eee7176`, catalog workspace image `omnibus:db75d1f`). PR #193 (`021ae3c`) and PR
-#194 (`bf6cd22`) were merged to `main`. Shipped + live this stretch, on top of the
-merged post-launch wave:
+`eee7176`, catalog workspace image `omnibus:db75d1f`). PR #193 (`021ae3c`), PR
+#194 (`bf6cd22`), and PR #195 (`eca7352`) were merged to `main`. Shipped + live
+this stretch, on top of the merged post-launch wave:
 
 - **Instant create** — `reserveWorkspace` returns the pre-generated URL in <1s, launch
   runs detached (fixed the 504 where blocking create outran the ALB 60s timeout).
@@ -20,7 +20,9 @@ merged post-launch wave:
   when workspace-image inputs changed, and exposes source/trigger/build status in
   `/admin/images`. There is no polling fallback; missing repo/webhook-secret config
   fails loudly. CI still owns control-plane release image builds so EDD remains
-  releasable without an existing EDD deployment.
+  releasable without an existing EDD deployment. Follow-up branch
+  `feat/harden-image-webhook` narrows that public receiver with header/body guards
+  in the route plus an ALB-associated WAF scoped to the webhook path.
 - **Cancelable `stopping` state** — manual stop → `stopping` (snapshot + scale-to-zero
   after a grace) with a cancel/resume; converged by an in-process server sweep +
   reconciler backstop. Fixed several real bugs found by reproducing locally (DynamoDB
@@ -48,8 +50,9 @@ The branch was deployed control-plane-only to real AWS as image tag
 The production deploy used `EDD_BUILD_TARGET=web`, so it did **not** build a
 production workspace/golden image for `eee7176`; the live catalog still points at
 `729079515331.dkr.ecr.eu-west-1.amazonaws.com/edd-prod/golden/omnibus:db75d1f`.
-Remaining: apply the CodeBuild buildspec update, deploy the control-plane source
-sync flow with `EDD_IMAGE_SOURCE_REPO=e6qu/ecs-dev-desktop`, create the required
+Remaining: merge the webhook hardening PR, apply the CodeBuild buildspec/WAF
+update, deploy the control-plane source sync flow with
+`EDD_IMAGE_SOURCE_REPO=e6qu/ecs-dev-desktop`, create the required
 `EDD_IMAGE_SOURCE_WEBHOOK_SECRET` secret, configure the GitHub webhook delivery,
 and run the first control-plane-started golden build. User live-testing;
 replacing the `claude`/`codex`

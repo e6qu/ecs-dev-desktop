@@ -2853,3 +2853,15 @@ existing EDD deployment. Verified with targeted web tests and shellcheck/bash/zs
 needed an unsandboxed rerun because the web handshake test binds `127.0.0.1`), `pnpm
 dead-code`, `pnpm cpd` (known below-threshold clone report), `pnpm check-deps`,
 `actionlint`, and `terraform fmt -check -recursive infra/terraform`.
+
+**2026-07-07 — Scoped the public GitHub image-webhook receiver.** After PR #195
+merged to `main` at `eca7352`, opened a follow-up branch to narrow the only
+unauthenticated integration route. The route now rejects anything except a GitHub
+`push` envelope with a UUID-shaped delivery id, `application/json`, a bounded body,
+and a valid `X-Hub-Signature-256`; it verifies HMAC before JSON parsing. Added
+focused route/unit tests for malformed envelopes and invalid signatures. The
+Terraform module now attaches a regional WAF web ACL to the control-plane ALB,
+with rules scoped to `/api/integrations/github/image-webhook`: block non-`POST`,
+block non-JSON `POST`, and rate-limit the path. The sim fixture gained the WAFv2
+endpoint, so the same module path validates against real AWS or sockerless by
+coordinates only.

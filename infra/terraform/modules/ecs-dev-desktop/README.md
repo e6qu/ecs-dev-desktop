@@ -32,10 +32,12 @@ DynamoDB single-table (matching `@edd/db`), KMS key, ECR repos, IAM roles
 (execution, control-plane, reconciler, the ECS managed-EBS infrastructure role,
 the scheduler role), the ECS cluster + control-plane service + autoscaling, the
 ALB + listeners + (optional) ACM/Route53, the reconciler schedule, CloudWatch
-log groups, and — when `ssh_base_domain` is set — the **SSH ingress** (a network
-LB with a raw TCP:22 listener, a target group, the SSH-gateway ECS service, and a
-`*.<ssh_base_domain>` wildcard) so a workspace is reachable as
-`ssh <principal>@<ws-id>.<ssh_base_domain>` (registered-key dual-trust auth).
+log groups, a WAF web ACL associated to the control-plane ALB that narrows the
+public GitHub image-webhook path, and — when `ssh_base_domain` is set — the **SSH
+ingress** (a network LB with a raw TCP:22 listener, a target group, the
+SSH-gateway ECS service, and a `*.<ssh_base_domain>` wildcard) so a workspace is
+reachable as `ssh <principal>@<ws-id>.<ssh_base_domain>` (registered-key
+dual-trust auth).
 
 What it does **not** do (app/runtime layer, by design): create the auth secrets
 (you pass their ARNs). The browser→VS Code workspace proxy is served by the

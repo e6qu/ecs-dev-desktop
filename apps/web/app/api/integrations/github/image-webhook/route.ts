@@ -5,7 +5,8 @@ import {
   imageSourceConfigFromEnv,
   getImageSourceService,
   observationFromGithubPush,
-  verifyGithubSignature,
+  validateGithubWebhookBody,
+  validateGithubWebhookHeaders,
   type GithubPushPayload,
 } from "../../../../../lib/image-source";
 import { withObservability } from "../../../../../lib/observability";
@@ -13,12 +14,19 @@ import { withObservability } from "../../../../../lib/observability";
 async function handlePOST(req: Request) {
   const cfg = imageSourceConfigFromEnv();
 
-  const raw = await req.text();
-  if (!verifyGithubSignature(raw, req.headers.get("x-hub-signature-256"), cfg.webhookSecret)) {
-    return NextResponse.json({ error: "invalid signature" }, { status: 401 });
+  const headerRejection = validateGithubWebhookHeaders(req.headers);
+  if (headerRejection !== null) {
+    return NextResponse.json({ error: headerRejection.error }, { status: headerRejection.status });
   }
-  const event = req.headers.get("x-github-event");
-  if (event !== "push") return NextResponse.json({ ignored: true, reason: "unsupported event" });
+  const raw = await req.text();
+  const bodyRejection = validateGithubWebhookBody(
+    raw,
+    req.headers.get("x-hub-signature-256"),
+    cfg.webhookSecret,
+  );
+  if (bodyRejection !== null) {
+    return NextResponse.json({ error: bodyRejection.error }, { status: bodyRejection.status });
+  }
 
   let payload: GithubPushPayload;
   try {

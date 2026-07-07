@@ -47,6 +47,7 @@ provider "aws" {
     cloudtrail     = var.sim_endpoint
     sqs            = var.sim_endpoint
     budgets        = var.sim_endpoint
+    wafv2          = var.sim_endpoint
   }
 }
 

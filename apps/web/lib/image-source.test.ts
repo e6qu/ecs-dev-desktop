@@ -5,10 +5,24 @@ import { describe, expect, it } from "vitest";
 
 import {
   decideImageSourceBuild,
+  GITHUB_WEBHOOK_MAX_BODY_BYTES,
   imageSourceConfigFromEnv,
   observationFromGithubPush,
+  validateGithubWebhookBody,
+  validateGithubWebhookHeaders,
   verifyGithubSignature,
 } from "./image-source";
+
+const delivery = "123e4567-e89b-42d3-a456-426614174000";
+
+function webhookHeaders(extra: Record<string, string> = {}): Headers {
+  return new Headers({
+    "content-type": "application/json",
+    "x-github-delivery": delivery,
+    "x-github-event": "push",
+    ...extra,
+  });
+}
 
 describe("decideImageSourceBuild", () => {
   it("starts a golden build when workspace image inputs changed", () => {
@@ -59,6 +73,62 @@ describe("verifyGithubSignature", () => {
     expect(verifyGithubSignature(body, signature, secret)).toBe(true);
     expect(verifyGithubSignature(`${body}\n`, signature, secret)).toBe(false);
     expect(verifyGithubSignature(body, "sha1=bad", secret)).toBe(false);
+  });
+});
+
+describe("validateGithubWebhookHeaders", () => {
+  it("accepts the narrow GitHub push webhook envelope", () => {
+    expect(validateGithubWebhookHeaders(webhookHeaders())).toBeNull();
+    expect(
+      validateGithubWebhookHeaders(
+        webhookHeaders({ "content-type": "application/json; charset=utf-8" }),
+      ),
+    ).toBeNull();
+  });
+
+  it("rejects unsupported events, missing delivery ids, wrong content type, and oversized declared bodies", () => {
+    expect(validateGithubWebhookHeaders(webhookHeaders({ "x-github-event": "ping" }))).toEqual({
+      status: 400,
+      error: "unsupported event",
+    });
+    expect(
+      validateGithubWebhookHeaders(webhookHeaders({ "x-github-delivery": "not-a-uuid" })),
+    ).toEqual({
+      status: 400,
+      error: "invalid delivery id",
+    });
+    expect(validateGithubWebhookHeaders(webhookHeaders({ "content-type": "text/plain" }))).toEqual({
+      status: 400,
+      error: "content-type must be application/json",
+    });
+    expect(
+      validateGithubWebhookHeaders(
+        webhookHeaders({ "content-length": String(GITHUB_WEBHOOK_MAX_BODY_BYTES + 1) }),
+      ),
+    ).toEqual({ status: 413, error: "payload too large" });
+  });
+});
+
+describe("validateGithubWebhookBody", () => {
+  it("requires a valid HMAC over the raw body", () => {
+    const body = '{"after":"abc"}';
+    const secret = "webhook-secret";
+    const signature = `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
+    expect(validateGithubWebhookBody(body, signature, secret)).toBeNull();
+    expect(validateGithubWebhookBody(`${body}\n`, signature, secret)).toEqual({
+      status: 401,
+      error: "invalid signature",
+    });
+  });
+
+  it("rejects oversized raw bodies even when content-length was absent", () => {
+    const body = "x".repeat(GITHUB_WEBHOOK_MAX_BODY_BYTES + 1);
+    const secret = "webhook-secret";
+    const signature = `sha256=${createHmac("sha256", secret).update(body).digest("hex")}`;
+    expect(validateGithubWebhookBody(body, signature, secret)).toEqual({
+      status: 413,
+      error: "payload too large",
+    });
   });
 });
 
