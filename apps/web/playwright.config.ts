@@ -34,10 +34,14 @@ export default defineConfig({
   reporter: IS_CI ? "line" : "list",
   use: { baseURL: BASE_URL, trace: "on-first-retry" },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
-  // Run against a production build, not `next dev`: dev/turbopack HMR is unreliable
-  // under headless automation (the client never hydrates), and prod mirrors reality.
+  // Run against the CUSTOM server (server.ts), not `next start` — production uses
+  // server.ts, and it is what hosts the `/w/<id>/` editor proxy AND the background
+  // sweeps (presence + stopping-converger). `next start` runs only Next's built-in
+  // server, so those never ran under playwright — which is why the cancelable-stop
+  // flow (stopping → stopped, driven by the sweep) failed here. A production build
+  // first (server.ts calls next({dev:false}).prepare(), which needs `.next`).
   webServer: {
-    command: `pnpm exec next build && pnpm exec next start -p ${PORT.toString()}`,
+    command: `pnpm exec next build && PORT=${PORT.toString()} NODE_ENV=production pnpm exec tsx server.ts`,
     url: `${BASE_URL}/login`,
     timeout: 240_000,
     reuseExistingServer: !IS_CI,
