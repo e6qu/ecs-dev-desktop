@@ -57,7 +57,8 @@ zsh -n "$f"; done` exits 0, but `zsh -n infra/images/base/entrypoint.sh` prints
   wakes on its OLD image; only a fresh create picks up the repointed catalog. Latest check after PR #193
   merged: the PR's `golden-images` CI job passed, but the production deploy used `EDD_BUILD_TARGET=web` and
   did not publish an `eee7176` golden image; the live catalog points at `omnibus:db75d1f` while ECR also has
-  newer unselected golden tags.
+  newer unselected golden tags. The code now has post-merge async `golden` builds and admin-console tracking,
+  but the catalog still is not automatically repointed to a newly built workspace image.
 
 - **CodeBuild image rebuild silently no-ops on a re-run against the same branch — known footgun (2026-07-06).**
   `terraform_data.build_images_codebuild`'s `triggers_replace` (`infra/terraform/modules/ecs-dev-desktop/build-codebuild.tf`)

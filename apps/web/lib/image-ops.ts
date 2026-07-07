@@ -10,15 +10,8 @@ import {
   ListBuildsForProjectCommand,
   StartBuildCommand,
 } from "@aws-sdk/client-codebuild";
-import {
-  BatchGetImageCommand,
-  DescribeImagesCommand,
-  ECRClient,
-} from "@aws-sdk/client-ecr";
-import {
-  CloudWatchLogsClient,
-  GetLogEventsCommand,
-} from "@aws-sdk/client-cloudwatch-logs";
+import { BatchGetImageCommand, DescribeImagesCommand, ECRClient } from "@aws-sdk/client-ecr";
+import { CloudWatchLogsClient, GetLogEventsCommand } from "@aws-sdk/client-cloudwatch-logs";
 import type {
   BuildLogChunkDto,
   BuildStatusDto,
@@ -40,6 +33,8 @@ export interface BuildObservation {
 /** A build in the project's history (newest-first list). */
 export interface BuildSummary {
   readonly buildId: string;
+  readonly target: BuildTargetDto;
+  readonly tag: string;
   readonly status: BuildStatusDto;
   readonly phase?: string;
   readonly startedAt?: string;
@@ -47,8 +42,8 @@ export interface BuildSummary {
   readonly durationMs?: number;
   /** The git ref the build resolved to (from CodeBuild). */
   readonly ref?: string;
-  /** The IAM/identity that started it (CodeBuild's initiator). */
-  readonly initiator?: string;
+  /** The user/system that started it. */
+  readonly triggeredBy: string;
 }
 
 /** The narrow port the admin Images routes depend on. */
@@ -92,7 +87,10 @@ interface ManifestLayer {
 interface ImageManifest {
   readonly config?: { readonly size?: number };
   readonly layers?: readonly ManifestLayer[];
-  readonly manifests?: readonly { readonly digest: string; readonly platform?: { readonly architecture?: string } }[];
+  readonly manifests?: readonly {
+    readonly digest: string;
+    readonly platform?: { readonly architecture?: string };
+  }[];
 }
 
 /** Config the AWS ImageOps adapter reads from the environment. */
@@ -102,6 +100,59 @@ interface AwsImageOpsConfig {
   readonly codeBuildProject: string;
   /** CloudWatch log group the CodeBuild project writes to. */
   readonly buildLogGroup: string;
+}
+
+interface CodeBuildEnvVar {
+  readonly name?: string;
+  readonly value?: string;
+}
+
+interface CodeBuildBuildSummaryInput {
+  readonly id?: string;
+  readonly buildStatus?: string;
+  readonly currentPhase?: string;
+  readonly startTime?: Date;
+  readonly endTime?: Date;
+  readonly resolvedSourceVersion?: string;
+  readonly initiator?: string;
+  readonly environment?: { readonly environmentVariables?: readonly CodeBuildEnvVar[] };
+}
+
+const UNKNOWN_BUILD_VALUE = "unknown";
+
+function envValue(build: CodeBuildBuildSummaryInput, name: string): string | undefined {
+  return build.environment?.environmentVariables?.find((v) => v.name === name)?.value;
+}
+
+function toBuildTarget(value: string | undefined): BuildTargetDto {
+  if (value === "web" || value === "golden" || value === "all") return value;
+  return "all";
+}
+
+export function buildSummaryFromCodeBuild(build: CodeBuildBuildSummaryInput): BuildSummary | null {
+  if (build.id === undefined) return null;
+  const startedAt = build.startTime?.toISOString();
+  const endedAt = build.endTime?.toISOString();
+  const sourceVersion = envValue(build, "SOURCE_VERSION");
+  const sourceRef = envValue(build, "SOURCE_REF");
+  const resolvedRef =
+    sourceVersion !== undefined && sourceVersion !== ""
+      ? sourceVersion
+      : (build.resolvedSourceVersion ?? sourceRef);
+  return {
+    buildId: build.id,
+    target: toBuildTarget(envValue(build, "EDD_BUILD_TARGET")),
+    tag: envValue(build, "TAG") ?? UNKNOWN_BUILD_VALUE,
+    status: toBuildStatus(build.buildStatus),
+    ...(build.currentPhase === undefined ? {} : { phase: build.currentPhase }),
+    ...(startedAt === undefined ? {} : { startedAt }),
+    ...(endedAt === undefined ? {} : { endedAt }),
+    ...(build.startTime !== undefined && build.endTime !== undefined
+      ? { durationMs: build.endTime.getTime() - build.startTime.getTime() }
+      : {}),
+    ...(resolvedRef === undefined ? {} : { ref: resolvedRef }),
+    triggeredBy: envValue(build, "EDD_TRIGGER") ?? build.initiator ?? UNKNOWN_BUILD_VALUE,
+  };
 }
 
 class AwsImageOps implements ImageOps {
@@ -177,13 +228,15 @@ class AwsImageOps implements ImageOps {
 
   async listImageTags(repo: string, limit: number): Promise<string[]> {
     const res = await this.ecr.send(new DescribeImagesCommand({ repositoryName: repo }));
-    return (res.imageDetails ?? [])
-      .filter((d) => (d.imageTags?.length ?? 0) > 0)
-      .sort((a, b) => (b.imagePushedAt?.getTime() ?? 0) - (a.imagePushedAt?.getTime() ?? 0))
-      .flatMap((d) => d.imageTags ?? [])
-      // Skip the per-arch suffixed tags; show the manifest tags operators recognize.
-      .filter((t) => !/-amd64$|-arm64$/.test(t))
-      .slice(0, limit);
+    return (
+      (res.imageDetails ?? [])
+        .filter((d) => (d.imageTags?.length ?? 0) > 0)
+        .sort((a, b) => (b.imagePushedAt?.getTime() ?? 0) - (a.imagePushedAt?.getTime() ?? 0))
+        .flatMap((d) => d.imageTags ?? [])
+        // Skip the per-arch suffixed tags; show the manifest tags operators recognize.
+        .filter((t) => !/-amd64$|-arm64$/.test(t))
+        .slice(0, limit)
+    );
   }
 
   async startBuild(input: { target: BuildTargetDto; tag: string; ref: string }): Promise<string> {
@@ -194,6 +247,7 @@ class AwsImageOps implements ImageOps {
           { name: "EDD_BUILD_TARGET", value: input.target, type: "PLAINTEXT" },
           { name: "TAG", value: input.tag, type: "PLAINTEXT" },
           { name: "SOURCE_REF", value: input.ref, type: "PLAINTEXT" },
+          { name: "EDD_TRIGGER", value: "admin", type: "PLAINTEXT" },
         ],
       }),
     );
@@ -227,30 +281,12 @@ class AwsImageOps implements ImageOps {
     const byId = new Map((res.builds ?? []).map((b) => [b.id, b]));
     return ids.flatMap((id) => {
       const b = byId.get(id);
-      if (b === undefined) return [];
-      const startedAt = b.startTime?.toISOString();
-      const endedAt = b.endTime?.toISOString();
-      return [
-        {
-          buildId: id,
-          status: toBuildStatus(b.buildStatus),
-          ...(b.currentPhase === undefined ? {} : { phase: b.currentPhase }),
-          ...(startedAt === undefined ? {} : { startedAt }),
-          ...(endedAt === undefined ? {} : { endedAt }),
-          ...(b.startTime !== undefined && b.endTime !== undefined
-            ? { durationMs: b.endTime.getTime() - b.startTime.getTime() }
-            : {}),
-          ...(b.resolvedSourceVersion === undefined ? {} : { ref: b.resolvedSourceVersion }),
-          ...(b.initiator === undefined ? {} : { initiator: b.initiator }),
-        },
-      ];
+      const summary = b === undefined ? null : buildSummaryFromCodeBuild(b);
+      return summary === null ? [] : [summary];
     });
   }
 
-  async getBuildLogs(
-    observation: BuildObservation,
-    nextToken?: string,
-  ): Promise<BuildLogChunkDto> {
+  async getBuildLogs(observation: BuildObservation, nextToken?: string): Promise<BuildLogChunkDto> {
     if (observation.logGroup === undefined || observation.logStream === undefined) {
       return { lines: [] };
     }

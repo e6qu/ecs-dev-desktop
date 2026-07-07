@@ -131,6 +131,7 @@ resource "aws_codebuild_project" "build_images" {
           VARIANTS: ${join(" ", var.golden_image_repos)}
           SOURCE_REPO: ${var.codebuild_source_repo}
           SOURCE_REF: ${var.codebuild_source_ref}
+          SOURCE_VERSION: ""
           EDD_BUILD_TARGET: ${var.build_target}
           EDD_BUILD_ARCHS: amd64
       phases:
@@ -141,6 +142,7 @@ resource "aws_codebuild_project" "build_images" {
             - n 22
             - git clone "$SOURCE_REPO" -b "$SOURCE_REF" repo
             - cd repo
+            - if [ -n "$SOURCE_VERSION" ]; then git checkout "$SOURCE_VERSION"; fi
             - corepack enable && corepack prepare pnpm@10.33.3 --activate
             - pnpm install --frozen-lockfile
         build:

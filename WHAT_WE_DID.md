@@ -2807,3 +2807,18 @@ workspace image tagged `eee7176` and did not repoint the catalog. Verified in AW
 the live catalog entry currently launches
 `729079515331.dkr.ecr.eu-west-1.amazonaws.com/edd-prod/golden/omnibus:db75d1f`.
 Recorded the distinction in `STATUS.md`, `BUGS.md`, and `DO_NEXT.md`.
+
+**2026-07-07 — Added asynchronous post-merge workspace image builds, trackable from
+the admin control plane.** Added `.github/workflows/post-merge-workspace-images.yml`:
+on every push to `main` it assumes `PROD_IMAGE_BUILD_AWS_ROLE_ARN` and starts the
+existing deployment CodeBuild project with `EDD_BUILD_TARGET=golden`, `TAG=<short
+sha>`, `SOURCE_REF=main`, `SOURCE_VERSION=<exact merge sha>`, and
+`EDD_TRIGGER=github-main-merge`; the workflow exits after `StartBuild` so the heavy
+workspace image build remains asynchronous. Updated the Terraform CodeBuild buildspec
+to honor `SOURCE_VERSION` by checking out the exact commit after cloning the branch.
+Enhanced `/admin/images` build history to surface target, tag, trigger, and exact
+source version, so auto-started builds are visible alongside admin-triggered builds
+and their live logs. Docs now list the required workflow variables. Verified with
+`pnpm lint`, `pnpm test`, `pnpm --filter @edd/web build`, `actionlint`, `terraform
+fmt -check -recursive infra/terraform`, `pnpm check-deps`, `pnpm dead-code`, and
+`pnpm cpd` (existing clone report / `.jscpd.json` `$schema` warning only).
