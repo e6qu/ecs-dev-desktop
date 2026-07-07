@@ -76,6 +76,22 @@
   temp root. The focused handshake test passed, and full `pnpm test` passed when
   loopback listeners were allowed.
 
+- **Live Playwright e2e harness missed required image-source coordinates —
+  FIXED in follow-up branch (2026-07-07).** After the standard Playwright job was
+  fixed, PR #198 CI `e2e` failed in `pnpm --filter web test:pw:live` with the same
+  fail-loud startup error, `EDD_IMAGE_SOURCE_REPO is required`. The live harness
+  now writes explicit image-source repo/branch/app/golden/webhook-secret
+  coordinates into `temp/live-pw.env`; no production fallback was added. Local
+  `pnpm --filter web test:pw:live` passed the browser create-stop-wake-delete
+  lifecycle against the container-mode simulator.
+
+- **`pnpm/action-setup` emitted npm self-installer audit warnings in CI — FIXED
+  in follow-up branch (2026-07-07).** Bumping to `v6.0.9` removed the stale pin but
+  did not remove the warning because the action installs itself through npm and
+  reports its own transitive audit state. Workflows now use `actions/setup-node`
+  plus `corepack enable`, so CI consumes the repo-pinned `packageManager`
+  (`pnpm@10.33.3`) without the pnpm action self-installer.
+
 - **Dev-auth used a shared password fallback — FIXED in follow-up branch
   (2026-07-07).** `matchDevUser` previously accepted per-account password or
   shared `EDD_DEV_PASSWORD`/default `dev`. That hid missing per-user passwords.

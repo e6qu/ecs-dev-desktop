@@ -204,8 +204,12 @@ Error`, so the portal's existing `e.message` shows it. api-client 4 tests; build
   fixed with explicit Playwright-only coordinates, and the observed
   `NO_COLOR`/`FORCE_COLOR` warning was removed at the Playwright process boundary.
   CI action warnings were cleaned by bumping age-eligible `actions/cache` and
-  `pnpm/action-setup` releases, and the `editor-token-handshake` test harness was
-  hardened so loopback bind failures failed immediately and teardown stayed safe.
+  then replacing `pnpm/action-setup` with Corepack after its self-installer still
+  emitted audit warnings. The `editor-token-handshake` test harness was hardened
+  so loopback bind failures failed immediately and teardown stayed safe. The live
+  Playwright e2e harness was then fixed with the same explicit image-source
+  coordinates, and its browser lifecycle passed locally against the container-mode
+  simulator.
 
 - **2026-06-04** — **Terraform platform module (deploy IaC) + sim-tested.** Wrote a
   reusable, parametric `infra/terraform/modules/ecs-dev-desktop` (Terraform/Terragrunt,

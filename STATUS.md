@@ -84,7 +84,16 @@ verification passed: `pnpm --filter web test:pw` passed 18/18 with no warning
 output, `pnpm test` passed after allowing loopback listeners, and the
 `editor-token-handshake` harness now failed fast on local-server bind errors and
 cleaned its temp root instead of timing out and dereferencing an uninitialized
-server during teardown.
+server during teardown. CI `e2e` then exposed the same required-coordinate gap in
+the live Playwright harness; `live-cloud-setup.ts` now writes explicit image-source
+coordinates into `temp/live-pw.env`, and local `pnpm --filter web test:pw:live`
+passed the browser create-stop-wake-delete lifecycle against the container-mode
+sim. The pnpm setup warning in CI was removed at the source by replacing
+`pnpm/action-setup` with `corepack enable` after `actions/setup-node`, using the
+repo's pinned `packageManager` version instead of the action's npm self-installer.
+The dependency gate also found age-eligible drift in `typescript-eslint`
+(`8.62.1` to `8.63.0`), so the root devDependency and lockfile were refreshed and
+`pnpm check-deps` passed.
 
 Shipped in this follow-up branch:
 
