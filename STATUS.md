@@ -3,9 +3,9 @@
 > Where the project is right now. Update after every task; past tense at PR close.
 
 **Last updated:** 2026-07-07 (live at `https://app.edd.e6qu.dev`, control-plane tag
-`eee7176`, golden image `omnibus:fafb9fe`). All work below is on branch
-`feat/instant-create-provisioning-ux` (well ahead of the unmerged PR #193; ask before
-opening a new PR). Shipped + live this stretch, on top of the merged post-launch wave:
+`eee7176`, catalog workspace image `omnibus:db75d1f`). PR #193 was merged to `main`
+at merge commit `021ae3c` after all checks passed. Shipped + live this stretch, on
+top of the merged post-launch wave:
 
 - **Instant create** — `reserveWorkspace` returns the pre-generated URL in <1s, launch
   runs detached (fixed the 504 where blocking create outran the ALB 60s timeout).
@@ -13,7 +13,10 @@ opening a new PR). Shipped + live this stretch, on top of the merged post-launch
   only (~3min / ~7min total vs ~22min); `golden` rebuilds workspace images separately.
 - **Images admin console** (`/admin/images`) — per-image size + per-layer breakdown,
   trigger builds, last-20 build history, live CodeBuild logs (ImageOps port + AWS
-  adapter + fake).
+  adapter + fake). Post-merge workspace image automation was added on `main`: a new
+  `post-merge-workspace-images` workflow starts an async `EDD_BUILD_TARGET=golden`
+  CodeBuild run after every push to `main`, and the admin console now shows build
+  target/tag/trigger/exact source version so those runs are trackable.
 - **Cancelable `stopping` state** — manual stop → `stopping` (snapshot + scale-to-zero
   after a grace) with a cancel/resume; converged by an in-process server sweep +
   reconciler backstop. Fixed several real bugs found by reproducing locally (DynamoDB
@@ -32,11 +35,19 @@ opening a new PR). Shipped + live this stretch, on top of the merged post-launch
 Local verification on the branch is green after the PR #193 e2e fixes: `pnpm test`,
 `pnpm lint`, `pnpm test:integ:local`, `pnpm test:e2e:local`, `pnpm check-deps`,
 `pnpm dead-code`, and `pnpm cpd` all pass (with the existing jscpd clone report/config
-warning). The branch was deployed control-plane-only to real AWS as image tag
+warning). PR #193 CI is green, including `golden-images`; that CI job validates the
+workspace image build path, but it does not publish/repoint the production catalog.
+The branch was deployed control-plane-only to real AWS as image tag
 `eee7176`: CodeBuild succeeded, ECS rolled to task definition revision 25
 (control-plane 2/2, SSH gateway 1/1), and `scripts/install.sh --verify` is green
 (ALB health 200, `/api/readyz` 200, reconciler enabled, no Terraform drift).
-Remaining: user live-testing; replacing the `claude`/`codex`
+The production deploy used `EDD_BUILD_TARGET=web`, so it did **not** build a
+production workspace/golden image for `eee7176`; the live catalog still points at
+`729079515331.dkr.ecr.eu-west-1.amazonaws.com/edd-prod/golden/omnibus:db75d1f`.
+Remaining: push/deploy the post-merge image automation (configure
+`PROD_IMAGE_BUILD_AWS_ROLE_ARN`, apply the CodeBuild buildspec update, and roll the
+control plane so `/admin/images` shows the richer metadata); user live-testing;
+replacing the `claude`/`codex`
 Monaco-terminal fallback with the vendor harnesses now explicitly chosen by the user
 (Anthropic Remote Control / `claude.ai/code` for Claude Code; OpenAI `codex
 app-server` / first-party local client protocol for Codex).

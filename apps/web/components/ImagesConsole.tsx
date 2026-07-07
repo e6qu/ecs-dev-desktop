@@ -16,12 +16,14 @@ type ImageEntry = ImageMetadataDto | { repo: string; tag: null };
 type BuildRow = Partial<ImageBuildRecordDto> & {
   buildId: string;
   status: string;
+  target?: string;
+  tag?: string;
   phase?: string;
   startedAt?: string;
   endedAt?: string;
   durationMs?: number;
   ref?: string;
-  initiator?: string;
+  triggeredBy?: string;
 };
 
 const BUILDS_POLL_MS = 5000;
@@ -179,8 +181,11 @@ export function ImagesConsole() {
             <thead>
               <tr>
                 <th>status</th>
+                <th>target</th>
+                <th>tag</th>
                 <th>build</th>
                 <th>ref</th>
+                <th>trigger</th>
                 <th>started</th>
                 <th>duration</th>
                 <th />
@@ -194,16 +199,27 @@ export function ImagesConsole() {
                     {b.phase !== undefined && b.status === "in_progress" ? ` · ${b.phase}` : ""}
                   </td>
                   <td className="mono" style={{ fontSize: 12 }}>
+                    {b.target ?? "—"}
+                  </td>
+                  <td className="mono" style={{ fontSize: 12 }}>
+                    {b.tag ?? "—"}
+                  </td>
+                  <td className="mono" style={{ fontSize: 12 }}>
                     {b.buildId.split(":").pop()}
                   </td>
                   <td className="mono" style={{ fontSize: 12 }}>
                     {b.ref?.slice(0, 10) ?? "—"}
                   </td>
                   <td className="mono" style={{ fontSize: 12 }}>
+                    {b.triggeredBy ?? "—"}
+                  </td>
+                  <td className="mono" style={{ fontSize: 12 }}>
                     {b.startedAt !== undefined ? new Date(b.startedAt).toLocaleString() : "—"}
                   </td>
                   <td className="mono" style={{ fontSize: 12 }}>
-                    {b.durationMs !== undefined ? `${String(Math.round(b.durationMs / 1000))}s` : "—"}
+                    {b.durationMs !== undefined
+                      ? `${String(Math.round(b.durationMs / 1000))}s`
+                      : "—"}
                   </td>
                   <td>
                     <button
@@ -220,7 +236,7 @@ export function ImagesConsole() {
               ))}
               {buildsData === null && (
                 <tr>
-                  <td colSpan={6} className="state-note">
+                  <td colSpan={9} className="state-note">
                     loading builds…
                   </td>
                 </tr>
@@ -319,7 +335,8 @@ function BuildLogs({ buildId, onClose }: { buildId: string; onClose: () => void 
     tokenRef.current = undefined;
     setLines([]);
     const tick = async () => {
-      const q = tokenRef.current === undefined ? "" : `&token=${encodeURIComponent(tokenRef.current)}`;
+      const q =
+        tokenRef.current === undefined ? "" : `&token=${encodeURIComponent(tokenRef.current)}`;
       const res = await fetch(`/api/admin/builds/logs?buildId=${encodeURIComponent(buildId)}${q}`);
       if (!res.ok || !active) return;
       const chunk = (await res.json()) as BuildLogChunkDto & { status: string; phase?: string };
@@ -343,7 +360,10 @@ function BuildLogs({ buildId, onClose }: { buildId: string; onClose: () => void 
     <section className="stack" style={{ gap: 8 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <h2 style={{ margin: 0 }}>
-          Build logs <span className="mono" style={{ fontSize: 12, color: "var(--dim)" }}>{status}</span>
+          Build logs{" "}
+          <span className="mono" style={{ fontSize: 12, color: "var(--dim)" }}>
+            {status}
+          </span>
         </h2>
         <button type="button" className="btn" onClick={onClose}>
           close

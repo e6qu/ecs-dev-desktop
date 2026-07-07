@@ -124,6 +124,15 @@ the default `amd64 arm64` multi-arch build succeeds on GitHub's x86*64 runners.
 It is gated on the `RELEASE_AWS*\*` repo variables (see the workflow header) and
 otherwise skips, so it is inert until the AWS account decision lands.
 
+For the production CodeBuild-backed install path, the
+[`post-merge-workspace-images`](../.github/workflows/post-merge-workspace-images.yml)
+workflow starts an asynchronous `EDD_BUILD_TARGET=golden` build after every push to
+`main`. It does **not** wait for the image build; operators track status and live logs
+from the control plane's `/admin/images` page. Configure the repo variables
+`PROD_IMAGE_BUILD_AWS_ROLE_ARN` (OIDC role allowed to `codebuild:StartBuild` on the
+deployment's image-build project), plus optional `PROD_IMAGE_BUILD_AWS_REGION` and
+`PROD_IMAGE_BUILD_PROJECT` (defaults: `eu-west-1`, `edd-prod-build-images`).
+
 After publishing, roll the running services:
 
 ```sh
