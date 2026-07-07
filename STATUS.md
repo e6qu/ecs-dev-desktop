@@ -24,10 +24,10 @@ persisted catalog row missing a numeric version instead of applying a compatibil
 fallback. The branch also fixed a Tier-2 simulator race found while verifying the
 follow-up: sockerless DynamoDB `GetItem` could panic with `fatal error: concurrent
 map iteration and map write` while capacity accounting iterated a stored item map
-that another request was mutating. The fix was committed in the pinned submodule
-branch `fix/ddb-read-snapshot-race` at `a26a328f`, reported upstream as
-`e6qu/sockerless#777`, and made read paths snapshot DynamoDB items under the
-existing item mutex before projection/capacity work.
+that another request was mutating. The fix was reported upstream as
+`e6qu/sockerless#777`, merged via `e6qu/sockerless#778`, and the pinned submodule
+now points at upstream main commit `b5126463`, which made read paths snapshot
+DynamoDB items under the existing item mutex before projection/capacity work.
 
 The same branch also removed no-fallback violations found during verification:
 the production e2e web harness supplied explicit image-source coordinates instead
@@ -58,7 +58,9 @@ lib/image-source-reconcile-sweep.test.ts lib/image-source.test.ts --pool=forks`,
 `terraform fmt -check -recursive infra/terraform`,
 and `env GOWORK=off go test -tags noui . -run
 TestDDBItemSnapshotIsIndependentUnderConcurrentMutation -count=10` in the
-sockerless AWS simulator module.
+sockerless AWS simulator module, including after moving the submodule pin to the
+merged upstream `b5126463` commit. Full `pnpm test:integ:local` also passed again
+against that merged upstream pin (27/27 tasks).
 
 The branch also clarified `AGENTS.md` PR hygiene: there is only one active branch
 and one active PR at a time; work continues on the active branch/PR, duplicate PRs

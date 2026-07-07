@@ -78,8 +78,8 @@ operation not permitted` on the background process lines. Recorded in `BUGS.md`;
   lacked the required CAS `version`. Production data was corrected and the catalog
   was rolled to `omnibus:2d231f50fad8`. The follow-up code fixed this by adding a
   long-lived control-plane reconcile sweep, making Terraform seed catalog rows with
-  `version = 0`, rejecting malformed catalog rows loudly, and pinning the
-  sockerless DynamoDB read-snapshot fix reported as `e6qu/sockerless#777`. After
+  `version = 0`, rejecting malformed catalog rows loudly, and pinning the merged
+  sockerless DynamoDB read-snapshot fix from `e6qu/sockerless#778`. After
   merge, roll the control-plane tag and verify `/admin/images` shows future
   successful source builds without an admin page needing to be open.
 - **Spectate cross-replica relay** — v1's relay is per-replica (the spectator
@@ -126,7 +126,7 @@ operation not permitted` on the background process lines. Recorded in `BUGS.md`;
      paste-code login flows in both editors, and editor-session survival across a
      control-plane deploy (drain window shipped).
 
-- **Third adversarial spec-fidelity probe wave — DONE; CloudWatch probe FIXED + sockerless #767 bump (2026-07-03).** PR #179 merged the sockerless #737 bump and all ten probe slices. PR #180 removes the SQS-receipt workaround and fails loudly. The "SNS delivery succeeded but ReceiveMessage empty" issue was **our bug**: `echo "$raw"` corrupts backslash sequences in the nested-JSON SQS Body (POSIX `echo` interprets `\\`). Fixed with `printf '%s\n'` and proper nested-JSON parsing. The sim was correct all along (sockerless #766 was not a sim bug — closed). sockerless **#767** (`f0d96ec3`) also fixes bleephub team creator auto-maintainer (#763/#765). The later DynamoDB concurrent read/write panic was reported as `e6qu/sockerless#777` and fixed in the pinned follow-up submodule branch. All probe slices pass locally.
+- **Third adversarial spec-fidelity probe wave — DONE; CloudWatch probe FIXED + sockerless #767 bump (2026-07-03).** PR #179 merged the sockerless #737 bump and all ten probe slices. PR #180 removes the SQS-receipt workaround and fails loudly. The "SNS delivery succeeded but ReceiveMessage empty" issue was **our bug**: `echo "$raw"` corrupts backslash sequences in the nested-JSON SQS Body (POSIX `echo` interprets `\\`). Fixed with `printf '%s\n'` and proper nested-JSON parsing. The sim was correct all along (sockerless #766 was not a sim bug — closed). sockerless **#767** (`f0d96ec3`) also fixes bleephub team creator auto-maintainer (#763/#765). The later DynamoDB concurrent read/write panic was reported as `e6qu/sockerless#777`, fixed upstream by `e6qu/sockerless#778`, and pinned at `b5126463`. All probe slices pass locally.
 
 - **Verify PR #180 in CI and merge if green.** CI should now pass on all jobs including `terraform-sim`, `e2e`, and `e2e-https`.
 

@@ -31,16 +31,16 @@
   findings are below the configured failure threshold and need a dedicated cleanup
   pass rather than a risky broad refactor in this feature PR.
 
-- **sockerless DynamoDB read path panicked under concurrent mutation — FIXED in
-  pinned submodule branch and reported upstream (2026-07-07).** Full
+- **sockerless DynamoDB read path panicked under concurrent mutation — FIXED
+  upstream and pinned (2026-07-07).** Full
   `pnpm test:integ:local` initially crashed the Tier-2 target with
   `fatal error: concurrent map iteration and map write` in `main.ddbItemSizeBytes`
   while `handleDDBGetItem` computed consumed capacity. The issue was filed as
-  `e6qu/sockerless#777`. The pinned submodule branch
-  `fix/ddb-read-snapshot-race` (`a26a328f`) fixed `GetItem`, `Query`, and `Scan`
-  by snapshotting stored DynamoDB item maps under `ddbItemsMu` before projection
-  and capacity accounting, with a concurrent mutation regression test. After the
-  fix, `pnpm test:integ:local` passed 27/27 tasks.
+  `e6qu/sockerless#777` and merged upstream via `e6qu/sockerless#778`. The pinned
+  submodule now points at upstream main commit `b5126463`, which fixed `GetItem`,
+  `Query`, and `Scan` by snapshotting stored DynamoDB item maps under `ddbItemsMu`
+  before projection and capacity accounting, with a concurrent mutation regression
+  test. After the fix, `pnpm test:integ:local` passed 27/27 tasks.
 
 - **`pnpm test:e2e:local` production web harness missed required image-source
   coordinates — FIXED in follow-up branch (2026-07-07).** The app correctly failed

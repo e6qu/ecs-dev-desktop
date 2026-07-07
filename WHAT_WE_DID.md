@@ -191,8 +191,9 @@ Error`, so the portal's existing `e.message` shows it. api-client 4 tests; build
   dev-auth required per-account passwords, unknown editor values threw, and
   `claude`/`codex` workspace images exited loudly until the vendor local web UI
   harnesses were wired. A sockerless DynamoDB read/mutation panic was reported as
-  `e6qu/sockerless#777` and fixed in the pinned submodule branch by snapshotting
-  stored items under lock; editor-monaco tests were tightened to loopback binds.
+  `e6qu/sockerless#777`, fixed upstream by `e6qu/sockerless#778`, and pinned at
+  `b5126463` by snapshotting stored items under lock; editor-monaco tests were
+  tightened to loopback binds.
   `AGENTS.md` was clarified to allow only one active work branch and one active PR
   at a time, with no duplicate, parallel, or stacked PRs while that work was active.
   It also recorded the project norm that agents should resist tiny anemic PRs:
@@ -2938,10 +2939,10 @@ verification.** Full `pnpm test:integ:local` initially crashed the pinned
 sockerless AWS simulator with `fatal error: concurrent map iteration and map write`
 in `ddbItemSizeBytes` from the `GetItem` read path, then downstream tests failed
 with `ECONNREFUSED` after the simulator exited. The underlying issue was reported
-as `e6qu/sockerless#777`. The pushed sockerless branch
-`fix/ddb-read-snapshot-race` at `a26a328f` fixed the read paths by cloning DynamoDB
-items under `ddbItemsMu` before projection and consumed-capacity accounting, and
-added a concurrent mutation regression test. Verification passed with
+as `e6qu/sockerless#777`, fixed upstream by `e6qu/sockerless#778`, and pinned at
+merged main commit `b5126463`. The fix cloned DynamoDB items under `ddbItemsMu`
+before projection and consumed-capacity accounting, and added a concurrent mutation
+regression test. Verification passed with
 `env GOWORK=off go test -tags noui . -run
 TestDDBItemSnapshotIsIndependentUnderConcurrentMutation -count=10` in the
 sockerless AWS module and then full EDD `pnpm test:integ:local` (27/27 tasks).
