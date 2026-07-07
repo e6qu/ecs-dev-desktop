@@ -83,7 +83,7 @@ export function getAuditLog(): StoredAuditSource {
   return auditLog;
 }
 
-function tableName(): string {
+export function tableName(): string {
   return process.env.DYNAMODB_TABLE ?? TABLE;
 }
 

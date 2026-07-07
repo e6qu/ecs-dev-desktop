@@ -36,6 +36,8 @@
 #   EDD_IMAGE_BUILD_MODE optional image build mode: local | codebuild | pre-published
 #   EDD_CODEBUILD_SOURCE_REPO  optional  git URL for codebuild mode (e.g. https://github.com/...)
 #   EDD_CODEBUILD_SOURCE_REF   optional  git ref for codebuild mode (default: main)
+#   EDD_IMAGE_SOURCE_REPO      REQUIRED  GitHub owner/repo EDD receives image webhooks from
+#   EDD_IMAGE_SOURCE_BRANCH    optional  branch for image source sync (default: main)
 #   EDD_GOLDEN          optional  golden variants (space-separated; default: omnibus)
 #   EDD_ADMIN_GROUPS    REQUIRED  IdP group(s) granting admin (CSV; without it NO admin)
 #   EDD_MEMBER_GROUPS   optional  IdP group(s) granting member (CSV)
@@ -78,6 +80,8 @@ EDD_TAG="${EDD_IMAGE_TAG:-main}"
 EDD_IMAGE_BUILD_MODE="${EDD_IMAGE_BUILD_MODE:-local}"
 EDD_CODEBUILD_SOURCE_REPO="${EDD_CODEBUILD_SOURCE_REPO:-}"
 EDD_CODEBUILD_SOURCE_REF="${EDD_CODEBUILD_SOURCE_REF:-main}"
+EDD_IMAGE_SOURCE_REPO="${EDD_IMAGE_SOURCE_REPO:-}"
+EDD_IMAGE_SOURCE_BRANCH="${EDD_IMAGE_SOURCE_BRANCH:-main}"
 EDD_GOLDEN="${EDD_GOLDEN:-omnibus}"
 # Which images a (codebuild-mode) run builds: web | golden | all. Default "all" for a
 # first install / full rebuild; set EDD_BUILD_TARGET=web for a FAST control-plane-only
@@ -105,6 +109,7 @@ missing EDD_REGION "$EDD_REGION" || exit 1
 if [ "$mode" = "install" ]; then
   missing EDD_AZS "$EDD_AZS" || exit 1
   missing EDD_ADMIN_GROUPS "$EDD_ADMIN_GROUPS" || exit 1
+  missing EDD_IMAGE_SOURCE_REPO "$EDD_IMAGE_SOURCE_REPO" || exit 1
   if [ "$EDD_IMAGE_BUILD_MODE" != "local" ] && [ "$EDD_IMAGE_BUILD_MODE" != "codebuild" ] && [ "$EDD_IMAGE_BUILD_MODE" != "pre-published" ]; then
     echo "edd: EDD_IMAGE_BUILD_MODE must be local, codebuild, or pre-published" >&2
     exit 1
@@ -234,6 +239,13 @@ secret_map=$(
       printf '  %s = "%s"\n' "$key" "$arn"
     done
 )
+case "$secret_map" in
+  *"  EDD_IMAGE_SOURCE_WEBHOOK_SECRET = "*) ;;
+  *)
+    echo "edd: missing required Secrets Manager secret ${EDD_NAME}/EDD_IMAGE_SOURCE_WEBHOOK_SECRET" >&2
+    exit 1
+    ;;
+esac
 
 tfvars="$tfdir/install.tfvars"
 {
@@ -258,6 +270,8 @@ tfvars="$tfdir/install.tfvars"
   printf '  EDD_ADMIN_GROUPS = "%s"\n' "$EDD_ADMIN_GROUPS"
   [ -n "$EDD_MEMBER_GROUPS" ] && printf '  EDD_MEMBER_GROUPS = "%s"\n' "$EDD_MEMBER_GROUPS"
   printf '  AUTH_TRUST_HOST = "true"\n'
+  printf '  EDD_IMAGE_SOURCE_REPO = "%s"\n' "$EDD_IMAGE_SOURCE_REPO"
+  printf '  EDD_IMAGE_SOURCE_BRANCH = "%s"\n' "$EDD_IMAGE_SOURCE_BRANCH"
   # AUTH_TRUST_HOST alone isn't sufficient for this app's custom server
   # (apps/web/server.ts passes hostname/port to next(), which Next appears to use
   # for its own request-URL construction ahead of Auth.js's trustHost/header logic) —

@@ -383,3 +383,85 @@ export function makeOwnerWorkspaceCountEntity(client: DynamoDBClient, table = TA
 }
 
 export type OwnerWorkspaceCountEntity = ReturnType<typeof makeOwnerWorkspaceCountEntity>;
+
+/**
+ * Singleton source-state record for the repo/branch that drives automatic image
+ * rebuilds. The control plane owns this state so signed webhook observations can
+ * be compared against the last handled commit without relying on GitHub Actions.
+ */
+export function makeImageSourceEntity(client: DynamoDBClient, table = TABLE) {
+  return new Entity(
+    {
+      model: { entity: "imageSource", version: "1", service: "edd" },
+      attributes: {
+        id: { type: "string", required: true },
+        schemaVersion: { type: "number", required: true },
+        repo: { type: "string", required: true },
+        branch: { type: "string", required: true },
+        lastObservedSha: { type: "string", required: false },
+        lastHandledSha: { type: "string", required: false },
+        latestTriggerId: { type: "string", required: false },
+        updatedAt: { type: "string", required: true },
+      },
+      indexes: {
+        primary: {
+          pk: { field: "PK", composite: ["id"] },
+          sk: { field: "SK", composite: [] },
+        },
+      },
+    },
+    { client, table },
+  );
+}
+
+export type ImageSourceEntity = ReturnType<typeof makeImageSourceEntity>;
+
+/**
+ * Append-only-ish trigger history for image source observations. A trigger can be
+ * skipped (path filters), queued/building, or completed by later reconciliation
+ * with CodeBuild history.
+ */
+export function makeImageSourceTriggerEntity(client: DynamoDBClient, table = TABLE) {
+  return new Entity(
+    {
+      model: { entity: "imageSourceTrigger", version: "1", service: "edd" },
+      attributes: {
+        id: { type: "string", required: true },
+        sourceId: { type: "string", required: true },
+        schemaVersion: { type: "number", required: true },
+        repo: { type: "string", required: true },
+        branch: { type: "string", required: true },
+        beforeSha: { type: "string", required: false },
+        afterSha: { type: "string", required: true },
+        changedPaths: { type: "list", items: { type: "string" }, required: true },
+        decision: { type: ["build", "skip"] as const, required: true },
+        reason: { type: "string", required: true },
+        status: {
+          type: ["received", "skipped", "queued", "building", "succeeded", "failed"] as const,
+          required: true,
+        },
+        target: { type: ["web", "golden", "all"] as const, required: false },
+        tag: { type: "string", required: false },
+        sourceVersion: { type: "string", required: false },
+        buildId: { type: "string", required: false },
+        triggeredBy: { type: "string", required: true },
+        receivedAt: { type: "string", required: true },
+        updatedAt: { type: "string", required: true },
+      },
+      indexes: {
+        primary: {
+          pk: { field: "PK", composite: ["id"] },
+          sk: { field: "SK", composite: [] },
+        },
+        bySource: {
+          index: "GSI1",
+          pk: { field: "GSI1PK", composite: ["sourceId"] },
+          sk: { field: "GSI1SK", composite: ["receivedAt", "id"] },
+        },
+      },
+    },
+    { client, table },
+  );
+}
+
+export type ImageSourceTriggerEntity = ReturnType<typeof makeImageSourceTriggerEntity>;

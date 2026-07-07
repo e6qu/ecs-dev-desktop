@@ -4,6 +4,14 @@
 
 ## Open
 
+- **`jscpd` still reports below-threshold clone blocks** (2026-07-07). The
+  `pnpm cpd` gate exits 0, but the report remains noisy (`.jscpd.json` `$schema`
+  warning plus repeated route/table/schema patterns, including the Images console
+  table sections and ElectroDB entity index declarations). Immediate duplicate
+  trigger-object construction in the new image-source service was refactored, but
+  the remaining findings are below the configured failure threshold and need a
+  dedicated cleanup pass rather than a risky broad refactor in this feature PR.
+
 - **`claude`/`codex` workspace modes still use the Monaco-terminal fallback, not the
   vendor web harnesses** (2026-07-07). Product decision is now explicit: do not build an
   EDD-authored Claude/Codex chat UI and do not treat a terminal-booted CLI as the final
@@ -57,8 +65,11 @@ zsh -n "$f"; done` exits 0, but `zsh -n infra/images/base/entrypoint.sh` prints
   wakes on its OLD image; only a fresh create picks up the repointed catalog. Latest check after PR #193
   merged: the PR's `golden-images` CI job passed, but the production deploy used `EDD_BUILD_TARGET=web` and
   did not publish an `eee7176` golden image; the live catalog points at `omnibus:db75d1f` while ECR also has
-  newer unselected golden tags. The code now has post-merge async `golden` builds and admin-console tracking,
-  but the catalog still is not automatically repointed to a newly built workspace image.
+  newer unselected golden tags. The code now has control-plane-owned GitHub source sync (signed webhook only,
+  no polling fallback) that can start async `golden` builds and expose source/trigger/build tracking in
+  `/admin/images`, but production still needs that flow deployed/configured and the catalog still is not
+  automatically repointed to a newly built workspace image. CI remains the control-plane release image path,
+  so EDD does not depend on an existing EDD deployment to be releasable.
 
 - **CodeBuild image rebuild silently no-ops on a re-run against the same branch — known footgun (2026-07-06).**
   `terraform_data.build_images_codebuild`'s `triggers_replace` (`infra/terraform/modules/ecs-dev-desktop/build-codebuild.tf`)

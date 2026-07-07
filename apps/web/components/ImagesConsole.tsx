@@ -4,6 +4,7 @@
 import type {
   BuildLogChunkDto,
   BuildTargetDto,
+  ImageSourceStateDto,
   ImageBuildRecordDto,
   ImageMetadataDto,
 } from "@edd/api-contracts";
@@ -23,11 +24,17 @@ type BuildRow = Partial<ImageBuildRecordDto> & {
   endedAt?: string;
   durationMs?: number;
   ref?: string;
+  sourceVersion?: string;
   triggeredBy?: string;
 };
 
 const BUILDS_POLL_MS = 5000;
 const LOGS_POLL_MS = 3000;
+
+async function jsonOrThrow<T>(res: Response): Promise<T> {
+  if (res.ok) return (await res.json()) as T;
+  throw new Error(`HTTP ${res.status}`);
+}
 
 function shortRepo(repo: string): string {
   // Drop the "<prefix>/" so the operator sees "control-plane" / "golden/omnibus".
@@ -37,9 +44,25 @@ function shortRepo(repo: string): string {
 
 function statusColor(status: string): string {
   if (status === "succeeded") return "var(--accent, #9fef00)";
-  if (status === "in_progress") return "var(--accent, #9fef00)";
+  if (status === "in_progress" || status === "queued" || status === "building") {
+    return "var(--accent, #9fef00)";
+  }
   if (status === "stopped") return "var(--dim)";
   return "var(--st-error, #ff6b6b)";
+}
+
+function shortSha(sha: string | undefined): string {
+  return sha === undefined ? "—" : sha.slice(0, 12);
+}
+
+function LoadingRow({ colSpan, label }: { colSpan: number; label: string }) {
+  return (
+    <tr>
+      <td colSpan={colSpan} className="state-note">
+        {label}
+      </td>
+    </tr>
+  );
 }
 
 /** The admin Images console: per-image size + layer breakdown, a Rebuild trigger,
@@ -53,8 +76,17 @@ export function ImagesConsole() {
     () => fetch("/api/admin/builds").then((r) => r.json() as Promise<{ builds: BuildRow[] }>),
     [],
   );
+  const loadSource = useCallback(
+    () => fetch("/api/admin/image-source").then((r) => jsonOrThrow<ImageSourceStateDto>(r)),
+    [],
+  );
   const { data: imagesData } = usePoll(loadImages, 30_000, "images unavailable");
   const { data: buildsData } = usePoll(loadBuilds, BUILDS_POLL_MS, "builds unavailable");
+  const { data: sourceData, error: sourceError } = usePoll(
+    loadSource,
+    BUILDS_POLL_MS,
+    "image source unavailable",
+  );
 
   const [expanded, setExpanded] = useState<string | null>(null);
   const [target, setTarget] = useState<BuildTargetDto>("web");
@@ -83,6 +115,55 @@ export function ImagesConsole() {
 
   return (
     <div className="stack" style={{ gap: 24 }}>
+      <section className="stack" style={{ gap: 10 }}>
+        <h2 style={{ margin: 0 }}>Source sync</h2>
+        <div className="table-scroll" style={{ overflowX: "auto" }}>
+          <table className="data-table">
+            <tbody>
+              {sourceError === null ? (
+                <>
+                  <tr>
+                    <th>repo</th>
+                    <td className="mono">{sourceData?.repo ?? "loading…"}</td>
+                    <th>branch</th>
+                    <td className="mono">{sourceData?.branch ?? "loading…"}</td>
+                  </tr>
+                  <tr>
+                    <th>observed</th>
+                    <td className="mono">{shortSha(sourceData?.lastObservedSha)}</td>
+                    <th>handled</th>
+                    <td className="mono">{shortSha(sourceData?.lastHandledSha)}</td>
+                  </tr>
+                  <tr>
+                    <th>trigger</th>
+                    <td>GitHub push webhook</td>
+                    <th>target</th>
+                    <td>golden workspace images</td>
+                  </tr>
+                </>
+              ) : (
+                <tr>
+                  <th>error</th>
+                  <td
+                    colSpan={3}
+                    className="state-note"
+                    role="alert"
+                    style={{ color: "var(--st-error)" }}
+                  >
+                    {sourceError}
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        <p className="state-note" style={{ margin: 0 }}>
+          CI still builds and publishes control-plane release images. This deployed control plane
+          listens for signed GitHub push webhooks and starts async golden workspace image rebuilds
+          only when workspace-image inputs change.
+        </p>
+      </section>
+
       <section className="stack" style={{ gap: 10 }}>
         <h2 style={{ margin: 0 }}>Images</h2>
         <div className="table-scroll" style={{ overflowX: "auto" }}>
@@ -113,13 +194,7 @@ export function ImagesConsole() {
                   />
                 );
               })}
-              {imagesData === null && (
-                <tr>
-                  <td colSpan={6} className="state-note">
-                    loading images…
-                  </td>
-                </tr>
-              )}
+              {imagesData === null && <LoadingRow colSpan={6} label="loading images…" />}
             </tbody>
           </table>
         </div>
@@ -185,6 +260,7 @@ export function ImagesConsole() {
                 <th>tag</th>
                 <th>build</th>
                 <th>ref</th>
+                <th>source</th>
                 <th>trigger</th>
                 <th>started</th>
                 <th>duration</th>
@@ -211,6 +287,9 @@ export function ImagesConsole() {
                     {b.ref?.slice(0, 10) ?? "—"}
                   </td>
                   <td className="mono" style={{ fontSize: 12 }}>
+                    {shortSha(b.sourceVersion)}
+                  </td>
+                  <td className="mono" style={{ fontSize: 12 }}>
                     {b.triggeredBy ?? "—"}
                   </td>
                   <td className="mono" style={{ fontSize: 12 }}>
@@ -234,13 +313,52 @@ export function ImagesConsole() {
                   </td>
                 </tr>
               ))}
-              {buildsData === null && (
-                <tr>
-                  <td colSpan={9} className="state-note">
-                    loading builds…
+              {buildsData === null && <LoadingRow colSpan={10} label="loading builds…" />}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="stack" style={{ gap: 10 }}>
+        <h2 style={{ margin: 0 }}>Source triggers</h2>
+        <div className="table-scroll" style={{ overflowX: "auto" }}>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>status</th>
+                <th>decision</th>
+                <th>commit</th>
+                <th>target</th>
+                <th>tag</th>
+                <th>build</th>
+                <th>trigger</th>
+                <th>reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(sourceData?.triggers ?? []).map((t) => (
+                <tr key={t.id}>
+                  <td style={{ color: statusColor(t.status) }}>{t.status}</td>
+                  <td>{t.decision}</td>
+                  <td className="mono" style={{ fontSize: 12 }}>
+                    {shortSha(t.afterSha)}
                   </td>
+                  <td className="mono" style={{ fontSize: 12 }}>
+                    {t.target ?? "—"}
+                  </td>
+                  <td className="mono" style={{ fontSize: 12 }}>
+                    {t.tag ?? "—"}
+                  </td>
+                  <td className="mono" style={{ fontSize: 12 }}>
+                    {t.buildId?.split(":").pop() ?? "—"}
+                  </td>
+                  <td className="mono" style={{ fontSize: 12 }}>
+                    {t.triggeredBy}
+                  </td>
+                  <td>{t.reason}</td>
                 </tr>
-              )}
+              ))}
+              {sourceData === null && <LoadingRow colSpan={8} label="loading source triggers…" />}
             </tbody>
           </table>
         </div>

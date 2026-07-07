@@ -1,11 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { BuildLogChunkDto, ImageMetadataDto } from "@edd/api-contracts";
 
-import type { BuildObservation, BuildSummary, ImageOps } from "./image-ops";
+import type { BuildObservation, BuildSummary, ImageOps, StartImageBuildInput } from "./image-ops";
 
 /** In-memory ImageOps for tests: canned metadata + a recorded build queue. */
 export class FakeImageOps implements ImageOps {
-  readonly started: { target: string; tag: string; ref: string }[] = [];
+  readonly started: StartImageBuildInput[] = [];
   metadata: Record<string, ImageMetadataDto> = {};
   builds: Record<string, BuildObservation> = {};
   recent: BuildSummary[] = [];
@@ -17,7 +17,7 @@ export class FakeImageOps implements ImageOps {
   listImageTags(_repo: string, _limit: number): Promise<string[]> {
     return Promise.resolve(Object.keys(this.metadata).map((k) => k.split(":")[1] ?? ""));
   }
-  startBuild(input: { target: string; tag: string; ref: string }): Promise<string> {
+  startBuild(input: StartImageBuildInput): Promise<string> {
     this.started.push(input);
     const id = `build-${String(this.started.length)}`;
     this.builds[id] = { status: "in_progress" };

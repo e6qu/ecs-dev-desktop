@@ -124,14 +124,36 @@ the default `amd64 arm64` multi-arch build succeeds on GitHub's x86*64 runners.
 It is gated on the `RELEASE_AWS*\*` repo variables (see the workflow header) and
 otherwise skips, so it is inert until the AWS account decision lands.
 
-For the production CodeBuild-backed install path, the
-[`post-merge-workspace-images`](../.github/workflows/post-merge-workspace-images.yml)
-workflow starts an asynchronous `EDD_BUILD_TARGET=golden` build after every push to
-`main`. It does **not** wait for the image build; operators track status and live logs
-from the control plane's `/admin/images` page. Configure the repo variables
-`PROD_IMAGE_BUILD_AWS_ROLE_ARN` (OIDC role allowed to `codebuild:StartBuild` on the
-deployment's image-build project), plus optional `PROD_IMAGE_BUILD_AWS_REGION` and
-`PROD_IMAGE_BUILD_PROJECT` (defaults: `eu-west-1`, `edd-prod-build-images`).
+For the production CodeBuild-backed install path, CI should still own the
+control-plane image build/publish path (the small app image). The EDD control
+plane owns only post-merge **workspace/golden image** rebuilds, because those are
+runtime fleet assets operators need to track and roll independently. This is not
+a fallback release path: EDD must remain releasable from CI/operator release
+flows even when no EDD deployment exists.
+
+Set `EDD_IMAGE_SOURCE_REPO` (`owner/repo`, e.g. `e6qu/ecs-dev-desktop`) and
+optionally `EDD_IMAGE_SOURCE_BRANCH` (default `main`) before running
+`scripts/install.sh`, and create a Secrets Manager secret named
+`<EDD_NAME>/EDD_IMAGE_SOURCE_WEBHOOK_SECRET`. The install fails if either is
+missing. Then configure a GitHub `push` webhook to:
+
+```text
+https://app.<domain>/api/integrations/github/image-webhook
+```
+
+Store the webhook secret as the control-plane secret env var
+`EDD_IMAGE_SOURCE_WEBHOOK_SECRET` (for `scripts/install.sh`, creating a Secrets
+Manager secret named `<EDD_NAME>/EDD_IMAGE_SOURCE_WEBHOOK_SECRET` makes it part of
+the generated `auth_secret_arns` map). The webhook is HMAC-verified via
+`X-Hub-Signature-256`; there is no polling backstop. If source sync is
+misconfigured, `/admin/images` surfaces the API error instead of presenting a
+disabled or "not configured" state.
+
+When a new commit changes workspace-image inputs (`infra/images/**`,
+`pnpm-lock.yaml`, or the image publish/build wiring), EDD starts the existing
+CodeBuild image project asynchronously with `EDD_BUILD_TARGET=golden`,
+`SOURCE_REF=<branch>`, `SOURCE_VERSION=<exact sha>`, and a short-SHA image tag.
+It does not replace CI for control-plane image builds.
 
 After publishing, roll the running services:
 

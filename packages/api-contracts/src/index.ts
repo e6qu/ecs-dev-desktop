@@ -755,6 +755,7 @@ export const imageBuildRecord = z.object({
   target: buildTarget,
   tag: z.string().min(1),
   ref: z.string().optional(),
+  sourceVersion: z.string().optional(),
   status: buildStatus,
   /** Current/last CodeBuild phase (e.g. BUILD, COMPLETED). */
   phase: z.string().optional(),
@@ -764,6 +765,50 @@ export const imageBuildRecord = z.object({
   triggeredBy: z.string().min(1),
 });
 export type ImageBuildRecordDto = z.infer<typeof imageBuildRecord>;
+
+export const imageSourceTriggerStatus = z.enum([
+  "received",
+  "skipped",
+  "queued",
+  "building",
+  "succeeded",
+  "failed",
+]);
+export type ImageSourceTriggerStatusDto = z.infer<typeof imageSourceTriggerStatus>;
+
+export const imageSourceTriggerDecision = z.enum(["build", "skip"]);
+export type ImageSourceTriggerDecisionDto = z.infer<typeof imageSourceTriggerDecision>;
+
+export const imageSourceTrigger = z.object({
+  id: z.string().min(1),
+  repo: z.string().min(1),
+  branch: z.string().min(1),
+  beforeSha: z.string().optional(),
+  afterSha: z.string().min(1),
+  changedPaths: z.array(z.string()),
+  decision: imageSourceTriggerDecision,
+  reason: z.string().min(1),
+  status: imageSourceTriggerStatus,
+  target: buildTarget.optional(),
+  tag: z.string().optional(),
+  sourceVersion: z.string().optional(),
+  buildId: z.string().optional(),
+  triggeredBy: z.string().min(1),
+  receivedAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
+});
+export type ImageSourceTriggerDto = z.infer<typeof imageSourceTrigger>;
+
+export const imageSourceState = z.object({
+  repo: z.string().min(1),
+  branch: z.string().min(1),
+  lastObservedSha: z.string().optional(),
+  lastHandledSha: z.string().optional(),
+  latestTriggerId: z.string().optional(),
+  updatedAt: z.iso.datetime().optional(),
+  triggers: z.array(imageSourceTrigger),
+});
+export type ImageSourceStateDto = z.infer<typeof imageSourceState>;
 
 /** A slice of a build's live log, plus a cursor to fetch the next slice. */
 export const buildLogChunk = z.object({
