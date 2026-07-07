@@ -24,6 +24,16 @@ zsh -n "$f"; done` exits 0, but `zsh -n infra/images/base/entrypoint.sh` prints
   invocation or restructure the background process startup if CI starts treating
   the warning as fatal.
 
+- **`scripts/install.sh` passes `-backend-config` to a Terraform example with no
+  backend block** (2026-07-07). The live deploy to `eee7176` succeeded and
+  `scripts/install.sh --verify` reported no drift, but every `terraform init`
+  emitted Terraform's `Missing backend configuration` warning because
+  `infra/terraform/examples/complete/main.tf` declares required providers but no
+  `backend` block. This is currently deploy-tooling noise/potential operator
+  confusion, not a failed deploy. Fix by either adding the intended backend stub
+  to the example or changing the script/docs so backend config is only passed when
+  a backend block exists.
+
 - **Cost model doesn't price the undelete window or restored sessions** (2026-07-06).
   Deleted workspaces now keep a retained snapshot for the 7-day undelete window —
   that snapshot storage bills in AWS but `deriveBillingIntervals` treats

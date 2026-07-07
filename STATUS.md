@@ -3,7 +3,7 @@
 > Where the project is right now. Update after every task; past tense at PR close.
 
 **Last updated:** 2026-07-07 (live at `https://app.edd.e6qu.dev`, control-plane tag
-`68851e5`, golden image `omnibus:fafb9fe`). All work below is on branch
+`eee7176`, golden image `omnibus:fafb9fe`). All work below is on branch
 `feat/instant-create-provisioning-ux` (well ahead of the unmerged PR #193; ask before
 opening a new PR). Shipped + live this stretch, on top of the merged post-launch wave:
 
@@ -32,7 +32,11 @@ opening a new PR). Shipped + live this stretch, on top of the merged post-launch
 Local verification on the branch is green after the PR #193 e2e fixes: `pnpm test`,
 `pnpm lint`, `pnpm test:integ:local`, `pnpm test:e2e:local`, `pnpm check-deps`,
 `pnpm dead-code`, and `pnpm cpd` all pass (with the existing jscpd clone report/config
-warning). Remaining: user live-testing; replacing the `claude`/`codex`
+warning). The branch was deployed control-plane-only to real AWS as image tag
+`eee7176`: CodeBuild succeeded, ECS rolled to task definition revision 25
+(control-plane 2/2, SSH gateway 1/1), and `scripts/install.sh --verify` is green
+(ALB health 200, `/api/readyz` 200, reconciler enabled, no Terraform drift).
+Remaining: user live-testing; replacing the `claude`/`codex`
 Monaco-terminal fallback with the vendor harnesses now explicitly chosen by the user
 (Anthropic Remote Control / `claude.ai/code` for Claude Code; OpenAI `codex
 app-server` / first-party local client protocol for Codex).

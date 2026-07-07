@@ -2782,3 +2782,18 @@ age-eligible `4.1.10` and the lockfile refreshed. Verified: `pnpm test`,
 `pnpm lint`, `pnpm test:integ:local`, `pnpm test:e2e:local`, `pnpm check-deps`,
 `pnpm dead-code`, `pnpm cpd`, plus shellcheck/bash/zsh parse sweeps (the zsh
 `nice(5)` warning on the base entrypoint is recorded in `BUGS.md`).
+
+**2026-07-07 — Deployed PR #193 branch to the existing AWS environment.** Reused the
+existing `edd-prod` coordinates (`eu-west-1`, `app.edd.e6qu.dev`,
+`ssh.edd.e6qu.dev`, GitHub org groups) and ran a control-plane-only CodeBuild deploy
+from branch `feat/instant-create-provisioning-ux` with image tag `eee7176` and
+`EDD_BUILD_TARGET=web`. Baseline verify was green before the apply. CodeBuild
+succeeded in 3m26s, Terraform registered task definition revision 25 for the
+control-plane/reconciler/SSH gateway image set, and ECS rolled cleanly: control-plane
+2/2 and SSH gateway 1/1 on revision 25. Final `scripts/install.sh --verify` was
+green (ALB health 200, `/api/readyz` 200, reconciler schedule enabled, no drift), and
+the deployed control-plane task definition points at
+`729079515331.dkr.ecr.eu-west-1.amazonaws.com/edd-prod/control-plane:eee7176`.
+Recorded one deploy-tooling warning in `BUGS.md`: `terraform init` emits `Missing
+backend configuration` because the complete example has no backend block while
+`install.sh` passes `-backend-config`.

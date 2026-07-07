@@ -65,6 +65,11 @@ deferral by choice.
 operation not permitted` on the background process lines. Recorded in `BUGS.md`;
   fix the portable check invocation or restructure those starts if it becomes noisy
   in CI.
+- **Clean up the Terraform backend init warning.** Real deploys currently succeed,
+  but `scripts/install.sh` passes `-backend-config` while the complete example has
+  no backend block, so Terraform prints `Missing backend configuration` on every
+  init. Recorded in `BUGS.md`; make the install path explicit before the warning
+  hides a real backend/state issue.
 - **Spectate cross-replica relay** — v1's relay is per-replica (the spectator
   client retries until it lands on the publisher's replica; works, but retry
   count grows with replica count). Follow-up: an internal replica-to-replica
