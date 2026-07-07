@@ -23,8 +23,13 @@ vi.mock("./control-plane", () => ({
   getControlPlane: vi.fn(() => Promise.resolve({ inspect: inspectMock })),
 }));
 
-const { authorizeSpectate, authorizeWorkspace, editorTokenRedirect, isDocumentNavigation, stripSessionCookie } =
-  await import("./workspace-proxy");
+const {
+  authorizeSpectate,
+  authorizeWorkspace,
+  editorTokenRedirect,
+  isDocumentNavigation,
+  stripSessionCookie,
+} = await import("./workspace-proxy");
 
 const WS = workspaceId("ws-abc123");
 const req = (cookie = "session=x"): CookieBearingRequest => ({ headers: { cookie } });
@@ -163,11 +168,10 @@ describe("editorTokenRedirect (editor connection-token handoff)", () => {
     expect(out).toBeUndefined();
   });
 
-  it("also recognizes the Monaco server's edd-editor-token cookie (monaco/claude/codex)", () => {
-    // The Monaco editor server (claude/codex modes) sets edd-editor-token, not
-    // vscode-tkn. Without recognizing it, the proxy kept re-injecting ?tkn and then
-    // forwarded a clean request the Monaco server rejected with 401 — the live
-    // "unauthorized" on non-OpenVSCode editors.
+  it("also recognizes the Monaco server's edd-editor-token cookie", () => {
+    // The Monaco editor server sets edd-editor-token, not vscode-tkn. Without
+    // recognizing it, the proxy kept re-injecting ?tkn and then forwarded a clean
+    // request the Monaco server rejected with 401.
     const out = editorTokenRedirect(
       {
         method: "GET",

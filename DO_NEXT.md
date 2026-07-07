@@ -53,13 +53,15 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **Wire real vendor agent harnesses for `claude`/`codex` workspace modes.** Current
-  runtime still falls back to the Monaco terminal booting `claude`/`codex`; that is
-  only a stopgap. Target: `claude` starts `claude remote-control` (with the user's
-  claude.ai login persisted on the workspace volume) and the EDD status/editor page
-  directs the user into `claude.ai/code`; `codex` starts `codex app-server` with a
-  protected local transport and exposes/links the first-party Codex local client
-  harness. Keep OpenVSCode and Monaco as the other two workspace interface types.
+- **Wire real vendor agent harnesses for `claude`/`codex` workspace modes.** The
+  runtime now fails loudly for these modes until the vendor harnesses are wired,
+  because serving Monaco under those product names hid the wrong UX. Target:
+  `claude` starts the Claude Code Remote Control/local-process harness (with the
+  user's claude.ai login persisted on the workspace volume) and the EDD
+  status/editor page directs the user into `claude.ai/code`; `codex` starts the
+  OpenAI Codex local web UI/app-server harness with a protected local transport
+  and exposes/links the first-party Codex client protocol. Keep OpenVSCode and
+  Monaco as the other two workspace interface types.
 - **Clean up the base-entrypoint zsh parse warning.** The full shell sweep is green
   by exit code, but `zsh -n infra/images/base/entrypoint.sh` prints `nice(5) failed:
 operation not permitted` on the background process lines. Recorded in `BUGS.md`;
@@ -70,17 +72,16 @@ operation not permitted` on the background process lines. Recorded in `BUGS.md`;
   no backend block, so Terraform prints `Missing backend configuration` on every
   init. Recorded in `BUGS.md`; make the install path explicit before the warning
   hides a real backend/state issue.
-- **Deploy and verify the merged workspace-image source-sync rollout.** The code now
-  received signed GitHub push webhooks, started async `golden` builds, exposed
-  source/trigger/build state in `/admin/images`, and automatically rolled successful
-  golden image tags into matching catalog entries through CAS. There was still no
-  polling fallback, and CI still owned control-plane release image builds so EDD
-  stayed releasable without an existing EDD deployment. The remaining operational
-  work after merge was to roll the control plane with
-  `EDD_IMAGE_SOURCE_REPO=e6qu/ecs-dev-desktop`, `EDD_IMAGE_SOURCE_BRANCH=main`,
-  `EDD_APP_NAME=edd-prod`, `EDD_GOLDEN=<variants>`, and
-  `EDD_IMAGE_SOURCE_WEBHOOK_SECRET`, configure the GitHub webhook, then verify the
-  first `/admin/images` trigger built and repointed the production catalog.
+- **Merge and deploy the image-source reconcile fix.** PR #197 was deployed and
+  the first tracked golden build succeeded, but live rollout exposed that
+  reconciliation was tied to admin image-source reads and the seeded catalog row
+  lacked the required CAS `version`. Production data was corrected and the catalog
+  was rolled to `omnibus:2d231f50fad8`. The follow-up code fixed this by adding a
+  long-lived control-plane reconcile sweep, making Terraform seed catalog rows with
+  `version = 0`, rejecting malformed catalog rows loudly, and pinning the merged
+  sockerless DynamoDB read-snapshot fix from `e6qu/sockerless#778`. After
+  merge, roll the control-plane tag and verify `/admin/images` shows future
+  successful source builds without an admin page needing to be open.
 - **Spectate cross-replica relay** — v1's relay is per-replica (the spectator
   client retries until it lands on the publisher's replica; works, but retry
   count grows with replica count). Follow-up: an internal replica-to-replica
@@ -88,8 +89,8 @@ operation not permitted` on the background process lines. Recorded in `BUGS.md`;
   task IP — and subscriber replicas relay through it; needs a tasks-SG
   self-ingress rule on the control-plane port). See `docs/design-public-spectate.md`.
 - **Spectate for OpenVSCode sessions** — needs extension-based capture inside
-  the `edd-workspace-ui` extension (v1 mirrors Monaco + claude/codex terminal
-  modes only).
+  the `edd-workspace-ui` extension (v1 mirrors Monaco only; Claude/Codex modes
+  wait for the vendor harness work above).
 
 - **Post-launch backlog — consolidated plan (2026-07-06, sequenced; mirrors the session
   task list).** Already shipped from the original queue: editor home links (extension +
@@ -106,8 +107,8 @@ operation not permitted` on the background process lines. Recorded in `BUGS.md`;
      sessions, owner namespace selection, one Start button, and redirect to the
      per-workspace status page. Remaining polish was visual/UX only.
   3. **Editor selection at creation**: OpenVSCode | Monaco | Claude Code | Codex shipped
-     as a UI/data choice, but the agent runtime still needs to replace the Monaco-terminal
-     fallback with the vendor harnesses above.
+     as a UI/data choice, but Claude/Codex runtime modes intentionally fail until
+     the vendor harnesses above are implemented.
   4. **Monitoring follow-up**: the card/admin surfaces now showed disk usage and linked
      per-workspace monitoring. Remaining work was richer CPU/memory/disk visualization on
      the compact card, per-workspace snapshot-cost display, disk-increase action
@@ -125,7 +126,7 @@ operation not permitted` on the background process lines. Recorded in `BUGS.md`;
      paste-code login flows in both editors, and editor-session survival across a
      control-plane deploy (drain window shipped).
 
-- **Third adversarial spec-fidelity probe wave — DONE; CloudWatch probe FIXED + sockerless #767 bump (2026-07-03).** PR #179 merged the sockerless #737 bump and all ten probe slices. PR #180 removes the SQS-receipt workaround and fails loudly. The "SNS delivery succeeded but ReceiveMessage empty" issue was **our bug**: `echo "$raw"` corrupts backslash sequences in the nested-JSON SQS Body (POSIX `echo` interprets `\\`). Fixed with `printf '%s\n'` and proper nested-JSON parsing. The sim was correct all along (sockerless #766 was not a sim bug — closed). sockerless **#767** (`f0d96ec3`) also fixes bleephub team creator auto-maintainer (#763/#765). All probe slices pass locally.
+- **Third adversarial spec-fidelity probe wave — DONE; CloudWatch probe FIXED + sockerless #767 bump (2026-07-03).** PR #179 merged the sockerless #737 bump and all ten probe slices. PR #180 removes the SQS-receipt workaround and fails loudly. The "SNS delivery succeeded but ReceiveMessage empty" issue was **our bug**: `echo "$raw"` corrupts backslash sequences in the nested-JSON SQS Body (POSIX `echo` interprets `\\`). Fixed with `printf '%s\n'` and proper nested-JSON parsing. The sim was correct all along (sockerless #766 was not a sim bug — closed). sockerless **#767** (`f0d96ec3`) also fixes bleephub team creator auto-maintainer (#763/#765). The later DynamoDB concurrent read/write panic was reported as `e6qu/sockerless#777`, fixed upstream by `e6qu/sockerless#778`, and pinned at `b5126463`. All probe slices pass locally.
 
 - **Verify PR #180 in CI and merge if green.** CI should now pass on all jobs including `terraform-sim`, `e2e`, and `e2e-https`.
 

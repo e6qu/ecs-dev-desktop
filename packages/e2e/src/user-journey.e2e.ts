@@ -24,7 +24,7 @@ import {
   sleep,
 } from "./aws-sim";
 import { hostReachableTarget } from "./docker-host";
-import { devHeaders, startWebApp, type WebApp } from "./web-app";
+import { devHeaders, imageSourceEnv, startWebApp, type WebApp } from "./web-app";
 
 /**
  * LIVE user journey — the full product flow through the REAL API surface with
@@ -177,6 +177,7 @@ describe(
         CONTROL_PLANE_URL: `http://${hostAlias}:${String(port)}`,
         EDD_AGENT_SECRET: AGENT_SECRET,
         EDD_HEARTBEAT_INTERVAL_S: String(HEARTBEAT_INTERVAL_S),
+        ...imageSourceEnv(`edd-journey-${RUN_ID}`, "omnibus"),
       }));
     });
 

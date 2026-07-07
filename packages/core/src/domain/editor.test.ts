@@ -17,12 +17,15 @@ import { provision } from "./workspace";
 const AT = isoTimestamp("2026-01-01T00:00:00.000Z");
 
 describe("asEditorKind", () => {
-  it("accepts known kinds and falls back to the default for anything else", () => {
+  it("accepts known kinds and defaults only an omitted value", () => {
     expect(asEditorKind("openvscode")).toBe("openvscode");
     expect(asEditorKind("monaco")).toBe("monaco");
-    expect(asEditorKind("emacs")).toBe(DEFAULT_EDITOR);
     expect(asEditorKind(undefined)).toBe(DEFAULT_EDITOR);
-    expect(asEditorKind(42)).toBe(DEFAULT_EDITOR);
+  });
+
+  it("fails loudly on unknown editor values", () => {
+    expect(() => asEditorKind("emacs")).toThrow("unknown editor kind: emacs");
+    expect(() => asEditorKind(42)).toThrow("unknown editor kind: 42");
   });
 });
 

@@ -18,10 +18,23 @@ export const EDITOR_KINDS = ["openvscode", "monaco", "claude", "codex"] as const
 
 export type EditorKind = (typeof EDITOR_KINDS)[number];
 
-/** The default editor when none is specified (records/requests predating the field). */
+/** The default editor when none is specified. */
 export const DEFAULT_EDITOR: EditorKind = "openvscode";
 
-/** Narrow an arbitrary value to an `EditorKind`, falling back to the default for unknown input. */
+function describeUnknownEditor(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number" || typeof value === "boolean" || typeof value === "bigint") {
+    return value.toString();
+  }
+  if (value === null) return "null";
+  if (typeof value === "symbol") return value.description ?? "symbol";
+  return `type ${typeof value}`;
+}
+
+/** Narrow an arbitrary value to an `EditorKind`; unknown values are invalid persisted state. */
 export function asEditorKind(value: unknown): EditorKind {
-  return EDITOR_KINDS.find((k) => k === value) ?? DEFAULT_EDITOR;
+  if (value === undefined) return DEFAULT_EDITOR;
+  const editor = EDITOR_KINDS.find((k) => k === value);
+  if (editor === undefined) throw new Error(`unknown editor kind: ${describeUnknownEditor(value)}`);
+  return editor;
 }

@@ -8,7 +8,7 @@
 // together, so the cookie-name mismatch that broke the loop was invisible to CI.
 import { deriveWorkspaceToken, workspaceId } from "@edd/core";
 import { createEditorServer } from "@edd/editor-monaco";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -24,21 +24,48 @@ const BASE = `/w/${WS}/`;
 const TOKEN = deriveWorkspaceToken(SECRET, wsid);
 const DOC = { "sec-fetch-dest": "document" } as const;
 
-let monaco: Server;
-let proxy: Server;
+let monaco: Server | undefined;
+let proxy: Server | undefined;
 let proxyPort = 0;
+let rootDir: string | undefined;
+
+function listenOnLoopback(server: Server, label: string): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const onError = (cause: Error): void => {
+      reject(new Error(`${label} failed to listen`, { cause }));
+    };
+    server.once("error", onError);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", onError);
+      resolve();
+    });
+  });
+}
+
+function closeServer(server: Server | undefined): Promise<void> {
+  if (server?.listening !== true) {
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve, reject) => {
+    server.close((err) => {
+      if (err !== undefined) {
+        reject(err);
+        return;
+      }
+      resolve();
+    });
+  });
+}
 
 beforeAll(async () => {
   vi.stubEnv("EDD_CONNECTION_SECRET", SECRET);
-  const root = mkdtempSync(join(tmpdir(), "edd-handshake-"));
-  writeFileSync(join(root, "index.html"), "<!doctype html><title>edd</title>");
-  writeFileSync(join(root, "hello.txt"), "hi");
+  rootDir = mkdtempSync(join(tmpdir(), "edd-handshake-"));
+  writeFileSync(join(rootDir, "index.html"), "<!doctype html><title>edd</title>");
+  writeFileSync(join(rootDir, "hello.txt"), "hi");
 
   // The REAL Monaco server, token-gated exactly like production (CONNECTION_TOKEN).
-  monaco = createEditorServer({ root, basePath: BASE, spaDir: root, token: TOKEN });
-  await new Promise<void>((r) => monaco.listen(0, "127.0.0.1", () => {
-    r();
-  }));
+  monaco = createEditorServer({ root: rootDir, basePath: BASE, spaDir: rootDir, token: TOKEN });
+  await listenOnLoopback(monaco, "monaco editor test server");
   const upstream = new URL(`http://127.0.0.1:${String((monaco.address() as AddressInfo).port)}`);
 
   // A minimal proxy mirroring server.ts's /w/<id>/ HTTP handler (authz elided): run
@@ -52,15 +79,15 @@ beforeAll(async () => {
     }
     proxyWorkspaceHttp(upstream, req, res);
   });
-  await new Promise<void>((r) => proxy.listen(0, "127.0.0.1", () => {
-    r();
-  }));
+  await listenOnLoopback(proxy, "workspace proxy test server");
   proxyPort = (proxy.address() as AddressInfo).port;
 });
 
-afterAll(() => {
-  monaco.close();
-  proxy.close();
+afterAll(async () => {
+  await Promise.all([closeServer(proxy), closeServer(monaco)]);
+  if (rootDir !== undefined) {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
 });
 
 function at(path: string): string {

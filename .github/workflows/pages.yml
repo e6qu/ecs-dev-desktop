@@ -33,11 +33,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
-      - uses: pnpm/action-setup@v6.0.8
       - uses: actions/setup-node@v6.4.0
         with:
           node-version: 22
-          cache: pnpm
+      - name: Enable Corepack
+        run: corepack enable
       - run: pnpm install --frozen-lockfile
       - name: Lint
         run: pnpm --filter @edd/demo lint
@@ -67,11 +67,11 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v6.0.2
-      - uses: pnpm/action-setup@v6.0.8
       - uses: actions/setup-node@v6.4.0
         with:
           node-version: 22
-          cache: pnpm
+      - name: Enable Corepack
+        run: corepack enable
       - run: pnpm install --frozen-lockfile
       # Project Pages serve under /<repo>/, so the demo lives at /ecs-dev-desktop/demo/.
       - name: Build the demo (project-Pages base path)

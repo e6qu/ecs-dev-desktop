@@ -74,7 +74,7 @@ function DevLogin({ error }: { error?: string }) {
             type="password"
             autoComplete="off"
             data-testid={TESTID.loginPassword}
-            placeholder="EDD_DEV_PASSWORD (default: dev)"
+            placeholder="account password"
             className="input"
             style={{ width: "100%" }}
           />

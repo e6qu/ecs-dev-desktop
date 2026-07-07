@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { UpdateItemCommand } from "@aws-sdk/client-dynamodb";
 import {
   baseImage,
   baseImageId,
@@ -523,6 +524,22 @@ describe("WorkspaceService lifecycle ", () => {
     if (!snap.ok) expect(snap.error.kind).toBe("conflict");
   });
 
+  it("rejects snapshot of a terminated tombstone with a conflict", async () => {
+    const ws = await service.create({
+      ownerId: ownerId("terminated-snapshot"),
+      baseImage: baseImage("img"),
+    });
+    expect((await service.remove(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.finishDeleting(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.get(workspaceId(ws.id)))?.state).toBe("terminated");
+
+    const snapshotCount = (await storage.listSnapshots()).length;
+    const snap = await service.snapshot(workspaceId(ws.id));
+    expect(snap.ok).toBe(false);
+    if (!snap.ok) expect(snap.error.kind).toBe("conflict");
+    expect((await storage.listSnapshots()).length).toBe(snapshotCount);
+  });
+
   it("remove() of an absent workspace returns a not_found domain error", async () => {
     // The DELETE route relies on this to map the concurrent double-delete race to
     // 404 (via the central mapper) instead of a 500.
@@ -628,6 +645,28 @@ describe("CatalogService", () => {
         image: "729079515331.dkr.ecr.eu-west-1.amazonaws.com/edd-prod/golden/omnibus:newtag",
       });
     }
+  });
+
+  it("fails loudly when a persisted catalog row has no CAS version", async () => {
+    const created = await catalog.create({
+      name: "Malformed",
+      image: baseImage("729079515331.dkr.ecr.eu-west-1.amazonaws.com/edd-prod/golden/legacy:old"),
+    });
+    await client.send(
+      new UpdateItemCommand({
+        TableName: TEST_TABLE,
+        Key: {
+          PK: { S: `$edd#id_${created.id}` },
+          SK: { S: "$baseimage_1" },
+        },
+        UpdateExpression: "REMOVE #version",
+        ExpressionAttributeNames: { "#version": "version" },
+      }),
+    );
+
+    await expect(catalog.list()).rejects.toThrow(
+      `base image ${created.id} is missing required catalog version`,
+    );
   });
 
   it("update CAS: stale version is rejected, current version wins", async () => {

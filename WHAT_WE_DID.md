@@ -180,6 +180,40 @@ Error`, so the portal's existing `e.message` shows it. api-client 4 tests; build
   data-fidelity e2e reusing `EcsComputeProvider.client()` instead of reimplementing it. Also
   gitignored `temp/` (local scratch, e.g. manual screenshots). All tiers green.
 
+- **2026-07-07** — **Image-source reconcile and fail-loud cleanup branch.** After PR
+  #197 was merged and deployed, production showed that successful golden CodeBuild
+  runs only reconciled when `/admin/images` was read and that the Terraform-seeded
+  catalog row lacked the required CAS `version`. The follow-up branch moved
+  image-source reconciliation into the long-lived custom server startup/interval,
+  made Terraform seed `version = 0`, and made `CatalogService` reject malformed
+  catalog rows without compatibility fallback. Verification also removed hidden
+  fallbacks: e2e production web harnesses supplied explicit image-source coordinates,
+  dev-auth required per-account passwords, unknown editor values threw, and
+  `claude`/`codex` workspace images exited loudly until the vendor local web UI
+  harnesses were wired. A sockerless DynamoDB read/mutation panic was reported as
+  `e6qu/sockerless#777`, fixed upstream by `e6qu/sockerless#778`, and pinned at
+  `b5126463` by snapshotting stored items under lock; editor-monaco tests were
+  tightened to loopback binds.
+  `AGENTS.md` was clarified to allow only one active work branch and one active PR
+  at a time, with no duplicate, parallel, or stacked PRs while that work was active.
+  It also recorded the project norm that agents should resist tiny anemic PRs:
+  related fixes, tests, docs, and cleanup belong in the active chunky PR until the
+  human in command says to stop.
+  After opening PR #198, CI exposed that the Playwright production custom-server
+  harness still lacked the required image-source coordinates; the harness was
+  fixed with explicit Playwright-only coordinates, and the observed
+  `NO_COLOR`/`FORCE_COLOR` warning was removed at the Playwright process boundary.
+  CI action warnings were cleaned by bumping age-eligible `actions/cache` and
+  then replacing `pnpm/action-setup` with Corepack after its self-installer still
+  emitted audit warnings. The `editor-token-handshake` test harness was hardened
+  so loopback bind failures failed immediately and teardown stayed safe. The live
+  Playwright e2e harness was then fixed with the same explicit image-source
+  coordinates, and its browser lifecycle passed locally against the container-mode
+  simulator. Circle-`i` help/details panels were moved to fixed overlays so they
+  no longer altered page/card layout, and deleted-workspace snapshot behavior was
+  pinned so terminated tombstones were neither explicit nor scheduled snapshot
+  targets.
+
 - **2026-06-04** — **Terraform platform module (deploy IaC) + sim-tested.** Wrote a
   reusable, parametric `infra/terraform/modules/ecs-dev-desktop` (Terraform/Terragrunt,
   no `provider` block): VPC/subnets/NAT/SGs, the DynamoDB single-table (matching
@@ -2898,3 +2932,43 @@ closed as already implemented in the image Dockerfiles, and #92 was moved upstre
 to `e6qu/sockerless#776`. Verification passed: `pnpm lint`, `pnpm build`,
 `pnpm test`, `pnpm test:integ`, `pnpm check-deps`, `pnpm dead-code`, and `pnpm cpd`
 (`cpd` exited 0 with the known below-threshold clone report/config warning).
+
+**2026-07-07 — Deployed PR #197 and fixed the live image-source rollout gap without
+fallbacks.** PR #197 merged and deployed as control-plane tag `2d231f5`; production
+verify was green. The GitHub push webhook was configured, and EDD accepted a signed
+push observation that queued a tracked `golden` CodeBuild run for
+`2d231f50fad8`. The corrected run succeeded and pushed
+`edd-prod/golden/omnibus:2d231f50fad8`, but the first rollout exposed two real bugs:
+image-source build reconciliation only ran when `/admin/images` read
+`/api/admin/image-source`, and the Terraform-seeded catalog row had no CAS
+`version`, so `CatalogService` attempted `NaN` and failed loudly. The live catalog
+row was corrected to the required shape and rolled through `CatalogService` to
+`omnibus:2d231f50fad8`. The follow-up branch fixed the code path with no fallback:
+the server now reconciles image-source builds on startup and on a periodic sweep,
+Terraform seeds `version = 0`, and malformed catalog rows are rejected with a clear
+invariant error instead of being tolerated.
+
+**2026-07-07 — Fixed the Tier-2 sockerless DynamoDB race found during follow-up
+verification.** Full `pnpm test:integ:local` initially crashed the pinned
+sockerless AWS simulator with `fatal error: concurrent map iteration and map write`
+in `ddbItemSizeBytes` from the `GetItem` read path, then downstream tests failed
+with `ECONNREFUSED` after the simulator exited. The underlying issue was reported
+as `e6qu/sockerless#777`, fixed upstream by `e6qu/sockerless#778`, and pinned at
+merged main commit `b5126463`. The fix cloned DynamoDB items under `ddbItemsMu`
+before projection and consumed-capacity accounting, and added a concurrent mutation
+regression test. Verification passed with
+`env GOWORK=off go test -tags noui . -run
+TestDDBItemSnapshotIsIndependentUnderConcurrentMutation -count=10` in the
+sockerless AWS module and then full EDD `pnpm test:integ:local` (27/27 tasks).
+
+**2026-07-07 — Removed hidden fallback paths found while finishing the follow-up.**
+The production e2e harness supplied the same required image-source coordinates the
+server now demanded in production, fixing the `pnpm test:e2e:local` startup failure
+without making image-source config optional. Dev-auth stopped using a shared
+`EDD_DEV_PASSWORD` path: every built-in or configured dev user carried an explicit
+password, and invalid `EDD_DEV_USERS` entries failed schema parsing. Unknown editor
+values stopped becoming OpenVSCode, and the base workspace image stopped routing
+`EDD_EDITOR_MODE=claude|codex` through the Monaco terminal wrapper; those modes
+exited loudly until the Anthropic/OpenAI local web UI harness launchers were wired.
+Verification passed with focused config/core/web tests and full `pnpm test:e2e:local`
+(46 passed, 5 skipped variant-image tests).

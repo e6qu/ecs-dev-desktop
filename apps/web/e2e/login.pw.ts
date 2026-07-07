@@ -7,8 +7,8 @@ import { sel } from "./support";
 /**
  * Dev-login form (EDD_DEV_AUTH=1): sign in as the seeded accounts and assert
  * role-appropriate access. Drives the real form (not the cookie shim) so the
- * login flow itself is covered. Seeded accounts + the default password ("dev")
- * come from @edd/config (no EDD_DEV_USERS/EDD_DEV_PASSWORD set in this run).
+ * login flow itself is covered. Seeded accounts with explicit passwords come
+ * from @edd/config (no EDD_DEV_USERS set in this run).
  */
 async function formLogin(page: Page, username: string, password: string): Promise<void> {
   await page.goto("/login");

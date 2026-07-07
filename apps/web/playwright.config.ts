@@ -12,11 +12,20 @@ const PORT = 3210;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 const IS_CI = process.env.CI === "true" || process.env.CI === "1";
 
+if (process.env.NO_COLOR !== undefined && process.env.FORCE_COLOR !== undefined) {
+  delete process.env.NO_COLOR;
+}
+
 const appEnv = {
   EDD_DEV_AUTH: "1",
   AUTH_SECRET: "playwright-dev-secret",
   DYNAMODB_ENDPOINT: process.env.DYNAMODB_ENDPOINT ?? "http://127.0.0.1:4566",
   DYNAMODB_TABLE: process.env.DYNAMODB_TABLE ?? "ecs-dev-desktop-pw",
+  EDD_APP_NAME: "edd-playwright",
+  EDD_GOLDEN: "omnibus",
+  EDD_IMAGE_SOURCE_REPO: "e6qu/ecs-dev-desktop",
+  EDD_IMAGE_SOURCE_BRANCH: "main",
+  EDD_IMAGE_SOURCE_WEBHOOK_SECRET: "playwright-image-source-webhook-secret",
 };
 // global-setup runs in this process and reads these.
 Object.assign(process.env, appEnv);
@@ -41,7 +50,7 @@ export default defineConfig({
   // flow (stopping → stopped, driven by the sweep) failed here. A production build
   // first (server.ts calls next({dev:false}).prepare(), which needs `.next`).
   webServer: {
-    command: `pnpm exec next build && PORT=${PORT.toString()} NODE_ENV=production pnpm exec tsx server.ts`,
+    command: `unset NO_COLOR; pnpm exec next build && PORT=${PORT.toString()} NODE_ENV=production pnpm exec tsx server.ts`,
     url: `${BASE_URL}/login`,
     timeout: 240_000,
     reuseExistingServer: !IS_CI,

@@ -24,7 +24,7 @@ beforeEach(async () => {
 
   server = createEditorServer({ root, spaDir, basePath: BASE, token: TOKEN });
   await new Promise<void>((resolve) => {
-    server.listen(0, resolve);
+    server.listen(0, "127.0.0.1", resolve);
   });
   const addr = server.address();
   if (addr === null || typeof addr === "string") throw new Error("no port");

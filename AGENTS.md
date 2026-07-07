@@ -34,10 +34,17 @@ live. Hence:
    issues in any other external project (e.g. Pomerium, AWS, etc.).
    If a third-party tool has a limitation, record it in `BUGS.md` and work
    around it or wait; do not file in their tracker.
-10. **Never more than one active PR at a time.** Only one open PR may exist at
-    once; finish and get it merged before starting the next. Keep delivering work
-    as commits, but **always ask the user before opening another PR** — never open
-    a second (including a stacked one) on your own.
+10. **Only one active branch and one active PR at a time.** This prevents agents
+    from creating PRs or work streams casually and causing confusion about what is
+    under review. Do not start parallel work on a second branch, and do not open a
+    second PR (including a stacked PR) while another branch/PR is active. If a PR
+    already exists for the current branch/work, keep delivering work as commits to
+    that PR; never open a duplicate PR.
+11. **Resist anemic PRs.** This project prefers chunky, complete PRs over small
+    fragments. Keep related fixes, tests, docs, and boyscout cleanup in the active
+    branch/PR instead of splitting them into tiny review units. The human in
+    command decides when the active work is done and when it is time to stop,
+    review, or merge; big PRs are allowed and are the norm here.
 
 The engineering standards in §6 are also hard rules.
 

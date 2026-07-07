@@ -49,10 +49,11 @@ jobs:
       AWS_REGION: ${{ github.event.inputs.region != '' && github.event.inputs.region || vars.E2E_AWS_REGION || 'us-east-1' }}
     steps:
       - uses: actions/checkout@v6.0.2
-      - uses: pnpm/action-setup@v6.0.8
       - uses: actions/setup-node@v6.4.0
         with:
           node-version: 22
+      - name: Enable Corepack
+        run: corepack enable
       - run: pnpm install --frozen-lockfile
 
       - name: Configure AWS credentials (OIDC)

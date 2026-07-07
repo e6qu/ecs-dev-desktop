@@ -96,6 +96,25 @@ describe("Reconciler", () => {
     expect((await reconciler.snapshotDue()).snapshotted).toBe(0);
   });
 
+  it("does not schedule snapshots for terminated workspaces", async () => {
+    const { storage, service, reconciler, advance } = await harness();
+    const ws = await service.create({ ownerId: ownerId("deleted"), baseImage: baseImage("img") });
+
+    expect((await service.remove(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.finishDeleting(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.get(workspaceId(ws.id)))?.state).toBe("terminated");
+    const snapshotCount = (await storage.listSnapshots()).length;
+
+    advance(LATER);
+    expect(await reconciler.snapshotDue()).toEqual({
+      scanned: 0,
+      snapshotted: 0,
+      skipped: 0,
+      failed: 0,
+    });
+    expect((await storage.listSnapshots()).length).toBe(snapshotCount);
+  });
+
   it("garbage-collects an orphaned volume, sparing referenced storage", async () => {
     const { storage, service, reconciler, advance } = await harness();
     const live = await service.create({ ownerId: ownerId("carol"), baseImage: baseImage("img") });

@@ -528,9 +528,7 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
           data-editor={editor}
           value={editor}
           onChange={(e) => {
-            // Zod-narrow instead of a cast (§6.1): an unknown value falls back to default.
-            const parsed = editorKind.safeParse(e.target.value);
-            setEditor(parsed.success ? parsed.data : "openvscode");
+            setEditor(editorKind.parse(e.target.value));
           }}
           style={{ alignSelf: "flex-start" }}
         >

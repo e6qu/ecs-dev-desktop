@@ -147,6 +147,12 @@ export const WORKSPACE_PROXY_UPSTREAM_TIMEOUT_MS = 30000;
  * Convergence lands within ~DEFAULT_STOP_GRACE_MS + this interval. */
 export const STOPPING_SWEEP_MS = 3000;
 
+/** How often the long-lived control-plane process reconciles EDD-owned workspace
+ * image-source builds against CodeBuild. This makes successful golden builds roll
+ * into the base-image catalog without requiring an admin to have `/admin/images`
+ * open. */
+export const IMAGE_SOURCE_RECONCILE_SWEEP_MS = 60_000;
+
 /**
  * Cost model rates (USD), as published for **us-east-1 on-demand** at the time
  * of writing — each overridable via the matching `EDD_PRICE_*` env var so a
@@ -210,33 +216,28 @@ export function workspaceSizing(): { vcpu: number; memoryGib: number; volumeGib:
  * Local **dev-auth** seeded accounts (gated on `EDD_DEV_AUTH=1` in the app — never
  * production, which uses Auth.js OIDC). Configuration, not app code: the set is
  * overridable via `EDD_DEV_USERS` (a JSON array). A built-in default keeps
- * `pnpm dev` working out of the box. Each account has a fixed role; the password
- * is per-user (`password`) or the shared `EDD_DEV_PASSWORD` fallback.
+ * `pnpm dev` working out of the box. Each account has a fixed role and password.
  */
 export interface DevUser {
   readonly username: string;
   readonly role: Role;
   readonly email: string;
-  /** Optional per-user password; falls back to {@link devPassword}. */
-  readonly password?: string;
+  readonly password: string;
 }
 
 const devUserSchema = z.object({
   username: z.string().min(1),
   role: z.enum(["viewer", "member", "admin"]),
   email: z.string().min(1),
-  password: z.string().min(1).optional(),
+  password: z.string().min(1),
 });
 const devUsersSchema = z.array(devUserSchema).min(1);
 
 const DEFAULT_DEV_USERS: readonly DevUser[] = [
-  { username: "admin", role: "admin", email: "admin@edd.local" },
-  { username: "member", role: "member", email: "member@edd.local" },
-  { username: "viewer", role: "viewer", email: "viewer@edd.local" },
+  { username: "admin", role: "admin", email: "admin@edd.local", password: "dev" },
+  { username: "member", role: "member", email: "member@edd.local", password: "dev" },
+  { username: "viewer", role: "viewer", email: "viewer@edd.local", password: "dev" },
 ];
-
-/** Dev password fallback when an account has none and `EDD_DEV_PASSWORD` is unset. */
-export const DEFAULT_DEV_PASSWORD = "dev";
 
 /** The seeded dev accounts: `EDD_DEV_USERS` (JSON) if set, else the default set.
  * An invalid `EDD_DEV_USERS` fails loudly (zod) — a config error, not silent. */
@@ -244,12 +245,6 @@ export function devUsers(): readonly DevUser[] {
   const raw = process.env.EDD_DEV_USERS;
   if (raw === undefined || raw.length === 0) return DEFAULT_DEV_USERS;
   return devUsersSchema.parse(JSON.parse(raw) as unknown);
-}
-
-/** The shared dev password (per-account passwords override it). */
-export function devPassword(): string {
-  const p = process.env.EDD_DEV_PASSWORD;
-  return p === undefined || p.length === 0 ? DEFAULT_DEV_PASSWORD : p;
 }
 
 /**

@@ -5,6 +5,7 @@
 # on the live config's fixed port with that environment.
 set -eu
 unset CDPATH
+unset NO_COLOR
 
 # Run from apps/web regardless of the caller's cwd ($0-derived, POSIX).
 cd -- "$(dirname -- "$0")/.."

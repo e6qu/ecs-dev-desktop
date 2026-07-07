@@ -27,6 +27,7 @@ resource "aws_dynamodb_table_item" "default_catalog" {
     enabled     = { BOOL = true }
     editor      = { S = "openvscode" }
     createdAt   = { S = local.seed_created }
+    version     = { N = "0" }
     PK          = { S = "$edd#id_${local.seed_id}" }
     SK          = { S = "$baseimage_1" }
     GSI1PK      = { S = "$edd" }
