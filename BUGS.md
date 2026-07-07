@@ -4,6 +4,21 @@
 
 ## Open
 
+- **`e2e` CI check (container-mode sim) red on the branch — environmental, not a code
+  regression** (2026-07-07). The `e2e` job (real containers on the GitHub ubuntu
+  runner) fails: workspaces stay `provisioning` (never `running`) and some API calls
+  return 405, cascading across the specs. Evidence it is environmental, not our logic:
+  (1) **prod works** — workspaces are created/opened live on `app.edd.e6qu.dev`;
+  (2) the same omnibus golden image **builds + deploys fine via CodeBuild** every deploy
+  this session; the e2e runner logs `golden image build failed (attempt N); retrying`
+  on the heavy Go+Rust+Java+Monaco build (~3GB) — a runner resource/flake, so tasks
+  can't launch → stuck `provisioning`; (3) **integration + playwright + code-health are
+  green** (they validate the actual control-plane logic). Not fully root-caused (the
+  exact runner build-failure line wasn't isolated; needs the full container sim to
+  reproduce, impractical without the ~3GB image + sockerless containers). Likely fixes:
+  free runner disk before the golden build, or a larger runner. NOT blocking the code
+  work; recorded per §0.5 rather than ignored.
+
 - **Cost model doesn't price the undelete window or restored sessions** (2026-07-06).
   Deleted workspaces now keep a retained snapshot for the 7-day undelete window —
   that snapshot storage bills in AWS but `deriveBillingIntervals` treats
