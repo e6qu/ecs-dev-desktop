@@ -70,6 +70,12 @@ operation not permitted` on the background process lines. Recorded in `BUGS.md`;
   no backend block, so Terraform prints `Missing backend configuration` on every
   init. Recorded in `BUGS.md`; make the install path explicit before the warning
   hides a real backend/state issue.
+- **Decide whether to roll the production workspace image.** PR #193's
+  `golden-images` CI job passed, but the live deploy was control-plane-only
+  (`EDD_BUILD_TARGET=web`) and the production catalog still launches
+  `omnibus:db75d1f`; ECR has newer unselected golden tags and no `eee7176` golden
+  image. If the merged changes require workspace-image contents, run an explicit
+  `EDD_BUILD_TARGET=golden` rebuild and repoint the catalog.
 - **Spectate cross-replica relay** — v1's relay is per-replica (the spectator
   client retries until it lands on the publisher's replica; works, but retry
   count grows with replica count). Follow-up: an internal replica-to-replica

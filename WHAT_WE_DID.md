@@ -2797,3 +2797,13 @@ the deployed control-plane task definition points at
 Recorded one deploy-tooling warning in `BUGS.md`: `terraform init` emits `Missing
 backend configuration` because the complete example has no backend block while
 `install.sh` passes `-backend-config`.
+
+**2026-07-07 — PR #193 merged; clarified workspace-image state.** The user merged
+PR #193 to `main` (`021ae3c`) after all checks passed, including `golden-images`.
+That check proved the golden/workspace image build path in CI, but the live AWS
+deploy was intentionally `EDD_BUILD_TARGET=web`, so production did not publish a
+workspace image tagged `eee7176` and did not repoint the catalog. Verified in AWS:
+`edd-prod/golden/omnibus` has newer pushed tags up to `458a744`, but no `eee7176`;
+the live catalog entry currently launches
+`729079515331.dkr.ecr.eu-west-1.amazonaws.com/edd-prod/golden/omnibus:db75d1f`.
+Recorded the distinction in `STATUS.md`, `BUGS.md`, and `DO_NEXT.md`.
