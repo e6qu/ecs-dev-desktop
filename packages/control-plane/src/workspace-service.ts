@@ -320,6 +320,7 @@ function toWorkspace(r: WorkspaceRecord): Workspace {
     deleteRequestedAt:
       r.deleteRequestedAt === undefined ? undefined : isoTimestamp(r.deleteRequestedAt),
     stopRequestedAt: r.stopRequestedAt === undefined ? undefined : isoTimestamp(r.stopRequestedAt),
+    stopRequestedBy: r.stopRequestedBy,
     createdAt: isoTimestamp(r.createdAt),
     lastActivity: isoTimestamp(r.lastActivity),
     volumeId: r.volumeId === undefined ? undefined : volumeId(r.volumeId),
