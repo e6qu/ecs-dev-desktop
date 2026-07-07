@@ -131,6 +131,7 @@ fi
 # unclosed HCL list, e.g. ["eu-west-1a","eu-west-1b","; found on the first real apply.)
 azs_list=$(printf '%s' "$EDD_AZS" | sed 's/,/","/g; s/^/["/; s/$/"]/')
 state_bucket="edd-tfstate-${EDD_NAME}"
+state_key="ecs-dev-desktop/${EDD_NAME}/terraform.tfstate"
 
 banner() { printf '\n\033[1m=== edd: %s ===\033[0m\n' "$*"; }
 
@@ -149,9 +150,16 @@ if [ "$mode" = "verify" ]; then
   done
   aws sts get-caller-identity --region "$EDD_REGION" >/dev/null
 
+  if ! aws s3api head-object --region "$EDD_REGION" --bucket "$state_bucket" --key "$state_key" >/dev/null 2>&1; then
+    echo "edd: remote Terraform state not found: s3://${state_bucket}/${state_key}" >&2
+    echo "edd: refusing to verify from local state or migrate state during read-only verify" >&2
+    exit 1
+  fi
+
   (cd "$tfdir" && terraform init -backend-config "bucket=$state_bucket" \
-    -backend-config "key=ecs-dev-desktop/${EDD_NAME}/terraform.tfstate" \
-    -backend-config "region=$EDD_REGION" -input=false >/dev/null)
+    -backend-config "key=$state_key" \
+    -backend-config "region=$EDD_REGION" -backend-config "encrypt=true" \
+    -backend-config "dynamodb_table=edd-tfstate-locks" -reconfigure -input=false >/dev/null)
 
   cp_url=$(cd "$tfdir" && terraform output -raw control_plane_url)
   cluster=$(cd "$tfdir" && terraform output -raw ecs_cluster_name)
@@ -226,7 +234,7 @@ sh "$here/bootstrap-secrets.sh" "$EDD_NAME" "$EDD_REGION"
 
 banner "terraform init + apply ($EDD_NAME in $EDD_REGION, mode=$EDD_IMAGE_BUILD_MODE)"
 (cd "$tfdir" && terraform init -backend-config "bucket=$state_bucket" \
-  -backend-config "key=ecs-dev-desktop/${EDD_NAME}/terraform.tfstate" \
+  -backend-config "key=$state_key" \
   -backend-config "region=$EDD_REGION" -backend-config "encrypt=true" \
   -backend-config "dynamodb_table=edd-tfstate-locks" -input=false)
 

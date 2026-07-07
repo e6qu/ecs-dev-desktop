@@ -2,9 +2,44 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-07. PR #198 merged to `main` as
-`7fee654aaa67ae200251cfe67816f3701f04cb0c`. The new follow-up branch
-`fix/docker-build-warnings` cleaned up the remaining CI/deploy warning sources:
+**Last updated:** 2026-07-07. Live production check of
+`https://app.edd.e6qu.dev` found the public control plane up but not current.
+`/api/healthz` returned 200, `/api/readyz` returned 200 with DynamoDB ACTIVE,
+the ALB target group had two healthy control-plane targets, the SSH NLB target
+was healthy, `probe.ssh.edd.e6qu.dev:22` accepted TCP, `/login` rendered the
+GitHub/Entra sign-in page, and the webhook surface was narrow: WAF blocked
+non-POST/non-JSON requests and the app returned 401 for a syntactically valid
+delivery with an invalid signature.
+
+The same check found production still running ECS task definitions
+`edd-prod-control-plane:26` and `edd-prod-ssh-gateway:26`, both on image tag
+`2d231f5`, while `main` was already at PR #199 merge commit
+`89c3cdee68d125f967d5d4522e928e1eebda3393`. The app-owned golden image webhook
+flow observed both PR #198 and PR #199 merges and CodeBuild successfully pushed
+`edd-prod/golden/omnibus:7fee654aaa67` and
+`edd-prod/golden/omnibus:89c3cdee68d1`, but the live catalog still pointed at
+`omnibus:2d231f50fad8` and both post-merge trigger rows remained `queued`.
+That matched the deployed-code gap: PR #198's long-lived image-source reconcile
+sweep had been merged but was not running in production.
+
+The release/deploy path was also not usable as documented. The `release`
+workflow had no repo variables/secrets configured and only ran for tags/manual
+dispatch, so CI had not published post-merge control-plane/SSH images. The
+Terraform state bucket `edd-tfstate-edd-prod` existed but contained no state
+object at `ecs-dev-desktop/edd-prod/terraform.tfstate`; the live matching state
+was present only as ignored local files under
+`infra/terraform/examples/complete/`. `scripts/install.sh --verify` therefore
+failed before verification. The current branch `fix/live-service-release-check`
+made release image publishing fail loudly and run on main pushes for web images
+only (`EDD_BUILD_TARGET=web`; golden/workspace images stayed app-owned), and
+made `install --verify` fail loudly when the expected remote state object was
+absent instead of entering Terraform's backend migration prompt in read-only
+mode. The branch also refreshed age-eligible AWS SDK dependencies to `3.1080.0`
+after `pnpm check-deps` reported drift, and committed the lockfile update.
+
+PR #198 merged to `main` as `7fee654aaa67ae200251cfe67816f3701f04cb0c`. The
+follow-up PR #199 branch `fix/docker-build-warnings` cleaned up the remaining
+CI/deploy warning sources:
 Debian slim workspace/SSH images now keep the man1 pages that installed packages
 register as `update-alternatives` slave links, apt package installs run
 noninteractively, the shell sweep runs zsh in POSIX-sh emulation, and the complete
