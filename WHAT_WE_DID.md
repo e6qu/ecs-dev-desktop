@@ -2822,3 +2822,34 @@ and their live logs. Docs now list the required workflow variables. Verified wit
 `pnpm lint`, `pnpm test`, `pnpm --filter @edd/web build`, `actionlint`, `terraform
 fmt -check -recursive infra/terraform`, `pnpm check-deps`, `pnpm dead-code`, and
 `pnpm cpd` (existing clone report / `.jscpd.json` `$schema` warning only).
+
+**2026-07-07 — PR #194 merged; first post-merge image workflow skipped pending repo
+configuration.** The user merged PR #194 to `main` at `bf6cd22`. The new
+`post-merge-workspace-images` workflow triggered on that push, but GitHub marked the
+`start golden image build` job as skipped because its guard
+(`vars.PROD_IMAGE_BUILD_AWS_ROLE_ARN != ''`) was false. Confirmed against AWS: no
+new `edd-prod-build-images` CodeBuild run started after the merge time, and
+`edd-prod/golden/omnibus` still has `458a744` as its latest pushed tag while the live
+catalog continues to launch `omnibus:db75d1f`. Next steps are configuration/deploy
+rather than code: set the repo variable, apply the CodeBuild buildspec update, roll
+the control plane, and rerun/wait for the next main push.
+
+**2026-07-07 — Replaced GitHub Actions workspace-image automation with EDD-owned
+source sync, without making EDD its own release dependency.** Removed the
+`post-merge-workspace-images` workflow and moved deployed workspace/golden image
+orchestration into the control plane: new DynamoDB `imageSource` /
+`imageSourceTrigger` records, `/api/integrations/github/image-webhook` with GitHub
+`X-Hub-Signature-256` HMAC verification, `/api/admin/image-source` for source state,
+and `/admin/images` source-sync/trigger tables. The source flow is signed-webhook
+only, with no polling fallback and no disabled/not-configured mode: missing
+`EDD_IMAGE_SOURCE_REPO` or `EDD_IMAGE_SOURCE_WEBHOOK_SECRET` fails loudly in the API
+and install script. It compares GitHub repo/branch observations, starts CodeBuild
+asynchronously for exact SHAs when workspace-image inputs changed, and records
+skipped triggers when they did not. `ImageOps.startBuild` now accepts
+`SOURCE_VERSION` and trigger labels for both admin and source-triggered builds. CI
+still owns control-plane release image builds, so EDD remains releasable without an
+existing EDD deployment. Verified with targeted web tests and shellcheck/bash/zsh for
+`scripts/install.sh`; then reran web lint/build, full repo lint/test (the test gate
+needed an unsandboxed rerun because the web handshake test binds `127.0.0.1`), `pnpm
+dead-code`, `pnpm cpd` (known below-threshold clone report), `pnpm check-deps`,
+`actionlint`, and `terraform fmt -check -recursive infra/terraform`.

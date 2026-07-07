@@ -70,13 +70,19 @@ operation not permitted` on the background process lines. Recorded in `BUGS.md`;
   no backend block, so Terraform prints `Missing backend configuration` on every
   init. Recorded in `BUGS.md`; make the install path explicit before the warning
   hides a real backend/state issue.
-- **Deploy/configure post-merge workspace image automation.** The code now starts an
-  asynchronous `EDD_BUILD_TARGET=golden` CodeBuild run after every push to `main`
-  and shows target/tag/trigger/exact source version in `/admin/images`. To make it
-  live: configure `PROD_IMAGE_BUILD_AWS_ROLE_ARN` (optional region/project vars),
-  apply the Terraform CodeBuild buildspec update, and roll the control plane. This
-  builds the workspace image but still does not automatically repoint the catalog;
-  that rollout decision remains covered by the golden-image catalog gap in `BUGS.md`.
+- **Deploy control-plane-owned workspace image source sync.** The GitHub Actions
+  post-merge workflow was replaced by EDD-owned GitHub source sync: `/admin/images`
+  shows repo/branch observed-vs-handled SHAs, source trigger history, and CodeBuild
+  metadata; `/api/integrations/github/image-webhook` accepts verified GitHub `push`
+  webhooks and fails loudly when the repo or webhook secret is missing. There is no
+  polling fallback. To make it live: apply the CodeBuild buildspec update, roll the
+  control plane with `EDD_IMAGE_SOURCE_REPO=e6qu/ecs-dev-desktop`, create the required
+  `EDD_IMAGE_SOURCE_WEBHOOK_SECRET` in Secrets Manager, configure the GitHub webhook,
+  then verify the first golden build from `/admin/images`. This controls deployed
+  workspace/golden image rebuilds only; CI still owns control-plane release images so
+  EDD remains releasable without an existing EDD deployment. This still does not
+  automatically repoint the catalog; that rollout decision remains covered by the
+  golden-image catalog gap in `BUGS.md`.
 - **Spectate cross-replica relay** — v1's relay is per-replica (the spectator
   client retries until it lands on the publisher's replica; works, but retry
   count grows with replica count). Follow-up: an internal replica-to-replica

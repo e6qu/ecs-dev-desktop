@@ -42,8 +42,18 @@ export interface BuildSummary {
   readonly durationMs?: number;
   /** The git ref the build resolved to (from CodeBuild). */
   readonly ref?: string;
+  /** Exact source commit checked out after cloning the ref, when provided. */
+  readonly sourceVersion?: string;
   /** The user/system that started it. */
   readonly triggeredBy: string;
+}
+
+export interface StartImageBuildInput {
+  readonly target: BuildTargetDto;
+  readonly tag: string;
+  readonly ref: string;
+  readonly sourceVersion?: string;
+  readonly triggeredBy?: string;
 }
 
 /** The narrow port the admin Images routes depend on. */
@@ -53,7 +63,7 @@ export interface ImageOps {
   /** Recent tags pushed to a repo, newest first. */
   listImageTags(repo: string, limit: number): Promise<string[]>;
   /** Start a build for the given target/tag/ref; returns the CodeBuild build id. */
-  startBuild(input: { target: BuildTargetDto; tag: string; ref: string }): Promise<string>;
+  startBuild(input: StartImageBuildInput): Promise<string>;
   /** Current status of a build, or null if unknown. */
   getBuild(buildId: string): Promise<BuildObservation | null>;
   /** The project's most recent builds (history), newest first. */
@@ -151,6 +161,7 @@ export function buildSummaryFromCodeBuild(build: CodeBuildBuildSummaryInput): Bu
       ? { durationMs: build.endTime.getTime() - build.startTime.getTime() }
       : {}),
     ...(resolvedRef === undefined ? {} : { ref: resolvedRef }),
+    ...(sourceVersion === undefined || sourceVersion === "" ? {} : { sourceVersion }),
     triggeredBy: envValue(build, "EDD_TRIGGER") ?? build.initiator ?? UNKNOWN_BUILD_VALUE,
   };
 }
@@ -239,7 +250,7 @@ class AwsImageOps implements ImageOps {
     );
   }
 
-  async startBuild(input: { target: BuildTargetDto; tag: string; ref: string }): Promise<string> {
+  async startBuild(input: StartImageBuildInput): Promise<string> {
     const res = await this.codebuild.send(
       new StartBuildCommand({
         projectName: this.cfg.codeBuildProject,
@@ -247,7 +258,10 @@ class AwsImageOps implements ImageOps {
           { name: "EDD_BUILD_TARGET", value: input.target, type: "PLAINTEXT" },
           { name: "TAG", value: input.tag, type: "PLAINTEXT" },
           { name: "SOURCE_REF", value: input.ref, type: "PLAINTEXT" },
-          { name: "EDD_TRIGGER", value: "admin", type: "PLAINTEXT" },
+          ...(input.sourceVersion === undefined
+            ? []
+            : [{ name: "SOURCE_VERSION", value: input.sourceVersion, type: "PLAINTEXT" as const }]),
+          { name: "EDD_TRIGGER", value: input.triggeredBy ?? "admin", type: "PLAINTEXT" },
         ],
       }),
     );

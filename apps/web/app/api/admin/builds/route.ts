@@ -14,6 +14,7 @@ const triggerBody = z.object({
   target: buildTarget,
   tag: z.string().min(1).max(128),
   ref: z.string().min(1).max(256),
+  sourceVersion: z.string().min(1).max(128).optional(),
 });
 
 // GET /api/admin/builds — the project's last 20 builds (newest first).
@@ -29,7 +30,8 @@ async function handlePOST(req: Request) {
   const principal = await requireAdmin(req);
   if (isResponse(principal)) return principal;
   const parsed = triggerBody.safeParse(await req.json());
-  if (!parsed.success) return NextResponse.json({ error: "invalid build request" }, { status: 400 });
+  if (!parsed.success)
+    return NextResponse.json({ error: "invalid build request" }, { status: 400 });
   const buildId = await getImageOps().startBuild(parsed.data);
   return NextResponse.json({ buildId }, { status: 202 });
 }

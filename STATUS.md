@@ -3,9 +3,9 @@
 > Where the project is right now. Update after every task; past tense at PR close.
 
 **Last updated:** 2026-07-07 (live at `https://app.edd.e6qu.dev`, control-plane tag
-`eee7176`, catalog workspace image `omnibus:db75d1f`). PR #193 was merged to `main`
-at merge commit `021ae3c` after all checks passed. Shipped + live this stretch, on
-top of the merged post-launch wave:
+`eee7176`, catalog workspace image `omnibus:db75d1f`). PR #193 (`021ae3c`) and PR
+#194 (`bf6cd22`) were merged to `main`. Shipped + live this stretch, on top of the
+merged post-launch wave:
 
 - **Instant create** — `reserveWorkspace` returns the pre-generated URL in <1s, launch
   runs detached (fixed the 504 where blocking create outran the ALB 60s timeout).
@@ -13,10 +13,14 @@ top of the merged post-launch wave:
   only (~3min / ~7min total vs ~22min); `golden` rebuilds workspace images separately.
 - **Images admin console** (`/admin/images`) — per-image size + per-layer breakdown,
   trigger builds, last-20 build history, live CodeBuild logs (ImageOps port + AWS
-  adapter + fake). Post-merge workspace image automation was added on `main`: a new
-  `post-merge-workspace-images` workflow starts an async `EDD_BUILD_TARGET=golden`
-  CodeBuild run after every push to `main`, and the admin console now shows build
-  target/tag/trigger/exact source version so those runs are trackable.
+  adapter + fake). The GitHub Actions post-merge workflow was superseded by an
+  EDD-owned source-sync flow for deployed workspace images only: the control plane
+  receives verified GitHub `push` webhooks, persists source/trigger records in
+  DynamoDB, starts async `EDD_BUILD_TARGET=golden` CodeBuild runs for exact SHAs
+  when workspace-image inputs changed, and exposes source/trigger/build status in
+  `/admin/images`. There is no polling fallback; missing repo/webhook-secret config
+  fails loudly. CI still owns control-plane release image builds so EDD remains
+  releasable without an existing EDD deployment.
 - **Cancelable `stopping` state** — manual stop → `stopping` (snapshot + scale-to-zero
   after a grace) with a cancel/resume; converged by an in-process server sweep +
   reconciler backstop. Fixed several real bugs found by reproducing locally (DynamoDB
@@ -44,9 +48,10 @@ The branch was deployed control-plane-only to real AWS as image tag
 The production deploy used `EDD_BUILD_TARGET=web`, so it did **not** build a
 production workspace/golden image for `eee7176`; the live catalog still points at
 `729079515331.dkr.ecr.eu-west-1.amazonaws.com/edd-prod/golden/omnibus:db75d1f`.
-Remaining: push/deploy the post-merge image automation (configure
-`PROD_IMAGE_BUILD_AWS_ROLE_ARN`, apply the CodeBuild buildspec update, and roll the
-control plane so `/admin/images` shows the richer metadata); user live-testing;
+Remaining: apply the CodeBuild buildspec update, deploy the control-plane source
+sync flow with `EDD_IMAGE_SOURCE_REPO=e6qu/ecs-dev-desktop`, create the required
+`EDD_IMAGE_SOURCE_WEBHOOK_SECRET` secret, configure the GitHub webhook delivery,
+and run the first control-plane-started golden build. User live-testing;
 replacing the `claude`/`codex`
 Monaco-terminal fallback with the vendor harnesses now explicitly chosen by the user
 (Anthropic Remote Control / `claude.ai/code` for Claude Code; OpenAI `codex
