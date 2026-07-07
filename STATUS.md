@@ -60,6 +60,11 @@ and `env GOWORK=off go test -tags noui . -run
 TestDDBItemSnapshotIsIndependentUnderConcurrentMutation -count=10` in the
 sockerless AWS simulator module.
 
+The branch also clarified `AGENTS.md` PR hygiene: there is only one active branch
+and one active PR at a time; work continues on the active branch/PR, duplicate PRs
+are not opened, and stacked/parallel PRs are not opened while another branch/PR is
+active.
+
 Shipped in this follow-up branch:
 
 - **Workspace image source sync completed the rollout loop.** The EDD-owned GitHub

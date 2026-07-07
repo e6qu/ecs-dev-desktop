@@ -193,6 +193,8 @@ Error`, so the portal's existing `e.message` shows it. api-client 4 tests; build
   harnesses were wired. A sockerless DynamoDB read/mutation panic was reported as
   `e6qu/sockerless#777` and fixed in the pinned submodule branch by snapshotting
   stored items under lock; editor-monaco tests were tightened to loopback binds.
+  `AGENTS.md` was clarified to allow only one active work branch and one active PR
+  at a time, with no duplicate, parallel, or stacked PRs while that work was active.
 
 - **2026-06-04** — **Terraform platform module (deploy IaC) + sim-tested.** Wrote a
   reusable, parametric `infra/terraform/modules/ecs-dev-desktop` (Terraform/Terragrunt,
