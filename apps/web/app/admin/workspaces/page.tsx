@@ -9,6 +9,10 @@ import { catalogByImage, enrichWorkspace } from "../../../lib/workspace-enrich";
 
 export const dynamic = "force-dynamic";
 
+function snapshotText(at: string | undefined): string {
+  return at === undefined ? "never" : new Date(at).toLocaleString();
+}
+
 // Admin-only (the /admin layout gates it). Every workspace, newest first.
 export default async function AdminWorkspacesPage() {
   const cp = await getControlPlane();
@@ -48,6 +52,22 @@ export default async function AdminWorkspacesPage() {
                   <span>workspace · {ws.id}</span>
                   <span>image · {ws.baseImage}</span>
                   <span>owner · {ws.ownerId}</span>
+                  {ws.snapshotIntervalMs !== undefined && (
+                    <span>
+                      snapshot interval · {String(Math.round(ws.snapshotIntervalMs / 60000))}m
+                    </span>
+                  )}
+                  {ws.diskUsedBytes !== undefined && (
+                    <span>
+                      disk · {String(Math.round(ws.diskUsedBytes / (1024 * 1024 * 1024)))} GiB used
+                    </span>
+                  )}
+                  <span
+                    data-testid={TESTID.workspaceSnapshot}
+                    data-snapshot-at={ws.latestSnapshotAt ?? ""}
+                  >
+                    snapshot · {snapshotText(ws.latestSnapshotAt)}
+                  </span>
                 </div>
               </Link>
             );

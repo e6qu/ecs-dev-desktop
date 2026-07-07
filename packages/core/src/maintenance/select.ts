@@ -16,6 +16,8 @@ export interface SnapshotCandidate {
   readonly latestSnapshotAt?: IsoTimestamp;
   /** When the workspace was created; enables the shorter early-session cadence. */
   readonly createdAt?: IsoTimestamp;
+  /** Per-workspace scheduled snapshot cadence. Absent means the deployment default. */
+  readonly snapshotIntervalMs?: number;
 }
 
 /** The storage ids still referenced by live workspaces (must never be GC'd). */
@@ -119,7 +121,10 @@ export function selectDueForSnapshot(
         early !== undefined &&
         c.createdAt !== undefined &&
         !olderThan(c.createdAt, now, early.sessionMs);
-      return olderThan(c.latestSnapshotAt, now, isYoung ? early.intervalMs : intervalMs);
+      const earlyIntervalMs = early === undefined ? undefined : early.intervalMs;
+      const effectiveIntervalMs =
+        c.snapshotIntervalMs ?? (isYoung ? earlyIntervalMs : undefined) ?? intervalMs;
+      return olderThan(c.latestSnapshotAt, now, effectiveIntervalMs);
     })
     .map((c) => c.id);
 }

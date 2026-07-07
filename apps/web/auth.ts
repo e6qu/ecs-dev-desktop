@@ -36,7 +36,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       ...(githubEnterpriseUrl !== undefined && githubEnterpriseUrl.length > 0
         ? { enterprise: { baseUrl: githubEnterpriseUrl } }
         : {}),
-      authorization: { params: { scope: "read:user user:email read:org" } },
+      authorization: { params: { scope: "read:user user:email read:org repo" } },
     }),
     MicrosoftEntraID({
       // The stock profile() fetches the user's photo from a hardcoded

@@ -2,8 +2,10 @@
 import { workspaceId } from "@edd/core";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import type { ReactNode } from "react";
 
 import { StatusBadge } from "../../../../components/StatusBadge";
+import { SnapshotIntervalControl } from "../../../../components/SnapshotIntervalControl";
 import { WorkspaceActions } from "../../../../components/WorkspaceActions";
 import { getCatalog, getControlPlane } from "../../../../lib/control-plane";
 import { TESTID } from "../../../../lib/testids";
@@ -11,7 +13,7 @@ import { catalogByImage } from "../../../../lib/workspace-enrich";
 
 export const dynamic = "force-dynamic";
 
-function Row({ label, value }: { label: string; value: string | undefined }) {
+function Row({ label, value }: { label: string; value: ReactNode | undefined }) {
   return (
     <>
       <dt>{label}</dt>
@@ -63,6 +65,18 @@ export default async function InspectWorkspacePage({
           <Row label="last activity" value={new Date(ws.lastActivity).toLocaleString()} />
           <Row label="task" value={ws.taskId} />
           <Row label="volume" value={ws.volumeId} />
+          <Row
+            label="monitoring"
+            value={<Link href={`/workspaces/${ws.id}/monitoring`}>open monitoring</Link>}
+          />
+          <Row
+            label="snapshot interval"
+            value={
+              ws.snapshotIntervalMs === undefined
+                ? undefined
+                : `${String(Math.round(ws.snapshotIntervalMs / 60000))} min`
+            }
+          />
           <Row label="latest snapshot" value={ws.latestSnapshotId} />
           <Row
             label="snapshot at"
@@ -79,6 +93,9 @@ export default async function InspectWorkspacePage({
             }
           />
         </dl>
+        <div style={{ marginTop: 16 }}>
+          <SnapshotIntervalControl id={ws.id} valueMs={ws.snapshotIntervalMs} />
+        </div>
         {imageTags.length > 0 && (
           <div className="pill-row" style={{ marginTop: 16 }}>
             {imageTags.map((tag) => (

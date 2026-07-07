@@ -10,6 +10,7 @@ import {
   baseImageId,
   isoTimestamp,
   ownerId,
+  snapshotId,
   workspaceId,
   workspaceActions,
   type Workspace,
@@ -38,6 +39,7 @@ function makeRandomWorkspace(opts?: {
   hasRepoUrl?: boolean;
   hasEditor?: boolean;
   hasFunctional?: boolean;
+  hasSnapshot?: boolean;
 }): Workspace {
   return {
     id: workspaceId("ws-fuzz"),
@@ -52,6 +54,12 @@ function makeRandomWorkspace(opts?: {
     ...(opts?.hasRepoUrl ? { repoUrl: "https://github.com/org/repo" } : {}),
     ...(opts?.hasEditor ? { editor: "openvscode" as const } : {}),
     ...(opts?.hasFunctional ? { functional: "ok" as const } : {}),
+    ...(opts?.hasSnapshot
+      ? {
+          latestSnapshotId: snapshotId("snap-fuzz"),
+          latestSnapshotAt: isoTimestamp("2026-01-01T00:05:00.000Z"),
+        }
+      : {}),
   };
 }
 
@@ -62,6 +70,7 @@ const wsOptionsArb = fc.record({
   hasRepoUrl: fc.boolean(),
   hasEditor: fc.boolean(),
   hasFunctional: fc.boolean(),
+  hasSnapshot: fc.boolean(),
 });
 
 describe("toWorkspaceDto (fuzz)", () => {
@@ -99,7 +108,10 @@ describe("toWorkspaceDto (fuzz)", () => {
         // wake, timing the current launch). It is the owner's own timestamp,
         // not a runtime binding.
         expect(dto.lastActivity).toBe(ws.lastActivity);
-        expect(dto).not.toHaveProperty("latestSnapshotId");
+        // Snapshot state is deliberately exposed on cards/admin rows so users can
+        // see whether their latest work has a recovery point.
+        expect(dto.latestSnapshotId).toBe(ws.latestSnapshotId);
+        expect(dto.latestSnapshotAt).toBe(ws.latestSnapshotAt);
       }),
     );
   });
@@ -113,6 +125,8 @@ describe("toWorkspaceDto (fuzz)", () => {
         expect("repoUrl" in dto).toBe(opts.hasRepoUrl);
         expect("editor" in dto).toBe(opts.hasEditor);
         expect("functional" in dto).toBe(opts.hasFunctional);
+        expect("latestSnapshotId" in dto).toBe(opts.hasSnapshot);
+        expect("latestSnapshotAt" in dto).toBe(opts.hasSnapshot);
       }),
     );
   });

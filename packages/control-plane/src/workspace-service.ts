@@ -138,6 +138,7 @@ type AuditAction =
   | "session.undelete"
   | "session.purged"
   | "session.access"
+  | "session.settings"
   | "session.share_enabled"
   | "session.share_disabled"
   | "session.snapshot_lost"
@@ -272,6 +273,7 @@ interface WorkspaceRecord {
   taskId?: string;
   latestSnapshotId?: string;
   latestSnapshotAt?: string;
+  snapshotIntervalMs?: number;
   sshHost?: string;
   functional?: FunctionalStatus;
   functionalDetail?: string;
@@ -328,6 +330,7 @@ function toWorkspace(r: WorkspaceRecord): Workspace {
     latestSnapshotId: r.latestSnapshotId === undefined ? undefined : snapshotId(r.latestSnapshotId),
     latestSnapshotAt:
       r.latestSnapshotAt === undefined ? undefined : isoTimestamp(r.latestSnapshotAt),
+    snapshotIntervalMs: r.snapshotIntervalMs,
     sshHost: r.sshHost,
     functional: r.functional,
     functionalDetail: r.functionalDetail,
@@ -358,6 +361,7 @@ export class WorkspaceService {
     /** The editor this workspace serves — resolved from the base-image catalog entry by the
      * route; defaults to OpenVSCode. Flows to the container as `EDD_EDITOR_MODE`. */
     editor?: EditorKind;
+    snapshotIntervalMs?: number;
     repoUrl?: string;
     repoRef?: string;
     /** The owner's per-role workspace cap. When given (and `ownerCounts` is wired),
@@ -392,6 +396,7 @@ export class WorkspaceService {
     ownerRole?: WorkspaceOwnerRole;
     baseImage: BaseImage;
     editor?: EditorKind;
+    snapshotIntervalMs?: number;
     repoUrl?: string;
     quotaLimit?: number;
   }): Promise<WorkspaceDto> {
@@ -405,6 +410,9 @@ export class WorkspaceService {
       repoUrl: input.repoUrl,
       baseImage: input.baseImage,
       ...(input.editor === undefined ? {} : { editor: input.editor }),
+      ...(input.snapshotIntervalMs === undefined
+        ? {}
+        : { snapshotIntervalMs: input.snapshotIntervalMs }),
       at,
     });
     await this.persistNew(
@@ -418,6 +426,31 @@ export class WorkspaceService {
       input.quotaLimit,
     );
     return toWorkspaceDto(ws);
+  }
+
+  async updateSettings(
+    id: WorkspaceId,
+    patch: { snapshotIntervalMs?: number },
+    actor: string,
+  ): Promise<Result<WorkspaceDto, DomainError>> {
+    const loaded = await this.require(id);
+    if (!loaded.ok) return loaded;
+    const next = { ...loaded.value.ws, ...patch };
+    try {
+      await this.persistTransition(next, loaded.value.version, {
+        action: "session.settings",
+        target: id,
+        actor,
+        detail:
+          patch.snapshotIntervalMs === undefined
+            ? "settings updated"
+            : `snapshot interval ${String(patch.snapshotIntervalMs)}ms`,
+      });
+      return ok(toWorkspaceDto(next));
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+      return err(conflictError(`settings update of ${id} lost a concurrent update`));
+    }
   }
 
   /**
@@ -603,6 +636,7 @@ export class WorkspaceService {
         ...(r.latestSnapshotAt === undefined
           ? {}
           : { latestSnapshotAt: isoTimestamp(r.latestSnapshotAt) }),
+        ...(r.snapshotIntervalMs === undefined ? {} : { snapshotIntervalMs: r.snapshotIntervalMs }),
       }));
   }
 

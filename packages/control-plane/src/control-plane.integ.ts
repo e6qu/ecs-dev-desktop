@@ -575,12 +575,17 @@ describe("CatalogService", () => {
     });
 
     const updated = await catalog.update(baseImageId(created.id), {
+      image: baseImage("golden/node:22"),
       enabled: false,
       tools: ["node", "pnpm"],
     });
     expect(updated.ok).toBe(true);
     if (updated.ok)
-      expect(updated.value).toMatchObject({ enabled: false, tools: ["node", "pnpm"] });
+      expect(updated.value).toMatchObject({
+        image: "golden/node:22",
+        enabled: false,
+        tools: ["node", "pnpm"],
+      });
 
     expect((await catalog.remove(baseImageId(created.id))).ok).toBe(true);
     expect(await catalog.get(baseImageId(created.id))).toBeNull();
@@ -605,6 +610,24 @@ describe("CatalogService", () => {
     expect((await catalog.assertEnabled(baseImage("golden/rust:1"))).ok).toBe(false);
     await catalog.update(baseImageId(entry.id), { enabled: false });
     expect((await catalog.assertEnabled(baseImage("golden/go:1.22"))).ok).toBe(false);
+  });
+
+  it("rolls a catalog image tag by matching its repo path", async () => {
+    const created = await catalog.create({
+      name: "Omnibus",
+      image: baseImage("729079515331.dkr.ecr.eu-west-1.amazonaws.com/edd-prod/golden/omnibus:old"),
+    });
+    const rolled = await catalog.rollImageTag({
+      repo: "edd-prod/golden/omnibus",
+      tag: "newtag",
+    });
+    expect(rolled.ok).toBe(true);
+    if (rolled.ok) {
+      expect(rolled.value).toMatchObject({
+        id: created.id,
+        image: "729079515331.dkr.ecr.eu-west-1.amazonaws.com/edd-prod/golden/omnibus:newtag",
+      });
+    }
   });
 
   it("update CAS: stale version is rejected, current version wins", async () => {

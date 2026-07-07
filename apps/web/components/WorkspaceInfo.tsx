@@ -32,6 +32,12 @@ export function WorkspaceInfo({ ws }: { ws: WorkspaceDto }) {
         ][])
       : []),
     ...(ws.repoUrl !== undefined ? ([["repository", ws.repoUrl]] as [string, string][]) : []),
+    ...(ws.snapshotIntervalMs !== undefined
+      ? ([["snapshot interval", `${String(Math.round(ws.snapshotIntervalMs / 60000))} min`]] as [
+          string,
+          string,
+        ][])
+      : []),
     ...(ws.imageTools !== undefined && ws.imageTools.length > 0
       ? ([["tools", ws.imageTools.join(" · ")]] as [string, string][])
       : []),

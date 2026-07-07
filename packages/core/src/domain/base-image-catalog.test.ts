@@ -52,15 +52,21 @@ describe("applyBaseImagePatch", () => {
     expect(next).toMatchObject({
       enabled: false,
       name: "Node 20",
+      image: "golden/node:20",
       description: "old",
       tags: ["runtime"],
       tools: ["node"],
     });
-    expect(next.image).toBe(e.image); // image ref is immutable
   });
 
-  it("rejects a blank name", () => {
+  it("updates the image ref when a catalog rollout changes tags", () => {
+    const next = applyBaseImagePatch(entry(), { image: baseImage("golden/node:21") });
+    expect(next.image).toBe("golden/node:21");
+  });
+
+  it("rejects a blank name or image ref", () => {
     expect(() => applyBaseImagePatch(entry(), { name: "" })).toThrow();
+    expect(() => applyBaseImagePatch(entry(), { image: baseImage("") })).toThrow();
   });
 });
 

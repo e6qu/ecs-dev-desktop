@@ -95,6 +95,9 @@ export const workspace = z.object({
   // Home-volume usage from the agent's functional self-report (bytes).
   diskUsedBytes: z.number().nonnegative().optional(),
   diskTotalBytes: z.number().positive().optional(),
+  latestSnapshotId: z.string().optional(),
+  latestSnapshotAt: z.iso.datetime().optional(),
+  snapshotIntervalMs: z.number().int().positive().optional(),
   /** When teardown finished — the undelete retention window counts from here. */
   terminatedAt: z.iso.datetime().optional(),
   /** Owner-controlled spectate flag: viewers may watch a read-only mirror. */
@@ -175,6 +178,9 @@ export const securityEventRequest = z.object({
 });
 export type SecurityEventRequest = z.infer<typeof securityEventRequest>;
 
+export const MIN_SNAPSHOT_INTERVAL_MS = 60 * 1000;
+export const MAX_SNAPSHOT_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
 export const createWorkspaceRequest = z.object({
   baseImage: z.string().trim().min(1),
   /** Optional git repo to clone into the session at first boot ("one repo per
@@ -184,8 +190,29 @@ export const createWorkspaceRequest = z.object({
   repoRef: z.string().trim().min(1).max(255).optional(),
   /** Per-session interface override; absent = the base image's catalog choice. */
   editor: editorKind.optional(),
+  /** Per-workspace scheduled snapshot cadence. Absent = deployment default. */
+  snapshotIntervalMs: z
+    .number()
+    .int()
+    .min(MIN_SNAPSHOT_INTERVAL_MS)
+    .max(MAX_SNAPSHOT_INTERVAL_MS)
+    .optional(),
 });
 export type CreateWorkspaceRequest = z.infer<typeof createWorkspaceRequest>;
+
+export const updateWorkspaceRequest = z
+  .object({
+    snapshotIntervalMs: z
+      .number()
+      .int()
+      .min(MIN_SNAPSHOT_INTERVAL_MS)
+      .max(MAX_SNAPSHOT_INTERVAL_MS)
+      .optional(),
+  })
+  .refine((p) => p.snapshotIntervalMs !== undefined, {
+    message: "at least one field is required",
+  });
+export type UpdateWorkspaceRequest = z.infer<typeof updateWorkspaceRequest>;
 
 export const listWorkspacesResponse = z.object({
   workspaces: z.array(workspace),
@@ -292,6 +319,7 @@ export const workspaceDetail = z.object({
   taskId: z.string().optional(),
   latestSnapshotId: z.string().optional(),
   latestSnapshotAt: z.iso.datetime().optional(),
+  snapshotIntervalMs: z.number().int().positive().optional(),
   /** Private IP of the running task's ENI; absent when stopped/scaled-to-zero. */
   sshHost: z.string().optional(),
   /** Functional usability self-report from the in-workspace agent (is the desktop
@@ -347,10 +375,11 @@ export const createBaseImageRequest = z.object({
 });
 export type CreateBaseImageRequest = z.infer<typeof createBaseImageRequest>;
 
-/** Partial update; the id and image ref are immutable. At least one field. */
+/** Partial update; the id is immutable. At least one field. */
 export const updateBaseImageRequest = z
   .object({
     name: z.string().trim().min(1).optional(),
+    image: z.string().trim().min(1).optional(),
     description: z.string().optional(),
     tags: z.array(z.string()).optional(),
     tools: z.array(z.string()).optional(),
@@ -360,6 +389,7 @@ export const updateBaseImageRequest = z
   .refine(
     (p) =>
       p.name !== undefined ||
+      p.image !== undefined ||
       p.description !== undefined ||
       p.tags !== undefined ||
       p.tools !== undefined ||

@@ -2,10 +2,46 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-07 (live at `https://app.edd.e6qu.dev`, control-plane tag
-`eee7176`, catalog workspace image `omnibus:db75d1f`). PR #193 (`021ae3c`), PR
-#194 (`bf6cd22`), and PR #195 (`eca7352`) were merged to `main`. Shipped + live
-this stretch, on top of the merged post-launch wave:
+**Last updated:** 2026-07-07. A large follow-up branch fixed the post-merge
+workspace-image automation and workspace UX gaps that were found after PR #196
+merged. Local verification passed: `pnpm lint`, `pnpm build`, `pnpm test`,
+`pnpm test:integ`, `pnpm check-deps`, `pnpm dead-code`, and `pnpm cpd`
+(`cpd` exited 0 with the existing below-threshold clone report/config warning).
+The last production live check before this branch still had `https://app.edd.e6qu.dev`
+healthy on control-plane tag `eee7176` with the catalog pointing at
+`omnibus:db75d1f`; deploying this branch was the next operational step.
+
+Shipped in this follow-up branch:
+
+- **Workspace image source sync completed the rollout loop.** The EDD-owned GitHub
+  push webhook still failed loudly with required repo/branch/app/golden/webhook-secret
+  config and no polling fallback, and successful `golden` CodeBuild observations now
+  rolled every configured golden catalog image tag (`<app>/golden/<variant>:<sha12>`)
+  through the `CatalogService` CAS path. A failed catalog rollout marked the trigger
+  failed with a visible reason instead of silently reporting success.
+- **Snapshot policy matched the product requirement.** The default scheduled snapshot
+  interval became 5 minutes, bounded per-workspace intervals were persisted and
+  editable from the user card and admin detail view, and the reconciler honored the
+  per-workspace interval before global defaults. GC kept only the referenced shutdown
+  snapshot after the one-hour grace; therefore, when shutdown snapshotting succeeded,
+  two hours later the older 5-minute scheduled snapshots for that workspace were
+  reaped and only the shutdown snapshot remained.
+- **Snapshot/resource UX shipped.** Workspace cards and admin workspace lists now
+  surfaced last snapshot time; workspace/admin details showed snapshot cadence; the
+  existing per-workspace monitoring path was linked from admin detail and disk usage
+  appeared in the admin list.
+- **GitHub repo launch gaps closed.** The new-session flow accepted a public
+  `https://github.com/<owner>/<repo>` URL plus optional ref, and Entra-primary users
+  could link a GitHub OAuth grant to their current account via signed short-lived
+  `/api/github/connect/*` routes that stored the token in the existing encrypted
+  credential service. The primary GitHub OAuth scope was aligned with repo/create
+  operations.
+- **Open issue sweep completed.** Valid issues #96, #98, #99, and #100 were addressed
+  by this branch. Obsolete EDD issues #93 and #95 were closed after verifying the
+  image Dockerfiles already installed the requested agent/polyglot tooling. Issue
+  #92 was moved upstream to `e6qu/sockerless#776` and the EDD duplicate was closed.
+
+Previously shipped and live in the merged post-launch wave:
 
 - **Instant create** — `reserveWorkspace` returns the pre-generated URL in <1s, launch
   runs detached (fixed the 504 where blocking create outran the ALB 60s timeout).
@@ -20,9 +56,9 @@ this stretch, on top of the merged post-launch wave:
   when workspace-image inputs changed, and exposes source/trigger/build status in
   `/admin/images`. There is no polling fallback; missing repo/webhook-secret config
   fails loudly. CI still owns control-plane release image builds so EDD remains
-  releasable without an existing EDD deployment. Follow-up branch
-  `feat/harden-image-webhook` narrows that public receiver with header/body guards
-  in the route plus an ALB-associated WAF scoped to the webhook path.
+  releasable without an existing EDD deployment. PR #196 narrowed that public
+  receiver with header/body guards in the route plus an ALB-associated WAF scoped
+  to the webhook path.
 - **Cancelable `stopping` state** — manual stop → `stopping` (snapshot + scale-to-zero
   after a grace) with a cancel/resume; converged by an in-process server sweep +
   reconciler backstop. Fixed several real bugs found by reproducing locally (DynamoDB
@@ -49,10 +85,13 @@ The branch was deployed control-plane-only to real AWS as image tag
 (ALB health 200, `/api/readyz` 200, reconciler enabled, no Terraform drift).
 The production deploy used `EDD_BUILD_TARGET=web`, so it did **not** build a
 production workspace/golden image for `eee7176`; the live catalog still points at
-`729079515331.dkr.ecr.eu-west-1.amazonaws.com/edd-prod/golden/omnibus:db75d1f`.
-Remaining: merge the webhook hardening PR, apply the CodeBuild buildspec/WAF
-update, deploy the control-plane source sync flow with
-`EDD_IMAGE_SOURCE_REPO=e6qu/ecs-dev-desktop`, create the required
+`729079515331.dkr.ecr.eu-west-1.amazonaws.com/edd-prod/golden/omnibus:db75d1f`
+(`PK=$edd#id_img-seed-omnibus`, `SK=$baseimage_1`). The latest successful image
+build (#29) also built only the control-plane image tag `eee7176`; the last
+observed golden-target build was #24 (`f22210e`, not catalog-selected), while the
+currently selected catalog tag came from build #23 (`db75d1f`).
+Remaining: apply the CodeBuild buildspec/WAF update, deploy the control-plane
+source sync flow with `EDD_IMAGE_SOURCE_REPO=e6qu/ecs-dev-desktop`, create the required
 `EDD_IMAGE_SOURCE_WEBHOOK_SECRET` secret, configure the GitHub webhook delivery,
 and run the first control-plane-started golden build. User live-testing;
 replacing the `claude`/`codex`

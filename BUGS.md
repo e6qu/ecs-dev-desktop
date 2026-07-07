@@ -51,26 +51,6 @@ zsh -n "$f"; done` exits 0, but `zsh -n infra/images/base/entrypoint.sh` prints
   real AWS billing are unaffected); fix = model a `retained` interval terminated →
   purge/undelete, and reopen the timeline on `session.undelete`.
 
-- **Golden-image updates never reach existing catalog entries — rollout gap (2026-07-06).**
-  The seeded base-image catalog row (`catalog-seed.tf`) is created once with `image = <repo>:<image_tag>`
-  and then `lifecycle.ignore_changes = [item]` (deliberate — the admin owns the catalog after seeding), and
-  ECR repos are immutable so a fixed tag like `:main` can never be re-pushed. Net effect found live: every
-  golden-image fix built after the first deploy (new tags `11c81ec`, `c892532b`, `c814221`, …) sat unused in
-  ECR while the catalog kept launching workspaces from the original broken `:main` image. **Operational
-  workaround**: after each golden rebuild, repoint the catalog entry's `image` to the new tag (admin
-  `/admin/catalog` edit, or operator `aws dynamodb update-item` on `$edd#id-img-seed-<variant>`). A proper
-  fix needs a product decision: have `install.sh` update the catalog row post-build (fights the
-  admin-owns-catalog model), keep a mutable alias repo for `latest`, or add an explicit "roll golden images"
-  admin action. Existing workspaces additionally pin their image ref at create time — a stopped workspace
-  wakes on its OLD image; only a fresh create picks up the repointed catalog. Latest check after PR #193
-  merged: the PR's `golden-images` CI job passed, but the production deploy used `EDD_BUILD_TARGET=web` and
-  did not publish an `eee7176` golden image; the live catalog points at `omnibus:db75d1f` while ECR also has
-  newer unselected golden tags. The code now has control-plane-owned GitHub source sync (signed webhook only,
-  no polling fallback) that can start async `golden` builds and expose source/trigger/build tracking in
-  `/admin/images`, but production still needs that flow deployed/configured and the catalog still is not
-  automatically repointed to a newly built workspace image. CI remains the control-plane release image path,
-  so EDD does not depend on an existing EDD deployment to be releasable.
-
 - **CodeBuild image rebuild silently no-ops on a re-run against the same branch — known footgun (2026-07-06).**
   `terraform_data.build_images_codebuild`'s `triggers_replace` (`infra/terraform/modules/ecs-dev-desktop/build-codebuild.tf`)
   is keyed on the literal `var.image_tag`/`var.codebuild_source_ref` **strings**, not the commit the ref
@@ -237,6 +217,13 @@ in-app path-based proxy hands the session-authorized browser the token, supersed
 old STATIC-gate "tokenless behind the gate" framing (see _Resolved (repo)_).
 
 ## External blockers (upstream — `e6qu/sockerless`)
+
+- **AWS sim: ECS task metadata advertised CPU/memory limits that Podman did not enforce
+  — OPEN upstream as sockerless #776 (2026-07-07).** This was originally filed in
+  EDD as #92 but belonged upstream per the repo rule. The simulator reported task
+  definition limits in metadata while launching an unbounded container cgroup, so local
+  capacity tests could pass when real Fargate would throttle or OOM. The EDD duplicate
+  was closed after moving the issue upstream.
 
 - **AWS sim: KMS Encrypt/Decrypt does not perform real encryption and key-policy Deny on Decrypt is not enforced — FIXED upstream by sockerless #737 (2026-07-01).** Filed as **e6qu/sockerless#732**; fixed by **e6qu/sockerless#737**. Against earlier sockerless builds, `kms:Encrypt` returned a blob leaking the key ID and plaintext, and `kms:Decrypt` succeeded even after an explicit key-policy `Deny`. After re-pinning to `38e311ac`, real encryption and key-policy Deny enforcement work. The wave-3 KMS adversarial spec-fidelity probe (`adversarial-slice-kms-encryption.sh`) is enabled and passes.
 
@@ -496,6 +483,25 @@ concurrent-wake race, TLS storage adapter). PR #550 is bleephub-Actions-only;
 no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
+
+- **Golden-image builds did not repoint catalog entries — FIXED (2026-07-07).**
+  The control-plane-owned GitHub source-sync path completed the loop it started:
+  after a successful async `EDD_BUILD_TARGET=golden` CodeBuild observation, the
+  image-source service rolled each configured `<app>/golden/<variant>` catalog entry
+  to the exact 12-character source tag through `CatalogService.rollImageTag` and the
+  existing catalog CAS write. Missing/multiple catalog matches and other rollout
+  failures marked the source trigger `failed` with a visible reason instead of
+  reporting a successful build that the catalog did not use. This fixed the live
+  class where new immutable ECR tags existed but the catalog kept launching the old
+  `omnibus:db75d1f` row. Existing workspaces still correctly woke on the image they
+  were created with; fresh workspaces picked up the repointed catalog entry.
+
+- **Snapshot cadence and retention mismatch — FIXED (2026-07-07).** Scheduled
+  snapshots defaulted to 5 minutes, the interval was configurable and persisted per
+  workspace, and the reconciler honored that per-workspace value. GC retained only
+  referenced snapshots after the one-hour grace, so when a workspace stopped and its
+  shutdown snapshot succeeded, the older 5-minute scheduled snapshots aged out and
+  two hours later only the shutdown snapshot remained for that workspace.
 
 - **Branch e2e failures after instant-create were real async-provisioning test
   mismatches, then fixed (2026-07-07).** The PR #193 `e2e` check had been red. Local

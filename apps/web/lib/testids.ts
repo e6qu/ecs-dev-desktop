@@ -22,6 +22,8 @@ export const TESTID = {
   workspacePurge: "workspace-purge",
   /** The type-to-confirm block for permanent delete. */
   workspacePurgeConfirm: "workspace-purge-confirm",
+  /** Last snapshot timestamp shown on workspace cards/admin rows. Attr: `data-snapshot-at`. */
+  workspaceSnapshot: "workspace-snapshot",
   /** Workspace row in the admin all-workspaces table. Attrs: `data-id`, `data-status`. */
   workspaceRow: "workspace-row",
   /** Base-image card in the catalog. Attrs: `data-image`, `data-enabled`. */
