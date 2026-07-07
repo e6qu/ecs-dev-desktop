@@ -170,12 +170,14 @@ shape is:
    `ssh_base_domain` is set) the SSH NLB + gateway service. Use plain Terraform or
    Terragrunt (`examples/terragrunt`). Pass the Step-3 secret ARNs as
    `secret_environment`; set `EDD_ADMIN_GROUPS` in `extra_environment`.
-5. **Publish the images** — `scripts/publish-images.sh` (or the `release` workflow
-   via OIDC) builds + pushes the control-plane, SSH-gateway, and golden variant
-   images to the ECR repos the apply just created.
-6. **Roll the service** — `aws ecs update-service --force-new-deployment` (or
-   re-apply with `control_plane_image` pinned to the tag you pushed).
-7. **Seed the base-image catalog** — production starts with an empty catalog; add
+5. **Publish the images** — `scripts/publish-images.sh` builds + pushes the
+   control-plane, SSH-gateway, and golden variant images to the ECR repos the
+   apply just created. For ongoing releases, the `release` workflow via GitHub
+   OIDC builds and pushes the control-plane/SSH images, registers fresh task
+   definitions, rolls the ECS services, and retargets the reconciler schedule.
+   Workspace/golden post-merge rebuilds are owned by the deployed EDD
+   image-source flow.
+6. **Seed the base-image catalog** — production starts with an empty catalog; add
    an entry (admin UI or API) pointing at a golden ECR image, or users can't
    launch workspaces.
 

@@ -53,22 +53,29 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **Recover the production deploy/state path.** The 2026-07-07 live check found
-  `app.edd.e6qu.dev` healthy but still running control-plane/SSH image tag
-  `2d231f5` after PRs #198 and #199 had merged. The app-owned golden image flow
-  built `omnibus:7fee654aaa67` and `omnibus:89c3cdee68d1`, but both trigger rows
-  stayed `queued` and the catalog stayed on `omnibus:2d231f50fad8` because the
-  PR #198 reconcile sweep was not deployed. PR #200 made release publishing run
-  on main pushes and fail loudly; the follow-up release-bootstrap branch
-  configured GitHub OIDC to AWS without static GitHub secrets and proved it by
-  publishing control-plane/SSH tag `2c5fe20b99a6` for the PR #200 merge. The
-  expected S3 Terraform state object was still absent. Finish this path by
-  opening and merging the release-bootstrap PR, migrating the local production
-  Terraform state to
-  `s3://edd-tfstate-edd-prod/ecs-dev-desktop/edd-prod/terraform.tfstate`, rolling
-  the control-plane tag past `2d231f5`, and re-checking that the existing queued
-  image-source triggers reconciled and rolled the catalog to the latest
-  successful golden tag.
+- **Recover the production deploy/state path.** The 2026-07-07 live check after
+  PR #201 found `app.edd.e6qu.dev` healthy but still running control-plane/SSH
+  image tag `2d231f5`. CI had successfully published
+  `edd-prod/control-plane:992b22cc3349` and `edd-prod/ssh-gateway:992b22cc3349`,
+  and the EDD-owned CodeBuild path had successfully published
+  `edd-prod/golden/omnibus:992b22cc3349`; ECS did not roll because the `release`
+  workflow still stopped after publishing. The follow-up branch
+  `fix/release-rolls-ecs` added a no-fallback ECS/Scheduler rollout step and
+  expanded the GitHub OIDC release role policy accordingly. Finish this path by
+  merging that branch, rerunning `scripts/bootstrap-release-oidc.sh` for
+  `edd-prod` so the release role receives the deploy permissions, rerunning or
+  waiting for the `release` workflow to register fresh task definitions and roll
+  ECS, then verifying that production runs the new tag and that the queued
+  image-source trigger reconciles the successful CodeBuild result. The expected
+  remote state object was still absent and still needed migration to
+  `s3://edd-tfstate-edd-prod/ecs-dev-desktop/edd-prod/terraform.tfstate`.
+- **Clear or resolve the two active production alarms after rollout.**
+  `edd-prod-reconciler-dlq` still had old Scheduler failures for inactive task
+  definition `edd-prod-reconciler:7`, and `edd-prod-workspaces-stuck-error`
+  matched workspace `ws-34afea9b-ca52-4484-ad73-8dd299dbefd5` in
+  `state=error`, `desiredState=present`. Inspect and remediate them after the new
+  control plane/reconciler code is live so alarm state reflects current defects,
+  not stale rollout debris.
 - **Wire real vendor agent harnesses for `claude`/`codex` workspace modes.** The
   runtime now fails loudly for these modes until the vendor harnesses are wired,
   because serving Monaco under those product names hid the wrong UX. Target:

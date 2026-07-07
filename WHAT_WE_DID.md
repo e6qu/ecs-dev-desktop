@@ -3024,3 +3024,23 @@ loudly instead of verifying local state or prompting for a backend migration in
 read-only mode. The dependency gate found age-eligible AWS SDK drift to
 `3.1080.0`, so the branch refreshed the affected package manifests and lockfile
 instead of carrying a stale dependency set.
+
+**2026-07-07 — Connected release image publish to ECS rollout.** After PR #201
+merged, the release inspection verified that build/publish paths were working but
+production was still stale. GitHub Actions run `28898272647` pushed
+`edd-prod/control-plane:992b22cc3349` and
+`edd-prod/ssh-gateway:992b22cc3349`, and the EDD-owned CodeBuild run
+`edd-prod-build-images:651e5bbf-2ba6-47d2-98f2-f01ab00af0a5` pushed
+`edd-prod/golden/omnibus:992b22cc3349`; however, ECS still ran
+`edd-prod-control-plane:26` and `edd-prod-ssh-gateway:26` on tag `2d231f5`.
+The follow-up branch added `scripts/deploy-release-images.sh` and wired it into
+`.github/workflows/release.yml`: after publishing, CI registered fresh
+control-plane, reconciler, and SSH-gateway task definitions from the current AWS
+definitions, changed only the image references, updated the control-plane and SSH
+ECS services, retargeted the reconciler Scheduler schedule, and waited for service
+stability. `scripts/bootstrap-release-oidc.sh` was expanded from ECR-only
+publishing to the exact ECR/ECS/Scheduler/`iam:PassRole` release deploy surface,
+still using GitHub OIDC with only non-secret repo variables. The inspection also
+recorded that the expected remote Terraform state object was absent,
+`edd-prod-reconciler-dlq` contained old inactive-task-definition Scheduler
+failures, and one workspace remained in `state=error`.

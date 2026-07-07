@@ -101,7 +101,8 @@ This runs the whole linear flow, aborting on the first error:
      publishes `amd64` images (add an arm64 runner later for full dual-arch).
    - `pre-published` — Terraform expects images to already exist in ECR (e.g. from
      the `release` workflow). Set `EDD_IMAGE_TAG` to the pushed tag; Terraform
-     resolves the manifest digest so a new push rolls the task definitions.
+     resolves the manifest digest so the first deployment pins the published
+     image.
 
 5. **Image roll** — the ECS task definitions reference the image by tag/digest, so
    the first deployment pulls the freshly built/published image. No separate
@@ -173,8 +174,8 @@ the end.
 
 ## AWS bootstrap outside the EDD stack
 
-Before the `release` workflow can publish control-plane images, bootstrap GitHub
-Actions access to the AWS account:
+Before the `release` workflow can publish and deploy control-plane images,
+bootstrap GitHub Actions access to the AWS account:
 
 ```sh
 EDD_RELEASE_GITHUB_REPO=e6qu/ecs-dev-desktop \
@@ -190,8 +191,11 @@ repo variables are non-secret coordinates only; do not store static secrets in
 GitHub variables or secrets for this path. The
 bootstrap is not part of the Terraform module because EDD must be releasable
 before EDD is deployed. The role trust is constrained to this repository's `main`
-branch and `v*` tags, and the permissions are scoped to ECR pushes for the
-control-plane and SSH-gateway repositories.
+branch and `v*` tags, and the permissions are scoped to the release path: ECR
+pushes for the control-plane and SSH-gateway repositories, ECS task-definition
+registration and service updates for the control-plane/SSH/reconciler families,
+Scheduler updates for the reconciler schedule, and `iam:PassRole` for the exact
+runtime roles those resources already use.
 
 ## What the scripts are
 
@@ -203,7 +207,8 @@ control-plane and SSH-gateway repositories.
 | [`scripts/bootstrap-secrets.sh`](../scripts/bootstrap-secrets.sh)           | crypto (generated) + IdP secrets in Secrets Manager             |
 | [`scripts/bootstrap-release-oidc.sh`](../scripts/bootstrap-release-oidc.sh) | GitHub OIDC release role + release workflow repo variables      |
 | [`scripts/publish-images.sh`](../scripts/publish-images.sh)                 | build + push control-plane / golden / gateway images to ECR     |
-| [`release`](../.github/workflows/release.yml) workflow                      | CI-driven image publish on `main`/`v*`/manual (OIDC → AWS role) |
+| [`scripts/deploy-release-images.sh`](../scripts/deploy-release-images.sh)   | roll published release images into ECS services + Scheduler     |
+| [`release`](../.github/workflows/release.yml) workflow                      | CI-driven image publish + deploy on `main`/`v*`/manual          |
 
 ## See also
 
