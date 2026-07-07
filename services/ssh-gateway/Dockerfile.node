@@ -6,7 +6,7 @@
 # login user is `workspace`; the workspace identifies itself by EDD_WORKSPACE_ID.
 FROM debian:trixie-slim
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssh-server curl \
+  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openssh-server curl \
   && rm -rf /var/lib/apt/lists/* \
   && useradd --create-home --shell /bin/bash workspace \
   && usermod -p '*' workspace \

@@ -12,7 +12,7 @@ ENV RUSTUP_HOME="/opt/rust/rustup" \
 ENV PATH="/opt/rust/cargo/bin:${PATH}"
 
 # C toolchain — rustc/cargo need a linker (cc) to produce binaries.
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential \
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Rust — system-wide rustup/cargo (world-writable caches so `workspace` builds) +

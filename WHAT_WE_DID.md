@@ -2972,3 +2972,14 @@ values stopped becoming OpenVSCode, and the base workspace image stopped routing
 exited loudly until the Anthropic/OpenAI local web UI harness launchers were wired.
 Verification passed with focused config/core/web tests and full `pnpm test:e2e:local`
 (46 passed, 5 skipped variant-image tests).
+
+**2026-07-07 — Opened the post-#198 warning cleanup branch.** After PR #198
+merged, the remaining CI/deploy warning sources were fixed instead of filtered:
+Debian slim workspace and SSH images kept man1 pages so package-managed
+`update-alternatives` slave links had real targets, apt package installs ran
+noninteractively, the shell sweep parsed POSIX scripts with `zsh --emulate sh -n`,
+and the complete Terraform example declared the S3 backend configured by the
+install/uninstall scripts. Verification passed with disposable Debian/Node
+package-install reproductions, a clean SSH proxy Docker build, actionlint,
+Terraform fmt/init/validate, dependency/dead-code/CPD gates, the full shell sweep,
+`pnpm lint`, `pnpm build`, and `pnpm test`.

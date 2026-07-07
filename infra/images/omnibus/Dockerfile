@@ -25,7 +25,7 @@ ENV GOPATH="/home/workspace/go" \
 ENV PATH="/usr/local/go/bin:/home/workspace/go/bin:/opt/rust/cargo/bin:/opt/gradle/bin:${PATH}"
 
 # Compilers + Java (JDK + Maven), Python (+ pip/venv), and archive tools via apt.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       build-essential \
       default-jdk-headless \
       maven \

@@ -11,7 +11,7 @@ FROM ${BASE}
 ENV BUN_INSTALL="/usr/local"
 
 # C/C++ toolchain for native node addons + archive tools.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       build-essential unzip zip \
     && rm -rf /var/lib/apt/lists/*
 

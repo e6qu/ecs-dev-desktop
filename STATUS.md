@@ -2,8 +2,21 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-07. PR #197 merged and was deployed to production as
-control-plane tag `2d231f5`. `scripts/install.sh --verify` was green after deploy
+**Last updated:** 2026-07-07. PR #198 merged to `main` as
+`7fee654aaa67ae200251cfe67816f3701f04cb0c`. The new follow-up branch
+`fix/docker-build-warnings` cleaned up the remaining CI/deploy warning sources:
+Debian slim workspace/SSH images now keep the man1 pages that installed packages
+register as `update-alternatives` slave links, apt package installs run
+noninteractively, the shell sweep runs zsh in POSIX-sh emulation, and the complete
+Terraform example declares the S3 backend that the install/uninstall scripts
+configure. Local verification passed: disposable Debian/Node package-install
+reproductions emitted no `update-alternatives` warnings, the SSH proxy Dockerfile
+built with `docker build --load`, `pnpm actionlint`, Terraform fmt/init/validate,
+`pnpm check-deps`, `pnpm dead-code`, `pnpm cpd`, the full shell sweep,
+`pnpm lint`, `pnpm build`, and `pnpm test`.
+
+PR #197 merged and was deployed to production as control-plane tag `2d231f5`.
+`scripts/install.sh --verify` was green after deploy
 (ALB health 200, control-plane 2/2, reconciler enabled, `/api/readyz` 200, no
 Terraform drift). The GitHub push webhook was configured on `e6qu/ecs-dev-desktop`,
 and a tracked golden CodeBuild run built
