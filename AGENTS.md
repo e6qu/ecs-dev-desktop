@@ -40,6 +40,11 @@ live. Hence:
     second PR (including a stacked PR) while another branch/PR is active. If a PR
     already exists for the current branch/work, keep delivering work as commits to
     that PR; never open a duplicate PR.
+11. **Resist anemic PRs.** This project prefers chunky, complete PRs over small
+    fragments. Keep related fixes, tests, docs, and boyscout cleanup in the active
+    branch/PR instead of splitting them into tiny review units. The human in
+    command decides when the active work is done and when it is time to stop,
+    review, or merge; big PRs are allowed and are the norm here.
 
 The engineering standards in §6 are also hard rules.
 

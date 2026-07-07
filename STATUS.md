@@ -63,7 +63,9 @@ sockerless AWS simulator module.
 The branch also clarified `AGENTS.md` PR hygiene: there is only one active branch
 and one active PR at a time; work continues on the active branch/PR, duplicate PRs
 are not opened, and stacked/parallel PRs are not opened while another branch/PR is
-active.
+active. It also recorded the project norm against anemic PRs: related fixes,
+tests, docs, and boyscout cleanup stay in the active chunky PR until the human in
+command says the work is done.
 
 Shipped in this follow-up branch:
 

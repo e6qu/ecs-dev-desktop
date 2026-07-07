@@ -195,6 +195,9 @@ Error`, so the portal's existing `e.message` shows it. api-client 4 tests; build
   stored items under lock; editor-monaco tests were tightened to loopback binds.
   `AGENTS.md` was clarified to allow only one active work branch and one active PR
   at a time, with no duplicate, parallel, or stacked PRs while that work was active.
+  It also recorded the project norm that agents should resist tiny anemic PRs:
+  related fixes, tests, docs, and cleanup belong in the active chunky PR until the
+  human in command says to stop.
 
 - **2026-06-04** — **Terraform platform module (deploy IaC) + sim-tested.** Wrote a
   reusable, parametric `infra/terraform/modules/ecs-dev-desktop` (Terraform/Terragrunt,
