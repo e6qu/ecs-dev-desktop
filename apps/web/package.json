@@ -11,10 +11,10 @@
     "test": "vitest run",
     "test:integ": "vitest run --config vitest.integ.config.ts",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
-    "test:pw": "playwright test",
-    "test:pw:live": "playwright test --config playwright.live.config.ts",
+    "test:pw": "node scripts/run-playwright.mjs",
+    "test:pw:live": "node scripts/run-playwright.mjs --config playwright.live.config.ts",
     "test:pw:live:provision": "tsx e2e/live-cloud-setup.ts",
-    "test:pw:vscode": "playwright test --config playwright.vscode.config.ts",
+    "test:pw:vscode": "node scripts/run-playwright.mjs --config playwright.vscode.config.ts",
     "screenshot": "tsx scripts/screenshot-ui.ts"
   },
   "dependencies": {

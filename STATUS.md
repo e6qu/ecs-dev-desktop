@@ -69,6 +69,23 @@ active. It also recorded the project norm against anemic PRs: related fixes,
 tests, docs, and boyscout cleanup stay in the active chunky PR until the human in
 command says the work is done.
 
+After PR #198 opened, CI `playwright` failed because its production custom-server
+harness did not pass the now-required image-source coordinates, so `server.ts`
+failed loudly at startup with `EDD_IMAGE_SOURCE_REPO is required`. The fix added
+explicit Playwright-only image-source coordinates to `apps/web/playwright.config.ts`
+and kept the production fail-loud config path intact. The same local repro showed
+a repeated Node warning when both `NO_COLOR` and `FORCE_COLOR` were inherited; the
+Playwright launch scripts now unset `NO_COLOR` before starting Playwright, and the
+webServer command does the same before spawning `next build`/`server.ts`. The same
+CI-warning sweep bumped `actions/cache` to `v6.1.0` and `pnpm/action-setup` to
+`v6.0.9` after verifying those releases were age-eligible, removing the Node 20
+action warning path and picking up the pnpm action maintenance release. Local
+verification passed: `pnpm --filter web test:pw` passed 18/18 with no warning
+output, `pnpm test` passed after allowing loopback listeners, and the
+`editor-token-handshake` harness now failed fast on local-server bind errors and
+cleaned its temp root instead of timing out and dereferencing an uninitialized
+server during teardown.
+
 Shipped in this follow-up branch:
 
 - **Workspace image source sync completed the rollout loop.** The EDD-owned GitHub

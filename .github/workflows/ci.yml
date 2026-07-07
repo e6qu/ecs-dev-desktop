@@ -41,7 +41,7 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v6.0.2
-      - uses: pnpm/action-setup@v6.0.8
+      - uses: pnpm/action-setup@v6.0.9
       - uses: actions/setup-node@v6.4.0
         with:
           node-version: 22
@@ -57,7 +57,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6.0.2
-      - uses: pnpm/action-setup@v6.0.8
+      - uses: pnpm/action-setup@v6.0.9
       - uses: actions/setup-node@v6.4.0
         with:
           node-version: 22
@@ -80,7 +80,7 @@ jobs:
       - uses: actions/checkout@v6.0.2
         with:
           submodules: recursive # third_party/sockerless — the sim is built from source
-      - uses: pnpm/action-setup@v6.0.8
+      - uses: pnpm/action-setup@v6.0.9
       - uses: actions/setup-node@v6.4.0
         with:
           node-version: 22
@@ -112,7 +112,7 @@ jobs:
       - uses: actions/checkout@v6.0.2
         with:
           submodules: recursive # third_party/sockerless — the sim is built from source
-      - uses: pnpm/action-setup@v6.0.8
+      - uses: pnpm/action-setup@v6.0.9
       - uses: actions/setup-node@v6.4.0
         with:
           node-version: 22
@@ -192,7 +192,7 @@ jobs:
       - uses: actions/checkout@v6.0.2
         with:
           submodules: recursive # third_party/sockerless — the sims are built from source
-      - uses: pnpm/action-setup@v6.0.8
+      - uses: pnpm/action-setup@v6.0.9
       - uses: actions/setup-node@v6.4.0
         with:
           node-version: 22
@@ -269,7 +269,7 @@ jobs:
         with:
           submodules: recursive # third_party/sockerless — the sim image is built from source
       # node + pnpm so build.sh can bundle + stage the first-party Monaco editor into the base.
-      - uses: pnpm/action-setup@v6.0.8
+      - uses: pnpm/action-setup@v6.0.9
       - uses: actions/setup-node@v6.4.0
         with:
           node-version: 22
@@ -326,7 +326,7 @@ jobs:
       - uses: actions/checkout@v6.0.2
         with:
           submodules: recursive # third_party/sockerless — compose references its build context
-      - uses: pnpm/action-setup@v6.0.8
+      - uses: pnpm/action-setup@v6.0.9
       - uses: actions/setup-node@v6.4.0
         with:
           node-version: 22
@@ -405,7 +405,7 @@ jobs:
       - uses: actions/checkout@v6.0.2
         with:
           submodules: recursive # third_party/sockerless — the sim serves the portal's DynamoDB
-      - uses: pnpm/action-setup@v6.0.8
+      - uses: pnpm/action-setup@v6.0.9
       - uses: actions/setup-node@v6.4.0
         with:
           node-version: 22
@@ -438,7 +438,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6.0.2
-      - uses: pnpm/action-setup@v6.0.8
+      - uses: pnpm/action-setup@v6.0.9
       - uses: actions/setup-node@v6.4.0
         with:
           node-version: 22
@@ -491,7 +491,7 @@ jobs:
       - uses: hashicorp/setup-terraform@v4.0.1
         with:
           terraform_wrapper: false
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6.1.0
         with:
           path: ${{ env.TF_DIR }}/.terraform/providers
           key: tf-providers-${{ runner.os }}-${{ hashFiles('infra/terraform/modules/ecs-dev-desktop/.terraform.lock.hcl', 'infra/terraform/modules/ecs-dev-desktop/tests/sim/.terraform.lock.hcl') }}

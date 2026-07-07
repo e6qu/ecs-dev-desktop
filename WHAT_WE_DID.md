@@ -199,6 +199,13 @@ Error`, so the portal's existing `e.message` shows it. api-client 4 tests; build
   It also recorded the project norm that agents should resist tiny anemic PRs:
   related fixes, tests, docs, and cleanup belong in the active chunky PR until the
   human in command says to stop.
+  After opening PR #198, CI exposed that the Playwright production custom-server
+  harness still lacked the required image-source coordinates; the harness was
+  fixed with explicit Playwright-only coordinates, and the observed
+  `NO_COLOR`/`FORCE_COLOR` warning was removed at the Playwright process boundary.
+  CI action warnings were cleaned by bumping age-eligible `actions/cache` and
+  `pnpm/action-setup` releases, and the `editor-token-handshake` test harness was
+  hardened so loopback bind failures failed immediately and teardown stayed safe.
 
 - **2026-06-04** — **Terraform platform module (deploy IaC) + sim-tested.** Wrote a
   reusable, parametric `infra/terraform/modules/ecs-dev-desktop` (Terraform/Terragrunt,

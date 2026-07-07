@@ -26,11 +26,17 @@
       "entry": [
         "e2e/**/*.pw.ts",
         "e2e/**/*.pwlive.ts",
+        "e2e/**/*.pwvscode.ts",
         "e2e/**/*.pwpom.ts",
         "e2e/**/*.pwgate.ts",
         "e2e/gate-global-setup.ts",
         "e2e/live-cloud-setup.ts",
+        "e2e/vscode-global-setup.ts",
+        "e2e/vscode-global-teardown.ts",
+        "playwright.live.config.ts",
+        "playwright.vscode.config.ts",
         "scripts/dev-bootstrap.ts",
+        "scripts/run-playwright.mjs",
         "scripts/screenshot-ui.ts",
         "**/*.test.ts",
         "**/*.integ.ts"

@@ -49,6 +49,33 @@
   now injects explicit e2e image-source repo/branch/app/golden/webhook-secret values;
   no optional config path was added. Full `pnpm test:e2e:local` then passed.
 
+- **CI `playwright` production web harness missed required image-source
+  coordinates — FIXED in follow-up branch (2026-07-07).** PR #198 CI failed in the
+  `playwright` job because `apps/web/playwright.config.ts` started `server.ts`
+  without `EDD_IMAGE_SOURCE_REPO` and the related required source-sync config. The
+  fix supplied explicit Playwright-only coordinates in the harness env, preserving
+  production fail-loud behavior. The local repro also surfaced and fixed the
+  inherited `NO_COLOR`/`FORCE_COLOR` warning by unsetting `NO_COLOR` before
+  Playwright and its webServer children start. `pnpm --filter web test:pw` passed
+  18/18 with clean warning output.
+
+- **GitHub Actions emitted stale-action warnings in PR #198 CI — FIXED in
+  follow-up branch (2026-07-07).** The failed `playwright` job also warned that
+  `actions/cache@v4` targeted deprecated Node 20, and the pnpm setup step was one
+  maintenance release behind. The branch verified the current upstream releases
+  via the GitHub API, then bumped `actions/cache` to `v6.1.0` and
+  `pnpm/action-setup` to `v6.0.9`, both older than the one-day dependency floor.
+  `pnpm actionlint` and `pnpm check-deps` passed.
+
+- **`editor-token-handshake` test timed out and double-failed on local bind
+  errors — FIXED in follow-up branch (2026-07-07).** A sandboxed `pnpm test`
+  reproduced a local `listen EPERM` for the test's loopback servers; the harness
+  then hid the real startup failure behind a 10s hook timeout and a teardown
+  crash on `proxy.close()` before initialization. The test now rejects immediately
+  on `listen` errors, closes only initialized listening servers, and removes its
+  temp root. The focused handshake test passed, and full `pnpm test` passed when
+  loopback listeners were allowed.
+
 - **Dev-auth used a shared password fallback — FIXED in follow-up branch
   (2026-07-07).** `matchDevUser` previously accepted per-account password or
   shared `EDD_DEV_PASSWORD`/default `dev`. That hid missing per-user passwords.
