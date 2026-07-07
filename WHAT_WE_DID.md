@@ -2822,3 +2822,14 @@ and their live logs. Docs now list the required workflow variables. Verified wit
 `pnpm lint`, `pnpm test`, `pnpm --filter @edd/web build`, `actionlint`, `terraform
 fmt -check -recursive infra/terraform`, `pnpm check-deps`, `pnpm dead-code`, and
 `pnpm cpd` (existing clone report / `.jscpd.json` `$schema` warning only).
+
+**2026-07-07 — PR #194 merged; first post-merge image workflow skipped pending repo
+configuration.** The user merged PR #194 to `main` at `bf6cd22`. The new
+`post-merge-workspace-images` workflow triggered on that push, but GitHub marked the
+`start golden image build` job as skipped because its guard
+(`vars.PROD_IMAGE_BUILD_AWS_ROLE_ARN != ''`) was false. Confirmed against AWS: no
+new `edd-prod-build-images` CodeBuild run started after the merge time, and
+`edd-prod/golden/omnibus` still has `458a744` as its latest pushed tag while the live
+catalog continues to launch `omnibus:db75d1f`. Next steps are configuration/deploy
+rather than code: set the repo variable, apply the CodeBuild buildspec update, roll
+the control plane, and rerun/wait for the next main push.

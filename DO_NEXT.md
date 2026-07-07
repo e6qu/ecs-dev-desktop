@@ -70,13 +70,14 @@ operation not permitted` on the background process lines. Recorded in `BUGS.md`;
   no backend block, so Terraform prints `Missing backend configuration` on every
   init. Recorded in `BUGS.md`; make the install path explicit before the warning
   hides a real backend/state issue.
-- **Deploy/configure post-merge workspace image automation.** The code now starts an
-  asynchronous `EDD_BUILD_TARGET=golden` CodeBuild run after every push to `main`
-  and shows target/tag/trigger/exact source version in `/admin/images`. To make it
-  live: configure `PROD_IMAGE_BUILD_AWS_ROLE_ARN` (optional region/project vars),
-  apply the Terraform CodeBuild buildspec update, and roll the control plane. This
-  builds the workspace image but still does not automatically repoint the catalog;
-  that rollout decision remains covered by the golden-image catalog gap in `BUGS.md`.
+- **Configure/deploy post-merge workspace image automation.** PR #194 merged, and
+  the `post-merge-workspace-images` workflow triggered on `bf6cd22`, but its only
+  job skipped because `PROD_IMAGE_BUILD_AWS_ROLE_ARN` is not configured. To make it
+  live: configure that repo variable (optional region/project vars), apply the
+  Terraform CodeBuild buildspec update, and roll the control plane. This builds
+  the workspace image asynchronously and makes it trackable in `/admin/images`,
+  but still does not automatically repoint the catalog; that rollout decision
+  remains covered by the golden-image catalog gap in `BUGS.md`.
 - **Spectate cross-replica relay** — v1's relay is per-replica (the spectator
   client retries until it lands on the publisher's replica; works, but retry
   count grows with replica count). Follow-up: an internal replica-to-replica
