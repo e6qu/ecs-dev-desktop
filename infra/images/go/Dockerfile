@@ -11,7 +11,7 @@ ENV GOPATH="/home/workspace/go"
 ENV PATH="/usr/local/go/bin:/home/workspace/go/bin:${PATH}"
 
 # C toolchain for cgo.
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential \
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Go — official toolchain, latest stable for the image arch.

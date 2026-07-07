@@ -18,8 +18,14 @@ ARG GATEWAY_PRINCIPAL=dev-e2e
 
 FROM debian:trixie-slim
 ARG GATEWAY_PRINCIPAL
+RUN printf '%s\n' \
+      '# Debian slim excludes man pages by default, but packages such as netcat-openbsd' \
+      '# register update-alternatives slave links to their man1 pages during install.' \
+      '# Keep man1 pages so package installation does not emit missing-target warnings.' \
+      'path-include=/usr/share/man/man1/*' \
+      > /etc/dpkg/dpkg.cfg.d/zz-edd-keep-man1-for-alternatives
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssh-server curl netcat-openbsd openssl \
+  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openssh-server curl netcat-openbsd openssl \
   && rm -rf /var/lib/apt/lists/* \
   && useradd --create-home --shell /bin/bash "${GATEWAY_PRINCIPAL}" \
   && usermod -p '*' "${GATEWAY_PRINCIPAL}" \

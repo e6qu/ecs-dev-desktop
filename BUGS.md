@@ -134,26 +134,6 @@
   assertions. They now bind `127.0.0.1` explicitly and the terminal test cleans its
   temp root after each run. `pnpm --dir services/editor-monaco test` passed.
 
-- **Shell parse sweep emits a zsh `nice(5)` warning for the base entrypoint**
-  (2026-07-07). `for f in $(git ls-files '*.sh'); do shellcheck "$f" && bash -n "$f" &&
-zsh -n "$f"; done` exits 0, but `zsh -n infra/images/base/entrypoint.sh` prints
-  `nice(5) failed: operation not permitted` for the background `sshd` and
-  `edd-idle-agent` lines. `shellcheck` and `bash -n` are clean, and the e2e golden
-  image boots successfully, so this is currently a parser/tooling warning rather
-  than a runtime failure. Keep it visible; either adjust the portable shell check
-  invocation or restructure the background process startup if CI starts treating
-  the warning as fatal.
-
-- **`scripts/install.sh` passes `-backend-config` to a Terraform example with no
-  backend block** (2026-07-07). The live deploy to `eee7176` succeeded and
-  `scripts/install.sh --verify` reported no drift, but every `terraform init`
-  emitted Terraform's `Missing backend configuration` warning because
-  `infra/terraform/examples/complete/main.tf` declares required providers but no
-  `backend` block. This is currently deploy-tooling noise/potential operator
-  confusion, not a failed deploy. Fix by either adding the intended backend stub
-  to the example or changing the script/docs so backend config is only passed when
-  a backend block exists.
-
 - **Cost model doesn't price the undelete window or restored sessions** (2026-07-06).
   Deleted workspaces now keep a retained snapshot for the 7-day undelete window —
   that snapshot storage bills in AWS but `deriveBillingIntervals` treats
@@ -595,6 +575,26 @@ concurrent-wake race, TLS storage adapter). PR #550 is bleephub-Actions-only;
 no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
+
+- **Docker package installs emitted `update-alternatives` warnings in CI image
+  builds — FIXED (2026-07-07).** Debian slim images excluded man pages, while
+  packages such as `netcat-openbsd` and `xz-utils` registered man1 slave links
+  through `update-alternatives`. Workspace and SSH Dockerfiles now keep man1 pages
+  for those package-managed alternatives, and apt installs run with
+  `DEBIAN_FRONTEND=noninteractive`. Disposable Debian/Node package-install
+  reproductions emitted no `update-alternatives` warnings, and the SSH proxy image
+  built successfully with `docker build --load`.
+
+- **Shell parse sweep emitted a zsh `nice(5)` warning for the base entrypoint —
+  FIXED (2026-07-07).** The CI shell sweep now runs `zsh --emulate sh -n` for the
+  repo's POSIX shell scripts instead of parsing them as native zsh. The full local
+  shell sweep (`shellcheck`, `bash -n`, and `zsh --emulate sh -n`) passed.
+
+- **`scripts/install.sh` passed S3 backend config to a Terraform example with no
+  backend block — FIXED (2026-07-07).** The complete Terraform example now
+  declares `backend "s3" {}`, matching the install/uninstall scripts' explicit
+  S3 backend configuration. `terraform init -backend=false`, `terraform validate`,
+  and `terraform fmt -check -recursive infra/terraform` passed.
 
 - **Golden-image builds did not repoint catalog entries — FIXED (2026-07-07).**
   The control-plane-owned GitHub source-sync path completed the loop it started:

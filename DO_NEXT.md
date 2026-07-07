@@ -62,16 +62,6 @@ deferral by choice.
   OpenAI Codex local web UI/app-server harness with a protected local transport
   and exposes/links the first-party Codex client protocol. Keep OpenVSCode and
   Monaco as the other two workspace interface types.
-- **Clean up the base-entrypoint zsh parse warning.** The full shell sweep is green
-  by exit code, but `zsh -n infra/images/base/entrypoint.sh` prints `nice(5) failed:
-operation not permitted` on the background process lines. Recorded in `BUGS.md`;
-  fix the portable check invocation or restructure those starts if it becomes noisy
-  in CI.
-- **Clean up the Terraform backend init warning.** Real deploys currently succeed,
-  but `scripts/install.sh` passes `-backend-config` while the complete example has
-  no backend block, so Terraform prints `Missing backend configuration` on every
-  init. Recorded in `BUGS.md`; make the install path explicit before the warning
-  hides a real backend/state issue.
 - **Merge and deploy the image-source reconcile fix.** PR #197 was deployed and
   the first tracked golden build succeeded, but live rollout exposed that
   reconciliation was tied to admin image-source reads and the seeded catalog row

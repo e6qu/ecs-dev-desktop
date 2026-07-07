@@ -9,7 +9,7 @@ FROM ${BASE}
 
 # Python (+ pip/venv) and a C toolchain for native wheels. `python3`/`python` land
 # in /usr/bin + /usr/local/bin (already on the base PATH) — no drop-in override needed.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       build-essential python3 python3-pip python3-venv \
     && rm -rf /var/lib/apt/lists/* \
     && ln -s "$(command -v python3)" /usr/local/bin/python

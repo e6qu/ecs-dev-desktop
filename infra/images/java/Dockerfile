@@ -13,7 +13,7 @@ ENV PATH="/opt/gradle/bin:${PATH}"
 
 # JDK + Maven (both land on the base PATH: java via update-alternatives in /usr/bin,
 # mvn in /usr/bin) + archive tools for the Gradle install.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       default-jdk-headless maven unzip zip \
     && rm -rf /var/lib/apt/lists/*
 

@@ -15,7 +15,7 @@
 FROM node:22-bookworm-slim AS node-pty-builder
 WORKDIR /opt/edd-editor-monaco
 COPY editor-monaco/package.json ./
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       python3 \
       make \
       g++ \
@@ -26,10 +26,17 @@ FROM node:22-bookworm-slim
 
 ARG OPENVSCODE_VERSION=1.109.5
 
+RUN printf '%s\n' \
+      '# Debian slim excludes man pages by default, but packages such as xz-utils' \
+      '# register update-alternatives slave links to their man1 pages during install.' \
+      '# Keep man1 pages so package installation does not emit missing-target warnings.' \
+      'path-include=/usr/share/man/man1/*' \
+      > /etc/dpkg/dpkg.cfg.d/zz-edd-keep-man1-for-alternatives
+
 # System packages: curl (download), tini (init), ca-certificates, git (SCM +
 # credential broker), gosu (drop to the workspace user), openssh-server (SSH).
 # Deliberately NO build-essential — compilers live in the variants that need them.
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
       ca-certificates \
       curl \
       git \
