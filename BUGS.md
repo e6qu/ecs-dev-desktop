@@ -4,23 +4,77 @@
 
 ## Open
 
-- **`jscpd` still reports below-threshold clone blocks** (2026-07-07). The
-  `pnpm cpd` gate exits 0, but the report remains noisy (`.jscpd.json` `$schema`
-  warning plus repeated route/table/schema patterns, including the Images console
-  table sections and ElectroDB entity index declarations). Immediate duplicate
-  trigger-object construction in the new image-source service was refactored, but
-  the remaining findings are below the configured failure threshold and need a
-  dedicated cleanup pass rather than a risky broad refactor in this feature PR.
+- **Image-source build reconciliation initially depended on an admin page read —
+  FIXED in follow-up branch (2026-07-07).** The PR #197 source-sync path started
+  golden CodeBuild runs from signed webhooks and exposed trigger state in
+  `/admin/images`, but build-result reconciliation only ran inside
+  `GET /api/admin/image-source`. A successful golden build therefore stayed
+  `queued` and did not roll the catalog unless an admin had the page open. The
+  follow-up branch moved reconciliation into the long-lived custom server as a
+  startup + periodic sweep; missing source-sync coordinates fail startup loudly.
 
-- **`claude`/`codex` workspace modes still use the Monaco-terminal fallback, not the
-  vendor web harnesses** (2026-07-07). Product decision is now explicit: do not build an
-  EDD-authored Claude/Codex chat UI and do not treat a terminal-booted CLI as the final
-  UX. `claude` mode should run Anthropic's Claude Code Remote Control/local-process
-  harness and direct the user to `claude.ai/code`; `codex` mode should run OpenAI's
-  Codex local harness (`codex app-server` / first-party client protocol). Current code
-  remains usable but mismatched: `infra/images/base/entrypoint.sh` still starts the
-  Monaco server with `EDD_TERMINAL_COMMAND=claude|codex`. Tracked as an implementation
-  gap in `DO_NEXT.md`.
+- **Terraform-seeded base-image catalog row lacked CAS `version` — FIXED in
+  follow-up branch (2026-07-07).** Catalog CAS correctly required a numeric
+  version, but `catalog-seed.tf` created the initial DynamoDB item without one.
+  The first live source-triggered catalog rollout failed loudly with ElectroDB's
+  `Special numeric value NaN is not allowed`. No compatibility fallback was added:
+  Terraform now seeds `version = 0`, and `CatalogService` rejects any persisted
+  catalog row missing a numeric version. The live `edd-prod` seed row was corrected
+  and rolled through `CatalogService` to `omnibus:2d231f50fad8`.
+
+- **`jscpd` still reports below-threshold clone blocks** (2026-07-07). The
+  `pnpm cpd` gate exits 0, but the report remains noisy with repeated
+  route/table/schema patterns, including the Images console table sections and
+  ElectroDB entity index declarations. The unsupported `.jscpd.json` `$schema`
+  warning was removed in the follow-up branch. Immediate duplicate trigger-object
+  construction in the new image-source service was refactored, but the remaining
+  findings are below the configured failure threshold and need a dedicated cleanup
+  pass rather than a risky broad refactor in this feature PR.
+
+- **sockerless DynamoDB read path panicked under concurrent mutation — FIXED in
+  pinned submodule branch and reported upstream (2026-07-07).** Full
+  `pnpm test:integ:local` initially crashed the Tier-2 target with
+  `fatal error: concurrent map iteration and map write` in `main.ddbItemSizeBytes`
+  while `handleDDBGetItem` computed consumed capacity. The issue was filed as
+  `e6qu/sockerless#777`. The pinned submodule branch
+  `fix/ddb-read-snapshot-race` (`a26a328f`) fixed `GetItem`, `Query`, and `Scan`
+  by snapshotting stored DynamoDB item maps under `ddbItemsMu` before projection
+  and capacity accounting, with a concurrent mutation regression test. After the
+  fix, `pnpm test:integ:local` passed 27/27 tasks.
+
+- **`pnpm test:e2e:local` production web harness missed required image-source
+  coordinates — FIXED in follow-up branch (2026-07-07).** The app correctly failed
+  startup when `EDD_IMAGE_SOURCE_REPO` and sibling required config were absent, but
+  the e2e production-server harness had not supplied those coordinates. The harness
+  now injects explicit e2e image-source repo/branch/app/golden/webhook-secret values;
+  no optional config path was added. Full `pnpm test:e2e:local` then passed.
+
+- **Dev-auth used a shared password fallback — FIXED in follow-up branch
+  (2026-07-07).** `matchDevUser` previously accepted per-account password or
+  shared `EDD_DEV_PASSWORD`/default `dev`. That hid missing per-user passwords.
+  `DevUser.password` is now required, built-in dev accounts carry explicit
+  passwords, invalid `EDD_DEV_USERS` entries fail schema parsing, and the matcher
+  compares only the account password.
+
+- **Unknown editor values silently became OpenVSCode — FIXED in follow-up branch
+  (2026-07-07).** `asEditorKind` now defaults only an omitted value and throws on
+  unknown persisted/requested editor values, so malformed state fails loudly.
+
+- **`claude`/`codex` workspace modes used the Monaco-terminal wrapper, not the
+  vendor web harnesses — FAIL-LOUD FIX in follow-up branch (2026-07-07).** Product
+  decision is explicit: do not build an EDD-authored Claude/Codex chat UI and do
+  not treat a terminal-booted CLI as the final UX. `claude` mode should run
+  Anthropic's Claude Code Remote Control/local-process harness and direct the user
+  to `claude.ai/code`; `codex` mode should run OpenAI's Codex local harness
+  (`codex app-server` / first-party client protocol). Until that wiring lands,
+  `infra/images/base/entrypoint.sh` exits with a clear error for `EDD_EDITOR_MODE`
+  `claude` or `codex` instead of serving the wrong harness.
+
+- **editor-monaco tests bound wildcard addresses — FIXED in follow-up branch
+  (2026-07-07).** The local server/terminal tests listened on an unspecified host,
+  which is noisier and more environment-sensitive than needed for loopback-only
+  assertions. They now bind `127.0.0.1` explicitly and the terminal test cleans its
+  temp root after each run. `pnpm --dir services/editor-monaco test` passed.
 
 - **Shell parse sweep emits a zsh `nice(5)` warning for the base entrypoint**
   (2026-07-07). `for f in $(git ls-files '*.sh'); do shellcheck "$f" && bash -n "$f" &&

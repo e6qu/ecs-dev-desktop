@@ -17,6 +17,7 @@ import next from "next";
 import { WebSocketServer } from "ws";
 
 import { getControlPlane } from "./lib/control-plane";
+import { startImageSourceReconcileSweep } from "./lib/image-source-reconcile-sweep";
 import { log } from "./lib/logger";
 import { NO_PUBLISHER_CODE, spectateRelay } from "./lib/spectate-relay";
 import { PRESENCE_SWEEP_MS, sweepPresence, workspacePresence } from "./lib/workspace-presence";
@@ -227,6 +228,8 @@ setInterval(() => {
     }
   })();
 }, STOPPING_SWEEP_MS).unref();
+
+startImageSourceReconcileSweep();
 
 server.listen(port, bindHost);
 process.stdout.write(`edd control plane listening on http://${bindHost}:${String(port)}\n`);

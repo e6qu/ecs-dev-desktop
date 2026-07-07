@@ -402,6 +402,9 @@ importers:
         specifier: workspace:*
         version: link:../db
     devDependencies:
+      '@aws-sdk/client-dynamodb':
+        specifier: ^3.1079.0
+        version: 3.1079.0
       '@edd/config':
         specifier: workspace:*
         version: link:../config

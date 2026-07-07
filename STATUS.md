@@ -2,14 +2,63 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-07. A large follow-up branch fixed the post-merge
-workspace-image automation and workspace UX gaps that were found after PR #196
-merged. Local verification passed: `pnpm lint`, `pnpm build`, `pnpm test`,
-`pnpm test:integ`, `pnpm check-deps`, `pnpm dead-code`, and `pnpm cpd`
-(`cpd` exited 0 with the existing below-threshold clone report/config warning).
-The last production live check before this branch still had `https://app.edd.e6qu.dev`
-healthy on control-plane tag `eee7176` with the catalog pointing at
-`omnibus:db75d1f`; deploying this branch was the next operational step.
+**Last updated:** 2026-07-07. PR #197 merged and was deployed to production as
+control-plane tag `2d231f5`. `scripts/install.sh --verify` was green after deploy
+(ALB health 200, control-plane 2/2, reconciler enabled, `/api/readyz` 200, no
+Terraform drift). The GitHub push webhook was configured on `e6qu/ecs-dev-desktop`,
+and a tracked golden CodeBuild run built
+`edd-prod/golden/omnibus:2d231f50fad8` (3.06 GB compressed). The first rollout
+exposed two real bugs: build-result reconciliation only ran when an admin opened
+`/admin/images`, and the Terraform-seeded catalog item had no required CAS
+`version`, so catalog rollout failed loudly instead of silently accepting malformed
+state. The production seed row was corrected to `version=0`, then the catalog was
+rolled through `CatalogService.rollImageTag` to
+`729079515331.dkr.ecr.eu-west-1.amazonaws.com/edd-prod/golden/omnibus:2d231f50fad8`
+and persisted at version `1`.
+
+The current follow-up branch fixed that production finding in code: the long-lived
+control-plane server now runs an image-source reconcile sweep on a fixed interval
+and at startup, missing image-source coordinates fail startup loudly, Terraform
+seeds base-image catalog rows with `version = 0`, and `CatalogService` rejects any
+persisted catalog row missing a numeric version instead of applying a compatibility
+fallback. The branch also fixed a Tier-2 simulator race found while verifying the
+follow-up: sockerless DynamoDB `GetItem` could panic with `fatal error: concurrent
+map iteration and map write` while capacity accounting iterated a stored item map
+that another request was mutating. The fix was committed in the pinned submodule
+branch `fix/ddb-read-snapshot-race` at `a26a328f`, reported upstream as
+`e6qu/sockerless#777`, and made read paths snapshot DynamoDB items under the
+existing item mutex before projection/capacity work.
+
+The same branch also removed no-fallback violations found during verification:
+the production e2e web harness supplied explicit image-source coordinates instead
+of starting the server with missing required config; dev-auth required an explicit
+password on every seeded account and removed the shared `EDD_DEV_PASSWORD` path;
+unknown editor values threw instead of becoming OpenVSCode; and workspace images
+exited loudly for `EDD_EDITOR_MODE=claude|codex` until the Anthropic/OpenAI local
+web UI harness launchers were wired, rather than serving the Monaco terminal
+wrapper behind those product names. The editor-monaco local server tests also
+bound `127.0.0.1` explicitly and cleaned their terminal temp root, removing an
+environment-sensitive wildcard-listener wrinkle found during the full test sweep.
+
+Local verification for this follow-up passed: `pnpm --dir apps/web exec vitest run
+lib/image-source-reconcile-sweep.test.ts lib/image-source.test.ts --pool=forks`,
+`pnpm --dir packages/control-plane exec vitest run --config vitest.integ.config.ts
+src/control-plane.integ.ts --pool=forks`, `pnpm --filter @edd/web lint`,
+`pnpm --filter @edd/web build`, `pnpm --filter @edd/control-plane lint`,
+`pnpm --filter @edd/control-plane build`, `pnpm --filter @edd/config build`,
+`pnpm --dir packages/config exec vitest run src/dev-users.test.ts`,
+`pnpm --dir packages/core exec vitest run src/domain/editor.test.ts`,
+`pnpm --dir apps/web exec vitest run lib/dev-users.test.ts
+lib/dev-users.fuzz.test.ts lib/workspace-proxy.test.ts
+lib/image-source-reconcile-sweep.test.ts lib/image-source.test.ts --pool=forks`,
+`pnpm --dir services/editor-monaco test`, `pnpm lint`, `pnpm build`,
+`pnpm test`, `pnpm test:integ:local`,
+`pnpm test:e2e:local` (46 passed, 5 skipped variant-image tests),
+`pnpm check-deps`, `pnpm dead-code`, `pnpm cpd`,
+`terraform fmt -check -recursive infra/terraform`,
+and `env GOWORK=off go test -tags noui . -run
+TestDDBItemSnapshotIsIndependentUnderConcurrentMutation -count=10` in the
+sockerless AWS simulator module.
 
 Shipped in this follow-up branch:
 
@@ -94,10 +143,10 @@ Remaining: apply the CodeBuild buildspec/WAF update, deploy the control-plane
 source sync flow with `EDD_IMAGE_SOURCE_REPO=e6qu/ecs-dev-desktop`, create the required
 `EDD_IMAGE_SOURCE_WEBHOOK_SECRET` secret, configure the GitHub webhook delivery,
 and run the first control-plane-started golden build. User live-testing;
-replacing the `claude`/`codex`
-Monaco-terminal fallback with the vendor harnesses now explicitly chosen by the user
-(Anthropic Remote Control / `claude.ai/code` for Claude Code; OpenAI `codex
-app-server` / first-party local client protocol for Codex).
+`claude`/`codex` workspace modes intentionally fail until the vendor harnesses
+now explicitly chosen by the user are wired (Anthropic Remote Control /
+`claude.ai/code` for Claude Code; OpenAI `codex app-server` / first-party local
+client protocol for Codex).
 
 ## Real AWS production deploy — LIVE (2026-07-05/06), still hardening post-launch
 
@@ -841,8 +890,8 @@ example. `terraform fmt`/`validate` clean.
 the hand-edit-cookies dev-auth flow with a real `/login` form (gated on
 `EDD_DEV_AUTH=1`): pick a seeded account + password. The accounts are
 **configuration, not app code** — `@edd/config` `devUsers()` parses `EDD_DEV_USERS`
-(JSON) with a built-in default set (admin/member/viewer), and `devPassword()`
-(`EDD_DEV_PASSWORD`, default `dev`); a per-account `password` overrides it. Server
+(JSON) with a built-in default set (admin/member/viewer), and every account now
+has an explicit `password`; missing configured passwords fail loudly. Server
 actions set host-only `edd-dev-*` cookies (scoped to `edd.localhost`, so other
 localhost apps' cookies aren't disturbed) and a dev-aware sign-out clears them.
 Playwright tests (`e2e/login.pw.ts`) sign in via the form as each role and assert

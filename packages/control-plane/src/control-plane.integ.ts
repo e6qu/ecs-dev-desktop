@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { UpdateItemCommand } from "@aws-sdk/client-dynamodb";
 import {
   baseImage,
   baseImageId,
@@ -628,6 +629,28 @@ describe("CatalogService", () => {
         image: "729079515331.dkr.ecr.eu-west-1.amazonaws.com/edd-prod/golden/omnibus:newtag",
       });
     }
+  });
+
+  it("fails loudly when a persisted catalog row has no CAS version", async () => {
+    const created = await catalog.create({
+      name: "Malformed",
+      image: baseImage("729079515331.dkr.ecr.eu-west-1.amazonaws.com/edd-prod/golden/legacy:old"),
+    });
+    await client.send(
+      new UpdateItemCommand({
+        TableName: TEST_TABLE,
+        Key: {
+          PK: { S: `$edd#id_${created.id}` },
+          SK: { S: "$baseimage_1" },
+        },
+        UpdateExpression: "REMOVE #version",
+        ExpressionAttributeNames: { "#version": "version" },
+      }),
+    );
+
+    await expect(catalog.list()).rejects.toThrow(
+      `base image ${created.id} is missing required catalog version`,
+    );
   });
 
   it("update CAS: stale version is rejected, current version wins", async () => {

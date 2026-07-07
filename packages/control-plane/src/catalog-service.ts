@@ -189,7 +189,7 @@ export class CatalogService {
     const { data } = await this.deps.baseImages.query.byCatalog({}).go({ pages: "all" });
     return (data as readonly BaseImageRecord[]).map((record) => ({
       entry: toEntry(record),
-      version: record.version,
+      version: requiredVersion(record),
     }));
   }
 
@@ -197,7 +197,7 @@ export class CatalogService {
     const { data } = await this.deps.baseImages.get({ id }).go();
     if (data === null) return null;
     const record = data as BaseImageRecord;
-    return { entry: toEntry(record), version: record.version };
+    return { entry: toEntry(record), version: requiredVersion(record) };
   }
 
   /** Insert a new entry (conditional on attribute_not_exists — ElectroDB `.create()`). */
@@ -235,6 +235,13 @@ export class CatalogService {
       .where(({ version }, { eq }) => eq(version, observedVersion))
       .go();
   }
+}
+
+function requiredVersion(record: BaseImageRecord): number {
+  if (!Number.isInteger(record.version)) {
+    throw new Error(`base image ${record.id} is missing required catalog version`);
+  }
+  return record.version;
 }
 
 function imageRefMatchesRepo(image: BaseImage, repo: string): boolean {

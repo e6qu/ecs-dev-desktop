@@ -146,9 +146,9 @@ chmod 0644 "${settings_file}" 2>/dev/null || true
 #   claude / codex -> vendor agent harness modes. Claude Code should use
 #                     Anthropic Remote Control / claude.ai/code against the local
 #                     workspace process; Codex should use OpenAI's app-server /
-#                     local client harness. Until that runtime wiring lands, the
-#                     Monaco terminal fallback keeps the mode usable but is not
-#                     the product target.
+#                     local client harness. These modes intentionally fail until
+#                     that runtime wiring exists; serving Monaco here would hide
+#                     the unsupported harness behind the wrong product surface.
 #   anything else (including unset) -> OpenVSCode Server, the historical default.
 # The Monaco server (bundled at /opt/edd-editor-monaco) listens on :3000 under
 # /w/<id>/ and reads the same coordinates from the environment (EDD_WORKSPACE_ID,
@@ -159,8 +159,8 @@ case "${EDD_EDITOR_MODE:-openvscode}" in
     exec gosu workspace node /opt/edd-editor-monaco/server.js
     ;;
   claude | codex)
-    exec gosu workspace env EDD_TERMINAL_COMMAND="${EDD_EDITOR_MODE}" \
-      node /opt/edd-editor-monaco/server.js
+    echo "EDD_EDITOR_MODE=${EDD_EDITOR_MODE} requires the vendor local web UI harness; no alternate editor is available" >&2
+    exit 64
     ;;
 esac
 

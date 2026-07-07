@@ -18,7 +18,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { sleep } from "./aws-sim";
 import { hostReachableTarget } from "./docker-host";
-import { devHeaders, startWebApp, type WebApp } from "./web-app";
+import { devHeaders, imageSourceEnv, startWebApp, type WebApp } from "./web-app";
 
 /**
  * Wake-on-connect chain e2e against the REAL control plane (no stub):
@@ -96,6 +96,7 @@ describe("SSH wake-on-connect chain against the real control plane", { timeout: 
       DYNAMODB_TABLE: TABLE,
       EDD_GATEWAY_SECRET: GATEWAY_SECRET,
       EDD_FAKE_SSH_HOST: FAKE_SSH_HOST,
+      ...imageSourceEnv(`edd-ssh-wake-${TABLE}`, "node"),
     }));
 
     // Create the workspace through the real API, as a member.

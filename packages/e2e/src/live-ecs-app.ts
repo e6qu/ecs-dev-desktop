@@ -19,7 +19,7 @@ import { createDynamoClient, dropTable, ensureTable, makeBaseImageEntity } from 
 
 import { awsSimClientConfig, createVpcWithEgress, e2eEbsRoleArn } from "./aws-sim";
 import { hostReachableTarget } from "./docker-host";
-import { startWebApp, type WebApp } from "./web-app";
+import { imageSourceEnv, startWebApp, type WebApp } from "./web-app";
 
 const EBS_ROLE = e2eEbsRoleArn();
 
@@ -101,6 +101,7 @@ export async function startLiveEcsApp(opts: LiveEcsAppOptions): Promise<LiveEcsA
     ECS_LOG_GROUP_WORKSPACES: logGroup,
     CONTROL_PLANE_URL: `http://${hostAlias}:${String(port)}`,
     EDD_AGENT_SECRET: opts.agentSecret,
+    ...imageSourceEnv(`edd-live-${opts.runId}`, "omnibus"),
     ...opts.extraEnv,
   }));
 

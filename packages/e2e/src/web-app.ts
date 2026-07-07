@@ -12,6 +12,9 @@ const REPO_ROOT = join(import.meta.dirname, "../../..");
 const WEB_DIR = join(REPO_ROOT, "apps/web");
 const HEALTHZ_TIMEOUT_MS = 60_000;
 const BUILD_TIMEOUT_MS = 300_000;
+const E2E_IMAGE_SOURCE_REPO = "e6qu/ecs-dev-desktop";
+const E2E_IMAGE_SOURCE_BRANCH = "main";
+const E2E_IMAGE_SOURCE_SECRET = "e2e-image-source-webhook-secret";
 
 export interface WebApp {
   baseUrl: string;
@@ -118,5 +121,15 @@ export function devHeaders(userId: string, role: "member" | "admin"): Record<str
     "x-edd-user-id": userId,
     "x-edd-role": role,
     "content-type": "application/json",
+  };
+}
+
+export function imageSourceEnv(appName: string, golden: string): Record<string, string> {
+  return {
+    EDD_APP_NAME: appName,
+    EDD_GOLDEN: golden,
+    EDD_IMAGE_SOURCE_REPO: E2E_IMAGE_SOURCE_REPO,
+    EDD_IMAGE_SOURCE_BRANCH: E2E_IMAGE_SOURCE_BRANCH,
+    EDD_IMAGE_SOURCE_WEBHOOK_SECRET: E2E_IMAGE_SOURCE_SECRET,
   };
 }

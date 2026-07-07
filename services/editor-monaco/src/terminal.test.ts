@@ -32,14 +32,15 @@ describe("parseMessage", () => {
 describe("terminal websocket gate", () => {
   let server: Server;
   let port: number;
+  let root: string;
   let spaDir: string;
 
   beforeEach(async () => {
-    const root = await fs.mkdtemp(path.join(os.tmpdir(), "edd-term-"));
+    root = await fs.mkdtemp(path.join(os.tmpdir(), "edd-term-"));
     spaDir = await fs.mkdtemp(path.join(os.tmpdir(), "edd-spa-"));
     server = createEditorServer({ root, spaDir, basePath: "/w/ws-term/", token: "tok-secret" });
     await new Promise<void>((resolve) => {
-      server.listen(0, resolve);
+      server.listen(0, "127.0.0.1", resolve);
     });
     const addr = server.address();
     if (addr === null || typeof addr === "string") throw new Error("no port");
@@ -52,6 +53,7 @@ describe("terminal websocket gate", () => {
         resolve();
       });
     });
+    await fs.rm(root, { recursive: true, force: true });
     await fs.rm(spaDir, { recursive: true, force: true });
   });
 
