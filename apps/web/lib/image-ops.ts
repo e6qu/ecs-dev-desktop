@@ -96,7 +96,7 @@ interface ImageManifest {
 }
 
 /** Config the AWS ImageOps adapter reads from the environment. */
-export interface AwsImageOpsConfig {
+interface AwsImageOpsConfig {
   readonly region: string;
   /** The CodeBuild project that builds the platform images. */
   readonly codeBuildProject: string;
@@ -104,7 +104,7 @@ export interface AwsImageOpsConfig {
   readonly buildLogGroup: string;
 }
 
-export class AwsImageOps implements ImageOps {
+class AwsImageOps implements ImageOps {
   private readonly ecr: ECRClient;
   private readonly codebuild: CodeBuildClient;
   private readonly logs: CloudWatchLogsClient;
