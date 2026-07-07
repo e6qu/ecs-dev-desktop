@@ -64,6 +64,8 @@ export interface Workspace {
   readonly latestSnapshotId?: SnapshotId;
   /** When the latest snapshot was taken — drives scheduled-snapshot timing. */
   readonly latestSnapshotAt?: IsoTimestamp;
+  /** Optional per-workspace scheduled snapshot interval. Absent means deployment default. */
+  readonly snapshotIntervalMs?: number;
   /** Private IP of the running task's ENI — used by the SSH gateway to forward. Absent when stopped. */
   readonly sshHost?: string;
   /** Last functional self-report from the in-workspace agent: is the desktop actually
@@ -105,6 +107,7 @@ export interface ProvisionParams {
   repoUrl?: string;
   baseImage: BaseImage;
   editor?: EditorKind;
+  snapshotIntervalMs?: number;
   volumeId: VolumeId;
   taskId: TaskId;
   at: IsoTimestamp;
@@ -130,6 +133,7 @@ export function reserve(
     repoUrl: params.repoUrl,
     baseImage: params.baseImage,
     editor: params.editor ?? DEFAULT_EDITOR,
+    snapshotIntervalMs: params.snapshotIntervalMs,
     state: "provisioning",
     desiredState: "present",
     createdAt: params.at,
@@ -146,6 +150,7 @@ export function provision(params: ProvisionParams): Workspace {
     repoUrl: params.repoUrl,
     baseImage: params.baseImage,
     editor: params.editor ?? DEFAULT_EDITOR,
+    snapshotIntervalMs: params.snapshotIntervalMs,
     state: "running",
     desiredState: "present",
     createdAt: params.at,

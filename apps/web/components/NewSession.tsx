@@ -2,7 +2,12 @@
 "use client";
 
 import { ApiClient } from "@edd/api-client";
-import { editorKind, type EditorKindDto } from "@edd/api-contracts";
+import {
+  editorKind,
+  MAX_SNAPSHOT_INTERVAL_MS,
+  MIN_SNAPSHOT_INTERVAL_MS,
+  type EditorKindDto,
+} from "@edd/api-contracts";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -17,6 +22,9 @@ import { TESTID } from "../lib/testids";
 import { StateBlock } from "./StateBlock";
 
 const api = new ApiClient({ baseUrl: "" });
+const DEFAULT_SNAPSHOT_INTERVAL_MINUTES = 5;
+const MIN_SNAPSHOT_INTERVAL_MINUTES = MIN_SNAPSHOT_INTERVAL_MS / (60 * 1000);
+const MAX_SNAPSHOT_INTERVAL_MINUTES = MAX_SNAPSHOT_INTERVAL_MS / (60 * 1000);
 
 interface CatalogOption {
   name: string;
@@ -26,8 +34,8 @@ interface CatalogOption {
   tools: readonly string[];
 }
 
-/** The three ways to start a session — selected by radio, launched by ONE button. */
-type StartMode = "blank" | "repo" | "create";
+/** The ways to start a session — selected by radio, launched by ONE button. */
+type StartMode = "blank" | "repo" | "public" | "create";
 
 const MODE_META: Record<StartMode, { title: string; detail: string }> = {
   blank: {
@@ -38,11 +46,42 @@ const MODE_META: Record<StartMode, { title: string; detail: string }> = {
     title: "An existing repository",
     detail: "Pick a repository you can access; it's cloned into the session at boot.",
   },
+  public: {
+    title: "Public GitHub URL",
+    detail: "Paste a public repository URL; no GitHub account link is required.",
+  },
   create: {
     title: "Create a new repository",
     detail: "A fresh repository (in an organization or your own account), cloned at boot.",
   },
 };
+
+function publicGithubCloneUrl(input: string): string | null {
+  let url: URL;
+  try {
+    url = new URL(input.trim());
+  } catch {
+    return null;
+  }
+  if (url.protocol !== "https:" || url.hostname !== "github.com") return null;
+  const parts = url.pathname
+    .replace(/\/$/, "")
+    .split("/")
+    .filter((part) => part.length > 0);
+  if (parts.length !== 2) return null;
+  const [owner, repoPart] = parts;
+  const repo = repoPart.endsWith(".git") ? repoPart.slice(0, -4) : repoPart;
+  if (owner === "" || repo === "") return null;
+  return `https://github.com/${owner}/${repo}.git`;
+}
+
+function snapshotIntervalMsFromInput(input: string): number | null {
+  const minutes = Number(input);
+  if (!Number.isInteger(minutes)) return null;
+  const ms = minutes * 60 * 1000;
+  if (ms < MIN_SNAPSHOT_INTERVAL_MS || ms > MAX_SNAPSHOT_INTERVAL_MS) return null;
+  return ms;
+}
 
 /**
  * New-session launcher: pick a base image, choose HOW to start (blank / existing
@@ -57,6 +96,9 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
   const [mode, setMode] = useState<StartMode>("blank");
   // Per-session interface; defaults to OpenVSCode (every curated image's default).
   const [editor, setEditor] = useState<"" | EditorKindDto>("openvscode");
+  const [snapshotIntervalMinutes, setSnapshotIntervalMinutes] = useState(
+    String(DEFAULT_SNAPSHOT_INTERVAL_MINUTES),
+  );
   const [namespaces, setNamespaces] = useState<Namespace[]>([]);
   const [ghConnected, setGhConnected] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -70,6 +112,8 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
   const [hasMore, setHasMore] = useState(false);
   const [search, setSearch] = useState("");
   const [selectedRepo, setSelectedRepo] = useState<RepoSummary | null>(null);
+  const [publicRepoUrl, setPublicRepoUrl] = useState("");
+  const [publicRepoRef, setPublicRepoRef] = useState("");
 
   // Create-repo mode.
   const [ns, setNs] = useState("");
@@ -143,14 +187,17 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
   const startReady =
     !busy &&
     image !== "" &&
+    snapshotIntervalMsFromInput(snapshotIntervalMinutes) !== null &&
     (mode === "blank" ||
       (mode === "repo" && selectedRepo !== null) ||
+      (mode === "public" && publicRepoUrl.trim().length > 0) ||
       (mode === "create" && createEnabled && repoName.trim().length > 0));
 
   async function launch(repoUrl?: string, repoRef?: string): Promise<string> {
     const ws = await api.createWorkspace({
       baseImage: image,
       ...(editor === "" ? {} : { editor }),
+      snapshotIntervalMs: snapshotIntervalMsFromInput(snapshotIntervalMinutes) ?? undefined,
       ...(repoUrl !== undefined ? { repoUrl } : {}),
       ...(repoRef !== undefined ? { repoRef } : {}),
     });
@@ -165,6 +212,10 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
       if (mode === "repo") {
         if (selectedRepo === null) throw new Error("Pick a repository first.");
         wsId = await launch(selectedRepo.cloneUrl, selectedRepo.defaultBranch);
+      } else if (mode === "public") {
+        const parsed = publicGithubCloneUrl(publicRepoUrl);
+        if (parsed === null) throw new Error("Enter a valid public GitHub repository URL.");
+        wsId = await launch(parsed, publicRepoRef.trim() === "" ? undefined : publicRepoRef.trim());
       } else if (mode === "create") {
         const namespace = namespaces.find((n) => n.login === ns);
         if (namespace === undefined || repoName.trim().length === 0) {
@@ -282,7 +333,7 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
         <div role="radiogroup" aria-label="session source" className="stack" style={{ gap: 8 }}>
           {(Object.keys(MODE_META) as StartMode[]).map((m) => {
             const meta = MODE_META[m];
-            const disabled = m !== "blank" && !ghConnected;
+            const disabled = (m === "repo" || m === "create") && !ghConnected;
             const selected = mode === m;
             return (
               <label
@@ -319,9 +370,14 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
           })}
         </div>
         {!ghConnected && (
-          <p className="mono" style={{ color: "var(--dim)" }}>
-            Repository modes need a connected GitHub account — sign in with GitHub.
-          </p>
+          <div className="stack" style={{ gap: 8 }}>
+            <p className="mono" style={{ color: "var(--dim)", margin: 0 }}>
+              Repository modes need a connected GitHub account.
+            </p>
+            <a className="btn" href="/api/github/connect/start">
+              Connect GitHub
+            </a>
+          </div>
         )}
 
         {mode === "repo" && ghConnected && (
@@ -386,6 +442,29 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
                 )}
               </ul>
             )}
+          </div>
+        )}
+
+        {mode === "public" && (
+          <div className="stack" style={{ gap: 10 }}>
+            <input
+              className="input"
+              aria-label="public GitHub repository URL"
+              placeholder="https://github.com/owner/repo"
+              value={publicRepoUrl}
+              onChange={(e) => {
+                setPublicRepoUrl(e.target.value);
+              }}
+            />
+            <input
+              className="input"
+              aria-label="repository ref"
+              placeholder="branch, tag, or commit (optional)"
+              value={publicRepoRef}
+              onChange={(e) => {
+                setPublicRepoRef(e.target.value);
+              }}
+            />
           </div>
         )}
 
@@ -462,6 +541,23 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
           <option value="claude">Claude Code — local web UI</option>
           <option value="codex">Codex — local web UI</option>
         </select>
+        <label className="stack" style={{ gap: 6, alignSelf: "flex-start" }}>
+          <span className="mono" style={{ color: "var(--dim)", fontSize: 12 }}>
+            snapshot interval
+          </span>
+          <input
+            className="input"
+            type="number"
+            min={MIN_SNAPSHOT_INTERVAL_MINUTES}
+            max={MAX_SNAPSHOT_INTERVAL_MINUTES}
+            step={1}
+            value={snapshotIntervalMinutes}
+            onChange={(e) => {
+              setSnapshotIntervalMinutes(e.target.value);
+            }}
+            style={{ width: 180 }}
+          />
+        </label>
       </section>
 
       <section className="stack" style={{ gap: 8 }}>

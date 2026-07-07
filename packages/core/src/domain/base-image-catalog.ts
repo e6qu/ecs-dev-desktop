@@ -38,9 +38,10 @@ export interface ProvisionBaseImageParams {
   at: IsoTimestamp;
 }
 
-/** A mutable patch over an existing entry (id and image ref are immutable). */
+/** A mutable patch over an existing entry (id is immutable). */
 export interface BaseImagePatch {
   name?: string;
+  image?: BaseImage;
   description?: string;
   tags?: readonly string[];
   tools?: readonly string[];
@@ -85,9 +86,13 @@ export function applyBaseImagePatch(entry: BaseImageEntry, patch: BaseImagePatch
   if (patch.name?.trim() === "") {
     throw new Error("base image name cannot be blank");
   }
+  if (patch.image?.trim() === "") {
+    throw new Error("base image reference cannot be blank");
+  }
   return {
     ...entry,
     name: patch.name === undefined ? entry.name : patch.name.trim(),
+    image: patch.image ?? entry.image,
     description: patch.description ?? entry.description,
     tags: patch.tags === undefined ? entry.tags : normalizeLabels(patch.tags),
     tools: patch.tools === undefined ? entry.tools : normalizeLabels(patch.tools),

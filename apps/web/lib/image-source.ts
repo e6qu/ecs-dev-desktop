@@ -8,6 +8,7 @@ import type {
   ImageSourceTriggerDto,
   ImageSourceTriggerStatusDto,
 } from "@edd/api-contracts";
+import { domainErrorMessage } from "@edd/core";
 import {
   createDynamoClient,
   makeImageSourceEntity,
@@ -16,12 +17,11 @@ import {
   type ImageSourceTriggerEntity,
 } from "@edd/db";
 
+import { getCatalog, tableName } from "./control-plane";
 import { getImageOps, type ImageOps } from "./image-ops";
-import { tableName } from "./control-plane";
 
 const SOURCE_SCHEMA_VERSION = 2;
 const SOURCE_ID = "github-main";
-const DEFAULT_BRANCH = "main";
 const BUILD_TRIGGER = "edd-github-source";
 const RECENT_TRIGGER_LIMIT = 20;
 const TAG_LENGTH = 12;
@@ -41,6 +41,8 @@ export interface ImageSourceConfig {
   readonly repo: string;
   readonly branch: string;
   readonly webhookSecret: string;
+  readonly appName: string;
+  readonly goldenVariants: readonly string[];
 }
 
 interface SourceRecord {
@@ -106,10 +108,18 @@ export function imageSourceConfigFromEnv(env: NodeJS.ProcessEnv = process.env): 
   if (webhookSecret === undefined || webhookSecret === "") {
     throw new Error("EDD_IMAGE_SOURCE_WEBHOOK_SECRET is required");
   }
+  const appName = env.EDD_APP_NAME;
+  if (appName === undefined || appName === "") throw new Error("EDD_APP_NAME is required");
+  const golden = env.EDD_GOLDEN;
+  if (golden === undefined || golden.trim() === "") throw new Error("EDD_GOLDEN is required");
+  const branch = env.EDD_IMAGE_SOURCE_BRANCH;
+  if (branch === undefined || branch === "") throw new Error("EDD_IMAGE_SOURCE_BRANCH is required");
   return {
     repo,
-    branch: env.EDD_IMAGE_SOURCE_BRANCH ?? DEFAULT_BRANCH,
+    branch,
     webhookSecret,
+    appName,
+    goldenVariants: golden.split(/\s+/).filter((v) => v.length > 0),
   };
 }
 
@@ -206,6 +216,7 @@ export class ImageSourceService {
       readonly sources: ImageSourceEntity;
       readonly triggers: ImageSourceTriggerEntity;
       readonly imageOps: () => ImageOps;
+      readonly rollCatalogImageTag: (repo: string, tag: string) => Promise<void>;
       readonly cfg: ImageSourceConfig;
       readonly now: () => Date;
     },
@@ -301,7 +312,29 @@ export class ImageSourceService {
         const build = await this.deps.imageOps().getBuild(trigger.buildId ?? "");
         if (build === null) return;
         const status = triggerStatusFromBuild(build.status);
+        if (status === "succeeded" && trigger.target === "golden" && trigger.tag !== undefined) {
+          try {
+            await this.rollGoldenCatalog(trigger.tag);
+          } catch (e) {
+            const reason = e instanceof Error ? e.message : "catalog rollout failed";
+            await this.putTrigger({
+              ...trigger,
+              status: "failed",
+              reason: `catalog rollout failed: ${reason}`,
+              updatedAt: this.nowIso(),
+            });
+            return;
+          }
+        }
         await this.putTrigger({ ...trigger, status, updatedAt: this.nowIso() });
+      }),
+    );
+  }
+
+  private async rollGoldenCatalog(tag: string): Promise<void> {
+    await Promise.all(
+      this.deps.cfg.goldenVariants.map(async (variant) => {
+        await this.deps.rollCatalogImageTag(`${this.deps.cfg.appName}/golden/${variant}`, tag);
       }),
     );
   }
@@ -416,6 +449,10 @@ export function getImageSourceService(): ImageSourceService {
     sources: makeImageSourceEntity(createDynamoClient(), tableName()),
     triggers: makeImageSourceTriggerEntity(createDynamoClient(), tableName()),
     imageOps: getImageOps,
+    rollCatalogImageTag: async (repo, tag) => {
+      const result = await getCatalog().rollImageTag({ repo, tag });
+      if (!result.ok) throw new Error(domainErrorMessage(result.error));
+    },
     cfg: imageSourceConfigFromEnv(),
     now: () => new Date(),
   });

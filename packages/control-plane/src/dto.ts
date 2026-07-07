@@ -24,6 +24,9 @@ export function toWorkspaceDto(ws: Workspace): WorkspaceDto {
     ...(ws.functionalDetail === undefined ? {} : { functionalDetail: ws.functionalDetail }),
     ...(ws.diskUsedBytes === undefined ? {} : { diskUsedBytes: ws.diskUsedBytes }),
     ...(ws.diskTotalBytes === undefined ? {} : { diskTotalBytes: ws.diskTotalBytes }),
+    ...(ws.latestSnapshotId === undefined ? {} : { latestSnapshotId: ws.latestSnapshotId }),
+    ...(ws.latestSnapshotAt === undefined ? {} : { latestSnapshotAt: ws.latestSnapshotAt }),
+    ...(ws.snapshotIntervalMs === undefined ? {} : { snapshotIntervalMs: ws.snapshotIntervalMs }),
     ...(ws.terminatedAt === undefined ? {} : { terminatedAt: ws.terminatedAt }),
     ...(ws.shareEnabled === undefined ? {} : { shareEnabled: ws.shareEnabled }),
   };
@@ -50,6 +53,7 @@ export function toWorkspaceDetail(ws: Workspace): WorkspaceDetailDto {
     ...(ws.taskId === undefined ? {} : { taskId: ws.taskId }),
     ...(ws.latestSnapshotId === undefined ? {} : { latestSnapshotId: ws.latestSnapshotId }),
     ...(ws.latestSnapshotAt === undefined ? {} : { latestSnapshotAt: ws.latestSnapshotAt }),
+    ...(ws.snapshotIntervalMs === undefined ? {} : { snapshotIntervalMs: ws.snapshotIntervalMs }),
     ...(ws.sshHost === undefined ? {} : { sshHost: ws.sshHost }),
     ...(ws.functional === undefined ? {} : { functional: ws.functional }),
     ...(ws.functionalDetail === undefined ? {} : { functionalDetail: ws.functionalDetail }),

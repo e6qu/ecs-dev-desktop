@@ -103,6 +103,9 @@ async function handlePOST(req: Request) {
       // owner's per-role limit (the role is otherwise only known at this user's sign-in).
       ownerRole: principal.role,
       ...(parsed.data.repoUrl === undefined ? {} : { repoUrl: parsed.data.repoUrl }),
+      ...(parsed.data.snapshotIntervalMs === undefined
+        ? {}
+        : { snapshotIntervalMs: parsed.data.snapshotIntervalMs }),
       baseImage: image,
       editor,
       // Authoritative cap: enforced ATOMICALLY in the create transaction (the read

@@ -71,6 +71,8 @@ export {
   DEFAULT_SNAPSHOT_INTERVAL_MS,
   DEFAULT_TASKDEF_KEEP_REVISIONS,
   ID_PREFIX,
+  MAX_SNAPSHOT_INTERVAL_MS,
+  MIN_SNAPSHOT_INTERVAL_MS,
 } from "./domain/constants";
 
 // Editor choice (openvscode | monaco): flows base-image → workspace → EDD_EDITOR_MODE.

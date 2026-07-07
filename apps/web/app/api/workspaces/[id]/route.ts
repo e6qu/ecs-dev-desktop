@@ -1,8 +1,12 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { NextResponse } from "next/server";
 
+import { updateWorkspaceRequest } from "@edd/api-contracts";
+
 import {
+  badRequest,
   domainErrorResponse,
+  forbidden,
   isResponse,
   loadConnectableWorkspace,
   loadOwnedWorkspace,
@@ -40,5 +44,23 @@ async function handleDELETE(req: Request, { params }: Ctx) {
   return new NextResponse(null, { status: 202 });
 }
 
+// PATCH /api/workspaces/:id — owner/admin workspace settings.
+async function handlePATCH(req: Request, { params }: Ctx) {
+  const ctx = await loadOwnedWorkspace(req, params, "update");
+  if (isResponse(ctx)) return ctx;
+  let raw: unknown;
+  try {
+    raw = await req.json();
+  } catch {
+    return badRequest();
+  }
+  const parsed = updateWorkspaceRequest.safeParse(raw);
+  if (!parsed.success) return badRequest();
+  if (ctx.principal === undefined) return forbidden();
+  const result = await ctx.cp.updateSettings(ctx.id, parsed.data, auditActor(ctx.principal));
+  return result.ok ? NextResponse.json(result.value) : domainErrorResponse(result.error);
+}
+
 export const GET = withObservability("workspaces.get", handleGET);
+export const PATCH = withObservability("workspaces.update", handlePATCH);
 export const DELETE = withObservability("workspaces.delete", handleDELETE);

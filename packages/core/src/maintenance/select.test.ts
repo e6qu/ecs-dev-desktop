@@ -146,6 +146,19 @@ describe("selectDueForSnapshot", () => {
     ];
     expect(selectDueForSnapshot(candidates, now, ONE_HOUR)).toEqual([]);
   });
+
+  it("uses a per-workspace interval before the global interval", () => {
+    const fifteenMinAgo = isoTimestamp("2026-06-01T11:45:00.000Z");
+    const candidates: SnapshotCandidate[] = [
+      {
+        id: workspaceId("ws-custom"),
+        latestSnapshotAt: fifteenMinAgo,
+        snapshotIntervalMs: 10 * 60 * 1000,
+      },
+      { id: workspaceId("ws-global"), latestSnapshotAt: fifteenMinAgo },
+    ];
+    expect(selectDueForSnapshot(candidates, now, ONE_HOUR)).toEqual([workspaceId("ws-custom")]);
+  });
 });
 
 describe("selectOrphanTasks", () => {
@@ -178,6 +191,40 @@ describe("selectOrphanTasks", () => {
     expect(selectOrphanTasks(existing, new Set(), now, ONE_HOUR)).toEqual([
       taskRef("task-edge", "ws-4", exactGrace),
     ]);
+  });
+});
+
+describe("snapshot retention after shutdown", () => {
+  it("keeps only the shutdown snapshot after the one-hour GC grace", () => {
+    const shutdownSnapshot = snapshotId("snap-shutdown");
+    const oldScheduled = snapshotId("snap-old-scheduled");
+    const newerScheduled = snapshotId("snap-newer-scheduled");
+    const twoHoursAfterShutdown = isoTimestamp("2026-06-01T14:00:00.000Z");
+
+    expect(
+      selectOrphanSnapshots(
+        [
+          {
+            id: oldScheduled,
+            sourceVolumeId: volumeId("vol-ws"),
+            createdAt: isoTimestamp("2026-06-01T11:00:00.000Z"),
+          },
+          {
+            id: newerScheduled,
+            sourceVolumeId: volumeId("vol-ws"),
+            createdAt: isoTimestamp("2026-06-01T11:55:00.000Z"),
+          },
+          {
+            id: shutdownSnapshot,
+            sourceVolumeId: volumeId("vol-ws"),
+            createdAt: isoTimestamp("2026-06-01T12:00:00.000Z"),
+          },
+        ],
+        new Set([shutdownSnapshot]),
+        twoHoursAfterShutdown,
+        ONE_HOUR,
+      ),
+    ).toEqual([oldScheduled, newerScheduled]);
   });
 });
 

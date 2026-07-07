@@ -125,6 +125,33 @@ export class CatalogService {
     return ok(toBaseImageDto(next));
   }
 
+  async rollImageTag(input: {
+    repo: string;
+    tag: string;
+  }): Promise<Result<BaseImageEntryDto, DomainError>> {
+    const loaded = (await this.allLoaded()).filter((e) =>
+      imageRefMatchesRepo(e.entry.image, input.repo),
+    );
+    if (loaded.length === 0) {
+      return err(conflictError(`no catalog entry points at image repo ${input.repo}`));
+    }
+    if (loaded.length > 1) {
+      return err(conflictError(`multiple catalog entries point at image repo ${input.repo}`));
+    }
+
+    const current = loaded[0];
+    if (current === undefined) throw new Error("catalog rollout candidate disappeared");
+    const nextImage = baseImage(replaceImageTag(current.entry.image, input.tag));
+    const next = applyBaseImagePatch(current.entry, { image: nextImage });
+    try {
+      await this.persistUpdate(next, current.version);
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+      return err(conflictError(`rollout of ${input.repo} lost a concurrent update`));
+    }
+    return ok(toBaseImageDto(next));
+  }
+
   async remove(id: BaseImageId): Promise<Result<void, DomainError>> {
     const loaded = await this.find(id);
     if (loaded === null) return err(notFoundError("base image", id));
@@ -155,8 +182,15 @@ export class CatalogService {
   }
 
   private async all(): Promise<BaseImageEntry[]> {
+    return (await this.allLoaded()).map((loaded) => loaded.entry);
+  }
+
+  private async allLoaded(): Promise<LoadedEntry[]> {
     const { data } = await this.deps.baseImages.query.byCatalog({}).go({ pages: "all" });
-    return (data as readonly BaseImageRecord[]).map(toEntry);
+    return (data as readonly BaseImageRecord[]).map((record) => ({
+      entry: toEntry(record),
+      version: record.version,
+    }));
   }
 
   private async find(id: BaseImageId): Promise<LoadedEntry | null> {
@@ -190,6 +224,7 @@ export class CatalogService {
       .patch({ id: entry.id })
       .set({
         name: entry.name,
+        image: entry.image,
         description: entry.description,
         tags: [...entry.tags],
         tools: [...entry.tools],
@@ -200,4 +235,23 @@ export class CatalogService {
       .where(({ version }, { eq }) => eq(version, observedVersion))
       .go();
   }
+}
+
+function imageRefMatchesRepo(image: BaseImage, repo: string): boolean {
+  const withoutTag = imageRefWithoutTag(image);
+  return withoutTag === repo || withoutTag.endsWith(`/${repo}`);
+}
+
+function replaceImageTag(image: BaseImage, tag: string): string {
+  if (tag.trim() === "") throw new Error("image tag is required");
+  return `${imageRefWithoutTag(image)}:${tag}`;
+}
+
+function imageRefWithoutTag(image: BaseImage): string {
+  const ref = String(image);
+  const tagSep = ref.lastIndexOf(":");
+  if (tagSep <= ref.lastIndexOf("/")) {
+    throw new Error(`catalog image reference has no tag: ${ref}`);
+  }
+  return ref.slice(0, tagSep);
 }

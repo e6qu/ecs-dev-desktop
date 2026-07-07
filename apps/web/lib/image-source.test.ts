@@ -48,6 +48,27 @@ describe("imageSourceConfigFromEnv", () => {
     expect(() =>
       imageSourceConfigFromEnv({ EDD_IMAGE_SOURCE_REPO: "e6qu/ecs-dev-desktop" }),
     ).toThrow("EDD_IMAGE_SOURCE_WEBHOOK_SECRET is required");
+    expect(() =>
+      imageSourceConfigFromEnv({
+        EDD_IMAGE_SOURCE_REPO: "e6qu/ecs-dev-desktop",
+        EDD_IMAGE_SOURCE_WEBHOOK_SECRET: "secret",
+      }),
+    ).toThrow("EDD_APP_NAME is required");
+    expect(() =>
+      imageSourceConfigFromEnv({
+        EDD_IMAGE_SOURCE_REPO: "e6qu/ecs-dev-desktop",
+        EDD_IMAGE_SOURCE_WEBHOOK_SECRET: "secret",
+        EDD_APP_NAME: "edd-prod",
+      }),
+    ).toThrow("EDD_GOLDEN is required");
+    expect(() =>
+      imageSourceConfigFromEnv({
+        EDD_IMAGE_SOURCE_REPO: "e6qu/ecs-dev-desktop",
+        EDD_IMAGE_SOURCE_WEBHOOK_SECRET: "secret",
+        EDD_APP_NAME: "edd-prod",
+        EDD_GOLDEN: "omnibus",
+      }),
+    ).toThrow("EDD_IMAGE_SOURCE_BRANCH is required");
   });
 
   it("loads the required webhook-only source sync coordinates", () => {
@@ -56,11 +77,15 @@ describe("imageSourceConfigFromEnv", () => {
         EDD_IMAGE_SOURCE_REPO: "e6qu/ecs-dev-desktop",
         EDD_IMAGE_SOURCE_BRANCH: "main",
         EDD_IMAGE_SOURCE_WEBHOOK_SECRET: "secret",
+        EDD_APP_NAME: "edd-prod",
+        EDD_GOLDEN: "omnibus python",
       }),
     ).toEqual({
       repo: "e6qu/ecs-dev-desktop",
       branch: "main",
       webhookSecret: "secret",
+      appName: "edd-prod",
+      goldenVariants: ["omnibus", "python"],
     });
   });
 });

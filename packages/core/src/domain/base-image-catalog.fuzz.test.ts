@@ -144,6 +144,19 @@ describe("applyBaseImagePatch — identity + fail-loud", () => {
     );
   });
 
+  it("a blank patch image fails loud; a present image is applied", () => {
+    fc.assert(
+      fc.property(entryArb, fc.string(), (entry, imageRef) => {
+        const patch: BaseImagePatch = { image: baseImage(imageRef) };
+        if (imageRef.trim() === "") {
+          expect(() => applyBaseImagePatch(entry, patch)).toThrow();
+        } else {
+          expect(applyBaseImagePatch(entry, patch).image).toBe(imageRef);
+        }
+      }),
+    );
+  });
+
   it("undefined patch fields leave the corresponding value intact", () => {
     fc.assert(
       fc.property(entryArb, fc.boolean(), (entry, enabled) => {

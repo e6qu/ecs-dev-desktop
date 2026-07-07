@@ -25,6 +25,9 @@ export const AWS_SDK_RETRY_MODE = "adaptive" as const;
 /** GitHub REST API base. Override (env, `AUTH_GITHUB_API_URL`) points at GitHub
  * Enterprise or a local harness `/api/v3`; default is public GitHub. */
 export const DEFAULT_GITHUB_API_URL = "https://api.github.com";
+/** GitHub web/OAuth base. Override (env, `AUTH_GITHUB_URL`) points at GitHub
+ * Enterprise or a local harness; default is public GitHub. */
+export const DEFAULT_GITHUB_URL = "https://github.com";
 
 /** ECS Fargate workspace-runtime defaults (cluster / subnets / role are
  * deployment-specific and supplied by config, not defaulted). */

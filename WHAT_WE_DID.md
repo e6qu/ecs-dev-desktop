@@ -2855,13 +2855,46 @@ dead-code`, `pnpm cpd` (known below-threshold clone report), `pnpm check-deps`,
 `actionlint`, and `terraform fmt -check -recursive infra/terraform`.
 
 **2026-07-07 — Scoped the public GitHub image-webhook receiver.** After PR #195
-merged to `main` at `eca7352`, opened a follow-up branch to narrow the only
-unauthenticated integration route. The route now rejects anything except a GitHub
+merged to `main` at `eca7352`, PR #196 merged at `ff3c60d` and narrowed the only
+unauthenticated integration route. The route rejected anything except a GitHub
 `push` envelope with a UUID-shaped delivery id, `application/json`, a bounded body,
-and a valid `X-Hub-Signature-256`; it verifies HMAC before JSON parsing. Added
+and a valid `X-Hub-Signature-256`; it verified HMAC before JSON parsing. Added
 focused route/unit tests for malformed envelopes and invalid signatures. The
-Terraform module now attaches a regional WAF web ACL to the control-plane ALB,
+Terraform module attached a regional WAF web ACL to the control-plane ALB,
 with rules scoped to `/api/integrations/github/image-webhook`: block non-`POST`,
 block non-JSON `POST`, and rate-limit the path. The sim fixture gained the WAFv2
 endpoint, so the same module path validates against real AWS or sockerless by
 coordinates only.
+
+**2026-07-07 — Re-checked the deployed app and workspace image builds.** Verified
+the live `edd-prod` deployment after PR #196 had merged: `https://app.edd.e6qu.dev`
+returned 200 from `/api/healthz` and `/api/readyz`; ECS control plane was 2/2 on
+task definition `edd-prod-control-plane:25`; SSH gateway was 1/1 on
+`edd-prod-ssh-gateway:25`; and the running control-plane image was
+`729079515331.dkr.ecr.eu-west-1.amazonaws.com/edd-prod/control-plane:eee7176`.
+CodeBuild build #29 had succeeded, but it used `EDD_BUILD_TARGET=web` and the old
+`SOURCE_REF=feat/instant-create-provisioning-ux`; current `main` was `ff3c60d`.
+No regional WAF web ACL existed yet, and the live DynamoDB table contained no
+`imageSource`/`imageSourceTrigger` records. The production catalog still launched
+`729079515331.dkr.ecr.eu-west-1.amazonaws.com/edd-prod/golden/omnibus:db75d1f`
+from `PK=$edd#id_img-seed-omnibus`, `SK=$baseimage_1`; newer golden-target builds
+existed in ECR, but the latest build was control-plane-only and no source webhook
+had triggered a new tracked golden build.
+
+**2026-07-07 — Fixed the post-merge workspace image/catalog flow, snapshot policy,
+and valid open workspace UX issues in one follow-up branch.** The source-sync flow
+was completed so a successful tracked `golden` build rolled matching catalog image
+entries to the exact `<sha12>` tag through catalog CAS; rollout errors marked the
+source trigger failed with an operator-visible reason. Snapshot defaults moved to
+5 minutes, per-workspace snapshot intervals were persisted and editable from user
+and admin UI, and GC behavior was pinned so successful shutdown snapshots became
+the long-term keeper while older 5-minute scheduled snapshots expired after the
+one-hour grace. Workspace cards/admin lists showed last snapshot state; admin views
+surfaced disk usage and monitoring links. The new-session flow gained public GitHub
+URL + optional ref support and a real Entra-primary "Connect GitHub" OAuth linking
+flow using signed short-lived state and the existing encrypted credential store.
+Open issues were triaged: #96/#98/#99/#100 were addressed by code, #93/#95 were
+closed as already implemented in the image Dockerfiles, and #92 was moved upstream
+to `e6qu/sockerless#776`. Verification passed: `pnpm lint`, `pnpm build`,
+`pnpm test`, `pnpm test:integ`, `pnpm check-deps`, `pnpm dead-code`, and `pnpm cpd`
+(`cpd` exited 0 with the known below-threshold clone report/config warning).

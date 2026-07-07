@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 
 import { updateBaseImageRequest } from "@edd/api-contracts";
 import { defineAbilityFor, type Action } from "@edd/authz";
-import { baseImageId } from "@edd/core";
+import { baseImage, baseImageId } from "@edd/core";
 
 import {
   authenticate,
@@ -50,7 +50,11 @@ async function handlePATCH(req: Request, { params }: Ctx) {
   const parsed = updateBaseImageRequest.safeParse(raw);
   if (!parsed.success) return badRequest();
 
-  const result = await getCatalog().update(baseImageId((await params).id), parsed.data);
+  const { image, ...patch } = parsed.data;
+  const result = await getCatalog().update(baseImageId((await params).id), {
+    ...patch,
+    ...(image === undefined ? {} : { image: baseImage(image) }),
+  });
   return result.ok ? NextResponse.json(result.value) : domainErrorResponse(result.error);
 }
 

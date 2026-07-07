@@ -20,6 +20,7 @@ import {
   registerSshKeyResponse,
   sshConnectInfo,
   updateBaseImageRequest,
+  updateWorkspaceRequest,
   workspace,
   workspaceLogs,
   workspaceMonitoring,
@@ -43,6 +44,7 @@ import {
   type SshConnectInfo,
   type SshKeyDto,
   type UpdateBaseImageRequest,
+  type UpdateWorkspaceRequest,
   type WorkspaceDto,
   type WorkspaceLogsDto,
   type WorkspaceMonitoringDto,
@@ -121,6 +123,16 @@ export class ApiClient {
 
   async getWorkspace(id: string): Promise<WorkspaceDto> {
     const res = await this.send(`/api/workspaces/${id}`);
+    return workspace.parse(await res.json());
+  }
+
+  async updateWorkspace(id: string, req: UpdateWorkspaceRequest): Promise<WorkspaceDto> {
+    const body = updateWorkspaceRequest.parse(req);
+    const res = await this.send(`/api/workspaces/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
     return workspace.parse(await res.json());
   }
 

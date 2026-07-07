@@ -32,6 +32,8 @@ describe("github image webhook route", () => {
     vi.stubEnv("EDD_IMAGE_SOURCE_REPO", "e6qu/ecs-dev-desktop");
     vi.stubEnv("EDD_IMAGE_SOURCE_BRANCH", "main");
     vi.stubEnv("EDD_IMAGE_SOURCE_WEBHOOK_SECRET", secret);
+    vi.stubEnv("EDD_APP_NAME", "edd-prod");
+    vi.stubEnv("EDD_GOLDEN", "omnibus");
   });
 
   it("rejects malformed envelopes before payload parsing", async () => {

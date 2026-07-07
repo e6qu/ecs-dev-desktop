@@ -85,12 +85,18 @@ describe("base-images API end-to-end (DynamoDB Local)", () => {
       new Request(one, {
         method: "PATCH",
         headers: admin,
-        body: JSON.stringify({ enabled: false, tags: ["node"], tools: ["pnpm"] }),
+        body: JSON.stringify({
+          image: "golden/node:22",
+          enabled: false,
+          tags: ["node"],
+          tools: ["pnpm"],
+        }),
       }),
       ctx(entry.id),
     );
     expect(patched.status).toBe(200);
     expect(baseImageEntry.parse(await patched.json())).toMatchObject({
+      image: "golden/node:22",
       enabled: false,
       tags: ["node"],
       tools: ["pnpm"],

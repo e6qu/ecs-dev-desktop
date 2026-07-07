@@ -6,6 +6,7 @@ import { gib } from "../lib/format";
 import { TESTID } from "../lib/testids";
 import { PurgeButton } from "./PurgeButton";
 import { ShareToggle } from "./ShareToggle";
+import { SnapshotIntervalControl } from "./SnapshotIntervalControl";
 import { StatusBadge } from "./StatusBadge";
 import { WorkspaceActions } from "./WorkspaceActions";
 import { WorkspaceInfo } from "./WorkspaceInfo";
@@ -13,6 +14,8 @@ import { WorkspaceInfo } from "./WorkspaceInfo";
 const STAGGER_MS = 40;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const MINUTE_MS = 60 * 1000;
+const HOUR_MS = 60 * MINUTE_MS;
 /** Mirrors DEFAULT_UNDELETE_RETENTION_MS (a UI hint only — the service enforces it). */
 const UNDELETE_RETENTION_DAYS = 7;
 
@@ -20,6 +23,14 @@ const UNDELETE_RETENTION_DAYS = 7;
 function restoreDaysLeft(terminatedAt: string): number {
   const elapsed = Date.now() - Date.parse(terminatedAt);
   return Math.max(0, Math.ceil(UNDELETE_RETENTION_DAYS - elapsed / DAY_MS));
+}
+
+function snapshotLabel(at: string | undefined): string {
+  if (at === undefined) return "never";
+  const elapsed = Math.max(0, Date.now() - Date.parse(at));
+  if (elapsed < HOUR_MS) return `${String(Math.max(1, Math.floor(elapsed / MINUTE_MS)))}m ago`;
+  if (elapsed < DAY_MS) return `${String(Math.floor(elapsed / HOUR_MS))}h ago`;
+  return `${String(Math.floor(elapsed / DAY_MS))}d ago`;
 }
 
 /** States where the editor is reachable NOW through the in-app `/w/<id>/` proxy
@@ -130,6 +141,15 @@ export function WorkspaceCard({
           </span>
         </div>
       )}
+      <div
+        className="meta-line"
+        data-testid={TESTID.workspaceSnapshot}
+        data-snapshot-at={ws.latestSnapshotAt ?? ""}
+      >
+        <span className="meta-label">last snapshot</span>
+        <span className="meta-value mono">{snapshotLabel(ws.latestSnapshotAt)}</span>
+      </div>
+      <SnapshotIntervalControl id={ws.id} valueMs={ws.snapshotIntervalMs} />
       <div className="img">{ws.baseImage}</div>
       {imageDescription !== "" && <div className="desc">{imageDescription}</div>}
       {imageTags.length > 0 && (

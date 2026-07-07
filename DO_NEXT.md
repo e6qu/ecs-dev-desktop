@@ -70,22 +70,17 @@ operation not permitted` on the background process lines. Recorded in `BUGS.md`;
   no backend block, so Terraform prints `Missing backend configuration` on every
   init. Recorded in `BUGS.md`; make the install path explicit before the warning
   hides a real backend/state issue.
-- **Deploy control-plane-owned workspace image source sync.** The GitHub Actions
-  post-merge workflow was replaced by EDD-owned GitHub source sync: `/admin/images`
-  shows repo/branch observed-vs-handled SHAs, source trigger history, and CodeBuild
-  metadata; `/api/integrations/github/image-webhook` accepts verified GitHub `push`
-  webhooks and fails loudly when the repo or webhook secret is missing. There is no
-  polling fallback. Follow-up branch `feat/harden-image-webhook` narrowed the public
-  receiver with required GitHub headers, content type, body cap, HMAC-before-parse,
-  and an ALB WAF scoped to the webhook path (POST/JSON/rate checks). To make it live:
-  merge that PR, apply the CodeBuild buildspec/WAF update, roll the control plane with
-  `EDD_IMAGE_SOURCE_REPO=e6qu/ecs-dev-desktop`, create the required
-  `EDD_IMAGE_SOURCE_WEBHOOK_SECRET` in Secrets Manager, configure the GitHub webhook,
-  then verify the first golden build from `/admin/images`. This controls deployed
-  workspace/golden image rebuilds only; CI still owns control-plane release images so
-  EDD remains releasable without an existing EDD deployment. This still does not
-  automatically repoint the catalog; that rollout decision remains covered by the
-  golden-image catalog gap in `BUGS.md`.
+- **Deploy and verify the merged workspace-image source-sync rollout.** The code now
+  received signed GitHub push webhooks, started async `golden` builds, exposed
+  source/trigger/build state in `/admin/images`, and automatically rolled successful
+  golden image tags into matching catalog entries through CAS. There was still no
+  polling fallback, and CI still owned control-plane release image builds so EDD
+  stayed releasable without an existing EDD deployment. The remaining operational
+  work after merge was to roll the control plane with
+  `EDD_IMAGE_SOURCE_REPO=e6qu/ecs-dev-desktop`, `EDD_IMAGE_SOURCE_BRANCH=main`,
+  `EDD_APP_NAME=edd-prod`, `EDD_GOLDEN=<variants>`, and
+  `EDD_IMAGE_SOURCE_WEBHOOK_SECRET`, configure the GitHub webhook, then verify the
+  first `/admin/images` trigger built and repointed the production catalog.
 - **Spectate cross-replica relay** — v1's relay is per-replica (the spectator
   client retries until it lands on the publisher's replica; works, but retry
   count grows with replica count). Follow-up: an internal replica-to-replica
@@ -106,22 +101,17 @@ operation not permitted` on the background process lines. Recorded in `BUGS.md`;
   1. **Verify the c814221 deploy** — reconciler actually sweeps (CloudWatch), heartbeats
      carry `active`, an untouched workspace stops after ~15 min with a snapshot. NB: a
      workspace created from the OLD image keeps the old unconditional agent until recreated.
-  2. **NewSession redesign + per-workspace live status page** — radio modes
-     (blank/existing repo/create repo) + "a dev desktop is backed by a git repo you can
-     access" explanation + org/user-namespace owner selector + ONE prominent Start button
-     with loading UI → redirect to a new `/workspaces/[id]` page: live status polled off
-     `functional` (NOT `state` — create lands straight in "running"), boot logs via an
-     owner-scoped log route (CloudWatchLogSource already filters by taskId for /admin/logs),
-     ECS task state, the workspace URL.
+  2. **NewSession follow-up polish** — the rich launcher had radio modes for
+     blank/existing repo/public GitHub URL/create repo, GitHub connect for Entra
+     sessions, owner namespace selection, one Start button, and redirect to the
+     per-workspace status page. Remaining polish was visual/UX only.
   3. **Editor selection at creation**: OpenVSCode | Monaco | Claude Code | Codex shipped
      as a UI/data choice, but the agent runtime still needs to replace the Monaco-terminal
      fallback with the vendor harnesses above.
-  4. **Workspace card metrics + Monitoring page**: CPU/MEM/disk on the card; ⓘ overlay
-     (settings + image size); "Monitoring" → per-workspace utilization (Container Insights),
-     uptime total+graph, cost so far incl. **per-workspace snapshot cost**, disk size/usage
-     (extend the idle-agent's functional report with `df`), IOPS allocation (gp3 baseline)
-     and utilization (EBS metrics), and a disk-increase action (ModifyVolume + resize —
-     provider support needed, may trail).
+  4. **Monitoring follow-up**: the card/admin surfaces now showed disk usage and linked
+     per-workspace monitoring. Remaining work was richer CPU/memory/disk visualization on
+     the compact card, per-workspace snapshot-cost display, disk-increase action
+     (ModifyVolume + resize), and any extra chart polish.
   5. **Session/cookie resilience**: 4-hour sessions + rolling refresh (JWT maxAge/updateAge;
      evaluate the DynamoDB Auth.js adapter if a true refresh token is wanted),
      schema-versioned app cookies that fail-soft (never block the user or force a manual

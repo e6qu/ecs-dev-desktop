@@ -30,18 +30,24 @@ export const DEFAULT_STOP_GRACE_MS = 6 * 1000;
  * tombstone + retained snapshot are purged: 7 days (product decision, 2026-07-06). */
 export const DEFAULT_UNDELETE_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 
-/** Default interval between scheduled point-in-time snapshots: 6 hours. */
-export const DEFAULT_SNAPSHOT_INTERVAL_MS = 6 * 60 * 60 * 1000;
+/** Default interval between scheduled point-in-time snapshots: 5 minutes. */
+export const DEFAULT_SNAPSHOT_INTERVAL_MS = 5 * 60 * 1000;
+
+/** Shortest user-configurable snapshot interval: 1 minute. */
+export const MIN_SNAPSHOT_INTERVAL_MS = 60 * 1000;
+
+/** Longest user-configurable snapshot interval: 24 hours. */
+export const MAX_SNAPSHOT_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Shorter snapshot cadence for a YOUNG workspace (created within
- * {@link DEFAULT_EARLY_SESSION_MS}): 10 minutes. A fresh session's work is the most
+ * {@link DEFAULT_EARLY_SESSION_MS}): 5 minutes. A fresh session's work is the most
  * exposed — a never-snapshotted workspace is captured on the very next sweep, but
- * without this its *second* snapshot would wait the full 6h. The early cadence keeps
- * a new session's data recoverable to within ~10 minutes before it settles onto the
- * steady-state interval, bounding data loss on an early Fargate eviction/crash.
+ * the early cadence still keeps new sessions explicit if the steady-state default
+ * changes later. The default deployment keeps a session's data recoverable to within
+ * ~5 minutes, bounding data loss on an early Fargate eviction/crash.
  */
-export const DEFAULT_EARLY_SNAPSHOT_INTERVAL_MS = 10 * 60 * 1000;
+export const DEFAULT_EARLY_SNAPSHOT_INTERVAL_MS = 5 * 60 * 1000;
 
 /** How long a workspace counts as "early session" for the shorter snapshot cadence: 1 hour. */
 export const DEFAULT_EARLY_SESSION_MS = 60 * 60 * 1000;
