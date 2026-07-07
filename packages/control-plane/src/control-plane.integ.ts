@@ -84,6 +84,26 @@ describe("WorkspaceService lifecycle ", () => {
     await dropTable(client, TEST_TABLE);
   });
 
+  /** A second WorkspaceService over the SAME table/storage but a fixed clock —
+   * for tests that need "now" to be later (retention/purge windows). */
+  function serviceAt(iso: string): WorkspaceService {
+    return new WorkspaceService({
+      workspaces: makeWorkspaceEntity(client, TEST_TABLE),
+      storage,
+      compute: new FakeComputeProvider(storage),
+      clock: fixedClock(iso),
+    });
+  }
+
+  /** Create a workspace and drive it to the `terminated` tombstone (create ->
+   * remove -> finishDeleting) — the shared setup for undelete/purge tests. */
+  async function terminated(owner: string): Promise<string> {
+    const ws = await service.create({ ownerId: ownerId(owner), baseImage: baseImage("img") });
+    expect((await service.remove(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.finishDeleting(workspaceId(ws.id))).ok).toBe(true);
+    return ws.id;
+  }
+
   it("create → list → get", async () => {
     const ws = await service.create({
       ownerId: ownerId("alice"),
@@ -155,11 +175,15 @@ describe("WorkspaceService lifecycle ", () => {
     });
 
     // create(): a launch failure is thrown as a typed ComputeUnavailableError (the
-    // route maps it to 503), not a raw error — and no record is left behind.
+    // route maps it to 503). The reserved record deliberately REMAINS, parked in
+    // `error` with the reason and a retry action — the instant-create UX gives the
+    // user the URL before the launch, so the page they are on must stay actionable.
     await expect(
       failing.create({ ownerId: ownerId("noecs"), baseImage: baseImage("golden/node:20") }),
     ).rejects.toBeInstanceOf(ComputeUnavailableError);
-    expect(await failing.list({ ownerId: ownerId("noecs") })).toHaveLength(0);
+    const [errored] = await failing.list({ ownerId: ownerId("noecs") });
+    expect(errored?.state).toBe("error");
+    expect(errored?.availableActions).toContain("retry");
 
     // start(): a launch failure returns a typed `unavailable` Result (→ 503) and
     // rolls the claim back to stopped, so the workspace stays wake-able.
@@ -263,33 +287,140 @@ describe("WorkspaceService lifecycle ", () => {
     expect(terminated?.availableActions).toEqual(["undelete"]);
   });
 
-  it("undelete restores a terminated workspace to stopped, and it can start again", async () => {
-    const ws = await service.create({ ownerId: ownerId("undel"), baseImage: baseImage("img") });
-    expect((await service.remove(workspaceId(ws.id))).ok).toBe(true);
-    expect((await service.finishDeleting(workspaceId(ws.id))).ok).toBe(true);
+  it("instant create: the record (and its URL) exists before compute launches; launchReserved binds it", async () => {
+    const dto = await service.reserveWorkspace({
+      ownerId: ownerId("instant"),
+      baseImage: baseImage("img"),
+    });
+    // Visible immediately — this is what the browser navigates to.
+    const reserved = await service.get(workspaceId(dto.id));
+    expect(reserved?.state).toBe("provisioning");
+    expect((await service.inspect(workspaceId(dto.id)))?.workspace.taskId).toBeUndefined();
 
-    const restored = await service.undelete(workspaceId(ws.id));
-    expect(restored.ok).toBe(true);
-    const after = await service.get(workspaceId(ws.id));
-    expect(after?.state).toBe("stopped");
-    // The full recovery: a restored workspace wakes from its retained snapshot.
-    expect((await service.start(workspaceId(ws.id))).ok).toBe(true);
+    const launched = await service.launchReserved(workspaceId(dto.id));
+    expect(launched.ok).toBe(true);
+    const bound = await service.inspect(workspaceId(dto.id));
+    expect(bound?.workspace.state).toBe("running");
+    expect(bound?.workspace.taskId).toBeDefined();
+    // Idempotent: a second launch call is a no-op success, not a second task.
+    expect((await service.launchReserved(workspaceId(dto.id))).ok).toBe(true);
+  });
+
+  it("a failed launch lands as error + reason, and retry() relaunches it to running", async () => {
+    const dto = await service.reserveWorkspace({
+      ownerId: ownerId("retrier"),
+      baseImage: baseImage("img"),
+    });
+    // A compute port that fails once, then works — the transient-capacity shape.
+    let calls = 0;
+    const flakyCompute = new FakeComputeProvider(storage);
+    const realRunTask = flakyCompute.runTask.bind(flakyCompute);
+    flakyCompute.runTask = (input) => {
+      calls += 1;
+      if (calls === 1) throw new Error("capacity unavailable (transient)");
+      return realRunTask(input);
+    };
+    const flaky = new WorkspaceService({
+      workspaces: makeWorkspaceEntity(client, TEST_TABLE),
+      storage,
+      compute: flakyCompute,
+      clock: fixedClock(),
+    });
+
+    const failed = await flaky.launchReserved(workspaceId(dto.id));
+    expect(failed.ok).toBe(false);
+    const errored = await flaky.get(workspaceId(dto.id));
+    expect(errored?.state).toBe("error");
+    expect(errored?.availableActions).toContain("retry");
+    expect(errored?.functionalDetail).toContain("capacity unavailable");
+
+    const retried = await flaky.retry(workspaceId(dto.id));
+    expect(retried.ok).toBe(true);
+    expect((await flaky.get(workspaceId(dto.id)))?.state).toBe("running");
+  });
+
+  it("requestStop moves to `stopping`; finishStop converges to stopped with a resume snapshot", async () => {
+    const ws = await service.create({ ownerId: ownerId("stopper"), baseImage: baseImage("img") });
+    const req = await service.requestStop(workspaceId(ws.id));
+    expect(req.ok).toBe(true);
+    expect((await service.get(workspaceId(ws.id)))?.state).toBe("stopping");
+    // Converge immediately (no grace) — snapshot + teardown -> stopped.
+    expect((await service.finishStop(workspaceId(ws.id), { ignoreGrace: true })).ok).toBe(true);
+    const stopped = await service.inspect(workspaceId(ws.id));
+    expect(stopped?.workspace.state).toBe("stopped");
+    expect(stopped?.workspace.latestSnapshotId).toMatch(/^snap-/); // resume-from data
+  });
+
+  it("finishStop honors the grace within the window, then converges past it", async () => {
+    const ws = await service.create({ ownerId: ownerId("gracer"), baseImage: baseImage("img") });
+    expect((await service.requestStop(workspaceId(ws.id), "gracer")).ok).toBe(true);
+    // Same fixed clock (T0) — still inside the 6s grace: finishStop is a no-op.
+    expect((await service.finishStop(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.get(workspaceId(ws.id)))?.state).toBe("stopping");
+    // A service whose clock is T0 + 7s (past DEFAULT_STOP_GRACE_MS): converges.
+    const later = serviceAt("2026-06-01T00:00:07.000Z");
+    expect((await later.finishStop(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.get(workspaceId(ws.id)))?.state).toBe("stopped");
+  });
+
+  it("cancelStop resumes a stopping workspace (task never torn down)", async () => {
+    const ws = await service.create({ ownerId: ownerId("canceller"), baseImage: baseImage("img") });
+    const before = await service.inspect(workspaceId(ws.id));
+    expect((await service.requestStop(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.get(workspaceId(ws.id)))?.state).toBe("stopping");
+    const cancel = await service.cancelStop(workspaceId(ws.id));
+    expect(cancel.ok).toBe(true);
+    const after = await service.inspect(workspaceId(ws.id));
+    expect(after?.workspace.state).toBe("running");
+    expect(after?.workspace.taskId).toBe(before?.workspace.taskId); // same task, never killed
+  });
+
+  it("finishStop is a no-op once the stop was canceled (idempotent)", async () => {
+    const ws = await service.create({ ownerId: ownerId("racer"), baseImage: baseImage("img") });
+    expect((await service.requestStop(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.cancelStop(workspaceId(ws.id))).ok).toBe(true);
+    // A late converge (e.g. the detached call after cancel) must NOT stop it.
+    expect((await service.finishStop(workspaceId(ws.id), { ignoreGrace: true })).ok).toBe(true);
     expect((await service.get(workspaceId(ws.id)))?.state).toBe("running");
   });
 
+  it("purgeNow permanently deletes a terminated workspace (reaps snapshot, removes record)", async () => {
+    const id = await terminated("purgenow");
+    const snapId = (await service.inspect(workspaceId(id)))?.workspace.latestSnapshotId;
+    expect(snapId).toBeDefined();
+
+    // Owner-initiated permanent delete, BEFORE the retention window.
+    expect((await service.purgeNow(workspaceId(id), "owner@example.com")).ok).toBe(true);
+    expect(await service.get(workspaceId(id))).toBeNull();
+    expect((await storage.listSnapshots()).some((sn) => sn.id === snapId)).toBe(false);
+    // Idempotent: purging an already-gone workspace is a no-op success.
+    expect((await service.purgeNow(workspaceId(id))).ok).toBe(true);
+  });
+
+  it("purgeNow refuses a workspace that is not terminated (must be deleted first)", async () => {
+    const ws = await service.create({ ownerId: ownerId("purgelive"), baseImage: baseImage("img") });
+    const r = await service.purgeNow(workspaceId(ws.id));
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.error.kind).toBe("conflict");
+    // Still there, untouched.
+    expect((await service.get(workspaceId(ws.id)))?.state).toBe("running");
+  });
+
+  it("undelete restores a terminated workspace to stopped, and it can start again", async () => {
+    const id = await terminated("undel");
+    expect((await service.undelete(workspaceId(id))).ok).toBe(true);
+    expect((await service.get(workspaceId(id)))?.state).toBe("stopped");
+    // The full recovery: a restored workspace wakes from its retained snapshot.
+    expect((await service.start(workspaceId(id))).ok).toBe(true);
+    expect((await service.get(workspaceId(id)))?.state).toBe("running");
+  });
+
   it("undelete refuses once the retention window has passed", async () => {
-    const ws = await service.create({ ownerId: ownerId("late"), baseImage: baseImage("img") });
-    expect((await service.remove(workspaceId(ws.id))).ok).toBe(true);
-    expect((await service.finishDeleting(workspaceId(ws.id))).ok).toBe(true);
+    const id = await terminated("late");
 
     // A service whose clock is 8 days later (past the 7-day default window).
-    const later = new WorkspaceService({
-      workspaces: makeWorkspaceEntity(client, TEST_TABLE),
-      storage,
-      compute: new FakeComputeProvider(storage),
-      clock: fixedClock("2026-06-09T00:00:00.000Z"),
-    });
-    const result = await later.undelete(workspaceId(ws.id));
+    const later = serviceAt("2026-06-09T00:00:00.000Z");
+    const result = await later.undelete(workspaceId(id));
     expect(result.ok).toBe(false);
     if (!result.ok) {
       expect(result.error.kind).toBe("conflict");
@@ -312,12 +443,7 @@ describe("WorkspaceService lifecycle ", () => {
     // Past the window (clock 8 days on): purged — THIS record gone, THIS snapshot
     // reaped. (Count/other-snapshot assertions are deliberately target-scoped: the
     // shared table holds other tests' tombstones, which purge too.)
-    const later = new WorkspaceService({
-      workspaces: makeWorkspaceEntity(client, TEST_TABLE),
-      storage,
-      compute: new FakeComputeProvider(storage),
-      clock: fixedClock("2026-06-09T00:00:00.000Z"),
-    });
+    const later = serviceAt("2026-06-09T00:00:00.000Z");
     expect(await later.purgeExpiredTombstones(7 * 24 * 60 * 60 * 1000)).toBeGreaterThanOrEqual(1);
     expect(await later.get(workspaceId(ws.id))).toBeNull();
     expect((await storage.listSnapshots()).some((sn) => sn.id === snapId)).toBe(false);

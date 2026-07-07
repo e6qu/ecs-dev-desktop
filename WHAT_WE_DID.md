@@ -2728,3 +2728,72 @@ sockerless **#767** (`f0d96ec3`) landed with bleephub team creator auto-maintain
 **2026-07-06 — First real deletion exposed a total-deletion-stall IAM gap; 7-day undelete shipped.** Watching the user's first real workspace deletion converge revealed that it never could: every reconciler sweep logged `finishDeleting threw ... not authorized to perform: dynamodb:DeleteItem` — the reconciler's DynamoDB statement granted Get/Put/Update/Query/Scan but not DeleteItem (the record-removal op), so every deletion in production would have stalled in `deleting` forever; the same sweeps' cost-rollup checkpoint failed on the equally missing `dynamodb:BatchWriteItem`. Both granted (terraform + IAM manifest) and applied; the stuck deletion converged on the next sweep. The user then asked for **undelete**: deleted workspaces restorable for up to 7 days, snapshots fully removed after. Implemented as a semantic change to teardown — `finishDeleting` now keeps a `terminated` **tombstone** (terminatedAt stamped, runtime bindings cleared, the retained data-safety snapshot KEPT, quota still freed + `session.terminated` audited in the same transaction) instead of hard-deleting the record; the state machine gained `terminated --undelete--> stopped` (the only event out of terminated; the absorbing-state fuzz property was updated accordingly); `WorkspaceService.undelete()` enforces the retention window and re-admits quota through the same atomic counter condition as create; a new reconciler sweep step purges expired tombstones (snapshot reaped FIRST so a transient failure never leaks a record-less snapshot, then record removed + `session.purged` audited; `EDD_UNDELETE_RETENTION_MS`/`var.undelete_retention_ms`, default 7 days); `reconcileOwnerCounts` and the create route's quota read-check exclude tombstones. UI: an Undelete button on the card, a "Recently deleted" section with a restorable-days countdown, and delete-confirm copy updated (no longer "irreversible"). Proven in integ end-to-end (delete → tombstone → undelete → start → running; window refusal; target-scoped purge). Also fixed en route: the reconciler's IAM self-check false-denied the KMS trio because the manifest simulated a key-scoped grant against `"*"` — a new `kms-key` resource scope resolves the real `EDD_KMS_KEY_ARN` (preflight now reports 0 denials live). Known approximation recorded in `BUGS.md`: the cost model doesn't yet price the undelete window's retained-snapshot storage or post-undelete resumption. One legacy artifact: `snap-0c91fecd14c808ec3` (the user's pre-undelete deletion) is a record-less retained snapshot with no restore button — kept pending the user's keep/delete call.
 
 **2026-07-06 — Spectate v1 shipped: owner-shared, read-only live mirror for signed-in viewers.** The last feature of the post-launch wave, implemented exactly to the signed-off design (`docs/design-public-spectate.md`): a workspace owner flips a default-off "Share view" toggle on the card (behind an explicit consequences confirmation) and any **signed-in EDD user with at least the `viewer` role** — no anonymous links, no share tokens; the Auth.js session + role + share flag is the whole gate — can watch `/workspaces/<id>/spectate`: the owner's open file with cursor-line highlight, selection, normalized mouse position, live terminal output (write-only xterm), and focus state, all behind a **full-viewport interaction-blocking overlay** with a persistent read-only banner. Architecture is mirror-stream: **spectators never connect to the workspace** — the owner's Monaco editor tab publishes its rendered view state over `/api/spectate/<id>/publish` (owner-only; an admin may not impersonate a share) and unbounded viewers subscribe on `/subscribe`, so the viewer path is read-only by construction rather than by protocol filtering. Late joiners get a cached snapshot replay (file/cursor/focus/tabs/mouse — deliberately never terminal scrollback, per the no-backfill decision); a reloaded owner tab replaces the publisher without dropping viewers; the flag is cleared automatically on stop/delete (sharing never outlives the session) and spectator sockets are excluded from presence/idle (a viewer can't keep a workspace billing). v1 simplifications recorded in `DO_NEXT.md`: the relay is per-replica (the viewer client retries its WebSocket until it lands on the publisher's replica — a cross-replica internal bridge is the follow-up) and OpenVSCode sessions don't mirror yet (needs `edd-workspace-ui` extension capture; the viewer shows an honest "not publishing" note). Deployed as `fe7cc2b` (all-green verify, no drift, catalog repointed); relay/authz/core-flag behavior unit-tested (fan-out, snapshot replay, publisher replacement, ended fan-out, admin-can't-publish, role floor, flag-off-forbids-all). Boy-scout: the three identical not-signed-in page gates collapsed into `SignedOutBlock`, and the logs/monitoring route prologue into `loadOwnedWorkspaceDetail`.
+
+**2026-07-06 — Live 504 on workspace create root-caused (not a failure); instant create shipped.** A user hit a 504 clicking "create" — but the control-plane log showed `workspaces.create` returning `201` after `durationMs=123402`: the create had SUCCEEDED server-side. The browser's request simply outlived the ALB's 60s idle timeout while the first pull of the multi-GB golden image ran (~2min), so the ALB returned 504 to the browser over a request that was still completing. The "failed" workspace (`ws-17a65dff`) was in fact fully provisioned and healthy (later scaled to zero, `functional: ok`). Fixed structurally rather than by bumping the ALB timeout: `WorkspaceService.create()` was split into `reserveWorkspace()` (persist the record — id pre-generated, `provisioning`, quota still atomic — and return instantly) and `launchReserved()` (the runTask→markProvisioned bind), and the web route now returns after the reserve (<1s) and fires the launch DETACHED. `launchReserved` never rejects: a launch failure lands on the record as `error` + reason (`functionalDetail`), a delete-mid-launch stops the fresh task (crash consistency; reaper backstop), and the reconciler's provisioning-timeout recovery covers a process dying mid-launch. Crash-consistency inverted for the better — a persist outage now launches nothing (record-first ordering). New `retry` lifecycle action (error→provisioning) drives a status-page Retry button (relaunch fresh, or recover+start when a snapshot survives so data isn't discarded). Status-page UX per the user's design answers: the launcher navigates immediately to `/workspaces/<id>?autoopen=1`; the page shows the workspace's own copyable URL, a provisioning phase stepper (created → launching compute → starting editor → ready, elapsed time on the active phase, derived purely from state + the agent's functional report) above the live boot-log tail, and auto-opens the editor 3s after ready with a "stay here" cancel (launch-visit only). Contracts gained `lastActivity` (phase timer, now a deliberate public DTO field — shape + never-leak fuzz tests updated) and `functionalDetail` (failure reason) on the workspace DTO; `workspaceAction` gained `retry`. Boy-scout: the five one-verb lifecycle route shells (start/stop/snapshot/retry/undelete) collapsed into a `lifecyclePOST` factory. Deployed as `ef86f2c` on branch `feat/instant-create-provisioning-ux` (control-plane-only change; golden image unchanged, catalog left at `fe7cc2b`). 61 integ green (instant-visibility, launch idempotency, fail-once→retry→running); local Playwright 18/18.
+
+## 2026-07-07 — Fast deploys, Images console, cancelable stop, and a rigorous debug run
+
+- **Deploy decoupling** (`EDD_BUILD_TARGET=web|golden|all`): the single CodeBuild
+  pipeline rebuilt both the small control-plane image and the ~3GB golden image every
+  time (~22min). `web` builds control-plane only (~3min build / ~7min total, proven
+  live). Catalog seed is create-only, so a web deploy never repoints at an unbuilt
+  golden. Golden rebuilds are now an explicit action.
+- **Images admin console** (`/admin/images`, Phases 2+3): `ImageOps` port + AWS adapter
+  (ECR + CodeBuild + CloudWatch Logs) + fake; per-image compressed size + per-layer
+  breakdown, trigger a build, last-20 history, live logs. Scoped IAM added.
+- **Cancelable `stopping` lifecycle**: manual stop → `stopping` (snapshot + scale-to-zero
+  after a grace) with cancel/resume; converged by an in-process server sweep (not a
+  detached route promise, which Next doesn't reliably run) + a reconciler backstop.
+- **Lesson — reproduce, don't guess:** the CI integration+playwright failures were
+  chased to root cause by running the exact failing tests + the real `server.ts` against
+  a local DynamoDB (podman), peeling one layer at a time: (1) the DB READ mapper dropped
+  `stopRequestedBy` (a multi-line edit silently no-op'd) → stop audited to `system`;
+  (2) playwright ran `next start`, not the custom `server.ts`, so the sweep never ran;
+  (3) `finishStop` hung forever when its snapshot hit a gone volume (now best-effort);
+  (4) the workspaces page's `TRANSITIONAL_STATES` omitted `stopping`, so the card froze.
+  All four were real; #3/#4 are prod bugs. Added an end-to-end proxy⇄Monaco token
+  handshake test (the "unauthorized" regression guard the flow never had).
+
+**2026-07-07 — Agent web UI direction corrected: reuse vendor harnesses, no EDD
+reimplementation.** The user rejected the build-our-own agent UI path. The intended four
+workspace interfaces are OpenVSCode, Monaco, Claude Code, and Codex. For Claude Code,
+Anthropic's current docs distinguish Claude Code on the web (cloud-hosted) from Remote
+Control, where `claude.ai/code` drives a Claude Code process running locally with local
+tools/project config available; that is the target for `claude` workspaces. For Codex,
+OpenAI's current Codex manual documents `codex app-server` as the local protocol backend
+for rich clients (authentication, conversation history, approvals, streamed events);
+that is the target for `codex` workspaces. Updated code comments/UI labels and continuity
+docs to stop saying the Monaco-terminal CLI fallback is the faithful final product; it is
+now recorded as an implementation gap until runtime wiring replaces it.
+
+**2026-07-07 — PR #193 e2e fixed locally; dependency gate refreshed.** Checked the open
+PR (#193 on `feat/instant-create-provisioning-ux`) and reproduced its red `e2e` path
+locally. The failures came from tests that still assumed workspace creation returned
+`running`; instant create now correctly returns `provisioning` while launch happens
+detached. Updated the e2e helpers/specs to wait for `running` before stop/connect
+assertions. The last failure, SSH wake-chain, was a test-harness mismatch: the custom
+server sweep and compiled Next route handlers have separate in-memory fake-storage
+instances, so the stop sweep cannot snapshot a route-created fake volume. The test now
+creates a resume snapshot through the public snapshot API before stopping, then proves
+the registered-key SSH gateway wakes the stopped workspace through the real
+control-plane `/connect` path. Also improved `wake-and-forward.sh` diagnostics to log
+the `/connect` response body on non-200. `vitest` was bumped to the latest
+age-eligible `4.1.10` and the lockfile refreshed. Verified: `pnpm test`,
+`pnpm lint`, `pnpm test:integ:local`, `pnpm test:e2e:local`, `pnpm check-deps`,
+`pnpm dead-code`, `pnpm cpd`, plus shellcheck/bash/zsh parse sweeps (the zsh
+`nice(5)` warning on the base entrypoint is recorded in `BUGS.md`).
+
+**2026-07-07 — Deployed PR #193 branch to the existing AWS environment.** Reused the
+existing `edd-prod` coordinates (`eu-west-1`, `app.edd.e6qu.dev`,
+`ssh.edd.e6qu.dev`, GitHub org groups) and ran a control-plane-only CodeBuild deploy
+from branch `feat/instant-create-provisioning-ux` with image tag `eee7176` and
+`EDD_BUILD_TARGET=web`. Baseline verify was green before the apply. CodeBuild
+succeeded in 3m26s, Terraform registered task definition revision 25 for the
+control-plane/reconciler/SSH gateway image set, and ECS rolled cleanly: control-plane
+2/2 and SSH gateway 1/1 on revision 25. Final `scripts/install.sh --verify` was
+green (ALB health 200, `/api/readyz` 200, reconciler schedule enabled, no drift), and
+the deployed control-plane task definition points at
+`729079515331.dkr.ecr.eu-west-1.amazonaws.com/edd-prod/control-plane:eee7176`.
+Recorded one deploy-tooling warning in `BUGS.md`: `terraform init` emits `Missing
+backend configuration` because the complete example has no backend block while
+`install.sh` passes `-backend-config`.

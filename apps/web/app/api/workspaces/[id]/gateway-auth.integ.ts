@@ -12,13 +12,12 @@ import { GATEWAY_SECRET_ENV } from "../../../../lib/constants";
 import {
   apiBase,
   createWorkspaceFor,
-  postLifecycle,
+  stopWorkspaceFor,
   routeCtx,
   useWorkspaceTable,
 } from "../../../../lib/test-support/workspace-route-harness";
 import { POST as connect } from "./connect/route";
 import { GET as connectInfo } from "./connect-info/route";
-import { POST as stop } from "./stop/route";
 import { GET as get, DELETE as del } from "./route";
 
 useWorkspaceTable("ecs-dev-des-web-gateway-auth-integ");
@@ -46,7 +45,7 @@ describe("SSH gateway machine-auth on the wake-on-connect routes (DynamoDB Local
 
   it("gateway token wakes a stopped workspace via POST /connect (200)", async () => {
     const id = await createWorkspaceFor("gw-user-1");
-    expect((await postLifecycle(stop, "stop", "gw-user-1", id)).status).toBe(200);
+    await stopWorkspaceFor(id);
 
     const res = await connect(asGateway(id, "/connect", "POST"), routeCtx(id));
     expect(res.status).toBe(200);

@@ -12,6 +12,16 @@ export const TESTID = {
   /** Workspace card on the portal grid. Attrs: `data-image`, `data-status` (state). */
   workspaceCard: "workspace-card",
   workspaceDegraded: "workspace-degraded",
+  /** Editor-type badge on the card. Attr: `data-editor` (openvscode/monaco/claude/codex). */
+  workspaceEditorBadge: "workspace-editor-badge",
+  /** "viewable" badge shown when spectate sharing is enabled. */
+  workspaceViewableBadge: "workspace-viewable-badge",
+  /** The "started by" owner line on the card. */
+  workspaceOwner: "workspace-owner",
+  /** "Delete permanently" button on a terminated workspace card. */
+  workspacePurge: "workspace-purge",
+  /** The type-to-confirm block for permanent delete. */
+  workspacePurgeConfirm: "workspace-purge-confirm",
   /** Workspace row in the admin all-workspaces table. Attrs: `data-id`, `data-status`. */
   workspaceRow: "workspace-row",
   /** Base-image card in the catalog. Attrs: `data-image`, `data-enabled`. */
@@ -45,10 +55,16 @@ export const TESTID = {
   workspaceStatusHero: "workspace-status-hero",
   /** The boot/runtime log panel on /workspaces/[id]. Attr: `data-available`. */
   workspaceBootLog: "workspace-boot-log",
+  /** The workspace's own copyable URL on the status hero. */
+  workspaceUrl: "workspace-url",
+  /** The provisioning phase stepper. Per-step attr: `data-step` (done/active/pending/failed). */
+  workspaceSteps: "workspace-steps",
   /** The ⓘ session-details toggle on a workspace card. */
   workspaceInfoToggle: "workspace-info-toggle",
   /** The closeable session-details overlay. */
   workspaceInfoPanel: "workspace-info-panel",
+  /** The prominent close (×) on the session-details modal. */
+  workspaceInfoClose: "workspace-info-close",
   /** The "Monitoring" link on a workspace card. */
   workspaceMonitoringLink: "workspace-monitoring-link",
   /** A metric panel on the monitoring page. Attrs: `data-metric`, `data-available`. */
@@ -91,6 +107,10 @@ export const TESTID = {
   workspaceSshCommand: "workspace-ssh-command",
   /** The "Open editor" link on a workspace card (path-based `/w/<id>/` proxy). Attr: `data-href`. */
   workspaceOpen: "workspace-open",
+  /** The "Resume" link on a stopped workspace card → the status page (wakes + opens). Attr: `data-href`. */
+  workspaceResume: "workspace-resume",
+  /** The "Status" link on a workspace card → the per-workspace status page. */
+  workspaceStatusLink: "workspace-status-link",
   /** Dev-login form (EDD_DEV_AUTH=1) controls + error. */
   loginUser: "login-user",
   loginPassword: "login-password",

@@ -12,6 +12,14 @@
     "**/coverage/**",
     "third_party/**",
     "temp/**",
-    "**/*.config.{js,mjs,cjs,ts}"
+    "**/*.config.{js,mjs,cjs,ts}",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.integ.ts",
+    "**/*.fuzz.test.ts",
+    "**/e2e/**",
+    "**/*.pw.ts",
+    "**/*.pwlive.ts",
+    "**/test-support/**"
   ]
 }

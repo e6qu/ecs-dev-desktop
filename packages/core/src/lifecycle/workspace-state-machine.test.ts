@@ -98,9 +98,12 @@ describe("workspaceActions", () => {
   it("offers start/delete while stopped", () => {
     expect(workspaceActions("stopped")).toEqual(["start", "delete"]);
   });
-  it("offers delete from provisioning/error (recoverable or abandonable)", () => {
+  it("offers cancelStop + delete while stopping (a manual stop can be canceled)", () => {
+    expect(workspaceActions("stopping")).toEqual(["cancelStop", "delete"]);
+  });
+  it("offers delete from provisioning; retry + delete from error (relaunch or abandon)", () => {
     expect(workspaceActions("provisioning")).toEqual(["delete"]);
-    expect(workspaceActions("error")).toEqual(["delete"]);
+    expect(workspaceActions("error")).toEqual(["retry", "delete"]);
   });
   it("offers no actions while deleting (teardown in progress)", () => {
     expect(workspaceActions("deleting")).toEqual([]);

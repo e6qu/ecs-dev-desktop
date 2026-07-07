@@ -29,6 +29,8 @@ export function Workspaces(): JSX.Element {
     snapshot: "Snapshot",
     delete: "Delete",
     undelete: "Undelete",
+    retry: "Retry",
+    cancelStop: "Cancel stop",
   };
 
   return (

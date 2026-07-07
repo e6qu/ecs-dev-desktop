@@ -74,6 +74,11 @@ export interface ReconcilerService {
    * policy). Returns a Result so a benign race / transient snapshot failure is
    * counted + retried next sweep, not thrown. */
   finishDeleting(id: WorkspaceId): Promise<Result<unknown, DomainError>>;
+  /** Workspaces mid manual-stop (`stopping`) — the finishStopping keep-set. */
+  listStopping(): Promise<readonly { readonly id: WorkspaceId }[]>;
+  /** Converge a `stopping` workspace to stopped (snapshot + teardown; no grace —
+   * a stopping record the reconciler sees has already outlived the cancel window). */
+  finishStop(id: WorkspaceId, opts?: { ignoreGrace?: boolean }): Promise<Result<unknown, DomainError>>;
   /** `error` workspaces that still have a snapshot — the recover keep-set. */
   listRecoverableErrors(): Promise<readonly { readonly id: WorkspaceId }[]>;
   /** Move a recoverable `error` workspace back to `stopped` (wake-able). */
@@ -220,6 +225,8 @@ export interface MaintenanceResult {
   storageDrift: DriftResult;
   recovered: RecoveryResult;
   deletions: RecoveryResult;
+  /** Manual-stop converges finished this sweep (backstop). */
+  stopping: RecoveryResult;
   idle: ReconcileResult;
   snapshots: SnapshotResult;
   tasks: ReapResult;
@@ -384,6 +391,30 @@ export class Reconciler {
       }
     }
     return { scanned: deleting.length, acted, skipped, failed };
+  }
+
+  /** Backstop for interrupted manual-stop converges: finish any workspace stuck in
+   * `stopping` (the control plane's detached finishStop died before completing).
+   * Bounded by the same per-sweep budget; a failure is isolated + retried next
+   * sweep, never thrown. */
+  async finishStopping(): Promise<RecoveryResult> {
+    const stopping = await this.deps.service.listStopping();
+    let acted = 0;
+    let skipped = 0;
+    let failed = 0;
+    for (const ws of stopping.slice(0, this.convergeBudget)) {
+      try {
+        if ((await this.deps.service.finishStop(ws.id, { ignoreGrace: true })).ok) acted += 1;
+        else skipped += 1;
+      } catch (err) {
+        failed += 1;
+        this.deps.logger?.warn("finish-stopping: finishStop threw for one workspace", {
+          workspaceId: ws.id,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    return { scanned: stopping.length, acted, skipped, failed };
   }
 
   /**
@@ -638,6 +669,8 @@ export class Reconciler {
     // are cleaned this same sweep.
     const recovered = await this.recoverErrors();
     const deletions = await this.finishDeletions();
+    // Finish any manual stop whose detached converge was interrupted.
+    const stopping = await this.finishStopping();
     // Purge tombstones past the undelete-retention window: reaps the retained
     // snapshot (the irreversible step the window delays), then removes the record.
     const purged = await this.purgeTombstones();
@@ -661,6 +694,7 @@ export class Reconciler {
       storageDrift,
       recovered,
       deletions,
+      stopping,
       purged,
       idle,
       snapshots,

@@ -9,11 +9,10 @@
  *    (the historical default).
  *  - `monaco` — the first-party lightweight editor served by the in-container
  *    Monaco editor server.
- *  - `claude` / `codex` — agent-first sessions: the same Monaco editor server,
- *    but every terminal boots straight into the Claude Code / Codex CLI instead
- *    of a shell. Neither CLI ships a self-hostable web UI (their "web apps" are
- *    hosted-only products serving from the vendor's own domain), so the
- *    CLI-as-the-app terminal is the faithful self-hosted equivalent.
+ *  - `claude` — Claude Code, using Anthropic's own Remote Control/web harness
+ *    against the local workspace process (not an EDD-reimplemented chat UI).
+ *  - `codex` — Codex, using OpenAI's own local app-server/client harness (not an
+ *    EDD-reimplemented chat UI).
  */
 export const EDITOR_KINDS = ["openvscode", "monaco", "claude", "codex"] as const;
 

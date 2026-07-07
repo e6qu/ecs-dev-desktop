@@ -15,13 +15,19 @@ import {
   markActivity,
   markDeleting,
   markProvisioned,
+  markProvisioningFailed,
+  reserve,
+  retryProvisioning,
   markRecovered,
   markSnapshotLost,
   markStopped,
+  markStopping,
+  cancelStopping,
   markTaskLost,
   markTerminated,
   setShare,
   DEFAULT_UNDELETE_RETENTION_MS,
+  DEFAULT_STOP_GRACE_MS,
   undeleteWorkspace,
   recordFunctional,
   markWaking,
@@ -32,7 +38,6 @@ import {
   ok,
   ownerId,
   planConnect,
-  provision,
   recordSnapshot,
   snapshotId,
   taskId,
@@ -132,6 +137,7 @@ type AuditAction =
   | "session.recover"
   | "session.undelete"
   | "session.purged"
+  | "session.access"
   | "session.share_enabled"
   | "session.share_disabled"
   | "session.snapshot_lost"
@@ -258,6 +264,8 @@ interface WorkspaceRecord {
   state: WorkspaceState;
   desiredState?: DesiredState;
   deleteRequestedAt?: string;
+  stopRequestedAt?: string;
+  stopRequestedBy?: string;
   createdAt: string;
   lastActivity: string;
   volumeId?: string;
@@ -311,6 +319,8 @@ function toWorkspace(r: WorkspaceRecord): Workspace {
     desiredState: r.desiredState,
     deleteRequestedAt:
       r.deleteRequestedAt === undefined ? undefined : isoTimestamp(r.deleteRequestedAt),
+    stopRequestedAt: r.stopRequestedAt === undefined ? undefined : isoTimestamp(r.stopRequestedAt),
+    stopRequestedBy: r.stopRequestedBy,
     createdAt: isoTimestamp(r.createdAt),
     lastActivity: isoTimestamp(r.lastActivity),
     volumeId: r.volumeId === undefined ? undefined : volumeId(r.volumeId),
@@ -355,24 +365,39 @@ export class WorkspaceService {
      * past the cap cancels and throws {@link QuotaExceededError}. */
     quotaLimit?: number;
   }): Promise<WorkspaceDto> {
+    // Blocking composition kept for callers that need the launched workspace
+    // (tests, scripted flows). The web route uses reserveWorkspace +
+    // launchReserved instead, so the browser gets the URL instantly.
+    const dto = await this.reserveWorkspace(input);
+    const launched = await this.launchReserved(workspaceId(dto.id), {
+      ...(input.repoRef === undefined ? {} : { repoRef: input.repoRef }),
+    });
+    if (!launched.ok) {
+      throw new ComputeUnavailableError(
+        launched.error.kind === "conflict" ? launched.error.reason : "launch failed",
+      );
+    }
+    return launched.value;
+  }
+
+  /**
+   * Instant create, phase 1: persist the record (id pre-generated, state
+   * `provisioning`, quota enforced atomically) and return it — the browser can
+   * navigate to the workspace URL immediately, before any compute exists. The
+   * caller then fires {@link launchReserved} (detached in the web route).
+   */
+  async reserveWorkspace(input: {
+    ownerId: OwnerId;
+    ownerEmail?: Email;
+    ownerRole?: WorkspaceOwnerRole;
+    baseImage: BaseImage;
+    editor?: EditorKind;
+    repoUrl?: string;
+    quotaLimit?: number;
+  }): Promise<WorkspaceDto> {
     const id = newWorkspaceId();
     const at = isoTimestamp(this.deps.clock.now());
-    // ECS creates the managed EBS volume at task launch and returns its id. The
-    // repo (if any) is cloned into the session at first boot. A launch failure is a
-    // handled, retryable condition (→ 503 at the route), not an unexpected 500.
-    let task;
-    try {
-      task = await this.deps.compute.runTask({
-        workspaceId: id,
-        baseImage: input.baseImage,
-        ...(input.editor === undefined ? {} : { editor: input.editor }),
-        ...(input.repoUrl === undefined ? {} : { repoUrl: input.repoUrl }),
-        ...(input.repoRef === undefined ? {} : { repoRef: input.repoRef }),
-      });
-    } catch (e) {
-      throw new ComputeUnavailableError(`could not launch workspace task: ${asMessage(e)}`);
-    }
-    const ws = provision({
+    const ws = reserve({
       id,
       ownerId: input.ownerId,
       ownerEmail: input.ownerEmail,
@@ -380,35 +405,114 @@ export class WorkspaceService {
       repoUrl: input.repoUrl,
       baseImage: input.baseImage,
       ...(input.editor === undefined ? {} : { editor: input.editor }),
-      volumeId: task.volumeId,
-      taskId: task.id,
       at,
-      sshHost: task.sshHost,
     });
+    await this.persistNew(
+      ws,
+      {
+        action: "session.create",
+        target: id,
+        actor: input.ownerEmail ?? input.ownerId,
+        detail: input.repoUrl === undefined ? "blank session" : `repo ${input.repoUrl}`,
+      },
+      input.quotaLimit,
+    );
+    return toWorkspaceDto(ws);
+  }
+
+  /**
+   * Instant create, phase 2: launch compute for a reserved (`provisioning`,
+   * unbound) record and bind it (→ running). NEVER throws — a failure is
+   * recorded on the record as `error` + reason (the status page renders it with
+   * Retry/Delete) and returned as a Result, so the detached web-route call
+   * cannot become an unhandled rejection. Crash mid-launch is covered by the
+   * reconciler's provisioning-timeout recovery; a record deleted while the
+   * launch was in flight gets its freshly-launched task stopped (crash
+   * consistency, reaper backstop).
+   */
+  async launchReserved(
+    id: WorkspaceId,
+    opts?: { repoRef?: string },
+  ): Promise<Result<WorkspaceDto, DomainError>> {
+    const found = await this.find(id);
+    if (found === null) return err(notFoundError("workspace", id));
+    const { ws, version } = found;
+    if (ws.state !== "provisioning" || ws.taskId !== undefined) {
+      // Already launched / already converged elsewhere — idempotent success.
+      return ok(toWorkspaceDto(ws));
+    }
+    let task: ComputeTask;
     try {
-      await this.persistNew(
-        ws,
-        {
-          action: "session.create",
-          target: id,
-          actor: input.ownerEmail ?? input.ownerId,
-          detail: input.repoUrl === undefined ? "blank session" : `repo ${input.repoUrl}`,
-        },
-        input.quotaLimit,
-      );
-    } catch (err) {
-      // Crash-consistency: the task launched but the record never landed — stop the
-      // task so nothing real leaks. The stop is best-effort (the orphan-task reaper is
-      // the backstop if it fails); either way surface the ORIGINAL error, never let a
-      // cleanup failure mask the real cause or swallow it.
+      task = await this.deps.compute.runTask({
+        workspaceId: id,
+        baseImage: ws.baseImage,
+        ...(ws.editor === undefined ? {} : { editor: ws.editor }),
+        ...(ws.repoUrl === undefined ? {} : { repoUrl: ws.repoUrl }),
+        ...(opts?.repoRef === undefined ? {} : { repoRef: opts.repoRef }),
+      });
+    } catch (e) {
+      return this.recordLaunchFailure(id, `could not launch workspace task: ${asMessage(e)}`);
+    }
+    const at = isoTimestamp(this.deps.clock.now());
+    const bound = markProvisioned(ws, task.volumeId, task.id, at, task.sshHost);
+    if (!bound.ok) return bound;
+    try {
+      await this.persistTransition(bound.value, version);
+    } catch (e) {
+      // The record moved while we launched (most likely a delete): stop the
+      // fresh task so nothing real leaks; the reaper is the backstop.
       try {
         await this.deps.compute.stopTask(task.id);
       } catch {
-        /* reaper backstop reaps the leaked RUNNING task by its workspace tag */
+        /* reaper backstop reaps the leaked task by its workspace tag */
       }
-      throw err;
+      if (!isVersionConflict(e)) throw e;
+      return err(conflictError(`launch of ${id} lost a concurrent update`));
     }
-    return toWorkspaceDto(ws);
+    return ok(toWorkspaceDto(bound.value));
+  }
+
+  /** Record a failed launch on the reserved record: → `error` + reason. */
+  private async recordLaunchFailure(
+    id: WorkspaceId,
+    reason: string,
+  ): Promise<Result<WorkspaceDto, DomainError>> {
+    const found = await this.find(id);
+    if (found === null) return err(notFoundError("workspace", id));
+    const failed = markProvisioningFailed(found.ws, reason, isoTimestamp(this.deps.clock.now()));
+    if (!failed.ok) return failed;
+    try {
+      await this.persistTransition(failed.value, found.version);
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+    }
+    return err(unavailableError(reason));
+  }
+
+  /**
+   * User-initiated retry of a failed launch (the status page's Retry button).
+   * A snapshot-less error (failed create) relaunches fresh; an error that still
+   * has a snapshot recovers to `stopped` and starts — its data must not be
+   * discarded by a fresh volume.
+   */
+  async retry(id: WorkspaceId): Promise<Result<WorkspaceDto, DomainError>> {
+    const found = await this.find(id);
+    if (found === null) return err(notFoundError("workspace", id));
+    const { ws, version } = found;
+    if (ws.latestSnapshotId !== undefined) {
+      const recovered = await this.recoverError(id);
+      if (!recovered.ok) return recovered;
+      return this.start(id);
+    }
+    const next = retryProvisioning(ws, isoTimestamp(this.deps.clock.now()));
+    if (!next.ok) return next;
+    try {
+      await this.persistTransition(next.value, version);
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+      return err(conflictError(`retry of ${id} lost a concurrent update`));
+    }
+    return this.launchReserved(id);
   }
 
   async list(filter?: { ownerId?: OwnerId }): Promise<WorkspaceDto[]> {
@@ -594,6 +698,20 @@ export class WorkspaceService {
    * the fake's ENOENT). If the record has since advanced, that error IS the lost
    * race — report a conflict instead of throwing a 500; otherwise it is a genuine
    * storage failure and rethrows. */
+  /** The pre-teardown snapshot step shared by stop() and finishStop(): snapshot the
+   * live volume (if any) so the workspace resumes from where it stopped. Returns the
+   * fresh snapshot ref, `undefined` when there's no live volume, or a conflict. */
+  private async snapshotBeforeStop(
+    id: WorkspaceId,
+    ws: Workspace,
+    version: number,
+    at: IsoTimestamp,
+  ): Promise<Result<{ id: SnapshotId; at: IsoTimestamp } | undefined, DomainError>> {
+    if (ws.volumeId === undefined) return ok(undefined);
+    const snap = await this.snapshotForTransition(id, ws.volumeId, version);
+    return snap.ok ? ok({ id: snap.value, at }) : snap;
+  }
+
   private async snapshotForTransition(
     id: WorkspaceId,
     volumeId: VolumeId,
@@ -626,14 +744,10 @@ export class WorkspaceService {
     const validated = transition(ws.state, "stop"); // validate-first, before any I/O
     if (!validated.ok) return validated;
     const at = isoTimestamp(this.deps.clock.now());
-    let freshSnapshot: { id: SnapshotId; at: IsoTimestamp } | undefined;
-    if (ws.volumeId !== undefined) {
-      const snap = await this.snapshotForTransition(id, ws.volumeId, version);
-      if (!snap.ok) return snap;
-      freshSnapshot = { id: snap.value, at };
-    }
+    const snapped = await this.snapshotBeforeStop(id, ws, version, at);
+    if (!snapped.ok) return snapped;
     if (ws.taskId !== undefined) await this.deps.compute.stopTask(ws.taskId);
-    const next = markStopped(ws, freshSnapshot, at);
+    const next = markStopped(ws, snapped.value, at);
     if (!next.ok) return next;
     try {
       await this.persistTransition(next.value, version, {
@@ -654,6 +768,164 @@ export class WorkspaceService {
       return err(conflictError(`stop of ${id} lost a concurrent update (now ${current.ws.state})`));
     }
     return ok(toWorkspaceDto(next.value));
+  }
+
+  /**
+   * MANUAL, cancelable stop: move running/idle → `stopping` and return immediately
+   * (the session keeps running), then converge the actual teardown after a short
+   * grace via a detached {@link finishStop}. During the grace (and until the task
+   * is torn down) {@link cancelStop}/{@link start} resumes the session. The
+   * reconciler's `finishStopping` sweep is the backstop if this process dies before
+   * the detached converge completes. Distinct from {@link stop} (the direct path
+   * the idle auto-shutdown uses).
+   */
+  async requestStop(
+    id: WorkspaceId,
+    actor: string = SYSTEM_ACTOR,
+  ): Promise<Result<WorkspaceDto, DomainError>> {
+    const found = await this.require(id);
+    if (!found.ok) return found;
+    const { ws, version } = found.value;
+    const next = markStopping(ws, isoTimestamp(this.deps.clock.now()), actor);
+    if (!next.ok) return next;
+    // NO billing audit here: the task keeps running (and billing) through the
+    // `stopping` grace, so `session.stop` (which closes the running interval) is
+    // emitted by finishStop when the task is ACTUALLY torn down — attributed to
+    // `actor` via the persisted stopRequestedBy.
+    try {
+      await this.persistTransition(next.value, version);
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+      return err(conflictError(`stop of ${id} lost a concurrent update`));
+    }
+    // Convergence is driven by the long-lived server's stopping-sweep (and the
+    // reconciler backstop) — NOT a detached promise here. A floating promise in a
+    // Next route handler isn't reliably run after the response is sent, so a manual
+    // stop could otherwise hang at `stopping` until the 5-min reconciler sweep.
+    void actor;
+    return ok(toWorkspaceDto(next.value));
+  }
+
+  /**
+   * Converge a `stopping` workspace to `stopped`: once the cancel grace since the
+   * stop request has elapsed, re-read and — only if STILL stopping — snapshot + tear
+   * down + mark stopped. Re-reads a second time AFTER the (slow) snapshot and before
+   * killing the task, so a cancel that lands mid-snapshot never tears down a resumed
+   * session. Idempotent + safe to call repeatedly: a workspace still inside the grace
+   * (or already canceled/stopped) is a no-op success — so a periodic sweep converges
+   * it exactly when due. `ignoreGrace` forces immediate convergence (reconciler
+   * backstop for a stuck workspace, and deterministic tests).
+   */
+  async finishStop(
+    id: WorkspaceId,
+    opts?: { ignoreGrace?: boolean },
+  ): Promise<Result<void, DomainError>> {
+    const found = await this.find(id);
+    if (found === null) return ok(undefined);
+    if (found.ws.state !== "stopping") return ok(undefined); // canceled / already done
+    // Honor the cancel window off the persisted request time (not a sleep): the
+    // sweep calls this every few seconds and it no-ops until the grace elapses.
+    if (opts?.ignoreGrace !== true) {
+      const reqAt = found.ws.stopRequestedAt;
+      const elapsedMs =
+        reqAt === undefined
+          ? Number.POSITIVE_INFINITY
+          : Date.parse(this.deps.clock.now()) - Date.parse(reqAt);
+      if (elapsedMs < DEFAULT_STOP_GRACE_MS) return ok(undefined);
+    }
+    const at = isoTimestamp(this.deps.clock.now());
+    // Snapshot is BEST-EFFORT here: a `stopping` workspace must ALWAYS be able to
+    // converge to `stopped` (else the cancelable-stop state gets stuck forever — the
+    // exact bug this fixes). If the managed volume has already gone (a compensated
+    // launch, a prior teardown, a mid-flight cancel that raced), converge WITHOUT a
+    // fresh snapshot — markStopped keeps the last one. A genuine storage fault (not
+    // "gone") still propagates; a real version change is caught by the re-read below.
+    let freshSnapshot: { id: SnapshotId; at: IsoTimestamp } | undefined;
+    if (found.ws.volumeId !== undefined) {
+      try {
+        const snap = await this.deps.storage.createSnapshot(found.ws.volumeId);
+        freshSnapshot = { id: snap.id, at };
+      } catch (e) {
+        if (!isResourceGoneError(e)) throw e;
+      }
+    }
+    // Re-read: a cancel during the snapshot must abort BEFORE we kill the task.
+    const recheck = await this.find(id);
+    if (recheck?.ws.state !== "stopping") return ok(undefined);
+    const { ws, version } = recheck;
+    if (ws.taskId !== undefined) await this.deps.compute.stopTask(ws.taskId);
+    const next = markStopped(ws, freshSnapshot, at);
+    if (!next.ok) return next;
+    try {
+      await this.persistTransition(next.value, version, {
+        action: "session.stop",
+        target: id,
+        actor: ws.stopRequestedBy ?? SYSTEM_ACTOR,
+        detail: "scaled to zero",
+      });
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+      const current = await this.find(id);
+      if (current?.ws.state === "stopped") return ok(undefined);
+      return err(conflictError(`finish-stop of ${id} lost a concurrent update`));
+    }
+    return ok(undefined);
+  }
+
+  /** Cancel an in-flight manual stop: `stopping` → running (the session was never
+   * torn down). Idempotent — a workspace already back to running succeeds. */
+  async cancelStop(
+    id: WorkspaceId,
+    actor: string = SYSTEM_ACTOR,
+  ): Promise<Result<WorkspaceDto, DomainError>> {
+    const found = await this.require(id);
+    if (!found.ok) return found;
+    const { ws, version } = found.value;
+    if (ws.state === "running" || ws.state === "idle") return ok(toWorkspaceDto(ws)); // already resumed
+    const next = cancelStopping(ws, isoTimestamp(this.deps.clock.now()));
+    if (!next.ok) return next;
+    try {
+      await this.persistTransition(next.value, version, {
+        action: "session.recover",
+        target: id,
+        actor,
+        detail: "manual stop canceled — session resumed",
+      });
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+      return err(conflictError(`cancel-stop of ${id} lost a concurrent update`));
+    }
+    return ok(toWorkspaceDto(next.value));
+  }
+
+  /**
+   * Record a workspace-editor ACCESS in the audit ledger (durable, admin-visible):
+   * who reached which workspace's editor and whether it was allowed or denied. Fired
+   * fire-and-forget by the proxy on the initial open + on any denial, so there is a
+   * queryable trail of "who opened/attempted what" — the audit log for access, next
+   * to the lifecycle events. A no-op when no audit ledger is configured.
+   */
+  async recordAccess(input: {
+    wsId: WorkspaceId;
+    actor: string;
+    outcome: "allow" | "deny";
+    detail: string;
+  }): Promise<void> {
+    const audit = this.auditItem({
+      action: "session.access",
+      target: input.wsId,
+      actor: input.actor,
+      detail: `${input.outcome}: ${input.detail}`,
+    });
+    if (audit !== undefined) await audit.entity.put(audit.attrs).go();
+  }
+
+  /** All workspaces mid manual-stop (the reconciler's finishStopping keep-set). */
+  async listStopping(): Promise<readonly { id: WorkspaceId }[]> {
+    const { data } = await this.deps.workspaces.scan.go({ pages: "all" });
+    return (data as readonly WorkspaceRecord[])
+      .filter((r) => r.state === "stopping")
+      .map((r) => ({ id: workspaceId(r.id) }));
   }
 
   /**
@@ -1270,42 +1542,82 @@ export class WorkspaceService {
       if (r.state !== "terminated") continue;
       const terminatedAtMs = Date.parse(r.terminatedAt ?? r.lastActivity);
       if (!Number.isFinite(terminatedAtMs) || nowMs - terminatedAtMs < retentionMs) continue;
-      // Snapshot first: if the reap fails transiently, the tombstone stays and the
-      // next sweep retries — never a record-less snapshot leak.
-      if (r.latestSnapshotId !== undefined) {
-        try {
-          await this.deps.storage.deleteSnapshot(snapshotId(r.latestSnapshotId));
-        } catch (e) {
-          if (!isResourceGoneError(e)) throw e;
-        }
-      }
-      const audit = this.auditItem({
-        action: "session.purged",
-        target: workspaceId(r.id),
-        actor: SYSTEM_ACTOR,
-        detail: "retention window elapsed — tombstone and retained snapshot removed",
-      });
-      if (audit !== undefined) {
-        const result = await writeTransaction(
-          { ws: this.deps.workspaces, ev: audit.entity },
-          ({ ws: wsE, ev }) => [
-            wsE
-              .delete({ id: r.id })
-              .where(({ version: v }, { eq }) => eq(v, r.version))
-              .commit(),
-            ev.put(audit.attrs).commit(),
-          ],
-        ).go();
-        if (result.canceled) continue; // raced (e.g. an undelete) — skip, converged elsewhere
-      } else {
-        await this.deps.workspaces
-          .delete({ id: r.id })
-          .where(({ version: v }, { eq }) => eq(v, r.version))
-          .go();
-      }
-      purged += 1;
+      if (await this.purgeTombstoneRecord(r, "retention window elapsed")) purged += 1;
     }
     return purged;
+  }
+
+  /**
+   * Owner/admin-initiated PERMANENT delete of a terminated (deleted) workspace,
+   * BEFORE its retention window elapses — the irreversible counterpart of undelete.
+   * Only valid from `terminated` (a live/stopped workspace must be deleted first,
+   * which snapshots + tombstones it). Reaps the retained snapshot + removes the
+   * record + audits `session.purged`. The route enforces the anti-accident confirm.
+   */
+  async purgeNow(
+    id: WorkspaceId,
+    actor: string = SYSTEM_ACTOR,
+  ): Promise<Result<void, DomainError>> {
+    const found = await this.find(id);
+    if (found === null) return ok(undefined); // already gone — idempotent
+    const { ws, version } = found;
+    if (ws.state !== "terminated") {
+      return err(
+        conflictError(
+          `cannot permanently delete ${id}: it is '${ws.state}', not a deleted session`,
+        ),
+      );
+    }
+    await this.purgeTombstoneRecord(
+      { id: ws.id, latestSnapshotId: ws.latestSnapshotId, version },
+      `permanently deleted by ${actor}`,
+      actor,
+    );
+    return ok(undefined);
+  }
+
+  /** Reap a terminated tombstone's retained snapshot (first — no record-less leak),
+   * then remove the record + audit `session.purged`. Returns false on a lost race
+   * (a concurrent undelete/purge), true when this call removed it. Shared by the
+   * retention sweep and the owner-initiated `purgeNow`. */
+  private async purgeTombstoneRecord(
+    r: { id: string; latestSnapshotId?: string; version: number },
+    reason: string,
+    actor: string = SYSTEM_ACTOR,
+  ): Promise<boolean> {
+    // Snapshot first: if the reap fails transiently, the tombstone stays and a
+    // later sweep/retry cleans it — never a record-less snapshot leak.
+    if (r.latestSnapshotId !== undefined) {
+      try {
+        await this.deps.storage.deleteSnapshot(snapshotId(r.latestSnapshotId));
+      } catch (e) {
+        if (!isResourceGoneError(e)) throw e;
+      }
+    }
+    const audit = this.auditItem({
+      action: "session.purged",
+      target: workspaceId(r.id),
+      actor,
+      detail: `tombstone and retained snapshot removed — ${reason}`,
+    });
+    if (audit !== undefined) {
+      const result = await writeTransaction(
+        { ws: this.deps.workspaces, ev: audit.entity },
+        ({ ws: wsE, ev }) => [
+          wsE
+            .delete({ id: r.id })
+            .where(({ version: v }, { eq }) => eq(v, r.version))
+            .commit(),
+          ev.put(audit.attrs).commit(),
+        ],
+      ).go();
+      return !result.canceled;
+    }
+    await this.deps.workspaces
+      .delete({ id: r.id })
+      .where(({ version: v }, { eq }) => eq(v, r.version))
+      .go();
+    return true;
   }
 
   /**

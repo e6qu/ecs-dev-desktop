@@ -283,6 +283,21 @@ variable "codebuild_compute_type" {
   default     = "BUILD_GENERAL1_MEDIUM"
 }
 
+variable "build_target" {
+  description = <<-EOT
+    (codebuild build mode) Which images to build: "web" (control-plane + ssh-gateway
+    only — a fast ~minutes build for a control-plane deploy that never rebuilds the
+    ~3GB golden image), "golden" (the golden workspace variants only), or "all"
+    (everything; the default for a first install / full rebuild).
+  EOT
+  type        = string
+  default     = "all"
+  validation {
+    condition     = contains(["web", "golden", "all"], var.build_target)
+    error_message = "build_target must be one of: web, golden, all."
+  }
+}
+
 # ---- Catalog seed ------------------------------------------------------------
 
 variable "seed_default_catalog" {

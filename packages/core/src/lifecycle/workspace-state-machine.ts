@@ -11,6 +11,10 @@ export type WorkspaceState =
   | "running"
   | "idle"
   | "stopped"
+  // A manual stop is in progress (cancelable): the workspace is still running its
+  // task while a short grace + snapshot/teardown converges it to `stopped`. `start`
+  // (or an explicit cancel) reverts it to `running` before the task is torn down.
+  | "stopping"
   // Tombstone: a delete was requested (desiredState="deleted") and the reconciler is
   // converging teardown. The record persists until teardown finishes, so an
   // interrupted delete is resumable (vs the old transactional row-delete).
@@ -22,12 +26,15 @@ export type WorkspaceEvent =
   | "provisioned" // task is up and reachable
   | "activity" // user/editor/ssh activity observed
   | "idleTimeout" // no activity past threshold
-  | "stop" // snapshot + tear down the task
+  | "stop" // snapshot + tear down the task (direct: idle auto-stop + the stopping converge)
+  | "requestStop" // manual stop → `stopping` (cancelable)
+  | "cancelStop" // stopping → running (cancel a manual stop before teardown)
   | "wake" // bring a stopped workspace back
   | "terminate" // permanent deletion (legacy synchronous path; kept for back-compat)
   | "requestDelete" // mark for deletion → `deleting` tombstone (reconciler finishes)
   | "recover" // error → stopped when a snapshot exists (self-recovery)
   | "undelete" // terminated → stopped within the retention window (snapshot restores it)
+  | "retry" // error → provisioning: relaunch after a failed create/launch
   | "fail"; // unrecoverable error
 
 const TRANSITIONS: Record<WorkspaceState, Partial<Record<WorkspaceEvent, WorkspaceState>>> = {
@@ -45,6 +52,7 @@ const TRANSITIONS: Record<WorkspaceState, Partial<Record<WorkspaceEvent, Workspa
   running: {
     idleTimeout: "idle",
     stop: "stopped",
+    requestStop: "stopping",
     fail: "error",
     terminate: "terminated",
     requestDelete: "deleting",
@@ -52,6 +60,16 @@ const TRANSITIONS: Record<WorkspaceState, Partial<Record<WorkspaceEvent, Workspa
   idle: {
     activity: "running",
     stop: "stopped",
+    requestStop: "stopping",
+    fail: "error",
+    terminate: "terminated",
+    requestDelete: "deleting",
+  },
+  // Manual stop in progress: the converge finishes it (`stop` → stopped), or the
+  // user cancels (`cancelStop` → running) before the task is torn down.
+  stopping: {
+    stop: "stopped",
+    cancelStop: "running",
     fail: "error",
     terminate: "terminated",
     requestDelete: "deleting",
@@ -71,7 +89,12 @@ const TRANSITIONS: Record<WorkspaceState, Partial<Record<WorkspaceEvent, Workspa
   terminated: { undelete: "stopped" },
   // Self-recovery: an `error` workspace with a snapshot can `recover` to `stopped`
   // (wake-able again); otherwise it can only be deleted.
-  error: { recover: "stopped", terminate: "terminated", requestDelete: "deleting" },
+  error: {
+    recover: "stopped",
+    retry: "provisioning",
+    terminate: "terminated",
+    requestDelete: "deleting",
+  },
 };
 
 /**
@@ -93,7 +116,14 @@ export function can(state: WorkspaceState, event: WorkspaceEvent): boolean {
 }
 
 /** A user-initiated lifecycle operation offered for a workspace in the UI. */
-export type WorkspaceAction = "start" | "stop" | "snapshot" | "delete" | "undelete";
+export type WorkspaceAction =
+  | "start"
+  | "stop"
+  | "cancelStop"
+  | "snapshot"
+  | "delete"
+  | "undelete"
+  | "retry";
 
 /**
  * The lifecycle actions valid from a state — the single source of truth for which
@@ -107,11 +137,18 @@ export function workspaceActions(state: WorkspaceState): readonly WorkspaceActio
     case "running":
     case "idle":
       return ["snapshot", "stop", "delete"];
+    case "stopping":
+      // A manual stop is converging; the only user action is to cancel it (which
+      // resumes the still-running session) — delete stays available.
+      return ["cancelStop", "delete"];
     case "stopped":
       return ["start", "delete"];
     case "provisioning":
-    case "error":
       return ["delete"];
+    case "error":
+      // A failed launch is retryable in place (relaunch, or recover+start when a
+      // snapshot survives) — the status page offers it next to delete.
+      return ["retry", "delete"];
     case "deleting":
       // Being torn down — no user action until the tombstone lands.
       return [];

@@ -53,16 +53,21 @@ fi
 
 AUTH_HEADER="Authorization: Bearer ${GATEWAY_TOKEN}"
 CP="${EDD_CONTROL_PLANE_URL}"
+CONNECT_BODY=$(mktemp)
+cleanup() {
+  rm -f "$CONNECT_BODY"
+}
+trap cleanup EXIT HUP INT TERM
 
 # Step 1: wake the workspace (idempotent — no-op if already running).
 # `--connect-timeout` bounds an unreachable control plane (the connection never
 # establishes) without capping a legitimately slow wake (real cold-start); the
 # overall time is governed by the poll deadline below.
-connect_status=$(curl -s --connect-timeout 5 -o /dev/null -w "%{http_code}" \
+connect_status=$(curl -s --connect-timeout 5 -o "$CONNECT_BODY" -w "%{http_code}" \
   -X POST "${CP}/api/workspaces/${WORKSPACE_ID}/connect" \
   -H "${AUTH_HEADER}")
 if [ "$connect_status" != "200" ]; then
-  echo "error: POST /connect returned ${connect_status} for workspace ${WORKSPACE_ID}" >&2
+  echo "error: POST /connect returned ${connect_status} for workspace ${WORKSPACE_ID}: $(cat "$CONNECT_BODY")" >&2
   exit 1
 fi
 

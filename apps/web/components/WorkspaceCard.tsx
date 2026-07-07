@@ -2,11 +2,13 @@
 import type { WorkspaceDto, WorkspaceStateDto } from "@edd/api-contracts";
 import { WORKSPACE_PATH_PREFIX } from "@edd/core";
 
+import { gib } from "../lib/format";
 import { TESTID } from "../lib/testids";
+import { PurgeButton } from "./PurgeButton";
+import { ShareToggle } from "./ShareToggle";
 import { StatusBadge } from "./StatusBadge";
 import { WorkspaceActions } from "./WorkspaceActions";
-import { ShareToggle } from "./ShareToggle";
-import { gib, WorkspaceInfo } from "./WorkspaceInfo";
+import { WorkspaceInfo } from "./WorkspaceInfo";
 
 const STAGGER_MS = 40;
 
@@ -20,22 +22,32 @@ function restoreDaysLeft(terminatedAt: string): number {
   return Math.max(0, Math.ceil(UNDELETE_RETENTION_DAYS - elapsed / DAY_MS));
 }
 
-/** States from which the editor is reachable through the in-app `/w/<id>/` proxy:
- * running/idle serve immediately; a stopped workspace wakes on connect. The other
- * states (provisioning/deleting/terminated/error) have no editor to open. */
-const OPENABLE_STATES: ReadonlySet<WorkspaceStateDto> = new Set(["running", "idle", "stopped"]);
+/** States where the editor is reachable NOW through the in-app `/w/<id>/` proxy
+ * and "Open editor" links straight to it. A stopped workspace is NOT here: it must
+ * wake first, so it gets a single "Resume" button that routes through the status
+ * page (which wakes it, shows the load progress, and redirects into the editor when
+ * ready) rather than dumping the browser on a blank proxy page during the cold start. */
+/** Short, human editor-type label for the card badge. */
+const EDITOR_LABEL: Record<string, string> = {
+  openvscode: "VS Code",
+  monaco: "Monaco",
+  claude: "Claude Code",
+  codex: "Codex",
+};
+
+const READY_STATES: ReadonlySet<WorkspaceStateDto> = new Set(["running", "idle"]);
+/** States with meaningful utilization/cost data for the Monitoring link. */
+const MONITORABLE_STATES: ReadonlySet<WorkspaceStateDto> = new Set(["running", "idle", "stopped"]);
 
 export function WorkspaceCard({
   ws,
   index,
-  showOwner,
   canShare = false,
 }: {
   /** A workspace DTO already enriched (catalog image fields + ssh command) by the
    * server / `enrichWorkspace`, so the card is a pure renderer. */
   ws: WorkspaceDto;
   index: number;
-  showOwner: boolean;
   /** True only when the VIEWER owns this workspace: the spectate share toggle is
    * strictly an owner control (the route re-enforces it). */
   canShare?: boolean;
@@ -46,7 +58,16 @@ export function WorkspaceCard({
   const sshCommand = ws.sshCommand;
   // Path-based editor URL served by the control-plane app's in-app proxy.
   const editorHref = `${WORKSPACE_PATH_PREFIX}${ws.id}/`;
-  const canOpen = OPENABLE_STATES.has(ws.state);
+  const statusHref = `/workspaces/${ws.id}`;
+  // Resume routes through the status page with autoopen so the browser watches the
+  // wake (progress + logs) and is redirected into the editor once it is ready.
+  const resumeHref = `${statusHref}?autoopen=1`;
+  const isReady = READY_STATES.has(ws.state);
+  const isStopped = ws.state === "stopped";
+  // Never render the raw "start" as its own button: on the card a stopped workspace
+  // is woken by the single "Resume" affordance (Start + Open in one), so a separate
+  // Start button would be a second control doing the same thing.
+  const cardActions = ws.availableActions.filter((action) => action !== "start");
   return (
     <article
       className="card"
@@ -58,6 +79,22 @@ export function WorkspaceCard({
       <div className="row">
         <span className="wid">{imageName}</span>
         <StatusBadge state={ws.state} />
+        <span
+          className="badge"
+          data-testid={TESTID.workspaceEditorBadge}
+          data-editor={ws.editor ?? "openvscode"}
+        >
+          {EDITOR_LABEL[ws.editor ?? "openvscode"]}
+        </span>
+        {ws.shareEnabled === true && (
+          <span
+            className="badge accent"
+            data-testid={TESTID.workspaceViewableBadge}
+            title="Others can watch this session (spectate)"
+          >
+            viewable
+          </span>
+        )}
         <WorkspaceInfo ws={ws} />
         {ws.functional === "degraded" && (
           <span
@@ -104,7 +141,9 @@ export function WorkspaceCard({
           ))}
         </div>
       )}
-      {showOwner && <div className="owner">owner · {ws.ownerId}</div>}
+      <div className="owner" data-testid={TESTID.workspaceOwner}>
+        started by · {ws.ownerEmail ?? ws.ownerId}
+      </div>
       {sshCommand !== undefined && (
         <div className="meta-line">
           <span className="meta-label">ssh</span>
@@ -118,8 +157,8 @@ export function WorkspaceCard({
           </code>
         </div>
       )}
-      {canOpen && (
-        <div className="meta-line" style={{ display: "flex", gap: 8 }}>
+      <div className="meta-line" style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {isReady && (
           <a
             className="btn primary"
             href={editorHref}
@@ -128,6 +167,27 @@ export function WorkspaceCard({
           >
             Open editor
           </a>
+        )}
+        {isStopped && (
+          <a
+            className="btn primary"
+            href={resumeHref}
+            data-testid={TESTID.workspaceResume}
+            data-href={resumeHref}
+          >
+            Resume
+          </a>
+        )}
+        {/* A proper status page, linked directly from every card: watch a not-yet-
+            loaded workspace come up (phase stepper + live boot logs) and reach the
+            editor when ready. Redundant with Resume for a stopped workspace (which
+            already routes here), so shown for every OTHER state. */}
+        {!isStopped && (
+          <a className="btn" href={statusHref} data-testid={TESTID.workspaceStatusLink}>
+            Status
+          </a>
+        )}
+        {MONITORABLE_STATES.has(ws.state) && (
           <a
             className="btn"
             href={`/workspaces/${ws.id}/monitoring`}
@@ -135,9 +195,9 @@ export function WorkspaceCard({
           >
             Monitoring
           </a>
-        </div>
-      )}
-      {canShare && (canOpen || ws.shareEnabled === true) && ws.state !== "stopped" && (
+        )}
+      </div>
+      {canShare && (isReady || ws.shareEnabled === true) && (
         <ShareToggle id={ws.id} enabled={ws.shareEnabled === true} />
       )}
       {!canShare && ws.shareEnabled === true && (
@@ -147,7 +207,12 @@ export function WorkspaceCard({
           </a>
         </div>
       )}
-      <WorkspaceActions id={ws.id} actions={ws.availableActions} />
+      <WorkspaceActions id={ws.id} actions={cardActions} />
+      {ws.state === "terminated" && (
+        <div className="meta-line">
+          <PurgeButton id={ws.id} />
+        </div>
+      )}
     </article>
   );
 }

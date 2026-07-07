@@ -41,6 +41,11 @@ const MIME: Record<string, string> = {
   ".map": "application/json; charset=utf-8",
 };
 
+/** Structured stdout line (→ CloudWatch /edd-prod/workspaces) for editor-gate debugging. */
+function logLine(msg: string, fields: Record<string, string | boolean>): void {
+  process.stdout.write(`${JSON.stringify({ svc: "editor-monaco", msg, ...fields })}\n`);
+}
+
 function send(
   res: ServerResponse,
   status: number,
@@ -105,12 +110,26 @@ export function createEditorServer(opts: EditorServerOptions): Server {
 
     // Connection-token gate (mirrors OpenVSCode): validate, set a cookie, redirect to a clean URL.
     if (opts.token !== undefined) {
+      const fromQuery = url.searchParams.has("tkn");
+      const fromCookie = /(?:^|;\s*)edd-editor-token=/.test(req.headers.cookie ?? "");
       const presented = tokenFromRequest(url.searchParams, req.headers.cookie);
       if (presented === undefined || !tokensMatch(opts.token, presented)) {
+        // Structured 401 diagnostics (stdout → CloudWatch). Never the token itself:
+        // only a short prefix so a mismatch (wrong secret) is distinguishable from a
+        // missing token (no ?tkn and no cookie — the cookie never got set/sent).
+        logLine("token-gate 401", {
+          path: url.pathname,
+          dest: req.headers["sec-fetch-dest"] ?? "",
+          presentedFrom: fromQuery ? "query" : fromCookie ? "cookie" : "none",
+          expectedPrefix: opts.token.slice(0, 6),
+          presentedPrefix: presented === undefined ? "(none)" : presented.slice(0, 6),
+          hasCookieHeader: req.headers.cookie !== undefined,
+        });
         send(res, 401, "unauthorized");
         return;
       }
-      if (url.searchParams.has("tkn")) {
+      if (fromQuery) {
+        logLine("token-gate ok: setting cookie + redirecting clean", { path: url.pathname });
         res.statusCode = 302;
         res.setHeader("Set-Cookie", tokenCookie(opts.token, base));
         res.setHeader("Location", url.pathname);

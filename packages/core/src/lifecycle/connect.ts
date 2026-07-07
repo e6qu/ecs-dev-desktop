@@ -20,6 +20,7 @@ export function planConnect(state: WorkspaceState): ConnectAction {
   switch (state) {
     case "running":
     case "idle":
+    case "stopping":
       return "ready";
     case "stopped":
       return "wake";

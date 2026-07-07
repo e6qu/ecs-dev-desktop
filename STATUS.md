@@ -2,18 +2,44 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-06 (live at `https://app.edd.e6qu.dev`, tag `fe7cc2b`; the
-post-launch feature wave is COMPLETE and deployed — connection-based idle (5-min
-cooldown), per-workspace monitoring, claude/codex agent-first editor modes, 4h rolling
-sessions, 7-day undelete, and spectate v1 (owner-shared read-only mirror, viewer+
-only). Remaining: user live-testing; the legacy snapshot was deleted on user decision and
-the branch is up as PR #192.), per-workspace
-monitoring, claude/codex agent-first editor modes, 4h rolling sessions, and 7-day
-undelete (terminated tombstones + reconciler retention purge); the live-found
-reconciler `dynamodb:DeleteItem` gap that stalled ALL deletions is fixed; spectate
-design signed off except 3 small defaults (`docs/design-public-spectate.md`),
-implementation queued next; branch `fix/install-missing-param-logic` still
-unmerged/no PR by request.)
+**Last updated:** 2026-07-07 (live at `https://app.edd.e6qu.dev`, control-plane tag
+`eee7176`, golden image `omnibus:fafb9fe`). All work below is on branch
+`feat/instant-create-provisioning-ux` (well ahead of the unmerged PR #193; ask before
+opening a new PR). Shipped + live this stretch, on top of the merged post-launch wave:
+
+- **Instant create** — `reserveWorkspace` returns the pre-generated URL in <1s, launch
+  runs detached (fixed the 504 where blocking create outran the ALB 60s timeout).
+- **Fast decoupled deploys** — `EDD_BUILD_TARGET=web` builds the control-plane image
+  only (~3min / ~7min total vs ~22min); `golden` rebuilds workspace images separately.
+- **Images admin console** (`/admin/images`) — per-image size + per-layer breakdown,
+  trigger builds, last-20 build history, live CodeBuild logs (ImageOps port + AWS
+  adapter + fake).
+- **Cancelable `stopping` state** — manual stop → `stopping` (snapshot + scale-to-zero
+  after a grace) with a cancel/resume; converged by an in-process server sweep +
+  reconciler backstop. Fixed several real bugs found by reproducing locally (DynamoDB
+  Local): the DB serializer dropped `stopRequestedAt/By` (broke attribution + grace);
+  `finishStop` could hang on a gone volume (now converges best-effort); `stopping` was
+  missing from the page's transitional states (card froze).
+- **`/w/<id>/` status-page hand-off** — the editor URL is safe in any state
+  (provisioning/stopped/deleted show the status page; running hands off to the editor)
+  — fixes the raw-URL 502/blank.
+- **Editor `unauthorized` fix** — proxy now recognizes the Monaco `edd-editor-token`
+  cookie; proven with an end-to-end handshake regression test.
+- **Access audit + proxy denial diagnostics**, **permanent-delete of terminated
+  workspaces** (type-to-confirm), **"started by" + viewable badge**, editor-type badge,
+  full-page info modal, startup overlay, OpenVSCode File-menu default (golden).
+
+Local verification on the branch is green after the PR #193 e2e fixes: `pnpm test`,
+`pnpm lint`, `pnpm test:integ:local`, `pnpm test:e2e:local`, `pnpm check-deps`,
+`pnpm dead-code`, and `pnpm cpd` all pass (with the existing jscpd clone report/config
+warning). The branch was deployed control-plane-only to real AWS as image tag
+`eee7176`: CodeBuild succeeded, ECS rolled to task definition revision 25
+(control-plane 2/2, SSH gateway 1/1), and `scripts/install.sh --verify` is green
+(ALB health 200, `/api/readyz` 200, reconciler enabled, no Terraform drift).
+Remaining: user live-testing; replacing the `claude`/`codex`
+Monaco-terminal fallback with the vendor harnesses now explicitly chosen by the user
+(Anthropic Remote Control / `claude.ai/code` for Claude Code; OpenAI `codex
+app-server` / first-party local client protocol for Codex).
 
 ## Real AWS production deploy — LIVE (2026-07-05/06), still hardening post-launch
 

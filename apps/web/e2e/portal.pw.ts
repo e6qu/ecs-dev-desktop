@@ -104,9 +104,12 @@ test("member creates, stops, and deletes a workspace from the catalog", async ({
   await expect(card).toBeVisible();
   await expect(card).toHaveAttribute("data-status", "running");
 
-  // Stop, then delete it.
+  // Stop, then delete it. Manual stop is now cancelable: the card first moves to
+  // `stopping` (the session keeps running through a short grace), and a detached
+  // converge snapshots + scales to zero → `stopped`. Allow for the grace + snapshot.
   await card.getByRole("button", { name: "stop" }).click();
-  await expect(card).toHaveAttribute("data-status", "stopped");
+  await expect(card).toHaveAttribute("data-status", "stopping");
+  await expect(card).toHaveAttribute("data-status", "stopped", { timeout: 20_000 });
 
   // Delete takes a two-step confirm (it destroys the EBS volume/snapshot): the first
   // click arms it, the second confirms. Delete is then async — it tombstones the

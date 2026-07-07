@@ -19,6 +19,7 @@ export const workspaceState = z.enum([
   "provisioning",
   "running",
   "idle",
+  "stopping",
   "stopped",
   "deleting",
   "terminated",
@@ -31,13 +32,20 @@ export const desiredState = z.enum(["present", "deleted"]);
 export type DesiredStateDto = z.infer<typeof desiredState>;
 
 /** A user-initiated lifecycle operation the UI may offer for a workspace. */
-export const workspaceAction = z.enum(["start", "stop", "snapshot", "delete", "undelete"]);
+export const workspaceAction = z.enum([
+  "start",
+  "stop",
+  "cancelStop",
+  "snapshot",
+  "delete",
+  "undelete",
+  "retry",
+]);
 export type WorkspaceActionDto = z.infer<typeof workspaceAction>;
 
 /** Which primary interface a workspace serves (mirrors `@edd/core`'s EditorKind):
  * openvscode = OpenVSCode Server; monaco = the first-party lightweight editor;
- * claude / codex = agent-first sessions (the Monaco terminal boots straight into
- * the CLI — neither vendor ships a self-hostable web UI). */
+ * claude / codex = vendor agent harnesses backed by local workspace processes. */
 export const editorKind = z.enum(["openvscode", "monaco", "claude", "codex"]);
 export type EditorKindDto = z.infer<typeof editorKind>;
 
@@ -53,10 +61,17 @@ export const workspace = z.object({
   // The owner's role at create time — lets the admin quota view flag a workspace against its
   // owner's per-role limit. Absent on records predating the field.
   ownerRole: role.optional(),
+  /** Who started the workspace (email when known) — shown on the card/status. */
+  ownerEmail: z.email().optional(),
   baseImage: z.string(),
   editor: editorKind.optional(),
   state: workspaceState,
   createdAt: z.iso.datetime(),
+  /** Last activity/transition timestamp — what the status page's phase-elapsed
+   * timer counts from (resets on wake, so it times the current launch). */
+  lastActivity: z.iso.datetime().optional(),
+  /** When a manual (cancelable) stop was requested — set while `stopping`. */
+  stopRequestedAt: z.iso.datetime().optional(),
   // The repo cloned into the session ("one repo per session"), when any. Lets
   // the credential broker pick the right GitHub App installation by repo owner.
   repoUrl: z.string().optional(),
@@ -75,6 +90,8 @@ export const workspace = z.object({
   // Functional usability self-report (is the desktop actually usable, not just
   // "running"): surfaced on the owner's card so a degraded-but-running workspace shows.
   functional: z.enum(["ok", "degraded"]).optional(),
+  /** Why the workspace is degraded / failed to launch (agent report or launch error). */
+  functionalDetail: z.string().optional(),
   // Home-volume usage from the agent's functional self-report (bytes).
   diskUsedBytes: z.number().nonnegative().optional(),
   diskTotalBytes: z.number().positive().optional(),
@@ -267,6 +284,8 @@ export const workspaceDetail = z.object({
   desiredState: desiredState.optional(),
   /** When a delete was requested (the `deleting` tombstone began), if any. */
   deleteRequestedAt: z.iso.datetime().optional(),
+  stopRequestedAt: z.iso.datetime().optional(),
+  stopRequestedBy: z.string().optional(),
   createdAt: z.iso.datetime(),
   lastActivity: z.iso.datetime(),
   volumeId: z.string().optional(),
@@ -689,3 +708,67 @@ export const gitCredentialResponse = z.object({
   token: z.string().min(1),
 });
 export type GitCredentialResponse = z.infer<typeof gitCredentialResponse>;
+
+// ---- Image builds & registry metadata (admin Images console) ----------------
+
+/** One layer of a container image, with its (compressed) size in the registry. */
+export const imageLayer = z.object({
+  digest: z.string().min(1),
+  sizeBytes: z.number().int().nonnegative(),
+});
+export type ImageLayerDto = z.infer<typeof imageLayer>;
+
+/** Registry metadata for one image tag: total compressed size, layer breakdown,
+ * architecture, and when it was pushed. Sizes are the COMPRESSED sizes ECR reports
+ * (what's stored/pulled); uncompressed size is not exposed by the registry API. */
+export const imageMetadata = z.object({
+  repo: z.string().min(1),
+  tag: z.string().min(1),
+  digest: z.string().min(1),
+  /** Total compressed image size (sum of layer + config blob sizes). */
+  compressedBytes: z.number().int().nonnegative(),
+  layerCount: z.number().int().nonnegative(),
+  layers: z.array(imageLayer),
+  architecture: z.string().optional(),
+  pushedAt: z.iso.datetime().optional(),
+});
+export type ImageMetadataDto = z.infer<typeof imageMetadata>;
+
+/** Which images a build produces (mirrors EDD_BUILD_TARGET). */
+export const buildTarget = z.enum(["web", "golden", "all"]);
+export type BuildTargetDto = z.infer<typeof buildTarget>;
+
+/** Lifecycle status of a build (mirrors CodeBuild build statuses). */
+export const buildStatus = z.enum([
+  "in_progress",
+  "succeeded",
+  "failed",
+  "faulted",
+  "timed_out",
+  "stopped",
+]);
+export type BuildStatusDto = z.infer<typeof buildStatus>;
+
+/** One entry in an image's build history (last N kept per image). */
+export const imageBuildRecord = z.object({
+  buildId: z.string().min(1),
+  target: buildTarget,
+  tag: z.string().min(1),
+  ref: z.string().optional(),
+  status: buildStatus,
+  /** Current/last CodeBuild phase (e.g. BUILD, COMPLETED). */
+  phase: z.string().optional(),
+  startedAt: z.iso.datetime(),
+  endedAt: z.iso.datetime().optional(),
+  durationMs: z.number().int().nonnegative().optional(),
+  triggeredBy: z.string().min(1),
+});
+export type ImageBuildRecordDto = z.infer<typeof imageBuildRecord>;
+
+/** A slice of a build's live log, plus a cursor to fetch the next slice. */
+export const buildLogChunk = z.object({
+  lines: z.array(z.object({ at: z.iso.datetime(), message: z.string() })),
+  /** Opaque cursor for the next poll; absent when the stream has no more (yet). */
+  nextToken: z.string().optional(),
+});
+export type BuildLogChunkDto = z.infer<typeof buildLogChunk>;

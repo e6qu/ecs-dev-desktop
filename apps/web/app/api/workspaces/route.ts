@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { NextResponse } from "next/server";
 
-import { createWorkspaceRequest } from "@edd/api-contracts";
+import { createWorkspaceRequest, type WorkspaceDto } from "@edd/api-contracts";
 import { defineAbilityFor } from "@edd/authz";
 import { ComputeUnavailableError, QuotaExceededError } from "@edd/control-plane";
-import { baseImage, unavailableError, withinWorkspaceQuota } from "@edd/core";
+import { baseImage, unavailableError, withinWorkspaceQuota, workspaceId } from "@edd/core";
 
 import {
   authenticate,
@@ -15,6 +15,7 @@ import {
   isResponse,
 } from "../../../lib/api";
 import { getCatalog, getControlPlane } from "../../../lib/control-plane";
+import { log } from "../../../lib/logger";
 import { getMetrics } from "../../../lib/metrics";
 import { catalogByImage, enrichWorkspace } from "../../../lib/workspace-enrich";
 import { resolveOwnerEmail } from "../../../lib/owner-email";
@@ -85,16 +86,23 @@ async function handlePOST(req: Request) {
   const ownerEmailResult = resolveOwnerEmail(principal.email, devAuthEnabled());
   if (!ownerEmailResult.ok) return badRequest(ownerEmailResult.reason);
   const ownerEmail = ownerEmailResult.email;
-  let workspace;
+  let workspace: WorkspaceDto;
   try {
-    workspace = await cp.create({
+    // Instant create: persist the record (id pre-generated, quota enforced
+    // atomically) and return it immediately — the browser navigates to the
+    // workspace URL right away instead of holding this request open through the
+    // multi-minute first image pull (which is how the ALB 60s idle timeout was
+    // turning successful creates into 504s). The launch continues detached;
+    // launchReserved NEVER rejects (a failure lands on the record as `error` +
+    // reason for the status page's Retry/Delete), and the reconciler's
+    // provisioning-timeout recovery is the backstop if this process dies.
+    workspace = await cp.reserveWorkspace({
       ownerId: principal.id,
       ...(ownerEmail === undefined ? {} : { ownerEmail }),
       // Persist the owner's role so the admin quota view can flag this workspace against the
       // owner's per-role limit (the role is otherwise only known at this user's sign-in).
       ownerRole: principal.role,
       ...(parsed.data.repoUrl === undefined ? {} : { repoUrl: parsed.data.repoUrl }),
-      ...(parsed.data.repoRef === undefined ? {} : { repoRef: parsed.data.repoRef }),
       baseImage: image,
       editor,
       // Authoritative cap: enforced ATOMICALLY in the create transaction (the read
@@ -102,6 +110,17 @@ async function handlePOST(req: Request) {
       // `null` = unlimited → no counter condition.
       ...(limit === null ? {} : { quotaLimit: limit }),
     });
+    void cp
+      .launchReserved(workspaceId(workspace.id), {
+        ...(parsed.data.repoRef === undefined ? {} : { repoRef: parsed.data.repoRef }),
+      })
+      .catch((e: unknown) => {
+        // Defensive only — launchReserved returns Results. A throw here would
+        // otherwise be an unhandled rejection with no owner.
+        log.error("detached workspace launch threw", {
+          error: e instanceof Error ? e.message : String(e),
+        });
+      });
   } catch (e) {
     // The compute backend couldn't launch the task — a handled, retryable failure
     // (→ 503), not an unexpected 500.

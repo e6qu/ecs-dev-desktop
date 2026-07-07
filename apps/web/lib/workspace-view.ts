@@ -10,6 +10,7 @@ const STATUS: Record<WorkspaceStateDto, StatusMeta> = {
   provisioning: { label: "provisioning", pulse: true },
   running: { label: "running", pulse: true },
   idle: { label: "idle", pulse: false },
+  stopping: { label: "stopping", pulse: true },
   stopped: { label: "stopped", pulse: false },
   deleting: { label: "deleting", pulse: true },
   error: { label: "error", pulse: false },

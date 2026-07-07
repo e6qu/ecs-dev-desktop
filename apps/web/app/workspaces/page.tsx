@@ -1,8 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { WorkspaceDto } from "@edd/api-contracts";
 import { defineAbilityFor } from "@edd/authz";
+import { DEPLOY_SHA, DEPLOY_TIME } from "@edd/config";
 import Link from "next/link";
 
+import { DeployFooter } from "../../components/DeployFooter";
 import { LiveRefresh } from "../../components/LiveRefresh";
 import { StateBlock } from "../../components/StateBlock";
 import { WorkspaceCard } from "../../components/WorkspaceCard";
@@ -15,7 +17,10 @@ export const dynamic = "force-dynamic";
 // While a workspace is mid-transition (just created → provisioning, or deleting), poll the
 // server render so the card advances to its resting state — and the "Open editor" button appears —
 // without the user manually reloading. Stops once nothing is transitional.
-const TRANSITIONAL_STATES = new Set(["provisioning", "deleting"]);
+// `stopping` is transitional too: the cancelable manual stop converges to `stopped`
+// via the server sweep, so the list must keep polling to catch it (else the card
+// freezes at "stopping").
+const TRANSITIONAL_STATES = new Set(["provisioning", "deleting", "stopping"]);
 const TRANSITIONAL_REFRESH_MS = 4000;
 
 export default async function WorkspacesPage({
@@ -109,13 +114,7 @@ export default async function WorkspacesPage({
         <div className="grid">
           {workspaces.map((ws, i) => {
             return (
-              <WorkspaceCard
-                key={ws.id}
-                ws={ws}
-                index={i}
-                showOwner={viewAll}
-                canShare={ws.ownerId === principal.id}
-              />
+              <WorkspaceCard key={ws.id} ws={ws} index={i} canShare={ws.ownerId === principal.id} />
             );
           })}
         </div>
@@ -130,11 +129,13 @@ export default async function WorkspacesPage({
           </p>
           <div className="grid">
             {deleted.map((ws, i) => {
-              return <WorkspaceCard key={ws.id} ws={ws} index={i} showOwner={viewAll} />;
+              return <WorkspaceCard key={ws.id} ws={ws} index={i} />;
             })}
           </div>
         </section>
       )}
+
+      <DeployFooter sha={DEPLOY_SHA} time={DEPLOY_TIME} />
     </>
   );
 }

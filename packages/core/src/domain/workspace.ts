@@ -76,6 +76,12 @@ export interface Workspace {
   /** Home-volume usage from the same self-report (bytes), when the agent measured it. */
   readonly diskUsedBytes?: number;
   readonly diskTotalBytes?: number;
+  /** When a manual stop was requested (state became `stopping`) — the converge
+   * finishes the stop after a short grace unless the user cancels first. */
+  readonly stopRequestedAt?: IsoTimestamp;
+  /** WHO requested the manual stop — so the async converge attributes the
+   * `session.stop` audit to the user who initiated it, not the system sweep. */
+  readonly stopRequestedBy?: string;
   /** When teardown finished (state became `terminated`) — starts the undelete
    * retention window; the purge sweep removes the tombstone (and reaps its
    * retained snapshot) once it is older than the retention. */
@@ -106,6 +112,31 @@ export interface ProvisionParams {
 }
 
 /** A freshly-provisioned, running workspace. */
+/**
+ * The instant-create record: persisted (and its URL handed to the browser)
+ * BEFORE any compute is launched, so navigation to the workspace page is
+ * immediate. State starts at `provisioning` with no runtime bindings; the
+ * detached launch binds them via {@link markProvisioned} (→ running), or
+ * {@link markProvisioningFailed} records why it could not.
+ */
+export function reserve(
+  params: Omit<ProvisionParams, "volumeId" | "taskId" | "sshHost">,
+): Workspace {
+  return {
+    id: params.id,
+    ownerId: params.ownerId,
+    ownerEmail: params.ownerEmail,
+    ownerRole: params.ownerRole,
+    repoUrl: params.repoUrl,
+    baseImage: params.baseImage,
+    editor: params.editor ?? DEFAULT_EDITOR,
+    state: "provisioning",
+    desiredState: "present",
+    createdAt: params.at,
+    lastActivity: params.at,
+  };
+}
+
 export function provision(params: ProvisionParams): Workspace {
   return {
     id: params.id,
@@ -130,6 +161,38 @@ export function provision(params: ProvisionParams): Workspace {
  * `freshSnapshot` is the snapshot just taken while stopping (if the workspace had
  * a live volume); when absent the prior snapshot reference is carried over.
  */
+/**
+ * Begin a MANUAL stop: running/idle → `stopping`. The task keeps running (no
+ * teardown yet) so the stop is cancelable; the converge (finishStop) snapshots +
+ * tears down after a short grace, or {@link cancelStopping} resumes it. Distinct
+ * from the direct {@link markStopped} the idle auto-shutdown uses.
+ */
+export function markStopping(
+  ws: Workspace,
+  at: IsoTimestamp,
+  by?: string,
+): Result<Workspace, DomainError> {
+  return map(transition(ws.state, "requestStop"), (state) => ({
+    ...ws,
+    state,
+    stopRequestedAt: at,
+    stopRequestedBy: by,
+    // Deliberately keeps volumeId/taskId/sshHost — the session is still running.
+  }));
+}
+
+/** Cancel an in-flight manual stop: `stopping` → running (the session was never
+ * torn down). Clears the stop request. */
+export function cancelStopping(ws: Workspace, at: IsoTimestamp): Result<Workspace, DomainError> {
+  return map(transition(ws.state, "cancelStop"), (state) => ({
+    ...ws,
+    state,
+    lastActivity: at,
+    stopRequestedAt: undefined,
+    stopRequestedBy: undefined,
+  }));
+}
+
 export function markStopped(
   ws: Workspace,
   freshSnapshot: { id: SnapshotId; at: IsoTimestamp } | undefined,
@@ -144,6 +207,8 @@ export function markStopped(
     volumeId: undefined,
     taskId: undefined,
     sshHost: undefined,
+    stopRequestedAt: undefined,
+    stopRequestedBy: undefined,
     // Sharing never outlives the live session it exposed.
     shareEnabled: undefined,
     shareEnabledAt: undefined,
@@ -244,6 +309,42 @@ export function markProvisioned(
     volumeId,
     taskId,
     sshHost,
+  }));
+}
+
+/**
+ * A detached launch (or retry) failed: move to `error` carrying the reason.
+ * The reason rides `functionalDetail` — the DTO's existing free-text "why is
+ * this workspace not usable" slot the status page already renders.
+ */
+export function markProvisioningFailed(
+  ws: Workspace,
+  reason: string,
+  at: IsoTimestamp,
+): Result<Workspace, DomainError> {
+  return map(transition(ws.state, "fail"), (state) => ({
+    ...ws,
+    state,
+    lastActivity: at,
+    functional: "degraded" as const,
+    functionalDetail: reason,
+    functionalAt: at,
+  }));
+}
+
+/**
+ * User-initiated retry of a failed launch: error → provisioning, clearing the
+ * failure report. The shell relaunches compute (or recover+start when a
+ * snapshot survives — its data must not be discarded by a fresh volume).
+ */
+export function retryProvisioning(ws: Workspace, at: IsoTimestamp): Result<Workspace, DomainError> {
+  return map(transition(ws.state, "retry"), (state) => ({
+    ...ws,
+    state,
+    lastActivity: at,
+    functional: undefined,
+    functionalDetail: undefined,
+    functionalAt: undefined,
   }));
 }
 

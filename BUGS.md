@@ -4,6 +4,36 @@
 
 ## Open
 
+- **`claude`/`codex` workspace modes still use the Monaco-terminal fallback, not the
+  vendor web harnesses** (2026-07-07). Product decision is now explicit: do not build an
+  EDD-authored Claude/Codex chat UI and do not treat a terminal-booted CLI as the final
+  UX. `claude` mode should run Anthropic's Claude Code Remote Control/local-process
+  harness and direct the user to `claude.ai/code`; `codex` mode should run OpenAI's
+  Codex local harness (`codex app-server` / first-party client protocol). Current code
+  remains usable but mismatched: `infra/images/base/entrypoint.sh` still starts the
+  Monaco server with `EDD_TERMINAL_COMMAND=claude|codex`. Tracked as an implementation
+  gap in `DO_NEXT.md`.
+
+- **Shell parse sweep emits a zsh `nice(5)` warning for the base entrypoint**
+  (2026-07-07). `for f in $(git ls-files '*.sh'); do shellcheck "$f" && bash -n "$f" &&
+zsh -n "$f"; done` exits 0, but `zsh -n infra/images/base/entrypoint.sh` prints
+  `nice(5) failed: operation not permitted` for the background `sshd` and
+  `edd-idle-agent` lines. `shellcheck` and `bash -n` are clean, and the e2e golden
+  image boots successfully, so this is currently a parser/tooling warning rather
+  than a runtime failure. Keep it visible; either adjust the portable shell check
+  invocation or restructure the background process startup if CI starts treating
+  the warning as fatal.
+
+- **`scripts/install.sh` passes `-backend-config` to a Terraform example with no
+  backend block** (2026-07-07). The live deploy to `eee7176` succeeded and
+  `scripts/install.sh --verify` reported no drift, but every `terraform init`
+  emitted Terraform's `Missing backend configuration` warning because
+  `infra/terraform/examples/complete/main.tf` declares required providers but no
+  `backend` block. This is currently deploy-tooling noise/potential operator
+  confusion, not a failed deploy. Fix by either adding the intended backend stub
+  to the example or changing the script/docs so backend config is only passed when
+  a backend block exists.
+
 - **Cost model doesn't price the undelete window or restored sessions** (2026-07-06).
   Deleted workspaces now keep a retained snapshot for the 7-day undelete window —
   that snapshot storage bills in AWS but `deriveBillingIntervals` treats
@@ -451,6 +481,20 @@ concurrent-wake race, TLS storage adapter). PR #550 is bleephub-Actions-only;
 no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
+
+- **Branch e2e failures after instant-create were real async-provisioning test
+  mismatches, then fixed (2026-07-07).** The PR #193 `e2e` check had been red. Local
+  reproduction showed the first failures were not the golden-image build flake that
+  initially looked likely: several tests still assumed `POST /api/workspaces` returned
+  `running`, but instant create correctly returns `provisioning` and launches detached.
+  Updated the e2e fixtures/specs to accept `provisioning` and wait for `running`
+  before stop/connect assertions. The remaining SSH wake-chain failure was a harness
+  issue: the custom server sweep and compiled Next route handlers have separate
+  in-memory fake-storage instances, so a stop converger cannot snapshot a route-created
+  fake volume. The test now seeds a resume snapshot through the public `snapshot` API
+  before stopping, keeping the test focused on the gateway → control-plane wake
+  contract. Verified with `pnpm test:e2e:local` (20/20 Turbo tasks; `@edd/e2e`
+  46 passed, 5 image-variant skips).
 
 - **The control-plane and reconciler task roles could read/write DynamoDB items but
   couldn't decrypt them (2026-07-06, found by a real user hitting `/workspaces` right

@@ -4,7 +4,7 @@
 import { ApiClient } from "@edd/api-client";
 import type { WorkspaceDto, WorkspaceLogsDto } from "@edd/api-contracts";
 import Link from "next/link";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { TESTID } from "../lib/testids";
 import { usePoll } from "../lib/usePoll";
@@ -14,6 +14,59 @@ import { WorkspaceActions } from "./WorkspaceActions";
 const api = new ApiClient({ baseUrl: "" });
 const STATUS_POLL_MS = 3000;
 const LOGS_POLL_MS = 8000;
+/** Seconds the "opening editor" countdown runs before auto-navigating. */
+const AUTO_OPEN_COUNTDOWN_S = 3;
+
+type StepState = "done" | "active" | "pending" | "failed";
+
+interface Step {
+  label: string;
+  state: StepState;
+}
+
+/** The provisioning phases, derived purely from state + the agent's functional
+ * report (the same signals the reconciler trusts). Works for both a fresh
+ * create and a wake-from-snapshot — `provisioning` covers the launch (image
+ * pull + managed-EBS attach, the long part on first start). */
+function provisioningSteps(ws: WorkspaceDto): Step[] {
+  const failed = ws.state === "error";
+  const launching = ws.state === "provisioning";
+  const booting = ws.state === "running" && ws.functional === undefined;
+  const ready = ws.state === "running" && ws.functional === "ok";
+  const after = (done: boolean, active: boolean): StepState =>
+    done ? "done" : active ? (failed ? "failed" : "active") : failed ? "failed" : "pending";
+  return [
+    { label: "Session created", state: "done" },
+    {
+      label: "Launching compute (image pull + storage attach)",
+      state: after(booting || ready || ws.functional === "degraded", launching),
+    },
+    { label: "Starting editor", state: after(ready, booting) },
+    { label: "Ready", state: ready ? "done" : failed ? "failed" : "pending" },
+  ];
+}
+
+function StepDot({ state }: { state: StepState }) {
+  const glyph = state === "done" ? "✓" : state === "failed" ? "✕" : state === "active" ? "●" : "○";
+  const color =
+    state === "done"
+      ? "var(--accent, #9fef00)"
+      : state === "failed"
+        ? "var(--st-error, #ff6b6b)"
+        : state === "active"
+          ? "var(--accent, #9fef00)"
+          : "var(--dim)";
+  return (
+    <span aria-hidden="true" style={{ color, width: 16, display: "inline-block" }}>
+      {glyph}
+    </span>
+  );
+}
+
+function elapsedSince(iso: string): string {
+  const s = Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 1000));
+  return s >= 60 ? `${String(Math.floor(s / 60))}m ${String(s % 60)}s` : `${String(s)}s`;
+}
 
 /**
  * Live per-workspace status view (/workspaces/[id]): what a user lands on right
@@ -28,6 +81,51 @@ export function WorkspaceLive({ id }: { id: string }) {
   const loadLogs = useCallback(() => api.getWorkspaceLogs(id), [id]);
   const { data: ws, error } = usePoll<WorkspaceDto>(loadWs, STATUS_POLL_MS, "workspace not found");
   const { data: logs } = usePoll<WorkspaceLogsDto>(loadLogs, LOGS_POLL_MS, "logs unavailable");
+
+  // Auto-open: only on the launch-initiated visit (?autoopen=1 from the session
+  // launcher), never on later direct visits. Read from location in an effect so
+  // SSR markup never depends on the query string.
+  const [autoOpen, setAutoOpen] = useState(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("autoopen") === "1") setAutoOpen(true);
+  }, []);
+  const isReady = ws !== null && ws.state === "running" && ws.functional === "ok";
+  useEffect(() => {
+    if (!autoOpen || !isReady || countdown !== null) return;
+    setCountdown(AUTO_OPEN_COUNTDOWN_S);
+  }, [autoOpen, isReady, countdown]);
+  useEffect(() => {
+    if (countdown === null) return;
+    if (countdown <= 0) {
+      window.location.assign(`/w/${id}/`);
+      return;
+    }
+    const t = window.setTimeout(() => {
+      setCountdown(countdown - 1);
+    }, 1000);
+    return () => {
+      window.clearTimeout(t);
+    };
+  }, [countdown, id]);
+
+  // Resume: waking a stopped workspace and dropping the user back into the editor
+  // is driven from this page (the card's "Resume" links here with ?autoopen=1).
+  // `resume()` kicks the wake and arms auto-open so the page redirects into the
+  // editor once ready; a 409 just means it already woke (the poll reflects it).
+  const [resuming, setResuming] = useState(false);
+  const resume = useCallback(() => {
+    setResuming(true);
+    setAutoOpen(true);
+    void api.startWorkspace(id).catch(() => {
+      /* already waking/woken — the poll shows the real state */
+    });
+  }, [id]);
+  // Arriving via the card's Resume link (autoopen) on a still-stopped workspace:
+  // kick the wake exactly once.
+  useEffect(() => {
+    if (autoOpen && !resuming && ws?.state === "stopped") resume();
+  }, [autoOpen, resuming, ws?.state, resume]);
 
   // Follow the log tail as new lines arrive (unless the panel isn't rendered).
   const logEndRef = useRef<HTMLDivElement | null>(null);
@@ -55,12 +153,22 @@ export function WorkspaceLive({ id }: { id: string }) {
     : booting
       ? "Starting your dev desktop — pulling the image and booting the editor (this can take a minute or two on first start)…"
       : ws.state === "provisioning"
-        ? "Waking your dev desktop from its snapshot…"
-        : ws.functional === "degraded"
-          ? "Running, but degraded — see the log below for what the agent reported."
-          : ws.state === "stopped"
-            ? "Paused (snapshotted) — start it to pick up where you left off."
-            : `Workspace is ${ws.state}.`;
+        ? "Provisioning your dev desktop — starting the container (pulling the image + attaching storage). First start can take a few minutes; it opens itself once ready."
+        : ws.state === "stopping"
+          ? "Stopping — snapshotting your work so you can resume where you left off. Cancel to keep it running."
+          : ws.state === "error"
+            ? "Provisioning failed — you can retry the launch or delete this session."
+            : ws.functional === "degraded"
+              ? "The editor is still finishing startup — this usually clears on its own within a minute. If it persists, check the log below."
+              : ws.state === "stopped"
+                ? resuming
+                  ? "Resuming — waking your dev desktop from its snapshot…"
+                  : "Paused (snapshotted) — resume to pick up where you left off."
+                : ws.state === "terminated"
+                  ? "This workspace has been deleted. If it's within the restore window you can undelete it from the workspaces list."
+                  : ws.state === "deleting"
+                    ? "This workspace is being deleted — tearing down the task and reclaiming storage."
+                    : `Workspace is ${ws.state}.`;
 
   return (
     <div className="stack" style={{ gap: 20 }}>
@@ -85,9 +193,61 @@ export function WorkspaceLive({ id }: { id: string }) {
         <p style={{ fontSize: 16 }} role="status">
           {phase}
         </p>
+        {ws.state === "error" && ws.functionalDetail !== undefined && (
+          <p
+            className="mono"
+            role="alert"
+            style={{ color: "var(--st-error, #ff6b6b)", fontSize: 13 }}
+          >
+            {ws.functionalDetail}
+          </p>
+        )}
+        {/* The workspace's own URL — valid from the instant of creation. */}
+        <code
+          className="mono"
+          data-testid={TESTID.workspaceUrl}
+          style={{ fontSize: 12, color: "var(--dim)", wordBreak: "break-all" }}
+        >
+          {typeof window === "undefined"
+            ? `/workspaces/${ws.id}`
+            : `${window.location.origin}/workspaces/${ws.id}`}
+        </code>
+        {(booting || ws.state === "provisioning" || ws.state === "error") && (
+          <ol
+            data-testid={TESTID.workspaceSteps}
+            style={{ listStyle: "none", margin: "4px 0", padding: 0, display: "grid", gap: 4 }}
+          >
+            {provisioningSteps(ws).map((step) => (
+              <li key={step.label} className="mono" style={{ fontSize: 13 }} data-step={step.state}>
+                <StepDot state={step.state} /> {step.label}
+                {step.state === "active" && (
+                  <span style={{ color: "var(--dim)" }}>
+                    {" "}
+                    — {elapsedSince(ws.lastActivity ?? ws.createdAt)} elapsed
+                  </span>
+                )}
+              </li>
+            ))}
+          </ol>
+        )}
         {(booting || ws.state === "provisioning") && (
           <p className="mono" style={{ color: "var(--dim)", fontSize: 12 }} aria-busy="true">
             this page updates automatically — no need to reload
+          </p>
+        )}
+        {countdown !== null && countdown > 0 && (
+          <p role="status" className="mono" style={{ fontSize: 13 }}>
+            opening the editor in {countdown}…{" "}
+            <button
+              type="button"
+              className="btn"
+              onClick={() => {
+                setAutoOpen(false);
+                setCountdown(null);
+              }}
+            >
+              stay here
+            </button>
           </p>
         )}
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
@@ -101,7 +261,22 @@ export function WorkspaceLive({ id }: { id: string }) {
               Open editor
             </a>
           )}
-          <WorkspaceActions id={ws.id} actions={ws.availableActions} />
+          {ws.state === "stopped" && !resuming && (
+            <button
+              type="button"
+              className="btn primary"
+              data-testid={TESTID.workspaceResume}
+              onClick={resume}
+            >
+              Resume
+            </button>
+          )}
+          {/* `start` is the wake this page already drives via Resume — never a
+              separate button (it would duplicate Resume). */}
+          <WorkspaceActions
+            id={ws.id}
+            actions={ws.availableActions.filter((action) => action !== "start")}
+          />
           <Link href="/workspaces" className="btn">
             all workspaces
           </Link>

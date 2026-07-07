@@ -101,18 +101,34 @@ fi
 # by the volume mount) and only when absent — so user overrides persist across
 # restarts. It stays a *default* the user can change.
 settings_dir=/home/workspace/.openvscode-server/data/User
-if [ ! -e "${settings_dir}/settings.json" ]; then
-  install -d -o workspace -g workspace -m 0755 "${settings_dir}"
-  cat >"${settings_dir}/settings.json" <<'JSON'
-{
-  "workbench.colorTheme": "Default Dark Modern",
-  "window.menuBarVisibility": "classic",
-  "files.autoSave": "afterDelay"
-}
-JSON
-  chown workspace:workspace "${settings_dir}/settings.json"
-  chmod 0644 "${settings_dir}/settings.json"
-fi
+settings_file="${settings_dir}/settings.json"
+install -d -o workspace -g workspace -m 0755 "${settings_dir}"
+# Ensure our default UI settings are PRESENT without clobbering the user's own
+# choices: merge (add only missing keys). Seeding only when the file was absent
+# meant a workspace on a volume created by an OLDER image never got a later default
+# — which is why the OpenVSCode menu bar (window.menuBarVisibility: "classic", the
+# visible File/Edit/View… bar) was missing on pre-existing workspaces. Merging on
+# every boot fixes old volumes too; a key the user explicitly set is left untouched.
+# node ships in the image (the base is node:22; the Monaco server runs bare `node`).
+gosu workspace node -e '
+  const fs = require("node:fs");
+  const file = process.argv[1];
+  let cur = {};
+  try { cur = JSON.parse(fs.readFileSync(file, "utf8")); } catch { cur = {}; }
+  if (cur === null || typeof cur !== "object") cur = {};
+  const defaults = {
+    "workbench.colorTheme": "Default Dark Modern",
+    "window.menuBarVisibility": "classic",
+    "files.autoSave": "afterDelay",
+  };
+  let changed = false;
+  for (const [k, v] of Object.entries(defaults)) {
+    if (!(k in cur)) { cur[k] = v; changed = true; }
+  }
+  if (changed) fs.writeFileSync(file, JSON.stringify(cur, null, 2) + "\n");
+' "${settings_file}" || true
+chown workspace:workspace "${settings_file}" 2>/dev/null || true
+chmod 0644 "${settings_file}" 2>/dev/null || true
 
 # (Terminal-open-on-startup, the "EDD home" portal link, the visible open-terminal
 # keybinding control, and the one-time claude/codex remote-OAuth tip all live in the
@@ -127,11 +143,12 @@ fi
 # Editor selection. The control plane sets EDD_EDITOR_MODE from the workspace's editor choice
 # (a per-session pick at create, else its base-image catalog entry):
 #   monaco         -> the first-party Monaco editor server;
-#   claude / codex -> agent-first sessions: the same Monaco server, but every
-#                     terminal boots straight into the agent CLI (via
-#                     EDD_TERMINAL_COMMAND) instead of a shell — neither vendor
-#                     ships a self-hostable web UI, so the CLI-as-the-app
-#                     terminal is the faithful self-hosted equivalent;
+#   claude / codex -> vendor agent harness modes. Claude Code should use
+#                     Anthropic Remote Control / claude.ai/code against the local
+#                     workspace process; Codex should use OpenAI's app-server /
+#                     local client harness. Until that runtime wiring lands, the
+#                     Monaco terminal fallback keeps the mode usable but is not
+#                     the product target.
 #   anything else (including unset) -> OpenVSCode Server, the historical default.
 # The Monaco server (bundled at /opt/edd-editor-monaco) listens on :3000 under
 # /w/<id>/ and reads the same coordinates from the environment (EDD_WORKSPACE_ID,

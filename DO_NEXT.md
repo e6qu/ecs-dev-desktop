@@ -6,7 +6,7 @@
 
 ## Open decisions (need the user)
 
-1. **Heartbeat interval & idle threshold** — scale-to-zero tuning. The knobs
+0. **Heartbeat interval & idle threshold** — scale-to-zero tuning. The knobs
    now exist (`EDD_HEARTBEAT_INTERVAL_S` injected into workspace tasks;
    `EDD_IDLE_THRESHOLD_MS`/`EDD_SNAPSHOT_INTERVAL_MS`/`EDD_EARLY_SNAPSHOT_INTERVAL_MS`/
    `EDD_EARLY_SESSION_MS`/`EDD_GC_GRACE_MS` on the reconciler) — the open decision is
@@ -28,7 +28,12 @@ Route53 zone `edd.e6qu.dev` hosts `app.edd.e6qu.dev` (control plane) and
 so `e6qu.dev` itself stays free for other future use. Real production stack is
 **live**: see `STATUS.md` and `WHAT_WE_DID.md` 2026-07-05/06 for the full deploy
 narrative (9+ real bugs found and fixed along the way, all in `BUGS.md` →
-Resolved (repo)).
+Resolved (repo)). **Claude/Codex web UI direction — DONE (2026-07-07).** Do NOT
+build an EDD-authored Claude/Codex chat UI. `claude` workspaces must reuse
+Anthropic's Claude Code harness (Remote Control / `claude.ai/code` against a local
+Claude Code process; cloud-hosted Claude Code web is a separate surface), and
+`codex` workspaces must reuse OpenAI's Codex local harness (`codex app-server` /
+first-party client protocol), not an EDD reimplementation.
 
 ---
 
@@ -48,6 +53,23 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
+- **Wire real vendor agent harnesses for `claude`/`codex` workspace modes.** Current
+  runtime still falls back to the Monaco terminal booting `claude`/`codex`; that is
+  only a stopgap. Target: `claude` starts `claude remote-control` (with the user's
+  claude.ai login persisted on the workspace volume) and the EDD status/editor page
+  directs the user into `claude.ai/code`; `codex` starts `codex app-server` with a
+  protected local transport and exposes/links the first-party Codex local client
+  harness. Keep OpenVSCode and Monaco as the other two workspace interface types.
+- **Clean up the base-entrypoint zsh parse warning.** The full shell sweep is green
+  by exit code, but `zsh -n infra/images/base/entrypoint.sh` prints `nice(5) failed:
+operation not permitted` on the background process lines. Recorded in `BUGS.md`;
+  fix the portable check invocation or restructure those starts if it becomes noisy
+  in CI.
+- **Clean up the Terraform backend init warning.** Real deploys currently succeed,
+  but `scripts/install.sh` passes `-backend-config` while the complete example has
+  no backend block, so Terraform prints `Missing backend configuration` on every
+  init. Recorded in `BUGS.md`; make the install path explicit before the warning
+  hides a real backend/state issue.
 - **Spectate cross-replica relay** — v1's relay is per-replica (the spectator
   client retries until it lands on the publisher's replica; works, but retry
   count grows with replica count). Follow-up: an internal replica-to-replica
@@ -75,10 +97,9 @@ deferral by choice.
      `functional` (NOT `state` — create lands straight in "running"), boot logs via an
      owner-scoped log route (CloudWatchLogSource already filters by taskId for /admin/logs),
      ECS task state, the workspace URL.
-  3. **Editor selection at creation**: OpenVSCode | Monaco (mostly UI — the `editor`
-     catalog field + `EDD_EDITOR_MODE` already exist) — plus **Claude Code web app** and
-     **Codex web app** as options (research first: what web mode each CLI serves,
-     base-path and proxy compatibility, auth).
+  3. **Editor selection at creation**: OpenVSCode | Monaco | Claude Code | Codex shipped
+     as a UI/data choice, but the agent runtime still needs to replace the Monaco-terminal
+     fallback with the vendor harnesses above.
   4. **Workspace card metrics + Monitoring page**: CPU/MEM/disk on the card; ⓘ overlay
      (settings + image size); "Monitoring" → per-workspace utilization (Container Insights),
      uptime total+graph, cost so far incl. **per-workspace snapshot cost**, disk size/usage

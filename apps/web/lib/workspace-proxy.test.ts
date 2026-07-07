@@ -23,7 +23,7 @@ vi.mock("./control-plane", () => ({
   getControlPlane: vi.fn(() => Promise.resolve({ inspect: inspectMock })),
 }));
 
-const { authorizeSpectate, authorizeWorkspace, editorTokenRedirect, stripSessionCookie } =
+const { authorizeSpectate, authorizeWorkspace, editorTokenRedirect, isDocumentNavigation, stripSessionCookie } =
   await import("./workspace-proxy");
 
 const WS = workspaceId("ws-abc123");
@@ -49,7 +49,7 @@ describe("authorizeWorkspace (in-app proxy authz glue)", () => {
   it("is forbidden (not 404) for an unknown workspace — does not distinguish existence", async () => {
     getTokenMock.mockResolvedValue({ uid: "u-1" });
     inspectMock.mockResolvedValue(null);
-    expect(await authorizeWorkspace(req(), WS)).toEqual({ kind: "forbidden" });
+    expect(await authorizeWorkspace(req(), WS)).toMatchObject({ kind: "forbidden" });
   });
 
   it("fails loud (throws) when AUTH_SECRET is unset — never authorizes with an empty secret", async () => {
@@ -63,7 +63,7 @@ describe("authorizeWorkspace (in-app proxy authz glue)", () => {
     inspectMock.mockResolvedValue({ workspace: { ownerId: "u-1" } });
     // `allow` carries the session's exp (seconds -> ms) so presence tracking can
     // cap how long a held connection counts as "user present".
-    expect(await authorizeWorkspace(req(), WS)).toEqual({
+    expect(await authorizeWorkspace(req(), WS)).toMatchObject({
       kind: "allow",
       sessionExpiresAtMs: 1_900_000_000_000,
     });
@@ -72,7 +72,7 @@ describe("authorizeWorkspace (in-app proxy authz glue)", () => {
   it("forbids a different authenticated user", async () => {
     getTokenMock.mockResolvedValue({ uid: "u-1" });
     inspectMock.mockResolvedValue({ workspace: { ownerId: "u-2" } });
-    expect(await authorizeWorkspace(req(), WS)).toEqual({ kind: "forbidden" });
+    expect(await authorizeWorkspace(req(), WS)).toMatchObject({ kind: "forbidden" });
   });
 
   it("allows an admin to reach a workspace they do not own", async () => {
@@ -84,7 +84,7 @@ describe("authorizeWorkspace (in-app proxy authz glue)", () => {
   it("forbids a non-admin whose session carries no subject (fails closed)", async () => {
     getTokenMock.mockResolvedValue({ role: "member" });
     inspectMock.mockResolvedValue({ workspace: { ownerId: "u-1" } });
-    expect(await authorizeWorkspace(req(), WS)).toEqual({ kind: "forbidden" });
+    expect(await authorizeWorkspace(req(), WS)).toMatchObject({ kind: "forbidden" });
   });
 });
 
@@ -92,6 +92,21 @@ describe("authorizeWorkspace (in-app proxy authz glue)", () => {
 // initial navigation to the editor is redirected to carry the per-workspace token, so
 // the workbench loads without the user ever handling it. Exercises every gate that
 // decides whether to inject (secret configured, document nav, no token yet).
+describe("isDocumentNavigation (status-page hand-off gate)", () => {
+  it("is true for a top-level document navigation (sec-fetch-dest)", () => {
+    expect(isDocumentNavigation({ headers: { "sec-fetch-dest": "document" } })).toBe(true);
+  });
+  it("is true when there's no sec-fetch-dest but the browser accepts text/html", () => {
+    expect(isDocumentNavigation({ headers: { accept: "text/html,application/xhtml+xml" } })).toBe(
+      true,
+    );
+  });
+  it("is false for the editor's own sub-resource/API requests (script/fetch)", () => {
+    expect(isDocumentNavigation({ headers: { "sec-fetch-dest": "script" } })).toBe(false);
+    expect(isDocumentNavigation({ headers: { "sec-fetch-dest": "empty" } })).toBe(false);
+  });
+});
+
 describe("editorTokenRedirect (editor connection-token handoff)", () => {
   const SECRET = randomBytes(16).toString("hex");
   const expectedTkn = deriveWorkspaceToken(SECRET, WS);
@@ -142,6 +157,22 @@ describe("editorTokenRedirect (editor connection-token handoff)", () => {
         method: "GET",
         url: `/w/${WS}/`,
         headers: docHeaders({ cookie: `vscode-tkn=${expectedTkn}` }),
+      },
+      WS,
+    );
+    expect(out).toBeUndefined();
+  });
+
+  it("also recognizes the Monaco server's edd-editor-token cookie (monaco/claude/codex)", () => {
+    // The Monaco editor server (claude/codex modes) sets edd-editor-token, not
+    // vscode-tkn. Without recognizing it, the proxy kept re-injecting ?tkn and then
+    // forwarded a clean request the Monaco server rejected with 401 — the live
+    // "unauthorized" on non-OpenVSCode editors.
+    const out = editorTokenRedirect(
+      {
+        method: "GET",
+        url: `/w/${WS}/`,
+        headers: docHeaders({ cookie: `edd-editor-token=${expectedTkn}` }),
       },
       WS,
     );

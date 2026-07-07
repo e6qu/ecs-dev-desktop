@@ -141,6 +141,12 @@ export class ApiClient {
     return workspace.parse(await res.json());
   }
 
+  /** Cancel an in-flight manual stop and resume the session. */
+  async cancelStopWorkspace(id: string): Promise<WorkspaceDto> {
+    const res = await this.send(`/api/workspaces/${id}/cancel-stop`, { method: "POST" });
+    return workspace.parse(await res.json());
+  }
+
   async startWorkspace(id: string): Promise<WorkspaceDto> {
     const res = await this.send(`/api/workspaces/${id}/start`, { method: "POST" });
     return workspace.parse(await res.json());
@@ -176,9 +182,20 @@ export class ApiClient {
     await this.send(`/api/workspaces/${id}`, { method: "DELETE" });
   }
 
+  /** Permanently delete a terminated workspace (irreversible; reaps its snapshot). */
+  async purgeWorkspace(id: string): Promise<void> {
+    await this.send(`/api/workspaces/${id}/purge`, { method: "POST" });
+  }
+
   /** Restore a deleted (terminated) workspace within the undelete-retention window. */
   async undeleteWorkspace(id: string): Promise<WorkspaceDto> {
     const res = await this.send(`/api/workspaces/${id}/undelete`, { method: "POST" });
+    return workspace.parse(await res.json());
+  }
+
+  /** Retry a failed launch (error state → relaunch, or recover+start with a snapshot). */
+  async retryWorkspace(id: string): Promise<WorkspaceDto> {
+    const res = await this.send(`/api/workspaces/${id}/retry`, { method: "POST" });
     return workspace.parse(await res.json());
   }
 

@@ -13,11 +13,20 @@ import { getToken } from "next-auth/jwt";
 
 import { CONNECTION_SECRET_ENV } from "./constants";
 import { getControlPlane } from "./control-plane";
+import { log } from "./logger";
 
 /** The OpenVSCode query param that carries the connection token, and the cookie it
  * sets once validated — so the proxy injects the token exactly once per session. */
 const EDITOR_TOKEN_PARAM = "tkn";
 const EDITOR_TOKEN_COOKIE = "vscode-tkn";
+// The first-party Monaco editor server (services/editor-monaco; currently also
+// the fallback for claude/codex until their vendor harness launchers land) sets
+// a DIFFERENTLY-named token cookie than
+// code-server's `vscode-tkn`. The proxy must recognize it as "session
+// established" too — otherwise it keeps re-injecting `?tkn` on every document
+// nav and then forwards a clean request the Monaco server rejects with 401.
+// (Kept in sync with @edd/editor-monaco's TOKEN_COOKIE.)
+const MONACO_TOKEN_COOKIE = "edd-editor-token";
 
 /**
  * Defence-in-depth: when the editor runs with a connection token, hand the
@@ -58,7 +67,14 @@ export function editorTokenRedirect(
     return undefined;
   }
   if (url.searchParams.has(EDITOR_TOKEN_PARAM)) return undefined; // already has the token
-  if (cookiePresent(req.headers.cookie, EDITOR_TOKEN_COOKIE)) return undefined; // session established
+  // Session established once EITHER editor family has set its token cookie
+  // (code-server's vscode-tkn OR the Monaco server's edd-editor-token).
+  if (
+    cookiePresent(req.headers.cookie, EDITOR_TOKEN_COOKIE) ||
+    cookiePresent(req.headers.cookie, MONACO_TOKEN_COOKIE)
+  ) {
+    return undefined;
+  }
 
   url.searchParams.set(EDITOR_TOKEN_PARAM, deriveWorkspaceToken(secret, wsId));
   // Return a path-absolute URL (the dummy origin is dropped) the browser resolves
@@ -135,9 +151,30 @@ function cookiePresent(cookieHeader: string | undefined, name: string): boolean 
  * connection counts as "user present" (a background tab never rolls its session,
  * so tab-parked workspaces live at most one session length). */
 export type WorkspaceAuthz =
-  | { readonly kind: "allow"; readonly sessionExpiresAtMs: number }
+  | {
+      readonly kind: "allow";
+      readonly sessionExpiresAtMs: number;
+      readonly subject: string;
+      // Whether the workspace is actually usable RIGHT NOW (running + the agent
+      // reports the editor healthy). When false, a browser document nav to `/w/<id>/`
+      // is handed to EDD's status page instead of a not-yet-there editor.
+      readonly ready: boolean;
+      readonly state: string;
+    }
+  // authenticated but denied — `subject` (when known) is the caller for the audit trail
   | { readonly kind: "unauthenticated" } // no/invalid session → redirect to login
-  | { readonly kind: "forbidden" }; // authenticated, not owner/admin, or unknown ws
+  | { readonly kind: "forbidden"; readonly subject?: string; readonly reason: string };
+
+/** True when a request is a top-level browser navigation (the workbench document),
+ * not the editor's own sub-resource/API/WebSocket traffic. Used to decide when to
+ * hand a `/w/<id>/` request to the status page vs. proxy it to the editor. */
+export function isDocumentNavigation(req: {
+  readonly headers: IncomingMessage["headers"];
+}): boolean {
+  const dest = headerValue(req.headers["sec-fetch-dest"]);
+  const accept = headerValue(req.headers.accept) ?? "";
+  return dest === "document" || (dest === undefined && accept.includes("text/html"));
+}
 
 /** The only slice of an incoming request the authorizer reads — the session cookie.
  * A Node {@link IncomingMessage} structurally satisfies this; narrowing the input to
@@ -178,21 +215,50 @@ export async function authorizeWorkspace(
   });
   if (token === null) return { kind: "unauthenticated" };
 
+  const callerSubject = typeof token.uid === "string" ? token.uid : undefined;
   const detail = await (await getControlPlane()).inspect(wsId);
-  if (detail === null) return { kind: "forbidden" }; // unknown ws — don't distinguish
+  if (detail === null) {
+    // Unknown ws — don't distinguish unknown-vs-unowned to the caller, but DO record
+    // it so a "forbidden" on a workspace that actually exists is diagnosable.
+    log.warn("workspace-proxy denied: workspace not found", { wsId, callerSubject });
+    return { kind: "forbidden", subject: callerSubject, reason: "workspace not found" };
+  }
 
+  const callerIsAdmin = token.role === "admin";
   const granted = decideWorkspaceAccessBySubject({
-    callerSubject: typeof token.uid === "string" ? token.uid : undefined,
-    callerIsAdmin: token.role === "admin",
+    callerSubject,
+    callerIsAdmin,
     ownerId: detail.workspace.ownerId,
   });
-  if (!granted) return { kind: "forbidden" };
+  if (!granted) {
+    // The recurring "Forbidden on my own/again" reports had no server-side trace.
+    // Record exactly why the decision failed (never the token itself): who the
+    // caller is, their role, and who owns it — so owner-mismatch (a stale/rewritten
+    // uid) is instantly distinguishable from a non-admin opening someone else's.
+    const reason = `not owner and not admin (role=${
+      typeof token.role === "string" ? token.role : "(none)"
+    }, owner=${detail.workspace.ownerId})`;
+    log.warn("workspace-proxy denied: not owner and not admin", {
+      wsId,
+      callerSubject: callerSubject ?? "(no uid on token)",
+      callerRole: typeof token.role === "string" ? token.role : "(no role)",
+      ownerId: detail.workspace.ownerId,
+    });
+    return { kind: "forbidden", subject: callerSubject, reason };
+  }
   // The JWT's exp (NumericDate, seconds) is when this session stops vouching for a
   // held connection. Auth.js always sets it; if a token somehow lacks one, cap the
   // grant conservatively at the rolling-refresh window rather than forever.
   const sessionExpiresAtMs =
     typeof token.exp === "number" ? token.exp * 1000 : Date.now() + FALLBACK_PRESENCE_GRANT_MS;
-  return { kind: "allow", sessionExpiresAtMs };
+  const ready = detail.workspace.state === "running" && detail.workspace.functional === "ok";
+  return {
+    kind: "allow",
+    sessionExpiresAtMs,
+    subject: callerSubject ?? "(no uid)",
+    ready,
+    state: detail.workspace.state,
+  };
 }
 
 /** The two spectate WebSocket roles (docs/design-public-spectate.md). */

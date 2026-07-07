@@ -4,12 +4,13 @@
 // route's *.integ.ts stays focused on its own assertions (and jscpd stays quiet).
 import { workspace } from "@edd/api-contracts";
 import { CatalogService } from "@edd/control-plane";
-import { baseImage, systemClock } from "@edd/core";
+import { baseImage, systemClock, workspaceId } from "@edd/core";
 import { createDynamoClient, dropTable, dynamodb, ensureTable, makeBaseImageEntity } from "@edd/db";
 import { afterAll, beforeAll, expect } from "vitest";
 
 import { POST as createWorkspace } from "../../app/api/workspaces/route";
 import { DEV_AUTH_ENABLED, DEV_AUTH_ENV, ROLE_HEADER, USER_ID_HEADER } from "../constants";
+import { getControlPlane } from "../control-plane";
 
 const NODE_IMAGE = "golden/node:20";
 
@@ -76,7 +77,15 @@ export function useWorkspaceTable(table: string): void {
   });
 }
 
-/** Create a workspace owned by `owner` via the real create route; returns its id. */
+/**
+ * Create a RUNNING workspace owned by `owner` via the real create route; returns
+ * its id. The create route reserves the record and returns instantly (state
+ * `provisioning`) while the launch runs detached, so this fixture awaits
+ * `launchReserved` to drive it to `running` deterministically before the caller
+ * acts on it — idempotent with the route's own detached launch (whichever binds
+ * the task first wins; the other is a no-op). Without this every lifecycle test
+ * would race the async launch and see a `provisioning` workspace.
+ */
 export async function createWorkspaceFor(owner: string): Promise<string> {
   const res = await createWorkspace(
     new Request(apiBase, {
@@ -86,5 +95,41 @@ export async function createWorkspaceFor(owner: string): Promise<string> {
     }),
   );
   expect(res.status).toBe(201);
-  return workspace.parse(await res.json()).id;
+  const id = workspace.parse(await res.json()).id;
+  // Instant create returns a `provisioning` record while the route launches
+  // compute detached. Drive it to `running` deterministically before returning:
+  // `launchReserved` is idempotent, so this either performs the launch or (if the
+  // route's detached launch already won) returns a no-op success. On the rare
+  // version-race conflict the detached launch is binding the task — confirm the
+  // workspace reaches `running` rather than double-launching. In the sim this is
+  // sub-millisecond; the bound just guards against a hang.
+  const cp = await getControlPlane();
+  const wsId = workspaceId(id);
+  for (let attempt = 0; attempt < 50; attempt += 1) {
+    const current = await cp.get(wsId);
+    if (current?.state === "running") return id;
+    await cp.launchReserved(wsId);
+  }
+  throw new Error(`workspace ${id} did not reach running within the launch budget`);
+}
+
+/**
+ * Drive a workspace to the `stopped` state via the stop route. Manual stop is now
+ * async (route → `stopping`, a detached converge finishes it after a grace), so
+ * this awaits the converge deterministically (finishStop with no grace) — tests
+ * that need a stopped fixture stay fast and race-free.
+ */
+export async function stopWorkspaceFor(id: string, actor?: string): Promise<void> {
+  // Drive the workspace to `stopped` via the control plane DIRECTLY (like
+  // createWorkspaceFor drives the launch) — a fixture must not go through the
+  // owner-scoped stop route (it isn't the owner → 403). Manual stop is async
+  // (running/idle → `stopping`), so request-then-finish; tolerate a workspace the
+  // caller already moved to `stopping` via the route (skip the request, just finish).
+  const cp = await getControlPlane();
+  const wsid = workspaceId(id);
+  const current = await cp.get(wsid);
+  if (current?.state === "running" || current?.state === "idle") {
+    expect((await cp.requestStop(wsid, actor)).ok).toBe(true);
+  }
+  expect((await cp.finishStop(wsid, { ignoreGrace: true })).ok).toBe(true);
 }
