@@ -30,7 +30,7 @@ resource "aws_lb_target_group" "control_plane" {
     matcher             = "200"
     healthy_threshold   = 2
     unhealthy_threshold = 3
-    interval            = 30
+    interval            = 10
     timeout             = 5
   }
 

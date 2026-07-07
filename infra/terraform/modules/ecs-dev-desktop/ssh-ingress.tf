@@ -103,7 +103,7 @@ resource "aws_lb_target_group" "ssh_gateway" {
     protocol            = "TCP"
     healthy_threshold   = 2
     unhealthy_threshold = 2
-    interval            = 30
+    interval            = 10
   }
 
   tags = local.tags
@@ -189,6 +189,9 @@ resource "aws_ecs_service" "ssh_gateway" {
     container_name   = "ssh-gateway"
     container_port   = local.workspace_ssh_port
   }
+
+  deployment_minimum_healthy_percent = 100
+  deployment_maximum_percent         = 200
 
   deployment_circuit_breaker {
     enable   = true

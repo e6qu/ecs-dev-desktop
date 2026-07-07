@@ -36,7 +36,16 @@ echo "=== Terraform: provider lock on latest ==="
 if command -v terraform >/dev/null 2>&1; then
   if (
     cd -- infra/terraform || exit 1
-    terraform init -backend=false -upgrade -input=false >/dev/null
+    init_log=$(mktemp "${TMPDIR:-/tmp}/edd-terraform-init.XXXXXX")
+    trap 'rm -f "$init_log"' EXIT HUP INT TERM
+    if ! terraform init -backend=false -upgrade -input=false -no-color >"$init_log" 2>&1; then
+      cat "$init_log"
+      exit 1
+    fi
+    if grep -q '^Error:' "$init_log"; then
+      cat "$init_log"
+      exit 1
+    fi
     if [ -f .terraform.lock.hcl ] && ! git diff --quiet -- .terraform.lock.hcl; then
       echo "::error::Terraform provider lock is behind latest — commit the updated .terraform.lock.hcl."
       git --no-pager diff -- .terraform.lock.hcl || true
@@ -49,7 +58,8 @@ if command -v terraform >/dev/null 2>&1; then
     fail=1
   fi
 else
-  echo "terraform not installed; skipping provider freshness."
+  echo "::error::terraform not installed; cannot check provider freshness."
+  fail=1
 fi
 
 exit "$fail"

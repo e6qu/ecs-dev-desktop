@@ -53,21 +53,21 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **Recover the production deploy/state path.** The 2026-07-07 live check after
-  PR #201 found `app.edd.e6qu.dev` healthy but still running control-plane/SSH
-  image tag `2d231f5`. CI had successfully published
-  `edd-prod/control-plane:992b22cc3349` and `edd-prod/ssh-gateway:992b22cc3349`,
-  and the EDD-owned CodeBuild path had successfully published
-  `edd-prod/golden/omnibus:992b22cc3349`; ECS did not roll because the `release`
-  workflow still stopped after publishing. The follow-up branch
-  `fix/release-rolls-ecs` added a no-fallback ECS/Scheduler rollout step and
-  expanded the GitHub OIDC release role policy accordingly. Finish this path by
-  merging that branch, rerunning `scripts/bootstrap-release-oidc.sh` for
-  `edd-prod` so the release role receives the deploy permissions, rerunning or
-  waiting for the `release` workflow to register fresh task definitions and roll
-  ECS, then verifying that production runs the new tag and that the queued
-  image-source trigger reconciles the successful CodeBuild result. The expected
-  remote state object was still absent and still needed migration to
+- **Watch this PR's rollout and golden-image convergence after merge.** The PR
+  #202 deploy path was recovered and production ran task definitions
+  `edd-prod-control-plane:27`, `edd-prod-reconciler:27`, and
+  `edd-prod-ssh-gateway:27` for tag `881c88c504e3`. This branch moved workspace
+  golden image publishing out of the EDD app and into the separate
+  `golden-images` GitHub Actions workflow on `main`/manual dispatch, while the
+  EDD app tracked source observations, verified ECR tag presence, and rolled the
+  catalog. After this branch merges, watch both the non-blocking `release`
+  workflow and the separate `golden-images` workflow, then verify
+  `/admin/images`, the image-source trigger rows, and the base-image catalog row
+  converge to the new golden tag without app-started CodeBuild. The production
+  bootstrap was already rerun with `EDD_RELEASE_GOLDEN_VARIANTS=omnibus`, so the
+  GitHub OIDC role and repo variables were ready for the new workflow. The
+  expected remote Terraform state object was still absent and still needed
+  migration to
   `s3://edd-tfstate-edd-prod/ecs-dev-desktop/edd-prod/terraform.tfstate`.
 - **Clear or resolve the two active production alarms after rollout.**
   `edd-prod-reconciler-dlq` still had old Scheduler failures for inactive task

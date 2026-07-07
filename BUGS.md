@@ -4,10 +4,35 @@
 
 ## Open
 
+- **Production golden catalog rollout raced concurrent trigger reconciliation —
+  FIXED in current branch (2026-07-08).** The PR #202 rollout succeeded and ECR
+  contained `edd-prod/golden/omnibus:881c88c504e3`, but DynamoDB still showed the
+  base-image catalog at `omnibus:89c3cdee68d1`. The latest production trigger
+  `f56ddf9e-b9d3-4a7b-b7ec-4c6899d1130d` was `failed` with
+  `catalog rollout failed: rollout of edd-prod/golden/omnibus lost a concurrent update`.
+  The root cause was in EDD app code, not sockerless: `reconcileRecentBuilds`
+  processed multiple successful golden triggers concurrently, and each tried to
+  roll the same catalog row through CAS. Older successful triggers could win the
+  catalog update while newer triggers were marked failed permanently. The branch
+  changed reconciliation so only the newest successful golden trigger may roll the
+  catalog, older successful tags are marked superseded, and catalog-rollout
+  failures are retried. The new post-merge golden flow also stopped starting
+  workspace-image CodeBuild runs from the app; GitHub Actions publishes golden
+  images asynchronously, and the app observes ECR tag presence before rolling
+  catalog state.
+
+- **`pnpm check-deps` masked Terraform provider lookup errors — FIXED in current
+  branch (2026-07-08).** While verifying the release changes, `pnpm check-deps`
+  printed a Terraform registry lookup error but still reported Terraform providers
+  as current. The script now captures `terraform init -backend=false -upgrade`
+  output, fails if the command exits non-zero or prints a Terraform `Error:`, and
+  fails loudly when `terraform` is missing instead of skipping that gate.
+
 - **Production release published images but did not roll ECS services (2026-07-07) —
-  FIXED in follow-up branch.** Live ECS still ran `edd-prod-control-plane:26` and
-  `edd-prod-ssh-gateway:26` with image tag `2d231f5` after `main` had advanced
-  through PR #201 merge commit `992b22cc334937956c2309ef0fd09de6c1235527`.
+  FIXED and verified after PR #202.** Live ECS still ran
+  `edd-prod-control-plane:26` and `edd-prod-ssh-gateway:26` with image tag
+  `2d231f5` after `main` had advanced through PR #201 merge commit
+  `992b22cc334937956c2309ef0fd09de6c1235527`.
   `/api/healthz`, `/api/readyz`, ALB targets, SSH NLB targets, and login rendering
   were healthy, and both image-build paths worked: GitHub Actions release run
   `28898272647` pushed `edd-prod/control-plane:992b22cc3349` plus
@@ -19,17 +44,19 @@
   was not deployed. The follow-up branch added `scripts/deploy-release-images.sh`,
   called it from `release.yml`, and expanded the release OIDC policy to the exact
   ECR/ECS/Scheduler/`iam:PassRole` surface required. No fallback deploy path was
-  added.
+  added. After PR #202 merged, the release workflow registered task definitions
+  `edd-prod-control-plane:27`, `edd-prod-reconciler:27`, and
+  `edd-prod-ssh-gateway:27`, updated the ECS services, and retargeted Scheduler.
 
 - **Production image-source trigger still showed `queued` after successful
-  CodeBuild because the fixed reconciler was not deployed (2026-07-07).** DynamoDB
-  `imageSource` row `github-main` had `lastObservedSha` and `lastHandledSha` equal
-  to `992b22cc334937956c2309ef0fd09de6c1235527`, but trigger
+  CodeBuild because the fixed reconciler was not deployed (2026-07-07) —
+  SUPERSEDED by the catalog-race finding above.** DynamoDB `imageSource` row
+  `github-main` had `lastObservedSha` and `lastHandledSha` equal to
+  `992b22cc334937956c2309ef0fd09de6c1235527`, but trigger
   `0ca8ebcf-d392-4331-a1d3-49f4d6324d41` still had `status=queued` even though its
-  CodeBuild build succeeded. This was expected evidence of the stale production
-  task image above; after the release-roll branch is merged and deployed, the
-  long-lived image-source reconcile sweep should observe that build result and
-  update the visible trigger/catalog state.
+  CodeBuild build succeeded. After PR #202 deployed the long-lived sweep,
+  production no longer stayed queued; instead, successful golden triggers failed
+  loudly with the catalog CAS race described above.
 
 - **Production operational alarms remained active after the release inspection
   (2026-07-07).** `edd-prod-reconciler-dlq` was ALARM because the DLQ contained old
