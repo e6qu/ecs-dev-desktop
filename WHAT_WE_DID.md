@@ -2983,3 +2983,24 @@ install/uninstall scripts. Verification passed with disposable Debian/Node
 package-install reproductions, a clean SSH proxy Docker build, actionlint,
 Terraform fmt/init/validate, dependency/dead-code/CPD gates, the full shell sweep,
 `pnpm lint`, `pnpm build`, and `pnpm test`.
+
+**2026-07-07 — Checked the live production service and fixed the release/verify
+fail-loud gaps found there.** `app.edd.e6qu.dev` was reachable and healthy:
+`/api/healthz` and `/api/readyz` returned 200, the ALB and SSH NLB target groups
+were healthy, wildcard SSH DNS accepted TCP on port 22, the login page rendered,
+and the GitHub image webhook surface rejected non-POST/non-JSON traffic at WAF and
+bad signatures in the app with 401. The service was not current: ECS still ran
+control-plane/SSH tag `2d231f5` after PRs #198/#199 had merged, while the app-owned
+golden image flow had built and pushed `omnibus:7fee654aaa67` and
+`omnibus:89c3cdee68d1` but left both trigger rows `queued` and the catalog on
+`omnibus:2d231f50fad8`. The release workflow had no GitHub release variables or
+secrets configured and no post-merge control-plane image tags existed in ECR. The
+Terraform state bucket existed but had no expected remote state object; the live
+state was only in ignored local files. The follow-up branch made the release
+workflow run on main pushes, publish only web/control-plane images with
+`EDD_BUILD_TARGET=web`, and fail loudly when release variables were missing. It
+also made `scripts/install.sh --verify` check the exact S3 state object and fail
+loudly instead of verifying local state or prompting for a backend migration in
+read-only mode. The dependency gate found age-eligible AWS SDK drift to
+`3.1080.0`, so the branch refreshed the affected package manifests and lockfile
+instead of carrying a stale dependency set.

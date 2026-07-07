@@ -53,6 +53,20 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
+- **Recover the production release/deploy path.** The 2026-07-07 live check found
+  `app.edd.e6qu.dev` healthy but still running control-plane/SSH image tag
+  `2d231f5` after PRs #198 and #199 had merged. The app-owned golden image flow
+  built `omnibus:7fee654aaa67` and `omnibus:89c3cdee68d1`, but both trigger rows
+  stayed `queued` and the catalog stayed on `omnibus:2d231f50fad8` because the
+  PR #198 reconcile sweep was not deployed. The release workflow also had no
+  configured GitHub variables/secrets and had not produced post-merge
+  control-plane images, and the expected S3 Terraform state object was absent.
+  Finish this branch by opening the PR, merging it, configuring the GitHub OIDC
+  release role/vars, migrating the local production Terraform state to
+  `s3://edd-tfstate-edd-prod/ecs-dev-desktop/edd-prod/terraform.tfstate`, rolling
+  the control-plane tag past `2d231f5`, and re-checking that the existing queued
+  image-source triggers reconcile and roll the catalog to the latest successful
+  golden tag.
 - **Wire real vendor agent harnesses for `claude`/`codex` workspace modes.** The
   runtime now fails loudly for these modes until the vendor harnesses are wired,
   because serving Monaco under those product names hid the wrong UX. Target:
@@ -62,16 +76,6 @@ deferral by choice.
   OpenAI Codex local web UI/app-server harness with a protected local transport
   and exposes/links the first-party Codex client protocol. Keep OpenVSCode and
   Monaco as the other two workspace interface types.
-- **Merge and deploy the image-source reconcile fix.** PR #197 was deployed and
-  the first tracked golden build succeeded, but live rollout exposed that
-  reconciliation was tied to admin image-source reads and the seeded catalog row
-  lacked the required CAS `version`. Production data was corrected and the catalog
-  was rolled to `omnibus:2d231f50fad8`. The follow-up code fixed this by adding a
-  long-lived control-plane reconcile sweep, making Terraform seed catalog rows with
-  `version = 0`, rejecting malformed catalog rows loudly, and pinning the merged
-  sockerless DynamoDB read-snapshot fix from `e6qu/sockerless#778`. After
-  merge, roll the control-plane tag and verify `/admin/images` shows future
-  successful source builds without an admin page needing to be open.
 - **Spectate cross-replica relay** — v1's relay is per-replica (the spectator
   client retries until it lands on the publisher's replica; works, but retry
   count grows with replica count). Follow-up: an internal replica-to-replica

@@ -4,8 +4,41 @@
 
 ## Open
 
+- **Production was healthy but stale after PR #198/#199 merges (2026-07-07).**
+  Live ECS still ran `edd-prod-control-plane:26` and `edd-prod-ssh-gateway:26`
+  with image tag `2d231f5` after `main` had advanced to
+  `89c3cdee68d125f967d5d4522e928e1eebda3393`. `/api/healthz`, `/api/readyz`,
+  ALB targets, SSH NLB targets, and login rendering were healthy, but the code
+  that fixed image-source reconciliation was not deployed. ECR contained the
+  app-built golden tags `7fee654aaa67` and `89c3cdee68d1`, while DynamoDB still
+  had both corresponding image-source trigger rows at `queued` and the catalog
+  row still pointed at `omnibus:2d231f50fad8`. Root evidence: CodeBuild builds
+  `31675ecd-ac2e-473d-970c-81a0a0133f05` and
+  `9d8b188c-1fb9-45f1-9a3c-e8f16585e986` succeeded; no catalog rollout followed.
+
+- **Control-plane release publishing was not configured and skipped instead of
+  failing loudly (2026-07-07).** The `release` workflow was tag/manual-only and
+  carried `if: vars.RELEASE_AWS_ROLE_ARN != ''`; `gh variable list` and
+  `gh secret list` returned no configured repo variables/secrets, and ECR had no
+  control-plane tags for PR #198/#199. The current branch changed release
+  publishing to run on main pushes, publish web images only with
+  `EDD_BUILD_TARGET=web`, keep workspace/golden images under the EDD app-owned
+  webhook flow, and remove the skip guard so missing release configuration fails
+  visibly.
+
+- **Production Terraform state was local-only, so `install --verify` could not
+  verify the deployed stack (2026-07-07).** The state bucket
+  `edd-tfstate-edd-prod` existed, but `aws s3api list-objects-v2` returned no
+  objects and `head-object` for
+  `ecs-dev-desktop/edd-prod/terraform.tfstate` returned 404. Matching live
+  outputs existed only in ignored local files under
+  `infra/terraform/examples/complete/`. The current branch made
+  `scripts/install.sh --verify` check the exact remote state object and fail
+  loudly when absent, refusing to verify from local state or migrate state during
+  a read-only verify run.
+
 - **Image-source build reconciliation initially depended on an admin page read —
-  FIXED in follow-up branch (2026-07-07).** The PR #197 source-sync path started
+  FIXED in PR #198 but not yet deployed to production (2026-07-07).** The PR #197 source-sync path started
   golden CodeBuild runs from signed webhooks and exposed trigger state in
   `/admin/images`, but build-result reconciliation only ran inside
   `GET /api/admin/image-source`. A successful golden build therefore stayed
@@ -14,7 +47,7 @@
   startup + periodic sweep; missing source-sync coordinates fail startup loudly.
 
 - **Terraform-seeded base-image catalog row lacked CAS `version` — FIXED in
-  follow-up branch (2026-07-07).** Catalog CAS correctly required a numeric
+  PR #198 but not yet deployed to production (2026-07-07).** Catalog CAS correctly required a numeric
   version, but `catalog-seed.tf` created the initial DynamoDB item without one.
   The first live source-triggered catalog rollout failed loudly with ElectroDB's
   `Special numeric value NaN is not allowed`. No compatibility fallback was added:
