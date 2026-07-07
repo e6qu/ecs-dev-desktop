@@ -16,15 +16,22 @@
   `31675ecd-ac2e-473d-970c-81a0a0133f05` and
   `9d8b188c-1fb9-45f1-9a3c-e8f16585e986` succeeded; no catalog rollout followed.
 
-- **Control-plane release publishing was not configured and skipped instead of
-  failing loudly (2026-07-07).** The `release` workflow was tag/manual-only and
-  carried `if: vars.RELEASE_AWS_ROLE_ARN != ''`; `gh variable list` and
-  `gh secret list` returned no configured repo variables/secrets, and ECR had no
-  control-plane tags for PR #198/#199. The current branch changed release
-  publishing to run on main pushes, publish web images only with
+- **Control-plane release publishing skipped instead of failing loudly — FIXED
+  in PR #200 plus the release-bootstrap follow-up (2026-07-07).** The `release`
+  workflow was tag/manual-only and carried `if: vars.RELEASE_AWS_ROLE_ARN != ''`;
+  `gh variable list` and `gh secret list` returned no configured repo
+  variables/secrets, and ECR had no control-plane tags for PR #198/#199. PR #200
+  changed release publishing to run on main pushes, publish web images only with
   `EDD_BUILD_TARGET=web`, keep workspace/golden images under the EDD app-owned
-  webhook flow, and remove the skip guard so missing release configuration fails
-  visibly.
+  webhook flow, and remove the skip guard so missing release configuration failed
+  visibly. The follow-up branch added the AWS bootstrap script/docs, required
+  explicit non-secret GitHub coordinate variables with no region/account
+  fallback, updated age-eligible action pins, and configured the real AWS OIDC
+  provider/role. The rerun for PR #200 merge commit
+  `2c5fe20b99a675a19eb35ee937e4033f79942489` succeeded and pushed
+  `edd-prod/control-plane:2c5fe20b99a6` plus
+  `edd-prod/ssh-gateway:2c5fe20b99a6`. No static secrets were stored in GitHub
+  variables or secrets.
 
 - **Production Terraform state was local-only, so `install --verify` could not
   verify the deployed stack (2026-07-07).** The state bucket
@@ -166,6 +173,16 @@
   which is noisier and more environment-sensitive than needed for loopback-only
   assertions. They now bind `127.0.0.1` explicitly and the terminal test cleans its
   temp root after each run. `pnpm --dir services/editor-monaco test` passed.
+
+- **editor-monaco loopback bind failures surfaced as hook timeouts — FIXED in
+  release-bootstrap follow-up (2026-07-07).** A full `pnpm test` run in the
+  sandbox reproduced `listen EPERM: operation not permitted 127.0.0.1`, but the
+  server and terminal tests reported that real bind error as 10-second
+  `beforeEach` hook timeouts plus unhandled exceptions. The tests now use a
+  shared helper that installs an explicit `error` listener before `listen`,
+  resolves only after the server is actually listening, and closes only initialized
+  servers. Focused `pnpm --dir services/editor-monaco test` and full `pnpm test`
+  passed with loopback permission.
 
 - **Cost model doesn't price the undelete window or restored sessions** (2026-07-06).
   Deleted workspaces now keep a retained snapshot for the 7-day undelete window —

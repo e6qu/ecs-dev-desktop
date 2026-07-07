@@ -11,6 +11,7 @@ import { WebSocket } from "ws";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createEditorServer } from "./server";
+import { closeServer, listenOnLoopback } from "./test-server";
 import { parseMessage } from "./terminal";
 
 describe("parseMessage", () => {
@@ -30,7 +31,7 @@ describe("parseMessage", () => {
 });
 
 describe("terminal websocket gate", () => {
-  let server: Server;
+  let server: Server | undefined;
   let port: number;
   let root: string;
   let spaDir: string;
@@ -39,20 +40,12 @@ describe("terminal websocket gate", () => {
     root = await fs.mkdtemp(path.join(os.tmpdir(), "edd-term-"));
     spaDir = await fs.mkdtemp(path.join(os.tmpdir(), "edd-spa-"));
     server = createEditorServer({ root, spaDir, basePath: "/w/ws-term/", token: "tok-secret" });
-    await new Promise<void>((resolve) => {
-      server.listen(0, "127.0.0.1", resolve);
-    });
-    const addr = server.address();
-    if (addr === null || typeof addr === "string") throw new Error("no port");
-    port = addr.port;
+    port = await listenOnLoopback(server);
   });
 
   afterEach(async () => {
-    await new Promise<void>((resolve) => {
-      server.close(() => {
-        resolve();
-      });
-    });
+    await closeServer(server);
+    server = undefined;
     await fs.rm(root, { recursive: true, force: true });
     await fs.rm(spaDir, { recursive: true, force: true });
   });
@@ -61,6 +54,9 @@ describe("terminal websocket gate", () => {
     const ws = new WebSocket(`ws://127.0.0.1:${String(port)}/w/ws-term/terminal`);
     const rejected = await new Promise<boolean>((resolve) => {
       ws.on("error", () => {
+        resolve(true);
+      });
+      ws.on("close", () => {
         resolve(true);
       });
       ws.on("open", () => {

@@ -214,6 +214,26 @@ Error`, so the portal's existing `e.message` shows it. api-client 4 tests; build
   pinned so terminated tombstones were neither explicit nor scheduled snapshot
   targets.
 
+- **2026-07-07** — **GitHub Actions → AWS release bootstrap shipped.** After PR #200
+  merged, the release workflow failed loudly at AWS authentication because no
+  release OIDC role or GitHub coordinate variables existed. The follow-up branch
+  documented and automated the AWS bootstrap step with
+  `scripts/bootstrap-release-oidc.sh`: it created/updated the GitHub Actions OIDC
+  provider, constrained the release role trust to this repository's `main` branch
+  and `v*` tags, granted only the ECR push/read actions needed for the
+  Terraform-created `control-plane` and `ssh-gateway` repositories, and wrote only
+  non-secret GitHub repo variables. Static secrets were not stored in GitHub
+  variables or secrets. The branch also made the release and `e2e-aws` workflows
+  require explicit coordinates with no default region/account fallback and bumped
+  action pins to age-eligible Node 24 releases. The real `main release` rerun for
+  PR #200 merge commit `2c5fe20b99a675a19eb35ee937e4033f79942489` succeeded and
+  ECR contained `edd-prod/control-plane:2c5fe20b99a6` and
+  `edd-prod/ssh-gateway:2c5fe20b99a6`. During validation, `pnpm check-deps` found
+  age-eligible drift in `@casl/ability` and `turbo`, so both were refreshed and
+  the lockfile was committed. The same sweep fixed editor-monaco's loopback test
+  harness so bind failures rejected immediately instead of timing out with
+  unhandled `listen` errors.
+
 - **2026-06-04** — **Terraform platform module (deploy IaC) + sim-tested.** Wrote a
   reusable, parametric `infra/terraform/modules/ecs-dev-desktop` (Terraform/Terragrunt,
   no `provider` block): VPC/subnets/NAT/SGs, the DynamoDB single-table (matching

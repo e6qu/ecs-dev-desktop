@@ -7,13 +7,14 @@ import * as path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createEditorServer } from "./server";
+import { closeServer, listenOnLoopback } from "./test-server";
 
 const TOKEN = "unit-test-connection-token-not-secret";
 const BASE = "/w/ws-1/";
 
 let root: string;
 let spaDir: string;
-let server: Server;
+let server: Server | undefined;
 let origin: string;
 
 beforeEach(async () => {
@@ -23,20 +24,13 @@ beforeEach(async () => {
   await fs.writeFile(path.join(root, "main.go"), "package main");
 
   server = createEditorServer({ root, spaDir, basePath: BASE, token: TOKEN });
-  await new Promise<void>((resolve) => {
-    server.listen(0, "127.0.0.1", resolve);
-  });
-  const addr = server.address();
-  if (addr === null || typeof addr === "string") throw new Error("no port");
-  origin = `http://127.0.0.1:${String(addr.port)}`;
+  const port = await listenOnLoopback(server);
+  origin = `http://127.0.0.1:${String(port)}`;
 });
 
 afterEach(async () => {
-  await new Promise<void>((resolve) => {
-    server.close(() => {
-      resolve();
-    });
-  });
+  await closeServer(server);
+  server = undefined;
   await fs.rm(root, { recursive: true, force: true });
   await fs.rm(spaDir, { recursive: true, force: true });
 });

@@ -12,7 +12,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@casl/ability": "^7.0.0",
+    "@casl/ability": "^7.0.1",
     "@edd/core": "workspace:*"
   },
   "devDependencies": {
