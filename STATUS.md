@@ -2,18 +2,35 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-06 (live at `https://app.edd.e6qu.dev`, control-plane tag
-`ef86f2c`, golden image `fe7cc2b`). The whole post-launch feature wave (PR #192,
-MERGED earlier today) is deployed: connection-based idle (5-min cooldown),
-per-workspace monitoring, claude/codex agent-first editor modes, 4h rolling sessions,
-7-day undelete (tombstones + reconciler retention purge), and spectate v1 (owner-shared
-read-only mirror, viewer+ only). Since then: **instant workspace create** shipped —
-`reserveWorkspace` returns the pre-generated URL in <1s and the launch runs detached
-(fixes a live 504 where the 123s blocking create outran the ALB's 60s idle timeout);
-the status page shows the URL + a provisioning phase stepper + live boot logs and
-auto-opens the editor on ready. On branch `feat/instant-create-provisioning-ux`
-(deployed as `ef86f2c`), unmerged/no PR yet per the one-PR rule. Remaining: user
-live-testing.)
+**Last updated:** 2026-07-07 (live at `https://app.edd.e6qu.dev`, control-plane tag
+`68851e5`, golden image `omnibus:fafb9fe`). All work below is on branch
+`feat/instant-create-provisioning-ux` (well ahead of the unmerged PR #193; ask before
+opening a new PR). Shipped + live this stretch, on top of the merged post-launch wave:
+
+- **Instant create** — `reserveWorkspace` returns the pre-generated URL in <1s, launch
+  runs detached (fixed the 504 where blocking create outran the ALB 60s timeout).
+- **Fast decoupled deploys** — `EDD_BUILD_TARGET=web` builds the control-plane image
+  only (~3min / ~7min total vs ~22min); `golden` rebuilds workspace images separately.
+- **Images admin console** (`/admin/images`) — per-image size + per-layer breakdown,
+  trigger builds, last-20 build history, live CodeBuild logs (ImageOps port + AWS
+  adapter + fake).
+- **Cancelable `stopping` state** — manual stop → `stopping` (snapshot + scale-to-zero
+  after a grace) with a cancel/resume; converged by an in-process server sweep +
+  reconciler backstop. Fixed several real bugs found by reproducing locally (DynamoDB
+  Local): the DB serializer dropped `stopRequestedAt/By` (broke attribution + grace);
+  `finishStop` could hang on a gone volume (now converges best-effort); `stopping` was
+  missing from the page's transitional states (card froze).
+- **`/w/<id>/` status-page hand-off** — the editor URL is safe in any state
+  (provisioning/stopped/deleted show the status page; running hands off to the editor)
+  — fixes the raw-URL 502/blank.
+- **Editor `unauthorized` fix** — proxy now recognizes the Monaco `edd-editor-token`
+  cookie; proven with an end-to-end handshake regression test.
+- **Access audit + proxy denial diagnostics**, **permanent-delete of terminated
+  workspaces** (type-to-confirm), **"started by" + viewable badge**, editor-type badge,
+  full-page info modal, startup overlay, OpenVSCode File-menu default (golden).
+
+CI on the branch is green (integration/playwright/code-health fixed this stretch).
+Remaining: user live-testing; the real agent web UIs (see `DO_NEXT.md`).
 
 ## Real AWS production deploy — LIVE (2026-07-05/06), still hardening post-launch
 

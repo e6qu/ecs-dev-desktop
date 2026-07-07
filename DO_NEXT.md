@@ -6,6 +6,21 @@
 
 ## Open decisions (need the user)
 
+0. **Real agent web UIs for the `claude`/`codex` editor modes** (2026-07-07). Today
+   claude/codex both run the Monaco editor server with the agent CLI booted in the
+   terminal — the user wants each to be its actual web app. Investigated (evidence, not
+   guesses): the first-party "Claude Code on the web" (claude.com/code) and Codex Web
+   (chatgpt.com/codex) are VENDOR-CLOUD-hosted, not self-hostable in our container.
+   Self-hostable options: **claude-web** (github.com/matalvernaz/claude-web) is MIT but
+   a POOR dependency — 1 star, a Python/FastAPI app that runs a shell, no base-path
+   support (`app = FastAPI()`, static at `/static`) so it needs proxy path-strip +
+   `uvicorn --root-path`; against AGENTS.md §6 (established libs for security).
+   **Recommendation:** build our OWN agent web UI by extending the Monaco editor server
+   we already control (proven base-path + connection-token gate) over the official
+   Claude Agent SDK, and `codex app-server` for Codex; in-session device login, creds
+   persist in the volume. Larger but robust. Awaiting the user's go on build-our-own vs
+   claude-web-with-workarounds.
+
 1. **Heartbeat interval & idle threshold** — scale-to-zero tuning. The knobs
    now exist (`EDD_HEARTBEAT_INTERVAL_S` injected into workspace tasks;
    `EDD_IDLE_THRESHOLD_MS`/`EDD_SNAPSHOT_INTERVAL_MS`/`EDD_EARLY_SNAPSHOT_INTERVAL_MS`/
