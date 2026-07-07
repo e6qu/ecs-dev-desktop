@@ -118,11 +118,46 @@ It publishes:
    authorizer.
 
 For CI-driven publishes, the [`release`](../.github/workflows/release.yml) workflow
-builds + pushes on a `v*` tag (or manual dispatch) via GitHub OIDC → an AWS role
-with ECR push permissions (no static keys). It sets up QEMU and Docker Buildx so
-the default `amd64 arm64` multi-arch build succeeds on GitHub's x86*64 runners.
-It is gated on the `RELEASE_AWS*\*` repo variables (see the workflow header) and
-otherwise skips, so it is inert until the AWS account decision lands.
+builds + pushes on every `main` merge, on a `v*` tag, or by manual dispatch via
+GitHub OIDC → an AWS role with ECR push permissions (no static secrets). It sets up
+QEMU and Docker Buildx so the default `amd64 arm64` multi-arch build succeeds on
+GitHub's x86\*64 runners. The `RELEASE_AWS_ACCOUNT`, `RELEASE_AWS_REGION`,
+`RELEASE_AWS_ROLE_ARN`, and `RELEASE_NAME_PREFIX` repo variables are required
+non-secret coordinates. Do not store static secrets in GitHub variables or
+secrets for this path. When any coordinate is absent, the
+workflow fails before AWS authentication; it does not skip or substitute a default
+account/region.
+
+### Bootstrap GitHub Actions access to AWS
+
+The architecturally correct connection from GitHub Actions to AWS is an AWS
+account bootstrap step:
+
+1. Create the AWS IAM OIDC provider for `https://token.actions.githubusercontent.com`.
+2. Create a narrowly scoped IAM role whose trust policy accepts GitHub OIDC tokens
+   only from this repository's `main` branch and `v*` tags.
+3. Grant that role only the ECR push permissions needed by the release workflow's
+   control-plane and SSH-gateway images.
+4. Store only the non-secret role/account/region/name coordinates as GitHub repo
+   variables. Do not put static secrets in GitHub variables or secrets.
+
+This is intentionally outside the EDD Terraform stack. The release workflow must
+be able to publish deployable control-plane images before EDD exists, so it cannot
+depend on the deployed EDD app or on module-managed runtime resources. Run the
+bootstrap once per AWS account/name-prefix pair:
+
+```sh
+EDD_RELEASE_GITHUB_REPO=e6qu/ecs-dev-desktop \
+EDD_RELEASE_AWS_ACCOUNT=111122223333 \
+EDD_RELEASE_AWS_REGION=eu-west-1 \
+EDD_RELEASE_NAME_PREFIX=edd-prod \
+sh scripts/bootstrap-release-oidc.sh
+```
+
+The script fails if any coordinate is missing or if the AWS caller account does
+not match `EDD_RELEASE_AWS_ACCOUNT`. It updates the OIDC provider thumbprint, the
+release role trust/permission policy, and the GitHub `RELEASE_*` repo variables.
+It never stores static secrets in GitHub.
 
 For the production CodeBuild-backed install path, CI should still own the
 control-plane image build/publish path (the small app image). The EDD control

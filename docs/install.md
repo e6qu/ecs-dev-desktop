@@ -171,16 +171,39 @@ It does **not** delete things you own outside the stack: Route53 hosted zones, I
 app registrations, or the release-workflow IAM OIDC role. The script lists these at
 the end.
 
+## AWS bootstrap outside the EDD stack
+
+Before the `release` workflow can publish control-plane images, bootstrap GitHub
+Actions access to the AWS account:
+
+```sh
+EDD_RELEASE_GITHUB_REPO=e6qu/ecs-dev-desktop \
+EDD_RELEASE_AWS_ACCOUNT=111122223333 \
+EDD_RELEASE_AWS_REGION=eu-west-1 \
+EDD_RELEASE_NAME_PREFIX=edd-prod \
+sh scripts/bootstrap-release-oidc.sh
+```
+
+This creates or updates the account-level GitHub OIDC provider, the
+`<name>-github-release` IAM role, and the GitHub `RELEASE_*` repo variables. Those
+repo variables are non-secret coordinates only; do not store static secrets in
+GitHub variables or secrets for this path. The
+bootstrap is not part of the Terraform module because EDD must be releasable
+before EDD is deployed. The role trust is constrained to this repository's `main`
+branch and `v*` tags, and the permissions are scoped to ECR pushes for the
+control-plane and SSH-gateway repositories.
+
 ## What the scripts are
 
-| Script                                                            | Purpose                                                         |
-| ----------------------------------------------------------------- | --------------------------------------------------------------- |
-| [`scripts/install.sh`](../scripts/install.sh)                     | one-command install (`--verify` re-checks a stack)              |
-| [`scripts/uninstall.sh`](../scripts/uninstall.sh)                 | full teardown, partial-safe (`EDD_PURGE_STATE=1` for state too) |
-| [`scripts/bootstrap-state.sh`](../scripts/bootstrap-state.sh)     | S3 bucket + DynamoDB lock (idempotent)                          |
-| [`scripts/bootstrap-secrets.sh`](../scripts/bootstrap-secrets.sh) | crypto (generated) + IdP secrets in Secrets Manager             |
-| [`scripts/publish-images.sh`](../scripts/publish-images.sh)       | build + push control-plane / golden / gateway images to ECR     |
-| [`release`](../.github/workflows/release.yml) workflow            | CI-driven image publish on a `v*` tag (OIDC → AWS role)         |
+| Script                                                                      | Purpose                                                         |
+| --------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| [`scripts/install.sh`](../scripts/install.sh)                               | one-command install (`--verify` re-checks a stack)              |
+| [`scripts/uninstall.sh`](../scripts/uninstall.sh)                           | full teardown, partial-safe (`EDD_PURGE_STATE=1` for state too) |
+| [`scripts/bootstrap-state.sh`](../scripts/bootstrap-state.sh)               | S3 bucket + DynamoDB lock (idempotent)                          |
+| [`scripts/bootstrap-secrets.sh`](../scripts/bootstrap-secrets.sh)           | crypto (generated) + IdP secrets in Secrets Manager             |
+| [`scripts/bootstrap-release-oidc.sh`](../scripts/bootstrap-release-oidc.sh) | GitHub OIDC release role + release workflow repo variables      |
+| [`scripts/publish-images.sh`](../scripts/publish-images.sh)                 | build + push control-plane / golden / gateway images to ECR     |
+| [`release`](../.github/workflows/release.yml) workflow                      | CI-driven image publish on `main`/`v*`/manual (OIDC → AWS role) |
 
 ## See also
 
