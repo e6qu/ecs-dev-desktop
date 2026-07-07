@@ -17,7 +17,10 @@ export const dynamic = "force-dynamic";
 // While a workspace is mid-transition (just created → provisioning, or deleting), poll the
 // server render so the card advances to its resting state — and the "Open editor" button appears —
 // without the user manually reloading. Stops once nothing is transitional.
-const TRANSITIONAL_STATES = new Set(["provisioning", "deleting"]);
+// `stopping` is transitional too: the cancelable manual stop converges to `stopped`
+// via the server sweep, so the list must keep polling to catch it (else the card
+// freezes at "stopping").
+const TRANSITIONAL_STATES = new Set(["provisioning", "deleting", "stopping"]);
 const TRANSITIONAL_REFRESH_MS = 4000;
 
 export default async function WorkspacesPage({

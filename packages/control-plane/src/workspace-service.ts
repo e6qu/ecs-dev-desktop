@@ -834,14 +834,27 @@ export class WorkspaceService {
       if (elapsedMs < DEFAULT_STOP_GRACE_MS) return ok(undefined);
     }
     const at = isoTimestamp(this.deps.clock.now());
-    const snapped = await this.snapshotBeforeStop(id, found.ws, found.version, at);
-    if (!snapped.ok) return snapped;
+    // Snapshot is BEST-EFFORT here: a `stopping` workspace must ALWAYS be able to
+    // converge to `stopped` (else the cancelable-stop state gets stuck forever — the
+    // exact bug this fixes). If the managed volume has already gone (a compensated
+    // launch, a prior teardown, a mid-flight cancel that raced), converge WITHOUT a
+    // fresh snapshot — markStopped keeps the last one. A genuine storage fault (not
+    // "gone") still propagates; a real version change is caught by the re-read below.
+    let freshSnapshot: { id: SnapshotId; at: IsoTimestamp } | undefined;
+    if (found.ws.volumeId !== undefined) {
+      try {
+        const snap = await this.deps.storage.createSnapshot(found.ws.volumeId);
+        freshSnapshot = { id: snap.id, at };
+      } catch (e) {
+        if (!isResourceGoneError(e)) throw e;
+      }
+    }
     // Re-read: a cancel during the snapshot must abort BEFORE we kill the task.
     const recheck = await this.find(id);
     if (recheck?.ws.state !== "stopping") return ok(undefined);
     const { ws, version } = recheck;
     if (ws.taskId !== undefined) await this.deps.compute.stopTask(ws.taskId);
-    const next = markStopped(ws, snapped.value, at);
+    const next = markStopped(ws, freshSnapshot, at);
     if (!next.ok) return next;
     try {
       await this.persistTransition(next.value, version, {

@@ -351,6 +351,18 @@ describe("WorkspaceService lifecycle ", () => {
     expect(stopped?.workspace.latestSnapshotId).toMatch(/^snap-/); // resume-from data
   });
 
+  it("finishStop honors the grace within the window, then converges past it", async () => {
+    const ws = await service.create({ ownerId: ownerId("gracer"), baseImage: baseImage("img") });
+    expect((await service.requestStop(workspaceId(ws.id), "gracer")).ok).toBe(true);
+    // Same fixed clock (T0) — still inside the 6s grace: finishStop is a no-op.
+    expect((await service.finishStop(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.get(workspaceId(ws.id)))?.state).toBe("stopping");
+    // A service whose clock is T0 + 7s (past DEFAULT_STOP_GRACE_MS): converges.
+    const later = serviceAt("2026-06-01T00:00:07.000Z");
+    expect((await later.finishStop(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.get(workspaceId(ws.id)))?.state).toBe("stopped");
+  });
+
   it("cancelStop resumes a stopping workspace (task never torn down)", async () => {
     const ws = await service.create({ ownerId: ownerId("canceller"), baseImage: baseImage("img") });
     const before = await service.inspect(workspaceId(ws.id));
