@@ -8,8 +8,8 @@ import { findHelp } from "../lib/help-content";
 import { TESTID } from "../lib/testids";
 
 /**
- * A toggleable help panel rendered in the topbar. Shows a circled-i (ⓘ) icon on
- * every page. Clicking it opens a page-specific help section below the toolbar.
+ * A toggleable help overlay rendered from the topbar. Shows a circled-i (ⓘ) icon
+ * on every page. Clicking it opens a page-specific help dialog over the page.
  * Default: closed. The help content is different per route (see help-content.tsx).
  */
 export function HelpToggle() {
@@ -51,24 +51,36 @@ export function HelpToggle() {
       </button>
       {open && (
         <div
-          id="help-panel"
-          className="help-panel"
-          role="region"
-          aria-label="Help for this page"
-          data-testid={TESTID.helpPanel}
+          className="help-overlay"
+          role="presentation"
+          onClick={() => {
+            setOpen(false);
+          }}
         >
-          <button
-            type="button"
-            className="help-panel-close"
-            aria-label="Close help"
-            data-testid={TESTID.helpPanelClose}
-            onClick={() => {
-              setOpen(false);
+          <section
+            id="help-panel"
+            className="help-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Help for this page"
+            data-testid={TESTID.helpPanel}
+            onClick={(e) => {
+              e.stopPropagation();
             }}
           >
-            <span aria-hidden="true">×</span>
-          </button>
-          <div className="help-panel-inner">{content}</div>
+            <button
+              type="button"
+              className="help-panel-close"
+              aria-label="Close help"
+              data-testid={TESTID.helpPanelClose}
+              onClick={() => {
+                setOpen(false);
+              }}
+            >
+              <span aria-hidden="true">×</span>
+            </button>
+            <div className="help-panel-inner">{content}</div>
+          </section>
         </div>
       )}
     </>

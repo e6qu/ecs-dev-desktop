@@ -92,6 +92,21 @@
   plus `corepack enable`, so CI consumes the repo-pinned `packageManager`
   (`pnpm@10.33.3`) without the pnpm action self-installer.
 
+- **Circle-`i` infoboxes broke layout by rendering inside page/card flow —
+  FIXED in follow-up branch (2026-07-07).** The topbar help panel used a sticky
+  in-page block and workspace details had bespoke inline modal sizing, which made
+  narrow content and layout shifts likely. Both controls now render fixed
+  page-overlays with shared sizing/scroll behavior; Playwright asserted that page
+  help opened without changing document height and that both help/workspace-info
+  overlays were fixed-position.
+
+- **Deleted workspaces must not be snapshotted further — PINNED in follow-up
+  branch (2026-07-07).** The control-plane snapshot path already rejected non-live
+  states, and the reconciler snapshot candidate scan only considered
+  `running`/`idle`; the branch added explicit regressions so a `terminated`
+  tombstone snapshot call returned conflict without creating a new snapshot, and
+  scheduled snapshot reconciliation scanned zero terminated candidates.
+
 - **Dev-auth used a shared password fallback — FIXED in follow-up branch
   (2026-07-07).** `matchDevUser` previously accepted per-account password or
   shared `EDD_DEV_PASSWORD`/default `dev`. That hid missing per-user passwords.

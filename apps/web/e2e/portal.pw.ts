@@ -60,6 +60,30 @@ test("legacy catalog route redirects into the admin console", async ({ page, con
   await expect(page.getByRole("heading", { name: "Base images" })).toBeVisible();
 });
 
+test("page help opens as an overlay without changing document layout", async ({
+  page,
+  context,
+}) => {
+  await loginAs(context, "alice", "member");
+  await page.goto("/workspaces");
+
+  const before = await page.evaluate(() => document.documentElement.scrollHeight);
+  await page.locator(sel(TESTID.helpToggle)).click();
+  const panel = page.locator(sel(TESTID.helpPanel));
+  await expect(panel).toBeVisible();
+  await expect(panel).toHaveJSProperty("tagName", "SECTION");
+  await expect
+    .poll(async () =>
+      panel.evaluate((el) => {
+        const overlay = el.parentElement;
+        return overlay === null ? "" : getComputedStyle(overlay).position;
+      }),
+    )
+    .toBe("fixed");
+  const after = await page.evaluate(() => document.documentElement.scrollHeight);
+  expect(after).toBeLessThanOrEqual(before + 1);
+});
+
 test("member chooses a session environment from the metadata picker", async ({ page, context }) => {
   await loginAs(context, "alice", "member");
   await page.goto("/sessions/new");
@@ -103,6 +127,20 @@ test("member creates, stops, and deletes a workspace from the catalog", async ({
   const card = page.locator(sel(TESTID.workspaceCard, { "data-image": NODE_IMAGE })).first();
   await expect(card).toBeVisible();
   await expect(card).toHaveAttribute("data-status", "running");
+
+  await card.locator(sel(TESTID.workspaceInfoToggle)).click();
+  const infoPanel = page.locator(sel(TESTID.workspaceInfoPanel));
+  await expect(infoPanel).toBeVisible();
+  await expect
+    .poll(async () =>
+      infoPanel.evaluate((el) => {
+        const overlay = el.parentElement;
+        return overlay === null ? "" : getComputedStyle(overlay).position;
+      }),
+    )
+    .toBe("fixed");
+  await page.locator(sel(TESTID.workspaceInfoClose)).click();
+  await expect(infoPanel).toBeHidden();
 
   // Stop, then delete it. Manual stop is now cancelable: the card first moves to
   // `stopping` (the session keeps running through a short grace), and a detached

@@ -209,7 +209,10 @@ Error`, so the portal's existing `e.message` shows it. api-client 4 tests; build
   so loopback bind failures failed immediately and teardown stayed safe. The live
   Playwright e2e harness was then fixed with the same explicit image-source
   coordinates, and its browser lifecycle passed locally against the container-mode
-  simulator.
+  simulator. Circle-`i` help/details panels were moved to fixed overlays so they
+  no longer altered page/card layout, and deleted-workspace snapshot behavior was
+  pinned so terminated tombstones were neither explicit nor scheduled snapshot
+  targets.
 
 - **2026-06-04** — **Terraform platform module (deploy IaC) + sim-tested.** Wrote a
   reusable, parametric `infra/terraform/modules/ecs-dev-desktop` (Terraform/Terragrunt,

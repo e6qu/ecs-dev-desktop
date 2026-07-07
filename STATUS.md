@@ -95,6 +95,14 @@ The dependency gate also found age-eligible drift in `typescript-eslint`
 (`8.62.1` to `8.63.0`), so the root devDependency and lockfile were refreshed and
 `pnpm check-deps` passed.
 
+The same PR then fixed the circle-`i` layout problem: topbar help and workspace
+details now open in fixed page overlays instead of inserting narrow panels into
+page/card flow, and focused Playwright coverage asserted that opening help did
+not change document layout while both overlay parents were fixed-position. The
+snapshot policy was also pinned for deleted workspaces: explicit snapshot calls
+against `terminated` tombstones returned conflict without creating a new snapshot,
+and the reconciler scheduled zero snapshot candidates for terminated workspaces.
+
 Shipped in this follow-up branch:
 
 - **Workspace image source sync completed the rollout loop.** The EDD-owned GitHub
