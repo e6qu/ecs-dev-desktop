@@ -28,6 +28,16 @@
   output, fails if the command exits non-zero or prints a Terraform `Error:`, and
   fails loudly when `terraform` is missing instead of skipping that gate.
 
+- **PR #203 `terraform-sim` CI asserted the old ALB health-check interval —
+  FIXED in current branch (2026-07-08).** The first PR #203 CI run failed in
+  `terraform-sim` with `FAIL  ALB target group health check interval 30: expected
+[30] got [10]`. The implementation had intentionally reduced ALB/NLB target
+  health checks to 10 seconds for faster no-downtime deploy convergence; the CI
+  assertion was stale, not the module behavior. The branch updated the inline CI
+  assertion to expect `10` and corrected the stale adversarial-slice comment. The
+  rerun on head `1aa4a6c7c616195d1c797dfa3646e58b7fe7cb49` passed all PR checks,
+  including `terraform-sim` and `validate golden images`.
+
 - **Production release published images but did not roll ECS services (2026-07-07) —
   FIXED and verified after PR #202.** Live ECS still ran
   `edd-prod-control-plane:26` and `edd-prod-ssh-gateway:26` with image tag

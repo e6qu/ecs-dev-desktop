@@ -269,6 +269,12 @@ Error`, so the portal's existing `e.message` shows it. api-client 4 tests; build
   lifecycle, data fidelity, OpenVSCode, Monaco, SSH wake, ECS Exec, reconciler,
   and workspace-toolchain checks; the per-variant image e2e file skipped locally
   because the dedicated `golden-images` workflow built and tested those images.
+  The first PR #203 CI run exposed one stale assertion in `terraform-sim`: the
+  workflow still expected ALB target-group health checks every 30 seconds after
+  the branch intentionally changed the module default to 10 seconds. The assertion
+  and a stale adversarial-slice comment were corrected, and the rerun on head
+  `1aa4a6c7c616195d1c797dfa3646e58b7fe7cb49` passed all PR checks; GitHub reported
+  merge state `CLEAN`.
 
 - **2026-06-04** — **Terraform platform module (deploy IaC) + sim-tested.** Wrote a
   reusable, parametric `infra/terraform/modules/ecs-dev-desktop` (Terraform/Terragrunt,

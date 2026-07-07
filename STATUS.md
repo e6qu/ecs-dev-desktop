@@ -60,6 +60,17 @@ SSH wake, ECS Exec, reconciler scheduling, and workspace toolchain suites; the
 variant-image suite skipped because those images are built and tested by the
 dedicated `golden-images` workflow.
 
+PR #203 CI then failed once in `terraform-sim` because the inline workflow
+assertion still expected the ALB target-group health-check interval to be `30`
+after the branch intentionally changed ALB/NLB health checks to `10` seconds.
+The branch updated the CI assertion and the stale adversarial-slice comment;
+the rerun on head `1aa4a6c7c616195d1c797dfa3646e58b7fe7cb49` passed with
+GitHub reporting merge state `CLEAN`. The green checks included `branch-current`,
+`build-test`, `check-deps`, `code-health`, `integration`, `e2e`, `e2e-https`,
+`playwright`, `terraform`, `terraform-sim`, both `shellcheck` jobs, `sast`,
+`vuln-scan`, and `validate golden images`; PR-only publish jobs were skipped as
+intended.
+
 Earlier 2026-07-07 release-inspection notes remain below for history.
 
 The live app itself was healthy but stale. `https://app.edd.e6qu.dev/api/healthz`
