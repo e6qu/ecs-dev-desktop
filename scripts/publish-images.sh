@@ -5,7 +5,7 @@
 # Terraform module creates. Run AFTER the first `terraform apply` (the repos must
 # exist); feed it the repository URLs from the module outputs. Closes the
 # two-phase-apply friction: the module stands up infra, this pushes the images,
-# then a re-apply (or `aws ecs update-service --force-new-deployment`) rolls them.
+# then Terraform or scripts/deploy-release-images.sh rolls them.
 #
 #   scripts/publish-images.sh <account-id> <region> <name-prefix> <tag> [variant...]
 #
@@ -206,8 +206,5 @@ fi
 cat <<EOF
 
 edd: images published to ${registry}. To roll the running services:
-     aws ecs update-service --cluster ${prefix}-workspaces \
-       --service ${prefix}-control-plane --force-new-deployment
-     (the reconciler picks up the new image on its next scheduled invocation;
-      the SSH gateway service is ${prefix}-ssh-gateway when SSH ingress is on)
+     sh scripts/deploy-release-images.sh ${account} ${region} ${prefix} ${tag}
 EOF

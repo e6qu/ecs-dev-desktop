@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Release pipeline: build and publish the platform's deployable app images to ECR.
+# Release pipeline: build, publish, and deploy the platform's app images.
 # Triggered by every main merge, by a version tag (`v*`), or manually. Uses GitHub OIDC -> an
-# AWS role with ECR push permissions (no static keys), exactly like the e2e-aws
+# AWS role with ECR/ECS/Scheduler permissions (no static keys), exactly like the e2e-aws
 # tier. The Terraform module must have been applied first (it creates the ECR
 # repositories); this closes the two-phase-apply friction documented in
 # docs/deploying.md.
@@ -15,7 +15,7 @@
 # Do not store static secrets in GitHub variables or secrets for this workflow.
 # Authentication is OIDC -> STS short-lived credentials.
 #
-# What it publishes (see scripts/publish-images.sh with EDD_BUILD_TARGET=web):
+# What it publishes and rolls (see scripts/publish-images.sh with EDD_BUILD_TARGET=web):
 #   <prefix>/control-plane:<tag>     Next.js app (also the reconciler image)
 #   <prefix>/control-plane:<tag>-amd64   amd64 image
 #   <prefix>/control-plane:<tag>-arm64   arm64 image
@@ -26,6 +26,9 @@
 # image-source webhook flow, not by this release workflow. The tag without the
 # suffix is a multi-arch manifest; the suffixed tags are the per-arch images for
 # runners (e.g. Lambda) that cannot consume manifests.
+# After publish, scripts/deploy-release-images.sh registers fresh task-definition
+# revisions for the control plane, reconciler, and SSH gateway, updates the ECS
+# services and reconciler Scheduler target, then waits for ECS service stability.
 name: release
 
 on:
@@ -105,6 +108,14 @@ jobs:
       - name: Build & push images
         run: |
           sh scripts/publish-images.sh \
+            "$RELEASE_AWS_ACCOUNT" \
+            "$RELEASE_AWS_REGION" \
+            "$RELEASE_NAME_PREFIX" \
+            "${TAG:0:12}"
+
+      - name: Deploy ECS services
+        run: |
+          sh scripts/deploy-release-images.sh \
             "$RELEASE_AWS_ACCOUNT" \
             "$RELEASE_AWS_REGION" \
             "$RELEASE_NAME_PREFIX" \

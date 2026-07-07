@@ -2,65 +2,51 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-07. The GitHub Actions → AWS release path was
-bootstrapped with OIDC, without storing static secrets in GitHub variables or
-secrets. The AWS account `729079515331` had the GitHub OIDC provider and the
-`edd-prod-github-release` role configured for only this repository's `main`
-branch and `v*` tags, and GitHub repo variables held only non-secret release
-coordinates: `RELEASE_AWS_ACCOUNT`, `RELEASE_AWS_REGION`,
-`RELEASE_AWS_ROLE_ARN`, and `RELEASE_NAME_PREFIX`. The `main release` workflow
-rerun for PR #200 merge commit `2c5fe20b99a675a19eb35ee937e4033f79942489`
-succeeded after OIDC auth and pushed ECR tags `2c5fe20b99a6` to
-`edd-prod/control-plane` (`sha256:e8ee7b7a4557b9a23e27ec816ba8f7ddda5ad113a423fb998c9ef228aaee271c`)
-and `edd-prod/ssh-gateway`
-(`sha256:325fe1b6857529077e0a0972c90c6e512fc292682bf8ef88200fc2c63e91d3d7`).
+**Last updated:** 2026-07-07. The production release inspection after PR #201
+merged verified that CI and the EDD-owned workspace-image flow both built images,
+but ECS did not roll them. GitHub Actions run `28898272647` for merge commit
+`992b22cc334937956c2309ef0fd09de6c1235527` succeeded and pushed
+`edd-prod/control-plane:992b22cc3349`
+(`sha256:1362f3e2209266347c3ec4c463cb3ff7c52bdc4c662b3863d53a65509aabc529`)
+plus `edd-prod/ssh-gateway:992b22cc3349`
+(`sha256:dd4c16ddc145376d2dffabf2b254fc163c34fd2cc8ba69146ecf4d5d672b91f9`).
+The app-owned CodeBuild run
+`edd-prod-build-images:651e5bbf-2ba6-47d2-98f2-f01ab00af0a5` also succeeded for
+the same commit and pushed `edd-prod/golden/omnibus:992b22cc3349`
+(`sha256:942978e2a7beb77618b9ce1e67008a3e1c10a8de78418294b5b26734cc2559a3`).
 
-The follow-up branch `fix/release-config-fail-loud` documented the AWS bootstrap
-step, added `scripts/bootstrap-release-oidc.sh`, made the release and `e2e-aws`
-workflows require explicit coordinates with no default region/account fallback,
-and updated GitHub action pins to age-eligible Node 24 action releases. It also
-refreshed age-eligible dependency drift (`@casl/ability` 7.0.1 and `turbo`
-2.10.4) and fixed the editor-monaco loopback test harness so bind failures reject
-immediately instead of becoming 10-second hook timeouts with unhandled `listen`
-errors. Local verification passed: `pnpm actionlint`, `shellcheck
-scripts/bootstrap-release-oidc.sh`, `bash -n scripts/bootstrap-release-oidc.sh`,
-`zsh --emulate sh -n scripts/bootstrap-release-oidc.sh`, `pnpm check-deps`,
-`pnpm lint`, `pnpm --dir services/editor-monaco test`, and `pnpm test`.
+The live app itself was healthy but stale. `https://app.edd.e6qu.dev/api/healthz`
+returned 200, `/api/readyz` returned 200 with DynamoDB ACTIVE, the ALB control-plane
+target group had two healthy targets, and the SSH target group had one healthy
+target. ECS still ran task definitions `edd-prod-control-plane:26` and
+`edd-prod-ssh-gateway:26`, both on image tag `2d231f5`; the latest task-definition
+families had no revision beyond `:26`. DynamoDB showed the `github-main`
+image-source state had observed and handled the PR #201 SHA, but the trigger row
+`0ca8ebcf-d392-4331-a1d3-49f4d6324d41` still showed `status=queued` even though
+CodeBuild had succeeded, confirming that the missing production rollout kept the
+new image-source reconcile sweep out of service.
 
-The live production check of `https://app.edd.e6qu.dev` found the public control
-plane up but not current.
-`/api/healthz` returned 200, `/api/readyz` returned 200 with DynamoDB ACTIVE,
-the ALB target group had two healthy control-plane targets, the SSH NLB target
-was healthy, `probe.ssh.edd.e6qu.dev:22` accepted TCP, `/login` rendered the
-GitHub/Entra sign-in page, and the webhook surface was narrow: WAF blocked
-non-POST/non-JSON requests and the app returned 401 for a syntactically valid
-delivery with an invalid signature.
+The follow-up branch `fix/release-rolls-ecs` fixed the release gap without adding
+fallbacks. The `release` workflow still built only web/control-plane and
+SSH-gateway images under CI (`EDD_BUILD_TARGET=web`; workspace/golden images
+remained EDD-owned), then called the new `scripts/deploy-release-images.sh`. That
+script read the current AWS task definitions, changed only the image references,
+registered fresh control-plane/reconciler/SSH task-definition revisions, updated
+the control-plane and SSH ECS services, retargeted the reconciler Scheduler
+schedule, and waited for ECS service stability. The bootstrap script's release role
+policy was expanded to the exact ECR/ECS/Scheduler/`iam:PassRole` actions required
+for that path; GitHub still stored only non-secret release coordinates.
 
-The same check found production still running ECS task definitions
-`edd-prod-control-plane:26` and `edd-prod-ssh-gateway:26`, both on image tag
-`2d231f5`, while `main` was already at PR #199 merge commit
-`89c3cdee68d125f967d5d4522e928e1eebda3393`. The app-owned golden image webhook
-flow observed both PR #198 and PR #199 merges and CodeBuild successfully pushed
-`edd-prod/golden/omnibus:7fee654aaa67` and
-`edd-prod/golden/omnibus:89c3cdee68d1`, but the live catalog still pointed at
-`omnibus:2d231f50fad8` and both post-merge trigger rows remained `queued`.
-That matched the deployed-code gap: PR #198's long-lived image-source reconcile
-sweep had been merged but was not running in production.
-
-The release image-publish path was restored after PR #200 merged, but the
-deployment/state path still required follow-up: the Terraform state bucket
-`edd-tfstate-edd-prod` existed but contained no state object at
-`ecs-dev-desktop/edd-prod/terraform.tfstate`; the live matching state was present
-only as ignored local files under `infra/terraform/examples/complete/`.
-`scripts/install.sh --verify` therefore failed before verification. PR #200 made
-release image publishing fail loudly and run on main pushes for web images only
-(`EDD_BUILD_TARGET=web`; golden/workspace images stayed app-owned), and made
-`install --verify` fail loudly when the expected remote state object was absent
-instead of entering Terraform's backend migration prompt in read-only mode. The
-follow-up release-bootstrap branch then supplied the missing AWS OIDC role and
-GitHub coordinate variables, proved the workflow by publishing the PR #200 merge
-images, and kept remote Terraform state migration / production rollout as the
-remaining deploy-path work.
+The same inspection found two operational issues still present in production:
+the expected remote Terraform state object
+`s3://edd-tfstate-edd-prod/ecs-dev-desktop/edd-prod/terraform.tfstate` was absent,
+and CloudWatch alarms `edd-prod-reconciler-dlq` plus
+`edd-prod-workspaces-stuck-error` were ALARM. The DLQ contained old Scheduler
+failures from `2026-07-06T08:03:55Z` that targeted inactive task definition
+`edd-prod-reconciler:7`; the live schedule now pointed at
+`edd-prod-reconciler:26`. The workspace alarm matched one live workspace in
+`state=error`, `desiredState=present`
+(`ws-34afea9b-ca52-4484-ad73-8dd299dbefd5`).
 
 PR #198 merged to `main` as `7fee654aaa67ae200251cfe67816f3701f04cb0c`. The
 follow-up PR #199 branch `fix/docker-build-warnings` cleaned up the remaining

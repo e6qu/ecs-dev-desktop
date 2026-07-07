@@ -118,13 +118,17 @@ It publishes:
    authorizer.
 
 For CI-driven publishes, the [`release`](../.github/workflows/release.yml) workflow
-builds + pushes on every `main` merge, on a `v*` tag, or by manual dispatch via
-GitHub OIDC → an AWS role with ECR push permissions (no static secrets). It sets up
-QEMU and Docker Buildx so the default `amd64 arm64` multi-arch build succeeds on
-GitHub's x86\*64 runners. The `RELEASE_AWS_ACCOUNT`, `RELEASE_AWS_REGION`,
-`RELEASE_AWS_ROLE_ARN`, and `RELEASE_NAME_PREFIX` repo variables are required
-non-secret coordinates. Do not store static secrets in GitHub variables or
-secrets for this path. When any coordinate is absent, the
+builds, pushes, and deploys the control-plane, reconciler, and SSH-gateway images
+on every `main` merge, on a `v*` tag, or by manual dispatch via GitHub OIDC → an
+AWS role with ECR/ECS/Scheduler permissions (no static secrets). It sets up QEMU
+and Docker Buildx so the default `amd64 arm64` multi-arch build succeeds on
+GitHub's x86\*64 runners, then registers fresh task-definition revisions from the
+currently deployed definitions, changing only the image references. It updates the
+control-plane and SSH-gateway ECS services, updates the reconciler Scheduler target,
+and waits for ECS service stability. The `RELEASE_AWS_ACCOUNT`,
+`RELEASE_AWS_REGION`, `RELEASE_AWS_ROLE_ARN`, and `RELEASE_NAME_PREFIX` repo
+variables are required non-secret coordinates. Do not store static secrets in
+GitHub variables or secrets for this path. When any coordinate is absent, the
 workflow fails before AWS authentication; it does not skip or substitute a default
 account/region.
 
@@ -136,15 +140,18 @@ account bootstrap step:
 1. Create the AWS IAM OIDC provider for `https://token.actions.githubusercontent.com`.
 2. Create a narrowly scoped IAM role whose trust policy accepts GitHub OIDC tokens
    only from this repository's `main` branch and `v*` tags.
-3. Grant that role only the ECR push permissions needed by the release workflow's
-   control-plane and SSH-gateway images.
+3. Grant that role only the ECR, ECS, Scheduler, and `iam:PassRole` permissions
+   needed to publish the release images, register the matching task definitions,
+   roll the control-plane/SSH services, and retarget the reconciler schedule.
 4. Store only the non-secret role/account/region/name coordinates as GitHub repo
    variables. Do not put static secrets in GitHub variables or secrets.
 
 This is intentionally outside the EDD Terraform stack. The release workflow must
-be able to publish deployable control-plane images before EDD exists, so it cannot
-depend on the deployed EDD app or on module-managed runtime resources. Run the
-bootstrap once per AWS account/name-prefix pair:
+be able to publish deployable control-plane images before EDD exists, and the
+bootstrap cannot depend on the deployed EDD app. The deploy step itself requires
+the Terraform-managed ECS services and Scheduler schedule to exist; a missing
+resource fails the release loudly. Run the bootstrap once per AWS
+account/name-prefix pair:
 
 ```sh
 EDD_RELEASE_GITHUB_REPO=e6qu/ecs-dev-desktop \
@@ -193,13 +200,6 @@ When a new commit changes workspace-image inputs (`infra/images/**`,
 CodeBuild image project asynchronously with `EDD_BUILD_TARGET=golden`,
 `SOURCE_REF=<branch>`, `SOURCE_VERSION=<exact sha>`, and a short-SHA image tag.
 It does not replace CI for control-plane image builds.
-
-After publishing, roll the running services:
-
-```sh
-aws ecs update-service --cluster <name>-workspaces \
-  --service <name>-control-plane --force-new-deployment
-```
 
 ## Step 3 — Configure the control plane (env + secrets)
 

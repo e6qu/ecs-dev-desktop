@@ -14,7 +14,7 @@
 # Effects:
 #   - creates/updates the IAM OIDC provider for token.actions.githubusercontent.com
 #   - creates/updates <prefix>-github-release with a main/tags-only trust policy
-#   - attaches the least ECR push policy needed by scripts/publish-images.sh
+#   - attaches the least ECR/ECS/Scheduler policy needed by the release workflow
 #   - writes the non-secret RELEASE_* GitHub repo variables consumed by
 #     .github/workflows/release.yml
 #
@@ -164,6 +164,53 @@ cat >"$permissions_policy" <<EOF
         "arn:aws:ecr:${AWS_REGION}:${AWS_ACCOUNT}:repository/${NAME_PREFIX}/control-plane",
         "arn:aws:ecr:${AWS_REGION}:${AWS_ACCOUNT}:repository/${NAME_PREFIX}/ssh-gateway"
       ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ecs:DescribeServices",
+        "ecs:UpdateService"
+      ],
+      "Resource": [
+        "arn:aws:ecs:${AWS_REGION}:${AWS_ACCOUNT}:service/${NAME_PREFIX}-workspaces/${NAME_PREFIX}-control-plane",
+        "arn:aws:ecs:${AWS_REGION}:${AWS_ACCOUNT}:service/${NAME_PREFIX}-workspaces/${NAME_PREFIX}-ssh-gateway"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": "ecs:DescribeTaskDefinition",
+      "Resource": "*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "ecs:RegisterTaskDefinition"
+      ],
+      "Resource": [
+        "arn:aws:ecs:${AWS_REGION}:${AWS_ACCOUNT}:task-definition/${NAME_PREFIX}-control-plane:*",
+        "arn:aws:ecs:${AWS_REGION}:${AWS_ACCOUNT}:task-definition/${NAME_PREFIX}-reconciler:*",
+        "arn:aws:ecs:${AWS_REGION}:${AWS_ACCOUNT}:task-definition/${NAME_PREFIX}-ssh-gateway:*"
+      ]
+    },
+    {
+      "Effect": "Allow",
+      "Action": "scheduler:GetSchedule",
+      "Resource": "arn:aws:scheduler:${AWS_REGION}:${AWS_ACCOUNT}:schedule/default/${NAME_PREFIX}-reconciler"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "scheduler:UpdateSchedule",
+      "Resource": "arn:aws:scheduler:${AWS_REGION}:${AWS_ACCOUNT}:schedule/default/${NAME_PREFIX}-reconciler"
+    },
+    {
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": [
+        "arn:aws:iam::${AWS_ACCOUNT}:role/${NAME_PREFIX}-control-plane",
+        "arn:aws:iam::${AWS_ACCOUNT}:role/${NAME_PREFIX}-reconciler",
+        "arn:aws:iam::${AWS_ACCOUNT}:role/${NAME_PREFIX}-scheduler",
+        "arn:aws:iam::${AWS_ACCOUNT}:role/${NAME_PREFIX}-task-execution"
+      ]
     }
   ]
 }
@@ -181,11 +228,20 @@ else
     --assume-role-policy-document "file://$trust_policy" >/dev/null
 fi
 
-echo "edd: attaching release role ECR push policy"
+echo "edd: attaching release role publish/deploy policy"
 aws iam put-role-policy \
   --role-name "$role_name" \
-  --policy-name "EddReleaseEcrPush" \
+  --policy-name "EddReleasePublishDeploy" \
   --policy-document "file://$permissions_policy" >/dev/null
+
+if aws iam get-role-policy \
+  --role-name "$role_name" \
+  --policy-name "EddReleaseEcrPush" >/dev/null 2>&1; then
+  echo "edd: deleting legacy release role ECR-only policy"
+  aws iam delete-role-policy \
+    --role-name "$role_name" \
+    --policy-name "EddReleaseEcrPush" >/dev/null
+fi
 
 echo "edd: setting GitHub repo release variables"
 gh variable set RELEASE_AWS_ACCOUNT --repo "$GITHUB_REPO" --body "$AWS_ACCOUNT"

@@ -4,17 +4,41 @@
 
 ## Open
 
-- **Production was healthy but stale after PR #198/#199 merges (2026-07-07).**
-  Live ECS still ran `edd-prod-control-plane:26` and `edd-prod-ssh-gateway:26`
-  with image tag `2d231f5` after `main` had advanced to
-  `89c3cdee68d125f967d5d4522e928e1eebda3393`. `/api/healthz`, `/api/readyz`,
-  ALB targets, SSH NLB targets, and login rendering were healthy, but the code
-  that fixed image-source reconciliation was not deployed. ECR contained the
-  app-built golden tags `7fee654aaa67` and `89c3cdee68d1`, while DynamoDB still
-  had both corresponding image-source trigger rows at `queued` and the catalog
-  row still pointed at `omnibus:2d231f50fad8`. Root evidence: CodeBuild builds
-  `31675ecd-ac2e-473d-970c-81a0a0133f05` and
-  `9d8b188c-1fb9-45f1-9a3c-e8f16585e986` succeeded; no catalog rollout followed.
+- **Production release published images but did not roll ECS services (2026-07-07) —
+  FIXED in follow-up branch.** Live ECS still ran `edd-prod-control-plane:26` and
+  `edd-prod-ssh-gateway:26` with image tag `2d231f5` after `main` had advanced
+  through PR #201 merge commit `992b22cc334937956c2309ef0fd09de6c1235527`.
+  `/api/healthz`, `/api/readyz`, ALB targets, SSH NLB targets, and login rendering
+  were healthy, and both image-build paths worked: GitHub Actions release run
+  `28898272647` pushed `edd-prod/control-plane:992b22cc3349` plus
+  `edd-prod/ssh-gateway:992b22cc3349`, and CodeBuild run
+  `edd-prod-build-images:651e5bbf-2ba6-47d2-98f2-f01ab00af0a5` pushed
+  `edd-prod/golden/omnibus:992b22cc3349`. The root defect was that the `release`
+  workflow only published images and never registered new task definitions or
+  updated services/Scheduler, so the code that fixed image-source reconciliation
+  was not deployed. The follow-up branch added `scripts/deploy-release-images.sh`,
+  called it from `release.yml`, and expanded the release OIDC policy to the exact
+  ECR/ECS/Scheduler/`iam:PassRole` surface required. No fallback deploy path was
+  added.
+
+- **Production image-source trigger still showed `queued` after successful
+  CodeBuild because the fixed reconciler was not deployed (2026-07-07).** DynamoDB
+  `imageSource` row `github-main` had `lastObservedSha` and `lastHandledSha` equal
+  to `992b22cc334937956c2309ef0fd09de6c1235527`, but trigger
+  `0ca8ebcf-d392-4331-a1d3-49f4d6324d41` still had `status=queued` even though its
+  CodeBuild build succeeded. This was expected evidence of the stale production
+  task image above; after the release-roll branch is merged and deployed, the
+  long-lived image-source reconcile sweep should observe that build result and
+  update the visible trigger/catalog state.
+
+- **Production operational alarms remained active after the release inspection
+  (2026-07-07).** `edd-prod-reconciler-dlq` was ALARM because the DLQ contained old
+  Scheduler failures from `2026-07-06T08:03:55Z` targeting inactive task definition
+  `edd-prod-reconciler:7`; the current Scheduler target was already
+  `edd-prod-reconciler:26`. `edd-prod-workspaces-stuck-error` was ALARM because one
+  workspace (`ws-34afea9b-ca52-4484-ad73-8dd299dbefd5`) was still
+  `state=error`, `desiredState=present`. These were operational cleanup items, not
+  additional code findings from the release script.
 
 - **Control-plane release publishing skipped instead of failing loudly — FIXED
   in PR #200 plus the release-bootstrap follow-up (2026-07-07).** The `release`
@@ -66,10 +90,12 @@
   `pnpm cpd` gate exits 0, but the report remains noisy with repeated
   route/table/schema patterns, including the Images console table sections and
   ElectroDB entity index declarations. The unsupported `.jscpd.json` `$schema`
-  warning was removed in the follow-up branch. Immediate duplicate trigger-object
-  construction in the new image-source service was refactored, but the remaining
-  findings are below the configured failure threshold and need a dedicated cleanup
-  pass rather than a risky broad refactor in this feature PR.
+  warning was removed in the follow-up branch, and the `pnpm cpd` script now passes
+  `--no-tips` so CI/pre-commit logs do not include jscpd promotional output.
+  Immediate duplicate trigger-object construction in the new image-source service
+  was refactored, but the remaining findings are below the configured failure
+  threshold and need a dedicated cleanup pass rather than a risky broad refactor
+  in this feature PR.
 
 - **sockerless DynamoDB read path panicked under concurrent mutation — FIXED
   upstream and pinned (2026-07-07).** Full
