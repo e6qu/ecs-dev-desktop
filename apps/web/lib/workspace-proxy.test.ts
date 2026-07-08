@@ -148,6 +148,16 @@ describe("editorTokenRedirect (editor connection-token handoff)", () => {
     expect(out).toBe(`/w/${WS}/?tkn=${expectedTkn}`);
   });
 
+  it("treats the bare workspace root as a document navigation even when browser headers are sparse", () => {
+    const out = editorTokenRedirect({ method: "GET", url: `/w/${WS}/`, headers: {} }, WS);
+    expect(out).toBe(`/w/${WS}/?tkn=${expectedTkn}`);
+  });
+
+  it("does not treat non-root workspace paths as document navigations without document headers", () => {
+    const out = editorTokenRedirect({ method: "GET", url: `/w/${WS}/api/tree`, headers: {} }, WS);
+    expect(out).toBeUndefined();
+  });
+
   it("does not redirect when the request already carries the token (no loop)", () => {
     const out = editorTokenRedirect(
       { method: "GET", url: `/w/${WS}/?tkn=${expectedTkn}`, headers: docHeaders() },

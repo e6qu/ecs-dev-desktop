@@ -143,12 +143,10 @@ chmod 0644 "${settings_file}" 2>/dev/null || true
 # Editor selection. The control plane sets EDD_EDITOR_MODE from the workspace's editor choice
 # (a per-session pick at create, else its base-image catalog entry):
 #   monaco         -> the first-party Monaco editor server;
-#   claude / codex -> vendor agent harness modes. Claude Code should use
-#                     Anthropic Remote Control / claude.ai/code against the local
-#                     workspace process; Codex should use OpenAI's app-server /
-#                     local client harness. These modes intentionally fail until
-#                     that runtime wiring exists; serving Monaco here would hide
-#                     the unsupported harness behind the wrong product surface.
+#   claude         -> Anthropic Claude Code Remote Control / claude.ai/code
+#                     against the local workspace process.
+#   codex          -> OpenAI Codex remote-control/app-server harness for the
+#                     first-party Codex client protocol.
 #   anything else (including unset) -> OpenVSCode Server, the historical default.
 # The Monaco server (bundled at /opt/edd-editor-monaco) listens on :3000 under
 # /w/<id>/ and reads the same coordinates from the environment (EDD_WORKSPACE_ID,
@@ -158,9 +156,23 @@ case "${EDD_EDITOR_MODE:-openvscode}" in
   monaco)
     exec gosu workspace node /opt/edd-editor-monaco/server.js
     ;;
-  claude | codex)
-    echo "EDD_EDITOR_MODE=${EDD_EDITOR_MODE} requires the vendor local web UI harness; no alternate editor is available" >&2
-    exit 64
+  claude)
+    command -v claude >/dev/null 2>&1 || {
+      echo "EDD_EDITOR_MODE=claude requires the Claude Code CLI on PATH" >&2
+      exit 64
+    }
+    export EDD_CLAUDE_COMMAND
+    EDD_CLAUDE_COMMAND="$(command -v claude)"
+    exec gosu workspace node /opt/edd-vendor-harness/server.js
+    ;;
+  codex)
+    command -v codex >/dev/null 2>&1 || {
+      echo "EDD_EDITOR_MODE=codex requires the Codex CLI on PATH" >&2
+      exit 64
+    }
+    export EDD_CODEX_COMMAND
+    EDD_CODEX_COMMAND="$(command -v codex)"
+    exec gosu workspace node /opt/edd-vendor-harness/server.js
     ;;
 esac
 

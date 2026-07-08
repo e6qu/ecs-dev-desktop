@@ -75,7 +75,8 @@ export {
   MIN_SNAPSHOT_INTERVAL_MS,
 } from "./domain/constants";
 
-// Editor choice (openvscode | monaco): flows base-image → workspace → EDD_EDITOR_MODE.
+// Editor choice (OpenVSCode, Monaco, Claude Local Web UI, Codex Local Web UI):
+// flows base-image → workspace → EDD_EDITOR_MODE.
 export { asEditorKind, DEFAULT_EDITOR, EDITOR_KINDS, type EditorKind } from "./domain/editor";
 
 export type {

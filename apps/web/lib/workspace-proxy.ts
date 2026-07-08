@@ -50,13 +50,6 @@ export function editorTokenRedirect(
   if ((req.method ?? "GET").toUpperCase() !== "GET") return undefined;
   if (req.url === undefined) return undefined;
 
-  // Only redirect a top-level browser navigation (the workbench document), never the
-  // editor's own sub-resource/API/WS requests — they ride the cookie once set.
-  const dest = headerValue(req.headers["sec-fetch-dest"]);
-  const accept = headerValue(req.headers.accept) ?? "";
-  const isDocumentNav = dest === "document" || (dest === undefined && accept.includes("text/html"));
-  if (!isDocumentNav) return undefined;
-
   // `new URL` throws on some crafted targets (e.g. "http://", "//"). This runs in the proxy hot
   // path and must return-or-undefined, never throw — so fail safe on an un-parseable target.
   let url: URL;
@@ -65,6 +58,17 @@ export function editorTokenRedirect(
   } catch {
     return undefined;
   }
+  // Only redirect a top-level browser navigation (the workbench document), never the
+  // editor's own sub-resource/API/WS requests — they ride the cookie once set. Some
+  // browser-triggered same-origin navigations can arrive without Sec-Fetch-Dest and
+  // without a useful Accept header; the editor root itself is still a document open.
+  const dest = headerValue(req.headers["sec-fetch-dest"]);
+  const accept = headerValue(req.headers.accept) ?? "";
+  const isDocumentNav =
+    dest === "document" ||
+    (dest === undefined && accept.includes("text/html")) ||
+    isWorkspaceRootPath(url.pathname, wsId);
+  if (!isDocumentNav) return undefined;
   if (url.searchParams.has(EDITOR_TOKEN_PARAM)) return undefined; // already has the token
   // Session established once EITHER editor family has set its token cookie
   // (code-server's vscode-tkn OR the Monaco server's edd-editor-token).
@@ -79,6 +83,10 @@ export function editorTokenRedirect(
   // Return a path-absolute URL (the dummy origin is dropped) the browser resolves
   // against the real host.
   return `${url.pathname}${url.search}`;
+}
+
+function isWorkspaceRootPath(pathname: string, wsId: WorkspaceId): boolean {
+  return pathname === `/w/${wsId}` || pathname === `/w/${wsId}/`;
 }
 
 /** First value of a possibly-array header. */

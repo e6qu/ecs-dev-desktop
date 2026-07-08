@@ -4,6 +4,33 @@
 
 ## Open
 
+- **Production workspace opens failed despite healthy control-plane smoke —
+  FIXED in current branch (2026-07-08).** OpenVSCode and Monaco workspace tasks
+  were running, but direct browser opens of `/w/<id>/` could arrive with sparse
+  navigation headers and miss the proxy's connection-token redirect, producing
+  OpenVSCode `Forbidden` and Monaco `unauthorized`. The proxy now token-injects
+  for the exact workspace root path even without `Sec-Fetch-Dest`/HTML `Accept`,
+  while non-root API/subresource paths still bypass redirect. Focused proxy tests
+  and the end-to-end Monaco token-handshake test covered the regression.
+
+- **Claude/Codex workspace modes failed loudly because vendor harnesses were not
+  wired — FIXED in current branch (2026-07-08).** Production Claude/Codex tasks
+  exited with the intended no-fallback error instead of serving Monaco. The base
+  image now includes a token-gated vendor harness host: Claude starts
+  `claude --remote-control <workspace-id>` under a pseudo-terminal, and Codex
+  starts `codex app-server --listen ws://127.0.0.1:4500` with health probing
+  against the vendor `/healthz`. Docker smoke built the image and proved Monaco,
+  Claude, and Codex modes healthy. The failed `codex remote-control start` path
+  was rejected from evidence because it required a standalone installer layout
+  absent from the workspace image.
+
+- **Errored workspaces should not be snapshotted further — FIXED in current
+  branch (2026-07-08).** The implementation already scheduled snapshots only for
+  running/idle workspaces, but the requirement was implicit. Integration tests
+  now assert that the reconciler schedules zero snapshots for errored workspaces
+  and that explicit snapshot requests against an errored workspace return a
+  conflict without creating storage snapshots.
+
 - **Production `/workspaces` rendered a Next.js error boundary after PR #204 —
   FIXED in current branch (2026-07-08).** The live page showed
   `ERROR 3655293926` even though the ECS deployment had completed. CloudWatch

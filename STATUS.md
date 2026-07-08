@@ -2,6 +2,49 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
+**Last updated:** 2026-07-08. The follow-up branch
+`fix/prod-workspace-open` addressed the production workspace-open failures found
+after PR #205 deployed. The public app itself was healthy at merge commit
+`885c560ab006`: `/api/healthz` reported that SHA, `/api/readyz` was ready with
+DynamoDB ACTIVE, ECS ran the control plane at desired/running `2/2`, and the
+manual rerun of `post-deploy-smoke` (`28926483388`) passed after the required
+non-secret repo variable `EDD_APP_URL=https://app.edd.e6qu.dev` was configured.
+
+The workspace-specific production failures were real and separate from the
+control-plane smoke. OpenVSCode and Monaco workspaces were running, but direct
+opens of `/w/<id>/` could reach the editor without a connection-token handoff
+when browser navigation headers were sparse, yielding OpenVSCode `Forbidden` or
+Monaco `unauthorized`. The proxy now treats the exact workspace root path as a
+document navigation even without `Sec-Fetch-Dest`/HTML `Accept`, while still
+leaving non-root API/subresource requests unmodified.
+
+Claude and Codex workspaces failed in production because the base image still
+exited loudly for `EDD_EDITOR_MODE=claude|codex` after the no-fallback change.
+This branch kept all four product choices (OpenVSCode, Monaco, Claude Local Web
+UI, Codex Local Web UI) and wired the vendor harness modes without serving
+Monaco under those names. Claude starts the vendor `claude --remote-control
+<workspace-id>` session under a pseudo-terminal, because the CLI exits in
+non-interactive mode without a TTY. Codex starts the vendor `codex app-server`
+process on loopback and the harness health endpoint probes the vendor
+`/healthz`; the attempted `codex remote-control start` path was rejected after
+Docker evidence showed it requires a standalone installer layout not present in
+the image.
+
+The snapshot policy was also pinned for errored workspaces. Scheduled snapshots
+only consider running/idle workspaces with live volumes, explicit snapshots of
+errored workspaces return a conflict before storage I/O, and integration
+coverage now asserts both the control-plane guard and reconciler candidate
+exclusion. Terminated/deleted workspaces already remained excluded.
+
+Local verification passed on this branch: `node --check` for the vendor harness,
+`shellcheck` for the touched shell scripts, focused web proxy/API tests,
+`pnpm --filter web lint`, `pnpm --filter web build`, full `pnpm --filter web
+test` with loopback access, focused control-plane and reconciler integration
+tests with local DynamoDB access, `pnpm lint`, `pnpm build`, full `pnpm test`
+with loopback access, and `infra/images/base/smoke.sh`, which built the base
+image and confirmed Monaco, Claude, and Codex harness modes served healthy
+endpoints.
+
 **Last updated:** 2026-07-08. After PR #204 merged, production release run
 `28910392738` for merge commit
 `f82e61db669c8b22a962ad169ff9933761152796` succeeded in 6m47s and rolled the

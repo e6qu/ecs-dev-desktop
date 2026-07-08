@@ -1,6 +1,10 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "ignore": ["third_party/**", "infra/images/base/edd-ui-extension/**"],
+  "ignore": [
+    "third_party/**",
+    "infra/images/base/edd-ui-extension/**",
+    "infra/images/base/vendor-harness-server.js"
+  ],
   "ignoreBinaries": ["ssh-keygen"],
   "workspaces": {
     "apps/demo": {
