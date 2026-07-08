@@ -143,10 +143,8 @@ chmod 0644 "${settings_file}" 2>/dev/null || true
 # Editor selection. The control plane sets EDD_EDITOR_MODE from the workspace's editor choice
 # (a per-session pick at create, else its base-image catalog entry):
 #   monaco         -> the first-party Monaco editor server;
-#   claude         -> Anthropic Claude Code Remote Control / claude.ai/code
-#                     against the local workspace process.
-#   codex          -> OpenAI Codex remote-control/app-server harness for the
-#                     first-party Codex client protocol.
+#   claude         -> OpenVSCode Server with Anthropic's Claude Code extension UI.
+#   codex          -> OpenVSCode Server with OpenAI's Codex extension UI.
 #   openvscode/unset -> OpenVSCode Server, the product default.
 #   anything else    -> fail loudly; unknown editor values are invalid config.
 # The Monaco server (bundled at /opt/edd-editor-monaco) listens on :3000 under
@@ -162,18 +160,22 @@ case "${EDD_EDITOR_MODE:-openvscode}" in
       echo "EDD_EDITOR_MODE=claude requires the Claude Code CLI on PATH" >&2
       exit 64
     }
-    export EDD_CLAUDE_COMMAND
-    EDD_CLAUDE_COMMAND="$(command -v claude)"
-    exec gosu workspace node /opt/edd-vendor-harness/server.js
+    set -- /opt/openvscode-server/extensions/anthropic.claude-code-*/package.json
+    if [ ! -f "$1" ]; then
+      echo "EDD_EDITOR_MODE=claude requires the Anthropic Claude Code OpenVSCode extension" >&2
+      exit 64
+    fi
     ;;
   codex)
     command -v codex >/dev/null 2>&1 || {
       echo "EDD_EDITOR_MODE=codex requires the Codex CLI on PATH" >&2
       exit 64
     }
-    export EDD_CODEX_COMMAND
-    EDD_CODEX_COMMAND="$(command -v codex)"
-    exec gosu workspace node /opt/edd-vendor-harness/server.js
+    set -- /opt/openvscode-server/extensions/openai.chatgpt-*/package.json
+    if [ ! -f "$1" ]; then
+      echo "EDD_EDITOR_MODE=codex requires the OpenAI Codex OpenVSCode extension" >&2
+      exit 64
+    fi
     ;;
   openvscode)
     ;;

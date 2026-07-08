@@ -251,6 +251,13 @@ describe("WorkspaceService lifecycle ", () => {
     const afterStop = await service.heartbeat(workspaceId(ws.id));
     expect(afterStop.ok).toBe(false);
     if (!afterStop.ok) expect(afterStop.error.kind).toBe("conflict");
+
+    const inactiveStopped = await service.heartbeat(workspaceId(ws.id), {
+      active: false,
+      functional: { ide: true, workspace: true },
+    });
+    expect(inactiveStopped.ok).toBe(false);
+    if (!inactiveStopped.ok) expect(inactiveStopped.error.kind).toBe("conflict");
   });
 
   it("an active:false heartbeat records liveness without refreshing the idle window", async () => {
@@ -272,6 +279,25 @@ describe("WorkspaceService lifecycle ", () => {
     expect(idleBeat.functional).toBe("ok");
     const after = await service.inspect(workspaceId(ws.id));
     expect(after?.workspace.lastActivity).toBe(before?.workspace.lastActivity);
+  });
+
+  it("rejects active:false heartbeat reports while a workspace is deleting", async () => {
+    const ws = await service.create({
+      ownerId: ownerId("frank3"),
+      baseImage: baseImage("golden/node:20"),
+    });
+    unwrap(await service.remove(workspaceId(ws.id)));
+
+    const result = await service.heartbeat(workspaceId(ws.id), {
+      active: false,
+      functional: { ide: true, workspace: true },
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.kind).toBe("conflict");
+    const tombstoned = await service.get(workspaceId(ws.id));
+    expect(tombstoned?.state).toBe("deleting");
+    expect(tombstoned?.functional).toBeUndefined();
   });
 
   it("inspect returns the full detail plus a derived timeline", async () => {

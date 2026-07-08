@@ -27,12 +27,11 @@ export function requiredEnv(name: string): string {
 function cookieNameForEditor(editor: Editor): string {
   switch (editor) {
     case "openvscode":
+    case "claude":
+    case "codex":
       return "vscode-tkn";
     case "monaco":
       return "edd-editor-token";
-    case "claude":
-    case "codex":
-      return "edd-vendor-token";
   }
 }
 
@@ -167,6 +166,25 @@ export async function waitReady(
     await new Promise((resolve) => setTimeout(resolve, 5_000));
   }
   throw new Error(`workspace ${id} did not become ready before deadline; last=${last}`);
+}
+
+export async function waitTerminated(
+  baseUrl: string,
+  jar: readonly StoredCookie[],
+  id: string,
+): Promise<void> {
+  const deadline = Date.now() + 20 * 60 * 1000;
+  let last = "";
+  while (Date.now() < deadline) {
+    const res = await fetchWithCookies(`${baseUrl}/api/workspaces/${id}`, jar);
+    if (res.status === 404) return;
+    if (!res.ok) throw new Error(`inspect deleted ${id} failed: ${String(res.status)}`);
+    const body = (await res.json()) as { state?: string };
+    last = JSON.stringify(body);
+    if (body.state === "terminated") return;
+    await new Promise((resolve) => setTimeout(resolve, 10_000));
+  }
+  throw new Error(`workspace ${id} did not terminate after delete before deadline; last=${last}`);
 }
 
 export async function primeEditorToken(

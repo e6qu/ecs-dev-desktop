@@ -2,6 +2,93 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
+**Last updated:** 2026-07-08. PR #208 merged as
+`b48030c13956dcb803316bfbcc9e2dc33518d001`. The release workflow
+`28942464820` succeeded: image publication started at `2026-07-08T12:27:10Z`,
+ECS service deployment ran from `12:30:08Z` to `12:30:19Z`, and the public app
+reported `deploy.sha=b48030c13956` with `/api/healthz`, `/api/readyz`, and
+`/workspaces` all healthy. ECS cluster `edd-prod-workspaces` showed
+`edd-prod-control-plane` steady at desired/running/pending `2/2/0` on task
+definition `:33` and `edd-prod-ssh-gateway` steady at `1/1/0` on task
+definition `:33`.
+
+The post-merge `post-deploy-smoke` workflow run `28942687870` failed before it
+could open workspaces because the GitHub runner had no Playwright Chromium
+browser installed:
+`browserType.launch: Executable doesn't exist at ... chromium_headless_shell`.
+The current follow-up branch installed Chromium explicitly in the smoke
+workflow instead of relying on an implicit runner cache.
+
+The golden-images workflow run `28942465055` succeeded and pushed
+`729079515331.dkr.ecr.eu-west-1.amazonaws.com/edd-prod/golden/omnibus:b48030c13956`
+with digest `sha256:070bd7266d013c61f558bf351e696dab92ed36f09a0f27fbdb0fe4427e71942b`;
+the production catalog row `img-seed-omnibus` pointed at that tag at version
+`8`. A live screenshot smoke was rerun against production after the catalog
+updated. It created OpenVSCode, Monaco, Claude Local Web UI, and Codex Local Web
+UI workspaces on `omnibus:b48030c13956`, captured screenshots under
+`/private/tmp/edd-workspace-screenshots-b480/`, and visual inspection confirmed
+VS Code Web, Monaco with terminal, Claude Local Web UI `status: running`, and
+Codex Local Web UI `status: running`. The Codex screenshot no longer showed the
+previous missing sandbox-helper warning.
+
+That live smoke also exposed a cleanup blind spot. The previous smoke scripts
+sent DELETE requests and exited without proving the smoke-created workspaces
+actually reached the `terminated` tombstone. Production did eventually converge
+all smoke workspaces to `terminated`, but the deployed app accepted
+`active:false` functional heartbeats while records were already `deleting`,
+which caused `finishDeleting` version races and slow cleanup. The current branch
+made non-running/non-idle heartbeats fail with a conflict, added integration
+coverage for stopped/deleting `active:false` heartbeat reports, and changed both
+deployed-workspace smoke scripts to wait for every created workspace to reach
+`terminated` after DELETE.
+
+Focused verification for the current branch passed with
+`pnpm --filter @edd/control-plane test`, `pnpm --filter @edd/control-plane
+test:integ` after starting `docker-compose.tier2.yml`, `pnpm --filter
+@edd/control-plane lint`, `pnpm --filter web lint`, focused eslint for the
+deployed smoke scripts, `pnpm actionlint`, and a production one-shot
+`waitTerminated` check against an already terminated smoke workspace. A
+sandboxed integration attempt failed with `EPERM` on `127.0.0.1:4566`; with
+loopback access but before the local substrate was started, the same suite
+failed with `ECONNREFUSED`. After the repo's tier-2 substrate was started, the
+suite passed.
+
+**Last updated:** 2026-07-08. The current follow-up branch corrected the
+Claude/Codex workspace UI contract and the Monaco editability gap found against
+production `omnibus:b48030c13956`. Live production still served the removed
+EDD-authored Claude/Codex wrapper pages on `/w/<id>/`, and Monaco showed
+`Cannot edit in read-only editor` before any file was opened and did not refresh
+the explorer after `touch hello.txt` in the terminal. Local image inspection
+verified the installed vendor browser UIs were the OpenVSCode extensions
+`anthropic.claude-code` and `openai.chatgpt`; the Codex CLI `app-server` exposed
+a WebSocket protocol, not an HTML page.
+
+The branch removed `vendor-harness-server.js` from the base image and changed
+`EDD_EDITOR_MODE=claude`/`codex` to fail loudly unless the corresponding CLI and
+vendor OpenVSCode extension were installed, then launch OpenVSCode with the
+vendor extension UI selected. Claude/Codex therefore used the same `vscode-tkn`
+connection-token cookie as OpenVSCode, and the proxy/smoke helpers were updated
+accordingly. The EDD OpenVSCode extension opened `claude-vscode.editor.open` or
+`chatgpt.openSidebar` on startup for those modes.
+
+The Monaco editor added a real New File control and refreshed its explorer from
+the workspace filesystem every two seconds, so files created from the integrated
+terminal became visible without a reload. The post-deploy screenshot smoke was
+tightened to reject the old wrapper text, unauthorized/forbidden/502/server
+errors, and Monaco read-only edit failures; for Monaco it now creates a file via
+the page, waits for it to appear in the explorer, opens it, and types into the
+editor.
+
+Verification passed with `pnpm lint`, `pnpm test` with loopback access, `pnpm
+build`, `pnpm dead-code`, `pnpm actionlint`, `pnpm check-deps` with registry
+network access, `shellcheck infra/images/base/entrypoint.sh
+infra/images/base/smoke.sh`, `node --check` for the EDD OpenVSCode extension,
+focused web proxy/token tests, the Monaco build/lint/test suite, and the
+base-image Docker smoke. Local Chromium screenshots from the rebuilt
+`edd-base:smoke` image showed Codex serving the OpenAI Codex sidebar UI and
+Claude serving the Anthropic Claude Code webview inside OpenVSCode, not the old
+EDD wrapper.
+
 **Last updated:** 2026-07-08. PR #207 merged as
 `24fc78f7bb052ff099a730dccaa9f7c025c77e91` and the control plane rolled to
 that SHA. `https://app.edd.e6qu.dev/api/healthz` reported
@@ -65,11 +152,12 @@ Actions showed PR #207's `release` and `golden-images` workflows succeeded, and
 the old `post-deploy-smoke` run failed on the bootstrap/IAM/KMS/email gaps that
 this branch corrected.
 
-**Last updated:** 2026-07-08. The current follow-up branch addressed the
+**Last updated:** 2026-07-08. The earlier follow-up branch addressed the
 remaining production editor-open failures with no fallbacks. The editor proxy
-now keys the connection-token redirect suppression by the selected workspace
-editor mode: OpenVSCode uses `vscode-tkn`, Monaco uses `edd-editor-token`, and
-Claude/Codex vendor harnesses use `edd-vendor-token`. A stale cookie from one
+keyed the connection-token redirect suppression by the selected workspace editor
+mode. The latest branch kept that model but changed Claude/Codex to OpenVSCode
+surfaces, so OpenVSCode, Claude, and Codex use `vscode-tkn`, while Monaco uses
+`edd-editor-token`. A stale cookie from one
 editor family no longer suppresses token injection for another family, which
 matched the live `Forbidden`/`unauthorized` reports for OpenVSCode, Monaco,
 Claude Local Web UI, and Codex Local Web UI. Exact `/w/<id>` and `/w/<id>/`
@@ -87,11 +175,10 @@ Auth.js cookie names/chunks. The smoke-test helper creates and revokes its own
 server-side admin session through the same path.
 
 The workspace image entrypoint stayed fail-loud. `EDD_EDITOR_MODE=monaco`
-starts only Monaco, `claude` and `codex` start only the vendor local web UI
-harness, and an unknown editor mode exits with an error instead of falling back
-to OpenVSCode or Monaco. The vendor harness PTY dependency was moved under
-`/opt/edd-vendor-harness/node_modules` so Claude/Codex do not depend on the
-Monaco runtime path.
+started only Monaco, and the latest branch changed `claude`/`codex` to require
+their vendor OpenVSCode extensions and then start OpenVSCode with that vendor UI
+selected. An unknown editor mode exits with an error instead of falling back to
+OpenVSCode or Monaco.
 
 Post-deploy verification was extended beyond app readiness. The
 `post-deploy-smoke` workflow now assumes the release AWS role via GitHub OIDC,

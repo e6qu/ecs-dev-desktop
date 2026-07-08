@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Local smoke for the workspace base image interfaces: build the image via
-# build.sh, run the Monaco and vendor-harness modes, and confirm each serves on
+# build.sh, run every editor mode, and confirm each serves its browser UI on
 # :3000. The terminal is exercised in CI by the e2e tier. Requires Docker.
 #
 # Usage: infra/images/base/smoke.sh
@@ -22,7 +22,6 @@ cleanup
 
 smoke_mode() {
   mode=$1
-  path=$2
   cleanup
   # EDD_CONTROL_PLANE_URL/EDD_AGENT_TOKEN satisfy the entrypoint's early required-env checks; the
   # tokenless flag lets us curl the editor/harness without the connection-token handshake.
@@ -35,12 +34,19 @@ smoke_mode() {
     -p "${port}:3000" "$tag" >/dev/null
 
   i=0
+  path=/w/ws-smoke/
   while [ "$i" -lt 25 ]; do
-    if curl -fsS -o /dev/null "http://127.0.0.1:${port}${path}"; then
+    body=$(curl -fsS "http://127.0.0.1:${port}${path}" 2>/dev/null) && {
+      case "$body" in
+        *"Vendor harness log"* | *"Open the vendor "*)
+          echo "edd: ${mode} served the removed EDD vendor wrapper" >&2
+          exit 1
+          ;;
+      esac
       echo "edd: ${mode} serves ${path} on :${port} (OK)"
       cleanup
       return 0
-    fi
+    }
     i=$((i + 1))
     sleep 1
   done
@@ -50,6 +56,7 @@ smoke_mode() {
   exit 1
 }
 
-smoke_mode monaco /w/ws-smoke/
-smoke_mode claude /w/ws-smoke/healthz
-smoke_mode codex /w/ws-smoke/healthz
+smoke_mode openvscode
+smoke_mode monaco
+smoke_mode claude
+smoke_mode codex

@@ -92,12 +92,6 @@ RUN for ext in \
 COPY edd-ui-extension /opt/openvscode-server/extensions/edd-workspace-ui
 RUN chmod -R a+rX /opt/openvscode-server/extensions/edd-workspace-ui
 
-# Thin host for vendor agent harness modes. It does not implement a Claude/Codex
-# editor; it starts the vendor process and exposes only status/launch guidance
-# behind the same per-workspace token gate as the other workspace interfaces.
-COPY vendor-harness-server.js /opt/edd-vendor-harness/server.js
-RUN chmod 0644 /opt/edd-vendor-harness/server.js
-
 # Cross-cutting CLIs (installed system-wide to /usr/local BEFORE the home npm prefix
 # is set below, so they land in /usr/local — on PATH for every shell): the JS/TS
 # lint/format/dead-code/CPD tools that match this repo's own CI (prettier, eslint,
@@ -159,7 +153,6 @@ RUN printf '%s\n' \
 # independent; node-pty is compiled for the target arch in the node-pty-builder stage above.
 COPY editor-monaco /opt/edd-editor-monaco
 COPY --from=node-pty-builder /opt/edd-editor-monaco/node_modules /opt/edd-editor-monaco/node_modules
-COPY --from=node-pty-builder /opt/edd-editor-monaco/node_modules /opt/edd-vendor-harness/node_modules
 
 # Idle-agent + entrypoint (live in /usr/local/bin).
 COPY --chmod=0755 idle-agent.sh /usr/local/bin/edd-idle-agent

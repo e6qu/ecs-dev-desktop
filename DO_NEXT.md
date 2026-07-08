@@ -53,16 +53,21 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **After this follow-up PR merges, verify the deployed screenshot smoke and
-  golden image.** PR #207's rollout was verified live after fixing production
-  bootstrap/IAM/KMS and the smoke-email gap. The follow-up branch changed the
-  post-deploy smoke to open all four workspace types in Chromium and upload
-  screenshots, and changed the base image to install/assert `bubblewrap` for
-  Codex's Linux sandbox prerequisite. After merge, watch `release`,
-  `post-deploy-smoke`, and `golden-images`; confirm the screenshot artifact
-  contains OpenVSCode, Monaco, Claude Local Web UI, and Codex Local Web UI
-  renders, and confirm the new golden image tag is built/pushed and used by the
-  catalog.
+- **After this follow-up PR merges, rerun the deployed screenshot smoke from
+  GitHub Actions and verify the rendered editor surfaces.** PR #208's release
+  and golden-images runs succeeded, production used `deploy.sha=b48030c13956`,
+  and live manual checks then proved the old smoke was too weak: Claude/Codex
+  still showed the removed EDD wrapper pages, Monaco did not refresh
+  terminal-created files, and OpenVSCode on that production build could still
+  show `Forbidden` until the proxy/token changes shipped. The follow-up fixed
+  the missing Playwright Chromium install, made smoke cleanup wait for
+  `terminated`, fixed the heartbeat/version race, removed the Claude/Codex
+  wrapper in favor of vendor OpenVSCode extension UIs, and made screenshots
+  reject wrapper/read-only/auth/server-error pages. After merge, watch
+  `release`, `golden-images`, and `post-deploy-smoke`; confirm the screenshot
+  artifact shows OpenVSCode, editable Monaco, Anthropic Claude Code webview, and
+  OpenAI Codex sidebar, and confirm smoke-created workspace records terminate
+  without lingering live tasks.
 - **Apply/verify Terraform drift for fast health checks.** The source expected
   10-second ALB/NLB target-group health checks, but live AWS still showed
   30-second intervals after the image-only release. Apply the Terraform stack from
@@ -90,8 +95,9 @@ deferral by choice.
   task IP — and subscriber replicas relay through it; needs a tasks-SG
   self-ingress rule on the control-plane port). See `docs/design-public-spectate.md`.
 - **Spectate for OpenVSCode sessions** — needs extension-based capture inside
-  the `edd-workspace-ui` extension (v1 mirrors Monaco only; Claude/Codex modes
-  wait for the vendor harness work above).
+  the `edd-workspace-ui` extension (v1 mirrors Monaco only; Claude/Codex now run
+  through OpenVSCode vendor extension UIs, so they would depend on the same
+  OpenVSCode capture path).
 
 - **Post-launch backlog — consolidated plan (2026-07-06, sequenced; mirrors the session
   task list).** Already shipped from the original queue: editor home links (extension +
@@ -108,8 +114,8 @@ deferral by choice.
      sessions, owner namespace selection, one Start button, and redirect to the
      per-workspace status page. Remaining polish was visual/UX only.
   3. **Editor selection at creation**: OpenVSCode | Monaco | Claude Code | Codex shipped
-     as a UI/data choice, but Claude/Codex runtime modes intentionally fail until
-     the vendor harnesses above are implemented.
+     as a UI/data choice. Claude/Codex runtime modes now launch OpenVSCode with
+     their vendor extension UI selected.
   4. **Monitoring follow-up**: the card/admin surfaces now showed disk usage and linked
      per-workspace monitoring. Remaining work was richer CPU/memory/disk visualization on
      the compact card, per-workspace snapshot-cost display, disk-increase action

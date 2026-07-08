@@ -12,7 +12,8 @@
 //      to the chat entries, so these live in the status bar (right-aligned, top
 //      priority), the sanctioned always-visible surface for extension controls.
 //   3. Opens an interactive terminal on startup when none is open yet.
-//   4. A once-per-workspace tip that the claude/codex OAuth browser redirect
+//   4. Opens the selected vendor UI when EDD_EDITOR_MODE is claude/codex.
+//   5. A once-per-workspace tip that the claude/codex OAuth browser redirect
 //      cannot reach a remote workspace -- paste the code shown in the browser
 //      instead (both CLIs support that flow natively).
 "use strict";
@@ -31,6 +32,11 @@ const OAUTH_TIP_SHOWN_KEY = "edd.oauthTipShown";
 const OAUTH_TIP =
   "Tip: when 'claude' or 'codex' asks you to sign in, the browser redirect can't reach " +
   "this remote workspace — paste the code shown in the browser instead of waiting for it.";
+
+const VENDOR_COMMANDS = {
+  claude: "claude-vscode.editor.open",
+  codex: "chatgpt.openSidebar",
+};
 
 /** The portal URL from the workspace container's environment, or null when the
  * coordinate is absent (e.g. a bare local `docker run` without the platform). */
@@ -71,6 +77,25 @@ function activate(context) {
   // a window reload that already has one.
   if (vscode.window.terminals.length === 0) {
     vscode.window.createTerminal().show(/* preserveFocus */ true);
+  }
+
+  const vendorCommand = VENDOR_COMMANDS[process.env.EDD_EDITOR_MODE];
+  if (vendorCommand !== undefined) {
+    void vscode.commands.executeCommand(vendorCommand).then(
+      () => undefined,
+      (err) => {
+        const message =
+          err instanceof Error
+            ? err.message
+            : typeof err === "string"
+              ? err
+              : "unknown command failure";
+        void vscode.window.showErrorMessage(
+          `EDD could not open the ${process.env.EDD_EDITOR_MODE} vendor UI: ${message}`,
+        );
+        console.error(`edd: vendor UI command ${vendorCommand} failed: ${message}`);
+      },
+    );
   }
 
   // The OAuth tip once per workspace (persisted in globalState on the EBS home
