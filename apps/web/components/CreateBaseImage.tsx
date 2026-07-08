@@ -7,6 +7,16 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 const api = new ApiClient({ baseUrl: "" });
+const EDITOR_OPTIONS: readonly { value: EditorKindDto; label: string }[] = [
+  { value: "openvscode", label: "OpenVSCode" },
+  { value: "monaco", label: "Monaco" },
+  { value: "claude", label: "Claude Local Web UI" },
+  { value: "codex", label: "Codex Local Web UI" },
+];
+
+function isEditorKind(value: string): value is EditorKindDto {
+  return EDITOR_OPTIONS.some((option) => option.value === value);
+}
 
 export function CreateBaseImage() {
   const router = useRouter();
@@ -128,13 +138,16 @@ export function CreateBaseImage() {
             className="input"
             value={editor}
             onChange={(e) => {
-              if (e.target.value === "openvscode" || e.target.value === "monaco") {
+              if (isEditorKind(e.target.value)) {
                 setEditor(e.target.value);
               }
             }}
           >
-            <option value="openvscode">OpenVSCode</option>
-            <option value="monaco">Monaco</option>
+            {EDITOR_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </select>
           <span className="field-hint">Which editor workspaces from this image serve.</span>
         </label>
@@ -145,9 +158,6 @@ export function CreateBaseImage() {
           form="create-base-image-form"
           className="btn primary"
           disabled={!ready}
-          onClick={() => {
-            void add();
-          }}
         >
           {busy ? "adding…" : "+ add base image"}
         </button>

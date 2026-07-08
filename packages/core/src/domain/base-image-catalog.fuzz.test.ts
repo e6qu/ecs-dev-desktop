@@ -15,6 +15,7 @@ import {
   type BaseImageEntry,
   type BaseImagePatch,
 } from "./base-image-catalog";
+import { EDITOR_KINDS } from "./editor";
 
 const AT: IsoTimestamp = isoTimestamp("2026-01-01T00:00:00.000Z");
 // A label string that, after trimming, may be empty (whitespace-only) or duplicate.
@@ -117,7 +118,7 @@ const entryArb: fc.Arbitrary<BaseImageEntry> = fc.record({
   tags: labelsArb.map(expectedNormalized),
   tools: labelsArb.map(expectedNormalized),
   enabled: fc.boolean(),
-  editor: fc.constantFrom("openvscode" as const, "monaco" as const),
+  editor: fc.constantFrom(...EDITOR_KINDS),
   createdAt: fc.constant(AT),
 });
 

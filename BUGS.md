@@ -4,6 +4,55 @@
 
 ## Open
 
+- **Golden image builds could be skipped after editor/runtime-only merges —
+  FIXED in current branch (2026-07-08).** The asynchronous `golden-images`
+  workflow still had `push.paths` filters, so a merge that changed app/editor
+  behavior but not `infra/images/**` could release a new control plane while the
+  workspace catalog still pointed at an older golden image. The branch removed
+  the main-push path filter so workspace images build on every main merge, while
+  leaving PR filters in place for cost control.
+
+- **Post-deploy smoke could test a stale enabled workspace image — FIXED in
+  current branch (2026-07-08).** The deployed workspace smoke picked the first
+  enabled image in the catalog, which allowed a green-looking smoke to exercise
+  an older image after a release. The smoke now requires `EXPECTED_SHA`, polls
+  the deployed catalog until an enabled image tag exactly matches that SHA, and
+  fails loudly with the enabled-image list when production does not converge.
+
+- **Workspace list/detail UI could show stale state after an out-of-band stop or
+  delete — FIXED in current branch (2026-07-08).** The list only refreshed while
+  rows were already in transitional states, so a reconciler/admin/other-tab state
+  change could leave a stable-looking `running` card on screen. The list now
+  refreshes every two seconds while any workspace rows exist, and the detail view
+  polls status/logs faster so shutdown/delete changes surface quickly.
+
+- **Monaco terminal sessions stayed visible after disconnect and lacked normal
+  window controls — FIXED in current branch (2026-07-08).** The Monaco terminal
+  UI wrote a disconnected message into dead tabs and had no resize/minimize/
+  maximize/close controls. Terminal WebSocket close now removes the tab, the
+  visible terminal button opens/creates a tab when needed, and the panel has
+  resize, minimize, maximize, close, and per-tab close controls. PTY spawn
+  failures now close the terminal channel loudly without crashing the Monaco
+  editor server.
+
+- **Admin-created base images could not select Claude/Codex editor kinds —
+  FIXED in current branch (2026-07-08).** The normal workspace launcher exposed
+  all four interface choices, but the admin base-image form only accepted
+  OpenVSCode/Monaco. The form now exposes OpenVSCode, Monaco, Claude Local Web
+  UI, and Codex Local Web UI, and the catalog fuzz test covers all editor kinds.
+
+- **Claude/Codex Local Web UI runtime surface still needed a verified vendor
+  browser entrypoint (2026-07-08).** Local and documented verification did not
+  find a vendor CLI command that starts an EDD-hostable local HTTP web UI. Codex
+  exposed `app-server` as stdio/WebSocket/Unix-socket JSON-RPC protocol
+  infrastructure and `codex app` as a desktop-app launcher; the official Codex
+  docs described app-server as powering rich clients such as the VS Code
+  extension. Claude Code exposed `--remote-control`, but local startup opened a
+  TUI/control session and no listening browser UI was observed. EDD must not
+  invent a replacement chat UI or silently use Monaco/OpenVSCode as a fallback;
+  the remaining implementation requires the exact vendor browser-server
+  entrypoint or an explicit architecture decision from the user.
+
 - **Deployed browser smoke bypassed the real user editor-open path — FIXED in
   current branch (2026-07-08).** `post-deploy-smoke` run `28950258091` failed
   after the PR #209 deployment, but the deeper problem was methodology: the

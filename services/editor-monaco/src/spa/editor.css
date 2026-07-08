@@ -181,6 +181,20 @@ body {
   border-top: 1px solid var(--border);
   background: #1e1e1e;
 }
+#terminal-panel.maximized {
+  height: calc(100vh - 32px);
+}
+#terminal-resizer {
+  height: 6px;
+  flex: none;
+  cursor: ns-resize;
+  background: #2a2d2e;
+  border-bottom: 1px solid var(--border);
+}
+#terminal-resizer:hover,
+#terminal-resizer:focus-visible {
+  background: #3a3d3e;
+}
 #terminal-tabs {
   flex: none;
   display: flex;
@@ -191,21 +205,47 @@ body {
   border-bottom: 1px solid var(--border);
 }
 .terminal-tab {
-  background: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   border: 1px solid transparent;
-  color: var(--dim);
   border-radius: 4px;
+}
+.terminal-tab.active {
+  background: #37373d;
+}
+.terminal-tab-select {
+  background: none;
+  border: 0;
+  color: var(--dim);
   padding: 2px 8px;
   font: inherit;
   font-size: 12px;
   cursor: pointer;
 }
-.terminal-tab:hover {
+.terminal-tab:hover .terminal-tab-select,
+.terminal-tab-select:hover {
   color: var(--text);
 }
-.terminal-tab.active {
+.terminal-tab-select.active {
   color: var(--text);
-  background: #37373d;
+}
+.terminal-tab-close {
+  width: 16px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+}
+.terminal-tab-close:hover {
+  color: #fff;
+  background: #ffffff1f;
 }
 #new-terminal-tab {
   background: none;
@@ -219,6 +259,30 @@ body {
 }
 #new-terminal-tab:hover {
   color: var(--text);
+}
+.spacer {
+  flex: 1;
+}
+#terminal-window-controls {
+  display: inline-flex;
+  gap: 2px;
+}
+#terminal-window-controls button {
+  width: 24px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: var(--dim);
+  cursor: pointer;
+  font: inherit;
+  line-height: 1;
+}
+#terminal-window-controls button:hover {
+  color: var(--text);
+  background: #37373d;
 }
 #terminal-panes {
   flex: 1;

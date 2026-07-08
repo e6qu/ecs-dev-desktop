@@ -53,6 +53,14 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
+- **Finish Claude/Codex local web UI wiring only from a verified vendor
+  browser entrypoint.** Local verification on 2026-07-08 found Codex app-server
+  as a JSON-RPC protocol server, `codex app` as a desktop-app launcher, and
+  Claude `--remote-control` as a Remote Control/TUI session with no local HTTP
+  browser listener observed. Do not build an EDD chat UI, do not use Monaco or
+  generic OpenVSCode as a fallback, and do not mark this solved until the exact
+  vendor-provided browser UI command/transport is verified and wired.
+
 - **After the current branch merges, rerun the deployed screenshot smoke from
   GitHub Actions and inspect its artifacts.** PR #209 deployed
   `e6b87475c1df` successfully at the ECS/app/image level, but

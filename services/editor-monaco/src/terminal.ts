@@ -60,7 +60,7 @@ export function parseMessage(
 }
 
 // node-pty is loaded lazily (only when a terminal actually connects) so the editor still serves if
-// the native binding is missing/incompatible — the terminal degrades, the editor does not.
+// the native binding is missing/incompatible — the terminal fails loudly, the editor does not.
 async function loadPty(): Promise<typeof import("node-pty") | null> {
   try {
     return await import("node-pty");
@@ -90,13 +90,23 @@ async function startShell(ws: WebSocket, root: string, command?: string): Promis
   // login shell (full image PATH); `exec` replaces the shell so the program's exit
   // closes the PTY. A plain shell otherwise.
   const args = command === undefined ? [] : ["-lc", `exec ${command}`];
-  const pty = nodePty.spawn(shell, args, {
-    name: "xterm-color",
-    cwd: root,
-    env: process.env,
-    cols: 80,
-    rows: 24,
-  });
+  let pty: ReturnType<typeof nodePty.spawn>;
+  try {
+    pty = nodePty.spawn(shell, args, {
+      name: "xterm-color",
+      cwd: root,
+      env: process.env,
+      cols: 80,
+      rows: 24,
+    });
+  } catch (e) {
+    const message = e instanceof Error ? e.message : "unknown terminal spawn failure";
+    if (ws.readyState === ws.OPEN) {
+      ws.send(`\r\n\x1b[31m[terminal unavailable: ${message}]\x1b[0m\r\n`);
+      ws.close(1011, "terminal unavailable");
+    }
+    return;
+  }
   pty.onData((data) => {
     if (ws.readyState === ws.OPEN) ws.send(data);
   });

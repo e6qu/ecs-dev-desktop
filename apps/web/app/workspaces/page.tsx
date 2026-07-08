@@ -14,14 +14,11 @@ import { catalogByImage, enrichWorkspace } from "../../lib/workspace-enrich";
 
 export const dynamic = "force-dynamic";
 
-// While a workspace is mid-transition (just created → provisioning, or deleting), poll the
-// server render so the card advances to its resting state — and the "Open editor" button appears —
-// without the user manually reloading. Stops once nothing is transitional.
-// `stopping` is transitional too: the cancelable manual stop converges to `stopped`
-// via the server sweep, so the list must keep polling to catch it (else the card
-// freezes at "stopping").
-const TRANSITIONAL_STATES = new Set(["provisioning", "deleting", "stopping"]);
-const TRANSITIONAL_REFRESH_MS = 4000;
+// Keep the workspace list live even when every row currently looks stable: the
+// reconciler, another browser tab, or an admin action can stop/delete a workspace
+// without this page initiating it. Polling the dynamic server render keeps cards
+// from showing stale "running" state after a real shutdown.
+const WORKSPACE_LIST_REFRESH_MS = 2000;
 
 export default async function WorkspacesPage({
   searchParams,
@@ -57,11 +54,11 @@ export default async function WorkspacesPage({
   // grid — present (the user can undelete) but never mixed in with active work.
   const workspaces = enriched.filter((w) => w.state !== "terminated");
   const deleted = enriched.filter((w) => w.state === "terminated");
-  const hasTransitional = workspaces.some((w) => TRANSITIONAL_STATES.has(w.state));
+  const hasWorkspaces = enriched.length > 0;
 
   return (
     <>
-      {hasTransitional && <LiveRefresh intervalMs={TRANSITIONAL_REFRESH_MS} />}
+      {hasWorkspaces && <LiveRefresh intervalMs={WORKSPACE_LIST_REFRESH_MS} />}
       <div className="page-head">
         <div>
           <div className="kicker">workspaces</div>

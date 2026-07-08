@@ -2,6 +2,55 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
+**Last updated:** 2026-07-08. The current branch made the production smoke and
+workspace UI stricter after PR #210's merge/deploy exposed that green ECS/app
+health did not prove the expected workspace image or rendered editor behavior.
+The `golden-images` workflow now ran for every `main` push instead of only
+image-path changes, so workspace-image builds were no longer skipped when the
+editor/runtime code changed. The deployed workspace smoke scripts required
+`EXPECTED_SHA`, waited until the catalog exposed an enabled image with that tag,
+and failed loudly if production still pointed at an older golden image. A focused
+unit test covered expected-tag selection and stale-image rejection.
+
+The workspace list and detail pages became more responsive to out-of-band state
+changes: the list refreshed every two seconds while any workspace rows existed,
+and the detail page polled status every second and logs every four seconds. This
+addressed stale UI after reconciler/admin/other-tab stop or delete events.
+
+Monaco gained the terminal controls reported missing in production. Terminal
+tabs disappeared when their WebSocket disconnected, the visible terminal control
+opened the panel and created a tab when needed, and the panel gained resize,
+minimize, maximize, and close controls. The terminal server also failed the
+terminal channel loudly when PTY spawn failed instead of taking down the whole
+Monaco editor process. The admin base-image form exposed all four editor choices
+instead of only OpenVSCode/Monaco, matching the workspace-create UI and persisted
+contract.
+
+Vendor-local Claude/Codex verification remained unresolved rather than guessed.
+Local verification showed `codex app-server` exposed stdio/WebSocket/Unix-socket
+protocol transports plus `/readyz` and `/healthz`, and OpenAI's own docs
+described app-server as the protocol interface used by rich clients such as the
+VS Code extension. `codex app` was a desktop-app launcher and `chatgpt.com/codex`
+was the Codex web/cloud/app surface, not a local Linux HTTP UI command. Local
+Claude Code `--help` exposed `--remote-control [name]`, but no local HTTP/web
+server subcommand; starting Remote Control locally opened the Claude Code TUI and
+did not expose a listening browser UI. The branch therefore did not invent an
+EDD-authored chat UI or silently relabel Monaco/OpenVSCode as the requested local
+web UI.
+
+Focused verification passed with `pnpm --filter web exec vitest run
+scripts/deployed-workspace-smoke-lib.test.ts`, focused web eslint for the touched
+page/components/scripts, `pnpm --filter @edd/editor-monaco build`, `pnpm
+--filter @edd/editor-monaco test` with loopback access, `pnpm --filter web
+lint`, `pnpm --filter web test` with loopback access, `pnpm --filter
+@edd/core test`, `pnpm --filter @edd/api-contracts test`, `pnpm actionlint`, and
+`git diff --check`. The first sandboxed Monaco test attempt failed only because
+the sandbox denied `listen 127.0.0.1` with `EPERM`; the same suite passed with
+local loopback access. A local Chromium check against the rebuilt Monaco server
+captured `/private/tmp/edd-monaco-after-terminal-ui.png` and verified the editor
+accepted typing without the read-only overlay, the smoke file appeared in the
+explorer, and terminal controls rendered without breaking the layout.
+
 **Last updated:** 2026-07-08. After PR #209 merged as
 `e6b87475c1df6393dddacb82ad998711ec39b052`, the release workflow
 `28950005919` succeeded in 3m34s and production reported
