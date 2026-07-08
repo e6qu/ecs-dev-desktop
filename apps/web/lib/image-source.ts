@@ -22,9 +22,14 @@ import { getImageOps, type ImageOps } from "./image-ops";
 
 const SOURCE_SCHEMA_VERSION = 2;
 const SOURCE_ID = "github-main";
-const BUILD_TRIGGER = "edd-github-source";
 const RECENT_TRIGGER_LIMIT = 20;
 const TAG_LENGTH = 12;
+const WORKSPACE_IMAGE_INPUTS_CHANGED_REASON = "workspace image inputs changed";
+const NO_WORKSPACE_IMAGE_INPUTS_CHANGED_REASON = "no workspace image inputs changed";
+const CATALOG_ROLLOUT_FAILED_REASON_PREFIX = "catalog rollout failed:";
+const SUPERSEDED_GOLDEN_BUILD_REASON = "superseded by newer successful golden build";
+const WAITING_FOR_GITHUB_ACTIONS_REASON =
+  "waiting for golden image tag from GitHub Actions workflow";
 export const GITHUB_WEBHOOK_MAX_BODY_BYTES = 256 * 1024;
 const GITHUB_DELIVERY_ID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -172,8 +177,8 @@ export function decideImageSourceBuild(paths: readonly string[]): {
       GOLDEN_REBUILD_PREFIXES.some((prefix) => p.startsWith(prefix)),
   );
   if (rebuild)
-    return { decision: "build", reason: "workspace image inputs changed", target: "golden" };
-  return { decision: "skip", reason: "no workspace image inputs changed" };
+    return { decision: "build", reason: WORKSPACE_IMAGE_INPUTS_CHANGED_REASON, target: "golden" };
+  return { decision: "skip", reason: NO_WORKSPACE_IMAGE_INPUTS_CHANGED_REASON };
 }
 
 export function verifyGithubSignature(
@@ -270,7 +275,7 @@ export class ImageSourceService {
     });
     const started =
       decision.decision === "build" && decision.target !== undefined
-        ? await this.startBuild(base, decision.target)
+        ? this.queueCiPublishedImage(base, decision.target)
         : base;
     await this.putTrigger(started);
     await this.putSource({
@@ -283,52 +288,64 @@ export class ImageSourceService {
     return toTriggerDto(started);
   }
 
-  private async startBuild(base: TriggerRecord, target: BuildTargetDto): Promise<TriggerRecord> {
+  private queueCiPublishedImage(base: TriggerRecord, target: BuildTargetDto): TriggerRecord {
     const tag = base.afterSha.slice(0, TAG_LENGTH);
-    const buildId = await this.deps.imageOps().startBuild({
-      target,
-      tag,
-      ref: base.branch,
-      sourceVersion: base.afterSha,
-      triggeredBy: BUILD_TRIGGER,
-    });
     return {
       ...base,
       status: "queued",
       target,
       tag,
       sourceVersion: base.afterSha,
-      buildId,
       updatedAt: this.nowIso(),
     };
   }
 
   async reconcileRecentBuilds(): Promise<void> {
     const triggers = await this.recentTriggerRecords();
-    const active = triggers.filter((t) => t.buildId !== undefined && isOpenTrigger(t.status));
+    const active = triggers.filter(shouldReconcileBuildTrigger);
     if (active.length === 0) return;
-    await Promise.all(
-      active.map(async (trigger) => {
-        const build = await this.deps.imageOps().getBuild(trigger.buildId ?? "");
-        if (build === null) return;
-        const status = triggerStatusFromBuild(build.status);
-        if (status === "succeeded" && trigger.target === "golden" && trigger.tag !== undefined) {
-          try {
-            await this.rollGoldenCatalog(trigger.tag);
-          } catch (e) {
-            const reason = e instanceof Error ? e.message : "catalog rollout failed";
-            await this.putTrigger({
-              ...trigger,
-              status: "failed",
-              reason: `catalog rollout failed: ${reason}`,
-              updatedAt: this.nowIso(),
-            });
-            return;
-          }
+    const observed = (
+      await Promise.all(
+        active.map(async (trigger) => {
+          const status = await this.observeTriggerStatus(trigger);
+          if (status === null) return;
+          return { trigger, status };
+        }),
+      )
+    ).filter((v) => v !== undefined);
+    const latestGolden = latestGoldenTrigger(observed);
+    for (const observation of observed) {
+      const { trigger, status } = observation;
+      if (status === "succeeded" && isGoldenTrigger(trigger)) {
+        if (latestGolden !== undefined && trigger.id !== latestGolden.id) {
+          await this.putTrigger({
+            ...trigger,
+            status: "succeeded",
+            reason: SUPERSEDED_GOLDEN_BUILD_REASON,
+            updatedAt: this.nowIso(),
+          });
+          continue;
         }
-        await this.putTrigger({ ...trigger, status, updatedAt: this.nowIso() });
-      }),
-    );
+        try {
+          await this.rollGoldenCatalog(trigger.tag);
+        } catch (e) {
+          const reason = e instanceof Error ? e.message : "catalog rollout failed";
+          await this.putTrigger({
+            ...trigger,
+            status: "failed",
+            reason: `${CATALOG_ROLLOUT_FAILED_REASON_PREFIX} ${reason}`,
+            updatedAt: this.nowIso(),
+          });
+          continue;
+        }
+      }
+      await this.putTrigger({
+        ...trigger,
+        status,
+        reason: successReason(trigger, status),
+        updatedAt: this.nowIso(),
+      });
+    }
   }
 
   private async rollGoldenCatalog(tag: string): Promise<void> {
@@ -337,6 +354,29 @@ export class ImageSourceService {
         await this.deps.rollCatalogImageTag(`${this.deps.cfg.appName}/golden/${variant}`, tag);
       }),
     );
+  }
+
+  private async observeTriggerStatus(
+    trigger: TriggerRecord,
+  ): Promise<ImageSourceTriggerStatusDto | null> {
+    if (trigger.buildId !== undefined) {
+      const build = await this.deps.imageOps().getBuild(trigger.buildId);
+      return build === null ? null : triggerStatusFromBuild(build.status);
+    }
+    if (isGoldenTrigger(trigger)) {
+      return (await this.allGoldenImagesPublished(trigger.tag)) ? "succeeded" : "building";
+    }
+    return null;
+  }
+
+  private async allGoldenImagesPublished(tag: string): Promise<boolean> {
+    const results = await Promise.all(
+      this.deps.cfg.goldenVariants.map(async (variant) => {
+        const repo = `${this.deps.cfg.appName}/golden/${variant}`;
+        return (await this.deps.imageOps().getImageMetadata(repo, tag)) !== null;
+      }),
+    );
+    return results.every((published) => published);
   }
 
   private async ensureSource(repo: string): Promise<SourceRecord> {
@@ -382,6 +422,49 @@ export class ImageSourceService {
 
 function isOpenTrigger(status: ImageSourceTriggerStatusDto): boolean {
   return status === "queued" || status === "building" || status === "received";
+}
+
+function shouldReconcileBuildTrigger(trigger: TriggerRecord): boolean {
+  return (
+    trigger.target === "golden" &&
+    trigger.tag !== undefined &&
+    (isOpenTrigger(trigger.status) ||
+      (trigger.status === "failed" &&
+        trigger.reason.startsWith(CATALOG_ROLLOUT_FAILED_REASON_PREFIX)))
+  );
+}
+
+function isGoldenTrigger(
+  trigger: TriggerRecord,
+): trigger is TriggerRecord & { readonly tag: string } {
+  return trigger.target === "golden" && trigger.tag !== undefined;
+}
+
+function latestGoldenTrigger(
+  observations: readonly {
+    readonly trigger: TriggerRecord;
+    readonly status: ImageSourceTriggerStatusDto;
+  }[],
+): (TriggerRecord & { readonly tag: string }) | undefined {
+  const candidates = observations
+    .map((observation) => observation.trigger)
+    .filter(isGoldenTrigger)
+    .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
+  return candidates[0];
+}
+
+function successReason(trigger: TriggerRecord, status: ImageSourceTriggerStatusDto): string {
+  if (status === "building" && isGoldenTrigger(trigger) && trigger.buildId === undefined) {
+    return WAITING_FOR_GITHUB_ACTIONS_REASON;
+  }
+  if (status !== "succeeded") return trigger.reason;
+  if (trigger.reason.startsWith(CATALOG_ROLLOUT_FAILED_REASON_PREFIX)) {
+    return WORKSPACE_IMAGE_INPUTS_CHANGED_REASON;
+  }
+  if (trigger.reason === WAITING_FOR_GITHUB_ACTIONS_REASON) {
+    return WORKSPACE_IMAGE_INPUTS_CHANGED_REASON;
+  }
+  return trigger.reason;
 }
 
 function triggerStatusFromBuild(status: BuildStatusDto): ImageSourceTriggerStatusDto {

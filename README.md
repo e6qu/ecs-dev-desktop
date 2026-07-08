@@ -124,10 +124,12 @@ In short, the install flow is:
    and the **SSH-gateway image** (a pinned tag — the repo is immutable). For
    ongoing releases, the `release` workflow uses GitHub OIDC to build, publish,
    register new ECS task definitions, roll the control-plane and SSH-gateway
-   services, and update the reconciler schedule. EDD-owned post-merge rebuilds
-   cover only workspace/golden images. Images are published as multi-arch
-   manifests (`:<tag>`) plus per-arch tags (`:<tag>-amd64` and `:<tag>-arm64`) so
-   runners that cannot consume manifests can pin an exact arch.
+   services, and update the reconciler schedule. The separate `golden-images`
+   workflow publishes workspace/golden images asynchronously on `main` and by
+   manual dispatch; the deployed EDD app tracks signed source webhooks and rolls
+   the catalog after the expected ECR tags exist. Images are published as
+   multi-arch manifests (`:<tag>`) plus per-arch tags (`:<tag>-amd64` and
+   `:<tag>-arm64`) so runners that cannot consume manifests can pin an exact arch.
 5. **Configure secrets** the module does not inject — Auth.js (`AUTH_SECRET`,
    `AUTH_URL`/`AUTH_TRUST_HOST`) + IdP creds, RBAC groups (`EDD_ADMIN_GROUPS` — set
    this or no one is an admin), and crypto (`EDD_TOKEN_ENC_KEY`, `EDD_GATEWAY_SECRET`,

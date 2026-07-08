@@ -10,13 +10,14 @@
 #   EDD_RELEASE_AWS_ACCOUNT   12-digit AWS account id
 #   EDD_RELEASE_AWS_REGION    AWS region for ECR
 #   EDD_RELEASE_NAME_PREFIX   EDD stack/module name, e.g. edd-prod
+#   EDD_RELEASE_GOLDEN_VARIANTS whitespace-separated golden variants, e.g. "omnibus"
 #
 # Effects:
 #   - creates/updates the IAM OIDC provider for token.actions.githubusercontent.com
 #   - creates/updates <prefix>-github-release with a main/tags-only trust policy
 #   - attaches the least ECR/ECS/Scheduler policy needed by the release workflow
 #   - writes the non-secret RELEASE_* GitHub repo variables consumed by
-#     .github/workflows/release.yml
+#     .github/workflows/release.yml and .github/workflows/golden-images.yml
 #
 # This script never stores static secrets in GitHub. The workflow uses OIDC to
 # exchange a GitHub-issued token for short-lived STS credentials.
@@ -28,6 +29,7 @@ GITHUB_REPO="${EDD_RELEASE_GITHUB_REPO:-}"
 AWS_ACCOUNT="${EDD_RELEASE_AWS_ACCOUNT:-}"
 AWS_REGION="${EDD_RELEASE_AWS_REGION:-}"
 NAME_PREFIX="${EDD_RELEASE_NAME_PREFIX:-}"
+GOLDEN_VARIANTS="${EDD_RELEASE_GOLDEN_VARIANTS:-}"
 
 missing() {
   [ -n "$2" ] && return 0
@@ -39,6 +41,7 @@ missing EDD_RELEASE_GITHUB_REPO "$GITHUB_REPO" || exit 1
 missing EDD_RELEASE_AWS_ACCOUNT "$AWS_ACCOUNT" || exit 1
 missing EDD_RELEASE_AWS_REGION "$AWS_REGION" || exit 1
 missing EDD_RELEASE_NAME_PREFIX "$NAME_PREFIX" || exit 1
+missing EDD_RELEASE_GOLDEN_VARIANTS "$GOLDEN_VARIANTS" || exit 1
 
 case "$GITHUB_REPO" in
   */*) ;;
@@ -162,7 +165,8 @@ cat >"$permissions_policy" <<EOF
       ],
       "Resource": [
         "arn:aws:ecr:${AWS_REGION}:${AWS_ACCOUNT}:repository/${NAME_PREFIX}/control-plane",
-        "arn:aws:ecr:${AWS_REGION}:${AWS_ACCOUNT}:repository/${NAME_PREFIX}/ssh-gateway"
+        "arn:aws:ecr:${AWS_REGION}:${AWS_ACCOUNT}:repository/${NAME_PREFIX}/ssh-gateway",
+        "arn:aws:ecr:${AWS_REGION}:${AWS_ACCOUNT}:repository/${NAME_PREFIX}/golden/*"
       ]
     },
     {
@@ -248,6 +252,7 @@ gh variable set RELEASE_AWS_ACCOUNT --repo "$GITHUB_REPO" --body "$AWS_ACCOUNT"
 gh variable set RELEASE_AWS_REGION --repo "$GITHUB_REPO" --body "$AWS_REGION"
 gh variable set RELEASE_AWS_ROLE_ARN --repo "$GITHUB_REPO" --body "$role_arn"
 gh variable set RELEASE_NAME_PREFIX --repo "$GITHUB_REPO" --body "$NAME_PREFIX"
+gh variable set RELEASE_GOLDEN_VARIANTS --repo "$GITHUB_REPO" --body "$GOLDEN_VARIANTS"
 
 cat <<EOF
 edd: release OIDC bootstrap complete
@@ -255,4 +260,5 @@ edd: release OIDC bootstrap complete
   account = ${AWS_ACCOUNT}
   region  = ${AWS_REGION}
   role    = ${role_arn}
+  golden  = ${GOLDEN_VARIANTS}
 EOF

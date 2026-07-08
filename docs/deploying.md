@@ -125,8 +125,16 @@ and Docker Buildx so the default `amd64 arm64` multi-arch build succeeds on
 GitHub's x86\*64 runners, then registers fresh task-definition revisions from the
 currently deployed definitions, changing only the image references. It updates the
 control-plane and SSH-gateway ECS services, updates the reconciler Scheduler target,
-and waits for ECS service stability. The `RELEASE_AWS_ACCOUNT`,
-`RELEASE_AWS_REGION`, `RELEASE_AWS_ROLE_ARN`, and `RELEASE_NAME_PREFIX` repo
+and waits for ECS service stability.
+
+The separate [`golden-images`](../.github/workflows/golden-images.yml) workflow
+publishes workspace/golden images on `main` when image inputs change and by manual
+dispatch. It does not deploy ECS services and does not block the `release`
+workflow. The workflow uses the same GitHub OIDC role and pushes
+`EDD_BUILD_TARGET=golden` images to the configured golden ECR repos with
+`EDD_BUILD_ARCHS=amd64`, matching the current Fargate workspace architecture and
+avoiding CodeBuild cost. The `RELEASE_AWS_ACCOUNT`, `RELEASE_AWS_REGION`,
+`RELEASE_AWS_ROLE_ARN`, `RELEASE_NAME_PREFIX`, and `RELEASE_GOLDEN_VARIANTS` repo
 variables are required non-secret coordinates. Do not store static secrets in
 GitHub variables or secrets for this path. When any coordinate is absent, the
 workflow fails before AWS authentication; it does not skip or substitute a default
@@ -141,8 +149,9 @@ account bootstrap step:
 2. Create a narrowly scoped IAM role whose trust policy accepts GitHub OIDC tokens
    only from this repository's `main` branch and `v*` tags.
 3. Grant that role only the ECR, ECS, Scheduler, and `iam:PassRole` permissions
-   needed to publish the release images, register the matching task definitions,
-   roll the control-plane/SSH services, and retarget the reconciler schedule.
+   needed to publish the release and golden images, register the matching task
+   definitions, roll the control-plane/SSH services, and retarget the reconciler
+   schedule.
 4. Store only the non-secret role/account/region/name coordinates as GitHub repo
    variables. Do not put static secrets in GitHub variables or secrets.
 
@@ -158,6 +167,7 @@ EDD_RELEASE_GITHUB_REPO=e6qu/ecs-dev-desktop \
 EDD_RELEASE_AWS_ACCOUNT=111122223333 \
 EDD_RELEASE_AWS_REGION=eu-west-1 \
 EDD_RELEASE_NAME_PREFIX=edd-prod \
+EDD_RELEASE_GOLDEN_VARIANTS="omnibus" \
 sh scripts/bootstrap-release-oidc.sh
 ```
 
@@ -166,12 +176,12 @@ not match `EDD_RELEASE_AWS_ACCOUNT`. It updates the OIDC provider thumbprint, th
 release role trust/permission policy, and the GitHub `RELEASE_*` repo variables.
 It never stores static secrets in GitHub.
 
-For the production CodeBuild-backed install path, CI should still own the
-control-plane image build/publish path (the small app image). The EDD control
-plane owns only post-merge **workspace/golden image** rebuilds, because those are
-runtime fleet assets operators need to track and roll independently. This is not
-a fallback release path: EDD must remain releasable from CI/operator release
-flows even when no EDD deployment exists.
+CI owns both the control-plane image build/publish path and post-merge
+**workspace/golden image** publishing. This is not a fallback release path: EDD
+must remain releasable from CI/operator release flows even when no EDD deployment
+exists. The deployed EDD control plane tracks signed source webhooks, verifies the
+expected golden tags in ECR, and rolls the base-image catalog only after every
+configured golden variant is present.
 
 Set `EDD_IMAGE_SOURCE_REPO` (`owner/repo`, e.g. `e6qu/ecs-dev-desktop`) and
 optionally `EDD_IMAGE_SOURCE_BRANCH` (default `main`) before running
@@ -196,10 +206,11 @@ The app then requires `X-GitHub-Event: push`, a UUID-shaped `X-GitHub-Delivery`,
 `application/json`, a small body, and a valid HMAC before parsing the payload.
 
 When a new commit changes workspace-image inputs (`infra/images/**`,
-`pnpm-lock.yaml`, or the image publish/build wiring), EDD starts the existing
-CodeBuild image project asynchronously with `EDD_BUILD_TARGET=golden`,
-`SOURCE_REF=<branch>`, `SOURCE_VERSION=<exact sha>`, and a short-SHA image tag.
-It does not replace CI for control-plane image builds.
+`pnpm-lock.yaml`, `package.json`, or the image publish/build wiring), the
+`golden-images` workflow publishes the short-SHA tag asynchronously. EDD records
+that expected tag from the signed push webhook, polls ECR through the standard API,
+and rolls each configured `<app>/golden/<variant>` catalog entry after the tag is
+present in every configured golden repo.
 
 ## Step 3 — Configure the control plane (env + secrets)
 

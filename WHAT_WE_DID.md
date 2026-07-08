@@ -234,6 +234,48 @@ Error`, so the portal's existing `e.message` shows it. api-client 4 tests; build
   harness so bind failures rejected immediately instead of timing out with
   unhandled `listen` errors.
 
+- **2026-07-08** — **Golden images moved to async GitHub CI; catalog rollout race
+  fixed.** After PR #202 merged, production verified the recovered release path:
+  GitHub Actions run `28901563184` pushed control-plane and SSH images for
+  `881c88c504e3`, registered task definitions `:27`, rolled the ECS services, and
+  retargeted the reconciler schedule. The same inspection found the workspace
+  golden image existed in ECR but the base-image catalog still pointed at
+  `omnibus:89c3cdee68d1`; DynamoDB showed the latest trigger failed with
+  `catalog rollout failed: rollout of edd-prod/golden/omnibus lost a concurrent update`.
+  The branch traced that to EDD app code: multiple successful golden triggers
+  reconciled concurrently and raced the catalog CAS. The fix made only the newest
+  successful golden trigger roll catalog state, marked older successful tags as
+  superseded, and retried catalog-rollout failures.
+
+  The branch also moved workspace/golden image publishing out of the EDD app and
+  into a separate `golden-images` workflow that runs on `main` and manual dispatch,
+  non-blocking to the `release` workflow. The app no longer started CodeBuild for
+  source observations; it queued expected tags, verified ECR image presence, and
+  exposed source/image/trigger state in `/admin/images`. The admin UI removed the
+  app-started rebuild control, while legacy CodeBuild history remained read-only
+  for older rows/tooling. `scripts/bootstrap-release-oidc.sh` was extended with
+  required `EDD_RELEASE_GOLDEN_VARIANTS`; the real `edd-prod` bootstrap was rerun
+  with `omnibus`, updating the GitHub OIDC role for `edd-prod/golden/*` and writing
+  only non-secret GitHub repo variables. Deploy speed/no-downtime settings were
+  tightened by reducing ALB/NLB health checks to 10 seconds and setting explicit
+  SSH service 100%/200% rolling deployment bounds. The dependency gate was hardened
+  so Terraform init errors or missing Terraform failed loudly.
+
+  Verification passed across the broad local gates: targeted image-source tests,
+  `@edd/web` lint/build/test, repo `pnpm lint`, `pnpm build`, `pnpm test`,
+  `pnpm test:integ`, `pnpm test:e2e:local`, `pnpm check-deps`, `pnpm dead-code`,
+  `actionlint`, `shellcheck`, Terraform fmt, and Terraform validate with
+  Terraform 1.15.7 and provider/network access. The container-mode e2e suite passed
+  lifecycle, data fidelity, OpenVSCode, Monaco, SSH wake, ECS Exec, reconciler,
+  and workspace-toolchain checks; the per-variant image e2e file skipped locally
+  because the dedicated `golden-images` workflow built and tested those images.
+  The first PR #203 CI run exposed one stale assertion in `terraform-sim`: the
+  workflow still expected ALB target-group health checks every 30 seconds after
+  the branch intentionally changed the module default to 10 seconds. The assertion
+  and a stale adversarial-slice comment were corrected, and the rerun on head
+  `1aa4a6c7c616195d1c797dfa3646e58b7fe7cb49` passed all PR checks; GitHub reported
+  merge state `CLEAN`.
+
 - **2026-06-04** — **Terraform platform module (deploy IaC) + sim-tested.** Wrote a
   reusable, parametric `infra/terraform/modules/ecs-dev-desktop` (Terraform/Terragrunt,
   no `provider` block): VPC/subnets/NAT/SGs, the DynamoDB single-table (matching

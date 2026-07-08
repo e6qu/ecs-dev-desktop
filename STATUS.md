@@ -2,18 +2,76 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-07. The production release inspection after PR #201
-merged verified that CI and the EDD-owned workspace-image flow both built images,
-but ECS did not roll them. GitHub Actions run `28898272647` for merge commit
-`992b22cc334937956c2309ef0fd09de6c1235527` succeeded and pushed
-`edd-prod/control-plane:992b22cc3349`
-(`sha256:1362f3e2209266347c3ec4c463cb3ff7c52bdc4c662b3863d53a65509aabc529`)
-plus `edd-prod/ssh-gateway:992b22cc3349`
-(`sha256:dd4c16ddc145376d2dffabf2b254fc163c34fd2cc8ba69146ecf4d5d672b91f9`).
-The app-owned CodeBuild run
-`edd-prod-build-images:651e5bbf-2ba6-47d2-98f2-f01ab00af0a5` also succeeded for
-the same commit and pushed `edd-prod/golden/omnibus:992b22cc3349`
-(`sha256:942978e2a7beb77618b9ce1e67008a3e1c10a8de78418294b5b26734cc2559a3`).
+**Last updated:** 2026-07-08. The PR #202 rollout inspection verified that the
+release workflow did roll ECS after publishing CI-owned control-plane images.
+GitHub Actions run `28901563184` for merge commit
+`881c88c504e369441be356cfdb62098ab03e8544` succeeded, pushed
+`edd-prod/control-plane:881c88c504e3`
+(`sha256:a7835ba8fd9179eff51bd002ee69a9ec83a48256dd1d93eaf0330ba212f5ee57`)
+and `edd-prod/ssh-gateway:881c88c504e3`
+(`sha256:19a8b14dde640893181a306d22dd15026fdfd4999ef3e2eb49217410660c7131`),
+registered task definitions `edd-prod-control-plane:27`,
+`edd-prod-reconciler:27`, and `edd-prod-ssh-gateway:27`, updated the
+`edd-prod-control-plane` service to 2/2 running, updated `edd-prod-ssh-gateway`
+to 1/1 running, and retargeted the `edd-prod-reconciler` Scheduler schedule to
+`rate(5 minutes)` on cluster `edd-prod-workspaces`. `https://app.edd.e6qu.dev/api/healthz`
+returned 200 and `/api/readyz` returned 200 with DynamoDB ACTIVE after the rollout.
+
+The same inspection found that the old EDD-owned CodeBuild golden-image path had
+successfully pushed `edd-prod/golden/omnibus:881c88c504e3`
+(`sha256:dbd6868f6383d7f2792393eb038a0d21e9146f7437b98688bc4f3a5e30a45f72`,
+3.06 GB compressed), but the base-image catalog still pointed at
+`omnibus:89c3cdee68d1`. DynamoDB showed the latest trigger
+`f56ddf9e-b9d3-4a7b-b7ec-4c6899d1130d` as `failed` with
+`catalog rollout failed: rollout of edd-prod/golden/omnibus lost a concurrent update`.
+That was traced to app code: multiple successful golden triggers reconciled in
+parallel and raced the catalog CAS, so older successful rows could win while newer
+rows were marked failed permanently.
+
+The current branch fixed that by making the EDD app track expected post-merge
+golden image tags and verify ECR presence instead of starting workspace-image
+CodeBuild jobs itself. A separate `golden-images` GitHub Actions workflow now
+published golden images on `main` and manual dispatch, asynchronously and
+non-blocking to the `release` workflow. The control plane queued expected tags
+from signed source observations, observed ECR metadata, rolled only the newest
+successful golden trigger through the catalog CAS path, treated older successful
+tags as superseded, and retried catalog-rollout failures instead of leaving them
+permanently failed. The admin images UI exposed source/image/trigger state and no
+longer presented an EDD-started rebuild button.
+
+The production bootstrap was updated for that design with
+`EDD_RELEASE_GOLDEN_VARIANTS=omnibus`: the GitHub release OIDC role policy covered
+`edd-prod/golden/*`, and GitHub repo variables contained only non-secret
+coordinates (`RELEASE_AWS_ACCOUNT`, `RELEASE_AWS_REGION`, `RELEASE_AWS_ROLE_ARN`,
+`RELEASE_NAME_PREFIX`, `RELEASE_GOLDEN_VARIANTS`). The branch also shortened ALB
+and NLB health-check intervals to 10 seconds and made the SSH service deployment
+configuration explicit at 100% minimum healthy / 200% maximum for no-downtime
+rolling deploys.
+
+Local verification passed on the final branch: targeted image-source unit and
+integration tests, `pnpm --filter @edd/web lint`, `pnpm --filter @edd/web build`,
+`pnpm --filter @edd/web test`, repository `pnpm lint`, `pnpm build`,
+`pnpm test`, `pnpm test:integ`, `pnpm test:e2e:local`,
+`pnpm check-deps`, `pnpm dead-code`, `actionlint` on release/golden workflows,
+`shellcheck` on the changed scripts, Terraform fmt, and Terraform validate
+against Terraform 1.15.7 with network/provider access. The container-mode e2e
+run passed 20/20 tasks, including lifecycle, data fidelity, OpenVSCode, Monaco,
+SSH wake, ECS Exec, reconciler scheduling, and workspace toolchain suites; the
+variant-image suite skipped because those images are built and tested by the
+dedicated `golden-images` workflow.
+
+PR #203 CI then failed once in `terraform-sim` because the inline workflow
+assertion still expected the ALB target-group health-check interval to be `30`
+after the branch intentionally changed ALB/NLB health checks to `10` seconds.
+The branch updated the CI assertion and the stale adversarial-slice comment;
+the rerun on head `1aa4a6c7c616195d1c797dfa3646e58b7fe7cb49` passed with
+GitHub reporting merge state `CLEAN`. The green checks included `branch-current`,
+`build-test`, `check-deps`, `code-health`, `integration`, `e2e`, `e2e-https`,
+`playwright`, `terraform`, `terraform-sim`, both `shellcheck` jobs, `sast`,
+`vuln-scan`, and `validate golden images`; PR-only publish jobs were skipped as
+intended.
+
+Earlier 2026-07-07 release-inspection notes remain below for history.
 
 The live app itself was healthy but stale. `https://app.edd.e6qu.dev/api/healthz`
 returned 200, `/api/readyz` returned 200 with DynamoDB ACTIVE, the ALB control-plane

@@ -175,8 +175,10 @@ shape is:
    apply just created. For ongoing releases, the `release` workflow via GitHub
    OIDC builds and pushes the control-plane/SSH images, registers fresh task
    definitions, rolls the ECS services, and retargets the reconciler schedule.
-   Workspace/golden post-merge rebuilds are owned by the deployed EDD
-   image-source flow.
+   The separate `golden-images` workflow publishes workspace/golden images
+   asynchronously on `main` and manual dispatch. The deployed EDD image-source
+   flow records signed source webhooks, verifies expected golden tags in ECR, and
+   rolls the catalog after those tags exist.
 6. **Seed the base-image catalog** — production starts with an empty catalog; add
    an entry (admin UI or API) pointing at a golden ECR image, or users can't
    launch workspaces.

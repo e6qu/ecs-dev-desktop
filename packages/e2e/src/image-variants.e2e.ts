@@ -92,7 +92,7 @@ function imageExists(image: string): boolean {
 // failing on a missing image. Present (golden-images / local build) → run.
 const HAVE_VARIANT_IMAGES = VARIANTS.every((v) => imageExists(v.image));
 if (!HAVE_VARIANT_IMAGES) {
-  console.warn(
+  console.info(
     "image-variants.e2e: variant images not built — skipping (run via the golden-images workflow or build infra/images/<variant>)",
   );
 }

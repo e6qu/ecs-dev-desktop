@@ -1,35 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 "use client";
 
-import type {
-  BuildLogChunkDto,
-  BuildTargetDto,
-  ImageSourceStateDto,
-  ImageBuildRecordDto,
-  ImageMetadataDto,
-} from "@edd/api-contracts";
-import { useCallback, useEffect, useRef, useState } from "react";
+import type { ImageSourceStateDto, ImageMetadataDto } from "@edd/api-contracts";
+import { useCallback, useState } from "react";
 
 import { humanBytes } from "../lib/format";
 import { usePoll } from "../lib/usePoll";
 
 type ImageEntry = ImageMetadataDto | { repo: string; tag: null };
-type BuildRow = Partial<ImageBuildRecordDto> & {
-  buildId: string;
-  status: string;
-  target?: string;
-  tag?: string;
-  phase?: string;
-  startedAt?: string;
-  endedAt?: string;
-  durationMs?: number;
-  ref?: string;
-  sourceVersion?: string;
-  triggeredBy?: string;
-};
 
-const BUILDS_POLL_MS = 5000;
-const LOGS_POLL_MS = 3000;
+const SOURCE_POLL_MS = 5000;
 
 async function jsonOrThrow<T>(res: Response): Promise<T> {
   if (res.ok) return (await res.json()) as T;
@@ -72,46 +52,18 @@ export function ImagesConsole() {
     () => fetch("/api/admin/images").then((r) => r.json() as Promise<{ images: ImageEntry[] }>),
     [],
   );
-  const loadBuilds = useCallback(
-    () => fetch("/api/admin/builds").then((r) => r.json() as Promise<{ builds: BuildRow[] }>),
-    [],
-  );
   const loadSource = useCallback(
     () => fetch("/api/admin/image-source").then((r) => jsonOrThrow<ImageSourceStateDto>(r)),
     [],
   );
   const { data: imagesData } = usePoll(loadImages, 30_000, "images unavailable");
-  const { data: buildsData } = usePoll(loadBuilds, BUILDS_POLL_MS, "builds unavailable");
   const { data: sourceData, error: sourceError } = usePoll(
     loadSource,
-    BUILDS_POLL_MS,
+    SOURCE_POLL_MS,
     "image source unavailable",
   );
 
   const [expanded, setExpanded] = useState<string | null>(null);
-  const [target, setTarget] = useState<BuildTargetDto>("web");
-  const [tag, setTag] = useState("");
-  const [ref, setRef] = useState("main");
-  const [triggering, setTriggering] = useState(false);
-  const [selectedBuild, setSelectedBuild] = useState<string | null>(null);
-
-  async function triggerBuild(): Promise<void> {
-    if (tag.trim() === "" || ref.trim() === "") return;
-    setTriggering(true);
-    try {
-      const res = await fetch("/api/admin/builds", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ target, tag: tag.trim(), ref: ref.trim() }),
-      });
-      if (res.ok) {
-        const { buildId } = (await res.json()) as { buildId: string };
-        setSelectedBuild(buildId);
-      }
-    } finally {
-      setTriggering(false);
-    }
-  }
 
   return (
     <div className="stack" style={{ gap: 24 }}>
@@ -158,9 +110,10 @@ export function ImagesConsole() {
           </table>
         </div>
         <p className="state-note" style={{ margin: 0 }}>
-          CI still builds and publishes control-plane release images. This deployed control plane
-          listens for signed GitHub push webhooks and starts async golden workspace image rebuilds
-          only when workspace-image inputs change.
+          GitHub Actions publishes control-plane release images and golden workspace images. This
+          deployed control plane listens for signed GitHub push webhooks, records expected golden
+          tags, verifies those tags in ECR, then rolls the catalog when every configured variant is
+          present.
         </p>
       </section>
 
@@ -195,125 +148,6 @@ export function ImagesConsole() {
                 );
               })}
               {imagesData === null && <LoadingRow colSpan={6} label="loading images…" />}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="stack" style={{ gap: 10 }}>
-        <h2 style={{ margin: 0 }}>Rebuild</h2>
-        <p className="state-note" style={{ margin: 0 }}>
-          <strong>web</strong> rebuilds the control-plane app only (fast, ~minutes).{" "}
-          <strong>golden</strong> rebuilds the workspace images. <strong>all</strong> does both.
-        </p>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-          <select
-            value={target}
-            onChange={(e) => {
-              setTarget(e.target.value as BuildTargetDto);
-            }}
-            aria-label="build target"
-          >
-            <option value="web">web (control-plane)</option>
-            <option value="golden">golden (workspaces)</option>
-            <option value="all">all</option>
-          </select>
-          <input
-            className="mono"
-            placeholder="tag (git sha)"
-            value={tag}
-            onChange={(e) => {
-              setTag(e.target.value);
-            }}
-            style={{ minWidth: 130 }}
-          />
-          <input
-            className="mono"
-            placeholder="git ref"
-            value={ref}
-            onChange={(e) => {
-              setRef(e.target.value);
-            }}
-            style={{ minWidth: 130 }}
-          />
-          <button
-            type="button"
-            className="btn primary"
-            disabled={triggering || tag.trim() === "" || ref.trim() === ""}
-            onClick={() => {
-              void triggerBuild();
-            }}
-          >
-            {triggering ? "starting…" : "Start build"}
-          </button>
-        </div>
-      </section>
-
-      <section className="stack" style={{ gap: 10 }}>
-        <h2 style={{ margin: 0 }}>Recent builds</h2>
-        <div className="table-scroll" style={{ overflowX: "auto" }}>
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>status</th>
-                <th>target</th>
-                <th>tag</th>
-                <th>build</th>
-                <th>ref</th>
-                <th>source</th>
-                <th>trigger</th>
-                <th>started</th>
-                <th>duration</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {(buildsData?.builds ?? []).map((b) => (
-                <tr key={b.buildId} data-status={b.status}>
-                  <td style={{ color: statusColor(b.status) }}>
-                    {b.status}
-                    {b.phase !== undefined && b.status === "in_progress" ? ` · ${b.phase}` : ""}
-                  </td>
-                  <td className="mono" style={{ fontSize: 12 }}>
-                    {b.target ?? "—"}
-                  </td>
-                  <td className="mono" style={{ fontSize: 12 }}>
-                    {b.tag ?? "—"}
-                  </td>
-                  <td className="mono" style={{ fontSize: 12 }}>
-                    {b.buildId.split(":").pop()}
-                  </td>
-                  <td className="mono" style={{ fontSize: 12 }}>
-                    {b.ref?.slice(0, 10) ?? "—"}
-                  </td>
-                  <td className="mono" style={{ fontSize: 12 }}>
-                    {shortSha(b.sourceVersion)}
-                  </td>
-                  <td className="mono" style={{ fontSize: 12 }}>
-                    {b.triggeredBy ?? "—"}
-                  </td>
-                  <td className="mono" style={{ fontSize: 12 }}>
-                    {b.startedAt !== undefined ? new Date(b.startedAt).toLocaleString() : "—"}
-                  </td>
-                  <td className="mono" style={{ fontSize: 12 }}>
-                    {b.durationMs !== undefined
-                      ? `${String(Math.round(b.durationMs / 1000))}s`
-                      : "—"}
-                  </td>
-                  <td>
-                    <button
-                      type="button"
-                      className="btn"
-                      onClick={() => {
-                        setSelectedBuild(b.buildId);
-                      }}
-                    >
-                      logs
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {buildsData === null && <LoadingRow colSpan={10} label="loading builds…" />}
             </tbody>
           </table>
         </div>
@@ -363,15 +197,6 @@ export function ImagesConsole() {
           </table>
         </div>
       </section>
-
-      {selectedBuild !== null && (
-        <BuildLogs
-          buildId={selectedBuild}
-          onClose={() => {
-            setSelectedBuild(null);
-          }}
-        />
-      )}
     </div>
   );
 }
@@ -439,77 +264,5 @@ function ImageRows({
         </tr>
       )}
     </>
-  );
-}
-
-function BuildLogs({ buildId, onClose }: { buildId: string; onClose: () => void }) {
-  const tokenRef = useRef<string | undefined>(undefined);
-  const [lines, setLines] = useState<{ at: string; message: string }[]>([]);
-  const [status, setStatus] = useState<string>("");
-  const endRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    tokenRef.current = undefined;
-    setLines([]);
-    const tick = async () => {
-      const q =
-        tokenRef.current === undefined ? "" : `&token=${encodeURIComponent(tokenRef.current)}`;
-      const res = await fetch(`/api/admin/builds/logs?buildId=${encodeURIComponent(buildId)}${q}`);
-      if (!res.ok || !active) return;
-      const chunk = (await res.json()) as BuildLogChunkDto & { status: string; phase?: string };
-      setStatus(chunk.phase !== undefined ? `${chunk.status} · ${chunk.phase}` : chunk.status);
-      if (chunk.lines.length > 0) setLines((prev) => [...prev, ...chunk.lines]);
-      if (chunk.nextToken !== undefined) tokenRef.current = chunk.nextToken;
-    };
-    void tick();
-    const h = window.setInterval(() => void tick(), LOGS_POLL_MS);
-    return () => {
-      active = false;
-      window.clearInterval(h);
-    };
-  }, [buildId]);
-
-  useEffect(() => {
-    endRef.current?.scrollIntoView({ block: "nearest" });
-  }, [lines.length]);
-
-  return (
-    <section className="stack" style={{ gap: 8 }}>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <h2 style={{ margin: 0 }}>
-          Build logs{" "}
-          <span className="mono" style={{ fontSize: 12, color: "var(--dim)" }}>
-            {status}
-          </span>
-        </h2>
-        <button type="button" className="btn" onClick={onClose}>
-          close
-        </button>
-      </div>
-      <div
-        className="mono"
-        style={{
-          maxHeight: 380,
-          overflowY: "auto",
-          fontSize: 12,
-          border: "1px solid var(--line, #333)",
-          borderRadius: 6,
-          padding: "8px 10px",
-        }}
-      >
-        {lines.length === 0 ? (
-          <p className="state-note">waiting for log output…</p>
-        ) : (
-          lines.map((l, i) => (
-            <div key={`${l.at}-${String(i)}`}>
-              <span style={{ color: "var(--dim)" }}>{new Date(l.at).toLocaleTimeString()} </span>
-              {l.message}
-            </div>
-          ))
-        )}
-        <div ref={endRef} />
-      </div>
-    </section>
   );
 }

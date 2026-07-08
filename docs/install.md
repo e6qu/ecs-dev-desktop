@@ -182,6 +182,7 @@ EDD_RELEASE_GITHUB_REPO=e6qu/ecs-dev-desktop \
 EDD_RELEASE_AWS_ACCOUNT=111122223333 \
 EDD_RELEASE_AWS_REGION=eu-west-1 \
 EDD_RELEASE_NAME_PREFIX=edd-prod \
+EDD_RELEASE_GOLDEN_VARIANTS="omnibus" \
 sh scripts/bootstrap-release-oidc.sh
 ```
 
@@ -192,10 +193,12 @@ GitHub variables or secrets for this path. The
 bootstrap is not part of the Terraform module because EDD must be releasable
 before EDD is deployed. The role trust is constrained to this repository's `main`
 branch and `v*` tags, and the permissions are scoped to the release path: ECR
-pushes for the control-plane and SSH-gateway repositories, ECS task-definition
-registration and service updates for the control-plane/SSH/reconciler families,
-Scheduler updates for the reconciler schedule, and `iam:PassRole` for the exact
-runtime roles those resources already use.
+pushes for the control-plane, SSH-gateway, and golden-image repositories, ECS
+task-definition registration and service updates for the control-plane/SSH/reconciler
+families, Scheduler updates for the reconciler schedule, and `iam:PassRole` for
+the exact runtime roles those resources already use. `RELEASE_GOLDEN_VARIANTS`
+drives the separate `golden-images` workflow; it is a non-secret coordinate, not a
+static credential.
 
 ## What the scripts are
 
@@ -209,6 +212,7 @@ runtime roles those resources already use.
 | [`scripts/publish-images.sh`](../scripts/publish-images.sh)                 | build + push control-plane / golden / gateway images to ECR     |
 | [`scripts/deploy-release-images.sh`](../scripts/deploy-release-images.sh)   | roll published release images into ECS services + Scheduler     |
 | [`release`](../.github/workflows/release.yml) workflow                      | CI-driven image publish + deploy on `main`/`v*`/manual          |
+| [`golden-images`](../.github/workflows/golden-images.yml) workflow          | CI-driven golden image publish on `main`/manual                 |
 
 ## See also
 

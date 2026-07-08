@@ -1,11 +1,22 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Golden image collection: build the shared base + the slim per-language variants
-# and smoke-test each (its toolchain present + the shared base behaviour + slimness).
-# Path-gated so it runs only when the images (or their test) change — the heavy
-# variant builds don't burden every PR's always-on `e2e` job.
+# Golden image collection.
+#
+# Pull requests validate the shared base + language variants without publishing.
+# Main-branch pushes and manual dispatches publish the configured golden variants to
+# ECR via GitHub OIDC. This workflow is intentionally separate from `release`: a
+# control-plane deploy must not wait for the expensive workspace image build, and a
+# golden rebuild must be manually retriggerable without rolling ECS services.
 name: golden-images
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/images/**"
+      - "pnpm-lock.yaml"
+      - "package.json"
+      - "scripts/publish-images.sh"
+      - ".github/workflows/golden-images.yml"
   pull_request:
     branches: [main]
     paths:
@@ -13,14 +24,24 @@ on:
       - "packages/e2e/src/image-variants.e2e.ts"
       - ".github/workflows/golden-images.yml"
   workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag (defaults to the git short sha)"
+        required: false
+        default: ""
 
 concurrency:
   group: golden-images-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  id-token: write
+  contents: read
+
 jobs:
-  golden-images:
-    name: golden-images
+  validate:
+    name: validate golden images
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6.0.2
@@ -43,3 +64,70 @@ jobs:
       # Each variant: its toolchain present, the shared base behaviour intact, and slim.
       - name: Variant smoke tests
         run: pnpm --filter @edd/e2e exec vitest run --config vitest.e2e.config.ts src/image-variants.e2e.ts
+
+  publish:
+    name: publish golden images to ECR
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      RELEASE_AWS_ACCOUNT: ${{ vars.RELEASE_AWS_ACCOUNT }}
+      RELEASE_AWS_REGION: ${{ vars.RELEASE_AWS_REGION }}
+      RELEASE_AWS_ROLE_ARN: ${{ vars.RELEASE_AWS_ROLE_ARN }}
+      RELEASE_NAME_PREFIX: ${{ vars.RELEASE_NAME_PREFIX }}
+      RELEASE_GOLDEN_VARIANTS: ${{ vars.RELEASE_GOLDEN_VARIANTS }}
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.tag || github.sha }}
+      EDD_BUILD_TARGET: golden
+      EDD_BUILD_ARCHS: amd64
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.2.0
+
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - run: pnpm install --frozen-lockfile
+
+      - name: Validate release coordinates
+        run: |
+          set -euo pipefail
+          missing=0
+          for name in RELEASE_AWS_ACCOUNT RELEASE_AWS_REGION RELEASE_AWS_ROLE_ARN RELEASE_NAME_PREFIX RELEASE_GOLDEN_VARIANTS; do
+            if [ -z "${!name}" ]; then
+              echo "::error::${name} is required for the golden-images workflow"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            exit 1
+          fi
+          if [[ ! "$RELEASE_AWS_ACCOUNT" =~ ^[0-9]{12}$ ]]; then
+            echo "::error::RELEASE_AWS_ACCOUNT must be a 12-digit AWS account id"
+            exit 1
+          fi
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6.2.1
+        with:
+          role-to-assume: ${{ env.RELEASE_AWS_ROLE_ARN }}
+          aws-region: ${{ env.RELEASE_AWS_REGION }}
+          role-session-name: golden-images-${{ github.run_id }}
+
+      - name: Verify assumed identity
+        run: aws sts get-caller-identity
+
+      - name: Build & push golden images
+        run: |
+          read -r -a variants <<< "$RELEASE_GOLDEN_VARIANTS"
+          sh scripts/publish-images.sh \
+            "$RELEASE_AWS_ACCOUNT" \
+            "$RELEASE_AWS_REGION" \
+            "$RELEASE_NAME_PREFIX" \
+            "${TAG:0:12}" \
+            "${variants[@]}"

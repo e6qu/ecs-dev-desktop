@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Admin "Images" console backend: read ECR image metadata (size + per-layer
-// breakdown), trigger CodeBuild builds, and follow their live logs. A narrow PORT
-// (ImageOps) with a real AWS adapter + an in-memory fake (tests), so the admin
-// routes never touch the SDK directly. Coordinates (region, project, registry)
-// come from env — the same code hits a sim or real AWS by config alone.
+// breakdown) and, for older CodeBuild-backed runs, inspect build history/logs.
+// The post-merge golden publish path is GitHub Actions; the control plane uses
+// ECR image presence as the convergence fact. A narrow PORT (ImageOps) with a
+// real AWS adapter + an in-memory fake (tests), so routes never touch the SDK
+// directly. Coordinates (region, project, registry) come from env — the same code
+// hits a sim or real AWS by config alone.
 import {
   BatchGetBuildsCommand,
   CodeBuildClient,
@@ -62,7 +64,7 @@ export interface ImageOps {
   getImageMetadata(repo: string, tag: string): Promise<ImageMetadataDto | null>;
   /** Recent tags pushed to a repo, newest first. */
   listImageTags(repo: string, limit: number): Promise<string[]>;
-  /** Start a build for the given target/tag/ref; returns the CodeBuild build id. */
+  /** Start a CodeBuild build for explicit operator tooling; not used by source sync. */
   startBuild(input: StartImageBuildInput): Promise<string>;
   /** Current status of a build, or null if unknown. */
   getBuild(buildId: string): Promise<BuildObservation | null>;
