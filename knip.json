@@ -41,6 +41,7 @@
         "playwright.vscode.config.ts",
         "scripts/dev-bootstrap.ts",
         "scripts/check-deployed-workspace-open.ts",
+        "scripts/screenshot-deployed-workspaces.ts",
         "scripts/run-playwright.mjs",
         "scripts/screenshot-ui.ts",
         "**/*.test.ts",

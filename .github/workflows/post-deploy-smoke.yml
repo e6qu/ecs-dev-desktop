@@ -121,7 +121,16 @@ jobs:
           printf '%s\n' "$last"
           exit 1
 
-      - name: Open one fresh workspace per editor through the public app
-        run: pnpm --filter web exec tsx scripts/check-deployed-workspace-open.ts
+      - name: Open and screenshot one fresh workspace per editor
+        run: pnpm --filter web exec tsx scripts/screenshot-deployed-workspaces.ts
         env:
           AWS_REGION: ${{ env.RELEASE_AWS_REGION }}
+          EDD_SHOT_OUT: temp/workspace-screenshots
+
+      - name: Upload workspace screenshots
+        if: always()
+        uses: actions/upload-artifact@v5.0.0
+        with:
+          name: workspace-screenshots
+          path: temp/workspace-screenshots
+          if-no-files-found: error

@@ -2,6 +2,69 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
+**Last updated:** 2026-07-08. PR #207 merged as
+`24fc78f7bb052ff099a730dccaa9f7c025c77e91` and the control plane rolled to
+that SHA. `https://app.edd.e6qu.dev/api/healthz` reported
+`deploy.sha=24fc78f7bb05`, `/api/readyz` was ready with DynamoDB ACTIVE, and
+`/workspaces` rendered HTTP 200 with the unauthenticated "Not signed in" page.
+ECS completed the no-downtime rollout on task definition `:32`. The verified
+cluster coordinate was `edd-prod-workspaces`; `edd-prod-control-plane` was
+ACTIVE with desired/running/pending `2/2/0`, `edd-prod-ssh-gateway` was ACTIVE
+with `1/1/0`, and both services reported rollout `COMPLETED` with
+minimum/maximum healthy deployment settings `100/200`.
+
+The first post-deploy smoke run failed before workspace verification because the
+real release bootstrap state lagged the merged source: repo variables
+`EDD_DYNAMODB_TABLE` and `EDD_AUTH_SECRET_ID` were absent, then the release role
+lacked `secretsmanager:GetSecretValue`, and then DynamoDB's customer-managed
+KMS key denied `kms:Decrypt`. The real bootstrap was rerun with explicit
+production coordinates, and this branch made the source bootstrap require
+`EDD_RELEASE_DYNAMODB_KMS_KEY_ARN` and grant only
+`kms:Decrypt`/`kms:GenerateDataKey` through `kms:ViaService =
+dynamodb.eu-west-1.amazonaws.com`. No fallback or implicit discovery was added.
+
+The workspace-open smoke itself also needed a real-session email. The app
+correctly rejected the synthetic smoke session with
+`your account has no email address; a workspace requires one to be reachable`.
+The smoke session now signs a deterministic `@smoke.edd.local` email into the
+current Auth.js JWT so workspace creation exercises the same real-session
+requirement instead of bypassing it.
+
+Live verification was completed against production after those fixes. The fixed
+smoke created and opened OpenVSCode, Monaco, Claude Local Web UI, and Codex
+Local Web UI workspaces through `https://app.edd.e6qu.dev/w/<id>/`, all on
+`729079515331.dkr.ecr.eu-west-1.amazonaws.com/edd-prod/golden/omnibus:24fc78f7bb05`.
+A new Playwright screenshot verifier then created a fresh workspace for each
+editor mode, opened each one in Chromium through the public app, rejected
+unauthorized/forbidden/server-error pages, and saved screenshots. Visual
+inspection confirmed OpenVSCode loaded VS Code Web, Monaco loaded the Monaco UI
+and terminal, Claude showed the Claude Local Web UI harness with `status:
+running`, and Codex showed the Codex Local Web UI harness with `status:
+running`. After the smoke-helper refactor, the exact screenshot verifier was run
+again against production and inspected screenshots under
+`/private/tmp/edd-workspace-screenshots-rerun/`.
+
+The screenshot pass exposed a real Codex runtime warning: Codex reported missing
+sandbox prerequisites in the Linux workspace image. The official Codex sandbox
+docs say Linux/WSL should install `bubblewrap`, so the base image now installs
+`bubblewrap` and the base-image smoke asserts `bwrap` exists. This addressed the
+underlying missing dependency instead of suppressing the warning.
+
+Verification on this branch passed with `pnpm --filter web exec eslint
+scripts/check-deployed-workspace-open.ts scripts/screenshot-deployed-workspaces.ts`,
+`pnpm --filter web lint`, `pnpm --filter web build`, `pnpm --filter web test`
+with loopback access, `pnpm dead-code`, `pnpm actionlint`, and `shellcheck
+scripts/bootstrap-release-oidc.sh infra/images/base/smoke.sh`. The base-image
+Docker smoke passed after building the image, asserting `bwrap` exists, and
+probing Monaco, Claude, and Codex modes. A sandboxed web test run failed only
+because the sandbox denied a `127.0.0.1` listener with `EPERM`; the same suite
+passed with local loopback access. The local screenshot artifacts were saved
+under `/private/tmp/edd-workspace-screenshots/`, and the screenshot-created
+workspaces converged to `terminated` with `desiredState=deleted`. GitHub
+Actions showed PR #207's `release` and `golden-images` workflows succeeded, and
+the old `post-deploy-smoke` run failed on the bootstrap/IAM/KMS/email gaps that
+this branch corrected.
+
 **Last updated:** 2026-07-08. The current follow-up branch addressed the
 remaining production editor-open failures with no fallbacks. The editor proxy
 now keys the connection-token redirect suppression by the selected workspace

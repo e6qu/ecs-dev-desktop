@@ -53,14 +53,16 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **After this PR merges, verify the deployed public editor-open smoke.** The
-  current branch added a production smoke that authenticates with a current
-  server-side session, creates one workspace for each of OpenVSCode, Monaco,
-  Claude Local Web UI, and Codex Local Web UI, waits for `running`/
-  `functional=ok`, and opens each `/w/<id>/` path through
-  `https://app.edd.e6qu.dev`. After merge, watch the release and
-  `post-deploy-smoke` workflows, then inspect CloudWatch/ECS/DynamoDB for any
-  real failures instead of trusting ECS deployment completion alone.
+- **After this follow-up PR merges, verify the deployed screenshot smoke and
+  golden image.** PR #207's rollout was verified live after fixing production
+  bootstrap/IAM/KMS and the smoke-email gap. The follow-up branch changed the
+  post-deploy smoke to open all four workspace types in Chromium and upload
+  screenshots, and changed the base image to install/assert `bubblewrap` for
+  Codex's Linux sandbox prerequisite. After merge, watch `release`,
+  `post-deploy-smoke`, and `golden-images`; confirm the screenshot artifact
+  contains OpenVSCode, Monaco, Claude Local Web UI, and Codex Local Web UI
+  renders, and confirm the new golden image tag is built/pushed and used by the
+  catalog.
 - **Apply/verify Terraform drift for fast health checks.** The source expected
   10-second ALB/NLB target-group health checks, but live AWS still showed
   30-second intervals after the image-only release. Apply the Terraform stack from

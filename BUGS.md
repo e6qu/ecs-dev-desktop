@@ -4,6 +4,41 @@
 
 ## Open
 
+- **Post-deploy smoke could not authenticate against production after PR #207 —
+  FIXED in current branch (2026-07-08).** The merged smoke workflow failed
+  loudly before opening workspaces because live bootstrap state was incomplete:
+  `EDD_DYNAMODB_TABLE`/`EDD_AUTH_SECRET_ID` repo variables were missing, the
+  release role lacked `secretsmanager:GetSecretValue`, and then the production
+  DynamoDB table's customer-managed KMS key denied `kms:Decrypt`. The real
+  bootstrap was rerun with explicit production coordinates, and the source
+  bootstrap now requires `EDD_RELEASE_DYNAMODB_KMS_KEY_ARN` and grants only
+  `kms:Decrypt`/`kms:GenerateDataKey` for that key via DynamoDB
+  `kms:ViaService`. No fallback discovery path was added.
+
+- **Post-deploy smoke created a real session without an email — FIXED in current
+  branch (2026-07-08).** Once IAM/KMS was corrected, production correctly
+  rejected the synthetic smoke user with `your account has no email address; a
+workspace requires one to be reachable`. The smoke JWT now includes a
+  deterministic `@smoke.edd.local` email so it exercises the real-session
+  workspace creation path instead of weakening the product validation.
+
+- **Post-deploy verification still lacked rendered editor proof — FIXED in
+  current branch (2026-07-08).** The previous smoke verified token redirects and
+  non-4xx editor opens but did not prove the rendered viewport was not blank,
+  unauthorized, forbidden, or a server-error page. The new Playwright screenshot
+  verifier creates one workspace for each editor mode, waits for
+  `running`/`functional=ok`, opens each `/w/<id>/` in Chromium through the public
+  app, rejects obvious error text, captures screenshots, and the workflow uploads
+  them as artifacts. Local production screenshots were inspected for OpenVSCode,
+  Monaco, Claude Local Web UI, and Codex Local Web UI.
+
+- **Codex Local Web UI image missed Codex's Linux sandbox prerequisite — FIXED
+  in current branch (2026-07-08).** The production Codex screenshot showed the
+  harness was running, but the log warned that Codex could not find a sandbox
+  helper and was using bundled behavior. The current OpenAI Codex sandbox docs
+  state that Linux/WSL should install `bubblewrap`, so the base workspace image
+  now installs `bubblewrap` and the base-image smoke asserts `bwrap` exists.
+
 - **Production workspace opens failed despite healthy control-plane smoke —
   FIXED in current branch (2026-07-08).** OpenVSCode, Monaco, Claude, and Codex
   workspace tasks were running, but direct browser opens of `/w/<id>/` could
