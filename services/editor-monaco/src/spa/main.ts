@@ -221,24 +221,79 @@ interface TerminalTab {
   fit: FitAddon;
   sock: WebSocket;
   pane: HTMLElement;
-  tabButton: HTMLElement;
+  tabShell: HTMLElement;
+  tabButton: HTMLButtonElement;
+  closeButton: HTMLElement;
 }
 
 const tabs: TerminalTab[] = [];
 let activeTabId: number | null = null;
 let nextTabId = 1;
+let savedTerminalHeight = 220;
+
+const MIN_TERMINAL_HEIGHT = 120;
+const MAX_TERMINAL_MARGIN = 48;
+
+function clampTerminalHeight(height: number): number {
+  return Math.max(MIN_TERMINAL_HEIGHT, Math.min(window.innerHeight - MAX_TERMINAL_MARGIN, height));
+}
+
+function fitActiveTerminal(): void {
+  tabs.find((t) => t.id === activeTabId)?.fit.fit();
+}
+
+function setTerminalHeight(height: number): void {
+  savedTerminalHeight = clampTerminalHeight(height);
+  const panel = el("terminal-panel");
+  panel.classList.remove("maximized");
+  panel.style.height = `${String(savedTerminalHeight)}px`;
+  window.requestAnimationFrame(fitActiveTerminal);
+}
+
+function setTerminalMaximized(maximized: boolean): void {
+  const panel = el("terminal-panel");
+  panel.classList.toggle("maximized", maximized);
+  if (!maximized) panel.style.height = `${String(savedTerminalHeight)}px`;
+  else panel.style.height = "";
+  window.requestAnimationFrame(fitActiveTerminal);
+}
 
 function activateTab(id: number): void {
   activeTabId = id;
   for (const t of tabs) {
     const isActive = t.id === id;
     t.pane.hidden = !isActive;
+    t.tabShell.classList.toggle("active", isActive);
     t.tabButton.classList.toggle("active", isActive);
     t.tabButton.setAttribute("aria-selected", String(isActive));
   }
   const active = tabs.find((t) => t.id === id);
   active?.fit.fit();
   active?.term.focus();
+}
+
+function closeTerminalTab(id: number): void {
+  const index = tabs.findIndex((t) => t.id === id);
+  if (index === -1) return;
+  const [tab] = tabs.splice(index, 1);
+  if (tab === undefined) throw new Error(`terminal tab ${String(id)} disappeared during close`);
+  tab.sock.close();
+  tab.term.dispose();
+  tab.pane.remove();
+  tab.tabShell.remove();
+  if (activeTabId !== id) {
+    captureTabs(tabs.length, activeTabId);
+    return;
+  }
+  const next = tabs[index] ?? tabs[index - 1];
+  if (next === undefined) {
+    activeTabId = null;
+    captureTabs(0, null);
+    setTerminalPanelVisible(false);
+    return;
+  }
+  activateTab(next.id);
+  captureTabs(tabs.length, next.id);
 }
 
 function openNewTerminalTab(): void {
@@ -248,15 +303,30 @@ function openNewTerminalTab(): void {
   pane.hidden = true;
   el("terminal-panes").append(pane);
 
+  const tabShell = document.createElement("span");
+  tabShell.className = "terminal-tab";
+  tabShell.setAttribute("role", "presentation");
+
   const tabButton = document.createElement("button");
   tabButton.type = "button";
-  tabButton.className = "terminal-tab";
+  tabButton.className = "terminal-tab-select";
   tabButton.setAttribute("role", "tab");
-  tabButton.textContent = String(tabs.length + 1);
+  tabButton.textContent = `Terminal ${String(tabs.length + 1)}`;
   tabButton.addEventListener("click", () => {
     activateTab(id);
   });
-  el("new-terminal-tab").before(tabButton);
+
+  const closeButton = document.createElement("button");
+  closeButton.type = "button";
+  closeButton.className = "terminal-tab-close";
+  closeButton.setAttribute("aria-label", `Close terminal ${String(tabs.length + 1)}`);
+  closeButton.textContent = "×";
+  closeButton.addEventListener("click", (event) => {
+    event.stopPropagation();
+    closeTerminalTab(id);
+  });
+  tabShell.append(tabButton, closeButton);
+  el("new-terminal-tab").before(tabShell);
 
   const t = new Terminal({ fontSize: 13, cursorBlink: true, theme: { background: "#1e1e1e" } });
   const fit = new FitAddon();
@@ -280,7 +350,7 @@ function openNewTerminalTab(): void {
     t.write("\r\n\x1b[31m[terminal connection error]\x1b[0m\r\n");
   });
   sock.addEventListener("close", () => {
-    t.write("\r\n\x1b[33m[terminal disconnected]\x1b[0m\r\n");
+    closeTerminalTab(id);
   });
   t.onData((data) => {
     if (sock.readyState === WebSocket.OPEN) sock.send(JSON.stringify({ type: "input", data }));
@@ -290,7 +360,7 @@ function openNewTerminalTab(): void {
       sock.send(JSON.stringify({ type: "resize", cols, rows }));
   });
 
-  tabs.push({ id, term: t, fit, sock, pane, tabButton });
+  tabs.push({ id, term: t, fit, sock, pane, tabShell, tabButton, closeButton });
   activateTab(id);
   captureTabs(tabs.length, id);
 }
@@ -306,15 +376,41 @@ function setTerminalPanelVisible(show: boolean): void {
 }
 
 window.addEventListener("resize", () => {
-  tabs.find((t) => t.id === activeTabId)?.fit.fit();
+  setTerminalHeight(savedTerminalHeight);
 });
 
 el("toggle-terminal").addEventListener("click", () => {
-  setTerminalPanelVisible(el("terminal-panel").hidden === true);
+  const opening = el("terminal-panel").hidden === true;
+  setTerminalPanelVisible(opening);
+  if (opening && tabs.length === 0) openNewTerminalTab();
 });
 el("new-terminal-tab").addEventListener("click", () => {
   setTerminalPanelVisible(true);
   openNewTerminalTab();
+});
+el("terminal-minimize").addEventListener("click", () => {
+  setTerminalPanelVisible(false);
+});
+el("terminal-maximize").addEventListener("click", () => {
+  const panel = el("terminal-panel");
+  setTerminalMaximized(!panel.classList.contains("maximized"));
+});
+el("terminal-close").addEventListener("click", () => {
+  if (activeTabId !== null) closeTerminalTab(activeTabId);
+});
+el("terminal-resizer").addEventListener("pointerdown", (event) => {
+  const pointer = event;
+  pointer.preventDefault();
+  setTerminalMaximized(false);
+  const move = (moveEvent: PointerEvent): void => {
+    setTerminalHeight(window.innerHeight - moveEvent.clientY);
+  };
+  const up = (): void => {
+    document.removeEventListener("pointermove", move);
+    document.removeEventListener("pointerup", up);
+  };
+  document.addEventListener("pointermove", move);
+  document.addEventListener("pointerup", up);
 });
 el("new-file").addEventListener("click", () => {
   void createFile();

@@ -116,18 +116,56 @@ export async function authJar(
   return { jar: [{ name: AUTH_COOKIE_NAME, value: token, path: "/" }], sessionId: session.id };
 }
 
-export async function firstEnabledImage(
+export function chooseEnabledImage(images: readonly string[], expectedTag?: string): string {
+  const expected = expectedTag?.trim();
+  if (expected !== undefined && expected.length > 0) {
+    const matching = images.find((image) => image.endsWith(`:${expected}`));
+    if (matching === undefined) {
+      throw new Error(
+        `no enabled base image with expected tag ${expected}; enabled images: ${images.join(", ")}`,
+      );
+    }
+    return matching;
+  }
+  if (images.length === 0) throw new Error("no enabled base image in deployed catalog");
+  return images[0];
+}
+
+export async function waitEnabledImage(
   baseUrl: string,
   jar: readonly StoredCookie[],
+  expectedTag: string,
 ): Promise<string> {
+  const deadline = Date.now() + 20 * 60 * 1000;
+  let lastImages: readonly string[] = [];
+  while (Date.now() < deadline) {
+    lastImages = await enabledCatalogImages(baseUrl, jar);
+    if (lastImages.some((image) => image.endsWith(`:${expectedTag}`))) {
+      return chooseEnabledImage(lastImages, expectedTag);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 10_000));
+  }
+  throw new Error(
+    `enabled base image did not roll to expected tag ${expectedTag} before deadline; enabled images: ${lastImages.join(", ")}`,
+  );
+}
+
+async function enabledCatalogImages(
+  baseUrl: string,
+  jar: readonly StoredCookie[],
+): Promise<string[]> {
   const res = await fetchWithCookies(`${baseUrl}/api/base-images`, jar);
   if (!res.ok) throw new Error(`/api/base-images failed: ${String(res.status)}`);
-  const body = (await res.json()) as { baseImages?: { image?: string; enabled?: boolean }[] };
-  const image = body.baseImages?.find(
-    (i) => i.enabled === true && typeof i.image === "string",
-  )?.image;
-  if (image === undefined) throw new Error("no enabled base image in deployed catalog");
-  return image;
+  const raw: unknown = await res.json();
+  if (typeof raw !== "object" || raw === null || !("baseImages" in raw)) return [];
+  const candidates = raw.baseImages;
+  if (!Array.isArray(candidates)) return [];
+  return candidates.flatMap((candidate: unknown): string[] => {
+    if (typeof candidate !== "object" || candidate === null) return [];
+    if (!("enabled" in candidate) || candidate.enabled !== true) return [];
+    if (!("image" in candidate) || typeof candidate.image !== "string") return [];
+    return [candidate.image];
+  });
 }
 
 export async function createWorkspace(

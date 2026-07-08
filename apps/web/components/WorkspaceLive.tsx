@@ -12,8 +12,8 @@ import { StatusBadge } from "./StatusBadge";
 import { WorkspaceActions } from "./WorkspaceActions";
 
 const api = new ApiClient({ baseUrl: "" });
-const STATUS_POLL_MS = 3000;
-const LOGS_POLL_MS = 8000;
+const STATUS_POLL_MS = 1000;
+const LOGS_POLL_MS = 4000;
 /** Seconds the "opening editor" countdown runs before auto-navigating. */
 const AUTO_OPEN_COUNTDOWN_S = 3;
 

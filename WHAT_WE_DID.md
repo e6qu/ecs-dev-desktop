@@ -3374,3 +3374,19 @@ dependency installs in browser smoke jobs. PR #210's follow-up CI rerun then
 passed all checks: `build-test`, `playwright`, `integration`, `e2e-https`,
 `e2e`, `terraform-sim`, security scans, shellcheck, dependency freshness, and
 code-health were green.
+
+**2026-07-08 — Production smoke hardening and Monaco terminal/UI freshness
+follow-up.** After the post-PR #210 production smoke still exposed stale image
+and Monaco editability issues, the golden-image workflow was changed to run on
+every `main` push, and deployed workspace smoke required the expected release SHA
+to appear as an enabled catalog image before creating workspaces. The workspace
+list/detail polling was tightened so stop/delete changes became visible quickly
+instead of leaving stale cards. Monaco terminal tabs were removed on disconnect,
+the terminal control opened/created sessions, and the panel gained resize,
+minimize, maximize, and close controls; PTY spawn failures closed the terminal
+channel loudly without crashing the editor server. The admin base-image form was
+corrected to expose all four editor kinds. Local vendor verification established
+that Codex app-server was a protocol server and Claude Remote Control did not
+expose a local HTTP UI in the tested CLI surface, so the branch recorded that
+blocker rather than inventing an EDD Claude/Codex chat UI or calling Monaco/
+OpenVSCode a fallback solution.

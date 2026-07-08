@@ -11,12 +11,6 @@ name: golden-images
 on:
   push:
     branches: [main]
-    paths:
-      - "infra/images/**"
-      - "pnpm-lock.yaml"
-      - "package.json"
-      - "scripts/publish-images.sh"
-      - ".github/workflows/golden-images.yml"
   pull_request:
     branches: [main]
     paths:

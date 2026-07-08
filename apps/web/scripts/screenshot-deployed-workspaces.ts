@@ -15,9 +15,9 @@ import {
   authSecret,
   createWorkspace,
   deleteWorkspace,
-  firstEnabledImage,
   requiredEnv,
   waitTerminated,
+  waitEnabledImage,
   waitReady,
 } from "./deployed-workspace-smoke-lib";
 
@@ -51,6 +51,7 @@ const baseHost = new URL(baseUrl).hostname;
 const region = requiredEnv("AWS_REGION");
 const table = requiredEnv("DYNAMODB_TABLE");
 const secretId = requiredEnv("AUTH_SECRET_ID");
+const expectedSha = requiredEnv("EXPECTED_SHA");
 
 function bodySnippet(text: string): string {
   return text.replace(/\s+/g, " ").trim().slice(0, 1_000);
@@ -150,7 +151,7 @@ const { jar, sessionId } = await authJar(secret, "smoke-shot");
 const created: string[] = [];
 const browser = await chromium.launch();
 try {
-  const baseImage = await firstEnabledImage(baseUrl, jar);
+  const baseImage = await waitEnabledImage(baseUrl, jar, expectedSha);
   const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
   await context.addCookies(jar.map((cookie) => playwrightCookie(baseHost, cookie)));
   const page = await context.newPage();

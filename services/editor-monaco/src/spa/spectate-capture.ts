@@ -105,7 +105,7 @@ export function captureTermOutput(tabId: number, data: string): void {
 }
 
 /** Terminal tab layout changed (count/active). */
-export function captureTabs(count: number, active: number): void {
+export function captureTabs(count: number, active: number | null): void {
   send({ t: "tabs", count, active });
 }
 

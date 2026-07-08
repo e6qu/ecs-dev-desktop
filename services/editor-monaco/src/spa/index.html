@@ -32,6 +32,7 @@
         </div>
         <div id="editor"></div>
         <div id="terminal-panel">
+          <div id="terminal-resizer" role="separator" aria-label="Resize terminal" tabindex="0"></div>
           <div id="terminal-tabs" role="tablist" aria-label="Terminal sessions">
             <button
               type="button"
@@ -41,6 +42,18 @@
             >
               +
             </button>
+            <span class="spacer"></span>
+            <div id="terminal-window-controls" aria-label="Terminal window controls">
+              <button type="button" id="terminal-minimize" aria-label="Minimize terminal" title="Minimize terminal">
+                _
+              </button>
+              <button type="button" id="terminal-maximize" aria-label="Maximize terminal" title="Maximize terminal">
+                □
+              </button>
+              <button type="button" id="terminal-close" aria-label="Close terminal" title="Close terminal">
+                ×
+              </button>
+            </div>
           </div>
           <div id="terminal-panes"></div>
         </div>
