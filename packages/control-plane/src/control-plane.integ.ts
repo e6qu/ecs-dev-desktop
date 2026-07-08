@@ -562,6 +562,22 @@ describe("WorkspaceService lifecycle ", () => {
     expect((await storage.listSnapshots()).length).toBe(snapshotCount);
   });
 
+  it("rejects snapshot of an errored workspace with a conflict", async () => {
+    const ws = await service.create({
+      ownerId: ownerId("error-snapshot"),
+      baseImage: baseImage("img"),
+    });
+    expect((await service.stop(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.markSnapshotLostFor(workspaceId(ws.id))).ok).toBe(true);
+    expect((await service.get(workspaceId(ws.id)))?.state).toBe("error");
+
+    const snapshotCount = (await storage.listSnapshots()).length;
+    const snap = await service.snapshot(workspaceId(ws.id));
+    expect(snap.ok).toBe(false);
+    if (!snap.ok) expect(snap.error.kind).toBe("conflict");
+    expect((await storage.listSnapshots()).length).toBe(snapshotCount);
+  });
+
   it("remove() of an absent workspace returns a not_found domain error", async () => {
     // The DELETE route relies on this to map the concurrent double-delete race to
     // 404 (via the central mapper) instead of a 500.

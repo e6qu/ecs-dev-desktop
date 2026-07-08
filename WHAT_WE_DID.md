@@ -3162,3 +3162,25 @@ live target groups still used 30-second health checks until Terraform is applied
 Verification passed locally with `pnpm lint`, `pnpm build`, full `pnpm test`,
 `pnpm test:integ`, `pnpm test:e2e`, focused health/resource-regression tests,
 `actionlint`, and `shellcheck`.
+
+**2026-07-08 — Fixed production workspace-open and vendor harness failures.**
+After PR #205 deployed, the public control plane was healthy (`/api/healthz`,
+`/api/readyz`, ECS 2/2) and the manually rerun post-deploy smoke passed for
+merge SHA `885c560ab006`, but live workspaces still exposed separate failures.
+The OpenVSCode/Monaco proxy token handoff was widened to treat exact
+`/w/<id>/` root opens as document navigations even when browser headers were
+sparse, fixing the observed `Forbidden`/`unauthorized` opens without redirecting
+subresource/API paths.
+
+The branch kept the four workspace interface choices (OpenVSCode, Monaco, Claude
+Local Web UI, Codex Local Web UI) and wired the vendor harness modes without
+using Monaco as a fallback. Claude Code Remote Control ran under a
+pseudo-terminal so the CLI stayed interactive, and Codex ran the vendor
+`codex app-server` process with health probing. Docker evidence rejected the
+`codex remote-control start` daemon path because it required a standalone
+installer layout not present in the image. The snapshot policy was also pinned
+for errored workspaces: scheduled snapshot candidates remained running/idle
+only, and explicit snapshots of errored workspaces conflicted before storage
+I/O. Local verification passed across focused web tests, control-plane/reconciler
+integration tests, repo lint/build, full unit tests, shell syntax/lint, and the
+base-image Docker smoke for Monaco, Claude, and Codex modes.

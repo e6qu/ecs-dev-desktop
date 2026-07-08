@@ -84,15 +84,13 @@ deferral by choice.
   workspace, confirm ECS task definitions carry the selected CPU/memory, confirm
   fresh managed-EBS volumes use the selected size, and confirm cards/details/
   monitoring and cost reports show per-workspace sizing.
-- **Wire real vendor agent harnesses for `claude`/`codex` workspace modes.** The
-  runtime now fails loudly for these modes until the vendor harnesses are wired,
-  because serving Monaco under those product names hid the wrong UX. Target:
-  `claude` starts the Claude Code Remote Control/local-process harness (with the
-  user's claude.ai login persisted on the workspace volume) and the EDD
-  status/editor page directs the user into `claude.ai/code`; `codex` starts the
-  OpenAI Codex local web UI/app-server harness with a protected local transport
-  and exposes/links the first-party Codex client protocol. Keep OpenVSCode and
-  Monaco as the other two workspace interface types.
+- **Watch this branch's workspace-image rollout after merge.** The branch kept
+  the four workspace interface choices and wired the Claude/Codex vendor harness
+  modes without a Monaco fallback. After merge, verify the golden-images
+  workflow built/pushed the updated base/omnibus image, create one workspace of
+  each interface type (OpenVSCode, Monaco, Claude Local Web UI, Codex Local Web
+  UI), and confirm the `/w/<id>/` open path and status logs match the branch's
+  local Docker smoke.
 - **Spectate cross-replica relay** — v1's relay is per-replica (the spectator
   client retries until it lands on the publisher's replica; works, but retry
   count grows with replica count). Follow-up: an internal replica-to-replica

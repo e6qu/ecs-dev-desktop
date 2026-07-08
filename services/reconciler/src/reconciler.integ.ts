@@ -115,6 +115,25 @@ describe("Reconciler", () => {
     expect((await storage.listSnapshots()).length).toBe(snapshotCount);
   });
 
+  it("does not schedule snapshots for errored workspaces", async () => {
+    const { storage, service, reconciler, advance } = await harness();
+    const ws = await service.create({ ownerId: ownerId("errored"), baseImage: baseImage("img") });
+
+    expect((await service.stop(workspaceId(ws.id))).ok).toBe(true);
+    expect(await service.markSnapshotLostFor(workspaceId(ws.id))).toMatchObject({ ok: true });
+    expect((await service.get(workspaceId(ws.id)))?.state).toBe("error");
+    const snapshotCount = (await storage.listSnapshots()).length;
+
+    advance(LATER);
+    expect(await reconciler.snapshotDue()).toEqual({
+      scanned: 0,
+      snapshotted: 0,
+      skipped: 0,
+      failed: 0,
+    });
+    expect((await storage.listSnapshots()).length).toBe(snapshotCount);
+  });
+
   it("garbage-collects an orphaned volume, sparing referenced storage", async () => {
     const { storage, service, reconciler, advance } = await harness();
     const live = await service.create({ ownerId: ownerId("carol"), baseImage: baseImage("img") });
