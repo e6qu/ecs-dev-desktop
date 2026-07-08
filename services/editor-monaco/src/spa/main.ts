@@ -98,7 +98,6 @@ const editor = monaco.editor.create(el("editor"), {
   theme: "vs-dark",
   automaticLayout: true,
   minimap: { enabled: false },
-  readOnly: true,
 });
 
 let currentPath: string | null = null;
@@ -121,7 +120,6 @@ async function openFile(filePath: string, row: HTMLElement): Promise<void> {
   loadingFile = true;
   editor.setValue(text);
   loadingFile = false;
-  editor.updateOptions({ readOnly: false });
   for (const r of document.querySelectorAll(".file-row.active")) r.classList.remove("active");
   row.classList.add("active");
   captureFileOpened();

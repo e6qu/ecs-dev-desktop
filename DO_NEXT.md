@@ -53,21 +53,24 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **After this follow-up PR merges, rerun the deployed screenshot smoke from
-  GitHub Actions and verify the rendered editor surfaces.** PR #208's release
-  and golden-images runs succeeded, production used `deploy.sha=b48030c13956`,
-  and live manual checks then proved the old smoke was too weak: Claude/Codex
-  still showed the removed EDD wrapper pages, Monaco did not refresh
-  terminal-created files, and OpenVSCode on that production build could still
-  show `Forbidden` until the proxy/token changes shipped. The follow-up fixed
-  the missing Playwright Chromium install, made smoke cleanup wait for
-  `terminated`, fixed the heartbeat/version race, removed the Claude/Codex
-  wrapper in favor of vendor OpenVSCode extension UIs, and made screenshots
-  reject wrapper/read-only/auth/server-error pages. After merge, watch
-  `release`, `golden-images`, and `post-deploy-smoke`; confirm the screenshot
-  artifact shows OpenVSCode, editable Monaco, Anthropic Claude Code webview, and
-  OpenAI Codex sidebar, and confirm smoke-created workspace records terminate
-  without lingering live tasks.
+- **After the current branch merges, rerun the deployed screenshot smoke from
+  GitHub Actions and inspect its artifacts.** PR #209 deployed
+  `e6b87475c1df` successfully at the ECS/app/image level, but
+  `post-deploy-smoke` run `28950258091` exposed that the screenshot smoke still
+  bypassed the real browser token-handoff path and that Monaco could still show
+  `Cannot edit in read-only editor`. The current branch made the proxy reject
+  stale editor-token cookies by value, changed the screenshot smoke to open
+  `/w/<id>/` directly with only the EDD session cookie, fixed screenshot
+  artifacts/diagnostics, and removed Monaco's read-only editor initialization.
+  PR #210 CI also proved the shared Playwright install action could time out
+  while fetching apt font packages; the current branch changed Playwright setup
+  to install Chromium only in CI smoke/browser workflows, and PR #210's rerun
+  passed every CI job after that fix.
+  After merge, watch `release`, `golden-images`, and `post-deploy-smoke`;
+  confirm the artifact contains screenshots for all four workspace types and
+  specifically verify OpenVSCode does not render `Forbidden`, Monaco accepts
+  typing after opening a file, Claude shows the Anthropic Claude Code webview,
+  and Codex shows the OpenAI Codex sidebar.
 - **Apply/verify Terraform drift for fast health checks.** The source expected
   10-second ALB/NLB target-group health checks, but live AWS still showed
   30-second intervals after the image-only release. Apply the Terraform stack from

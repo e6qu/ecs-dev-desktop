@@ -50,6 +50,8 @@ export interface ImageSourceConfig {
   readonly goldenVariants: readonly string[];
 }
 
+type EnvReader = Readonly<Record<string, string | undefined>>;
+
 interface SourceRecord {
   readonly id: string;
   readonly schemaVersion: number;
@@ -106,7 +108,7 @@ export interface GithubWebhookRejection {
   readonly error: string;
 }
 
-export function imageSourceConfigFromEnv(env: NodeJS.ProcessEnv = process.env): ImageSourceConfig {
+export function imageSourceConfigFromEnv(env: EnvReader = process.env): ImageSourceConfig {
   const repo = env.EDD_IMAGE_SOURCE_REPO;
   if (repo === undefined || repo === "") throw new Error("EDD_IMAGE_SOURCE_REPO is required");
   const webhookSecret = env.EDD_IMAGE_SOURCE_WEBHOOK_SECRET;

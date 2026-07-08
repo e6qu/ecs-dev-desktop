@@ -3341,3 +3341,36 @@ registry access. The base-image Docker smoke passed for OpenVSCode, Monaco,
 Claude, and Codex. Local Chromium screenshots from the rebuilt `edd-base:smoke`
 image showed the OpenAI Codex sidebar UI and Anthropic Claude Code webview
 inside OpenVSCode, not the removed wrapper.
+
+**2026-07-08 — Post-deploy verification failed and the smoke methodology was
+corrected.** After PR #209 merged, production rolled to `e6b87475c1df`, ECS
+services were steady on task definition `:34`, and the golden omnibus image was
+pushed. The deployment was still not verified: `post-deploy-smoke` run
+`28950258091` failed after only one OpenVSCode screenshot, and the artifact
+upload path was wrong. More importantly, the smoke had been testing an
+implementation shortcut, not the user path: it pre-primed editor token cookies
+through helper fetches before opening `/w/<id>/` in Chromium. That let
+stale-token-cookie bugs survive production.
+
+The proxy was changed to suppress `?tkn=` injection only when the current
+query/cookie value matched the derived token for the exact workspace/editor
+mode, and tests covered stale OpenVSCode and Monaco token cookies. The
+screenshot smoke now opened `/w/<id>/` directly with only the EDD session cookie
+and saved per-editor screenshot/text/HTML diagnostics on failure. The same
+analysis found Monaco still raised `Cannot edit in read-only editor` after
+opening a file, so Monaco stopped initializing the editor widget as read-only
+while preserving save no-ops until a file was selected. The branch also fixed
+the screenshot artifact path, bumped `actions/upload-artifact` to age-eligible
+`v7.0.1`, narrowed env-reader helper types, and kept `primeEditorToken`
+internal.
+
+PR #210 CI then exposed that the shared Playwright install action was still
+using `playwright install --with-deps chromium`. All product tests before the
+browser proof passed, but the `e2e` job was canceled while apt slowly fetched
+optional font packages from the Ubuntu mirror. The branch changed the shared
+Playwright action plus direct post-deploy/pages installs to install Chromium
+only, leaving missing runtime-library failures loud while avoiding repeated apt
+dependency installs in browser smoke jobs. PR #210's follow-up CI rerun then
+passed all checks: `build-test`, `playwright`, `integration`, `e2e-https`,
+`e2e`, `terraform-sim`, security scans, shellcheck, dependency freshness, and
+code-health were green.

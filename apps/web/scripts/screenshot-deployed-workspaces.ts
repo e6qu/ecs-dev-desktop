@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { mkdir } from "node:fs/promises";
+import { mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -16,7 +16,6 @@ import {
   createWorkspace,
   deleteWorkspace,
   firstEnabledImage,
-  primeEditorToken,
   requiredEnv,
   waitTerminated,
   waitReady,
@@ -53,7 +52,54 @@ const region = requiredEnv("AWS_REGION");
 const table = requiredEnv("DYNAMODB_TABLE");
 const secretId = requiredEnv("AUTH_SECRET_ID");
 
-async function assertRenderedWorkspace(editor: Editor, page: Page): Promise<void> {
+function bodySnippet(text: string): string {
+  return text.replace(/\s+/g, " ").trim().slice(0, 1_000);
+}
+
+async function treeContainsSmokeFile(page: Page): Promise<boolean> {
+  return page.evaluate(async () => {
+    const res = await fetch("api/tree");
+    if (!res.ok) throw new Error(`monaco tree read failed: ${String(res.status)}`);
+    const raw: unknown = await res.json();
+    return JSON.stringify(raw).includes("edd-smoke-monaco.txt");
+  });
+}
+
+async function writeDiagnostic(
+  editor: Editor,
+  id: string,
+  page: Page,
+  detail: string,
+): Promise<void> {
+  const prefix = join(OUT_DIR, `${editor}-${id}-failure`);
+  let screenshotDetail = "screenshot=written";
+  try {
+    await page.screenshot({ path: `${prefix}.png`, fullPage: true });
+  } catch (e) {
+    screenshotDetail = `screenshot=failed: ${String(e)}`;
+  }
+  const html = await page.content().catch((e: unknown) => `page.content failed: ${String(e)}`);
+  const text = await page
+    .locator("body")
+    .innerText()
+    .catch((e: unknown) => `body innerText failed: ${String(e)}`);
+  await writeFile(
+    `${prefix}.txt`,
+    [
+      `editor=${editor}`,
+      `workspace=${id}`,
+      `url=${page.url()}`,
+      `detail=${detail}`,
+      screenshotDetail,
+      `body=${bodySnippet(text)}`,
+      "",
+      html,
+    ].join("\n"),
+    "utf8",
+  );
+}
+
+async function assertRenderedWorkspace(editor: Editor, id: string, page: Page): Promise<void> {
   await page.waitForTimeout(5_000);
   const bodyText = (
     await page
@@ -72,9 +118,16 @@ async function assertRenderedWorkspace(editor: Editor, page: Page): Promise<void
       });
       if (!res.ok) throw new Error(`monaco file write failed: ${String(res.status)}`);
     });
-    await page.waitForFunction(() => document.body.innerText.includes("edd-smoke-monaco.txt"));
+    await page.waitForFunction(
+      () => document.body.innerText.includes("edd-smoke-monaco.txt"),
+      undefined,
+      { timeout: 45_000 },
+    );
+    if (!(await treeContainsSmokeFile(page))) {
+      throw new Error("monaco file API tree did not contain edd-smoke-monaco.txt after write");
+    }
     await page.locator("button.file-row", { hasText: "edd-smoke-monaco.txt" }).click();
-    await page.locator(".monaco-editor textarea").first().click();
+    await page.locator(".monaco-editor .view-lines").first().click();
     await page.keyboard.type("edited");
     await page.waitForTimeout(500);
     const afterType = await page.locator("body").innerText();
@@ -106,16 +159,24 @@ try {
     const id = await createWorkspace(baseUrl, jar, baseImage, editor);
     created.push(id);
     await waitReady(baseUrl, jar, id);
-    await primeEditorToken(baseUrl, jar, id, editor);
-    await context.addCookies(jar.map((cookie) => playwrightCookie(baseHost, cookie)));
     const response = await page.goto(`${baseUrl}/w/${id}/`, { waitUntil: "domcontentloaded" });
     if (response !== null && response.status() >= 400) {
       throw new Error(`${editor} browser open returned ${String(response.status())}`);
     }
-    await assertRenderedWorkspace(editor, page);
     const path = join(OUT_DIR, `${editor}-${id}.png`);
-    await page.screenshot({ path, fullPage: true });
-    console.log(`edd: captured ${editor} screenshot ${path}`);
+    try {
+      await assertRenderedWorkspace(editor, id, page);
+      await page.screenshot({ path, fullPage: true });
+      console.log(`edd: captured ${editor} screenshot ${path}`);
+    } catch (e) {
+      await writeDiagnostic(
+        editor,
+        id,
+        page,
+        e instanceof Error ? (e.stack ?? e.message) : String(e),
+      );
+      throw e;
+    }
   }
 } finally {
   await browser.close();

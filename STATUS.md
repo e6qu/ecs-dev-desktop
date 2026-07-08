@@ -2,6 +2,60 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
+**Last updated:** 2026-07-08. After PR #209 merged as
+`e6b87475c1df6393dddacb82ad998711ec39b052`, the release workflow
+`28950005919` succeeded in 3m34s and production reported
+`deploy.sha=e6b87475c1df` from `/api/healthz`; `/api/readyz` was ready and
+`/workspaces` returned HTTP 200. ECS showed `edd-prod-control-plane` steady at
+desired/running/pending `2/2/0` on task definition `:34` and
+`edd-prod-ssh-gateway` steady at `1/1/0` on task definition `:34`, both using
+ECR images tagged `e6b87475c1df`. The golden-images workflow `28950006155`
+succeeded in 13m17s and pushed
+`729079515331.dkr.ecr.eu-west-1.amazonaws.com/edd-prod/golden/omnibus:e6b87475c1df`
+with digest `sha256:f5c494343dd355d08bd4b32122382adabf5241f964075a62bc6503c1ab9bd8af`.
+
+The deployed app was not considered verified. The `post-deploy-smoke` workflow
+run `28950258091` failed after capturing only an OpenVSCode screenshot; it then
+timed out/fell over in the Monaco path and uploaded no artifact because
+`EDD_SHOT_OUT` was relative to `apps/web` while artifact upload read
+repo-root `temp/workspace-screenshots`. A local rerun against production exposed
+two real methodology/product failures: the smoke had pre-primed editor tokens
+through helper fetches instead of testing a user's first browser navigation to
+`/w/<id>/`, and Monaco still rendered `Cannot edit in read-only editor` after a
+file opened.
+
+The current branch fixed the root issue behind OpenVSCode `Forbidden` reports:
+the proxy no longer treats the mere presence of `vscode-tkn`/`edd-editor-token`
+as proof that the current workspace token is established. It now suppresses
+token injection only when the query or cookie value equals the derived token for
+that exact workspace/editor mode, so stale browser cookies from another
+workspace cannot make EDD forward a wrong token to OpenVSCode. The deployed
+screenshot smoke now opens `/w/<id>/` directly in Chromium with only the EDD
+session cookie, preserving the real browser redirect/cookie handoff, and writes
+per-editor failure screenshots/text/HTML before failing loudly. The workflow now
+uses an absolute screenshot directory and age-eligible
+`actions/upload-artifact@v7.0.1`. Monaco no longer initializes the editor widget
+as read-only; saving still no-ops until a real file is selected.
+
+Verification on this branch passed with `pnpm lint`, `pnpm test` with loopback
+access, `pnpm build`, `pnpm actionlint`, `pnpm check-deps` with registry network
+access, `pnpm dead-code`, `pnpm --filter @edd/editor-monaco build`,
+`pnpm --filter @edd/editor-monaco test` with loopback access,
+`pnpm --filter web lint`, `pnpm --filter web build`, `pnpm --filter web exec tsc
+--noEmit`, and focused escalated web proxy/smoke-related tests. A sandboxed
+`check-deps` attempt failed only at Terraform registry DNS, and sandboxed
+loopback tests failed with `EPERM`; the same commands passed with the required
+network/loopback access. PR #210 CI then exposed a separate workflow problem:
+the `e2e` job reached the browser section but timed out during
+`playwright install --with-deps chromium` while apt slowly fetched optional font
+packages from the Ubuntu mirror. The branch removed repeated `--with-deps`
+installs from the shared Playwright action, `post-deploy-smoke`, and `pages`;
+browser jobs now install Chromium itself and fail loudly only if a required
+runtime library is actually absent. `pnpm actionlint` passed after that change,
+and PR #210's reruns `28955736899` and `28955736971` passed every required CI
+job, including `build-test`, `playwright`, `integration`, `e2e-https`, `e2e`,
+and `terraform-sim`.
+
 **Last updated:** 2026-07-08. PR #208 merged as
 `b48030c13956dcb803316bfbcc9e2dc33518d001`. The release workflow
 `28942464820` succeeded: image publication started at `2026-07-08T12:27:10Z`,

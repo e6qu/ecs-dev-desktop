@@ -187,7 +187,7 @@ export async function waitTerminated(
   throw new Error(`workspace ${id} did not terminate after delete before deadline; last=${last}`);
 }
 
-export async function primeEditorToken(
+async function primeEditorToken(
   baseUrl: string,
   jar: StoredCookie[],
   id: string,
