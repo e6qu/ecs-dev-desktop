@@ -4,6 +4,34 @@
 
 ## Open
 
+- **Deployed browser smoke bypassed the real user editor-open path — FIXED in
+  current branch (2026-07-08).** `post-deploy-smoke` run `28950258091` failed
+  after the PR #209 deployment, but the deeper problem was methodology: the
+  screenshot script pre-primed editor token cookies with helper fetches before
+  `page.goto("/w/<id>/")`, so it was not testing the same first navigation a
+  user performs. The branch removed that priming from the screenshot smoke; it
+  now starts with only the EDD session cookie and lets the browser exercise the
+  EDD proxy authorization, `?tkn=` redirect, editor token-cookie set, and clean
+  editor URL. Failures now leave per-editor screenshots, body text, URL, detail,
+  and HTML diagnostics, and the workflow uploads from an absolute artifact path.
+
+- **Stale editor-token cookies could produce OpenVSCode `Forbidden` — FIXED in
+  current branch (2026-07-08).** The proxy previously skipped token injection
+  when a `vscode-tkn` or `edd-editor-token` cookie existed, without checking
+  whether that cookie value matched the current workspace's derived token. A
+  browser carrying a stale token from another workspace could therefore reach
+  OpenVSCode with the wrong token and see plain `Forbidden`. The proxy now
+  suppresses token injection only when the query/cookie token equals the derived
+  token for the exact workspace and editor mode; focused tests cover stale query,
+  stale OpenVSCode cookie, and stale Monaco cookie cases.
+
+- **Monaco still showed `Cannot edit in read-only editor` after PR #209 —
+  FIXED in current branch (2026-07-08).** A production rerun opened a file and
+  still got Monaco's built-in read-only overlay when typing. The Monaco editor
+  widget no longer initializes as read-only; save still checks `currentPath`, so
+  no file write happens until a real file is selected. The screenshot smoke keeps
+  rejecting any reappearance of the read-only overlay.
+
 - **Claude/Codex Local Web UI workspaces showed an EDD wrapper instead of the
   vendor UI — FIXED in current branch (2026-07-08).** Production
   `omnibus:b48030c13956` rendered EDD-authored pages saying Claude Remote

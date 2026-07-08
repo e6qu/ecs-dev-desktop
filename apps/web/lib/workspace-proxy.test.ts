@@ -208,6 +208,14 @@ describe("editorTokenRedirect (editor connection-token handoff)", () => {
     expect(out).toBeUndefined();
   });
 
+  it("overwrites a stale token query for a different workspace", () => {
+    const out = editorTokenRedirect(
+      { method: "GET", url: `/w/${WS}/?tkn=stale-token`, headers: docHeaders() },
+      WS,
+    );
+    expect(out).toBe(`/w/${WS}/?tkn=${expectedTkn}`);
+  });
+
   it("does not redirect once the editor token cookie is established", () => {
     const out = editorTokenRedirect(
       {
@@ -218,6 +226,19 @@ describe("editorTokenRedirect (editor connection-token handoff)", () => {
       WS,
     );
     expect(out).toBeUndefined();
+  });
+
+  it("does not let a stale OpenVSCode token cookie suppress token injection", () => {
+    const out = editorTokenRedirect(
+      {
+        method: "GET",
+        url: `/w/${WS}/`,
+        headers: docHeaders({ cookie: "vscode-tkn=stale-token" }),
+      },
+      WS,
+      "openvscode",
+    );
+    expect(out).toBe(`/w/${WS}/?tkn=${expectedTkn}`);
   });
 
   it("recognizes the Monaco server's edd-editor-token cookie only for Monaco workspaces", () => {
@@ -234,6 +255,19 @@ describe("editorTokenRedirect (editor connection-token handoff)", () => {
       "monaco",
     );
     expect(out).toBeUndefined();
+  });
+
+  it("does not let a stale Monaco token cookie suppress Monaco token injection", () => {
+    const out = editorTokenRedirect(
+      {
+        method: "GET",
+        url: `/w/${WS}/`,
+        headers: docHeaders({ cookie: "edd-editor-token=stale-token" }),
+      },
+      WS,
+      "monaco",
+    );
+    expect(out).toBe(`/w/${WS}/?tkn=${expectedTkn}`);
   });
 
   it("does not let a Monaco cookie suppress OpenVSCode token injection", () => {

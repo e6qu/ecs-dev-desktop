@@ -128,11 +128,11 @@ jobs:
         run: pnpm --filter web exec tsx scripts/screenshot-deployed-workspaces.ts
         env:
           AWS_REGION: ${{ env.RELEASE_AWS_REGION }}
-          EDD_SHOT_OUT: temp/workspace-screenshots
+          EDD_SHOT_OUT: ${{ github.workspace }}/temp/workspace-screenshots
 
       - name: Upload workspace screenshots
         if: always()
-        uses: actions/upload-artifact@v5.0.0
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: workspace-screenshots
           path: temp/workspace-screenshots

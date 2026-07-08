@@ -76,10 +76,13 @@ export function editorTokenRedirect(
     (dest === undefined && accept.includes("text/html")) ||
     isWorkspaceRootPath(url.pathname, wsId);
   if (!isDocumentNav) return undefined;
-  if (url.searchParams.has(EDITOR_TOKEN_PARAM)) return undefined; // already has the token
-  if (cookiePresent(req.headers.cookie, tokenCookieForEditor(editor))) return undefined;
+  const expectedToken = deriveWorkspaceToken(secret, wsId);
+  if (url.searchParams.get(EDITOR_TOKEN_PARAM) === expectedToken) return undefined;
+  if (tokenCookieMatches(req.headers.cookie, tokenCookieForEditor(editor), expectedToken)) {
+    return undefined;
+  }
 
-  url.searchParams.set(EDITOR_TOKEN_PARAM, deriveWorkspaceToken(secret, wsId));
+  url.searchParams.set(EDITOR_TOKEN_PARAM, expectedToken);
   // Return a path-absolute URL (the dummy origin is dropped) the browser resolves
   // against the real host.
   return `${url.pathname}${url.search}`;
@@ -143,13 +146,18 @@ export function stripSessionCookie(cookieHeader: string | undefined): string | u
   return kept.length > 0 ? kept.join("; ") : undefined;
 }
 
-/** Whether a `Cookie` header contains a cookie named `name` with a non-empty value. */
-function cookiePresent(cookieHeader: string | undefined, name: string): boolean {
+/** Whether the first applicable cookie named `name` carries the current workspace token. */
+function tokenCookieMatches(
+  cookieHeader: string | undefined,
+  name: string,
+  expectedValue: string,
+): boolean {
   if (cookieHeader === undefined) return false;
   return cookieHeader.split(";").some((part) => {
     const eq = part.indexOf("=");
     if (eq === -1) return false;
-    return part.slice(0, eq).trim() === name && part.slice(eq + 1).trim().length > 0;
+    if (part.slice(0, eq).trim() !== name) return false;
+    return part.slice(eq + 1).trim() === expectedValue;
   });
 }
 

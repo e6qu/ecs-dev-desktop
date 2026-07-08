@@ -70,11 +70,13 @@ describe("GitHub account linking OAuth helpers", () => {
           input instanceof URL ? input.href : typeof input === "string" ? input : input.url,
         );
         expect(init?.method).toBe("POST");
-        return Response.json({
-          access_token: "gho_linked",
-          scope: "read:user,user:email,read:org,repo",
-          token_type: "bearer",
-        });
+        return Promise.resolve(
+          Response.json({
+            access_token: "gho_linked",
+            scope: "read:user,user:email,read:org,repo",
+            token_type: "bearer",
+          }),
+        );
       }) satisfies typeof fetch,
     );
 

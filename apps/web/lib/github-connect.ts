@@ -29,6 +29,8 @@ export interface GithubTokenExchange {
   readonly tokenType: string;
 }
 
+type EnvReader = Readonly<Record<string, string | undefined>>;
+
 const stateSchema = z.object({
   version: z.literal(STATE_VERSION),
   ownerId: z.string().min(1),
@@ -42,7 +44,7 @@ const tokenSchema = z.object({
   token_type: z.string().min(1),
 });
 
-function authSecret(env: NodeJS.ProcessEnv = process.env): string {
+function authSecret(env: EnvReader = process.env): string {
   const secret = env.AUTH_SECRET;
   if (secret === undefined || secret.length === 0) {
     throw new Error("AUTH_SECRET is required for GitHub account linking");
@@ -68,7 +70,7 @@ function safeEqual(a: string, b: string): boolean {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
-export function githubOAuthConfigFromEnv(env: NodeJS.ProcessEnv = process.env): GithubOAuthConfig {
+export function githubOAuthConfigFromEnv(env: EnvReader = process.env): GithubOAuthConfig {
   const clientId = env.AUTH_GITHUB_ID;
   if (clientId === undefined || clientId.length === 0) {
     throw new Error("AUTH_GITHUB_ID is required for GitHub account linking");
@@ -84,7 +86,7 @@ export function githubOAuthConfigFromEnv(env: NodeJS.ProcessEnv = process.env): 
 export function signGithubConnectState(
   ownerId: string,
   now: Date,
-  env: NodeJS.ProcessEnv = process.env,
+  env: EnvReader = process.env,
 ): string {
   const payload = encodeJson({
     version: STATE_VERSION,
@@ -98,7 +100,7 @@ export function signGithubConnectState(
 export function verifyGithubConnectState(
   state: string,
   now: Date,
-  env: NodeJS.ProcessEnv = process.env,
+  env: EnvReader = process.env,
 ): GithubConnectState {
   const parts = state.split(".");
   if (parts.length !== 2) throw new Error("invalid GitHub connect state");
