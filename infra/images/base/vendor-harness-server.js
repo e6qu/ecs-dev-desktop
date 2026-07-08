@@ -107,7 +107,7 @@ function markSpawnError(err) {
 function spawnVendor() {
   if (spec.pty === true) {
     try {
-      const pty = require("/opt/edd-editor-monaco/node_modules/node-pty");
+      const pty = require("/opt/edd-vendor-harness/node_modules/node-pty");
       const term = pty.spawn(spec.command, spec.args, {
         name: "xterm-color",
         cols: 120,

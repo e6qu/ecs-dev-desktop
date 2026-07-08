@@ -184,6 +184,44 @@ export function makeGitCredentialEntity(client: DynamoDBClient, table = TABLE) {
 export type GitCredentialEntity = ReturnType<typeof makeGitCredentialEntity>;
 
 /**
+ * Server-side auth-session ledger. Auth.js still signs the browser cookie, but
+ * the cookie now carries only a session id/version that must be ACTIVE here on
+ * every authorization decision. Deleting/revoking this row makes an otherwise
+ * unexpired JWT cookie stop authorizing immediately.
+ */
+export function makeAuthSessionEntity(client: DynamoDBClient, table = TABLE) {
+  return new Entity(
+    {
+      model: { entity: "authSession", version: "1", service: "edd" },
+      attributes: {
+        id: { type: "string", required: true },
+        schemaVersion: { type: "number", required: true },
+        ownerId: { type: "string", required: true },
+        role: { type: ["viewer", "member", "admin"] as const, required: true },
+        createdAt: { type: "string", required: true },
+        refreshedAt: { type: "string", required: true },
+        expiresAt: { type: "string", required: true },
+        revokedAt: { type: "string", required: false },
+      },
+      indexes: {
+        primary: {
+          pk: { field: "PK", composite: ["id"] },
+          sk: { field: "SK", composite: [] },
+        },
+        byOwner: {
+          index: "GSI1",
+          pk: { field: "GSI1PK", composite: ["ownerId"] },
+          sk: { field: "GSI1SK", composite: ["createdAt", "id"] },
+        },
+      },
+    },
+    { client, table },
+  );
+}
+
+export type AuthSessionEntity = ReturnType<typeof makeAuthSessionEntity>;
+
+/**
  * ElectroDB SSH-key entity over the same single table. Account-level public keys
  * a user registers for SSH access. `primary` lists a user's keys (PK=ownerId,
  * SK=keyId); `byFingerprint` (GSI1) resolves a presented public key to its owner

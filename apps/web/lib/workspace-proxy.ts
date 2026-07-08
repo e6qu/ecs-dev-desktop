@@ -8,9 +8,15 @@ import {
 import type { Duplex } from "node:stream";
 
 import { DEFAULT_WORKSPACE_PORT, WORKSPACE_PROXY_UPSTREAM_TIMEOUT_MS } from "@edd/config";
-import { decideWorkspaceAccessBySubject, deriveWorkspaceToken, type WorkspaceId } from "@edd/core";
+import {
+  decideWorkspaceAccessBySubject,
+  deriveWorkspaceToken,
+  type EditorKind,
+  type WorkspaceId,
+} from "@edd/core";
 import { getToken } from "next-auth/jwt";
 
+import { validateAuthSessionToken } from "./auth-sessions";
 import { CONNECTION_SECRET_ENV } from "./constants";
 import { getControlPlane } from "./control-plane";
 import { log } from "./logger";
@@ -26,6 +32,9 @@ const EDITOR_TOKEN_COOKIE = "vscode-tkn";
 // nav and then forwards a clean request the Monaco server rejects with 401.
 // (Kept in sync with @edd/editor-monaco's TOKEN_COOKIE.)
 const MONACO_TOKEN_COOKIE = "edd-editor-token";
+// Vendor harness modes (Claude/Codex) set their own cookie, scoped to the same
+// per-workspace `/w/<id>/` path.
+const VENDOR_TOKEN_COOKIE = "edd-vendor-token";
 
 /**
  * Defence-in-depth: when the editor runs with a connection token, hand the
@@ -44,6 +53,7 @@ export function editorTokenRedirect(
     readonly headers: IncomingMessage["headers"];
   },
   wsId: WorkspaceId,
+  editor: EditorKind = "openvscode",
 ): string | undefined {
   const secret = process.env[CONNECTION_SECRET_ENV] ?? "";
   if (secret.length === 0) return undefined; // tokenless / dev — nothing to inject
@@ -70,14 +80,7 @@ export function editorTokenRedirect(
     isWorkspaceRootPath(url.pathname, wsId);
   if (!isDocumentNav) return undefined;
   if (url.searchParams.has(EDITOR_TOKEN_PARAM)) return undefined; // already has the token
-  // Session established once EITHER editor family has set its token cookie
-  // (code-server's vscode-tkn OR the Monaco server's edd-editor-token).
-  if (
-    cookiePresent(req.headers.cookie, EDITOR_TOKEN_COOKIE) ||
-    cookiePresent(req.headers.cookie, MONACO_TOKEN_COOKIE)
-  ) {
-    return undefined;
-  }
+  if (cookiePresent(req.headers.cookie, tokenCookieForEditor(editor))) return undefined;
 
   url.searchParams.set(EDITOR_TOKEN_PARAM, deriveWorkspaceToken(secret, wsId));
   // Return a path-absolute URL (the dummy origin is dropped) the browser resolves
@@ -87,6 +90,18 @@ export function editorTokenRedirect(
 
 function isWorkspaceRootPath(pathname: string, wsId: WorkspaceId): boolean {
   return pathname === `/w/${wsId}` || pathname === `/w/${wsId}/`;
+}
+
+function tokenCookieForEditor(editor: EditorKind): string {
+  switch (editor) {
+    case "openvscode":
+      return EDITOR_TOKEN_COOKIE;
+    case "monaco":
+      return MONACO_TOKEN_COOKIE;
+    case "claude":
+    case "codex":
+      return VENDOR_TOKEN_COOKIE;
+  }
 }
 
 /** First value of a possibly-array header. */
@@ -162,6 +177,7 @@ export type WorkspaceAuthz =
       readonly kind: "allow";
       readonly sessionExpiresAtMs: number;
       readonly subject: string;
+      readonly editor: EditorKind;
       // Whether the workspace is actually usable RIGHT NOW (running + the agent
       // reports the editor healthy). When false, a browser document nav to `/w/<id>/`
       // is handed to EDD's status page instead of a not-yet-there editor.
@@ -181,6 +197,21 @@ export function isDocumentNavigation(req: {
   const dest = headerValue(req.headers["sec-fetch-dest"]);
   const accept = headerValue(req.headers.accept) ?? "";
   return dest === "document" || (dest === undefined && accept.includes("text/html"));
+}
+
+/** True for browser document navigations to a workspace, including sparse-header
+ * direct opens of `/w/<id>/` that should show the status page while stopped. */
+export function isWorkspaceDocumentNavigation(
+  req: { readonly url?: string; readonly headers: IncomingMessage["headers"] },
+  wsId: WorkspaceId,
+): boolean {
+  if (isDocumentNavigation(req)) return true;
+  if (req.url === undefined) return false;
+  try {
+    return isWorkspaceRootPath(new URL(req.url, "http://internal").pathname, wsId);
+  } catch {
+    return false;
+  }
 }
 
 /** The only slice of an incoming request the authorizer reads — the session cookie.
@@ -221,6 +252,8 @@ export async function authorizeWorkspace(
     secureCookie: cookieHeader.includes(`__Secure-${SESSION_COOKIE_STEM}`),
   });
   if (token === null) return { kind: "unauthenticated" };
+  const authSession = await validateAuthSessionToken(token);
+  if (authSession === null) return { kind: "unauthenticated" };
 
   const callerSubject = typeof token.uid === "string" ? token.uid : undefined;
   const detail = await (await getControlPlane()).inspect(wsId);
@@ -257,12 +290,15 @@ export async function authorizeWorkspace(
   // held connection. Auth.js always sets it; if a token somehow lacks one, cap the
   // grant conservatively at the rolling-refresh window rather than forever.
   const sessionExpiresAtMs =
-    typeof token.exp === "number" ? token.exp * 1000 : Date.now() + FALLBACK_PRESENCE_GRANT_MS;
+    typeof token.exp === "number"
+      ? Math.min(token.exp * 1000, authSession.expiresAtMs)
+      : Math.min(Date.now() + FALLBACK_PRESENCE_GRANT_MS, authSession.expiresAtMs);
   const ready = detail.workspace.state === "running" && detail.workspace.functional === "ok";
   return {
     kind: "allow",
     sessionExpiresAtMs,
     subject: callerSubject ?? "(no uid)",
+    editor: detail.workspace.editor ?? "openvscode",
     ready,
     state: detail.workspace.state,
   };
@@ -300,6 +336,7 @@ export async function authorizeSpectate(
     secureCookie: cookieHeader.includes(`__Secure-${SESSION_COOKIE_STEM}`),
   });
   if (token === null) return { kind: "unauthenticated" };
+  if ((await validateAuthSessionToken(token)) === null) return { kind: "unauthenticated" };
 
   const detail = await (await getControlPlane()).inspect(wsId);
   if (detail === null) return { kind: "forbidden" };

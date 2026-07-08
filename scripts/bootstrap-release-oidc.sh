@@ -12,6 +12,7 @@
 #   EDD_RELEASE_NAME_PREFIX   EDD stack/module name, e.g. edd-prod
 #   EDD_RELEASE_GOLDEN_VARIANTS whitespace-separated golden variants, e.g. "omnibus"
 #   EDD_RELEASE_APP_URL       Public control-plane URL, e.g. https://app.example.com
+#   EDD_RELEASE_DYNAMODB_TABLE Deployed EDD single-table name
 #
 # Effects:
 #   - creates/updates the IAM OIDC provider for token.actions.githubusercontent.com
@@ -32,6 +33,7 @@ AWS_REGION="${EDD_RELEASE_AWS_REGION:-}"
 NAME_PREFIX="${EDD_RELEASE_NAME_PREFIX:-}"
 GOLDEN_VARIANTS="${EDD_RELEASE_GOLDEN_VARIANTS:-}"
 APP_URL="${EDD_RELEASE_APP_URL:-}"
+DYNAMODB_TABLE="${EDD_RELEASE_DYNAMODB_TABLE:-}"
 
 missing() {
   [ -n "$2" ] && return 0
@@ -45,6 +47,7 @@ missing EDD_RELEASE_AWS_REGION "$AWS_REGION" || exit 1
 missing EDD_RELEASE_NAME_PREFIX "$NAME_PREFIX" || exit 1
 missing EDD_RELEASE_GOLDEN_VARIANTS "$GOLDEN_VARIANTS" || exit 1
 missing EDD_RELEASE_APP_URL "$APP_URL" || exit 1
+missing EDD_RELEASE_DYNAMODB_TABLE "$DYNAMODB_TABLE" || exit 1
 
 case "$GITHUB_REPO" in
   */*) ;;
@@ -219,6 +222,21 @@ cat >"$permissions_policy" <<EOF
     },
     {
       "Effect": "Allow",
+      "Action": "secretsmanager:GetSecretValue",
+      "Resource": "arn:aws:secretsmanager:${AWS_REGION}:${AWS_ACCOUNT}:secret:${NAME_PREFIX}/AUTH_SECRET-*"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem"
+      ],
+      "Resource": "arn:aws:dynamodb:${AWS_REGION}:${AWS_ACCOUNT}:table/${DYNAMODB_TABLE}"
+    },
+    {
+      "Effect": "Allow",
       "Action": "iam:PassRole",
       "Resource": [
         "arn:aws:iam::${AWS_ACCOUNT}:role/${NAME_PREFIX}-control-plane",
@@ -265,6 +283,8 @@ gh variable set RELEASE_AWS_ROLE_ARN --repo "$GITHUB_REPO" --body "$role_arn"
 gh variable set RELEASE_NAME_PREFIX --repo "$GITHUB_REPO" --body "$NAME_PREFIX"
 gh variable set RELEASE_GOLDEN_VARIANTS --repo "$GITHUB_REPO" --body "$GOLDEN_VARIANTS"
 gh variable set EDD_APP_URL --repo "$GITHUB_REPO" --body "$APP_URL"
+gh variable set EDD_DYNAMODB_TABLE --repo "$GITHUB_REPO" --body "$DYNAMODB_TABLE"
+gh variable set EDD_AUTH_SECRET_ID --repo "$GITHUB_REPO" --body "${NAME_PREFIX}/AUTH_SECRET"
 
 cat <<EOF
 edd: release OIDC bootstrap complete

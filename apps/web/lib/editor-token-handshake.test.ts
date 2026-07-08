@@ -71,7 +71,7 @@ beforeAll(async () => {
   // A minimal proxy mirroring server.ts's /w/<id>/ HTTP handler (authz elided): run
   // editorTokenRedirect, else forward via proxyWorkspaceHttp — the REAL functions.
   proxy = createServer((req, res) => {
-    const redirect = editorTokenRedirect(req, wsid);
+    const redirect = editorTokenRedirect(req, wsid, "monaco");
     if (redirect !== undefined) {
       res.writeHead(302, { location: redirect, "referrer-policy": "no-referrer" });
       res.end();

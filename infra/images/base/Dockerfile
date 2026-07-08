@@ -157,6 +157,7 @@ RUN printf '%s\n' \
 # independent; node-pty is compiled for the target arch in the node-pty-builder stage above.
 COPY editor-monaco /opt/edd-editor-monaco
 COPY --from=node-pty-builder /opt/edd-editor-monaco/node_modules /opt/edd-editor-monaco/node_modules
+COPY --from=node-pty-builder /opt/edd-editor-monaco/node_modules /opt/edd-vendor-harness/node_modules
 
 # Idle-agent + entrypoint (live in /usr/local/bin).
 COPY --chmod=0755 idle-agent.sh /usr/local/bin/edd-idle-agent

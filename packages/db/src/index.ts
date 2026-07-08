@@ -24,6 +24,7 @@ export { dropTable, ensureTable, tableDefinition } from "./table";
 export { waitForDynamo } from "./wait";
 export {
   makeAuditEventEntity,
+  makeAuthSessionEntity,
   makeBaseImageEntity,
   makeCostRollupEntity,
   makeGitCredentialEntity,
@@ -36,6 +37,7 @@ export {
   makeWorkspaceEntity,
   RECONCILER_HEARTBEAT_ID,
   type AuditEventEntity,
+  type AuthSessionEntity,
   type BaseImageEntity,
   type CostRollupEntity,
   type GitCredentialEntity,

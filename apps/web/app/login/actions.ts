@@ -10,6 +10,15 @@ import { devAuthEnabled } from "../../lib/principal";
 // Host-only (no Domain), so the dev cookies are scoped to the exact host the app
 // is served from (e.g. edd.localhost) and never leak to other localhost apps.
 const DEV_COOKIE_OPTS = { httpOnly: true, sameSite: "lax", path: "/" } as const;
+const AUTH_COOKIE_STEMS = [
+  "authjs.session-token",
+  "__Secure-authjs.session-token",
+  "__Host-authjs.session-token",
+  "authjs.csrf-token",
+  "__Host-authjs.csrf-token",
+  "authjs.callback-url",
+  "__Secure-authjs.callback-url",
+] as const;
 
 /**
  * Local dev sign-in (gated on `EDD_DEV_AUTH=1`): authenticate against the seeded
@@ -38,11 +47,18 @@ export async function devSignIn(formData: FormData): Promise<void> {
  * session.
  */
 export async function signOutAction(): Promise<void> {
+  const store = await cookies();
   if (devAuthEnabled()) {
-    const store = await cookies();
     store.delete(DEV_USER_COOKIE);
     store.delete(DEV_ROLE_COOKIE);
     redirect("/login");
+  }
+  for (const cookie of store.getAll()) {
+    if (
+      AUTH_COOKIE_STEMS.some((stem) => cookie.name === stem || cookie.name.startsWith(`${stem}.`))
+    ) {
+      store.delete(cookie.name);
+    }
   }
   const { signOut } = await import("../../auth");
   await signOut({ redirectTo: "/login" });

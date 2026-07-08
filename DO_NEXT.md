@@ -53,15 +53,14 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **Watch this branch's rollout and app-level smoke after merge.** PR #204
-  deployed successfully for merge commit `f82e61db669c` and the golden-images
-  workflow pushed `edd-prod/golden/omnibus:f82e61db669c`, but ECS completion was
-  not enough: `/workspaces` still crashed until nine malformed workspace rows
-  without `resources` were deleted. This branch added baked deploy metadata,
-  `scripts/check-deployed-app.sh`, and the async `post-deploy-smoke` workflow.
-  After merge, verify the release run submits ECS updates, the smoke workflow
-  observes the expected short SHA on `https://app.edd.e6qu.dev`, `/api/readyz`
-  stays ready, and `/workspaces` renders instead of showing a Next.js digest.
+- **After this PR merges, verify the deployed public editor-open smoke.** The
+  current branch added a production smoke that authenticates with a current
+  server-side session, creates one workspace for each of OpenVSCode, Monaco,
+  Claude Local Web UI, and Codex Local Web UI, waits for `running`/
+  `functional=ok`, and opens each `/w/<id>/` path through
+  `https://app.edd.e6qu.dev`. After merge, watch the release and
+  `post-deploy-smoke` workflows, then inspect CloudWatch/ECS/DynamoDB for any
+  real failures instead of trusting ECS deployment completion alone.
 - **Apply/verify Terraform drift for fast health checks.** The source expected
   10-second ALB/NLB target-group health checks, but live AWS still showed
   30-second intervals after the image-only release. Apply the Terraform stack from
@@ -70,13 +69,11 @@ deferral by choice.
   expected remote state object still needed operational confirmation/migration at
   `s3://edd-tfstate-edd-prod/ecs-dev-desktop/edd-prod/terraform.tfstate`.
 - **Resolve remaining production alarms and audit debris explicitly.**
-  `edd-prod-workspaces-stuck-error` cleared after deleting the malformed
-  workspaces, but `edd-prod-reconciler-dlq` still held five old inactive-taskdef
-  messages and `edd-prod-reconciler-failed` still reflected the recent
-  invalid-workspace failures until its alarm window aged out. Old `session.create`
-  audit events lacked resource details and made post-sweep cost rollup fail
-  loudly; delete or retain those audit rows only after an explicit human
-  operational decision.
+  `edd-prod-workspaces-stuck-error` returned to OK after the old errored
+  Claude/Codex records were deleted/replaced, but `edd-prod-reconciler-dlq`
+  still held old inactive-taskdef messages. Old `session.create` audit events
+  lacked resource details and made post-sweep cost rollup fail loudly; delete or
+  retain those audit rows only after an explicit human operational decision.
 - **Verify resource-sized workspace launches in production after this fix.**
   Creation required/persisted explicit resources with defaults of 0.5 vCPU,
   2 GiB RAM, and 8 GiB disk and UI-selectable limits of 4 vCPU, 16 GiB RAM, and
@@ -84,13 +81,6 @@ deferral by choice.
   workspace, confirm ECS task definitions carry the selected CPU/memory, confirm
   fresh managed-EBS volumes use the selected size, and confirm cards/details/
   monitoring and cost reports show per-workspace sizing.
-- **Watch this branch's workspace-image rollout after merge.** The branch kept
-  the four workspace interface choices and wired the Claude/Codex vendor harness
-  modes without a Monaco fallback. After merge, verify the golden-images
-  workflow built/pushed the updated base/omnibus image, create one workspace of
-  each interface type (OpenVSCode, Monaco, Claude Local Web UI, Codex Local Web
-  UI), and confirm the `/w/<id>/` open path and status logs match the branch's
-  local Docker smoke.
 - **Spectate cross-replica relay** — v1's relay is per-replica (the spectator
   client retries until it lands on the publisher's replica; works, but retry
   count grows with replica count). Follow-up: an internal replica-to-replica
@@ -122,10 +112,10 @@ deferral by choice.
      per-workspace monitoring. Remaining work was richer CPU/memory/disk visualization on
      the compact card, per-workspace snapshot-cost display, disk-increase action
      (ModifyVolume + resize), and any extra chart polish.
-  5. **Session/cookie resilience**: 4-hour sessions + rolling refresh (JWT maxAge/updateAge;
-     evaluate the DynamoDB Auth.js adapter if a true refresh token is wanted),
-     schema-versioned app cookies that fail-soft (never block the user or force a manual
-     cookie reset), and a "reset cookies" button in the persona/user menu.
+  5. **Session/cookie resilience**: server-side, versioned Auth.js session rows
+     shipped in the current branch, so old-format JWT cookies force re-login and
+     logout revokes the server row. Remaining polish was limited to a user-facing
+     "reset cookies" affordance if the persona/user menu still needed it.
   6. **Public read-only spectate** (default-off toggle on the card, incl. mouse/focus/
      keystroke visibility): needs a security design first — share flag + unguessable token,
      read-only proxy path, revocation, audit. Likely Monaco-first (OpenVSCode has no native
