@@ -27,12 +27,11 @@ export function requiredEnv(name: string): string {
 function cookieNameForEditor(editor: Editor): string {
   switch (editor) {
     case "openvscode":
+    case "claude":
+    case "codex":
       return "vscode-tkn";
     case "monaco":
       return "edd-editor-token";
-    case "claude":
-    case "codex":
-      return "edd-vendor-token";
   }
 }
 

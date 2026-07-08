@@ -43,10 +43,33 @@ body {
   overflow-y: auto;
 }
 #sidebar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   padding: 8px 12px;
   font-size: 11px;
   letter-spacing: 0.08em;
   color: var(--dim);
+}
+#new-file {
+  width: 22px;
+  height: 22px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border: 1px solid var(--border-control);
+  border-radius: 4px;
+  background: none;
+  color: var(--dim);
+  cursor: pointer;
+  font:
+    15px ui-monospace,
+    monospace;
+  line-height: 1;
+}
+#new-file:hover {
+  color: var(--text);
 }
 #files {
   padding-bottom: 12px;

@@ -102,6 +102,7 @@ const editor = monaco.editor.create(el("editor"), {
 });
 
 let currentPath: string | null = null;
+let currentTreeSignature = "";
 
 initSpectateCapture({ editor, getCurrentPath: () => currentPath });
 
@@ -126,6 +127,22 @@ async function openFile(filePath: string, row: HTMLElement): Promise<void> {
   captureFileOpened();
 }
 
+async function createFile(): Promise<void> {
+  const suggested = currentPath === null ? "hello.txt" : "new-file.txt";
+  const raw = window.prompt("New file path", suggested);
+  const filePath = raw?.trim();
+  if (filePath === undefined || filePath === "") return;
+  const res = await fetch(`api/file?path=${encodeURIComponent(filePath)}`, {
+    method: "PUT",
+    body: "",
+  });
+  if (!res.ok) {
+    flash(`create failed: ${String(res.status)}`);
+    return;
+  }
+  await loadTree({ force: true, openPath: filePath });
+}
+
 async function save(): Promise<void> {
   if (currentPath === null) return;
   const res = await fetch(`api/file?path=${encodeURIComponent(currentPath)}`, {
@@ -135,7 +152,7 @@ async function save(): Promise<void> {
   flash(res.ok ? "saved" : `save failed: ${String(res.status)}`);
 }
 
-async function loadTree(): Promise<void> {
+async function loadTree(opts: { force?: boolean; openPath?: string } = {}): Promise<void> {
   const filesEl = el("files");
   const res = await fetch("api/tree");
   if (!res.ok) {
@@ -143,8 +160,14 @@ async function loadTree(): Promise<void> {
     return;
   }
   const raw: unknown = await res.json();
+  const entries = parseEntries(raw);
+  const signature = JSON.stringify(entries);
+  if (opts.force !== true && signature === currentTreeSignature) return;
+  currentTreeSignature = signature;
   filesEl.replaceChildren();
-  for (const entry of parseEntries(raw)) {
+  let rowToOpen: HTMLElement | null = null;
+  const openPath = opts.openPath;
+  for (const entry of entries) {
     const pad = `${String(12 + (entry.path.split("/").length - 1) * 12)}px`;
     const label = (entry.type === "dir" ? "▸ " : "") + (entry.path.split("/").pop() ?? entry.path);
     if (entry.type === "dir") {
@@ -164,8 +187,11 @@ async function loadTree(): Promise<void> {
     row.addEventListener("click", () => {
       void openFile(entry.path, row);
     });
+    if (entry.path === currentPath) row.classList.add("active");
+    if (openPath !== undefined && entry.path === openPath) rowToOpen = row;
     filesEl.append(row);
   }
+  if (rowToOpen !== null && openPath !== undefined) await openFile(openPath, rowToOpen);
 }
 
 editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
@@ -292,6 +318,9 @@ el("new-terminal-tab").addEventListener("click", () => {
   setTerminalPanelVisible(true);
   openNewTerminalTab();
 });
+el("new-file").addEventListener("click", () => {
+  void createFile();
+});
 
 window.addEventListener("keydown", (e: KeyboardEvent) => {
   if (e.key !== "`" || !(e.ctrlKey || e.metaKey)) return;
@@ -307,4 +336,7 @@ window.addEventListener("keydown", (e: KeyboardEvent) => {
 // The terminal starts open with one tab, matching a normal dev environment.
 setTerminalPanelVisible(true);
 
-void loadTree();
+void loadTree({ force: true });
+window.setInterval(() => {
+  void loadTree();
+}, 2000);

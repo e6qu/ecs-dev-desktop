@@ -53,6 +53,42 @@ loopback access but before the local substrate was started, the same suite
 failed with `ECONNREFUSED`. After the repo's tier-2 substrate was started, the
 suite passed.
 
+**Last updated:** 2026-07-08. The current follow-up branch corrected the
+Claude/Codex workspace UI contract and the Monaco editability gap found against
+production `omnibus:b48030c13956`. Live production still served the removed
+EDD-authored Claude/Codex wrapper pages on `/w/<id>/`, and Monaco showed
+`Cannot edit in read-only editor` before any file was opened and did not refresh
+the explorer after `touch hello.txt` in the terminal. Local image inspection
+verified the installed vendor browser UIs were the OpenVSCode extensions
+`anthropic.claude-code` and `openai.chatgpt`; the Codex CLI `app-server` exposed
+a WebSocket protocol, not an HTML page.
+
+The branch removed `vendor-harness-server.js` from the base image and changed
+`EDD_EDITOR_MODE=claude`/`codex` to fail loudly unless the corresponding CLI and
+vendor OpenVSCode extension were installed, then launch OpenVSCode with the
+vendor extension UI selected. Claude/Codex therefore used the same `vscode-tkn`
+connection-token cookie as OpenVSCode, and the proxy/smoke helpers were updated
+accordingly. The EDD OpenVSCode extension opened `claude-vscode.editor.open` or
+`chatgpt.openSidebar` on startup for those modes.
+
+The Monaco editor added a real New File control and refreshed its explorer from
+the workspace filesystem every two seconds, so files created from the integrated
+terminal became visible without a reload. The post-deploy screenshot smoke was
+tightened to reject the old wrapper text, unauthorized/forbidden/502/server
+errors, and Monaco read-only edit failures; for Monaco it now creates a file via
+the page, waits for it to appear in the explorer, opens it, and types into the
+editor.
+
+Verification passed with `pnpm lint`, `pnpm test` with loopback access, `pnpm
+build`, `pnpm dead-code`, `pnpm actionlint`, `pnpm check-deps` with registry
+network access, `shellcheck infra/images/base/entrypoint.sh
+infra/images/base/smoke.sh`, `node --check` for the EDD OpenVSCode extension,
+focused web proxy/token tests, the Monaco build/lint/test suite, and the
+base-image Docker smoke. Local Chromium screenshots from the rebuilt
+`edd-base:smoke` image showed Codex serving the OpenAI Codex sidebar UI and
+Claude serving the Anthropic Claude Code webview inside OpenVSCode, not the old
+EDD wrapper.
+
 **Last updated:** 2026-07-08. PR #207 merged as
 `24fc78f7bb052ff099a730dccaa9f7c025c77e91` and the control plane rolled to
 that SHA. `https://app.edd.e6qu.dev/api/healthz` reported
@@ -116,11 +152,12 @@ Actions showed PR #207's `release` and `golden-images` workflows succeeded, and
 the old `post-deploy-smoke` run failed on the bootstrap/IAM/KMS/email gaps that
 this branch corrected.
 
-**Last updated:** 2026-07-08. The current follow-up branch addressed the
+**Last updated:** 2026-07-08. The earlier follow-up branch addressed the
 remaining production editor-open failures with no fallbacks. The editor proxy
-now keys the connection-token redirect suppression by the selected workspace
-editor mode: OpenVSCode uses `vscode-tkn`, Monaco uses `edd-editor-token`, and
-Claude/Codex vendor harnesses use `edd-vendor-token`. A stale cookie from one
+keyed the connection-token redirect suppression by the selected workspace editor
+mode. The latest branch kept that model but changed Claude/Codex to OpenVSCode
+surfaces, so OpenVSCode, Claude, and Codex use `vscode-tkn`, while Monaco uses
+`edd-editor-token`. A stale cookie from one
 editor family no longer suppresses token injection for another family, which
 matched the live `Forbidden`/`unauthorized` reports for OpenVSCode, Monaco,
 Claude Local Web UI, and Codex Local Web UI. Exact `/w/<id>` and `/w/<id>/`
@@ -138,11 +175,10 @@ Auth.js cookie names/chunks. The smoke-test helper creates and revokes its own
 server-side admin session through the same path.
 
 The workspace image entrypoint stayed fail-loud. `EDD_EDITOR_MODE=monaco`
-starts only Monaco, `claude` and `codex` start only the vendor local web UI
-harness, and an unknown editor mode exits with an error instead of falling back
-to OpenVSCode or Monaco. The vendor harness PTY dependency was moved under
-`/opt/edd-vendor-harness/node_modules` so Claude/Codex do not depend on the
-Monaco runtime path.
+started only Monaco, and the latest branch changed `claude`/`codex` to require
+their vendor OpenVSCode extensions and then start OpenVSCode with that vendor UI
+selected. An unknown editor mode exits with an error instead of falling back to
+OpenVSCode or Monaco.
 
 Post-deploy verification was extended beyond app readiness. The
 `post-deploy-smoke` workflow now assumes the release AWS role via GitHub OIDC,

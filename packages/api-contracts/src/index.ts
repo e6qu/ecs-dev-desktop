@@ -45,7 +45,7 @@ export type WorkspaceActionDto = z.infer<typeof workspaceAction>;
 
 /** Which primary interface a workspace serves (mirrors `@edd/core`'s EditorKind):
  * openvscode = OpenVSCode Server; monaco = the first-party lightweight editor;
- * claude / codex = vendor agent harnesses backed by local workspace processes. */
+ * claude / codex = OpenVSCode Server with the vendor extension UI selected. */
 export const editorKind = z.enum(["openvscode", "monaco", "claude", "codex"]);
 export type EditorKindDto = z.infer<typeof editorKind>;
 

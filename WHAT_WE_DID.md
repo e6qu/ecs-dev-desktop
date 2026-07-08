@@ -3210,9 +3210,9 @@ still produced `Forbidden`/`unauthorized` failures. The branch fixed the proxy
 root causes rather than adding fallbacks: exact `/w/<id>` and `/w/<id>/` opens
 are treated as document navigations, non-ready workspace roots redirect to the
 workspace status page, and token-redirect suppression is keyed by editor mode
-(`vscode-tkn` for OpenVSCode, `edd-editor-token` for Monaco,
-`edd-vendor-token` for Claude/Codex). Stale cookies from one editor family no
-longer suppress token injection for another.
+(`vscode-tkn` for OpenVSCode and, after the later wrapper removal, Claude/Codex;
+`edd-editor-token` for Monaco). Stale cookies from one editor family no longer
+suppress token injection for another.
 
 Auth gained a server-side revocation handle. Login creates a versioned
 `AUTH_SESSION` DynamoDB row and embeds `authSessionId` plus
@@ -3221,11 +3221,10 @@ active, unexpired, unrevoked current-version row; old-format cookies become
 unauthenticated and force re-login. Logout revokes the row and explicitly clears
 Auth.js cookie names/chunks.
 
-The no-fallback image contract stayed intact. Monaco is only served for the
-Monaco workspace type; Claude and Codex use the vendor local web UI harness; an
-unknown editor mode exits with an error. The vendor harness `node-pty`
-dependency was placed under `/opt/edd-vendor-harness/node_modules` so the
-Claude/Codex runtime no longer depends on Monaco's module path.
+The no-fallback image contract stayed intact. Monaco was only served for the
+Monaco workspace type, and a later fix replaced the temporary Claude/Codex
+wrapper with vendor OpenVSCode extension UIs. An unknown editor mode exited with
+an error instead of falling back.
 
 Post-deploy smoke was expanded to catch the exact production failure class. The
 workflow now assumes the release AWS role with GitHub OIDC, reads the deployed
@@ -3312,3 +3311,33 @@ heartbeats reject every non-`running`/non-`idle` workspace, added integration
 coverage for stopped/deleting `active:false` reports, and made both deployed
 smoke scripts wait for every created workspace to reach `terminated` after
 DELETE.
+
+**2026-07-08 — Removed the Claude/Codex wrapper and made Monaco prove real file
+editing.** Production `omnibus:b48030c13956` still rendered EDD-authored
+Claude/Codex wrapper pages on `/w/<id>/`: Claude showed raw terminal/ANSI output
+from `claude --remote-control`, and Codex showed `codex app-server` protocol
+status. Local inspection of the rebuilt workspace image showed the browser
+vendor UIs actually available in the image were the OpenVSCode extensions
+`anthropic.claude-code` and `openai.chatgpt`, while Codex `app-server` exposed a
+WebSocket protocol rather than an HTML UI.
+
+The branch deleted the EDD vendor wrapper from the base image. `claude` and
+`codex` workspace modes now fail loudly unless the corresponding CLI and vendor
+OpenVSCode extension are installed, then start OpenVSCode and auto-open
+Anthropic's Claude Code webview or OpenAI's Codex sidebar. The proxy and smoke
+helpers now expect the OpenVSCode `vscode-tkn` cookie for Claude/Codex because
+those modes are served by OpenVSCode rather than by a separate wrapper.
+
+Monaco was corrected to use the real workspace filesystem as the source of
+truth in the UI. It gained a New File control backed by the existing confined
+file API and refreshes the explorer every two seconds, so `touch hello.txt` from
+the integrated terminal appears without a reload. The post-deploy screenshot
+smoke now rejects the old wrapper text and Monaco read-only edit errors, and it
+creates/opens/types into a Monaco file from inside the browser page.
+
+Verification passed with repo-wide `pnpm lint`, `pnpm test`, `pnpm build`,
+`pnpm dead-code`, `pnpm actionlint`, and `pnpm check-deps` with Terraform
+registry access. The base-image Docker smoke passed for OpenVSCode, Monaco,
+Claude, and Codex. Local Chromium screenshots from the rebuilt `edd-base:smoke`
+image showed the OpenAI Codex sidebar UI and Anthropic Claude Code webview
+inside OpenVSCode, not the removed wrapper.

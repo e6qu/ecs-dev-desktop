@@ -4,6 +4,33 @@
 
 ## Open
 
+- **Claude/Codex Local Web UI workspaces showed an EDD wrapper instead of the
+  vendor UI — FIXED in current branch (2026-07-08).** Production
+  `omnibus:b48030c13956` rendered EDD-authored pages saying Claude Remote
+  Control or Codex app-server was running, with raw Claude terminal output or
+  Codex app-server logs. Local image inspection showed the actual browser
+  vendor UIs present in the image were the OpenVSCode extensions
+  `anthropic.claude-code` and `openai.chatgpt`; `codex app-server` was a
+  WebSocket protocol backend, not a page. The branch removed the EDD vendor
+  wrapper, made `claude`/`codex` modes fail loudly unless the corresponding CLI
+  and vendor OpenVSCode extension were installed, launched OpenVSCode for those
+  modes, and auto-opened the vendor extension UI.
+
+- **Monaco did not reflect terminal-created files and exposed a read-only dead
+  editor state — FIXED in current branch (2026-07-08).** A live Monaco
+  workspace showed `Cannot edit in read-only editor`, and `touch hello.txt` in
+  the integrated terminal did not appear in the explorer. Monaco now has a real
+  New File control backed by the same confined file API and refreshes the
+  explorer from the workspace filesystem every two seconds, so terminal-created
+  files appear without a reload.
+
+- **Post-deploy screenshots accepted the removed vendor wrapper and did not
+  prove Monaco editability — FIXED in current branch (2026-07-08).** The
+  screenshot smoke previously rejected only obvious auth/server-error pages. It
+  now rejects the old wrapper phrases and the Monaco read-only error text; for
+  Monaco it creates a file through the browser page, waits for it to appear in
+  the explorer, opens it, and types into the editor.
+
 - **Post-deploy screenshot smoke lacked a Playwright browser install — FIXED in
   current branch (2026-07-08).** After PR #208 merged, `post-deploy-smoke` run
   `28942687870` passed coordinate validation and app-build readiness but failed
@@ -103,15 +130,13 @@ workspace requires one to be reachable`. The smoke JWT now includes a
   the active `aws.endpoint` coordinate, so HTTP and HTTPS harnesses differ only
   by endpoint scheme.
 
-- **Claude/Codex workspace modes failed loudly because vendor harnesses were not
-  wired — FIXED in current branch (2026-07-08).** Production Claude/Codex tasks
-  exited with the intended no-fallback error instead of serving Monaco. The base
-  image now includes a token-gated vendor harness host, and the current branch
-  kept that separation fail-loud: Monaco starts only in `EDD_EDITOR_MODE=monaco`;
-  Claude/Codex start only the vendor harness; unknown editor modes exit with a
-  configuration error. The vendor harness PTY dependency was copied under
-  `/opt/edd-vendor-harness/node_modules`, removing its runtime dependency on the
-  Monaco node_modules path.
+- **Claude/Codex workspace modes initially failed loudly because vendor UI
+  surfaces were not wired — SUPERSEDED by the OpenVSCode vendor-extension fix
+  (2026-07-08).** Production Claude/Codex tasks first exited with the intended
+  no-fallback error instead of serving Monaco. A later branch added an EDD
+  wrapper around Claude Remote Control and Codex app-server, but live use proved
+  that was the wrong browser surface. The current branch removed that wrapper and
+  made Claude/Codex require and open the vendor OpenVSCode extension UIs.
 
 - **Errored workspaces should not be snapshotted further — FIXED in current
   branch (2026-07-08).** The implementation already scheduled snapshots only for

@@ -32,9 +32,6 @@ const EDITOR_TOKEN_COOKIE = "vscode-tkn";
 // nav and then forwards a clean request the Monaco server rejects with 401.
 // (Kept in sync with @edd/editor-monaco's TOKEN_COOKIE.)
 const MONACO_TOKEN_COOKIE = "edd-editor-token";
-// Vendor harness modes (Claude/Codex) set their own cookie, scoped to the same
-// per-workspace `/w/<id>/` path.
-const VENDOR_TOKEN_COOKIE = "edd-vendor-token";
 
 /**
  * Defence-in-depth: when the editor runs with a connection token, hand the
@@ -95,12 +92,11 @@ function isWorkspaceRootPath(pathname: string, wsId: WorkspaceId): boolean {
 function tokenCookieForEditor(editor: EditorKind): string {
   switch (editor) {
     case "openvscode":
+    case "claude":
+    case "codex":
       return EDITOR_TOKEN_COOKIE;
     case "monaco":
       return MONACO_TOKEN_COOKIE;
-    case "claude":
-    case "codex":
-      return VENDOR_TOKEN_COOKIE;
   }
 }
 
