@@ -45,7 +45,13 @@ access, `pnpm dead-code`, `pnpm --filter @edd/editor-monaco build`,
 --noEmit`, and focused escalated web proxy/smoke-related tests. A sandboxed
 `check-deps` attempt failed only at Terraform registry DNS, and sandboxed
 loopback tests failed with `EPERM`; the same commands passed with the required
-network/loopback access.
+network/loopback access. PR #210 CI then exposed a separate workflow problem:
+the `e2e` job reached the browser section but timed out during
+`playwright install --with-deps chromium` while apt slowly fetched optional font
+packages from the Ubuntu mirror. The branch removed repeated `--with-deps`
+installs from the shared Playwright action, `post-deploy-smoke`, and `pages`;
+browser jobs now install Chromium itself and fail loudly only if a required
+runtime library is actually absent. `pnpm actionlint` passed after that change.
 
 **Last updated:** 2026-07-08. PR #208 merged as
 `b48030c13956dcb803316bfbcc9e2dc33518d001`. The release workflow

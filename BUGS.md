@@ -64,9 +64,20 @@
   `28942687870` passed coordinate validation and app-build readiness but failed
   before opening any workspace because Chromium was absent from the runner cache:
   `browserType.launch: Executable doesn't exist at ... chromium_headless_shell`.
-  The workflow now runs `pnpm --filter web exec playwright install --with-deps
-chromium` before the screenshot verifier, so the smoke does not depend on an
-  implicit hosted-runner browser state.
+  The workflow now runs `pnpm --filter web exec playwright install chromium`
+  before the screenshot verifier, so the smoke does not depend on an implicit
+  hosted-runner browser state.
+
+- **Shared Playwright install action could spend the remaining e2e budget in apt
+  dependency/font installation — FIXED in current branch (2026-07-08).** PR
+  #210 CI run `28953813542` passed build, unit, integration, Playwright,
+  e2e-https, and terraform-sim, but the `e2e` job was canceled in
+  `Install Playwright browser` after `playwright install --with-deps chromium`
+  spent minutes fetching optional font packages from `azure.archive.ubuntu.com`.
+  The shared Playwright action and the direct post-deploy/pages installs now
+  install Chromium only. Browser tests still fail loudly if a required runtime
+  library is truly missing; the workflow no longer burns job budget on repeated
+  apt dependency installation.
 
 - **Smoke-created workspaces could remain live after DELETE while the smoke
   reported success — FIXED in current branch (2026-07-08).** The deployed smoke

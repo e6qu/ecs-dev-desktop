@@ -44,7 +44,7 @@ jobs:
       - name: Unit tests
         run: pnpm --filter @edd/demo test
       - name: Install Playwright browser
-        run: pnpm --filter @edd/demo exec playwright install --with-deps chromium
+        run: pnpm --filter @edd/demo exec playwright install chromium
       - name: Browser smoke (build + preview + drive a real browser)
         run: pnpm --filter @edd/demo test:smoke
 

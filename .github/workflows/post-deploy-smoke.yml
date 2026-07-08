@@ -122,7 +122,7 @@ jobs:
           exit 1
 
       - name: Install Playwright Chromium
-        run: pnpm --filter web exec playwright install --with-deps chromium
+        run: pnpm --filter web exec playwright install chromium
 
       - name: Open and screenshot one fresh workspace per editor
         run: pnpm --filter web exec tsx scripts/screenshot-deployed-workspaces.ts

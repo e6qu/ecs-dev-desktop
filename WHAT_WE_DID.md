@@ -3363,3 +3363,11 @@ while preserving save no-ops until a file was selected. The branch also fixed
 the screenshot artifact path, bumped `actions/upload-artifact` to age-eligible
 `v7.0.1`, narrowed env-reader helper types, and kept `primeEditorToken`
 internal.
+
+PR #210 CI then exposed that the shared Playwright install action was still
+using `playwright install --with-deps chromium`. All product tests before the
+browser proof passed, but the `e2e` job was canceled while apt slowly fetched
+optional font packages from the Ubuntu mirror. The branch changed the shared
+Playwright action plus direct post-deploy/pages installs to install Chromium
+only, leaving missing runtime-library failures loud while avoiding repeated apt
+dependency installs in browser smoke jobs.

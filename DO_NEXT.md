@@ -62,6 +62,9 @@ deferral by choice.
   stale editor-token cookies by value, changed the screenshot smoke to open
   `/w/<id>/` directly with only the EDD session cookie, fixed screenshot
   artifacts/diagnostics, and removed Monaco's read-only editor initialization.
+  PR #210 CI also proved the shared Playwright install action could time out
+  while fetching apt font packages; the current branch changed Playwright setup
+  to install Chromium only in CI smoke/browser workflows.
   After merge, watch `release`, `golden-images`, and `post-deploy-smoke`;
   confirm the artifact contains screenshots for all four workspace types and
   specifically verify OpenVSCode does not render `Forbidden`, Monaco accepts

@@ -7,5 +7,5 @@ runs:
       with:
         path: ~/.cache/ms-playwright
         key: playwright-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
-    - run: pnpm --filter web exec playwright install --with-deps chromium
+    - run: pnpm --filter web exec playwright install chromium
       shell: bash
