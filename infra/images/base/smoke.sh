@@ -14,6 +14,7 @@ name="edd-workspace-smoke"
 port="${EDD_SMOKE_PORT:-4599}"
 
 "$here/build.sh" "$tag" --load
+docker run --rm --entrypoint sh "$tag" -lc 'command -v bwrap >/dev/null'
 
 cleanup() { docker rm -f "$name" >/dev/null 2>&1 || true; }
 trap cleanup EXIT

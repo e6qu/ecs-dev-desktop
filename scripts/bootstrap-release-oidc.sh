@@ -13,6 +13,7 @@
 #   EDD_RELEASE_GOLDEN_VARIANTS whitespace-separated golden variants, e.g. "omnibus"
 #   EDD_RELEASE_APP_URL       Public control-plane URL, e.g. https://app.example.com
 #   EDD_RELEASE_DYNAMODB_TABLE Deployed EDD single-table name
+#   EDD_RELEASE_DYNAMODB_KMS_KEY_ARN KMS key ARN used by the deployed table
 #
 # Effects:
 #   - creates/updates the IAM OIDC provider for token.actions.githubusercontent.com
@@ -34,6 +35,7 @@ NAME_PREFIX="${EDD_RELEASE_NAME_PREFIX:-}"
 GOLDEN_VARIANTS="${EDD_RELEASE_GOLDEN_VARIANTS:-}"
 APP_URL="${EDD_RELEASE_APP_URL:-}"
 DYNAMODB_TABLE="${EDD_RELEASE_DYNAMODB_TABLE:-}"
+DYNAMODB_KMS_KEY_ARN="${EDD_RELEASE_DYNAMODB_KMS_KEY_ARN:-}"
 
 missing() {
   [ -n "$2" ] && return 0
@@ -48,6 +50,7 @@ missing EDD_RELEASE_NAME_PREFIX "$NAME_PREFIX" || exit 1
 missing EDD_RELEASE_GOLDEN_VARIANTS "$GOLDEN_VARIANTS" || exit 1
 missing EDD_RELEASE_APP_URL "$APP_URL" || exit 1
 missing EDD_RELEASE_DYNAMODB_TABLE "$DYNAMODB_TABLE" || exit 1
+missing EDD_RELEASE_DYNAMODB_KMS_KEY_ARN "$DYNAMODB_KMS_KEY_ARN" || exit 1
 
 case "$GITHUB_REPO" in
   */*) ;;
@@ -66,6 +69,13 @@ case "$APP_URL" in
   https://*) ;;
   *)
     echo "edd: EDD_RELEASE_APP_URL must be an https:// URL" >&2
+    exit 1
+    ;;
+esac
+case "$DYNAMODB_KMS_KEY_ARN" in
+  arn:aws:kms:"$AWS_REGION":"$AWS_ACCOUNT":key/*) ;;
+  *)
+    echo "edd: EDD_RELEASE_DYNAMODB_KMS_KEY_ARN must be a KMS key ARN in ${AWS_REGION}/${AWS_ACCOUNT}" >&2
     exit 1
     ;;
 esac
@@ -234,6 +244,19 @@ cat >"$permissions_policy" <<EOF
         "dynamodb:DeleteItem"
       ],
       "Resource": "arn:aws:dynamodb:${AWS_REGION}:${AWS_ACCOUNT}:table/${DYNAMODB_TABLE}"
+    },
+    {
+      "Effect": "Allow",
+      "Action": [
+        "kms:Decrypt",
+        "kms:GenerateDataKey"
+      ],
+      "Resource": "${DYNAMODB_KMS_KEY_ARN}",
+      "Condition": {
+        "StringEquals": {
+          "kms:ViaService": "dynamodb.${AWS_REGION}.amazonaws.com"
+        }
+      }
     },
     {
       "Effect": "Allow",

@@ -34,9 +34,11 @@ RUN printf '%s\n' \
       > /etc/dpkg/dpkg.cfg.d/zz-edd-keep-man1-for-alternatives
 
 # System packages: curl (download), tini (init), ca-certificates, git (SCM +
-# credential broker), gosu (drop to the workspace user), openssh-server (SSH).
+# credential broker), gosu (drop to the workspace user), openssh-server (SSH),
+# and bubblewrap (Codex's Linux sandbox prerequisite).
 # Deliberately NO build-essential — compilers live in the variants that need them.
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+      bubblewrap \
       ca-certificates \
       curl \
       git \

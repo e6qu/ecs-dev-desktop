@@ -3243,3 +3243,43 @@ one real HTTPS-only coordinate bug after the PR was rebased: the Auth.js callbac
 e2e still used the HTTP-only DynamoDB endpoint while the HTTPS harness served
 the AWS API over TLS. The test was corrected to use the active `aws.endpoint`
 coordinate and the exact failing HTTPS command passed locally.
+
+**2026-07-08 — Verified PR #207 rollout and fixed the smoke/bootstrap gaps it
+exposed.** PR #207 merged as `24fc78f7bb05` and production rolled ECS task
+definition `:32` on cluster `edd-prod-workspaces`. `edd-prod-control-plane` was
+ACTIVE at desired/running/pending `2/2/0`, `edd-prod-ssh-gateway` was ACTIVE at
+`1/1/0`, and both services reported rollout `COMPLETED` with `100/200`
+minimum/maximum healthy deployment settings. The public app reported
+`deploy.sha=24fc78f7bb05`, `/api/readyz` was ready, and `/workspaces` rendered
+HTTP 200.
+
+The new post-deploy smoke failed loudly several times before it could verify
+workspaces, and each failure was a real setup/code gap. The live release
+bootstrap state lacked the new non-secret smoke variables, the release role did
+not yet have `secretsmanager:GetSecretValue`, and DynamoDB's customer-managed
+KMS key denied decrypt. The real bootstrap was rerun from repo source with
+explicit production coordinates, and the branch made that source require
+`EDD_RELEASE_DYNAMODB_KMS_KEY_ARN` plus grant only DynamoDB-scoped
+`kms:Decrypt`/`kms:GenerateDataKey`. The smoke then reached the app and exposed
+that its synthetic Auth.js session had no email; the app correctly rejected that
+as an unopenable real workspace, so the smoke JWT now includes a deterministic
+`@smoke.edd.local` email.
+
+The fixed smoke was run manually against production and opened all four editor
+types through the public app: OpenVSCode, Monaco, Claude Local Web UI, and Codex
+Local Web UI. A new Playwright screenshot verifier then repeated the production
+test in Chromium and saved screenshots for all four modes under
+`/private/tmp/edd-workspace-screenshots/`, then again after the helper refactor
+under `/private/tmp/edd-workspace-screenshots-rerun/`. Visual inspection
+confirmed the actual rendered editor/harness pages: VS Code Web, Monaco with
+terminal, Claude vendor harness `status: running`, and Codex vendor harness
+`status: running`. The workflow was updated to run this screenshot verifier and
+upload the screenshot artifact after every successful release.
+
+The Codex screenshot also surfaced a real runtime warning about missing sandbox
+prerequisites. The current OpenAI Codex sandbox docs say Linux/WSL should
+install `bubblewrap`, so the base image now installs `bubblewrap` and the
+base-image smoke asserts `bwrap` exists. Verification for the branch passed with
+web eslint/lint/build/test, `pnpm dead-code`, `pnpm actionlint`, and shellcheck;
+the web test suite needed local loopback access because the sandboxed run denied
+`127.0.0.1` listener setup with `EPERM`.
