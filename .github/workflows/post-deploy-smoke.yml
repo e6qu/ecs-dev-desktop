@@ -1,0 +1,86 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: post-deploy-smoke
+
+on:
+  workflow_run:
+    workflows: ["release"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      expected_sha:
+        description: "Expected deployed short sha"
+        required: true
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: post-deploy-smoke-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.expected_sha }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: verify deployed app
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      EDD_APP_URL: ${{ vars.EDD_APP_URL }}
+      MANUAL_EXPECTED_SHA: ${{ inputs.expected_sha }}
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Download release metadata
+        if: github.event_name == 'workflow_run'
+        uses: actions/download-artifact@v8.0.1
+        with:
+          name: release-deploy
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          path: temp/release
+
+      - name: Validate smoke coordinates
+        run: |
+          set -euo pipefail
+          if [ -z "$EDD_APP_URL" ]; then
+            echo "::error::EDD_APP_URL repository variable is required"
+            exit 1
+          fi
+          if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
+            if [ ! -s temp/release/deployed-tag ]; then
+              echo "::error::release metadata artifact did not contain deployed-tag"
+              exit 1
+            fi
+            expected_sha=$(cat temp/release/deployed-tag)
+          else
+            expected_sha="$MANUAL_EXPECTED_SHA"
+          fi
+          if [ -z "$expected_sha" ]; then
+            echo "::error::expected deployed sha is required"
+            exit 1
+          fi
+          printf 'EXPECTED_SHA=%s\n' "$expected_sha" >> "$GITHUB_ENV"
+
+      - name: Wait for expected app build
+        run: |
+          set -euo pipefail
+          if [ -z "$EXPECTED_SHA" ]; then
+            echo "::error::expected deployed sha is required"
+            exit 1
+          fi
+          short="${EXPECTED_SHA:0:12}"
+          deadline=$((SECONDS + 540))
+          last=""
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            if output=$(sh scripts/check-deployed-app.sh "$EDD_APP_URL" "$short" 2>&1); then
+              printf '%s\n' "$output"
+              exit 0
+            fi
+            last="$output"
+            printf '%s\n' "$output"
+            sleep 10
+          done
+          echo "::error::deployed app did not report expected build before the smoke deadline"
+          printf '%s\n' "$last"
+          exit 1

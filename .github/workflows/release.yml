@@ -26,7 +26,8 @@
 # are the per-arch images for runners (e.g. Lambda) that cannot consume manifests.
 # After publish, scripts/deploy-release-images.sh registers fresh task-definition
 # revisions for the control plane, reconciler, and SSH gateway, updates the ECS
-# services and reconciler Scheduler target, then waits for ECS service stability.
+# services and reconciler Scheduler target, then exits. ECS convergence is async;
+# post-deploy-smoke verifies the public app after the release workflow succeeds.
 name: release
 
 on:
@@ -117,3 +118,17 @@ jobs:
             "$RELEASE_AWS_REGION" \
             "$RELEASE_NAME_PREFIX" \
             "${TAG:0:12}"
+
+      - name: Write release metadata
+        run: |
+          set -euo pipefail
+          mkdir -p temp/release
+          printf '%s\n' "${TAG:0:12}" > temp/release/deployed-tag
+
+      - name: Upload release metadata
+        uses: actions/upload-artifact@v7.0.1
+        with:
+          name: release-deploy
+          path: temp/release/deployed-tag
+          if-no-files-found: error
+          retention-days: 7

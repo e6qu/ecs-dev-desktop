@@ -3125,3 +3125,40 @@ still using GitHub OIDC with only non-secret repo variables. The inspection also
 recorded that the expected remote Terraform state object was absent,
 `edd-prod-reconciler-dlq` contained old inactive-task-definition Scheduler
 failures, and one workspace remained in `state=error`.
+
+**2026-07-08 — Fixed the production `/workspaces` digest and made release
+verification skeptical.** After PR #204 merged, the release workflow succeeded
+and production ECS services reached steady state, but the real page
+`https://app.edd.e6qu.dev/workspaces` still rendered a Next.js error boundary
+with digest `3655293926`. CloudWatch tied that digest to an opaque resource
+destructuring crash in `WorkspaceService.list`; a DynamoDB scan showed nine
+workspace records without the now-required `resources` map. Those invalid
+workspace rows were deleted operationally because there was no legacy data to
+preserve, and the app then rendered `/workspaces` as "Not signed in" for an
+unauthenticated request while `/api/readyz` stayed ready and the next reconciler
+sweep processed an empty fleet successfully.
+
+The branch kept the fail-loud state model and improved diagnostics/test coverage:
+missing persisted workspace resources now throw
+`invalid persisted workspace <id>: missing resources`, invalid resource values
+include the workspace id, and the control-plane integration suite removes
+`resources` from a raw DynamoDB row to pin the failure. `/api/healthz` now reports
+baked deploy metadata from `@edd/config`, `scripts/check-deployed-app.sh` verifies
+health, readiness, and `/workspaces` rendering, and a new async
+`post-deploy-smoke` GitHub Actions workflow runs after `release` to wait for the
+public app to expose the expected short SHA and render a user-facing page. The
+release job stopped waiting for ECS service stability inside the critical path;
+ECS convergence remained guarded by circuit breakers/alarms, while public app
+verification moved to the separate smoke workflow. The release bootstrap script
+now requires `EDD_RELEASE_APP_URL` and writes non-secret `EDD_APP_URL`, so the
+smoke target is explicit and missing coordinates fail loudly.
+
+The live inspection also recorded remaining operational facts rather than
+claiming full health: `edd-prod-workspaces-stuck-error` cleared after deleting the
+malformed rows, `edd-prod-reconciler-dlq` still held five old inactive-taskdef
+messages, `edd-prod-reconciler-failed` still reflected the recent failure window,
+old audit events without resource details still made cost rollup fail loudly, and
+live target groups still used 30-second health checks until Terraform is applied.
+Verification passed locally with `pnpm lint`, `pnpm build`, full `pnpm test`,
+`pnpm test:integ`, `pnpm test:e2e`, focused health/resource-regression tests,
+`actionlint`, and `shellcheck`.

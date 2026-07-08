@@ -119,6 +119,28 @@ describe("WorkspaceService lifecycle ", () => {
     expect(got?.ownerId).toBe("alice");
   });
 
+  it("fails loudly when a persisted workspace row is missing current schema fields", async () => {
+    const ws = await service.create({
+      ownerId: ownerId("schema-break"),
+      baseImage: baseImage("golden/node:20"),
+    });
+
+    await client.send(
+      new UpdateItemCommand({
+        TableName: TEST_TABLE,
+        Key: {
+          PK: { S: `$edd#id_${ws.id}` },
+          SK: { S: "$workspace_1" },
+        },
+        UpdateExpression: "REMOVE resources",
+      }),
+    );
+
+    await expect(service.list({ ownerId: ownerId("schema-break") })).rejects.toThrow(
+      `invalid persisted workspace ${ws.id}: missing resources`,
+    );
+  });
+
   it("round-trips state through stop (snapshot) → start (hydrate)", async () => {
     const ws = await service.create({
       ownerId: ownerId("bob"),

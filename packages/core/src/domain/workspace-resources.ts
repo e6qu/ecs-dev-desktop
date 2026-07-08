@@ -61,7 +61,7 @@ export function assertValidWorkspaceResources(
 ): WorkspaceResources {
   if (!isValidWorkspaceResourcePair(resources)) {
     throw new Error(
-      `invalid workspace resources: ${resources.cpuUnits.toString()} CPU units with ${resources.memoryMiB.toString()} MiB memory`,
+      `invalid workspace resources: ${resources.cpuUnits.toString()} CPU units with ${resources.memoryMiB.toString()} MiB memory and ${resources.volumeGiB.toString()} GiB volume`,
     );
   }
   return resources;

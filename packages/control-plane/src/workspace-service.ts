@@ -68,6 +68,7 @@ import {
   type Workspace,
   type WorkspaceId,
   type WorkspaceOwnerRole,
+  type WorkspaceResourceInput,
   type WorkspaceState,
   type WorkspaceResources,
 } from "@edd/core";
@@ -264,11 +265,7 @@ interface WorkspaceRecord {
   repoUrl?: string;
   baseImage: string;
   editor?: EditorKind;
-  resources: {
-    cpuUnits: number;
-    memoryMiB: number;
-    volumeGiB: number;
-  };
+  resources?: WorkspaceResourceInput;
   state: WorkspaceState;
   desiredState?: DesiredState;
   deleteRequestedAt?: string;
@@ -316,6 +313,16 @@ function isResourceGoneError(err: unknown): boolean {
 
 /** Brand a persisted record into a domain object (imperative-shell boundary). */
 function toWorkspace(r: WorkspaceRecord): Workspace {
+  const resources = r.resources;
+  if (resources === undefined) {
+    throw new Error(`invalid persisted workspace ${r.id}: missing resources`);
+  }
+  let validatedResources: WorkspaceResources;
+  try {
+    validatedResources = assertValidWorkspaceResources(resources);
+  } catch (e) {
+    throw new Error(`invalid persisted workspace ${r.id}: ${asMessage(e)}`, { cause: e });
+  }
   return {
     id: workspaceId(r.id),
     ownerId: ownerId(r.ownerId),
@@ -324,7 +331,7 @@ function toWorkspace(r: WorkspaceRecord): Workspace {
     repoUrl: r.repoUrl,
     baseImage: baseImage(r.baseImage),
     editor: r.editor,
-    resources: assertValidWorkspaceResources(r.resources),
+    resources: validatedResources,
     state: r.state,
     desiredState: r.desiredState,
     deleteRequestedAt:

@@ -2,61 +2,62 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-08. After PR #203 merged, production release run
-`28907270779` for merge commit
-`b44acf698aaf68af3e4a9640e6eeb3ef025913fd` succeeded and rolled the control
-plane. ECR contained `edd-prod/control-plane:b44acf698aaf`
-(`sha256:ad5f...`) and `edd-prod/ssh-gateway:b44acf698aaf`
-(`sha256:55bd...`). ECS cluster `edd-prod-workspaces` ran
-`edd-prod-control-plane` at desired/running `2/2` on task definition `:28` and
-`edd-prod-ssh-gateway` at `1/1` on task definition `:28`; both deployments were
-COMPLETED with deployment circuit-breaker rollback enabled and 100%/200% rolling
-bounds. `https://app.edd.e6qu.dev/api/healthz` returned
-`{"status":"ok","service":"web"}`, and `/api/readyz` returned ready with the
-DynamoDB table ACTIVE.
+**Last updated:** 2026-07-08. After PR #204 merged, production release run
+`28910392738` for merge commit
+`f82e61db669c8b22a962ad169ff9933761152796` succeeded in 6m47s and rolled the
+control plane. ECS cluster `edd-prod-workspaces` ran `edd-prod-control-plane` at
+desired/running `2/2` and `edd-prod-ssh-gateway` at `1/1`; both deployments were
+COMPLETED. The separate `golden-images` workflow run `28910392717` succeeded and
+ECR contained `edd-prod/golden/omnibus:f82e61db669c`
+(`sha256:ef8c5ebc...`, pushed `2026-07-08T04:31:44+03`).
 
-The same post-merge inspection found the separate `golden-images` workflow still
-failed on `main`. The first failure was that ECR repository `edd-prod/edd-base`
-did not exist and the release OIDC policy did not cover it; the follow-up failure
-was that `scripts/publish-images.sh` built the base image locally but never pushed
-`edd-base:<tag>-amd64` before variant builds used that ECR tag as `FROM`. This
-branch added a Terraform-managed `${name}/edd-base` ECR repository with immutable
-tags, scan-on-push, KMS encryption, and the standard retention policy; expanded
-the release OIDC bootstrap policy to that exact repository; and changed
-`publish-images.sh` to push the per-arch base tag before building variants. The
-live `edd-prod/edd-base` repository was created to unblock production and then
-imported into the ignored local Terraform operator state as
-`module.ecs_dev_desktop.aws_ecr_repository.golden_base` plus its lifecycle
-policy, so the next local apply does not try to recreate it. The documented S3
-remote state object was still absent, so remote-state migration remained a
-separate operational correction.
+The skeptical app check found a real production page failure that ECS steady
+state did not catch. `https://app.edd.e6qu.dev/workspaces` rendered the Next.js
+error boundary with digest `3655293926`. CloudWatch showed
+`TypeError: Cannot destructure property 'cpuUnits' of 'a' as it is undefined`,
+coming from `workspace-resources.ts` while `WorkspaceService.list` mapped
+persisted workspace rows. DynamoDB contained nine workspace records without the
+now-required `resources` map. Those nine invalid workspace rows were deleted
+operationally because there was no legacy data to preserve; a follow-up scan
+returned zero workspace rows, `/workspaces` rendered the unauthenticated "Not
+signed in" page with HTTP 200, `/api/readyz` was ready, and the next reconciler
+sweep completed with `fleet.workspaces.total = 0` and no per-workspace errors.
 
-The branch also made workspace sizing explicit and per-workspace:
-workspace creation now accepted CPU, RAM, and disk selections, with defaults of
-0.5 vCPU, 2 GiB RAM, and 8 GiB disk and hard limits of 4 vCPU, 16 GiB RAM, and
-64 GiB disk. Valid Fargate CPU/RAM combinations were enforced in `@edd/core` and
-propagated through API contracts, DB records, control-plane launch/start flows,
-ECS task definitions, managed-EBS volume creation, cards/details/monitoring UI,
-and cost reporting. No legacy fallback was added: persisted workspaces require
-`resources`, and cost reports fail loudly if a deleted workspace's historical
-session lacks resource detail.
+This branch kept the no-fallback behavior but improved the blast radius and test
+coverage. Missing persisted `resources` now fails loudly as
+`invalid persisted workspace <id>: missing resources` instead of an opaque
+destructuring crash, invalid resource values are wrapped with the workspace id,
+and an integration regression removes `resources` from a raw DynamoDB row and
+asserts the explicit error. `/api/healthz` now includes baked deploy metadata
+(`deploy.sha` and `deploy.time`) from `@edd/config`, and the new
+`scripts/check-deployed-app.sh` smoke check verifies `/api/healthz`,
+`/api/readyz`, and `/workspaces` rendering. The release workflow no longer waits
+for ECS service stability inside the release job; it submits the task-definition
+and service updates, then the separate `post-deploy-smoke` workflow skeptically
+waits for the public app to report the expected SHA and render the user-facing
+page. Bootstrap now writes required non-secret `EDD_APP_URL` alongside the
+release coordinates so the smoke workflow has an explicit target and fails
+loudly if it is absent.
 
-Fast/no-downtime release work was tightened further. The release workflow built
-only AMD64 control-plane images with Buildx GitHub cache and no QEMU setup, while
-golden images stayed in a separate asynchronous/manual workflow with the same
-cache path. The control-plane Dockerfile copied manifests before source to improve
-layer reuse, the ECS control-plane health-check interval/start period was reduced
-to 10 seconds, and the already-live control plane remained configured for multiple
-replicas, autoscaling, 100%/200% rolling deploys, and circuit-breaker rollback.
+Production still had operational debt after the code/data fix. CloudWatch alarm
+`edd-prod-workspaces-stuck-error` moved back to OK after deleting the malformed
+workspace rows. `edd-prod-reconciler-dlq` still had five old messages from an
+inactive `edd-prod-reconciler:6` target, and `edd-prod-reconciler-failed` still
+reflected the recent invalid-workspace failures until the alarm window aged out.
+Reconciler post-sweep cost reporting still warned on old `session.create` audit
+events that predated resource recording; those rows were not deleted because
+that audit cleanup needed an explicit operational decision. Live ALB/NLB target
+group health-check intervals also still showed 30 seconds in AWS while Terraform
+source expected 10 seconds, because the release workflow rolls images only and
+does not apply Terraform.
 
-Local verification passed on this branch: `pnpm lint`, `pnpm build`,
-unsandboxed full `pnpm test` (37/37 Turbo tasks; `@edd/core` 352 tests), focused
-unsandboxed `@edd/editor-monaco` tests for loopback binding, `actionlint`,
-`shellcheck scripts/publish-images.sh scripts/bootstrap-release-oidc.sh`,
-`terraform fmt -recursive -check infra/terraform`, and Terraform init/validate
-for both the module and complete example with provider/network access. The
-sandboxed full test run failed only at local loopback server binding
-(`listen EPERM 127.0.0.1`) and passed when rerun without the sandbox.
+Local verification passed on this branch: `pnpm lint`, `pnpm build`, full
+`pnpm test` (37/37 Turbo tasks), `pnpm test:integ` (27/27 tasks), `pnpm test:e2e`
+(20/20 tasks; 46 e2e tests passed and 5 variant-image tests skipped because
+variant images are built by the golden-images workflow), focused web health
+tests, focused control-plane integration regression, `actionlint`, and
+`shellcheck` for the touched shell scripts. Sandboxed loopback/local-endpoint
+runs failed with `EPERM` and passed when rerun with local network/Docker access.
 
 Earlier 2026-07-07 release-inspection notes remain below for history.
 

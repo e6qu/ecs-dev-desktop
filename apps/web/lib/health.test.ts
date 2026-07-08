@@ -5,6 +5,10 @@ import { health } from "./health";
 
 describe("health", () => {
   it("reports ok", () => {
-    expect(health()).toEqual({ status: "ok", service: "web" });
+    expect(health()).toEqual({
+      status: "ok",
+      service: "web",
+      deploy: { sha: "", time: "" },
+    });
   });
 });

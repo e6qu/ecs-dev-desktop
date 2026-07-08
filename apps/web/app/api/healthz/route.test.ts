@@ -7,6 +7,10 @@ describe("GET /api/healthz", () => {
   it("responds 200 with the web liveness payload", async () => {
     const res = GET();
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ status: "ok", service: "web" });
+    expect(await res.json()).toEqual({
+      status: "ok",
+      service: "web",
+      deploy: { sha: "", time: "" },
+    });
   });
 });
