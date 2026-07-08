@@ -64,7 +64,8 @@ deferral by choice.
   artifacts/diagnostics, and removed Monaco's read-only editor initialization.
   PR #210 CI also proved the shared Playwright install action could time out
   while fetching apt font packages; the current branch changed Playwright setup
-  to install Chromium only in CI smoke/browser workflows.
+  to install Chromium only in CI smoke/browser workflows, and PR #210's rerun
+  passed every CI job after that fix.
   After merge, watch `release`, `golden-images`, and `post-deploy-smoke`;
   confirm the artifact contains screenshots for all four workspace types and
   specifically verify OpenVSCode does not render `Forbidden`, Monaco accepts

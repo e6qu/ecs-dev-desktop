@@ -3370,4 +3370,7 @@ browser proof passed, but the `e2e` job was canceled while apt slowly fetched
 optional font packages from the Ubuntu mirror. The branch changed the shared
 Playwright action plus direct post-deploy/pages installs to install Chromium
 only, leaving missing runtime-library failures loud while avoiding repeated apt
-dependency installs in browser smoke jobs.
+dependency installs in browser smoke jobs. PR #210's follow-up CI rerun then
+passed all checks: `build-test`, `playwright`, `integration`, `e2e-https`,
+`e2e`, `terraform-sim`, security scans, shellcheck, dependency freshness, and
+code-health were green.

@@ -77,7 +77,8 @@
   The shared Playwright action and the direct post-deploy/pages installs now
   install Chromium only. Browser tests still fail loudly if a required runtime
   library is truly missing; the workflow no longer burns job budget on repeated
-  apt dependency installation.
+  apt dependency installation. PR #210's follow-up rerun passed the e2e job in
+  16m42s and the full CI set went green.
 
 - **Smoke-created workspaces could remain live after DELETE while the smoke
   reported success — FIXED in current branch (2026-07-08).** The deployed smoke

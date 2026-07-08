@@ -51,7 +51,10 @@ the `e2e` job reached the browser section but timed out during
 packages from the Ubuntu mirror. The branch removed repeated `--with-deps`
 installs from the shared Playwright action, `post-deploy-smoke`, and `pages`;
 browser jobs now install Chromium itself and fail loudly only if a required
-runtime library is actually absent. `pnpm actionlint` passed after that change.
+runtime library is actually absent. `pnpm actionlint` passed after that change,
+and PR #210's reruns `28955736899` and `28955736971` passed every required CI
+job, including `build-test`, `playwright`, `integration`, `e2e-https`, `e2e`,
+and `terraform-sim`.
 
 **Last updated:** 2026-07-08. PR #208 merged as
 `b48030c13956dcb803316bfbcc9e2dc33518d001`. The release workflow
