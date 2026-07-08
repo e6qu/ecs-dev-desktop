@@ -166,6 +166,7 @@ cat >"$permissions_policy" <<EOF
       "Resource": [
         "arn:aws:ecr:${AWS_REGION}:${AWS_ACCOUNT}:repository/${NAME_PREFIX}/control-plane",
         "arn:aws:ecr:${AWS_REGION}:${AWS_ACCOUNT}:repository/${NAME_PREFIX}/ssh-gateway",
+        "arn:aws:ecr:${AWS_REGION}:${AWS_ACCOUNT}:repository/${NAME_PREFIX}/edd-base",
         "arn:aws:ecr:${AWS_REGION}:${AWS_ACCOUNT}:repository/${NAME_PREFIX}/golden/*"
       ]
     },

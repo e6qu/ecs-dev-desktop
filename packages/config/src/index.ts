@@ -39,9 +39,6 @@ export const DEFAULT_WORKSPACE_CONTAINER = "workspace";
 export const DEFAULT_WORKSPACE_LOG_STREAM_PREFIX = "workspace";
 /** EBS volume mount path inside the workspace container (= workspace user home). */
 export const DEFAULT_WORKSPACE_MOUNT_PATH = "/home/workspace";
-export const DEFAULT_WORKSPACE_VOLUME_GIB = 8;
-export const DEFAULT_WORKSPACE_CPU = "512";
-export const DEFAULT_WORKSPACE_MEMORY = "2048";
 /** Port OpenVSCode Server listens on inside the workspace container. */
 export const DEFAULT_WORKSPACE_PORT = 3000;
 /** How often the idle-agent POSTs /heartbeat (seconds). 2 minutes: fires within
@@ -190,26 +187,6 @@ export function workspacePricing(): {
     ebsGbMonthUsd: priceEnv("EDD_PRICE_EBS_GB_MONTH", DEFAULT_EBS_GB_MONTH_USD),
     snapshotGbMonthUsd: priceEnv("EDD_PRICE_SNAPSHOT_GB_MONTH", DEFAULT_EBS_SNAPSHOT_GB_MONTH_USD),
   };
-}
-
-/** ECS CPU units that make up one vCPU (1024 = 1 vCPU; AWS task-size convention). */
-const CPU_UNITS_PER_VCPU = 1024;
-/** MiB per GiB (memory is configured in MiB; the cost model bills per GiB). */
-const MIB_PER_GIB = 1024;
-
-/** The per-workspace sizing the cost model multiplies by run-time. Reads the
- * SAME env overrides the ECS compute provider provisions from (`ECS_TASK_CPU` /
- * `ECS_TASK_MEMORY` / `ECS_VOLUME_GIB`), so billed sizing tracks real sizing. */
-export function workspaceSizing(): { vcpu: number; memoryGib: number; volumeGib: number } {
-  const cpuUnits = Number(process.env.ECS_TASK_CPU ?? DEFAULT_WORKSPACE_CPU);
-  const memoryMib = Number(process.env.ECS_TASK_MEMORY ?? DEFAULT_WORKSPACE_MEMORY);
-  const volumeGib = Number(process.env.ECS_VOLUME_GIB ?? DEFAULT_WORKSPACE_VOLUME_GIB);
-  if (![cpuUnits, memoryMib, volumeGib].every((n) => Number.isFinite(n) && n > 0)) {
-    throw new Error(
-      "workspace sizing (ECS_TASK_CPU/ECS_TASK_MEMORY/ECS_VOLUME_GIB) must be positive",
-    );
-  }
-  return { vcpu: cpuUnits / CPU_UNITS_PER_VCPU, memoryGib: memoryMib / MIB_PER_GIB, volumeGib };
 }
 
 /**

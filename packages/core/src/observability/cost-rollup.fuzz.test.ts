@@ -20,6 +20,7 @@ const sessionArb: fc.Arbitrary<SessionCost> = fc
   .record({
     workspaceId: fc.string({ minLength: 1, maxLength: 20 }).map((s) => s as never),
     owner: fc.string({ minLength: 1, maxLength: 20 }),
+    sizing: fc.constant(SIZING),
     state: fc.constantFrom("running", "stopped", "terminated", "error"),
     terminated: fc.boolean(),
     runningMs: fc.nat({ max: 100000 }),
@@ -37,8 +38,8 @@ describe("aggregateFleetCost (fuzz)", () => {
     fc.assert(
       fc.property(fc.uniqueArray(sessionArb, { minLength: 0, maxLength: 20 }), (sessions) => {
         const shuffled = [...sessions].reverse();
-        const r1 = aggregateFleetCost(sessions, PRICING, SIZING, NOW, NOW);
-        const r2 = aggregateFleetCost(shuffled, PRICING, SIZING, NOW, NOW);
+        const r1 = aggregateFleetCost(sessions, PRICING, NOW, NOW);
+        const r2 = aggregateFleetCost(shuffled, PRICING, NOW, NOW);
         expect(Math.abs(r1.total.totalUsd - r2.total.totalUsd)).toBeLessThan(0.01);
       }),
     );
@@ -47,7 +48,7 @@ describe("aggregateFleetCost (fuzz)", () => {
   it("byUser sum equals fleet total (within float tolerance)", () => {
     fc.assert(
       fc.property(fc.uniqueArray(sessionArb, { minLength: 0, maxLength: 20 }), (sessions) => {
-        const report = aggregateFleetCost(sessions, PRICING, SIZING, NOW, NOW);
+        const report = aggregateFleetCost(sessions, PRICING, NOW, NOW);
         const userSum = report.byUser.reduce((s, u) => s + u.totalUsd, 0);
         expect(Math.abs(userSum - report.total.totalUsd)).toBeLessThan(0.01);
       }),
@@ -57,7 +58,7 @@ describe("aggregateFleetCost (fuzz)", () => {
   it("bySession sum equals fleet total (within float tolerance)", () => {
     fc.assert(
       fc.property(fc.uniqueArray(sessionArb, { minLength: 0, maxLength: 20 }), (sessions) => {
-        const report = aggregateFleetCost(sessions, PRICING, SIZING, NOW, NOW);
+        const report = aggregateFleetCost(sessions, PRICING, NOW, NOW);
         const sessionSum = report.bySession.reduce((s, w) => s + w.totalUsd, 0);
         expect(Math.abs(sessionSum - report.total.totalUsd)).toBeLessThan(0.01);
       }),
@@ -67,7 +68,7 @@ describe("aggregateFleetCost (fuzz)", () => {
   it("bySession is sorted most-expensive-first", () => {
     fc.assert(
       fc.property(fc.array(sessionArb, { minLength: 2, maxLength: 20 }), (sessions) => {
-        const report = aggregateFleetCost(sessions, PRICING, SIZING, NOW, NOW);
+        const report = aggregateFleetCost(sessions, PRICING, NOW, NOW);
         for (let i = 1; i < report.bySession.length; i++) {
           const cur = report.bySession[i];
           const prev = report.bySession[i - 1];

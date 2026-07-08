@@ -8,7 +8,8 @@ import type { AuditEvent } from "./audit";
  * money. The log is the authoritative ledger of *when* each workspace was
  * running vs. scaled-to-zero (every transition is recorded by
  * `WorkspaceService`); these functions reconstruct those intervals and price
- * them. No I/O, no clock — the caller supplies `now` and the pricing/sizing.
+ * them. No I/O, no clock — the caller supplies `now`, the pricing, and each
+ * workspace's persisted sizing.
  *
  * Cost has three components, matching how the platform actually bills on AWS:
  *  - **compute** — Fargate vCPU + memory, billed only while a task runs;
@@ -113,6 +114,8 @@ export interface WorkspaceCostInput {
   readonly workspaceId: string;
   /** Display identity the cost is attributed to (email or id). */
   readonly owner: string;
+  /** The persisted resources this workspace/session was provisioned with. */
+  readonly sizing: WorkspaceSizing;
   /** Current lifecycle state, when the workspace record still exists. */
   readonly state?: string;
   readonly events: readonly AuditEvent[];
@@ -122,6 +125,7 @@ export interface WorkspaceCostInput {
 export interface SessionCost extends CostBreakdown {
   readonly workspaceId: string;
   readonly owner: string;
+  readonly sizing: WorkspaceSizing;
   readonly state: string;
   readonly terminated: boolean;
 }
@@ -138,7 +142,6 @@ export interface FleetCostReport {
   /** Earliest event the report drew from (the ledger's start, or `generatedAt`). */
   readonly windowStart: IsoTimestamp;
   readonly pricing: Pricing;
-  readonly sizing: WorkspaceSizing;
   readonly total: CostBreakdown;
   readonly byUser: readonly UserCost[];
   readonly bySession: readonly SessionCost[];
@@ -492,7 +495,6 @@ const ZERO_COST: CostBreakdown = {
 export function computeFleetCost(
   inputs: readonly WorkspaceCostInput[],
   pricing: Pricing,
-  sizing: WorkspaceSizing,
   now: IsoTimestamp,
   window?: Interval,
 ): FleetCostReport {
@@ -502,12 +504,13 @@ export function computeFleetCost(
     // window), so derive them from the full intervals; price the clipped ones.
     const lifetime = deriveBillingIntervals(w.events, now);
     const intervals = window ? clipIntervals(lifetime, window) : lifetime;
-    const cost = priceIntervals(intervals, pricing, sizing);
+    const cost = priceIntervals(intervals, pricing, w.sizing);
     // In a windowed view, omit sessions with no billable time inside the window.
     if (window && cost.runningMs + cost.stoppedMs + cost.teardownMs === 0) continue;
     bySession.push({
       workspaceId: w.workspaceId,
       owner: w.owner,
+      sizing: w.sizing,
       state: w.state ?? (lifetime.terminated ? "terminated" : "unknown"),
       terminated: lifetime.terminated,
       ...cost,
@@ -517,7 +520,7 @@ export function computeFleetCost(
   const windowStart = window
     ? isoTimestamp(new Date(window.fromMs).toISOString())
     : earliestEventAt(inputs, now);
-  return aggregateFleetCost(bySession, pricing, sizing, now, windowStart);
+  return aggregateFleetCost(bySession, pricing, now, windowStart);
 }
 
 /**
@@ -529,7 +532,6 @@ export function computeFleetCost(
 export function aggregateFleetCost(
   bySession: readonly SessionCost[],
   pricing: Pricing,
-  sizing: WorkspaceSizing,
   generatedAt: IsoTimestamp,
   windowStart: IsoTimestamp,
 ): FleetCostReport {
@@ -555,7 +557,6 @@ export function aggregateFleetCost(
     generatedAt,
     windowStart,
     pricing,
-    sizing,
     total,
     byUser,
     bySession: sortedSessions,

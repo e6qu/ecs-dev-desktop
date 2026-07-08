@@ -276,6 +276,45 @@ Error`, so the portal's existing `e.message` shows it. api-client 4 tests; build
   `1aa4a6c7c616195d1c797dfa3646e58b7fe7cb49` passed all PR checks; GitHub reported
   merge state `CLEAN`.
 
+- **2026-07-08** — **Fixed post-#203 golden-image CI, per-workspace sizing, and
+  faster release builds.** After PR #203 merged, GitHub release run
+  `28907270779` for commit `b44acf698aaf68af3e4a9640e6eeb3ef025913fd`
+  succeeded: ECR contained `edd-prod/control-plane:b44acf698aaf` and
+  `edd-prod/ssh-gateway:b44acf698aaf`, ECS cluster `edd-prod-workspaces` ran
+  control-plane desired/running `2/2` and SSH `1/1` on task definition revision
+  `:28`, and `https://app.edd.e6qu.dev/api/healthz` plus `/api/readyz` returned
+  healthy/ready. The separate `golden-images` workflow still failed. First,
+  `edd-prod/edd-base` was missing; after the repo was created, the rerun failed
+  because `scripts/publish-images.sh` had built the base image locally but never
+  pushed `edd-base:<tag>-amd64` before variants used that ECR tag as `FROM`. The
+  branch added a Terraform-managed `${name}/edd-base` repository with immutable
+  tags, scan-on-push, KMS encryption, and lifecycle retention; expanded release
+  OIDC bootstrap IAM to that exact repo; and pushed the per-arch base tag before
+  variant builds. The live `edd-prod/edd-base` repo was reconciled into ignored
+  local Terraform operator state via import of
+  `module.ecs_dev_desktop.aws_ecr_repository.golden_base` and its lifecycle
+  policy, then tagged to match the module.
+
+  Workspace sizing moved from deployment-global config to per-workspace state.
+  Creation accepted CPU, RAM, and disk choices with defaults of 0.5 vCPU, 2 GiB
+  RAM, and 8 GiB disk and limits of 4 vCPU, 16 GiB RAM, and 64 GiB disk. Core
+  validation enforced valid Fargate CPU/RAM combinations; API contracts, DB
+  entities, DTOs, control-plane launch/start flows, ECS task-definition
+  registration, managed-EBS volume creation, cards/details/monitoring UI, and cost
+  reports all carried those resources. No compatibility fallback was added:
+  persisted workspaces require `resources`, and cost reports fail loudly when a
+  deleted workspace's old session cannot be priced from stored resource detail.
+
+  The same branch made release/golden builds faster without adding a fallback
+  path: release builds became AMD64-only and removed QEMU, both release and golden
+  builds used Buildx GitHub cache, the web Dockerfile copied manifests before
+  source for better layer reuse, and the ECS control-plane container health check
+  interval/start period dropped to 10 seconds. Verification passed with
+  `pnpm lint`, `pnpm build`, unsandboxed full `pnpm test`, focused unsandboxed
+  `@edd/editor-monaco` loopback tests, `actionlint`, `shellcheck` on the changed
+  scripts, Terraform fmt, and Terraform init/validate for the module and complete
+  example with provider/network access.
+
 - **2026-06-04** — **Terraform platform module (deploy IaC) + sim-tested.** Wrote a
   reusable, parametric `infra/terraform/modules/ecs-dev-desktop` (Terraform/Terragrunt,
   no `provider` block): VPC/subnets/NAT/SGs, the DynamoDB single-table (matching

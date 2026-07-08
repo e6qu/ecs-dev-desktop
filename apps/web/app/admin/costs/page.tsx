@@ -107,7 +107,7 @@ export default async function AdminCostsPage({
   const parsedWindow = costReportQuery.safeParse({ window: (await searchParams).window });
   const window: CostWindow = parsedWindow.success ? parsedWindow.data.window : "all";
   const report = await (await getCostService()).report(COST_WINDOW_DAYS[window]);
-  const { total, byUser, bySession, pricing, sizing } = report;
+  const { total, byUser, bySession, pricing } = report;
 
   // The proportional bars are scaled per list to its most-expensive row, so the
   // top spender fills the bar and the rest read as a fraction of it.
@@ -138,8 +138,7 @@ export default async function AdminCostsPage({
             workspace&apos;s running vs. scaled-to-zero time, priced at the rates below and updated
             live as workspaces run. Rates: {usd(pricing.fargateVcpuHourUsd)}/vCPU-hr,{" "}
             {usd(pricing.fargateGbHourUsd)}/GB-hr, {usd(pricing.ebsGbMonthUsd)}/GB-mo volume,{" "}
-            {usd(pricing.snapshotGbMonthUsd)}/GB-mo snapshot · per workspace: {sizing.vcpu} vCPU,{" "}
-            {sizing.memoryGib} GiB, {sizing.volumeGib} GiB disk.
+            {usd(pricing.snapshotGbMonthUsd)}/GB-mo snapshot.
           </p>
         </div>
         <nav className="tabs" aria-label="Cost window">
@@ -233,6 +232,10 @@ export default async function AdminCostsPage({
               <div className="meta">
                 <span>owner · {s.owner}</span>
                 <span>state · {s.state}</span>
+                <span>
+                  size · {s.sizing.vcpu} vCPU / {s.sizing.memoryGib} GiB / {s.sizing.volumeGib} GiB
+                  disk
+                </span>
                 <span>ran {hours(s.runningMs)}</span>
               </div>
             </div>

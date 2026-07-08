@@ -43,6 +43,7 @@ const VPC_CIDR = "10.71.0.0/16";
 const SUBNET_CIDR = "10.71.1.0/24";
 const WORKSPACE_IMAGE = e2eWorkspaceImage();
 const CLIENT_CONTAINER = "client";
+const RESOURCES = { cpuUnits: 512, memoryMiB: 2048, volumeGiB: 8 } as const;
 const WORKSPACE_CONTAINER = "workspace";
 const WORKSPACE_ID = `ws-golden-${RUN_ID}`;
 const LOG_GROUP = `/edd/e2e/golden-ssh-${RUN_ID}`;
@@ -216,6 +217,7 @@ describe(
       const task = await compute.runTask({
         workspaceId: workspaceId(WORKSPACE_ID),
         baseImage: baseImage(WORKSPACE_IMAGE),
+        resources: RESOURCES,
       });
       return { taskArn: task.id, sshHost: required(task.sshHost, "sshHost") };
     }

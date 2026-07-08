@@ -4,22 +4,37 @@
 
 ## Open
 
-- **Production golden catalog rollout raced concurrent trigger reconciliation —
-  FIXED in current branch (2026-07-08).** The PR #202 rollout succeeded and ECR
-  contained `edd-prod/golden/omnibus:881c88c504e3`, but DynamoDB still showed the
-  base-image catalog at `omnibus:89c3cdee68d1`. The latest production trigger
-  `f56ddf9e-b9d3-4a7b-b7ec-4c6899d1130d` was `failed` with
-  `catalog rollout failed: rollout of edd-prod/golden/omnibus lost a concurrent update`.
-  The root cause was in EDD app code, not sockerless: `reconcileRecentBuilds`
-  processed multiple successful golden triggers concurrently, and each tried to
-  roll the same catalog row through CAS. Older successful triggers could win the
-  catalog update while newer triggers were marked failed permanently. The branch
-  changed reconciliation so only the newest successful golden trigger may roll the
-  catalog, older successful tags are marked superseded, and catalog-rollout
-  failures are retried. The new post-merge golden flow also stopped starting
-  workspace-image CodeBuild runs from the app; GitHub Actions publishes golden
-  images asynchronously, and the app observes ECR tag presence before rolling
-  catalog state.
+- **Golden-image workflow failed because the base ECR repository/tag was missing
+  — FIXED (2026-07-08).** After PR #203 merged, release run
+  `28907270779` deployed the control plane successfully, but golden workflow run
+  `28907270693` failed because `edd-prod/edd-base` did not exist and the release
+  role did not cover it. Rerun `28907908752` then failed because
+  `scripts/publish-images.sh` built the base image locally but never pushed
+  `edd-base:<tag>-amd64` before variant builds used that ECR tag as `FROM`. The
+  branch added the Terraform-managed `${name}/edd-base` ECR repository, expanded
+  bootstrap release IAM to that exact repo, and pushed the base arch tag before
+  variants build. The live prod repo was created with immutable tags,
+  scan-on-push, KMS encryption, and the standard lifecycle policy, then imported
+  into ignored local operator state as the new Terraform resources so a future
+  local apply does not try to recreate it.
+
+- **Workspace resources were deployment-global instead of per workspace — FIXED
+  (2026-07-08).** CPU, memory, and disk size are now explicit
+  workspace resources validated in `@edd/core`, persisted on workspace records,
+  exposed in contracts/UI, passed into ECS task-definition registration and
+  managed-EBS volume creation, and priced per session in cost reports. Defaults
+  are 0.5 vCPU, 2 GiB RAM, and 8 GiB disk; selectable limits are 4 vCPU, 16 GiB
+  RAM, and 64 GiB disk. No legacy fallback was added: missing persisted
+  `resources` or unpriceable historical deleted-session resource detail fails
+  loudly.
+
+- **Release and golden-image builds were slower than necessary — FIXED
+  (2026-07-08).** The release workflow still used QEMU/multi-arch
+  setup for control-plane images and did not use Buildx GitHub cache. The branch
+  made release builds AMD64-only with Buildx GHA cache, added the same cache path
+  to golden builds, restructured the web Dockerfile for manifest-before-source
+  cache reuse, and shortened the control-plane container health check
+  interval/start period to 10 seconds for faster rolling convergence.
 
 - **`pnpm check-deps` masked Terraform provider lookup errors — FIXED in current
   branch (2026-07-08).** While verifying the release changes, `pnpm check-deps`
@@ -29,7 +44,7 @@
   fails loudly when `terraform` is missing instead of skipping that gate.
 
 - **PR #203 `terraform-sim` CI asserted the old ALB health-check interval —
-  FIXED in current branch (2026-07-08).** The first PR #203 CI run failed in
+  FIXED (2026-07-08).** The first PR #203 CI run failed in
   `terraform-sim` with `FAIL  ALB target group health check interval 30: expected
 [30] got [10]`. The implementation had intentionally reduced ALB/NLB target
   health checks to 10 seconds for faster no-downtime deploy convergence; the CI
@@ -100,7 +115,7 @@
   objects and `head-object` for
   `ecs-dev-desktop/edd-prod/terraform.tfstate` returned 404. Matching live
   outputs existed only in ignored local files under
-  `infra/terraform/examples/complete/`. The current branch made
+  `infra/terraform/examples/complete/`. The follow-up branch made
   `scripts/install.sh --verify` check the exact remote state object and fail
   loudly when absent, refusing to verify from local state or migrate state during
   a read-only verify run.

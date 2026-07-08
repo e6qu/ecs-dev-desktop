@@ -13,7 +13,6 @@ import {
   type ConfigSyncReport,
   type DependencyStatus,
 } from "@edd/core";
-import { workspaceSizing } from "@edd/config";
 import { iamPreflight } from "@edd/iam-preflight";
 
 import { resolveWorkspacePricing } from "./aws-pricing";
@@ -93,7 +92,8 @@ export function getControlPlane(): Promise<WorkspaceService> {
 }
 
 /** Admin Costs service: prices the lifecycle audit ledger at the configured
- * (us-east-1 on-demand default, env-overridable) rates + workspace sizing. */
+ * (us-east-1 on-demand default, env-overridable) rates and each workspace's
+ * persisted CPU/RAM/disk sizing. */
 export async function getCostService(): Promise<CostService> {
   return new CostService({
     audit: getAuditLog(),
@@ -102,7 +102,6 @@ export async function getCostService(): Promise<CostService> {
     // Live AWS Price List rates for the region when EDD_AWS_PRICING=1, else the
     // configured rates (us-east-1 default, EDD_PRICE_*-overridable).
     pricing: await resolveWorkspacePricing(),
-    sizing: workspaceSizing(),
     // Price from persisted checkpoints + the tail since them (O(recent)); falls
     // back to the exact full-ledger scan until `rollup()` first runs. Same GSI1 the
     // audit feed already uses — no table change.

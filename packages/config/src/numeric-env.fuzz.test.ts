@@ -2,7 +2,7 @@
 import fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { DEFAULT_FARGATE_VCPU_HOUR_USD, workspacePricing, workspaceSizing } from "./index";
+import { DEFAULT_FARGATE_VCPU_HOUR_USD, workspacePricing } from "./index";
 
 // The numeric env parsers must FAIL LOUD on garbage (NaN/Infinity/negative/empty
 // where required) and ROUND-TRIP valid input. They read process.env directly (the
@@ -15,8 +15,7 @@ const PRICE_VARS = [
   "EDD_PRICE_EBS_GB_MONTH",
   "EDD_PRICE_SNAPSHOT_GB_MONTH",
 ];
-const SIZING_VARS = ["ECS_TASK_CPU", "ECS_TASK_MEMORY", "ECS_VOLUME_GIB"];
-const VARS = [...PRICE_VARS, ...SIZING_VARS];
+const VARS = [...PRICE_VARS];
 
 let snapshot: Record<string, string | undefined>;
 beforeEach(() => {
@@ -65,43 +64,6 @@ describe("priceEnv via workspacePricing (property)", () => {
       fc.property(bad, (raw) => {
         process.env.EDD_PRICE_FARGATE_VCPU_HOUR = raw;
         expect(() => workspacePricing()).toThrow();
-      }),
-    );
-  });
-});
-
-describe("workspaceSizing (property)", () => {
-  it("positive finite sizing round-trips", () => {
-    fc.assert(
-      fc.property(
-        fc.integer({ min: 1, max: 16384 }),
-        fc.integer({ min: 1, max: 131072 }),
-        fc.integer({ min: 1, max: 16384 }),
-        (cpuUnits, memoryMib, volumeGib) => {
-          process.env.ECS_TASK_CPU = String(cpuUnits);
-          process.env.ECS_TASK_MEMORY = String(memoryMib);
-          process.env.ECS_VOLUME_GIB = String(volumeGib);
-          const sizing = workspaceSizing();
-          expect(sizing.vcpu).toBeCloseTo(cpuUnits / 1024, 9);
-          expect(sizing.memoryGib).toBeCloseTo(memoryMib / 1024, 9);
-          expect(sizing.volumeGib).toBe(volumeGib);
-        },
-      ),
-    );
-  });
-
-  it("a non-positive or non-numeric sizing component fails loud (throws)", () => {
-    const bad = fc.oneof(
-      fc.integer({ min: -10000, max: 0 }).map(String),
-      fc.constantFrom("NaN", "Infinity", "abc", "", " "),
-    );
-    fc.assert(
-      fc.property(bad, fc.constantFrom(...SIZING_VARS), (raw, which) => {
-        process.env.ECS_TASK_CPU = "512";
-        process.env.ECS_TASK_MEMORY = "1024";
-        process.env.ECS_VOLUME_GIB = "8";
-        process.env[which] = raw;
-        expect(() => workspaceSizing()).toThrow();
       }),
     );
   });

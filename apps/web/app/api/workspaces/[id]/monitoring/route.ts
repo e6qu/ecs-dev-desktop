@@ -2,7 +2,6 @@
 import { NextResponse } from "next/server";
 
 import type { MonitoringSeriesDto, WorkspaceMonitoringDto } from "@edd/api-contracts";
-import { workspaceSizing } from "@edd/config";
 import { baseImage } from "@edd/core";
 import { taskDefinitionFamily } from "@edd/compute-ecs";
 import type { CloudWatchMetricReader } from "@edd/cloudwatch-metrics";
@@ -52,7 +51,11 @@ async function handleGET(req: Request, { params }: Ctx) {
   if (isResponse(loaded)) return loaded;
   const { ctx, detail } = loaded;
   const ws = detail.workspace;
-  const sizing = workspaceSizing();
+  const sizing = {
+    vcpu: ws.resources.cpuUnits / 1024,
+    memoryGib: ws.resources.memoryMiB / 1024,
+    volumeGib: ws.resources.volumeGiB,
+  };
 
   // Cost + uptime from the audit-priced report (the same source /admin/costs uses),
   // narrowed to this session. Absent until the ledger has priced events.

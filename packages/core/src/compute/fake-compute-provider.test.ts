@@ -6,6 +6,8 @@ import { FakeStorageProvider } from "../storage/fake-storage-provider";
 import { computeProviderContract } from "./compute-provider-contract";
 import { FakeComputeProvider } from "./fake-compute-provider";
 
+const RESOURCES = { cpuUnits: 512, memoryMiB: 2048, volumeGiB: 8 } as const;
+
 // The shared port contract: the fake must model the same task-lifecycle +
 // snapshot-hydration behaviour the real EcsComputeProvider proves in container-mode
 // e2e — so a divergence in the fake (which most unit tests run against) is caught here.
@@ -31,6 +33,7 @@ describe("FakeComputeProvider", () => {
     const task = await compute.runTask({
       workspaceId: workspaceId("ws-1"),
       baseImage: baseImage("golden/node:20"),
+      resources: RESOURCES,
     });
     expect(compute.isRunning(task.id)).toBe(true);
     expect((await storage.listVolumes()).map((v) => v.id)).toContain(task.volumeId);

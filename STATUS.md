@@ -2,74 +2,61 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-08. The PR #202 rollout inspection verified that the
-release workflow did roll ECS after publishing CI-owned control-plane images.
-GitHub Actions run `28901563184` for merge commit
-`881c88c504e369441be356cfdb62098ab03e8544` succeeded, pushed
-`edd-prod/control-plane:881c88c504e3`
-(`sha256:a7835ba8fd9179eff51bd002ee69a9ec83a48256dd1d93eaf0330ba212f5ee57`)
-and `edd-prod/ssh-gateway:881c88c504e3`
-(`sha256:19a8b14dde640893181a306d22dd15026fdfd4999ef3e2eb49217410660c7131`),
-registered task definitions `edd-prod-control-plane:27`,
-`edd-prod-reconciler:27`, and `edd-prod-ssh-gateway:27`, updated the
-`edd-prod-control-plane` service to 2/2 running, updated `edd-prod-ssh-gateway`
-to 1/1 running, and retargeted the `edd-prod-reconciler` Scheduler schedule to
-`rate(5 minutes)` on cluster `edd-prod-workspaces`. `https://app.edd.e6qu.dev/api/healthz`
-returned 200 and `/api/readyz` returned 200 with DynamoDB ACTIVE after the rollout.
+**Last updated:** 2026-07-08. After PR #203 merged, production release run
+`28907270779` for merge commit
+`b44acf698aaf68af3e4a9640e6eeb3ef025913fd` succeeded and rolled the control
+plane. ECR contained `edd-prod/control-plane:b44acf698aaf`
+(`sha256:ad5f...`) and `edd-prod/ssh-gateway:b44acf698aaf`
+(`sha256:55bd...`). ECS cluster `edd-prod-workspaces` ran
+`edd-prod-control-plane` at desired/running `2/2` on task definition `:28` and
+`edd-prod-ssh-gateway` at `1/1` on task definition `:28`; both deployments were
+COMPLETED with deployment circuit-breaker rollback enabled and 100%/200% rolling
+bounds. `https://app.edd.e6qu.dev/api/healthz` returned
+`{"status":"ok","service":"web"}`, and `/api/readyz` returned ready with the
+DynamoDB table ACTIVE.
 
-The same inspection found that the old EDD-owned CodeBuild golden-image path had
-successfully pushed `edd-prod/golden/omnibus:881c88c504e3`
-(`sha256:dbd6868f6383d7f2792393eb038a0d21e9146f7437b98688bc4f3a5e30a45f72`,
-3.06 GB compressed), but the base-image catalog still pointed at
-`omnibus:89c3cdee68d1`. DynamoDB showed the latest trigger
-`f56ddf9e-b9d3-4a7b-b7ec-4c6899d1130d` as `failed` with
-`catalog rollout failed: rollout of edd-prod/golden/omnibus lost a concurrent update`.
-That was traced to app code: multiple successful golden triggers reconciled in
-parallel and raced the catalog CAS, so older successful rows could win while newer
-rows were marked failed permanently.
+The same post-merge inspection found the separate `golden-images` workflow still
+failed on `main`. The first failure was that ECR repository `edd-prod/edd-base`
+did not exist and the release OIDC policy did not cover it; the follow-up failure
+was that `scripts/publish-images.sh` built the base image locally but never pushed
+`edd-base:<tag>-amd64` before variant builds used that ECR tag as `FROM`. This
+branch added a Terraform-managed `${name}/edd-base` ECR repository with immutable
+tags, scan-on-push, KMS encryption, and the standard retention policy; expanded
+the release OIDC bootstrap policy to that exact repository; and changed
+`publish-images.sh` to push the per-arch base tag before building variants. The
+live `edd-prod/edd-base` repository was created to unblock production and then
+imported into the ignored local Terraform operator state as
+`module.ecs_dev_desktop.aws_ecr_repository.golden_base` plus its lifecycle
+policy, so the next local apply does not try to recreate it. The documented S3
+remote state object was still absent, so remote-state migration remained a
+separate operational correction.
 
-The current branch fixed that by making the EDD app track expected post-merge
-golden image tags and verify ECR presence instead of starting workspace-image
-CodeBuild jobs itself. A separate `golden-images` GitHub Actions workflow now
-published golden images on `main` and manual dispatch, asynchronously and
-non-blocking to the `release` workflow. The control plane queued expected tags
-from signed source observations, observed ECR metadata, rolled only the newest
-successful golden trigger through the catalog CAS path, treated older successful
-tags as superseded, and retried catalog-rollout failures instead of leaving them
-permanently failed. The admin images UI exposed source/image/trigger state and no
-longer presented an EDD-started rebuild button.
+The branch also made workspace sizing explicit and per-workspace:
+workspace creation now accepted CPU, RAM, and disk selections, with defaults of
+0.5 vCPU, 2 GiB RAM, and 8 GiB disk and hard limits of 4 vCPU, 16 GiB RAM, and
+64 GiB disk. Valid Fargate CPU/RAM combinations were enforced in `@edd/core` and
+propagated through API contracts, DB records, control-plane launch/start flows,
+ECS task definitions, managed-EBS volume creation, cards/details/monitoring UI,
+and cost reporting. No legacy fallback was added: persisted workspaces require
+`resources`, and cost reports fail loudly if a deleted workspace's historical
+session lacks resource detail.
 
-The production bootstrap was updated for that design with
-`EDD_RELEASE_GOLDEN_VARIANTS=omnibus`: the GitHub release OIDC role policy covered
-`edd-prod/golden/*`, and GitHub repo variables contained only non-secret
-coordinates (`RELEASE_AWS_ACCOUNT`, `RELEASE_AWS_REGION`, `RELEASE_AWS_ROLE_ARN`,
-`RELEASE_NAME_PREFIX`, `RELEASE_GOLDEN_VARIANTS`). The branch also shortened ALB
-and NLB health-check intervals to 10 seconds and made the SSH service deployment
-configuration explicit at 100% minimum healthy / 200% maximum for no-downtime
-rolling deploys.
+Fast/no-downtime release work was tightened further. The release workflow built
+only AMD64 control-plane images with Buildx GitHub cache and no QEMU setup, while
+golden images stayed in a separate asynchronous/manual workflow with the same
+cache path. The control-plane Dockerfile copied manifests before source to improve
+layer reuse, the ECS control-plane health-check interval/start period was reduced
+to 10 seconds, and the already-live control plane remained configured for multiple
+replicas, autoscaling, 100%/200% rolling deploys, and circuit-breaker rollback.
 
-Local verification passed on the final branch: targeted image-source unit and
-integration tests, `pnpm --filter @edd/web lint`, `pnpm --filter @edd/web build`,
-`pnpm --filter @edd/web test`, repository `pnpm lint`, `pnpm build`,
-`pnpm test`, `pnpm test:integ`, `pnpm test:e2e:local`,
-`pnpm check-deps`, `pnpm dead-code`, `actionlint` on release/golden workflows,
-`shellcheck` on the changed scripts, Terraform fmt, and Terraform validate
-against Terraform 1.15.7 with network/provider access. The container-mode e2e
-run passed 20/20 tasks, including lifecycle, data fidelity, OpenVSCode, Monaco,
-SSH wake, ECS Exec, reconciler scheduling, and workspace toolchain suites; the
-variant-image suite skipped because those images are built and tested by the
-dedicated `golden-images` workflow.
-
-PR #203 CI then failed once in `terraform-sim` because the inline workflow
-assertion still expected the ALB target-group health-check interval to be `30`
-after the branch intentionally changed ALB/NLB health checks to `10` seconds.
-The branch updated the CI assertion and the stale adversarial-slice comment;
-the rerun on head `1aa4a6c7c616195d1c797dfa3646e58b7fe7cb49` passed with
-GitHub reporting merge state `CLEAN`. The green checks included `branch-current`,
-`build-test`, `check-deps`, `code-health`, `integration`, `e2e`, `e2e-https`,
-`playwright`, `terraform`, `terraform-sim`, both `shellcheck` jobs, `sast`,
-`vuln-scan`, and `validate golden images`; PR-only publish jobs were skipped as
-intended.
+Local verification passed on this branch: `pnpm lint`, `pnpm build`,
+unsandboxed full `pnpm test` (37/37 Turbo tasks; `@edd/core` 352 tests), focused
+unsandboxed `@edd/editor-monaco` tests for loopback binding, `actionlint`,
+`shellcheck scripts/publish-images.sh scripts/bootstrap-release-oidc.sh`,
+`terraform fmt -recursive -check infra/terraform`, and Terraform init/validate
+for both the module and complete example with provider/network access. The
+sandboxed full test run failed only at local loopback server binding
+(`listen EPERM 127.0.0.1`) and passed when rerun without the sandbox.
 
 Earlier 2026-07-07 release-inspection notes remain below for history.
 

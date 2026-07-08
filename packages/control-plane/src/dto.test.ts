@@ -26,6 +26,7 @@ describe("toWorkspaceDto", () => {
       id: "ws-1",
       ownerId: "alice",
       baseImage: "golden/node:20",
+      resources: { cpuUnits: 512, memoryMiB: 2048, volumeGiB: 8 },
       editor: "openvscode",
       state: "running",
       createdAt: "2026-06-01T00:00:00.000Z",

@@ -29,6 +29,15 @@ export function makeWorkspaceEntity(client: DynamoDBClient, table = TABLE) {
         // Which editor this workspace serves (drives EDD_EDITOR_MODE). Optional: records
         // predating the field are treated as the default (OpenVSCode).
         editor: { type: ["openvscode", "monaco", "claude", "codex"] as const, required: false },
+        resources: {
+          type: "map",
+          required: true,
+          properties: {
+            cpuUnits: { type: "number", required: true },
+            memoryMiB: { type: "number", required: true },
+            volumeGiB: { type: "number", required: true },
+          },
+        },
         state: {
           type: [
             "provisioning",
@@ -298,6 +307,9 @@ export function makeCostRollupEntity(client: DynamoDBClient, table = TABLE) {
       attributes: {
         workspaceId: { type: "string", required: true },
         owner: { type: "string", required: true },
+        vcpu: { type: "number", required: true },
+        memoryGib: { type: "number", required: true },
+        volumeGib: { type: "number", required: true },
         checkpointAt: { type: "string", required: true },
         windowStart: { type: "string", required: true },
         runningMs: { type: "number", required: true },

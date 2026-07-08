@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import { newWorkspaceId, type BaseImage, type SnapshotId } from "../domain/ids";
 import type { ComputeProvider } from "./compute-provider";
 
+const RESOURCES = { cpuUnits: 512, memoryMiB: 2048, volumeGiB: 8 } as const;
+
 /**
  * The coordinates a {@link computeProviderContract} run needs: the provider under
  * test, a base image whose task stays alive long enough to observe, and a way to
@@ -37,7 +39,11 @@ export function computeProviderContract(
   describe(`ComputeProvider contract: ${name}`, () => {
     it("launches a task with a managed volume and reports it running", async () => {
       const { compute, baseImage } = await makeHarness();
-      const task = await compute.runTask({ workspaceId: newWorkspaceId(), baseImage });
+      const task = await compute.runTask({
+        workspaceId: newWorkspaceId(),
+        baseImage,
+        resources: RESOURCES,
+      });
       try {
         expect(task.volumeId).toBeTruthy();
         expect(await compute.taskState(task.id)).toBe("running");
@@ -48,7 +54,11 @@ export function computeProviderContract(
 
     it("releases the task on stop (taskState → stopped)", async () => {
       const { compute, baseImage } = await makeHarness();
-      const task = await compute.runTask({ workspaceId: newWorkspaceId(), baseImage });
+      const task = await compute.runTask({
+        workspaceId: newWorkspaceId(),
+        baseImage,
+        resources: RESOURCES,
+      });
       await compute.stopTask(task.id);
       expect(await compute.taskState(task.id)).toBe("stopped");
     });
@@ -59,6 +69,7 @@ export function computeProviderContract(
       const task = await compute.runTask({
         workspaceId: newWorkspaceId(),
         baseImage,
+        resources: RESOURCES,
         fromSnapshot,
       });
       try {

@@ -16,16 +16,14 @@
 # Authentication is OIDC -> STS short-lived credentials.
 #
 # What it publishes and rolls (see scripts/publish-images.sh with EDD_BUILD_TARGET=web):
-#   <prefix>/control-plane:<tag>     Next.js app (also the reconciler image)
+#   <prefix>/control-plane:<tag>         Next.js app (also the reconciler image)
 #   <prefix>/control-plane:<tag>-amd64   amd64 image
-#   <prefix>/control-plane:<tag>-arm64   arm64 image
-#   <prefix>/ssh-gateway:<tag>       SSH gateway (IMMUTABLE repo — each tag once)
+#   <prefix>/ssh-gateway:<tag>           SSH gateway (IMMUTABLE repo — each tag once)
 #   <prefix>/ssh-gateway:<tag>-amd64     amd64 image
-#   <prefix>/ssh-gateway:<tag>-arm64     arm64 image
-# Workspace/golden image rebuilds are controlled by the deployed EDD app via the
-# image-source webhook flow, not by this release workflow. The tag without the
-# suffix is a multi-arch manifest; the suffixed tags are the per-arch images for
-# runners (e.g. Lambda) that cannot consume manifests.
+# Workspace/golden image rebuilds are handled by the separate non-blocking
+# golden-images workflow, not by this release workflow. The tag without the suffix
+# is a manifest over the architectures built by this workflow; the suffixed tags
+# are the per-arch images for runners (e.g. Lambda) that cannot consume manifests.
 # After publish, scripts/deploy-release-images.sh registers fresh task-definition
 # revisions for the control plane, reconciler, and SSH gateway, updates the ECS
 # services and reconciler Scheduler target, then waits for ECS service stability.
@@ -60,11 +58,10 @@ jobs:
       RELEASE_NAME_PREFIX: ${{ vars.RELEASE_NAME_PREFIX }}
       TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.tag || github.sha }}
       EDD_BUILD_TARGET: web
+      EDD_BUILD_ARCHS: amd64
+      EDD_BUILDX_CACHE: gha
     steps:
       - uses: actions/checkout@v6.0.2
-
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v4.2.0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4.2.0

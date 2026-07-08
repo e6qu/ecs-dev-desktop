@@ -9,6 +9,7 @@ import type {
   WorkspaceId,
 } from "../domain/ids";
 import type { ComponentHealth } from "../observability/health";
+import type { WorkspaceResources } from "../domain/workspace-resources";
 
 /**
  * ComputeProvider — runs a workspace's container task on Fargate with an
@@ -39,6 +40,8 @@ export interface RunTaskInput {
   repoUrl?: string;
   /** Branch/tag/SHA to check out (with `repoUrl`). */
   repoRef?: string;
+  /** Per-workspace Fargate task size. */
+  resources: WorkspaceResources;
 }
 
 /** Coarse liveness of a task as the compute platform sees it. A task that is

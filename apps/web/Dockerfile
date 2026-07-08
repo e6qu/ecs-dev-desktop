@@ -16,11 +16,31 @@ RUN apt-get update && apt-get install -y --no-install-recommends python3 make g+
 # Workspace manifests first for a cached install layer.
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY apps/web/package.json apps/web/
-COPY packages packages
-COPY services services
+COPY packages/api-client/package.json packages/api-client/
+COPY packages/api-contracts/package.json packages/api-contracts/
+COPY packages/auth/package.json packages/auth/
+COPY packages/authz/package.json packages/authz/
+COPY packages/aws-itest-support/package.json packages/aws-itest-support/
+COPY packages/cli/package.json packages/cli/
+COPY packages/cloudtrail-audit/package.json packages/cloudtrail-audit/
+COPY packages/cloudwatch-logs/package.json packages/cloudwatch-logs/
+COPY packages/cloudwatch-metrics/package.json packages/cloudwatch-metrics/
+COPY packages/compute-ecs/package.json packages/compute-ecs/
+COPY packages/config/package.json packages/config/
+COPY packages/control-plane/package.json packages/control-plane/
+COPY packages/core/package.json packages/core/
+COPY packages/db/package.json packages/db/
+COPY packages/e2e/package.json packages/e2e/
+COPY packages/iam-preflight/package.json packages/iam-preflight/
+COPY packages/storage-ec2/package.json packages/storage-ec2/
+COPY services/editor-monaco/package.json services/editor-monaco/
+COPY services/reconciler/package.json services/reconciler/
+COPY services/ssh-gateway/package.json services/ssh-gateway/
 RUN pnpm install --frozen-lockfile
 # Source + build (workspace packages ship TS source; Next transpiles them).
 COPY tsconfig.base.json ./
+COPY packages packages
+COPY services services
 COPY apps/web apps/web
 RUN pnpm --filter @edd/web build
 # The reconciler runs THIS image with a command override
