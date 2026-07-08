@@ -9,8 +9,9 @@
 // Endpoint-only (§6.8): AUTH_GITHUB_URL/AUTH_GITHUB_API_URL point the standard
 // GHES options at github; AUTH_MICROSOFT_ENTRA_ID_ISSUER points OIDC
 // discovery at the Azure sim. No sim-specific code paths.
-import { github, entra, ENTRA_TENANT } from "@edd/config";
-import { beforeAll, describe, expect, it } from "vitest";
+import { aws, github, entra, ENTRA_TENANT } from "@edd/config";
+import { createDynamoClient, dropTable, ensureTable } from "@edd/db";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { ADMIN_GROUPS_ENV, GITHUB_API_URL_ENV, GITHUB_URL_ENV } from "./constants";
@@ -28,9 +29,12 @@ const ORG = "acme";
 const TEAM = "platform-admins";
 const OAUTH_APP = { id: "edd", secret: "secret" };
 const ENTRA_APP = { id: "edd-e2e-client", secret: "edd-e2e-secret" };
+const TEST_TABLE = "ecs-dev-des-web-nextauth-callback-e2e";
 
 // Provider + role env BEFORE auth.ts is imported (it reads env at module load).
 process.env.AUTH_SECRET = "edd-callback-e2e-secret";
+process.env.DYNAMODB_ENDPOINT ??= aws.endpoint;
+process.env.DYNAMODB_TABLE = TEST_TABLE;
 process.env.AUTH_TRUST_HOST = "1";
 process.env.AUTH_GITHUB_ID = OAUTH_APP.id;
 process.env.AUTH_GITHUB_SECRET = OAUTH_APP.secret;
@@ -117,11 +121,18 @@ async function finishSignIn(
 }
 
 describe("Auth.js callback routes against the live sims", { timeout: 60_000 }, () => {
+  const client = createDynamoClient();
   beforeAll(async () => {
+    await dropTable(client, TEST_TABLE);
+    await ensureTable(client, TEST_TABLE);
     // Import the real route module AFTER env is in place.
     const route = await import("../app/api/auth/[...nextauth]/route");
     GET = route.GET as Handler;
     POST = route.POST as Handler;
+  });
+
+  afterAll(async () => {
+    await dropTable(client, TEST_TABLE);
   });
 
   // Note on the active check: the GitHub provider defaults to checks: ["pkce"]

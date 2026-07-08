@@ -14,6 +14,7 @@ on:
 permissions:
   actions: read
   contents: read
+  id-token: write
 
 concurrency:
   group: post-deploy-smoke-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.expected_sha }}
@@ -24,12 +25,25 @@ jobs:
     name: verify deployed app
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 40
     env:
       EDD_APP_URL: ${{ vars.EDD_APP_URL }}
+      RELEASE_AWS_ROLE_ARN: ${{ vars.RELEASE_AWS_ROLE_ARN }}
+      RELEASE_AWS_REGION: ${{ vars.RELEASE_AWS_REGION }}
+      DYNAMODB_TABLE: ${{ vars.EDD_DYNAMODB_TABLE }}
+      AUTH_SECRET_ID: ${{ vars.EDD_AUTH_SECRET_ID }}
       MANUAL_EXPECTED_SHA: ${{ inputs.expected_sha }}
     steps:
       - uses: actions/checkout@v6.0.2
+
+      - uses: actions/setup-node@v6.4.0
+        with:
+          node-version: 22
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - run: pnpm install --frozen-lockfile
 
       - name: Download release metadata
         if: github.event_name == 'workflow_run'
@@ -47,6 +61,22 @@ jobs:
             echo "::error::EDD_APP_URL repository variable is required"
             exit 1
           fi
+          if [ -z "$RELEASE_AWS_ROLE_ARN" ]; then
+            echo "::error::RELEASE_AWS_ROLE_ARN repository variable is required"
+            exit 1
+          fi
+          if [ -z "$RELEASE_AWS_REGION" ]; then
+            echo "::error::RELEASE_AWS_REGION repository variable is required"
+            exit 1
+          fi
+          if [ -z "$DYNAMODB_TABLE" ]; then
+            echo "::error::EDD_DYNAMODB_TABLE repository variable is required"
+            exit 1
+          fi
+          if [ -z "$AUTH_SECRET_ID" ]; then
+            echo "::error::EDD_AUTH_SECRET_ID repository variable is required"
+            exit 1
+          fi
           if [ "$GITHUB_EVENT_NAME" = "workflow_run" ]; then
             if [ ! -s temp/release/deployed-tag ]; then
               echo "::error::release metadata artifact did not contain deployed-tag"
@@ -61,6 +91,12 @@ jobs:
             exit 1
           fi
           printf 'EXPECTED_SHA=%s\n' "$expected_sha" >> "$GITHUB_ENV"
+
+      - name: Configure AWS credentials for authenticated smoke
+        uses: aws-actions/configure-aws-credentials@v6.2.1
+        with:
+          role-to-assume: ${{ env.RELEASE_AWS_ROLE_ARN }}
+          aws-region: ${{ env.RELEASE_AWS_REGION }}
 
       - name: Wait for expected app build
         run: |
@@ -84,3 +120,8 @@ jobs:
           echo "::error::deployed app did not report expected build before the smoke deadline"
           printf '%s\n' "$last"
           exit 1
+
+      - name: Open one fresh workspace per editor through the public app
+        run: pnpm --filter web exec tsx scripts/check-deployed-workspace-open.ts
+        env:
+          AWS_REGION: ${{ env.RELEASE_AWS_REGION }}

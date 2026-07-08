@@ -1,11 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { mapClaimsToRole } from "@edd/auth";
+import type { Role } from "@edd/authz";
 import { ownerId } from "@edd/core";
 import NextAuth from "next-auth";
 import GitHub from "next-auth/providers/github";
 import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
 
 import { roleMappingConfig } from "./lib/auth-config";
+import {
+  AUTH_SESSION_SCHEMA_VERSION,
+  createAuthSession,
+  revokeAuthSession,
+  validateAuthSessionToken,
+} from "./lib/auth-sessions";
 import { normalizeClaims } from "./lib/claims";
 import { GITHUB_URL_ENV } from "./lib/constants";
 import { getGitCredentials, gitCredentialsEnabled } from "./lib/git-credentials";
@@ -13,7 +20,8 @@ import { fetchGithubTeamGroups } from "./lib/github-teams";
 import { errorField, log } from "./lib/logger";
 
 /**
- * Auth.js (NextAuth v5) — GitHub OAuth + Azure Entra ID, JWT sessions. Provider
+ * Auth.js (NextAuth v5) — GitHub OAuth + Azure Entra ID, with signed cookies
+ * backed by an EDD server-side session record. Provider
  * credentials are read from env (AUTH_GITHUB_*, AUTH_MICROSOFT_ENTRA_ID_*,
  * AUTH_SECRET). The role is derived from IdP groups via `@edd/auth` at sign-in
  * and carried in the JWT/session. GitHub teams aren't in the OAuth profile, so
@@ -54,15 +62,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       client: { token_endpoint_auth_method: "client_secret_post" },
     }),
   ],
-  // 4-hour sessions with a rolling refresh (product decision, 2026-07-06): a JWT
-  // session cookie is re-issued with a fresh expiry whenever it's used more than
-  // `updateAge` after its last issue -- so an ACTIVE user is never logged out
-  // mid-work, while an idle session expires 4 h after its last refresh. This is
-  // Auth.js's built-in rolling mechanism, no persistent session store needed; a
-  // DB-backed session (revocation, true refresh tokens) can be layered on later
-  // via the DynamoDB adapter if required. An expired/undecodable session cookie
-  // is treated by Auth.js as signed-out -- never an error page -- so a stale
-  // cookie can't block a user (they just land on /login).
+  // 4-hour sessions with a rolling refresh plus a REQUIRED server-side session
+  // record. The cookie alone never authorizes: every request must carry the
+  // current schema marker + authSessionId, and that row must still be active in
+  // DynamoDB. This gives logout/revocation server-side control over unexpired
+  // signed cookies. Old-format cookies fail closed and force a fresh login.
   session: { strategy: "jwt", maxAge: SESSION_MAX_AGE_S, updateAge: SESSION_UPDATE_AGE_S },
   callbacks: {
     async jwt({ token, account, profile }) {
@@ -72,8 +76,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           account.provider === "github" && typeof account.access_token === "string"
             ? await fetchGithubTeamGroups({ accessToken: account.access_token })
             : claims.groups;
+        const role = mapClaimsToRole({ ...claims, groups }, roleMappingConfig());
         token.uid = claims.subject;
-        token.role = mapClaimsToRole({ ...claims, groups }, roleMappingConfig());
+        token.role = role;
+        const authSession = await createAuthSession({ ownerId: claims.subject, role });
+        token.authSessionId = authSession.id;
+        token.authSessionVersion = AUTH_SESSION_SCHEMA_VERSION;
         // Capture the GitHub token (encrypted at rest) so a session can later
         // clone/push private repos via the boot-time credential broker. Stored
         // server-side keyed by the user id; never exposed to the browser. Sign-in
@@ -90,10 +98,26 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             log.error("failed to store git credential at sign-in", { error: errorField(err) });
           }
         }
+      } else {
+        const authSession = await validateAuthSessionToken(token);
+        if (authSession === null) {
+          delete token.uid;
+          delete token.role;
+          delete token.authSessionId;
+          delete token.authSessionVersion;
+        }
       }
       return token;
     },
-    session({ session, token }) {
+    async session({ session, token }) {
+      const authSession = await validateAuthSessionToken(token);
+      if (authSession === null) {
+        const user = session.user as { id?: string; role?: Role; authSessionId?: string };
+        delete user.id;
+        delete user.role;
+        delete user.authSessionId;
+        return session;
+      }
       const { uid, role } = token;
       if (typeof uid === "string") session.user.id = uid;
       // `Session.user.role` is non-optional, so ALWAYS set a concrete value. A JWT
@@ -102,7 +126,19 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // would make the non-optional type a lie.
       session.user.role =
         role === "viewer" || role === "member" || role === "admin" ? role : "viewer";
+      session.user.authSessionId = authSession.id;
       return session;
+    },
+  },
+  events: {
+    async signOut(message) {
+      if (
+        "token" in message &&
+        message.token !== null &&
+        typeof message.token.authSessionId === "string"
+      ) {
+        await revokeAuthSession(message.token.authSessionId);
+      }
     },
   },
 });

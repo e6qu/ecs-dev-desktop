@@ -147,7 +147,8 @@ chmod 0644 "${settings_file}" 2>/dev/null || true
 #                     against the local workspace process.
 #   codex          -> OpenAI Codex remote-control/app-server harness for the
 #                     first-party Codex client protocol.
-#   anything else (including unset) -> OpenVSCode Server, the historical default.
+#   openvscode/unset -> OpenVSCode Server, the product default.
+#   anything else    -> fail loudly; unknown editor values are invalid config.
 # The Monaco server (bundled at /opt/edd-editor-monaco) listens on :3000 under
 # /w/<id>/ and reads the same coordinates from the environment (EDD_WORKSPACE_ID,
 # CONNECTION_TOKEN, EDD_DISABLE_CONNECTION_TOKEN), so the in-app proxy reaches it
@@ -173,6 +174,12 @@ case "${EDD_EDITOR_MODE:-openvscode}" in
     export EDD_CODEX_COMMAND
     EDD_CODEX_COMMAND="$(command -v codex)"
     exec gosu workspace node /opt/edd-vendor-harness/server.js
+    ;;
+  openvscode)
+    ;;
+  *)
+    echo "unknown EDD_EDITOR_MODE: ${EDD_EDITOR_MODE}" >&2
+    exit 64
     ;;
 esac
 

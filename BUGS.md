@@ -5,24 +5,58 @@
 ## Open
 
 - **Production workspace opens failed despite healthy control-plane smoke —
-  FIXED in current branch (2026-07-08).** OpenVSCode and Monaco workspace tasks
-  were running, but direct browser opens of `/w/<id>/` could arrive with sparse
-  navigation headers and miss the proxy's connection-token redirect, producing
-  OpenVSCode `Forbidden` and Monaco `unauthorized`. The proxy now token-injects
-  for the exact workspace root path even without `Sec-Fetch-Dest`/HTML `Accept`,
-  while non-root API/subresource paths still bypass redirect. Focused proxy tests
-  and the end-to-end Monaco token-handshake test covered the regression.
+  FIXED in current branch (2026-07-08).** OpenVSCode, Monaco, Claude, and Codex
+  workspace tasks were running, but direct browser opens of `/w/<id>/` could
+  miss the proxy's connection-token redirect and surface OpenVSCode
+  `Forbidden`, Monaco `unauthorized`, or vendor harness `unauthorized`. Two
+  root causes were fixed: exact workspace-root paths now count as document
+  navigations even with sparse browser headers, and the proxy now evaluates the
+  token cookie expected for that workspace's editor mode instead of letting a
+  stale cookie from another editor family suppress token injection. Focused
+  proxy tests cover cross-editor stale-cookie cases and the end-to-end Monaco
+  token-handshake test covers the real token gate.
+
+- **Opening a stopped/non-ready workspace root could fall through to a proxy
+  error — FIXED in current branch (2026-07-08).** Direct opens of `/w/<id>` or
+  `/w/<id>/` for a non-ready workspace now redirect to
+  `/workspaces/<id>?autoopen=1`, so the user sees the status/restart surface.
+  Non-root API/subresource paths still proxy/fail loudly rather than masking
+  readiness errors.
+
+- **Signed JWT cookies had no server-side revocation handle — FIXED in current
+  branch (2026-07-08).** Login now creates a versioned DynamoDB `AUTH_SESSION`
+  row and embeds `authSessionId`/`authSessionVersion=1` in the Auth.js JWT.
+  Session and proxy authorization require that server-side row to be active,
+  current-version, unexpired, and unrevoked; old-format cookies lose their
+  principal and force re-login. Logout revokes the row and clears the Auth.js
+  cookie names/chunks.
+
+- **Post-deploy smoke did not create/open real workspaces — FIXED in current
+  branch (2026-07-08).** The asynchronous smoke workflow now uses GitHub OIDC to
+  assume the release AWS role, reads the deployed `AUTH_SECRET`, creates a
+  current server-side smoke admin session, creates one workspace per editor mode,
+  waits for `running`/`functional=ok`, and opens each `/w/<id>/` through the
+  public app with browser-like cookie path scoping. This targets the exact class
+  of production failures that ECS service health and `/readyz` missed.
+
+- **HTTPS Auth.js callback e2e used the HTTP-only DynamoDB endpoint — FIXED in
+  current branch (2026-07-08).** Adding server-side auth-session rows made the
+  Auth.js callback route write DynamoDB during the HTTPS-only Entra leg. The test
+  setup still pointed `DYNAMODB_ENDPOINT` at the legacy `http://127.0.0.1:4566`
+  coordinate while the HTTPS harness served the AWS API over TLS, producing
+  `Client sent an HTTP request to an HTTPS server`. The callback e2e now uses
+  the active `aws.endpoint` coordinate, so HTTP and HTTPS harnesses differ only
+  by endpoint scheme.
 
 - **Claude/Codex workspace modes failed loudly because vendor harnesses were not
   wired — FIXED in current branch (2026-07-08).** Production Claude/Codex tasks
   exited with the intended no-fallback error instead of serving Monaco. The base
-  image now includes a token-gated vendor harness host: Claude starts
-  `claude --remote-control <workspace-id>` under a pseudo-terminal, and Codex
-  starts `codex app-server --listen ws://127.0.0.1:4500` with health probing
-  against the vendor `/healthz`. Docker smoke built the image and proved Monaco,
-  Claude, and Codex modes healthy. The failed `codex remote-control start` path
-  was rejected from evidence because it required a standalone installer layout
-  absent from the workspace image.
+  image now includes a token-gated vendor harness host, and the current branch
+  kept that separation fail-loud: Monaco starts only in `EDD_EDITOR_MODE=monaco`;
+  Claude/Codex start only the vendor harness; unknown editor modes exit with a
+  configuration error. The vendor harness PTY dependency was copied under
+  `/opt/edd-vendor-harness/node_modules`, removing its runtime dependency on the
+  Monaco node_modules path.
 
 - **Errored workspaces should not be snapshotted further — FIXED in current
   branch (2026-07-08).** The implementation already scheduled snapshots only for
@@ -57,13 +91,16 @@
   so the smoke workflow has an explicit coordinate and no fallback target.
 
 - **Production still had stale operational alarm/audit debris after the outage
-  fix (2026-07-08).** `edd-prod-workspaces-stuck-error` cleared after malformed
-  workspace deletion, but `edd-prod-reconciler-dlq` still contained five old
-  inactive-taskdef messages and `edd-prod-reconciler-failed` still reflected the
-  recent invalid-workspace errors until its alarm window aged out. Reconciler
-  post-sweep cost reporting also failed loudly on old `session.create` audit
-  records that predated persisted resource details. No code fallback was added;
-  deleting audit/DLQ history remained an explicit operational decision.
+  fix (2026-07-08).** After PR #206 deployed, `edd-prod-workspaces-stuck-error`
+  was ALARM again because the two old Claude/Codex workspace records were still
+  `error` on the old `omnibus:f82e61db669c` image. After fresh workspaces were
+  created on `omnibus:3561532b4ee5`, the old records were
+  `terminated`/`desiredState=deleted` and the alarm returned to OK.
+  `edd-prod-reconciler-dlq` still contained old inactive-taskdef messages.
+  Reconciler post-sweep cost reporting also failed loudly on old
+  `session.create` audit records that predated persisted resource details. No
+  code fallback was added; deleting old audit/DLQ history remained an explicit
+  operational decision.
 
 - **Live target-group health-check intervals drifted from the fast-deploy
   Terraform source (2026-07-08).** Terraform source expected 10-second ALB/NLB

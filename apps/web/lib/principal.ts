@@ -59,10 +59,13 @@ function devPrincipal(id: string | undefined, role: string | undefined): Princip
 /** Pure: extract the principal from an Auth.js session. */
 export function principalFromSession(session: Session | null): Principal | null {
   if (session === null) return null;
+  const id = session.user.id;
+  const role = session.user.role;
+  if (typeof id !== "string" || typeof role !== "string" || !isRole(role)) return null;
   const sessionEmail = session.user.email;
   return {
-    id: ownerId(session.user.id),
-    role: session.user.role,
+    id: ownerId(id),
+    role,
     ...(typeof sessionEmail === "string" && sessionEmail.length > 0 ? { email: sessionEmail } : {}),
   };
 }

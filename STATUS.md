@@ -2,6 +2,102 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
+**Last updated:** 2026-07-08. The current follow-up branch addressed the
+remaining production editor-open failures with no fallbacks. The editor proxy
+now keys the connection-token redirect suppression by the selected workspace
+editor mode: OpenVSCode uses `vscode-tkn`, Monaco uses `edd-editor-token`, and
+Claude/Codex vendor harnesses use `edd-vendor-token`. A stale cookie from one
+editor family no longer suppresses token injection for another family, which
+matched the live `Forbidden`/`unauthorized` reports for OpenVSCode, Monaco,
+Claude Local Web UI, and Codex Local Web UI. Exact `/w/<id>` and `/w/<id>/`
+direct opens for a non-ready/stopped workspace redirect to the status page with
+`autoopen=1`, while non-root API/subresource paths still fail honestly through
+the proxy.
+
+The branch also added server-side Auth.js session state. Login now creates a
+versioned `AUTH_SESSION` row in DynamoDB and embeds `authSessionId` plus
+`authSessionVersion=1` in the signed JWT cookie. Every session/proxy validation
+requires that current server-side row to be active, unexpired, and unrevoked;
+old-format cookies with no current session version lose their principal and
+force re-login. Logout revokes the server-side row and explicitly clears the
+Auth.js cookie names/chunks. The smoke-test helper creates and revokes its own
+server-side admin session through the same path.
+
+The workspace image entrypoint stayed fail-loud. `EDD_EDITOR_MODE=monaco`
+starts only Monaco, `claude` and `codex` start only the vendor local web UI
+harness, and an unknown editor mode exits with an error instead of falling back
+to OpenVSCode or Monaco. The vendor harness PTY dependency was moved under
+`/opt/edd-vendor-harness/node_modules` so Claude/Codex do not depend on the
+Monaco runtime path.
+
+Post-deploy verification was extended beyond app readiness. The
+`post-deploy-smoke` workflow now assumes the release AWS role via GitHub OIDC,
+reads the deployed `AUTH_SECRET` from Secrets Manager, creates a current-format
+server-side smoke auth session in DynamoDB, creates one workspace for each of
+OpenVSCode, Monaco, Claude Local Web UI, and Codex Local Web UI, waits for each
+to become `running`/`functional=ok`, and opens `/w/<id>/` through the public app
+while preserving browser-like cookie path scoping. The bootstrap script now
+writes the required non-secret smoke coordinates and grants the release role
+only the needed `secretsmanager:GetSecretValue` and DynamoDB item permissions
+for that check.
+
+Local verification passed on this branch: `pnpm build`, full `pnpm test`,
+`pnpm test:integ`, `pnpm test:e2e`, `pnpm lint`, `pnpm check-deps`,
+`pnpm dead-code`, `pnpm actionlint`, `shellcheck scripts/bootstrap-release-oidc.sh
+infra/images/base/entrypoint.sh`, focused workspace-proxy/editor-handshake
+tests, and the Auth.js callback e2e. After CI exposed an HTTPS-only table-setup
+coordinate bug, the Auth.js callback e2e was corrected to use `aws.endpoint`
+instead of the HTTP-only DynamoDB endpoint, and the exact failing HTTPS command
+passed locally against `docker-compose.https.yml`. Sandboxed loopback/
+local-endpoint attempts failed with `EPERM` and the same commands passed when
+rerun with local network access.
+
+**Last updated:** 2026-07-08. PR #206 merged as
+`3561532b4ee52263ef118ffc63836d82d5667ed0` and production rolled the control
+plane to that SHA. `https://app.edd.e6qu.dev/api/healthz` returned
+`deploy.sha=3561532b4ee5`, `/api/readyz` was ready with DynamoDB ACTIVE, and
+`/workspaces` returned HTTP 200 with the unauthenticated "Not signed in" page
+instead of the previous Next.js digest. ECS reported `edd-prod-control-plane`
+steady at desired/running `2/2` on task definition `:31` and
+`edd-prod-ssh-gateway` steady at `1/1` on task definition `:31`. Release run
+`28929660012` and post-deploy smoke run `28929886726` both succeeded.
+
+The post-merge golden image workflow also succeeded. Workflow run
+`28929660072` built and pushed
+`729079515331.dkr.ecr.eu-west-1.amazonaws.com/edd-prod/golden/omnibus:3561532b4ee5`
+(`sha256:7d7e5ef2...`, pushed `2026-07-08T11:57:01+03`), and the production
+base-image catalog row `img-seed-omnibus` pointed at that tag at catalog version
+`5`.
+
+Production was not fully clean. DynamoDB still held four workspace records:
+OpenVSCode `ws-5da4647e-b3d9-401b-8847-27344c02bb8b` and Monaco
+`ws-8631d0e9-2baa-4646-8491-27453029c303` were stopped on the old
+`omnibus:f82e61db669c` image, while Claude
+`ws-30b1245c-8ebd-4817-aa6d-1c2e0d395896` and Codex
+`ws-6eba0d37-ec44-4d35-b47e-74c8ee5b7298` were still `error` on that same old
+image. CloudWatch still showed `edd-prod-workspaces-stuck-error` in ALARM with
+two errored workspaces, and `edd-prod-reconciler-dlq` remained ALARM with old
+DLQ debris. From this session, unauthenticated public health and page rendering,
+ECS service health, ECR publication, and catalog rollout were verified; creating
+and opening fresh authenticated workspaces for all four interface modes still
+needed browser/session verification.
+
+After the user created fresh workspaces on the new catalog image, production
+held four `desiredState=present` workspaces, all `running`, all on
+`729079515331.dkr.ecr.eu-west-1.amazonaws.com/edd-prod/golden/omnibus:3561532b4ee5`,
+and all reporting `functional=ok`: Claude
+`ws-3ffe1107-07d4-4a41-94d5-909cca2e9d98`, Monaco
+`ws-755b4645-e1ea-49f2-96ae-9a4f14287543`, Codex
+`ws-afb14de5-9691-4cdc-a23a-2d079708b420`, and OpenVSCode
+`ws-fed0e000-b9e1-4b18-b3c4-545bbec46f23`. ECS showed all four workspace
+containers RUNNING on the new image. Workspace logs showed OpenVSCode serving
+on `:3000`, Monaco serving on `:3000`, the Claude Local Web UI harness listening
+on `:3000/w/ws-3ffe1107-.../`, and the Codex Local Web UI harness listening on
+`:3000/w/ws-afb14de5-.../`. The previous old-image OpenVSCode, Monaco, Claude,
+and Codex records were all `terminated` with `desiredState=deleted`, and
+`edd-prod-workspaces-stuck-error` returned to OK. `edd-prod-reconciler-dlq`
+remained ALARM from old DLQ debris.
+
 **Last updated:** 2026-07-08. The follow-up branch
 `fix/prod-workspace-open` addressed the production workspace-open failures found
 after PR #205 deployed. The public app itself was healthy at merge commit

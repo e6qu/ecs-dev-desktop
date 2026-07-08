@@ -159,6 +159,16 @@
   parity with the e2e/ssh jobs). Tests: `waitForDynamo` resolves against the live DB and
   throws deterministically (timeout) against a dead endpoint. db integ 5; build + lint green.
 
+- **2026-07-08** — **PR #206 deployed the workspace-open/vendor-harness fixes.** The
+  merge commit `3561532b4ee5` rolled to production, `/api/healthz` reported that
+  deploy SHA, `/api/readyz` was ready, `/workspaces` rendered HTTP 200 instead of
+  the earlier Next.js digest, and post-deploy smoke passed. The golden-images
+  workflow then pushed `edd-prod/golden/omnibus:3561532b4ee5` and the production
+  catalog pointed at it. Existing Claude/Codex workspaces stayed errored because
+  they were old records on the previous `f82e61db669c` image; fresh authenticated
+  workspace creation/opening for all four interface modes still needed live
+  browser verification.
+
 - **2026-06-04** — **Error channel reaches the UI.** The typed-error work stopped at the
   wire: the server returns `{ error: <message> }` with the right status, but `@edd/api-client`
   threw `Error("POST … failed: 409")` and discarded the body, so the portal showed a bare
@@ -3184,3 +3194,52 @@ only, and explicit snapshots of errored workspaces conflicted before storage
 I/O. Local verification passed across focused web tests, control-plane/reconciler
 integration tests, repo lint/build, full unit tests, shell syntax/lint, and the
 base-image Docker smoke for Monaco, Claude, and Codex modes.
+
+**2026-07-08 — Verified fresh production workspaces on the fixed image.** After
+the user created new workspaces, DynamoDB showed one running workspace for each
+interface mode on `omnibus:3561532b4ee5`, all with `functional=ok`. CloudWatch
+workspace logs showed OpenVSCode, Monaco, Claude Local Web UI, and Codex Local
+Web UI each starting the expected local server/harness. The old errored
+Claude/Codex records were terminated/deleted and the stuck-workspaces alarm
+returned to OK.
+
+**2026-07-08 — Fixed editor token handoff, server-side auth sessions, and
+workspace-open deployment smoke.** After PR #206 deployed and fresh workspaces
+were running on `omnibus:3561532b4ee5`, manually opening all four editor modes
+still produced `Forbidden`/`unauthorized` failures. The branch fixed the proxy
+root causes rather than adding fallbacks: exact `/w/<id>` and `/w/<id>/` opens
+are treated as document navigations, non-ready workspace roots redirect to the
+workspace status page, and token-redirect suppression is keyed by editor mode
+(`vscode-tkn` for OpenVSCode, `edd-editor-token` for Monaco,
+`edd-vendor-token` for Claude/Codex). Stale cookies from one editor family no
+longer suppress token injection for another.
+
+Auth gained a server-side revocation handle. Login creates a versioned
+`AUTH_SESSION` DynamoDB row and embeds `authSessionId` plus
+`authSessionVersion=1` in the Auth.js JWT. Session/proxy validation requires an
+active, unexpired, unrevoked current-version row; old-format cookies become
+unauthenticated and force re-login. Logout revokes the row and explicitly clears
+Auth.js cookie names/chunks.
+
+The no-fallback image contract stayed intact. Monaco is only served for the
+Monaco workspace type; Claude and Codex use the vendor local web UI harness; an
+unknown editor mode exits with an error. The vendor harness `node-pty`
+dependency was placed under `/opt/edd-vendor-harness/node_modules` so the
+Claude/Codex runtime no longer depends on Monaco's module path.
+
+Post-deploy smoke was expanded to catch the exact production failure class. The
+workflow now assumes the release AWS role with GitHub OIDC, reads the deployed
+`AUTH_SECRET`, creates a current-format server-side smoke session, creates one
+workspace for each editor mode, waits for `running`/`functional=ok`, and opens
+each `/w/<id>/` through the public app with browser-like cookie path scoping.
+Bootstrap writes the required smoke coordinates and grants only the needed
+Secrets Manager/DynamoDB permissions.
+
+Verification passed locally with `pnpm build`, full `pnpm test`,
+`pnpm test:integ`, `pnpm test:e2e`, `pnpm lint`, `pnpm check-deps`,
+`pnpm dead-code`, `pnpm actionlint`, shellcheck for touched shell scripts, and
+focused workspace-proxy/editor-handshake/Auth.js callback tests. CI surfaced
+one real HTTPS-only coordinate bug after the PR was rebased: the Auth.js callback
+e2e still used the HTTP-only DynamoDB endpoint while the HTTPS harness served
+the AWS API over TLS. The test was corrected to use the active `aws.endpoint`
+coordinate and the exact failing HTTPS command passed locally.

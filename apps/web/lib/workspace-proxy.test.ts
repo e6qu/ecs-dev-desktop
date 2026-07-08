@@ -13,12 +13,17 @@ import type { CookieBearingRequest } from "./workspace-proxy";
 // pin the GLUE: unauthenticated → redirect to login, unknown ws → forbidden, and
 // owner/admin/other map to the right outcome. Both edges are mocked so the test is
 // hermetic and controls its own inputs (no DB, no real cookie).
-const { getTokenMock, inspectMock } = vi.hoisted(() => ({
+const { getTokenMock, inspectMock, validateAuthSessionTokenMock } = vi.hoisted(() => ({
   getTokenMock: vi.fn<() => Promise<{ uid?: string; role?: string; exp?: number } | null>>(),
   inspectMock:
     vi.fn<() => Promise<{ workspace: { ownerId: string; shareEnabled?: boolean } } | null>>(),
+  validateAuthSessionTokenMock:
+    vi.fn<
+      () => Promise<{ id: string; ownerId: string; role: string; expiresAtMs: number } | null>
+    >(),
 }));
 vi.mock("next-auth/jwt", () => ({ getToken: getTokenMock }));
+vi.mock("./auth-sessions", () => ({ validateAuthSessionToken: validateAuthSessionTokenMock }));
 vi.mock("./control-plane", () => ({
   getControlPlane: vi.fn(() => Promise.resolve({ inspect: inspectMock })),
 }));
@@ -28,6 +33,7 @@ const {
   authorizeWorkspace,
   editorTokenRedirect,
   isDocumentNavigation,
+  isWorkspaceDocumentNavigation,
   stripSessionCookie,
 } = await import("./workspace-proxy");
 
@@ -37,6 +43,13 @@ const req = (cookie = "session=x"): CookieBearingRequest => ({ headers: { cookie
 beforeEach(() => {
   getTokenMock.mockReset();
   inspectMock.mockReset();
+  validateAuthSessionTokenMock.mockReset();
+  validateAuthSessionTokenMock.mockResolvedValue({
+    id: "auth-session-1",
+    ownerId: "u-1",
+    role: "member",
+    expiresAtMs: 1_900_000_000_000,
+  });
   // authorizeWorkspace now fails loud without AUTH_SECRET (getToken itself is mocked).
   process.env.AUTH_SECRET = "test-secret";
 });
@@ -49,6 +62,13 @@ describe("authorizeWorkspace (in-app proxy authz glue)", () => {
     getTokenMock.mockResolvedValue(null);
     expect(await authorizeWorkspace(req(), WS)).toEqual({ kind: "unauthenticated" });
     expect(inspectMock).not.toHaveBeenCalled(); // never touches the control plane unauthenticated
+  });
+
+  it("is unauthenticated when the signed cookie has no active server-side session", async () => {
+    getTokenMock.mockResolvedValue({ uid: "u-1", role: "member" });
+    validateAuthSessionTokenMock.mockResolvedValue(null);
+    expect(await authorizeWorkspace(req(), WS)).toEqual({ kind: "unauthenticated" });
+    expect(inspectMock).not.toHaveBeenCalled();
   });
 
   it("is forbidden (not 404) for an unknown workspace — does not distinguish existence", async () => {
@@ -109,6 +129,28 @@ describe("isDocumentNavigation (status-page hand-off gate)", () => {
   it("is false for the editor's own sub-resource/API requests (script/fetch)", () => {
     expect(isDocumentNavigation({ headers: { "sec-fetch-dest": "script" } })).toBe(false);
     expect(isDocumentNavigation({ headers: { "sec-fetch-dest": "empty" } })).toBe(false);
+  });
+});
+
+describe("isWorkspaceDocumentNavigation (status-page hand-off gate)", () => {
+  it("is true for sparse-header direct opens of the workspace root", () => {
+    expect(isWorkspaceDocumentNavigation({ url: `/w/${WS}/`, headers: {} }, WS)).toBe(true);
+    expect(isWorkspaceDocumentNavigation({ url: `/w/${WS}`, headers: {} }, WS)).toBe(true);
+  });
+
+  it("is false for sparse-header editor sub-resource/API requests", () => {
+    expect(isWorkspaceDocumentNavigation({ url: `/w/${WS}/api/tree`, headers: {} }, WS)).toBe(
+      false,
+    );
+  });
+
+  it("still honors standard document navigation headers on any workspace path", () => {
+    expect(
+      isWorkspaceDocumentNavigation(
+        { url: `/w/${WS}/static/out/main.js`, headers: { "sec-fetch-dest": "document" } },
+        WS,
+      ),
+    ).toBe(true);
   });
 });
 
@@ -178,7 +220,7 @@ describe("editorTokenRedirect (editor connection-token handoff)", () => {
     expect(out).toBeUndefined();
   });
 
-  it("also recognizes the Monaco server's edd-editor-token cookie", () => {
+  it("recognizes the Monaco server's edd-editor-token cookie only for Monaco workspaces", () => {
     // The Monaco editor server sets edd-editor-token, not vscode-tkn. Without
     // recognizing it, the proxy kept re-injecting ?tkn and then forwarded a clean
     // request the Monaco server rejected with 401.
@@ -189,8 +231,78 @@ describe("editorTokenRedirect (editor connection-token handoff)", () => {
         headers: docHeaders({ cookie: `edd-editor-token=${expectedTkn}` }),
       },
       WS,
+      "monaco",
     );
     expect(out).toBeUndefined();
+  });
+
+  it("does not let a Monaco cookie suppress OpenVSCode token injection", () => {
+    const out = editorTokenRedirect(
+      {
+        method: "GET",
+        url: `/w/${WS}/`,
+        headers: docHeaders({ cookie: `edd-editor-token=${expectedTkn}` }),
+      },
+      WS,
+      "openvscode",
+    );
+    expect(out).toBe(`/w/${WS}/?tkn=${expectedTkn}`);
+  });
+
+  it("does not let an OpenVSCode cookie suppress Monaco token injection", () => {
+    const out = editorTokenRedirect(
+      {
+        method: "GET",
+        url: `/w/${WS}/`,
+        headers: docHeaders({ cookie: `vscode-tkn=${expectedTkn}` }),
+      },
+      WS,
+      "monaco",
+    );
+    expect(out).toBe(`/w/${WS}/?tkn=${expectedTkn}`);
+  });
+
+  it("recognizes the vendor harness token cookie for Claude and Codex workspaces", () => {
+    for (const editor of ["claude", "codex"] as const) {
+      const out = editorTokenRedirect(
+        {
+          method: "GET",
+          url: `/w/${WS}/`,
+          headers: docHeaders({ cookie: `edd-vendor-token=${expectedTkn}` }),
+        },
+        WS,
+        editor,
+      );
+      expect(out).toBeUndefined();
+    }
+  });
+
+  it("does not let OpenVSCode or Monaco cookies suppress vendor token injection", () => {
+    for (const cookieName of ["vscode-tkn", "edd-editor-token"] as const) {
+      const out = editorTokenRedirect(
+        {
+          method: "GET",
+          url: `/w/${WS}/`,
+          headers: docHeaders({ cookie: `${cookieName}=${expectedTkn}` }),
+        },
+        WS,
+        "codex",
+      );
+      expect(out).toBe(`/w/${WS}/?tkn=${expectedTkn}`);
+    }
+  });
+
+  it("does not let a vendor cookie suppress OpenVSCode token injection", () => {
+    const out = editorTokenRedirect(
+      {
+        method: "GET",
+        url: `/w/${WS}/`,
+        headers: docHeaders({ cookie: `edd-vendor-token=${expectedTkn}` }),
+      },
+      WS,
+      "openvscode",
+    );
+    expect(out).toBe(`/w/${WS}/?tkn=${expectedTkn}`);
   });
 
   it("does not redirect the editor's own sub-resource/API requests", () => {

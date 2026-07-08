@@ -25,7 +25,7 @@ import {
   authorizeSpectate,
   authorizeWorkspace,
   editorTokenRedirect,
-  isDocumentNavigation,
+  isWorkspaceDocumentNavigation,
   proxyWorkspaceHttp,
   proxyWorkspaceUpgrade,
   resolveWorkspaceUpstream,
@@ -108,14 +108,14 @@ const server = createServer((req, res) => {
     // "deleted" — instead of a blank/failed page against a not-yet-there editor. Only
     // a top-level document nav is redirected; the editor's own sub-resources (once
     // running) proxy straight through.
-    if (!authz.ready && isDocumentNavigation(req)) {
+    if (!authz.ready && isWorkspaceDocumentNavigation(req, wsId)) {
       res.writeHead(302, { location: `/workspaces/${wsId}?autoopen=1` });
       res.end();
       return;
     }
     // Defence-in-depth: hand the authorized browser the editor's connection token on
     // the initial navigation, so the workbench loads without the user ever seeing it.
-    const tokenRedirect = editorTokenRedirect(req, wsId);
+    const tokenRedirect = editorTokenRedirect(req, wsId, authz.editor);
     if (tokenRedirect !== undefined) {
       // The initial document nav is the "open" — audit it once here (sub-resources,
       // which already carry the token, don't re-trigger this branch).
