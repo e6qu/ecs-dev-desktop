@@ -21,7 +21,7 @@ import {
   StoredCostRollupStore,
   WorkspaceService,
 } from "@edd/control-plane";
-import { COST_ROLLUP_CADENCE_MS, workspacePricing, workspaceSizing } from "@edd/config";
+import { COST_ROLLUP_CADENCE_MS, workspacePricing } from "@edd/config";
 import {
   createLogger,
   isoTimestamp,
@@ -131,7 +131,6 @@ const cost = new CostService({
   workspaces: service,
   clock: systemClock,
   pricing: workspacePricing(),
-  sizing: workspaceSizing(),
   rollups: new StoredCostRollupStore(makeCostRollupEntity(dynamo, table)),
 });
 const log = createLogger({

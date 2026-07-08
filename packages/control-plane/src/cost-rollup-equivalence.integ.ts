@@ -7,7 +7,7 @@
 // workspace whose teardown spans and terminates before it, and a workspace born
 // after it (the recent-only path).
 import type { WorkspaceDto } from "@edd/api-contracts";
-import { workspacePricing, workspaceSizing } from "@edd/config";
+import { workspacePricing } from "@edd/config";
 import { isoTimestamp, type Clock } from "@edd/core";
 import {
   createDynamoClient,
@@ -25,7 +25,8 @@ process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
 
 const TABLE = "ecs-dev-desktop-cp-cost-rollup-equiv-integ";
 const PRICING = workspacePricing();
-const SIZING = workspaceSizing();
+const RESOURCES = { cpuUnits: 512, memoryMiB: 2048, volumeGiB: 8 } as const;
+const RESOURCE_DETAIL = "resources cpuUnits=512 memoryMiB=2048 volumeGiB=8; blank session";
 const EPOCH = Date.parse("2026-06-01T00:00:00.000Z");
 const HOUR = 3_600_000;
 const at = (h: number) => new Date(EPOCH + h * HOUR).toISOString();
@@ -42,6 +43,7 @@ describe("cost rollup report == full-scan report (figure-equivalence)", () => {
       id: "ws-a",
       ownerId: "alice",
       baseImage: "golden/node:20",
+      resources: RESOURCES,
       state: "stopped",
       createdAt: isoTimestamp(at(0)),
       availableActions: [],
@@ -50,6 +52,7 @@ describe("cost rollup report == full-scan report (figure-equivalence)", () => {
       id: "ws-c",
       ownerId: "bob",
       baseImage: "golden/node:20",
+      resources: RESOURCES,
       state: "running",
       createdAt: isoTimestamp(at(4)),
       availableActions: [],
@@ -65,7 +68,7 @@ describe("cost rollup report == full-scan report (figure-equivalence)", () => {
         actor,
         action,
         target,
-        detail: "",
+        detail: action === "session.create" ? RESOURCE_DETAIL : "",
       })
       .go();
   }
@@ -96,7 +99,6 @@ describe("cost rollup report == full-scan report (figure-equivalence)", () => {
       workspaces: workspaceSource,
       clock,
       pricing: PRICING,
-      sizing: SIZING,
       rollups: rollupStore,
     }).rollup();
 
@@ -115,14 +117,12 @@ describe("cost rollup report == full-scan report (figure-equivalence)", () => {
       workspaces: workspaceSource,
       clock,
       pricing: PRICING,
-      sizing: SIZING,
     });
     const fromRollup = new CostService({
       audit,
       workspaces: workspaceSource,
       clock,
       pricing: PRICING,
-      sizing: SIZING,
       rollups: rollupStore,
     });
 

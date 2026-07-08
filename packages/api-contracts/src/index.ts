@@ -49,6 +49,53 @@ export type WorkspaceActionDto = z.infer<typeof workspaceAction>;
 export const editorKind = z.enum(["openvscode", "monaco", "claude", "codex"]);
 export type EditorKindDto = z.infer<typeof editorKind>;
 
+export const workspaceCpuUnits = z.union([
+  z.literal(512),
+  z.literal(1024),
+  z.literal(2048),
+  z.literal(4096),
+]);
+export type WorkspaceCpuUnitsDto = z.infer<typeof workspaceCpuUnits>;
+
+export const workspaceMemoryMiB = z.union([
+  z.literal(2048),
+  z.literal(4096),
+  z.literal(8192),
+  z.literal(16384),
+]);
+export type WorkspaceMemoryMiBDto = z.infer<typeof workspaceMemoryMiB>;
+
+export const workspaceVolumeGiB = z.union([
+  z.literal(8),
+  z.literal(16),
+  z.literal(32),
+  z.literal(64),
+]);
+export type WorkspaceVolumeGiBDto = z.infer<typeof workspaceVolumeGiB>;
+
+export const workspaceResources = z
+  .object({
+    cpuUnits: workspaceCpuUnits,
+    memoryMiB: workspaceMemoryMiB,
+    volumeGiB: workspaceVolumeGiB,
+  })
+  .refine(
+    (r) => {
+      switch (r.cpuUnits) {
+        case 512:
+          return r.memoryMiB === 2048 || r.memoryMiB === 4096;
+        case 1024:
+          return r.memoryMiB === 2048 || r.memoryMiB === 4096 || r.memoryMiB === 8192;
+        case 2048:
+          return r.memoryMiB === 4096 || r.memoryMiB === 8192 || r.memoryMiB === 16384;
+        case 4096:
+          return r.memoryMiB === 8192 || r.memoryMiB === 16384;
+      }
+    },
+    { message: "memoryMiB is not valid for cpuUnits" },
+  );
+export type WorkspaceResourcesDto = z.infer<typeof workspaceResources>;
+
 /** The RBAC roles (mirrors `@edd/authz` `ROLES` — kept here so the contract has no dep on authz;
  * the role-mapping test pins them in sync). A closed enum, not a bare string, so a typo'd/unknown
  * role can't ride a DTO. */
@@ -65,6 +112,7 @@ export const workspace = z.object({
   ownerEmail: z.email().optional(),
   baseImage: z.string(),
   editor: editorKind.optional(),
+  resources: workspaceResources,
   state: workspaceState,
   createdAt: z.iso.datetime(),
   /** Last activity/transition timestamp — what the status page's phase-elapsed
@@ -102,15 +150,6 @@ export const workspace = z.object({
   terminatedAt: z.iso.datetime().optional(),
   /** Owner-controlled spectate flag: viewers may watch a read-only mirror. */
   shareEnabled: z.boolean().optional(),
-  // Provisioned sizing (joined server-side from deployment config — the same
-  // values the compute provider provisions and the cost model bills).
-  resources: z
-    .object({
-      vcpu: z.number().positive(),
-      memoryGib: z.number().positive(),
-      volumeGib: z.number().positive(),
-    })
-    .optional(),
 });
 export type WorkspaceDto = z.infer<typeof workspace>;
 
@@ -197,6 +236,8 @@ export const createWorkspaceRequest = z.object({
     .min(MIN_SNAPSHOT_INTERVAL_MS)
     .max(MAX_SNAPSHOT_INTERVAL_MS)
     .optional(),
+  /** Per-workspace Fargate task size. Absent = product default. */
+  resources: workspaceResources.optional(),
 });
 export type CreateWorkspaceRequest = z.infer<typeof createWorkspaceRequest>;
 
@@ -305,6 +346,7 @@ export const workspaceDetail = z.object({
   repoUrl: z.string().optional(),
   baseImage: z.string(),
   editor: editorKind.optional(),
+  resources: workspaceResources,
   state: workspaceState,
   /** Durable intent: should this workspace exist (`present`) or be torn down
    * (`deleted`). Absent on records predating the field ⇒ treated `present`. */
@@ -522,6 +564,7 @@ export type CostSizingDto = z.infer<typeof costSizing>;
 export const sessionCost = costBreakdown.extend({
   workspaceId: z.string(),
   owner: z.string(),
+  sizing: costSizing,
   // The session's lifecycle state, or the `unknown` sentinel the cost model emits for a
   // priced session whose workspace record is gone (the ledger is append-only, so a
   // deleted session still prices). A closed set, not a bare string, so a typo'd/unknown
@@ -541,7 +584,6 @@ export const costReport = z.object({
   generatedAt: z.iso.datetime(),
   windowStart: z.iso.datetime(),
   pricing: costPricing,
-  sizing: costSizing,
   total: costBreakdown,
   byUser: z.array(userCost),
   bySession: z.array(sessionCost),

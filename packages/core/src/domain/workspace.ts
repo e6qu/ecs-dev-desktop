@@ -13,6 +13,13 @@ import type {
   VolumeId,
   WorkspaceId,
 } from "./ids";
+import {
+  assertValidWorkspaceResources,
+  DEFAULT_WORKSPACE_CPU_UNITS,
+  DEFAULT_WORKSPACE_MEMORY_MIB,
+  DEFAULT_WORKSPACE_VOLUME_GIB,
+  type WorkspaceResources,
+} from "./workspace-resources";
 
 /** Durable convergence intent (see {@link Workspace.desiredState}). */
 export type DesiredState = "present" | "deleted";
@@ -47,6 +54,9 @@ export interface Workspace {
   /** Which editor this workspace serves — drives `EDD_EDITOR_MODE` at launch. Absent on records
    * created before the field ⇒ treated as the default (OpenVSCode). */
   readonly editor?: EditorKind;
+  /** Fargate task size for this workspace. Required persisted state: old rows without
+   * it are invalid and must be deleted or migrated deliberately. */
+  readonly resources: WorkspaceResources;
   readonly state: WorkspaceState;
   /** Durable intent, independent of the observed `state`: whether this workspace
    * should exist (`present`) or be torn down (`deleted`). The reconciler converges
@@ -107,6 +117,7 @@ export interface ProvisionParams {
   repoUrl?: string;
   baseImage: BaseImage;
   editor?: EditorKind;
+  resources?: WorkspaceResources;
   snapshotIntervalMs?: number;
   volumeId: VolumeId;
   taskId: TaskId;
@@ -125,6 +136,13 @@ export interface ProvisionParams {
 export function reserve(
   params: Omit<ProvisionParams, "volumeId" | "taskId" | "sshHost">,
 ): Workspace {
+  const resources = assertValidWorkspaceResources(
+    params.resources ?? {
+      cpuUnits: DEFAULT_WORKSPACE_CPU_UNITS,
+      memoryMiB: DEFAULT_WORKSPACE_MEMORY_MIB,
+      volumeGiB: DEFAULT_WORKSPACE_VOLUME_GIB,
+    },
+  );
   return {
     id: params.id,
     ownerId: params.ownerId,
@@ -133,6 +151,7 @@ export function reserve(
     repoUrl: params.repoUrl,
     baseImage: params.baseImage,
     editor: params.editor ?? DEFAULT_EDITOR,
+    resources,
     snapshotIntervalMs: params.snapshotIntervalMs,
     state: "provisioning",
     desiredState: "present",
@@ -142,6 +161,13 @@ export function reserve(
 }
 
 export function provision(params: ProvisionParams): Workspace {
+  const resources = assertValidWorkspaceResources(
+    params.resources ?? {
+      cpuUnits: DEFAULT_WORKSPACE_CPU_UNITS,
+      memoryMiB: DEFAULT_WORKSPACE_MEMORY_MIB,
+      volumeGiB: DEFAULT_WORKSPACE_VOLUME_GIB,
+    },
+  );
   return {
     id: params.id,
     ownerId: params.ownerId,
@@ -150,6 +176,7 @@ export function provision(params: ProvisionParams): Workspace {
     repoUrl: params.repoUrl,
     baseImage: params.baseImage,
     editor: params.editor ?? DEFAULT_EDITOR,
+    resources,
     snapshotIntervalMs: params.snapshotIntervalMs,
     state: "running",
     desiredState: "present",

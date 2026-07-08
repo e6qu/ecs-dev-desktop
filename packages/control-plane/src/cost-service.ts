@@ -56,6 +56,7 @@ interface CostWorkspaceSource {
 export interface CostRollupRecord {
   readonly workspaceId: string;
   readonly owner: string;
+  readonly sizing: WorkspaceSizing;
   readonly checkpointAt: string;
   readonly windowStart: string;
   readonly runningMs: number;
@@ -77,7 +78,6 @@ export interface CostServiceDeps {
   workspaces: CostWorkspaceSource;
   clock: Clock;
   pricing: Pricing;
-  sizing: WorkspaceSizing;
   /** Optional cost-checkpoint store. When present and populated, `report` prices
    * from the checkpoints + the tail since them (O(recent) instead of O(history));
    * `rollup` regenerates them. Absent/empty → the exact full-ledger scan. */
@@ -102,6 +102,59 @@ function groupSessions(events: readonly AuditEvent[]): Map<string, AuditEvent[]>
 function ownerOf(events: readonly AuditEvent[], record: WorkspaceDto | undefined): string {
   const created = events.find((e) => e.action === "session.create");
   return created?.actor ?? record?.ownerId ?? "unknown";
+}
+
+function resourcesToSizing(resources: WorkspaceDto["resources"]): WorkspaceSizing {
+  return {
+    vcpu: resources.cpuUnits / 1024,
+    memoryGib: resources.memoryMiB / 1024,
+    volumeGib: resources.volumeGiB,
+  };
+}
+
+const CREATE_DETAIL_RESOURCES =
+  /(?:^|[;\s])resources cpuUnits=(\d+) memoryMiB=(\d+) volumeGiB=(\d+)(?:;|$)/;
+
+function sizingFromCreateDetail(
+  events: readonly AuditEvent[],
+  workspaceId: string,
+): WorkspaceSizing {
+  const created = events.find((e) => e.action === "session.create");
+  const match = created?.detail.match(CREATE_DETAIL_RESOURCES);
+  if (match === undefined || match === null) {
+    throw new Error(
+      `cost report cannot price workspace ${workspaceId}: session.create audit detail does not record resources`,
+    );
+  }
+  const [, cpuUnitsRaw, memoryMiBRaw, volumeGiBRaw] = match;
+  if (cpuUnitsRaw === undefined || memoryMiBRaw === undefined || volumeGiBRaw === undefined) {
+    throw new Error(
+      `cost report cannot price workspace ${workspaceId}: malformed session.create resources detail`,
+    );
+  }
+  const cpuUnits = Number(cpuUnitsRaw);
+  const memoryMiB = Number(memoryMiBRaw);
+  const volumeGiB = Number(volumeGiBRaw);
+  if (![cpuUnits, memoryMiB, volumeGiB].every((n) => Number.isFinite(n) && n > 0)) {
+    throw new Error(
+      `cost report cannot price workspace ${workspaceId}: non-positive session.create resources detail`,
+    );
+  }
+  return {
+    vcpu: cpuUnits / 1024,
+    memoryGib: memoryMiB / 1024,
+    volumeGib: volumeGiB,
+  };
+}
+
+function sizingOf(
+  workspaceId: string,
+  events: readonly AuditEvent[],
+  record: WorkspaceDto | undefined,
+): WorkspaceSizing {
+  return record === undefined
+    ? sizingFromCreateDetail(events, workspaceId)
+    : resourcesToSizing(record.resources);
 }
 
 /** Earliest event timestamp across the ledger (the window start), or `now`. */
@@ -160,6 +213,7 @@ export class CostService {
       return {
         workspaceId: id,
         owner: ownerOf(wsEvents, records.get(id)),
+        sizing: sizingOf(id, wsEvents, records.get(id)),
         checkpointAt: now,
         windowStart,
         runningMs: state.runningMs,
@@ -205,10 +259,11 @@ export class CostService {
         workspaceId: id,
         owner: ownerOf(wsEvents, record),
         ...(record === undefined ? {} : { state: record.state }),
+        sizing: sizingOf(id, wsEvents, record),
         events: wsEvents,
       };
     });
-    return computeFleetCost(inputs, this.deps.pricing, this.deps.sizing, now, window);
+    return computeFleetCost(inputs, this.deps.pricing, now, window);
   }
 
   /** Price from the checkpoints + the events since them (O(recent)). Resuming each
@@ -226,7 +281,7 @@ export class CostService {
     ]);
     const tailByWorkspace = groupSessions(tail);
     const records = new Map(workspaces.map((w) => [w.id, w]));
-    const { pricing, sizing } = this.deps;
+    const { pricing } = this.deps;
     const bySession: SessionCost[] = [];
     const rolled = new Set<string>();
 
@@ -244,6 +299,7 @@ export class CostService {
       bySession.push({
         workspaceId: r.workspaceId,
         owner: r.owner,
+        sizing: r.sizing,
         state: record?.state ?? (resumed.terminated ? "terminated" : "unknown"),
         terminated: resumed.terminated,
         ...priceDurations(
@@ -251,7 +307,7 @@ export class CostService {
           resumed.stoppedMs,
           resumed.teardownMs,
           pricing,
-          sizing,
+          r.sizing,
         ),
       });
     }
@@ -261,16 +317,18 @@ export class CostService {
       if (rolled.has(id)) continue;
       const intervals = deriveBillingIntervals(tailEvents, now);
       const record = records.get(id);
+      const sizing = sizingOf(id, tailEvents, record);
       bySession.push({
         workspaceId: id,
         owner: ownerOf(tailEvents, record),
+        sizing,
         state: record?.state ?? (intervals.terminated ? "terminated" : "unknown"),
         terminated: intervals.terminated,
         ...priceIntervals(intervals, pricing, sizing),
       });
     }
 
-    return aggregateFleetCost(bySession, pricing, sizing, now, windowStart);
+    return aggregateFleetCost(bySession, pricing, now, windowStart);
   }
 
   private now() {
@@ -287,6 +345,11 @@ export class StoredCostRollupStore implements CostRollupStore {
     return data.map((r) => ({
       workspaceId: r.workspaceId,
       owner: r.owner,
+      sizing: {
+        vcpu: r.vcpu,
+        memoryGib: r.memoryGib,
+        volumeGib: r.volumeGib,
+      },
       checkpointAt: r.checkpointAt,
       windowStart: r.windowStart,
       runningMs: r.runningMs,
@@ -311,7 +374,23 @@ export class StoredCostRollupStore implements CostRollupStore {
       assertAllProcessed(unprocessed, "delete");
     }
     if (records.length > 0) {
-      const { unprocessed } = await this.entity.put([...records]).go();
+      const { unprocessed } = await this.entity
+        .put(
+          records.map((r) => ({
+            workspaceId: r.workspaceId,
+            owner: r.owner,
+            vcpu: r.sizing.vcpu,
+            memoryGib: r.sizing.memoryGib,
+            volumeGib: r.sizing.volumeGib,
+            checkpointAt: r.checkpointAt,
+            windowStart: r.windowStart,
+            runningMs: r.runningMs,
+            stoppedMs: r.stoppedMs,
+            teardownMs: r.teardownMs,
+            phase: r.phase,
+          })),
+        )
+        .go();
       assertAllProcessed(unprocessed, "put");
     }
   }

@@ -53,22 +53,28 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **Watch this PR's rollout and golden-image convergence after merge.** The PR
-  #202 deploy path was recovered and production ran task definitions
-  `edd-prod-control-plane:27`, `edd-prod-reconciler:27`, and
-  `edd-prod-ssh-gateway:27` for tag `881c88c504e3`. This branch moved workspace
-  golden image publishing out of the EDD app and into the separate
-  `golden-images` GitHub Actions workflow on `main`/manual dispatch, while the
-  EDD app tracked source observations, verified ECR tag presence, and rolled the
-  catalog. After this branch merges, watch both the non-blocking `release`
-  workflow and the separate `golden-images` workflow, then verify
-  `/admin/images`, the image-source trigger rows, and the base-image catalog row
-  converge to the new golden tag without app-started CodeBuild. The production
-  bootstrap was already rerun with `EDD_RELEASE_GOLDEN_VARIANTS=omnibus`, so the
-  GitHub OIDC role and repo variables were ready for the new workflow. The
-  expected remote Terraform state object was still absent and still needed
-  migration to
+- **Watch this branch's rollout and golden-image convergence after merge.** PR
+  #203 deployed successfully for merge commit `b44acf698aaf`, and production was
+  healthy on task definition revision `:28` with control-plane desired/running
+  `2/2` and SSH desired/running `1/1`. The follow-up branch fixed the remaining
+  golden-image CI failures by adding the Terraform-managed `edd-base` ECR
+  repository, granting the release OIDC role access to it, and pushing the
+  per-arch base tag before variants build `FROM` it. After this branch merges,
+  watch the non-blocking `release` workflow and the separate `golden-images`
+  workflow, then verify `/admin/images`, image-source trigger rows, the base-image
+  catalog row, and ECR tags converge to the new main SHA. The live
+  `edd-prod/edd-base` repository was imported into ignored local operator state,
+  but the expected remote Terraform state object was still absent and still
+  needed migration to
   `s3://edd-tfstate-edd-prod/ecs-dev-desktop/edd-prod/terraform.tfstate`.
+- **Verify resource-sized workspace launches in production after merge.** Creation
+  now required/persisted explicit resources with defaults of 0.5 vCPU, 2 GiB RAM,
+  and 8 GiB disk and UI-selectable limits of 4 vCPU, 16 GiB RAM, and 64 GiB disk.
+  After the release, create one default workspace and one larger workspace,
+  confirm ECS task definitions carry the selected CPU/memory, confirm fresh
+  managed-EBS volumes use the selected size, and confirm cards/details/monitoring
+  and cost reports show per-workspace sizing. Existing prod workspaces may be
+  deleted instead of migrated; no compatibility fallback was added.
 - **Clear or resolve the two active production alarms after rollout.**
   `edd-prod-reconciler-dlq` still had old Scheduler failures for inactive task
   definition `edd-prod-reconciler:7`, and `edd-prod-workspaces-stuck-error`

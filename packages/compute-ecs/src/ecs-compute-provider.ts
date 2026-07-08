@@ -26,11 +26,8 @@ import {
   DEFAULT_ECS_CLUSTER,
   DEFAULT_WORKSPACE_LOG_STREAM_PREFIX,
   DEFAULT_WORKSPACE_CONTAINER,
-  DEFAULT_WORKSPACE_CPU,
-  DEFAULT_WORKSPACE_MEMORY,
   DEFAULT_WORKSPACE_MOUNT_PATH,
   DEFAULT_WORKSPACE_PORT,
-  DEFAULT_WORKSPACE_VOLUME_GIB,
 } from "@edd/config";
 import {
   DEFAULT_HEARTBEAT_INTERVAL_S,
@@ -50,6 +47,7 @@ import {
   type RunTaskInput,
   type TaskId,
   type WorkspaceAgentSecretRef,
+  type WorkspaceResources,
   type WorkspaceTaskRef,
 } from "@edd/core";
 
@@ -98,9 +96,6 @@ export interface EcsComputeConfig {
   assignPublicIp?: boolean;
   containerName?: string;
   mountPath?: string;
-  volumeSizeGiB?: number;
-  cpu?: string;
-  memory?: string;
   /** Base URL of the control plane injected into the workspace container. */
   controlPlaneUrl?: string;
   /**
@@ -293,22 +288,28 @@ export class EcsComputeProvider implements ComputeProvider {
     return this.config.cluster ?? DEFAULT_ECS_CLUSTER;
   }
 
-  private async ensureTaskDef(
-    image: BaseImage,
-    injected?: { wsId: string; entries: { name: string; valueFrom: string }[] },
-  ): Promise<string> {
+  private async ensureTaskDef(input: {
+    image: BaseImage;
+    resources: WorkspaceResources;
+    injected?: { wsId: string; entries: { name: string; valueFrom: string }[] };
+  }): Promise<string> {
     // A secret ARN is per-workspace, so the task def referencing it must be too;
-    // cache by (image, workspace). The plaintext-env path stays cached per image.
-    const cacheKey = injected !== undefined ? `${image}::${injected.wsId}` : image;
+    // cache by (image, workspace, resources). The plaintext-env path stays cached
+    // per image/resources pair.
+    const resourceKey = `${input.resources.cpuUnits.toString()}-${input.resources.memoryMiB.toString()}`;
+    const cacheKey =
+      input.injected !== undefined
+        ? `${input.image}::${resourceKey}::${input.injected.wsId}`
+        : `${input.image}::${resourceKey}`;
     const cached = this.registered.get(cacheKey);
     if (cached !== undefined) return cached;
     const out = await this.client.send(
       new RegisterTaskDefinitionCommand({
-        family: taskDefinitionFamily(image),
+        family: taskDefinitionFamily(input.image),
         requiresCompatibilities: ["FARGATE"],
         networkMode: "awsvpc",
-        cpu: this.config.cpu ?? DEFAULT_WORKSPACE_CPU,
-        memory: this.config.memory ?? DEFAULT_WORKSPACE_MEMORY,
+        cpu: String(input.resources.cpuUnits),
+        memory: String(input.resources.memoryMiB),
         // On real Fargate the execution role is required to pull a private-ECR
         // image and ship awslogs; the task role is the container's runtime
         // identity. Both optional config — omitted by the integ/sim harness.
@@ -319,7 +320,7 @@ export class EcsComputeProvider implements ComputeProvider {
         containerDefinitions: [
           {
             name: this.config.containerName ?? DEFAULT_WORKSPACE_CONTAINER,
-            image,
+            image: input.image,
             essential: true,
             // Declare the OpenVSCode HTTP port and sshd port (awsvpc shares the
             // task ENI, so this documents the contract the proxy/gateway use).
@@ -337,8 +338,8 @@ export class EcsComputeProvider implements ComputeProvider {
             // `secrets` (Secrets Manager) — ECS resolves them into the container env
             // at launch, never exposing them in DescribeTasks/CloudTrail the way
             // plaintext `environment` would.
-            ...(injected !== undefined && injected.entries.length > 0
-              ? { secrets: injected.entries }
+            ...(input.injected !== undefined && input.injected.entries.length > 0
+              ? { secrets: input.injected.entries }
               : {}),
             ...(this.config.logGroupName !== undefined
               ? {
@@ -504,7 +505,11 @@ export class EcsComputeProvider implements ComputeProvider {
       }
     }
     const injected = entries.length > 0 ? { wsId, entries } : undefined;
-    const taskDef = await this.ensureTaskDef(input.baseImage, injected);
+    const taskDef = await this.ensureTaskDef({
+      image: input.baseImage,
+      resources: input.resources,
+      ...(injected === undefined ? {} : { injected }),
+    });
 
     const workspaceEnv = workspaceEnvironment(
       this.config,
@@ -547,7 +552,7 @@ export class EcsComputeProvider implements ComputeProvider {
             managedEBSVolume: {
               roleArn: this.config.ebsRoleArn,
               ...(input.fromSnapshot === undefined
-                ? { sizeInGiB: this.config.volumeSizeGiB ?? DEFAULT_WORKSPACE_VOLUME_GIB }
+                ? { sizeInGiB: input.resources.volumeGiB }
                 : { snapshotId: input.fromSnapshot }),
               terminationPolicy: { deleteOnTermination: true },
             },
@@ -812,8 +817,9 @@ export class EcsComputeProvider implements ComputeProvider {
    * Build a provider from the ambient AWS env and control-plane env vars.
    * Reads: AWS_REGION, AWS_ENDPOINT_URL, ECS_CLUSTER, ECS_SUBNETS (comma-separated),
    * ECS_SECURITY_GROUPS (comma-separated), ECS_EBS_ROLE_ARN, ECS_EXECUTION_ROLE_ARN,
-   * ECS_TASK_ROLE_ARN, ECS_TASK_CPU, ECS_TASK_MEMORY, ECS_VOLUME_GIB, CONTROL_PLANE_URL,
-   * EDD_AGENT_SECRET, EDD_CONNECTION_SECRET. Throws loudly if required vars are absent.
+   * ECS_TASK_ROLE_ARN, CONTROL_PLANE_URL, EDD_AGENT_SECRET, EDD_CONNECTION_SECRET.
+   * Throws loudly if required vars are absent. Workspace CPU/RAM/disk are persisted
+   * per workspace and supplied to runTask.
    */
   static fromEnv(agentSecret?: string, connectionSecret?: string): EcsComputeProvider {
     const subnets = process.env.ECS_SUBNETS?.split(",").filter(Boolean) ?? [];
@@ -823,7 +829,6 @@ export class EcsComputeProvider implements ComputeProvider {
     if (!ebsRoleArn) throw new Error("COMPUTE_PROVIDER=ecs requires ECS_EBS_ROLE_ARN");
     const heartbeatIntervalS =
       positiveIntEnv("EDD_HEARTBEAT_INTERVAL_S") ?? DEFAULT_HEARTBEAT_INTERVAL_S;
-    const volumeSizeGiB = positiveIntEnv("ECS_VOLUME_GIB");
     return new EcsComputeProvider({
       client: EcsComputeProvider.client(),
       // Per-workspace tokens go into Secrets Manager (not plaintext env) whenever a
@@ -838,12 +843,6 @@ export class EcsComputeProvider implements ComputeProvider {
         ebsRoleArn,
         executionRoleArn: process.env.ECS_EXECUTION_ROLE_ARN,
         taskRoleArn: process.env.ECS_TASK_ROLE_ARN,
-        // Task sizing — optional overrides of the @edd/config defaults.
-        ...(process.env.ECS_TASK_CPU !== undefined ? { cpu: process.env.ECS_TASK_CPU } : {}),
-        ...(process.env.ECS_TASK_MEMORY !== undefined
-          ? { memory: process.env.ECS_TASK_MEMORY }
-          : {}),
-        ...(volumeSizeGiB !== undefined ? { volumeSizeGiB } : {}),
         // Public-subnet egress (image pulls; sim route-table model needs it too).
         assignPublicIp: process.env.ECS_ASSIGN_PUBLIC_IP === "1",
         controlPlaneUrl: process.env.CONTROL_PLANE_URL,

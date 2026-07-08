@@ -18,13 +18,9 @@ export function WorkspaceInfo({ ws }: { ws: WorkspaceDto }) {
     ["image", ws.baseImage],
     ...(ws.imageName !== undefined ? ([["name", ws.imageName]] as [string, string][]) : []),
     ["interface", ws.editor ?? "openvscode"],
-    ...(ws.resources !== undefined
-      ? ([
-          ["cpu", `${String(ws.resources.vcpu)} vCPU`],
-          ["memory", `${String(ws.resources.memoryGib)} GiB`],
-          ["disk", `${String(ws.resources.volumeGib)} GiB volume`],
-        ] as [string, string][])
-      : []),
+    ["cpu", `${String(ws.resources.cpuUnits / 1024)} vCPU`],
+    ["memory", `${String(ws.resources.memoryMiB / 1024)} GiB`],
+    ["disk", `${String(ws.resources.volumeGiB)} GiB volume`],
     ...(ws.diskUsedBytes !== undefined && ws.diskTotalBytes !== undefined
       ? ([["disk used", `${gib(ws.diskUsedBytes)} of ${gib(ws.diskTotalBytes)}`]] as [
           string,

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { BaseImageEntryDto, WorkspaceDto } from "@edd/api-contracts";
-import { SSH_BASE_DOMAIN, workspaceSizing } from "@edd/config";
+import { SSH_BASE_DOMAIN } from "@edd/config";
 import { isWorkspaceLabel, workspacePrincipal, workspaceSshHost } from "@edd/core";
 
 /**
@@ -33,10 +33,6 @@ export function enrichWorkspace(
           imageTools: entry.tools,
         }),
     ...(sshCommand === undefined ? {} : { sshCommand }),
-    // Provisioned sizing (deployment-wide today): what the card's CPU/MEM/disk
-    // line and the monitoring view show. Same env-derived values the compute
-    // provider provisions with and the cost model bills, so they can't drift.
-    resources: workspaceSizing(),
   };
 }
 

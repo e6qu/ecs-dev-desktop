@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { WorkspaceDto } from "@edd/api-contracts";
-import { workspacePricing, workspaceSizing } from "@edd/config";
+import { workspacePricing } from "@edd/config";
 import { isoTimestamp, type AuditEvent, type Clock } from "@edd/core";
 import { describe, expect, it } from "vitest";
 
@@ -16,7 +16,8 @@ import {
 // The real @edd/config defaults (us-east-1 on-demand; 0.5 vCPU / 2 GiB / 8 GiB),
 // so the service test is pinned to the rates the app actually charges.
 const PRICING = workspacePricing();
-const SIZING = workspaceSizing();
+const RESOURCES = { cpuUnits: 512, memoryMiB: 2048, volumeGiB: 8 } as const;
+const RESOURCE_DETAIL = "resources cpuUnits=512 memoryMiB=2048 volumeGiB=8; blank session";
 
 const hoursMs = (h: number) => h * 3_600_000;
 const epoch = Date.parse("2026-03-01T00:00:00.000Z");
@@ -29,13 +30,14 @@ const evt = (action: string, h: number, target: string, actor: string): AuditEve
   at: at(h),
   actor,
   target,
-  detail: "",
+  detail: action === "session.create" ? RESOURCE_DETAIL : "",
 });
 
 const dto = (id: string, ownerId: string, state: WorkspaceDto["state"]): WorkspaceDto => ({
   id,
   ownerId,
   baseImage: "golden/node:20",
+  resources: RESOURCES,
   state,
   createdAt: at(0),
   availableActions: [],
@@ -50,7 +52,6 @@ function service(events: AuditEvent[], workspaces: WorkspaceDto[]): CostService 
     workspaces: { list: () => Promise.resolve(workspaces) },
     clock,
     pricing: PRICING,
-    sizing: SIZING,
   });
 }
 
@@ -116,7 +117,7 @@ describe("CostService.report windowing", () => {
     at: day(d),
     actor: target,
     target,
-    detail: "",
+    detail: action === "session.create" ? RESOURCE_DETAIL : "",
   });
 
   function winService(events: AuditEvent[], workspaces: WorkspaceDto[]): CostService {
@@ -129,7 +130,6 @@ describe("CostService.report windowing", () => {
       workspaces: { list: () => Promise.resolve(workspaces) },
       clock: winClock,
       pricing: PRICING,
-      sizing: SIZING,
     });
   }
 
@@ -187,7 +187,6 @@ describe("CostService.rollupIfStale", () => {
       workspaces: { list: () => Promise.resolve([]) },
       clock: { now: () => isoTimestamp(nowIso) },
       pricing: PRICING,
-      sizing: SIZING,
       rollups: store,
     });
   }
@@ -195,6 +194,7 @@ describe("CostService.rollupIfStale", () => {
   const checkpoint = (checkpointAt: string): CostRollupRecord => ({
     workspaceId: "ws-r",
     owner: "alice@example.com",
+    sizing: { vcpu: 0.5, memoryGib: 2, volumeGib: 8 },
     checkpointAt,
     windowStart: at(0),
     runningMs: 0,
@@ -231,6 +231,7 @@ describe("StoredCostRollupStore.replaceAll — unprocessed items", () => {
   const rec: CostRollupRecord = {
     workspaceId: "ws-1",
     owner: "u1",
+    sizing: { vcpu: 0.5, memoryGib: 2, volumeGib: 8 },
     checkpointAt: at(4),
     windowStart: at(0),
     runningMs: 0,

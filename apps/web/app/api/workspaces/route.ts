@@ -106,6 +106,7 @@ async function handlePOST(req: Request) {
       ...(parsed.data.snapshotIntervalMs === undefined
         ? {}
         : { snapshotIntervalMs: parsed.data.snapshotIntervalMs }),
+      ...(parsed.data.resources === undefined ? {} : { resources: parsed.data.resources }),
       baseImage: image,
       editor,
       // Authoritative cap: enforced ATOMICALLY in the create transaction (the read

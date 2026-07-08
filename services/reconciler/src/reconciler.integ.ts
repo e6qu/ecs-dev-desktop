@@ -174,6 +174,7 @@ describe("Reconciler", () => {
             id: `ws-fleet-${String(i)}`,
             ownerId: `fleet-${String(i % 7)}`,
             baseImage: `img#${PAD}`,
+            resources: { cpuUnits: 512, memoryMiB: 2048, volumeGiB: 8 },
             state: "running",
             createdAt: T0,
             lastActivity: T0, // stale relative to LATER

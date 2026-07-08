@@ -616,6 +616,10 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
               --repository-names "eddsim/golden/typescript" \
               --query 'repositories[0].repositoryName' --output text)"
+          assert_eq "ECR edd-base repo exists" "eddsim/edd-base" \
+            "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
+              --repository-names "eddsim/edd-base" \
+              --query 'repositories[0].repositoryName' --output text)"
           assert_eq "ECR ssh-gateway repo exists" "eddsim/ssh-gateway" \
             "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
               --repository-names "eddsim/ssh-gateway" \
@@ -628,6 +632,10 @@ jobs:
             --repository-name "eddsim/golden/typescript" \
             --query 'lifecyclePolicyText' --output text > /dev/null
           printf 'PASS  ECR golden/typescript lifecycle policy\n'
+          aws --endpoint-url "${ENDPT}" ecr get-lifecycle-policy \
+            --repository-name "eddsim/edd-base" \
+            --query 'lifecyclePolicyText' --output text > /dev/null
+          printf 'PASS  ECR edd-base lifecycle policy\n'
           assert_eq "ECR control-plane scan-on-push enabled" "True" \
             "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
               --repository-names "eddsim/control-plane" \
@@ -659,6 +667,22 @@ jobs:
           assert_eq "ECR golden/typescript kmsKey matches" "${KMS_ARN}" \
             "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
               --repository-names "eddsim/golden/typescript" \
+              --query 'repositories[0].encryptionConfiguration.kmsKey' --output text)"
+          assert_eq "ECR edd-base scan-on-push enabled" "True" \
+            "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
+              --repository-names "eddsim/edd-base" \
+              --query 'repositories[0].imageScanningConfiguration.scanOnPush' --output text)"
+          assert_eq "ECR edd-base encryption type KMS" "KMS" \
+            "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
+              --repository-names "eddsim/edd-base" \
+              --query 'repositories[0].encryptionConfiguration.encryptionType' --output text)"
+          assert_eq "ECR edd-base imageTagMutability IMMUTABLE" "IMMUTABLE" \
+            "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
+              --repository-names "eddsim/edd-base" \
+              --query 'repositories[0].imageTagMutability' --output text)"
+          assert_eq "ECR edd-base kmsKey matches" "${KMS_ARN}" \
+            "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
+              --repository-names "eddsim/edd-base" \
               --query 'repositories[0].encryptionConfiguration.kmsKey' --output text)"
 
           # -- ECS ----------------------------------------------------------------
@@ -736,7 +760,7 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" ecs describe-task-definition \
               --task-definition "eddsim-control-plane" \
               --query 'taskDefinition.containerDefinitions[0].logConfiguration.logDriver' --output text)"
-          assert_eq "ECS control-plane healthCheck interval 30" "30" \
+          assert_eq "ECS control-plane healthCheck interval 10" "10" \
             "$(aws --endpoint-url "${ENDPT}" ecs describe-task-definition \
               --task-definition "eddsim-control-plane" \
               --query 'taskDefinition.containerDefinitions[0].healthCheck.interval' --output text)"

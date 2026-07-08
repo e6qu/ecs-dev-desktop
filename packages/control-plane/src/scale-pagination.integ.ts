@@ -56,6 +56,7 @@ describe("WorkspaceService.list pagination at scale (DynamoDB Local)", () => {
           id,
           ownerId: owner,
           baseImage: `golden/node:20#${PAD}`,
+          resources: { cpuUnits: 512, memoryMiB: 2048, volumeGiB: 8 },
           state: "running",
           createdAt: at,
           lastActivity: at,

@@ -130,17 +130,15 @@ export function WorkspaceCard({
           </span>
         </div>
       )}
-      {ws.resources !== undefined && (
-        <div className="meta-line">
-          <span className="meta-label">size</span>
-          <span className="meta-value mono">
-            {ws.resources.vcpu} vCPU · {ws.resources.memoryGib} GiB mem ·{" "}
-            {ws.diskUsedBytes !== undefined
-              ? `disk ${gib(ws.diskUsedBytes)} / ${ws.resources.volumeGib} GiB`
-              : `${ws.resources.volumeGib} GiB disk`}
-          </span>
-        </div>
-      )}
+      <div className="meta-line">
+        <span className="meta-label">size</span>
+        <span className="meta-value mono">
+          {ws.resources.cpuUnits / 1024} vCPU · {ws.resources.memoryMiB / 1024} GiB mem ·{" "}
+          {ws.diskUsedBytes !== undefined
+            ? `disk ${gib(ws.diskUsedBytes)} / ${ws.resources.volumeGiB} GiB`
+            : `${ws.resources.volumeGiB} GiB disk`}
+        </span>
+      </div>
       <div
         className="meta-line"
         data-testid={TESTID.workspaceSnapshot}

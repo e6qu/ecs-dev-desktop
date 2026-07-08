@@ -120,12 +120,15 @@ It publishes:
 For CI-driven publishes, the [`release`](../.github/workflows/release.yml) workflow
 builds, pushes, and deploys the control-plane, reconciler, and SSH-gateway images
 on every `main` merge, on a `v*` tag, or by manual dispatch via GitHub OIDC → an
-AWS role with ECR/ECS/Scheduler permissions (no static secrets). It sets up QEMU
-and Docker Buildx so the default `amd64 arm64` multi-arch build succeeds on
-GitHub's x86\*64 runners, then registers fresh task-definition revisions from the
-currently deployed definitions, changing only the image references. It updates the
-control-plane and SSH-gateway ECS services, updates the reconciler Scheduler target,
-and waits for ECS service stability.
+AWS role with ECR/ECS/Scheduler permissions (no static secrets). It builds the
+currently deployed `amd64` architecture with Docker Buildx + GitHub Actions cache,
+then registers fresh task-definition revisions from the currently deployed
+definitions, changing only the image references. It updates the control-plane and
+SSH-gateway ECS services, updates the reconciler Scheduler target, and waits for
+ECS service stability. The control-plane service is configured for rolling
+deployments with a two-task desired count, `minimumHealthyPercent = 100`, and
+`maximumPercent = 200`, so a healthy old task remains serving while a replacement
+task comes up.
 
 The separate [`golden-images`](../.github/workflows/golden-images.yml) workflow
 publishes workspace/golden images on `main` when image inputs change and by manual

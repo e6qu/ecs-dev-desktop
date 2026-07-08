@@ -7,6 +7,9 @@ import {
   MAX_SNAPSHOT_INTERVAL_MS,
   MIN_SNAPSHOT_INTERVAL_MS,
   type EditorKindDto,
+  type WorkspaceCpuUnitsDto,
+  type WorkspaceMemoryMiBDto,
+  type WorkspaceVolumeGiBDto,
 } from "@edd/api-contracts";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -25,6 +28,34 @@ const api = new ApiClient({ baseUrl: "" });
 const DEFAULT_SNAPSHOT_INTERVAL_MINUTES = 5;
 const MIN_SNAPSHOT_INTERVAL_MINUTES = MIN_SNAPSHOT_INTERVAL_MS / (60 * 1000);
 const MAX_SNAPSHOT_INTERVAL_MINUTES = MAX_SNAPSHOT_INTERVAL_MS / (60 * 1000);
+const CPU_OPTIONS = [
+  { value: 512, label: "0.5 vCPU" },
+  { value: 1024, label: "1 vCPU" },
+  { value: 2048, label: "2 vCPU" },
+  { value: 4096, label: "4 vCPU" },
+] as const satisfies readonly { value: WorkspaceCpuUnitsDto; label: string }[];
+const MEMORY_OPTIONS = [
+  { value: 2048, label: "2 GiB" },
+  { value: 4096, label: "4 GiB" },
+  { value: 8192, label: "8 GiB" },
+  { value: 16384, label: "16 GiB" },
+] as const satisfies readonly { value: WorkspaceMemoryMiBDto; label: string }[];
+const VOLUME_OPTIONS = [
+  { value: 8, label: "8 GiB" },
+  { value: 16, label: "16 GiB" },
+  { value: 32, label: "32 GiB" },
+  { value: 64, label: "64 GiB" },
+] as const satisfies readonly { value: WorkspaceVolumeGiBDto; label: string }[];
+const MEMORY_BY_CPU: Record<WorkspaceCpuUnitsDto, readonly WorkspaceMemoryMiBDto[]> = {
+  512: [2048, 4096],
+  1024: [2048, 4096, 8192],
+  2048: [4096, 8192, 16384],
+  4096: [8192, 16384],
+};
+
+function memoryFitsCpu(cpu: WorkspaceCpuUnitsDto, memory: WorkspaceMemoryMiBDto): boolean {
+  return MEMORY_BY_CPU[cpu].includes(memory);
+}
 
 interface CatalogOption {
   name: string;
@@ -96,6 +127,9 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
   const [mode, setMode] = useState<StartMode>("blank");
   // Per-session interface; defaults to OpenVSCode (every curated image's default).
   const [editor, setEditor] = useState<"" | EditorKindDto>("openvscode");
+  const [cpuUnits, setCpuUnits] = useState<WorkspaceCpuUnitsDto>(512);
+  const [memoryMiB, setMemoryMiB] = useState<WorkspaceMemoryMiBDto>(2048);
+  const [volumeGiB, setVolumeGiB] = useState<WorkspaceVolumeGiBDto>(8);
   const [snapshotIntervalMinutes, setSnapshotIntervalMinutes] = useState(
     String(DEFAULT_SNAPSHOT_INTERVAL_MINUTES),
   );
@@ -188,6 +222,7 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
     !busy &&
     image !== "" &&
     snapshotIntervalMsFromInput(snapshotIntervalMinutes) !== null &&
+    memoryFitsCpu(cpuUnits, memoryMiB) &&
     (mode === "blank" ||
       (mode === "repo" && selectedRepo !== null) ||
       (mode === "public" && publicRepoUrl.trim().length > 0) ||
@@ -197,6 +232,7 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
     const ws = await api.createWorkspace({
       baseImage: image,
       ...(editor === "" ? {} : { editor }),
+      resources: { cpuUnits, memoryMiB, volumeGiB },
       snapshotIntervalMs: snapshotIntervalMsFromInput(snapshotIntervalMinutes) ?? undefined,
       ...(repoUrl !== undefined ? { repoUrl } : {}),
       ...(repoRef !== undefined ? { repoRef } : {}),
@@ -539,6 +575,74 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
           <option value="claude">Claude Code — local web UI</option>
           <option value="codex">Codex — local web UI</option>
         </select>
+        <div className="setting-grid">
+          <label className="stack" style={{ gap: 6 }}>
+            <span className="mono" style={{ color: "var(--dim)", fontSize: 12 }}>
+              CPU
+            </span>
+            <select
+              className="select"
+              aria-label="workspace CPU"
+              value={cpuUnits}
+              onChange={(e) => {
+                const next = Number(e.target.value) as WorkspaceCpuUnitsDto;
+                setCpuUnits(next);
+                if (!memoryFitsCpu(next, memoryMiB)) {
+                  const first = MEMORY_OPTIONS.find((opt) => memoryFitsCpu(next, opt.value));
+                  if (first !== undefined) setMemoryMiB(first.value);
+                }
+              }}
+            >
+              {CPU_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="stack" style={{ gap: 6 }}>
+            <span className="mono" style={{ color: "var(--dim)", fontSize: 12 }}>
+              RAM
+            </span>
+            <select
+              className="select"
+              aria-label="workspace RAM"
+              value={memoryMiB}
+              onChange={(e) => {
+                setMemoryMiB(Number(e.target.value) as WorkspaceMemoryMiBDto);
+              }}
+            >
+              {MEMORY_OPTIONS.map((opt) => (
+                <option
+                  key={opt.value}
+                  value={opt.value}
+                  disabled={!memoryFitsCpu(cpuUnits, opt.value)}
+                >
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="stack" style={{ gap: 6 }}>
+            <span className="mono" style={{ color: "var(--dim)", fontSize: 12 }}>
+              disk
+            </span>
+            <select
+              className="select"
+              aria-label="workspace disk"
+              value={volumeGiB}
+              onChange={(e) => {
+                setVolumeGiB(Number(e.target.value) as WorkspaceVolumeGiBDto);
+              }}
+            >
+              {VOLUME_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
         <label className="stack" style={{ gap: 6, alignSelf: "flex-start" }}>
           <span className="mono" style={{ color: "var(--dim)", fontSize: 12 }}>
             snapshot interval

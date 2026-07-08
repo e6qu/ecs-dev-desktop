@@ -78,6 +78,24 @@ export {
 // Editor choice (openvscode | monaco): flows base-image → workspace → EDD_EDITOR_MODE.
 export { asEditorKind, DEFAULT_EDITOR, EDITOR_KINDS, type EditorKind } from "./domain/editor";
 
+export type {
+  WorkspaceCpuUnits,
+  WorkspaceMemoryMiB,
+  WorkspaceResourceInput,
+  WorkspaceVolumeGiB,
+  WorkspaceResources,
+} from "./domain/workspace-resources";
+export {
+  assertValidWorkspaceResources,
+  DEFAULT_WORKSPACE_CPU_UNITS,
+  DEFAULT_WORKSPACE_MEMORY_MIB,
+  DEFAULT_WORKSPACE_VOLUME_GIB,
+  isValidWorkspaceResourcePair,
+  WORKSPACE_CPU_UNITS,
+  WORKSPACE_MEMORY_MIB,
+  WORKSPACE_VOLUME_GIB,
+} from "./domain/workspace-resources";
+
 // Workspace domain object + pure lifecycle functions (functional core).
 export type {
   DesiredState,

@@ -230,6 +230,7 @@ describe("workspaceEnvironment", () => {
 
 describe("EcsComputeProvider.runTask cleanup on a failed launch", () => {
   const LAUNCHED_ARN = "arn:aws:ecs:us-east-1:123456789012:task/edd/abc123";
+  const RESOURCES = { cpuUnits: 512, memoryMiB: 2048, volumeGiB: 8 } as const;
 
   /** A client whose launched task stops before becoming ready (so awaitTaskReady
    * throws), recording every StopTask issued so the test can assert cleanup. */
@@ -268,6 +269,7 @@ describe("EcsComputeProvider.runTask cleanup on a failed launch", () => {
       provider.runTask({
         workspaceId: workspaceId("ws-fail"),
         baseImage: baseImage("edd-workspace:e2e"),
+        resources: RESOURCES,
       }),
     ).rejects.toThrow(/stopped before becoming ready/);
 
@@ -283,6 +285,7 @@ describe("EcsComputeProvider.runTask cleanup on a failed launch", () => {
 // `deleteOnTermination` + the fresh-vs-hydrate (sizeInGiB ↔ snapshotId) branch.
 describe("EcsComputeProvider.runTask request shape (workspace tag + managed EBS + FARGATE)", () => {
   const ARN = "arn:aws:ecs:us-east-1:123456789012:task/edd/run1";
+  const RESOURCES = { cpuUnits: 1024, memoryMiB: 4096, volumeGiB: 64 } as const;
 
   function capturingClient(runInputs: RunTaskCommandInput[]): ECSClient {
     const send = (command: unknown): Promise<unknown> => {
@@ -313,6 +316,7 @@ describe("EcsComputeProvider.runTask request shape (workspace tag + managed EBS 
     await provider.runTask({
       workspaceId: workspaceId("ws-1"),
       baseImage: baseImage("edd-workspace:e2e"),
+      resources: RESOURCES,
     });
     const input = runInputs[0];
     expect(input?.launchType).toBe("FARGATE");
@@ -321,7 +325,7 @@ describe("EcsComputeProvider.runTask request shape (workspace tag + managed EBS 
     const vol = input?.volumeConfigurations?.[0]?.managedEBSVolume;
     expect(vol?.roleArn).toBe("arn:aws:iam::123456789012:role/ebs");
     expect(vol?.terminationPolicy?.deleteOnTermination).toBe(true);
-    expect(vol?.sizeInGiB).toBeGreaterThan(0);
+    expect(vol?.sizeInGiB).toBe(64);
     expect(vol?.snapshotId).toBeUndefined();
   });
 
@@ -331,6 +335,7 @@ describe("EcsComputeProvider.runTask request shape (workspace tag + managed EBS 
     await provider.runTask({
       workspaceId: workspaceId("ws-2"),
       baseImage: baseImage("edd-workspace:e2e"),
+      resources: RESOURCES,
       fromSnapshot: snapshotId("snap-xyz"),
     });
     const vol = runInputs[0]?.volumeConfigurations?.[0]?.managedEBSVolume;
@@ -383,6 +388,7 @@ describe("EcsComputeProvider.listWorkspaceTasks", () => {
 // placement fails for a recoverable reason (no Fargate capacity / ENI exhaustion). It
 // does NOT throw, so reading tasks[0].taskArn would raise a misleading "missing taskArn".
 describe("EcsComputeProvider.runTask placement failure (failures[])", () => {
+  const RESOURCES = { cpuUnits: 512, memoryMiB: 2048, volumeGiB: 8 } as const;
   function placementFailureClient(reason: string): ECSClient {
     const send = (command: unknown): Promise<unknown> => {
       if (command instanceof RegisterTaskDefinitionCommand) {
@@ -407,6 +413,7 @@ describe("EcsComputeProvider.runTask placement failure (failures[])", () => {
       provider.runTask({
         workspaceId: workspaceId("ws-cap"),
         baseImage: baseImage("edd-workspace:e2e"),
+        resources: RESOURCES,
       }),
     ).rejects.toThrow(/RESOURCE:MEMORY/);
   });

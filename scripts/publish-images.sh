@@ -37,6 +37,8 @@
 #   EDD_BUILDX_NO_LOAD  set to "1" to omit `--load` (only needed if you are
 #                       using a non-default buildx builder that stores images
 #                       internally).
+#   EDD_BUILDX_CACHE    set to "gha" on GitHub Actions to use BuildKit's
+#                       GitHub cache backend for repeat builds.
 #
 # The control-plane image MUST be built from the repo root (monorepo context).
 # Portable: POSIX sh, passes shellcheck, runs under bash and zsh on macOS+Linux.
@@ -104,6 +106,12 @@ buildx_build() { # <arch> <full-tag> <dockerfile> <context> [extras...]
   if [ "${EDD_BUILDX_NO_LOAD:-0}" != "1" ]; then
     set -- "$@" "--load"
   fi
+  if [ "${EDD_BUILDX_CACHE:-}" = "gha" ]; then
+    scope=$(printf '%s' "$full" | tr '/:' '--')
+    set -- "$@" \
+      --cache-from "type=gha,scope=${scope}" \
+      --cache-to "type=gha,scope=${scope},mode=max"
+  fi
 
   docker buildx build \
     --platform "linux/${arch}" \
@@ -136,8 +144,16 @@ build_golden_arch() { # <arch>
   base_full="${registry}/${prefix}/edd-base:${tag}-${arch}"
 
   echo "edd: building golden base ${base_full}"
-  sh "$repo/infra/images/base/build.sh" "$base_full" \
-    --platform "linux/${arch}" --load
+  set -- --platform "linux/${arch}" --load
+  if [ "${EDD_BUILDX_CACHE:-}" = "gha" ]; then
+    scope=$(printf '%s' "$base_full" | tr '/:' '--')
+    set -- "$@" \
+      --cache-from "type=gha,scope=${scope}" \
+      --cache-to "type=gha,scope=${scope},mode=max"
+  fi
+  sh "$repo/infra/images/base/build.sh" "$base_full" "$@"
+  echo "edd: pushing golden base ${base_full}"
+  docker push "$base_full"
 
   for v in $variants; do
     variant_full="${registry}/${prefix}/golden/${v}:${tag}-${arch}"

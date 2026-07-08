@@ -45,6 +45,7 @@ function makeRandomWorkspace(opts?: {
     id: workspaceId("ws-fuzz"),
     ownerId: ownerId("alice"),
     baseImage: baseImage("golden/node:20"),
+    resources: { cpuUnits: 512, memoryMiB: 2048, volumeGiB: 8 },
     state: opts?.state ?? "running",
     desiredState: "present",
     createdAt: isoTimestamp("2026-01-01T00:00:00.000Z"),

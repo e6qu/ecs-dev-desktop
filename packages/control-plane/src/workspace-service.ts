@@ -5,6 +5,7 @@ import type { WorkspaceDto, WorkspaceInspectionDto } from "@edd/api-contracts";
 import {
   assertNever,
   assertTerminable,
+  assertValidWorkspaceResources,
   baseImage,
   conflictError,
   deriveWorkspaceTimeline,
@@ -68,6 +69,7 @@ import {
   type WorkspaceId,
   type WorkspaceOwnerRole,
   type WorkspaceState,
+  type WorkspaceResources,
 } from "@edd/core";
 import {
   writeTransaction,
@@ -262,6 +264,11 @@ interface WorkspaceRecord {
   repoUrl?: string;
   baseImage: string;
   editor?: EditorKind;
+  resources: {
+    cpuUnits: number;
+    memoryMiB: number;
+    volumeGiB: number;
+  };
   state: WorkspaceState;
   desiredState?: DesiredState;
   deleteRequestedAt?: string;
@@ -317,6 +324,7 @@ function toWorkspace(r: WorkspaceRecord): Workspace {
     repoUrl: r.repoUrl,
     baseImage: baseImage(r.baseImage),
     editor: r.editor,
+    resources: assertValidWorkspaceResources(r.resources),
     state: r.state,
     desiredState: r.desiredState,
     deleteRequestedAt:
@@ -361,6 +369,7 @@ export class WorkspaceService {
     /** The editor this workspace serves — resolved from the base-image catalog entry by the
      * route; defaults to OpenVSCode. Flows to the container as `EDD_EDITOR_MODE`. */
     editor?: EditorKind;
+    resources?: WorkspaceResources;
     snapshotIntervalMs?: number;
     repoUrl?: string;
     repoRef?: string;
@@ -396,6 +405,7 @@ export class WorkspaceService {
     ownerRole?: WorkspaceOwnerRole;
     baseImage: BaseImage;
     editor?: EditorKind;
+    resources?: WorkspaceResources;
     snapshotIntervalMs?: number;
     repoUrl?: string;
     quotaLimit?: number;
@@ -410,6 +420,7 @@ export class WorkspaceService {
       repoUrl: input.repoUrl,
       baseImage: input.baseImage,
       ...(input.editor === undefined ? {} : { editor: input.editor }),
+      ...(input.resources === undefined ? {} : { resources: input.resources }),
       ...(input.snapshotIntervalMs === undefined
         ? {}
         : { snapshotIntervalMs: input.snapshotIntervalMs }),
@@ -421,7 +432,9 @@ export class WorkspaceService {
         action: "session.create",
         target: id,
         actor: input.ownerEmail ?? input.ownerId,
-        detail: input.repoUrl === undefined ? "blank session" : `repo ${input.repoUrl}`,
+        detail:
+          `resources cpuUnits=${String(ws.resources.cpuUnits)} memoryMiB=${String(ws.resources.memoryMiB)} volumeGiB=${String(ws.resources.volumeGiB)}; ` +
+          (input.repoUrl === undefined ? "blank session" : `repo ${input.repoUrl}`),
       },
       input.quotaLimit,
     );
@@ -480,6 +493,7 @@ export class WorkspaceService {
         workspaceId: id,
         baseImage: ws.baseImage,
         ...(ws.editor === undefined ? {} : { editor: ws.editor }),
+        resources: ws.resources,
         ...(ws.repoUrl === undefined ? {} : { repoUrl: ws.repoUrl }),
         ...(opts?.repoRef === undefined ? {} : { repoRef: opts.repoRef }),
       });
@@ -1007,6 +1021,7 @@ export class WorkspaceService {
         workspaceId: ws.id,
         baseImage: ws.baseImage,
         ...(ws.editor === undefined ? {} : { editor: ws.editor }),
+        resources: ws.resources,
         fromSnapshot: ws.latestSnapshotId,
       });
     } catch (e) {

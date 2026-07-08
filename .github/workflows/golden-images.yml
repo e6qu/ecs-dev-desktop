@@ -79,6 +79,7 @@ jobs:
       TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.tag || github.sha }}
       EDD_BUILD_TARGET: golden
       EDD_BUILD_ARCHS: amd64
+      EDD_BUILDX_CACHE: gha
     steps:
       - uses: actions/checkout@v6.0.2
 

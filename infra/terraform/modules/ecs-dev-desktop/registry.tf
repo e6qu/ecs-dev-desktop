@@ -41,6 +41,28 @@ resource "aws_ecr_lifecycle_policy" "control_plane" {
   policy     = local.ecr_lifecycle_policy
 }
 
+resource "aws_ecr_repository" "golden_base" {
+  name                 = "${var.name}/edd-base"
+  image_tag_mutability = "IMMUTABLE"
+  force_delete         = !var.deletion_protection
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+
+  encryption_configuration {
+    encryption_type = "KMS"
+    kms_key         = aws_kms_key.this.arn
+  }
+
+  tags = merge(local.tags, { Name = "${var.name}-golden-base" })
+}
+
+resource "aws_ecr_lifecycle_policy" "golden_base" {
+  repository = aws_ecr_repository.golden_base.name
+  policy     = local.ecr_lifecycle_policy
+}
+
 resource "aws_ecr_repository" "golden" {
   for_each             = toset(var.golden_image_repos)
   name                 = "${var.name}/golden/${each.value}"

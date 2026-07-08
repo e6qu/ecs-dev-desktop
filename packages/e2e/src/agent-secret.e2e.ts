@@ -36,6 +36,8 @@ import {
 
 configureAwsSimEnv();
 
+const RESOURCES = { cpuUnits: 512, memoryMiB: 2048, volumeGiB: 8 } as const;
+
 const SIM = awsSimClientConfig();
 const RUN_ID = randomUUID().slice(0, 8);
 const CLUSTER = `edd-agent-secret-${RUN_ID}`;
@@ -88,6 +90,7 @@ describe(
       const task = await compute.runTask({
         workspaceId: workspaceId(WS_ID),
         baseImage: baseImage(WORKSPACE_IMAGE),
+        resources: RESOURCES,
       });
       taskArn = task.id;
       const tasks = await ecs.send(

@@ -172,7 +172,7 @@ export class DemoControlPlane {
   costReport(windowDays?: number): FleetCostReport {
     const now = this.now();
     const window = windowDays === undefined ? undefined : relativeWindow(now, windowDays);
-    return computeFleetCost(this.costInputs(), DEMO_PRICING, DEMO_SIZING, now, window);
+    return computeFleetCost(this.costInputs(), DEMO_PRICING, now, window);
   }
 
   /** One cost input per workspace that has lifecycle events — grouping the audit ledger by
@@ -192,7 +192,9 @@ export class DemoControlPlane {
         events[0]?.actor ??
         "unknown";
       inputs.push(
-        live ? { workspaceId, owner, state: live.state, events } : { workspaceId, owner, events },
+        live
+          ? { workspaceId, owner, sizing: DEMO_SIZING, state: live.state, events }
+          : { workspaceId, owner, sizing: DEMO_SIZING, events },
       );
     }
     return inputs;

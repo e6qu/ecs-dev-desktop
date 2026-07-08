@@ -180,6 +180,7 @@ describe("computeFleetCost", () => {
         {
           workspaceId: "ws-1",
           owner: "alice",
+          sizing: SIZING,
           state: "running",
           events: [evt("session.create", 0, "ws-1")],
         },
@@ -187,12 +188,12 @@ describe("computeFleetCost", () => {
         {
           workspaceId: "ws-2",
           owner: "bob",
+          sizing: SIZING,
           state: "stopped",
           events: [evt("session.create", 0, "ws-2"), evt("session.stop", 1, "ws-2")],
         },
       ],
       PRICING,
-      SIZING,
       at(2),
     );
 
@@ -216,6 +217,7 @@ describe("computeFleetCost", () => {
         {
           workspaceId: "ws-9",
           owner: "carol",
+          sizing: SIZING,
           events: [
             evt("session.create", 0, "ws-9"),
             evt("session.delete", 1, "ws-9"),
@@ -224,7 +226,6 @@ describe("computeFleetCost", () => {
         },
       ],
       PRICING,
-      SIZING,
       at(5),
     );
     expect(report.bySession[0]?.state).toBe("terminated");
@@ -349,12 +350,14 @@ describe("computeFleetCost windowing", () => {
     {
       workspaceId: "ws-recent",
       owner: "alice",
+      sizing: SIZING,
       state: "running",
       events: [evt("session.create", 60, "ws-recent")], // started 12h before NOW, still running
     },
     {
       workspaceId: "ws-old",
       owner: "bob",
+      sizing: SIZING,
       state: "deleted",
       // Created and fully torn down early (terminated) — no in-window activity.
       events: [
@@ -366,7 +369,7 @@ describe("computeFleetCost windowing", () => {
   ];
 
   it("prices only in-window run-time and drops sessions inactive in the window", () => {
-    const report = computeFleetCost(inputs, PRICING, SIZING, NOW, relativeWindow(NOW, 1));
+    const report = computeFleetCost(inputs, PRICING, NOW, relativeWindow(NOW, 1));
     expect(report.bySession.map((s) => s.workspaceId)).toEqual(["ws-recent"]);
     expect(report.bySession[0]?.runningMs).toBe(12 * HOUR); // clipped to the last day
     expect(report.byUser.map((u) => u.owner)).toEqual(["alice"]);
@@ -374,7 +377,7 @@ describe("computeFleetCost windowing", () => {
   });
 
   it("without a window prices the full lifetime (windowStart = earliest event)", () => {
-    const report = computeFleetCost(inputs, PRICING, SIZING, NOW);
+    const report = computeFleetCost(inputs, PRICING, NOW);
     expect(report.bySession.map((s) => s.workspaceId).sort()).toEqual(["ws-old", "ws-recent"]);
     expect(report.windowStart).toBe(at(0));
   });

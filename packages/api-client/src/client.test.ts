@@ -52,6 +52,7 @@ describe("ApiClient", () => {
             id: "ws-1",
             ownerId: "alice",
             baseImage: "img",
+            resources: { cpuUnits: 512, memoryMiB: 2048, volumeGiB: 8 },
             state: "stopped",
             createdAt: "2026-06-01T00:00:00.000Z",
             availableActions: ["start", "delete"],

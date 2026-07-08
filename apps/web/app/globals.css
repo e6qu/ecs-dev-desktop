@@ -563,6 +563,13 @@ main {
   gap: 14px;
 }
 
+.setting-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, max-content));
+  gap: 12px;
+  align-items: end;
+}
+
 .picker-card {
   width: 100%;
   text-align: left;
@@ -1232,6 +1239,7 @@ main {
 
   .grid,
   .picker-grid,
+  .setting-grid,
   .topo-nodes,
   .stat-grid,
   .form-grid {
