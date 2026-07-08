@@ -4,6 +4,26 @@
 
 ## Open
 
+- **Post-deploy screenshot smoke lacked a Playwright browser install — FIXED in
+  current branch (2026-07-08).** After PR #208 merged, `post-deploy-smoke` run
+  `28942687870` passed coordinate validation and app-build readiness but failed
+  before opening any workspace because Chromium was absent from the runner cache:
+  `browserType.launch: Executable doesn't exist at ... chromium_headless_shell`.
+  The workflow now runs `pnpm --filter web exec playwright install --with-deps
+chromium` before the screenshot verifier, so the smoke does not depend on an
+  implicit hosted-runner browser state.
+
+- **Smoke-created workspaces could remain live after DELETE while the smoke
+  reported success — FIXED in current branch (2026-07-08).** The deployed smoke
+  helpers sent DELETE requests and exited without proving the workspace records
+  converged to `terminated`. A live production rerun on `omnibus:b48030c13956`
+  showed DELETE tombstones stuck across reconciler sweeps because the deployed
+  control plane still accepted `active:false` functional heartbeats for
+  `deleting` workspaces, producing `finishDeleting` version races. Heartbeats now
+  reject every non-`running`/non-`idle` workspace, including stopped/deleting
+  `active:false` reports, and both deployed-workspace smoke scripts wait for
+  every created workspace to reach `terminated` after DELETE.
+
 - **Post-deploy smoke could not authenticate against production after PR #207 —
   FIXED in current branch (2026-07-08).** The merged smoke workflow failed
   loudly before opening workspaces because live bootstrap state was incomplete:

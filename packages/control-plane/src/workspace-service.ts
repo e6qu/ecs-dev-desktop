@@ -1179,6 +1179,9 @@ export class WorkspaceService {
       if (!found.ok) return found;
       const at = isoTimestamp(this.deps.clock.now());
       let ws = found.value.ws;
+      if (ws.state !== "running" && ws.state !== "idle") {
+        return err(conflictError(`cannot heartbeat ${id}: workspace is ${ws.state}`));
+      }
       if (report?.active !== false) {
         const active = markActivity(ws, at);
         if (!active.ok) return active;

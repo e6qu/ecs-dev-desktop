@@ -53,16 +53,18 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **After this follow-up PR merges, verify the deployed screenshot smoke and
-  golden image.** PR #207's rollout was verified live after fixing production
-  bootstrap/IAM/KMS and the smoke-email gap. The follow-up branch changed the
-  post-deploy smoke to open all four workspace types in Chromium and upload
-  screenshots, and changed the base image to install/assert `bubblewrap` for
-  Codex's Linux sandbox prerequisite. After merge, watch `release`,
-  `post-deploy-smoke`, and `golden-images`; confirm the screenshot artifact
-  contains OpenVSCode, Monaco, Claude Local Web UI, and Codex Local Web UI
-  renders, and confirm the new golden image tag is built/pushed and used by the
-  catalog.
+- **After this follow-up PR merges, rerun the deployed screenshot smoke from
+  GitHub Actions and verify cleanup convergence.** PR #208's release and
+  golden-images runs succeeded, production used `deploy.sha=b48030c13956`, and a
+  manual live screenshot smoke opened all four editor modes on
+  `omnibus:b48030c13956` with valid screenshots. The open follow-up fixed the
+  missing Playwright Chromium install in `post-deploy-smoke`, made the smoke wait
+  for DELETE cleanup to reach `terminated`, and fixed the heartbeat/version race
+  that made deleting smoke workspaces converge slowly. After merge, watch
+  `release` and `post-deploy-smoke`; confirm the GitHub screenshot artifact
+  contains OpenVSCode, Monaco, Claude Local Web UI, and Codex Local Web UI, and
+  confirm the smoke-created workspace records terminate without lingering live
+  tasks.
 - **Apply/verify Terraform drift for fast health checks.** The source expected
   10-second ALB/NLB target-group health checks, but live AWS still showed
   30-second intervals after the image-only release. Apply the Terraform stack from

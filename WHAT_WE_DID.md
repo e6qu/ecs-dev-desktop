@@ -3283,3 +3283,32 @@ base-image smoke asserts `bwrap` exists. Verification for the branch passed with
 web eslint/lint/build/test, `pnpm dead-code`, `pnpm actionlint`, and shellcheck;
 the web test suite needed local loopback access because the sandboxed run denied
 `127.0.0.1` listener setup with `EPERM`.
+
+**2026-07-08 — Verified PR #208 rollout and fixed the smoke cleanup gaps it
+exposed.** PR #208 merged as `b48030c13956` and the release workflow succeeded:
+control-plane and ssh-gateway images were published, ECS service deployment
+completed on task definition `:33`, and the public app reported
+`deploy.sha=b48030c13956` with `/api/healthz`, `/api/readyz`, and `/workspaces`
+healthy. The asynchronous golden-images workflow pushed
+`edd-prod/golden/omnibus:b48030c13956` (`sha256:070bd726...`) and the production
+catalog row `img-seed-omnibus` pointed at that tag at version `8`.
+
+The post-deploy smoke workflow failed before it could open workspaces because
+the GitHub runner had no Playwright Chromium executable installed. The follow-up
+branch installed Chromium explicitly before running the screenshot verifier. A
+manual live screenshot smoke against the updated catalog created all four editor
+types on `omnibus:b48030c13956` and captured screenshots under
+`/private/tmp/edd-workspace-screenshots-b480/`. Visual inspection confirmed VS
+Code Web, Monaco with terminal, Claude Local Web UI `status: running`, and Codex
+Local Web UI `status: running`; the Codex missing-sandbox-helper warning was
+absent on the new image.
+
+The same verification found that the smoke helpers still reported success after
+DELETE without proving cleanup convergence. Production eventually terminated the
+smoke workspaces, but reconciler logs showed skipped `finishDeleting` attempts
+from version races while the deployed control plane accepted `active:false`
+functional heartbeats for `deleting` records. The follow-up branch made
+heartbeats reject every non-`running`/non-`idle` workspace, added integration
+coverage for stopped/deleting `active:false` reports, and made both deployed
+smoke scripts wait for every created workspace to reach `terminated` after
+DELETE.

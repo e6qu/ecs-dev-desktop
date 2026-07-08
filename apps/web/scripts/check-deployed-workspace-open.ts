@@ -10,6 +10,7 @@ import {
   firstEnabledImage,
   openEditor,
   requiredEnv,
+  waitTerminated,
   waitReady,
 } from "./deployed-workspace-smoke-lib";
 
@@ -34,6 +35,11 @@ try {
     console.log(`edd: ${editor} workspace opened through public app (${id})`);
   }
 } finally {
-  await Promise.allSettled(created.map((id) => deleteWorkspace(baseUrl, jar, id)));
+  await Promise.all(
+    created.map(async (id) => {
+      await deleteWorkspace(baseUrl, jar, id);
+      await waitTerminated(baseUrl, jar, id);
+    }),
+  );
   await revokeAuthSession(sessionId);
 }

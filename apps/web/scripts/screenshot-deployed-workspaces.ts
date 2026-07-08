@@ -17,6 +17,7 @@ import {
   firstEnabledImage,
   primeEditorToken,
   requiredEnv,
+  waitTerminated,
   waitReady,
 } from "./deployed-workspace-smoke-lib";
 
@@ -80,6 +81,11 @@ try {
   }
 } finally {
   await browser.close();
-  await Promise.allSettled(created.map((id) => deleteWorkspace(baseUrl, jar, id)));
+  await Promise.all(
+    created.map(async (id) => {
+      await deleteWorkspace(baseUrl, jar, id);
+      await waitTerminated(baseUrl, jar, id);
+    }),
+  );
   await revokeAuthSession(sessionId);
 }

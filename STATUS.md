@@ -2,6 +2,57 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
+**Last updated:** 2026-07-08. PR #208 merged as
+`b48030c13956dcb803316bfbcc9e2dc33518d001`. The release workflow
+`28942464820` succeeded: image publication started at `2026-07-08T12:27:10Z`,
+ECS service deployment ran from `12:30:08Z` to `12:30:19Z`, and the public app
+reported `deploy.sha=b48030c13956` with `/api/healthz`, `/api/readyz`, and
+`/workspaces` all healthy. ECS cluster `edd-prod-workspaces` showed
+`edd-prod-control-plane` steady at desired/running/pending `2/2/0` on task
+definition `:33` and `edd-prod-ssh-gateway` steady at `1/1/0` on task
+definition `:33`.
+
+The post-merge `post-deploy-smoke` workflow run `28942687870` failed before it
+could open workspaces because the GitHub runner had no Playwright Chromium
+browser installed:
+`browserType.launch: Executable doesn't exist at ... chromium_headless_shell`.
+The current follow-up branch installed Chromium explicitly in the smoke
+workflow instead of relying on an implicit runner cache.
+
+The golden-images workflow run `28942465055` succeeded and pushed
+`729079515331.dkr.ecr.eu-west-1.amazonaws.com/edd-prod/golden/omnibus:b48030c13956`
+with digest `sha256:070bd7266d013c61f558bf351e696dab92ed36f09a0f27fbdb0fe4427e71942b`;
+the production catalog row `img-seed-omnibus` pointed at that tag at version
+`8`. A live screenshot smoke was rerun against production after the catalog
+updated. It created OpenVSCode, Monaco, Claude Local Web UI, and Codex Local Web
+UI workspaces on `omnibus:b48030c13956`, captured screenshots under
+`/private/tmp/edd-workspace-screenshots-b480/`, and visual inspection confirmed
+VS Code Web, Monaco with terminal, Claude Local Web UI `status: running`, and
+Codex Local Web UI `status: running`. The Codex screenshot no longer showed the
+previous missing sandbox-helper warning.
+
+That live smoke also exposed a cleanup blind spot. The previous smoke scripts
+sent DELETE requests and exited without proving the smoke-created workspaces
+actually reached the `terminated` tombstone. Production did eventually converge
+all smoke workspaces to `terminated`, but the deployed app accepted
+`active:false` functional heartbeats while records were already `deleting`,
+which caused `finishDeleting` version races and slow cleanup. The current branch
+made non-running/non-idle heartbeats fail with a conflict, added integration
+coverage for stopped/deleting `active:false` heartbeat reports, and changed both
+deployed-workspace smoke scripts to wait for every created workspace to reach
+`terminated` after DELETE.
+
+Focused verification for the current branch passed with
+`pnpm --filter @edd/control-plane test`, `pnpm --filter @edd/control-plane
+test:integ` after starting `docker-compose.tier2.yml`, `pnpm --filter
+@edd/control-plane lint`, `pnpm --filter web lint`, focused eslint for the
+deployed smoke scripts, `pnpm actionlint`, and a production one-shot
+`waitTerminated` check against an already terminated smoke workspace. A
+sandboxed integration attempt failed with `EPERM` on `127.0.0.1:4566`; with
+loopback access but before the local substrate was started, the same suite
+failed with `ECONNREFUSED`. After the repo's tier-2 substrate was started, the
+suite passed.
+
 **Last updated:** 2026-07-08. PR #207 merged as
 `24fc78f7bb052ff099a730dccaa9f7c025c77e91` and the control plane rolled to
 that SHA. `https://app.edd.e6qu.dev/api/healthz` reported
