@@ -142,7 +142,7 @@ tfdir="$repo/$EDD_TF_DIR"
 # ============================================================================
 if [ "$mode" = "verify" ]; then
   banner "verifying $EDD_NAME in $EDD_REGION"
-  for c in aws terraform; do
+  for c in aws terraform curl jq; do
     command -v "$c" >/dev/null 2>&1 || {
       echo "edd: '$c' not found on PATH" >&2
       exit 1
@@ -169,9 +169,8 @@ if [ "$mode" = "verify" ]; then
   echo "ecs cluster       : $cluster"
   echo "dynamodb table    : $table"
 
-  printf '\n[1/5] ALB health (HTTPS requires the cert to be issued):\n'
-  curl -fsS -o /dev/null -w "  HTTP %{http_code} in %{time_total}s\n" "$cp_url/api/healthz" ||
-    echo "  WARN: $cp_url/api/healthz not reachable (DNS/cert/SG?)"
+  printf '\n[1/5] application smoke (healthz + readyz + /workspaces render):\n'
+  sh "$repo/scripts/check-deployed-app.sh" "$cp_url"
 
   echo "[2/5] control-plane service:"
   aws ecs describe-services --region "$EDD_REGION" --cluster "$cluster" \
@@ -190,9 +189,17 @@ if [ "$mode" = "verify" ]; then
       printf '  state=%s\n' "${s:-MISSING}"
     }
 
-  echo "[4/5] readiness probe (/api/readyz — DynamoDB-backed):"
-  code=$(curl -sS -o /dev/null -w '%{http_code}' "$cp_url/api/readyz" || echo 000)
-  if [ "$code" = "200" ]; then echo "  OK (200)"; else echo "  WARN: /api/readyz returned $code (503 = DynamoDB not reachable)"; fi
+  echo "[4/5] CloudWatch alarms:"
+  aws cloudwatch describe-alarms --region "$EDD_REGION" \
+    --query "MetricAlarms[?starts_with(AlarmName, \`${EDD_NAME}-\`) && StateValue==\`ALARM\`].[AlarmName,StateReason]" \
+    --output text |
+    {
+      if read -r first rest; then
+        printf '  ALARM %s %s\n' "$first" "$rest" >&2
+        exit 1
+      fi
+      echo "  no active ${EDD_NAME}-* alarms"
+    }
 
   echo "[5/5] Terraform drift (exit 0 = no drift):"
   (cd "$tfdir" && terraform plan -detailed-exitcode -input=false -var-file=install.tfvars >/dev/null 2>&1 &&

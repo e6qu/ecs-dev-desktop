@@ -124,7 +124,11 @@ In short, the install flow is:
    and the **SSH-gateway image** (a pinned tag — the repo is immutable). For
    ongoing releases, the `release` workflow uses GitHub OIDC to build, publish,
    register new ECS task definitions, roll the control-plane and SSH-gateway
-   services, and update the reconciler schedule. The separate `golden-images`
+   services, and update the reconciler schedule. Rollout convergence is
+   asynchronous: `post-deploy-smoke` then verifies the public app reports the
+   expected deploy SHA and renders real routes (`/api/healthz`, `/api/readyz`,
+   `/workspaces`). ECS steady state alone is not considered proof that EDD is up.
+   The separate `golden-images`
    workflow publishes workspace/golden images asynchronously on `main` and by
    manual dispatch; the deployed EDD app tracks signed source webhooks and rolls
    the catalog after the expected ECR tags exist. Images are published as

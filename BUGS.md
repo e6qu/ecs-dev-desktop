@@ -4,6 +4,47 @@
 
 ## Open
 
+- **Production `/workspaces` rendered a Next.js error boundary after PR #204 —
+  FIXED in current branch (2026-07-08).** The live page showed
+  `ERROR 3655293926` even though the ECS deployment had completed. CloudWatch
+  logs for that digest showed
+  `TypeError: Cannot destructure property 'cpuUnits' of 'a' as it is undefined`
+  in workspace resource parsing during `WorkspaceService.list`. DynamoDB had
+  nine workspace rows missing the required `resources` map. Those rows were
+  deleted operationally because there was no legacy data to preserve, after
+  which `/workspaces` returned the unauthenticated "Not signed in" page and the
+  reconciler swept an empty fleet successfully. The code fix kept the fail-loud
+  contract but replaced the opaque destructuring crash with
+  `invalid persisted workspace <id>: missing resources`, wrapped invalid
+  resource values with the workspace id, and added an integration regression for
+  a raw persisted row with `resources` removed.
+
+- **Release verification trusted ECS completion instead of the deployed app —
+  FIXED in current branch (2026-07-08).** The release workflow could succeed
+  while a user-facing server component crashed in production. `/api/healthz` now
+  includes deploy metadata (`deploy.sha`, `deploy.time`), `scripts/check-deployed-app.sh`
+  checks `/api/healthz`, `/api/readyz`, and `/workspaces`, and the new
+  `post-deploy-smoke` workflow runs asynchronously after `release` to wait for
+  the expected public app build. `scripts/bootstrap-release-oidc.sh` now requires
+  `EDD_RELEASE_APP_URL` and writes the non-secret `EDD_APP_URL` repo variable,
+  so the smoke workflow has an explicit coordinate and no fallback target.
+
+- **Production still had stale operational alarm/audit debris after the outage
+  fix (2026-07-08).** `edd-prod-workspaces-stuck-error` cleared after malformed
+  workspace deletion, but `edd-prod-reconciler-dlq` still contained five old
+  inactive-taskdef messages and `edd-prod-reconciler-failed` still reflected the
+  recent invalid-workspace errors until its alarm window aged out. Reconciler
+  post-sweep cost reporting also failed loudly on old `session.create` audit
+  records that predated persisted resource details. No code fallback was added;
+  deleting audit/DLQ history remained an explicit operational decision.
+
+- **Live target-group health-check intervals drifted from the fast-deploy
+  Terraform source (2026-07-08).** Terraform source expected 10-second ALB/NLB
+  target-group health checks, but live AWS still reported 30-second intervals
+  after the image-only release. The release workflow only rolls images/task
+  definitions and does not apply Terraform, so the drift needed a real Terraform
+  apply from authoritative state rather than a release-script workaround.
+
 - **Golden-image workflow failed because the base ECR repository/tag was missing
   — FIXED (2026-07-08).** After PR #203 merged, release run
   `28907270779` deployed the control plane successfully, but golden workflow run

@@ -171,15 +171,14 @@ update_service "$control_service" "$control_task_definition"
 update_service "$ssh_service" "$ssh_task_definition"
 update_reconciler_schedule "$reconciler_task_definition"
 
-echo "edd: waiting for ECS services to stabilize"
-aws ecs wait services-stable \
-  --region "$region" \
-  --cluster "$cluster" \
-  --services "$control_service" "$ssh_service"
-
 cat <<EOF
-edd: release images deployed
+edd: release images submitted
   control-plane = ${control_task_definition}
   reconciler    = ${reconciler_task_definition}
   ssh-gateway   = ${ssh_task_definition}
+
+ECS deployment is asynchronous: the services now converge under the ECS deployment
+circuit breaker and CloudWatch alarms. Run scripts/check-deployed-app.sh against
+the app URL, or use the post-deploy-smoke workflow, to prove the real application
+is serving the expected build.
 EOF

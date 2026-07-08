@@ -53,35 +53,37 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **Watch this branch's rollout and golden-image convergence after merge.** PR
-  #203 deployed successfully for merge commit `b44acf698aaf`, and production was
-  healthy on task definition revision `:28` with control-plane desired/running
-  `2/2` and SSH desired/running `1/1`. The follow-up branch fixed the remaining
-  golden-image CI failures by adding the Terraform-managed `edd-base` ECR
-  repository, granting the release OIDC role access to it, and pushing the
-  per-arch base tag before variants build `FROM` it. After this branch merges,
-  watch the non-blocking `release` workflow and the separate `golden-images`
-  workflow, then verify `/admin/images`, image-source trigger rows, the base-image
-  catalog row, and ECR tags converge to the new main SHA. The live
-  `edd-prod/edd-base` repository was imported into ignored local operator state,
-  but the expected remote Terraform state object was still absent and still
-  needed migration to
+- **Watch this branch's rollout and app-level smoke after merge.** PR #204
+  deployed successfully for merge commit `f82e61db669c` and the golden-images
+  workflow pushed `edd-prod/golden/omnibus:f82e61db669c`, but ECS completion was
+  not enough: `/workspaces` still crashed until nine malformed workspace rows
+  without `resources` were deleted. This branch added baked deploy metadata,
+  `scripts/check-deployed-app.sh`, and the async `post-deploy-smoke` workflow.
+  After merge, verify the release run submits ECS updates, the smoke workflow
+  observes the expected short SHA on `https://app.edd.e6qu.dev`, `/api/readyz`
+  stays ready, and `/workspaces` renders instead of showing a Next.js digest.
+- **Apply/verify Terraform drift for fast health checks.** The source expected
+  10-second ALB/NLB target-group health checks, but live AWS still showed
+  30-second intervals after the image-only release. Apply the Terraform stack from
+  the authoritative remote state, then confirm the live target groups match the
+  source and deployment convergence time moves toward the 1-2 minute target. The
+  expected remote state object still needed operational confirmation/migration at
   `s3://edd-tfstate-edd-prod/ecs-dev-desktop/edd-prod/terraform.tfstate`.
-- **Verify resource-sized workspace launches in production after merge.** Creation
-  now required/persisted explicit resources with defaults of 0.5 vCPU, 2 GiB RAM,
-  and 8 GiB disk and UI-selectable limits of 4 vCPU, 16 GiB RAM, and 64 GiB disk.
-  After the release, create one default workspace and one larger workspace,
-  confirm ECS task definitions carry the selected CPU/memory, confirm fresh
-  managed-EBS volumes use the selected size, and confirm cards/details/monitoring
-  and cost reports show per-workspace sizing. Existing prod workspaces may be
-  deleted instead of migrated; no compatibility fallback was added.
-- **Clear or resolve the two active production alarms after rollout.**
-  `edd-prod-reconciler-dlq` still had old Scheduler failures for inactive task
-  definition `edd-prod-reconciler:7`, and `edd-prod-workspaces-stuck-error`
-  matched workspace `ws-34afea9b-ca52-4484-ad73-8dd299dbefd5` in
-  `state=error`, `desiredState=present`. Inspect and remediate them after the new
-  control plane/reconciler code is live so alarm state reflects current defects,
-  not stale rollout debris.
+- **Resolve remaining production alarms and audit debris explicitly.**
+  `edd-prod-workspaces-stuck-error` cleared after deleting the malformed
+  workspaces, but `edd-prod-reconciler-dlq` still held five old inactive-taskdef
+  messages and `edd-prod-reconciler-failed` still reflected the recent
+  invalid-workspace failures until its alarm window aged out. Old `session.create`
+  audit events lacked resource details and made post-sweep cost rollup fail
+  loudly; delete or retain those audit rows only after an explicit human
+  operational decision.
+- **Verify resource-sized workspace launches in production after this fix.**
+  Creation required/persisted explicit resources with defaults of 0.5 vCPU,
+  2 GiB RAM, and 8 GiB disk and UI-selectable limits of 4 vCPU, 16 GiB RAM, and
+  64 GiB disk. After the new release, create one default workspace and one larger
+  workspace, confirm ECS task definitions carry the selected CPU/memory, confirm
+  fresh managed-EBS volumes use the selected size, and confirm cards/details/
+  monitoring and cost reports show per-workspace sizing.
 - **Wire real vendor agent harnesses for `claude`/`codex` workspace modes.** The
   runtime now fails loudly for these modes until the vendor harnesses are wired,
   because serving Monaco under those product names hid the wrong UX. Target:

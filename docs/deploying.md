@@ -124,11 +124,33 @@ AWS role with ECR/ECS/Scheduler permissions (no static secrets). It builds the
 currently deployed `amd64` architecture with Docker Buildx + GitHub Actions cache,
 then registers fresh task-definition revisions from the currently deployed
 definitions, changing only the image references. It updates the control-plane and
-SSH-gateway ECS services, updates the reconciler Scheduler target, and waits for
-ECS service stability. The control-plane service is configured for rolling
+SSH-gateway ECS services and updates the reconciler Scheduler target. It does
+not wait for ECS service stability in the release job: ECS convergence is
+asynchronous, guarded by the deployment circuit breaker and CloudWatch alarms,
+and verified by the separate `post-deploy-smoke` workflow against the real public
+application. Treat "ECS accepted the update" as only the start of the rollout,
+not proof that EDD is usable. The control-plane service is configured for rolling
 deployments with a two-task desired count, `minimumHealthyPercent = 100`, and
 `maximumPercent = 200`, so a healthy old task remains serving while a replacement
 task comes up.
+
+After every release, verify the app itself:
+
+```sh
+scripts/check-deployed-app.sh https://app.<domain> <short-git-sha>
+```
+
+The smoke check reads `/api/healthz` and requires the expected baked deploy SHA,
+reads `/api/readyz` so DynamoDB readiness is real, and renders `/workspaces` so a
+server-component crash is caught. This is intentionally skeptical: ECS steady
+state, target health, and container liveness are useful signals, but they do not
+prove authenticated or user-facing pages can render.
+
+The `post-deploy-smoke` workflow runs this check asynchronously after `release`
+succeeds and can also be dispatched manually. It requires the non-secret
+`EDD_APP_URL` repository variable and fails loudly when the expected build never
+appears or when any app surface returns an error. There is no alternate success
+path.
 
 The separate [`golden-images`](../.github/workflows/golden-images.yml) workflow
 publishes workspace/golden images on `main` when image inputs change and by manual
@@ -171,13 +193,15 @@ EDD_RELEASE_AWS_ACCOUNT=111122223333 \
 EDD_RELEASE_AWS_REGION=eu-west-1 \
 EDD_RELEASE_NAME_PREFIX=edd-prod \
 EDD_RELEASE_GOLDEN_VARIANTS="omnibus" \
+EDD_RELEASE_APP_URL=https://app.edd.e6qu.dev \
 sh scripts/bootstrap-release-oidc.sh
 ```
 
 The script fails if any coordinate is missing or if the AWS caller account does
 not match `EDD_RELEASE_AWS_ACCOUNT`. It updates the OIDC provider thumbprint, the
 release role trust/permission policy, and the GitHub `RELEASE_*` repo variables.
-It never stores static secrets in GitHub.
+It also writes the non-secret `EDD_APP_URL` repo variable used by
+`post-deploy-smoke`. It never stores static secrets in GitHub.
 
 CI owns both the control-plane image build/publish path and post-merge
 **workspace/golden image** publishing. This is not a fallback release path: EDD

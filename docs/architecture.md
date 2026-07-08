@@ -175,6 +175,10 @@ shape is:
    apply just created. For ongoing releases, the `release` workflow via GitHub
    OIDC builds and pushes the control-plane/SSH images, registers fresh task
    definitions, rolls the ECS services, and retargets the reconciler schedule.
+   The release job submits the rollout and exits; ECS converges asynchronously
+   under its circuit breaker, and the `post-deploy-smoke` workflow proves the
+   public app is serving the expected build by checking `/api/healthz`,
+   `/api/readyz`, and `/workspaces`.
    The separate `golden-images` workflow publishes workspace/golden images
    asynchronously on `main` and manual dispatch. The deployed EDD image-source
    flow records signed source webhooks, verifies expected golden tags in ECR, and

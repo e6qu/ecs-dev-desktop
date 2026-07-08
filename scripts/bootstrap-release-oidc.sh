@@ -11,6 +11,7 @@
 #   EDD_RELEASE_AWS_REGION    AWS region for ECR
 #   EDD_RELEASE_NAME_PREFIX   EDD stack/module name, e.g. edd-prod
 #   EDD_RELEASE_GOLDEN_VARIANTS whitespace-separated golden variants, e.g. "omnibus"
+#   EDD_RELEASE_APP_URL       Public control-plane URL, e.g. https://app.example.com
 #
 # Effects:
 #   - creates/updates the IAM OIDC provider for token.actions.githubusercontent.com
@@ -30,6 +31,7 @@ AWS_ACCOUNT="${EDD_RELEASE_AWS_ACCOUNT:-}"
 AWS_REGION="${EDD_RELEASE_AWS_REGION:-}"
 NAME_PREFIX="${EDD_RELEASE_NAME_PREFIX:-}"
 GOLDEN_VARIANTS="${EDD_RELEASE_GOLDEN_VARIANTS:-}"
+APP_URL="${EDD_RELEASE_APP_URL:-}"
 
 missing() {
   [ -n "$2" ] && return 0
@@ -42,6 +44,7 @@ missing EDD_RELEASE_AWS_ACCOUNT "$AWS_ACCOUNT" || exit 1
 missing EDD_RELEASE_AWS_REGION "$AWS_REGION" || exit 1
 missing EDD_RELEASE_NAME_PREFIX "$NAME_PREFIX" || exit 1
 missing EDD_RELEASE_GOLDEN_VARIANTS "$GOLDEN_VARIANTS" || exit 1
+missing EDD_RELEASE_APP_URL "$APP_URL" || exit 1
 
 case "$GITHUB_REPO" in
   */*) ;;
@@ -53,6 +56,13 @@ esac
 case "$AWS_ACCOUNT" in
   *[!0-9]* | "" | ??????????? | ?????????????*)
     echo "edd: EDD_RELEASE_AWS_ACCOUNT must be a 12-digit AWS account id" >&2
+    exit 1
+    ;;
+esac
+case "$APP_URL" in
+  https://*) ;;
+  *)
+    echo "edd: EDD_RELEASE_APP_URL must be an https:// URL" >&2
     exit 1
     ;;
 esac
@@ -254,6 +264,7 @@ gh variable set RELEASE_AWS_REGION --repo "$GITHUB_REPO" --body "$AWS_REGION"
 gh variable set RELEASE_AWS_ROLE_ARN --repo "$GITHUB_REPO" --body "$role_arn"
 gh variable set RELEASE_NAME_PREFIX --repo "$GITHUB_REPO" --body "$NAME_PREFIX"
 gh variable set RELEASE_GOLDEN_VARIANTS --repo "$GITHUB_REPO" --body "$GOLDEN_VARIANTS"
+gh variable set EDD_APP_URL --repo "$GITHUB_REPO" --body "$APP_URL"
 
 cat <<EOF
 edd: release OIDC bootstrap complete
@@ -262,4 +273,5 @@ edd: release OIDC bootstrap complete
   region  = ${AWS_REGION}
   role    = ${role_arn}
   golden  = ${GOLDEN_VARIANTS}
+  app_url = ${APP_URL}
 EOF
