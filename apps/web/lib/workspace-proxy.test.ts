@@ -418,13 +418,23 @@ describe("opencode proxy adaptation", () => {
       '<script src="/assets/index.js"></script>',
       '<link href="/assets/index.css">',
       'const worker="/assets/worker.js";',
+      'const health="/global/health";',
+      "const config='/global/config';",
+      'const errors="/_bun/report_error";',
+      'const already="/w/not-this-workspace/assets/existing.js";',
+      'const external="https://opencode.ai/logo.png";',
       'const base=location.hostname.includes("opencode.ai")?"http://localhost:4096":location.origin;',
     ].join("\n");
     const out = rewriteOpencodeResponseBody(input, WS);
     expect(out).toContain(`src="/w/${WS}/assets/index.js"`);
     expect(out).toContain(`href="/w/${WS}/assets/index.css"`);
     expect(out).toContain(`"/w/${WS}/assets/worker.js"`);
-    expect(out).toContain(`:location.origin+"/w/${WS}"`);
+    expect(out).toContain(`"/w/${WS}/global/health"`);
+    expect(out).toContain(`'/w/${WS}/global/config'`);
+    expect(out).toContain(`"/w/${WS}/_bun/report_error"`);
+    expect(out).toContain('"/w/not-this-workspace/assets/existing.js"');
+    expect(out).toContain('"https://opencode.ai/logo.png"');
+    expect(out).toContain(`?"http://localhost:4096":location.origin+"/w/${WS}"`);
   });
 });
 

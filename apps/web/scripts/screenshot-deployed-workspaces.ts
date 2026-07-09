@@ -41,6 +41,8 @@ const VENDOR_EXTENSION_SURFACES: Partial<
   codex: { tabName: /^Codex$/i, extensionId: "openai.chatgpt" },
 };
 
+const MAX_BROWSER_EVENT_LINES = 80;
+
 function playwrightCookie(baseHost: string, cookie: StoredCookie) {
   return {
     name: cookie.name,
@@ -91,6 +93,7 @@ async function writeDiagnostic(
   id: string,
   page: Page,
   detail: string,
+  browserEvents: readonly string[],
 ): Promise<void> {
   const prefix = join(OUT_DIR, `${editor}-${id}-failure`);
   let screenshotDetail = "screenshot=written";
@@ -113,6 +116,9 @@ async function writeDiagnostic(
       `detail=${detail}`,
       screenshotDetail,
       `body=${bodySnippet(text)}`,
+      "",
+      "browser-events:",
+      ...(browserEvents.length > 0 ? browserEvents : ["(none captured)"]),
       "",
       html,
     ].join("\n"),
@@ -177,8 +183,25 @@ try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
   await context.addCookies(jar.map((cookie) => playwrightCookie(baseHost, cookie)));
   const page = await context.newPage();
+  const browserEvents: string[] = [];
+  const recordBrowserEvent = (line: string): void => {
+    browserEvents.push(line);
+    if (browserEvents.length > MAX_BROWSER_EVENT_LINES) browserEvents.shift();
+  };
+  page.on("console", (msg) => {
+    recordBrowserEvent(`console:${msg.type()}: ${msg.text()}`);
+  });
+  page.on("pageerror", (error) => {
+    recordBrowserEvent(`pageerror: ${error.message}`);
+  });
+  page.on("requestfailed", (request) => {
+    recordBrowserEvent(
+      `requestfailed: ${request.method()} ${request.url()} ${request.failure()?.errorText ?? ""}`,
+    );
+  });
 
   for (const editor of EDITORS) {
+    browserEvents.length = 0;
     const id = await createWorkspace(baseUrl, jar, baseImage, editor);
     created.push(id);
     await waitReady(baseUrl, jar, id);
@@ -197,6 +220,7 @@ try {
         id,
         page,
         e instanceof Error ? (e.stack ?? e.message) : String(e),
+        browserEvents,
       );
       throw e;
     }

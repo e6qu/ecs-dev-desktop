@@ -53,17 +53,18 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **After this post-deploy-smoke fix merges, rerun release/golden-images/
-  post-deploy-smoke and inspect artifacts again.** PR #212 deployed and built
-  `omnibus:af69bd829e6d`, but `post-deploy-smoke` run `29005606380` failed in
-  Codex before it reached opencode, and its Claude assertion was too weak. The
-  current branch opened Claude through the verified Anthropic sidebar command
-  and made the smoke require vendor extension webview iframes for Claude and
-  Codex. After merge, confirm screenshots exist for OpenVSCode, Monaco, Claude,
-  Codex, and opencode; verify OpenVSCode does not render `Forbidden`, Monaco
-  accepts typing after opening a file, Claude shows the Anthropic webview, Codex
-  shows the OpenAI webview, and opencode loads through `/w/<id>/` without a
-  second public endpoint.
+- **After this opencode proxy fix merges, rerun release/golden-images/
+  post-deploy-smoke and inspect artifacts again.** PR #213 deployed and built
+  `omnibus:d063fea1ec78`, but `post-deploy-smoke` run `29014192952` failed on
+  opencode after proving screenshots for OpenVSCode, Monaco, Claude, and Codex.
+  The current branch fixed the opencode base-path rewrite for the verified
+  `opencode-linux-x64@1.17.15` bundle patterns and added browser console/
+  pageerror/requestfailed diagnostics to screenshot-smoke failure artifacts.
+  After merge, confirm screenshots exist for OpenVSCode, Monaco, Claude, Codex,
+  and opencode; verify OpenVSCode does not render `Forbidden`, Monaco accepts
+  typing after opening a file, Claude shows the Anthropic webview, Codex shows
+  the OpenAI webview, and opencode renders through `/w/<id>/` without a second
+  public endpoint.
 
 - **Change Claude/Codex workspace modes only if a better verified vendor browser
   entrypoint exists.** Local verification on 2026-07-08 found Codex app-server
