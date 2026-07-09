@@ -44,6 +44,11 @@ swappable** (bleephub conformant OAuth; azure sim Graph + ROPC). ✅ **Path-base
 editor proxy folded into the control-plane app** — the browser reaches the editor at
 `app.<domain>/w/<workspace-id>/` (no wildcard DNS/TLS, no cross-subdomain cookie),
 served by the custom server (`apps/web/server.ts` + `apps/web/lib/workspace-proxy.ts`).
+✅ **Workspace interface modes** — OpenVSCode, Monaco, Claude, Codex, and opencode
+were represented in the domain/API/DB contracts and workspace/admin UIs.
+Claude/Codex reused verified vendor OpenVSCode extension UIs, while opencode used
+the real `opencode web` server behind an opencode-only path/auth/rewrite adapter
+because the verified CLI exposed no base-path flag.
 ✅ **Single-system authorization** — the proxy authorizes off the **same Auth.js
 session** that protects the portal, by uid-based ownership (`session.uid ===
 workspace.ownerId`) or admin, checked in-process; no Pomerium, no PDP round-trip, no

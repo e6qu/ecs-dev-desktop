@@ -3390,3 +3390,28 @@ that Codex app-server was a protocol server and Claude Remote Control did not
 expose a local HTTP UI in the tested CLI surface, so the branch recorded that
 blocker rather than inventing an EDD Claude/Codex chat UI or calling Monaco/
 OpenVSCode a fallback solution.
+
+**2026-07-09 — Added opencode's local web client and removed the last random
+editor-token fallback.** The branch added `opencode` as a first-class workspace
+interface across the domain/API contracts, DynamoDB editor enums, workspace
+launcher, admin base-image form, workspace badges, deployed smoke scripts,
+screenshot smoke, dev bootstrap, and image/toolchain e2e assertions. The shared
+golden base image installed `opencode-ai@1.17.15`, and
+`EDD_EDITOR_MODE=opencode` launched the real `opencode web` server with
+`OPENCODE_SERVER_USERNAME=opencode` and `OPENCODE_SERVER_PASSWORD` set to the
+workspace connection token.
+
+The entrypoint failed loudly if opencode was selected without the CLI or
+`CONNECTION_TOKEN`, and refused `EDD_DISABLE_CONNECTION_TOKEN=1` for opencode.
+While touching the same auth path, the old OpenVSCode random connection-token
+generation was removed: tokened editor startup now required `CONNECTION_TOKEN`
+unless tokenless mode was explicitly selected.
+
+Local verification showed opencode's web server had no base-path flag and used
+root-absolute assets/API base logic. The existing in-app `/w/<id>/` workspace
+proxy therefore gained an opencode-only adapter: preserve current behavior for
+OpenVSCode, Claude, Codex, and Monaco; strip `/w/<id>` before forwarding
+opencode requests upstream; inject Basic auth derived from the workspace token;
+and rewrite opencode HTML/JS/CSS references back under `/w/<id>/`. The verified
+Claude/Codex/opencode harness facts and proxy contract were recorded in
+`docs/workspace-agent-harnesses.md`.

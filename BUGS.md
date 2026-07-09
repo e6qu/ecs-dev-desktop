@@ -4,6 +4,23 @@
 
 ## Open
 
+- **opencode workspace mode was missing — FIXED in current branch
+  (2026-07-09).** EDD had OpenVSCode, Monaco, Claude, and Codex interface modes
+  but no opencode local web client. The branch added `opencode` to the
+  contracts, persisted editor enums, UI selectors, deployed smokes, golden image
+  toolchain checks, and image startup. It used `opencode web` rather than an
+  EDD-authored UI, authenticated upstream with the derived workspace connection
+  token, and added an opencode-only path/auth/rewrite adapter in the existing
+  in-app workspace proxy because the verified opencode CLI exposed no base-path
+  flag.
+
+- **OpenVSCode startup still had a random connection-token fallback — FIXED in
+  current branch (2026-07-09).** If `EDD_DISABLE_CONNECTION_TOKEN` was not set
+  and `CONNECTION_TOKEN` was missing, the entrypoint silently generated a random
+  token. That hid compute/secret injection mistakes. The entrypoint now required
+  `CONNECTION_TOKEN` unless tokenless mode was explicitly selected, and opencode
+  refused tokenless mode entirely.
+
 - **Golden image builds could be skipped after editor/runtime-only merges —
   FIXED in current branch (2026-07-08).** The asynchronous `golden-images`
   workflow still had `push.paths` filters, so a merge that changed app/editor

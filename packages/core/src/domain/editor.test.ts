@@ -20,6 +20,9 @@ describe("asEditorKind", () => {
   it("accepts known kinds and defaults only an omitted value", () => {
     expect(asEditorKind("openvscode")).toBe("openvscode");
     expect(asEditorKind("monaco")).toBe("monaco");
+    expect(asEditorKind("claude")).toBe("claude");
+    expect(asEditorKind("codex")).toBe("codex");
+    expect(asEditorKind("opencode")).toBe("opencode");
     expect(asEditorKind(undefined)).toBe(DEFAULT_EDITOR);
   });
 
@@ -34,6 +37,7 @@ describe("editor flows through the domain constructors", () => {
     const base = { id: baseImageId("img-1"), name: "Go", image: baseImage("ecr/go"), at: AT };
     expect(provisionBaseImage(base).editor).toBe("openvscode");
     expect(provisionBaseImage({ ...base, editor: "monaco" }).editor).toBe("monaco");
+    expect(provisionBaseImage({ ...base, editor: "opencode" }).editor).toBe("opencode");
   });
 
   it("a workspace records its editor (default OpenVSCode)", () => {
@@ -47,5 +51,6 @@ describe("editor flows through the domain constructors", () => {
     };
     expect(provision(params).editor).toBe("openvscode");
     expect(provision({ ...params, editor: "monaco" }).editor).toBe("monaco");
+    expect(provision({ ...params, editor: "opencode" }).editor).toBe("opencode");
   });
 });

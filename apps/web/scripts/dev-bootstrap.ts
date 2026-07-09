@@ -22,7 +22,7 @@ const DEV_IMAGES: readonly {
     image: "golden/omnibus",
     description: "Full polyglot workspace with every curated language toolchain and agent.",
     tags: ["polyglot", "full", "agents"],
-    tools: ["claude", "codex", "trivy", "pnpm", "go", "python3", "javac", "cargo"],
+    tools: ["claude", "codex", "opencode", "trivy", "pnpm", "go", "python3", "javac", "cargo"],
   },
   {
     name: "TypeScript / Node",

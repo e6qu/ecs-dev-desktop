@@ -12,6 +12,7 @@ const EDITOR_OPTIONS: readonly { value: EditorKindDto; label: string }[] = [
   { value: "monaco", label: "Monaco" },
   { value: "claude", label: "Claude Local Web UI" },
   { value: "codex", label: "Codex Local Web UI" },
+  { value: "opencode", label: "opencode Local Web UI" },
 ];
 
 function isEditorKind(value: string): value is EditorKindDto {

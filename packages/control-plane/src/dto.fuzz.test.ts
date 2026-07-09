@@ -13,6 +13,7 @@ import {
   snapshotId,
   workspaceId,
   workspaceActions,
+  EDITOR_KINDS,
   type Workspace,
   type WorkspaceState,
 } from "@edd/core";
@@ -167,7 +168,7 @@ describe("toBaseImageDto (fuzz)", () => {
         fc.array(fc.string({ maxLength: 20 }), { maxLength: 5 }),
         fc.array(fc.string({ maxLength: 20 }), { maxLength: 5 }),
         fc.boolean(),
-        fc.constantFrom("openvscode", "monaco"),
+        fc.constantFrom(...EDITOR_KINDS),
         (tags, tools, enabled, editor) => {
           const entry = {
             id: baseImageId("img-1"),

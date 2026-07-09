@@ -28,7 +28,10 @@ export function makeWorkspaceEntity(client: DynamoDBClient, table = TABLE) {
         baseImage: { type: "string", required: true },
         // Which editor this workspace serves (drives EDD_EDITOR_MODE). Optional: records
         // predating the field are treated as the default (OpenVSCode).
-        editor: { type: ["openvscode", "monaco", "claude", "codex"] as const, required: false },
+        editor: {
+          type: ["openvscode", "monaco", "claude", "codex", "opencode"] as const,
+          required: false,
+        },
         resources: {
           type: "map",
           required: true,
@@ -126,9 +129,12 @@ export function makeBaseImageEntity(client: DynamoDBClient, table = TABLE) {
         tags: { type: "list", items: { type: "string" }, required: false },
         tools: { type: "list", items: { type: "string" }, required: false },
         enabled: { type: "boolean", required: true },
-        // Which editor workspaces from this image serve (openvscode | monaco). Optional:
-        // records predating the field are treated as the default (OpenVSCode).
-        editor: { type: ["openvscode", "monaco", "claude", "codex"] as const, required: false },
+        // Which editor workspaces from this image serve. Optional: records predating the
+        // field are treated as the default (OpenVSCode).
+        editor: {
+          type: ["openvscode", "monaco", "claude", "codex", "opencode"] as const,
+          required: false,
+        },
         createdAt: { type: "string", required: true },
         // Optimistic-concurrency version: every update is conditioned on the
         // version it read, so two concurrent admin edits cannot silently clobber

@@ -18,7 +18,7 @@
     "@edd/db": "workspace:*"
   },
   "devDependencies": {
-    "@aws-sdk/client-dynamodb": "^3.1080.0",
+    "@aws-sdk/client-dynamodb": "^3.1081.0",
     "@edd/config": "workspace:*",
     "@types/node": "^26.1.0",
     "fast-check": "^4.8.0"

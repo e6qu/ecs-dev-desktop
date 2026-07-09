@@ -2,6 +2,36 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
+**Last updated:** 2026-07-09. The current branch added `opencode` as a fifth
+workspace interface without changing the locked single-domain proxy architecture.
+The control-plane/editor contracts, DynamoDB entity enums, workspace-create UI,
+admin catalog UI, deployed smoke editor list, screenshot smoke, dev bootstrap,
+and e2e image/toolchain checks all included `opencode`. The golden base image
+installed `opencode-ai@1.17.15`, and `EDD_EDITOR_MODE=opencode` launched the
+real `opencode web` server on port 3000 with
+`OPENCODE_SERVER_USERNAME=opencode` and `OPENCODE_SERVER_PASSWORD` set from the
+workspace connection token. Missing opencode, missing `CONNECTION_TOKEN`, or
+`EDD_DISABLE_CONNECTION_TOKEN=1` in opencode mode failed loudly.
+
+The branch also removed the remaining random OpenVSCode connection-token
+fallback: standalone/tokened editor startup now required `CONNECTION_TOKEN`
+unless `EDD_DISABLE_CONNECTION_TOKEN=1` was explicitly set. The in-app workspace
+proxy passed editor context from the custom server, preserved the existing
+OpenVSCode, Claude, Codex, and Monaco token behavior, and added an opencode-only
+adapter: strip `/w/<workspace-id>` for upstream requests, inject Basic auth from
+the derived workspace token, and rewrite opencode HTML/JS/CSS root references
+back under `/w/<workspace-id>/`. Local verification had shown opencode's web
+server had no base-path flag and emitted root-absolute assets/API base logic, so
+this was the minimal path-compatible integration rather than a second public
+surface.
+
+Focused verification passed with `pnpm exec vitest run src/domain/editor.test.ts`
+in `packages/core`, `pnpm exec vitest run lib/workspace-proxy.test.ts` in
+`apps/web` with loopback access, `pnpm exec vitest run src/dto.fuzz.test.ts` in
+`packages/control-plane`, `shellcheck infra/images/base/smoke.sh
+infra/images/base/entrypoint.sh`, `pnpm --filter @edd/web build`, and lint for
+`@edd/web`, `@edd/core`, `@edd/control-plane`, and `@edd/db`.
+
 **Last updated:** 2026-07-08. The current branch made the production smoke and
 workspace UI stricter after PR #210's merge/deploy exposed that green ECS/app
 health did not prove the expected workspace image or rendered editor behavior.

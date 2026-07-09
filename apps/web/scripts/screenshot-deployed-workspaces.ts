@@ -139,6 +139,8 @@ async function assertRenderedWorkspace(editor: Editor, id: string, page: Page): 
     await page.waitForFunction(() => document.body.innerText.includes("Claude Code"));
   } else if (editor === "codex") {
     await page.waitForFunction(() => document.body.innerText.includes("Codex"));
+  } else if (editor === "opencode") {
+    await page.waitForFunction(() => document.body.innerText.toLowerCase().includes("opencode"));
   }
 }
 

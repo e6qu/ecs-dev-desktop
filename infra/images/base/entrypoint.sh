@@ -145,6 +145,7 @@ chmod 0644 "${settings_file}" 2>/dev/null || true
 #   monaco         -> the first-party Monaco editor server;
 #   claude         -> OpenVSCode Server with Anthropic's Claude Code extension UI.
 #   codex          -> OpenVSCode Server with OpenAI's Codex extension UI.
+#   opencode       -> opencode's local web client (`opencode web`).
 #   openvscode/unset -> OpenVSCode Server, the product default.
 #   anything else    -> fail loudly; unknown editor values are invalid config.
 # The Monaco server (bundled at /opt/edd-editor-monaco) listens on :3000 under
@@ -177,6 +178,21 @@ case "${EDD_EDITOR_MODE:-openvscode}" in
       exit 64
     fi
     ;;
+  opencode)
+    command -v opencode >/dev/null 2>&1 || {
+      echo "EDD_EDITOR_MODE=opencode requires the opencode CLI on PATH" >&2
+      exit 64
+    }
+    if [ "${EDD_DISABLE_CONNECTION_TOKEN:-}" = "1" ]; then
+      echo "EDD_EDITOR_MODE=opencode cannot run with EDD_DISABLE_CONNECTION_TOKEN=1" >&2
+      exit 64
+    fi
+    : "${CONNECTION_TOKEN:?EDD_EDITOR_MODE=opencode requires CONNECTION_TOKEN}"
+    exec gosu workspace env \
+      OPENCODE_SERVER_USERNAME=opencode \
+      OPENCODE_SERVER_PASSWORD="${CONNECTION_TOKEN}" \
+      opencode web --hostname 0.0.0.0 --port 3000 --print-logs
+    ;;
   openvscode)
     ;;
   *)
@@ -200,13 +216,12 @@ set -- --host 0.0.0.0 --port 3000 --disable-workspace-trust \
 # Auth: behind the in-app workspace proxy (Auth.js session + per-workspace
 # ownership + network isolation) the OpenVSCode connection token is redundant, so a
 # proxied deployment sets EDD_DISABLE_CONNECTION_TOKEN=1 for a tokenless browser URL.
-# Otherwise (standalone/dev) require a connection token — from ECS secrets, or a
-# random one if unset.
+# Otherwise (standalone/dev) require the connection token injected by compute.
 if [ "${EDD_DISABLE_CONNECTION_TOKEN:-}" = "1" ]; then
   set -- "$@" --without-connection-token
 else
-  _token="${CONNECTION_TOKEN:-$(cat /proc/sys/kernel/random/uuid 2>/dev/null || od -An -N16 -tx1 /dev/urandom | tr -d ' \n')}"
-  set -- "$@" --connection-token "${_token}"
+  : "${CONNECTION_TOKEN:?CONNECTION_TOKEN is required unless EDD_DISABLE_CONNECTION_TOKEN=1}"
+  set -- "$@" --connection-token "${CONNECTION_TOKEN}"
 fi
 
 exec gosu workspace openvscode-server "$@"

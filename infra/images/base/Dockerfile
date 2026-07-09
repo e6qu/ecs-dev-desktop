@@ -95,12 +95,12 @@ RUN chmod -R a+rX /opt/openvscode-server/extensions/edd-workspace-ui
 # Cross-cutting CLIs (installed system-wide to /usr/local BEFORE the home npm prefix
 # is set below, so they land in /usr/local — on PATH for every shell): the JS/TS
 # lint/format/dead-code/CPD tools that match this repo's own CI (prettier, eslint,
-# knip, jscpd), and the AI coding agent CLIs (Claude Code, Codex) — every variant
+# knip, jscpd), and the AI coding agent CLIs (Claude Code, Codex, opencode) — every variant
 # carries both, not just omnibus.
-RUN npm install -g prettier eslint knip jscpd @anthropic-ai/claude-code @openai/codex \
+RUN npm install -g prettier eslint knip jscpd @anthropic-ai/claude-code @openai/codex opencode-ai@1.17.15 \
     && prettier --version && eslint --version \
     && knip --version && jscpd --version \
-    && command -v claude && command -v codex
+    && command -v claude && command -v codex && command -v opencode && opencode --version
 
 # Cross-cutting security scanner: Trivy (vuln/secret/misconfig/IaC), the same tool
 # this repo's CI security gate uses (`.trivyignore.yaml`) — so a workspace can scan

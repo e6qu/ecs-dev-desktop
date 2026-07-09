@@ -23,20 +23,39 @@ cleanup
 smoke_mode() {
   mode=$1
   cleanup
-  # EDD_CONTROL_PLANE_URL/EDD_AGENT_TOKEN satisfy the entrypoint's early required-env checks; the
-  # tokenless flag lets us curl the editor/harness without the connection-token handshake.
-  docker run -d --name "$name" \
-    -e EDD_EDITOR_MODE="$mode" \
-    -e EDD_WORKSPACE_ID=ws-smoke \
-    -e EDD_DISABLE_CONNECTION_TOKEN=1 \
-    -e EDD_CONTROL_PLANE_URL=http://127.0.0.1:9 \
-    -e EDD_AGENT_TOKEN=smoke \
-    -p "${port}:3000" "$tag" >/dev/null
+  # EDD_CONTROL_PLANE_URL/EDD_AGENT_TOKEN satisfy the entrypoint's early required-env checks.
+  # OpenVSCode-compatible modes run tokenless in the image smoke; opencode exercises its own
+  # HTTP basic auth gate with the same CONNECTION_TOKEN production uses.
+  if [ "$mode" = "opencode" ]; then
+    docker run -d --name "$name" \
+      -e EDD_EDITOR_MODE="$mode" \
+      -e EDD_WORKSPACE_ID=ws-smoke \
+      -e CONNECTION_TOKEN=smoke-opencode-token \
+      -e EDD_CONTROL_PLANE_URL=http://127.0.0.1:9 \
+      -e EDD_AGENT_TOKEN=smoke \
+      -p "${port}:3000" "$tag" >/dev/null
+  else
+    docker run -d --name "$name" \
+      -e EDD_EDITOR_MODE="$mode" \
+      -e EDD_WORKSPACE_ID=ws-smoke \
+      -e EDD_DISABLE_CONNECTION_TOKEN=1 \
+      -e EDD_CONTROL_PLANE_URL=http://127.0.0.1:9 \
+      -e EDD_AGENT_TOKEN=smoke \
+      -p "${port}:3000" "$tag" >/dev/null
+  fi
 
   i=0
   path=/w/ws-smoke/
+  if [ "$mode" = "opencode" ]; then
+    path=/
+  fi
   while [ "$i" -lt 25 ]; do
-    body=$(curl -fsS "http://127.0.0.1:${port}${path}" 2>/dev/null) && {
+    if [ "$mode" = "opencode" ]; then
+      body=$(curl -fsS -u opencode:smoke-opencode-token "http://127.0.0.1:${port}${path}" 2>/dev/null) && ok=1 || ok=0
+    else
+      body=$(curl -fsS "http://127.0.0.1:${port}${path}" 2>/dev/null) && ok=1 || ok=0
+    fi
+    if [ "$ok" = "1" ]; then
       case "$body" in
         *"Vendor harness log"* | *"Open the vendor "*)
           echo "edd: ${mode} served the removed EDD vendor wrapper" >&2
@@ -46,7 +65,7 @@ smoke_mode() {
       echo "edd: ${mode} serves ${path} on :${port} (OK)"
       cleanup
       return 0
-    }
+    fi
     i=$((i + 1))
     sleep 1
   done
@@ -60,3 +79,4 @@ smoke_mode openvscode
 smoke_mode monaco
 smoke_mode claude
 smoke_mode codex
+smoke_mode opencode

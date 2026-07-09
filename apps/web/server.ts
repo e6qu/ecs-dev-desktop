@@ -127,7 +127,10 @@ const server = createServer((req, res) => {
       return;
     }
     try {
-      proxyWorkspaceHttp(await resolveWorkspaceUpstream(wsId), req, res);
+      proxyWorkspaceHttp(await resolveWorkspaceUpstream(wsId), req, res, {
+        wsId,
+        editor: authz.editor,
+      });
     } catch {
       res.writeHead(502, { "content-type": "application/json" });
       res.end(JSON.stringify({ error: "workspace unavailable" }));
@@ -194,7 +197,10 @@ server.on("upgrade", (req, socket, head) => {
     const untrack = workspacePresence.track(wsId, authz.sessionExpiresAtMs);
     socket.once("close", untrack);
     try {
-      proxyWorkspaceUpgrade(await resolveWorkspaceUpstream(wsId), req, socket, head);
+      proxyWorkspaceUpgrade(await resolveWorkspaceUpstream(wsId), req, socket, head, {
+        wsId,
+        editor: authz.editor,
+      });
     } catch {
       socket.write("HTTP/1.1 502 Bad Gateway\r\nconnection: close\r\n\r\n");
       socket.destroy();
