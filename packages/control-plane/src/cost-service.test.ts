@@ -221,6 +221,13 @@ describe("CostService.rollupIfStale", () => {
     await svc(at(4), f.store).rollupIfStale(1 * 3_600_000); // 1h cadence → stale
     expect(f.records[0]?.checkpointAt).toBe(at(4)); // regenerated to now
   });
+
+  it("fails loudly when a persisted rollup phase is invalid", async () => {
+    const f = fakeStore([{ ...checkpoint(at(3)), phase: "bogus" }]);
+    await expect(svc(at(4), f.store).report()).rejects.toThrow(
+      "cost rollup for ws-r has invalid billing phase 'bogus'",
+    );
+  });
 });
 
 // ElectroDB batch put/delete (DynamoDB BatchWriteItem) returns `unprocessed` items

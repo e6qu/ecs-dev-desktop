@@ -4,6 +4,45 @@
 
 ## Open
 
+- **PR #215 golden-images failed on GitHub runner disk during `--load` —
+  FIXED in current branch (2026-07-09).** After merge commit `3886482cd83f`
+  deployed, the separate `golden-images` workflow failed while exporting/loading
+  the large golden image with `no space left on device`, so ECR lacked
+  `edd-prod/golden/omnibus:3886482cd83f` and `post-deploy-smoke` failed waiting
+  for the enabled catalog image to roll. The branch made
+  `scripts/publish-images.sh` support explicit `EDD_BUILDX_OUTPUT=load|push` and
+  configured GitHub release/golden workflows to use `push`, so BuildKit pushed
+  directly to ECR instead of importing huge layers into the runner daemon.
+
+- **Invitation sending surfaced a raw Next digest when mailer config was missing
+  — FIXED in current branch (2026-07-09).** Production logged
+  `EDD_PUBLIC_APP_URL is required` for digest `1978335914`; the server action had
+  already created an invitation token and then let the mailer exception escape to
+  the Next.js error boundary. The branch preflighted mandatory
+  `EDD_PUBLIC_APP_URL`, `EDD_EMAIL_FROM`, and `AWS_REGION` before creating a
+  token, kept those settings mandatory with no fallbacks, and redirected admins
+  to an explicit invitation failure/success message instead of an opaque digest.
+
+- **Admin costs could render `$NaN` — FIXED in current branch (2026-07-09).**
+  Non-finite pricing, durations, workspace resource sizing, or persisted rollup
+  fields could reach the React formatter and produce `NaN` text. The branch added
+  fail-loud finite/positive guards in the pure cost model, rejected invalid
+  persisted rollup phases instead of treating them as `none`, validated reports
+  at the admin page boundary, and rendered a visible "Cost report unavailable"
+  error if bad cost state was encountered.
+
+- **Circle-`i` overlays could still appear cramped or overlap the page — FIXED in
+  current branch (2026-07-09).** Workspace/session detail panels and page help now
+  used a shared fixed modal surface with viewport-constrained sizing, overflow
+  clipping, long-value wrapping, Escape/overlay close handling, and one-active-
+  modal coordination.
+
+- **Viewer role still saw the snapshot interval edit control — FIXED in current
+  branch (2026-07-09).** The API already denied viewer updates through CASL, but
+  workspace cards rendered the editable control unconditionally. The branch hid
+  the edit control unless the current principal could update that workspace and
+  added route-matrix coverage for viewer denial on `PATCH /api/workspaces/:id`.
+
 - **PR #214 post-deploy smoke saw a stale enabled golden image despite a
   successful image build — FIXED in current branch (2026-07-09).** After merge
   commit `7197f30de9d9` deployed, ECR contained

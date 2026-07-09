@@ -15,6 +15,7 @@ import {
   deriveBillingIntervals,
   deriveBillingState,
   priceIntervals,
+  priceDurations,
   relativeWindow,
   resumeBilling,
 } from "./cost";
@@ -169,6 +170,18 @@ describe("priceIntervals", () => {
     expect(cost.volumeUsd).toBeCloseTo((1 / 730) * 8 * 0.08, 8);
     expect(cost.snapshotUsd).toBeCloseTo((1 / 730) * 8 * 0.05, 8);
     expect(cost.teardownMs).toBe(HOUR);
+  });
+
+  it("rejects non-finite inputs before they can render as NaN cost", () => {
+    expect(() => priceDurations(Number.NaN, 0, 0, PRICING, SIZING)).toThrow(
+      "runningMs must be a finite non-negative number",
+    );
+    expect(() =>
+      priceDurations(0, 0, 0, { ...PRICING, fargateVcpuHourUsd: Number.NaN }, SIZING),
+    ).toThrow("pricing.fargateVcpuHourUsd must be a finite non-negative number");
+    expect(() => priceDurations(0, 0, 0, PRICING, { ...SIZING, volumeGib: Number.NaN })).toThrow(
+      "sizing.volumeGib must be a finite positive number",
+    );
   });
 });
 

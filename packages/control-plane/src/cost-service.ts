@@ -104,7 +104,22 @@ function ownerOf(events: readonly AuditEvent[], record: WorkspaceDto | undefined
   return created?.actor ?? record?.ownerId ?? "unknown";
 }
 
-function resourcesToSizing(resources: WorkspaceDto["resources"]): WorkspaceSizing {
+function resourcesToSizing(
+  workspaceId: string,
+  resources: WorkspaceDto["resources"],
+): WorkspaceSizing {
+  if (
+    !Number.isFinite(resources.cpuUnits) ||
+    resources.cpuUnits <= 0 ||
+    !Number.isFinite(resources.memoryMiB) ||
+    resources.memoryMiB <= 0 ||
+    !Number.isFinite(resources.volumeGiB) ||
+    resources.volumeGiB <= 0
+  ) {
+    throw new Error(
+      `cost report cannot price workspace ${workspaceId}: workspace resources are not finite positive numbers`,
+    );
+  }
   return {
     vcpu: resources.cpuUnits / 1024,
     memoryGib: resources.memoryMiB / 1024,
@@ -154,7 +169,7 @@ function sizingOf(
 ): WorkspaceSizing {
   return record === undefined
     ? sizingFromCreateDetail(events, workspaceId)
-    : resourcesToSizing(record.resources);
+    : resourcesToSizing(workspaceId, record.resources);
 }
 
 /** Earliest event timestamp across the ledger (the window start), or `now`. */
@@ -165,8 +180,11 @@ function earliestAt(events: readonly AuditEvent[], now: string): string {
 }
 
 const PHASES = new Set(["running", "stopped", "teardown", "none", "terminated"]);
-function asPhase(value: string): BillingState["phase"] {
-  return PHASES.has(value) ? (value as BillingState["phase"]) : "none";
+function asPhase(value: string, workspaceId: string): BillingState["phase"] {
+  if (!PHASES.has(value)) {
+    throw new Error(`cost rollup for ${workspaceId} has invalid billing phase '${value}'`);
+  }
+  return value as BillingState["phase"];
 }
 
 /**
@@ -292,7 +310,7 @@ export class CostService {
         runningMs: r.runningMs,
         stoppedMs: r.stoppedMs,
         teardownMs: r.teardownMs,
-        phase: asPhase(r.phase),
+        phase: asPhase(r.phase, r.workspaceId),
       };
       const resumed = resumeBilling(state, checkpoint, tailEvents, now);
       const record = records.get(r.workspaceId);

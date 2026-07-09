@@ -16,6 +16,7 @@ export function HelpToggle() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const content = findHelp(pathname);
+  const modalId = "page-help";
 
   const toggle = useCallback(() => {
     setOpen((v) => !v);
@@ -23,6 +24,7 @@ export function HelpToggle() {
 
   useEffect(() => {
     if (!open) return;
+    window.dispatchEvent(new CustomEvent("edd:modal-open", { detail: modalId }));
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
@@ -30,7 +32,17 @@ export function HelpToggle() {
     return () => {
       window.removeEventListener("keydown", onKey);
     };
-  }, [open]);
+  }, [modalId, open]);
+
+  useEffect(() => {
+    const onModalOpen = (event: Event) => {
+      if (!(event instanceof CustomEvent) || event.detail !== modalId) setOpen(false);
+    };
+    window.addEventListener("edd:modal-open", onModalOpen);
+    return () => {
+      window.removeEventListener("edd:modal-open", onModalOpen);
+    };
+  }, [modalId]);
 
   if (content === null) return null;
 

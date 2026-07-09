@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { invitationEmail, invitationUrl } from "./invitation-mailer";
+import {
+  assertInvitationMailerConfigured,
+  invitationEmail,
+  invitationUrl,
+} from "./invitation-mailer";
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -35,5 +39,19 @@ describe("invitation mailer", () => {
     expect(() => invitationEmail({ email: "dev@example.com", token: "tok" })).toThrow(
       "EDD_EMAIL_FROM is required",
     );
+  });
+
+  it("preflights every required mailer setting before issuing an invitation token", () => {
+    vi.stubEnv("EDD_PUBLIC_APP_URL", "https://app.example.com");
+    vi.stubEnv("EDD_EMAIL_FROM", "EDD <noreply@example.com>");
+
+    expect(() => {
+      assertInvitationMailerConfigured();
+    }).toThrow("AWS_REGION is required");
+
+    vi.stubEnv("AWS_REGION", "eu-west-1");
+    expect(() => {
+      assertInvitationMailerConfigured();
+    }).not.toThrow();
   });
 });

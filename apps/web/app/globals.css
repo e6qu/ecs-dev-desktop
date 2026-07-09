@@ -1370,18 +1370,19 @@ main {
   inset: 0;
   z-index: 1000;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
   overflow-y: auto;
   background: rgb(0 0 0 / 0.55);
-  padding: clamp(16px, 4vh, 48px) 16px;
+  padding: clamp(16px, 4vh, 48px) clamp(12px, 4vw, 32px);
 }
 
 .help-panel {
   position: relative;
-  width: min(960px, 100%);
-  max-height: calc(100vh - clamp(32px, 8vh, 96px));
+  width: min(960px, calc(100vw - clamp(24px, 8vw, 64px)));
+  max-height: min(760px, calc(100vh - clamp(32px, 8vh, 96px)));
   overflow-y: auto;
+  overflow-x: hidden;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -1455,7 +1456,7 @@ main {
 }
 
 .workspace-info-panel {
-  width: min(860px, calc(100vw - 32px));
+  width: min(760px, calc(100vw - clamp(24px, 8vw, 64px)));
   max-width: none;
 }
 

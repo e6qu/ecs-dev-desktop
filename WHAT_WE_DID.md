@@ -3525,3 +3525,28 @@ layout, and pnpm's build-script allowlist explicitly approved `sharp` so
 warnings. Verification passed with full repo lint/build/test, dependency
 freshness, actionlint, frozen install, shellcheck, bash/zsh syntax checks, and
 `git diff --check`.
+
+**2026-07-09 — Fixed PR #215 follow-up failures before opening the next PR.**
+After PR #215 deployed commit `3886482cd83f`, release health was green but the
+release was not accepted: the asynchronous golden-images workflow failed on
+GitHub runner disk while `docker buildx --load` imported the large omnibus image,
+production invitation sending surfaced raw digest `ERROR 1978335914` because
+`EDD_PUBLIC_APP_URL` was missing, and the admin costs page could render `$NaN`.
+The follow-up branch made release and golden-image workflows publish with
+BuildKit `--push` directly, kept invitation mail configuration mandatory while
+preflighting it before token creation and showing explicit admin errors, and
+added finite/positive validation in the cost core, control-plane resume path,
+and admin cost presentation boundary.
+
+The same branch finished the requested UI/RBAC hardening. Circle-`i` page help
+and session-detail panels moved to a fixed, viewport-bounded modal surface with
+long-value wrapping and one-active-modal coordination. Workspace cards stopped
+rendering snapshot-interval editing for viewers, and the authz matrix covered
+viewer denial on workspace `PATCH`.
+
+Verification passed with full `pnpm test`, `pnpm lint`, and `pnpm build`, plus
+focused web/core/control-plane test/lint/build commands, `shellcheck`, `sh -n`,
+`bash -n`, `actionlint`, and `git diff --check`. Local Playwright verification
+remained blocked before assertions because the required sockerless AWS simulator
+was absent and a freshly recreated Podman vfkit VM never exposed SSH/API to
+gvproxy (`no route to host`).

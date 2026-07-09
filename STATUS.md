@@ -2,6 +2,57 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
+**Last updated:** 2026-07-09. After PR #215 merged as
+`3886482cd83fcca8c62a5f9292f31c99654542e2`, the `release` workflow completed
+successfully and production `/api/healthz` reported `deploy.sha=3886482cd83f`;
+`/api/readyz` was ready, and ECS had rolled `edd-prod-control-plane` to two
+healthy replicas and `edd-prod-ssh-gateway` to one healthy replica on task
+definition revision `:40`. The release was **not** accepted as fully verified:
+the asynchronous `golden-images` workflow failed while exporting/loading the
+large workspace image on the GitHub runner with `no space left on device`, and
+the dependent `post-deploy-smoke` failed because the enabled catalog image did
+not roll to `3886482cd83f`. Production invitation sending also rendered a raw
+Next.js digest (`ERROR 1978335914`) because `EDD_PUBLIC_APP_URL` was absent from
+the live task environment, and the admin costs page could render `$NaN` when
+non-finite cost values reached presentation.
+
+The current branch fixed those issues in source. GitHub release/golden image
+workflows set `EDD_BUILDX_OUTPUT=push`, and `scripts/publish-images.sh`
+supported direct BuildKit push so CI no longer imported huge golden layers into
+the runner Docker daemon before pushing to ECR. Invitation actions preflighted
+all mandatory mailer settings before issuing a token and redirected admins to a
+visible failure/success message instead of surfacing an opaque server-action
+digest; configuration stayed mandatory with no fallback URL or sender. The pure
+cost model, rollup resume path, and admin costs page rejected non-finite pricing,
+durations, resource sizing, and invalid persisted rollup phases before they
+could render as `$NaN`.
+
+The branch also completed the previously requested UI/RBAC hardening. Circle-`i`
+help/session detail panels rendered as viewport-bounded fixed modals, long image
+names/hosts/details wrapped inside the modal, and a shared modal coordination
+event ensured only one help/details overlay stayed active at once. Workspace
+cards hid snapshot-interval editing unless the current principal could update
+that workspace, and the API authorization matrix covered viewer denial for
+`PATCH /api/workspaces/:id`.
+
+Verification passed with `pnpm test`, `pnpm lint`, `pnpm build`,
+`pnpm --filter @edd/web test`, `pnpm --filter @edd/web lint`,
+`pnpm --filter @edd/web build`, `pnpm --filter @edd/core test`, `pnpm --filter
+@edd/core lint`, `pnpm --filter @edd/core build`, `pnpm --filter
+@edd/control-plane test`, `pnpm --filter @edd/control-plane lint`,
+`pnpm --filter @edd/control-plane build`, `shellcheck scripts/publish-images.sh`,
+`sh -n scripts/publish-images.sh`, `bash -n scripts/publish-images.sh`,
+`actionlint .github/workflows/release.yml .github/workflows/golden-images.yml`,
+and `git diff --check`. A first dependency install failed under sandboxed DNS
+and passed with network access. A first web test failed under sandboxed loopback
+and passed with loopback access. `pnpm --filter @edd/web test:pw` could not run
+locally because CI's required sockerless AWS simulator at `127.0.0.1:4566` was
+not running. The default Podman machine was deleted and recreated, but the
+fresh vfkit VM never exposed SSH/API to gvproxy; `gvproxy.log` ended with
+`timeout: connect tcp 192.168.127.2:22: no route to host`, and Docker-compatible
+commands still could not reach the Podman API. No Playwright assertion result
+was claimed.
+
 **Last updated:** 2026-07-09. After PR #214 merged as
 `7197f30de9d924550078bfbf5c0e726baeaedb64`, the `release` workflow completed,
 production `/api/healthz` reported `deploy.sha=7197f30de9d9`, `/api/readyz`
