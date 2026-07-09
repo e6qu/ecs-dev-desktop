@@ -63,7 +63,9 @@ deferral by choice.
   OpenVSCode does not render `Forbidden`, Monaco accepts typing after opening a
   file, Claude opens the Anthropic extension UI, Codex opens the OpenAI
   extension UI, and opencode loads through `/w/<id>/` without leaking a second
-  public endpoint.
+  public endpoint. The PR #212 `e2e` rerun exposed and fixed one remaining
+  legacy harness miss: `user-journey.e2e.ts` now supplied the required
+  `EDD_CONNECTION_SECRET`.
 
 - **Change Claude/Codex workspace modes only if a better verified vendor browser
   entrypoint exists.** Local verification on 2026-07-08 found Codex app-server

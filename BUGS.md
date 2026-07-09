@@ -29,7 +29,11 @@
   `connectionSecret` values to those golden-image paths and made the real web
   provider path throw immediately when `COMPUTE_PROVIDER=ecs` lacked
   `EDD_AGENT_SECRET` or `EDD_CONNECTION_SECRET`, so missing deployment secrets
-  failed at control-plane construction instead of as opaque task exits.
+  failed at control-plane construction instead of as opaque task exits. A later
+  PR #212 rerun found the older `user-journey.e2e.ts` web-app harness still
+  missed `EDD_CONNECTION_SECRET`; that harness now supplied the required secret
+  and printed the failed response body plus captured web-app output on status
+  mismatches.
 
 - **Golden image builds could be skipped after editor/runtime-only merges —
   FIXED in current branch (2026-07-08).** The asynchronous `golden-images`

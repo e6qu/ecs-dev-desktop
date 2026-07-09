@@ -3442,3 +3442,18 @@ the fixed golden base image and verified `opencode`, `claude`, and `codex`
 binaries were present, but the local machine had only 12 GiB free and Podman
 failed committing the omnibus image layer with `no space left on device` before
 the e2e tests started; CI remained the full container-mode verification path.
+
+**2026-07-09 — Fixed the second PR #212 e2e failure in the legacy user-journey
+harness.** The PR #212 rerun passed build-test, integration, e2e-https,
+terraform-sim, golden image validation, and the security/static checks, but
+`e2e` still failed in `src/user-journey.e2e.ts`: create returned 500, then the
+shared `wsId` remained empty and follow-up snapshot/stop/connect/delete calls
+hit 405 routes. The missing root cause was the same fail-loud contract in one
+older harness: `user-journey.e2e.ts` started the production web app with
+`COMPUTE_PROVIDER=ecs` and `EDD_AGENT_SECRET` but no required
+`EDD_CONNECTION_SECRET`. The harness now supplied an explicit connection secret.
+Its HTTP status helper also printed the response body and captured web-app
+stdout/stderr on mismatches, so the next CI failure in that path would include
+the server-side reason instead of only assertion summaries. Focused verification
+passed with `pnpm --filter @edd/e2e lint` and `pnpm exec tsc -p
+packages/e2e/tsconfig.json --noEmit`; the package had no `build` script.

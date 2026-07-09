@@ -51,6 +51,7 @@ const LOG_GROUP = `/edd/e2e/journey-${RUN_ID}`;
 const WORKSPACE_IMAGE = e2eWorkspaceImage();
 const EBS_ROLE = e2eEbsRoleArn();
 const AGENT_SECRET = "e".repeat(64);
+const CONNECTION_SECRET = "f".repeat(64);
 const HEARTBEAT_INTERVAL_S = 5;
 const OWNER = "journey-user";
 
@@ -86,7 +87,7 @@ describe(
       const res = await fetch(`${web.baseUrl}/api/admin/workspaces/${wsId}`, {
         headers: devHeaders("root", "admin"),
       });
-      expect(res.status).toBe(200);
+      await expectStatus(res, 200);
       return workspaceInspection.parse(await res.json()).workspace;
     }
 
@@ -128,8 +129,14 @@ describe(
     /** Assert an API response status, surfacing the body on mismatch. */
     async function expectStatus(res: Response, status: number): Promise<Response> {
       if (res.status !== status) {
+        const body = await res.text();
         throw new Error(
-          `expected ${String(status)}, got ${String(res.status)}: ${await res.text()}`,
+          [
+            `expected ${String(status)}, got ${String(res.status)}:`,
+            body,
+            "web app output:",
+            web.output(),
+          ].join("\n"),
         );
       }
       return res;
@@ -176,6 +183,7 @@ describe(
         ECS_LOG_GROUP_WORKSPACES: LOG_GROUP,
         CONTROL_PLANE_URL: `http://${hostAlias}:${String(port)}`,
         EDD_AGENT_SECRET: AGENT_SECRET,
+        EDD_CONNECTION_SECRET: CONNECTION_SECRET,
         EDD_HEARTBEAT_INTERVAL_S: String(HEARTBEAT_INTERVAL_S),
         ...imageSourceEnv(`edd-journey-${RUN_ID}`, "omnibus"),
       }));
@@ -192,7 +200,7 @@ describe(
         method: "POST",
         body: JSON.stringify({ baseImage: WORKSPACE_IMAGE }),
       });
-      expect(res.status).toBe(201);
+      await expectStatus(res, 201);
       const ws = workspace.parse(await res.json());
       wsId = ws.id;
       expect(["provisioning", "running"]).toContain(ws.state);

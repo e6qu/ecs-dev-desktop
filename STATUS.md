@@ -13,6 +13,12 @@ real `opencode web` server on port 3000 with
 workspace connection token. Missing opencode, missing `CONNECTION_TOKEN`, or
 `EDD_DISABLE_CONNECTION_TOKEN=1` in opencode mode failed loudly.
 
+PR #212 CI exposed stale e2e harness coordinates rather than a reason to restore
+fallbacks. Golden-image launch paths, the shared live ECS harness, and the older
+user-journey web-app harness now supplied explicit editor connection secrets;
+the production real-provider path still failed immediately if
+`COMPUTE_PROVIDER=ecs` lacked `EDD_AGENT_SECRET` or `EDD_CONNECTION_SECRET`.
+
 The branch also removed the remaining random OpenVSCode connection-token
 fallback: standalone/tokened editor startup now required `CONNECTION_TOKEN`
 unless `EDD_DISABLE_CONNECTION_TOKEN=1` was explicitly set. The in-app workspace
