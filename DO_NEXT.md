@@ -28,12 +28,12 @@ Route53 zone `edd.e6qu.dev` hosts `app.edd.e6qu.dev` (control plane) and
 so `e6qu.dev` itself stays free for other future use. Real production stack is
 **live**: see `STATUS.md` and `WHAT_WE_DID.md` 2026-07-05/06 for the full deploy
 narrative (9+ real bugs found and fixed along the way, all in `BUGS.md` →
-Resolved (repo)). **Claude/Codex web UI direction — DONE (2026-07-07).** Do NOT
-build an EDD-authored Claude/Codex chat UI. `claude` workspaces must reuse
-Anthropic's Claude Code harness (Remote Control / `claude.ai/code` against a local
-Claude Code process; cloud-hosted Claude Code web is a separate surface), and
-`codex` workspaces must reuse OpenAI's Codex local harness (`codex app-server` /
-first-party client protocol), not an EDD reimplementation.
+Resolved (repo)). **Claude/Codex workspace type direction — DONE (2026-07-10).**
+EDD did not ship separate Claude Code or Codex workspace types because no
+first-party EDD-hostable local browser UI was verified for either product.
+Claude and Codex were shipped as CLIs inside the generic `terminal` workspace
+type instead; any future vendor web integration needs a newly verified
+first-party local browser command/bundle and an explicit product decision.
 
 ---
 
@@ -60,6 +60,21 @@ deferral by choice.
   `no space left on device` failure. Confirm the production catalog rolls to the
   merge SHA and the screenshot smoke reaches all workspace editor checks.
 
+- **After this follow-up branch merges, verify the simplified workspace catalog
+  in production.** Create OpenVSCode, Monaco, Terminal, and opencode workspaces
+  from the rolled golden image. Confirm the UI no longer offers Claude Code or
+  Codex workspace types, Terminal opens the multi-tab terminal surface under
+  `/w/<workspace-id>/`, and both `claude` and `codex` commands are present in
+  that terminal. Confirm opencode still renders through the path proxy.
+
+- **Decide whether Claude Remote Control should be a separate launch/link flow.**
+  It was verified as an official Anthropic harness, but its browser surface is
+  `claude.ai/code`/mobile, not EDD `/w/<workspace-id>/`. It requires per-user
+  claude.ai login/subscription and Team/Enterprise enablement, keeps a local
+  Claude process running in the workspace, and uses outbound HTTPS only. If used,
+  EDD should present it honestly as "Start Claude Remote Control" plus the
+  vendor session URL/status, not as "Claude Local Web UI".
+
 - **Verify production invitation mail configuration after merge/deploy.** The app
   now showed explicit admin errors instead of a raw Next digest, but sending still
   required real `EDD_PUBLIC_APP_URL`, `EDD_EMAIL_FROM`, `AWS_REGION`, SES sender
@@ -72,13 +87,14 @@ deferral by choice.
   fail visibly with "Cost report unavailable" and the underlying bad persisted
   row should be repaired or deleted by explicit operational action.
 
-- **Rerun local/CI Playwright with the simulator available.** Local verification
-  of `pnpm --filter @edd/web test:pw` was blocked because the CI-required
-  sockerless AWS simulator at `127.0.0.1:4566` was not running and a freshly
-  recreated default Podman machine never exposed SSH/API to gvproxy
-  (`timeout: connect tcp 192.168.127.2:22: no route to host`). CI should still
-  run the Playwright job after bringing up `docker-compose.tier2.yml`; inspect it
-  because this branch changed modal behavior in `portal.pw.ts`.
+- **After this dependency/local-Docker follow-up branch is opened, watch CI and
+  merge only after the same checks pass there.** Local verification now rebuilt
+  and started the sockerless AWS simulator with Docker Compose, then passed
+  `pnpm --filter web test:pw` 19/19. The branch also moved runtime AWS SDK
+  clients into `apps/web` runtime dependencies and made `check-deps`
+  peer-aware for the verified TypeScript 7 / `typescript-eslint@8.63.0` mismatch.
+  Inspect CI for the frozen install, `check-deps`, lint/build/test, and
+  Playwright jobs before merge.
 
 - **After this admin/auth/image-source branch merges, rerun release,
   golden-images, and post-deploy-smoke and inspect artifacts again.** PR #214
@@ -106,24 +122,23 @@ deferral by choice.
 - **After this opencode proxy fix merges, rerun release/golden-images/
   post-deploy-smoke and inspect artifacts again.** PR #213 deployed and built
   `omnibus:d063fea1ec78`, but `post-deploy-smoke` run `29014192952` failed on
-  opencode after proving screenshots for OpenVSCode, Monaco, Claude, and Codex.
+  opencode after proving screenshots for the then-current workspace types.
   The current branch fixed the opencode base-path rewrite for the verified
   `opencode-linux-x64@1.17.15` bundle patterns and added browser console/
   pageerror/requestfailed diagnostics to screenshot-smoke failure artifacts.
-  After merge, confirm screenshots exist for OpenVSCode, Monaco, Claude, Codex,
-  and opencode; verify OpenVSCode does not render `Forbidden`, Monaco accepts
-  typing after opening a file, Claude shows the Anthropic webview, Codex shows
-  the OpenAI webview, and opencode renders through `/w/<id>/` without a second
-  public endpoint.
+  After merge, confirm screenshots exist for OpenVSCode, Monaco, Terminal, and
+  opencode; verify OpenVSCode does not render `Forbidden`, Monaco accepts typing
+  after opening a file, Terminal renders the multi-tab terminal surface, and
+  opencode renders through `/w/<id>/` without a second public endpoint.
 
-- **Change Claude/Codex workspace modes only if a better verified vendor browser
-  entrypoint exists.** Local verification on 2026-07-08 found Codex app-server
-  as a JSON-RPC protocol server, `codex app` as a desktop-app launcher, and
-  Claude `--remote-control` as a Remote Control/TUI session with no local HTTP
-  browser listener observed. EDD therefore used the vendor OpenVSCode extension
-  UIs. Do not build an EDD chat UI, do not use Monaco as a fallback, and do not
-  change this again without the exact vendor-provided browser UI
-  command/transport verified.
+- **Keep Claude/Codex as Terminal CLIs unless a verified vendor browser entrypoint
+  appears and the user explicitly changes the product direction.** Local
+  verification on 2026-07-10 found Codex app-server as a JSON-RPC protocol
+  server, `codex app` as a desktop-app launcher, and Claude Remote Control as a
+  vendor-hosted outbound-control flow, not an EDD-hostable web page. Do not build
+  an EDD chat UI, do not use Monaco/OpenVSCode as a fallback, and do not add
+  Claude/Codex workspace types without the exact vendor-provided browser UI
+  command/bundle verified locally.
 
 - **After the current branch merges, rerun the deployed screenshot smoke from
   GitHub Actions and inspect its artifacts.** PR #209 deployed
@@ -139,10 +154,10 @@ deferral by choice.
   to install Chromium only in CI smoke/browser workflows, and PR #210's rerun
   passed every CI job after that fix.
   After merge, watch `release`, `golden-images`, and `post-deploy-smoke`;
-  confirm the artifact contains screenshots for all four workspace types and
-  specifically verify OpenVSCode does not render `Forbidden`, Monaco accepts
-  typing after opening a file, Claude shows the Anthropic Claude Code webview,
-  and Codex shows the OpenAI Codex sidebar.
+  confirm the artifact contains screenshots for all four current workspace types
+  and specifically verify OpenVSCode does not render `Forbidden`, Monaco accepts
+  typing after opening a file, Terminal renders the multi-tab terminal, and
+  opencode renders.
 - **Apply/verify Terraform drift for fast health checks.** The source expected
   10-second ALB/NLB target-group health checks, but live AWS still showed
   30-second intervals after the image-only release. Apply the Terraform stack from
@@ -188,9 +203,9 @@ deferral by choice.
      blank/existing repo/public GitHub URL/create repo, GitHub connect for Entra
      sessions, owner namespace selection, one Start button, and redirect to the
      per-workspace status page. Remaining polish was visual/UX only.
-  3. **Editor selection at creation**: OpenVSCode | Monaco | Claude Code | Codex shipped
-     as a UI/data choice. Claude/Codex runtime modes now launch OpenVSCode with
-     their vendor extension UI selected.
+  3. **Editor selection at creation**: OpenVSCode | Monaco | Terminal | opencode
+     shipped as the current UI/data choice. Claude and Codex are CLIs in the
+     Terminal workspace, not separate workspace types.
   4. **Monitoring follow-up**: the card/admin surfaces now showed disk usage and linked
      per-workspace monitoring. Remaining work was richer CPU/memory/disk visualization on
      the compact card, per-workspace snapshot-cost display, disk-increase action

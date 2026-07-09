@@ -27,6 +27,8 @@ export interface EditorServerOptions {
   /** Program each terminal boots into instead of a plain shell (agent-first
    * modes; see TerminalDeps.command). */
   readonly terminalCommand?: string;
+  /** Hide the Monaco/file explorer surface and present the terminal as the workspace. */
+  readonly terminalOnly?: boolean;
 }
 
 const MIME: Record<string, string> = {
@@ -142,6 +144,10 @@ export function createEditorServer(opts: EditorServerOptions): Server {
 
     if (sub === "api/tree" && req.method === "GET") {
       sendJson(res, 200, { entries: await buildTree(opts.root) });
+      return;
+    }
+    if (sub === "api/config" && req.method === "GET") {
+      sendJson(res, 200, { terminalOnly: opts.terminalOnly === true });
       return;
     }
     if (sub === "api/file") {

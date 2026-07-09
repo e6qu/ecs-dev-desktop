@@ -102,10 +102,9 @@ function isWorkspaceRootPath(pathname: string, wsId: WorkspaceId): boolean {
 function tokenCookieForEditor(editor: EditorKind): string {
   switch (editor) {
     case "openvscode":
-    case "claude":
-    case "codex":
       return EDITOR_TOKEN_COOKIE;
     case "monaco":
+    case "terminal":
       return MONACO_TOKEN_COOKIE;
     case "opencode":
       return EDITOR_TOKEN_COOKIE;
@@ -431,7 +430,7 @@ export function rewriteOpencodeResponseBody(body: string, wsId: WorkspaceId): st
 }
 
 /** http.request options forwarding `req` to the workspace `upstream`. OpenVSCode,
- * Claude, Codex, and Monaco serve under `/w/<id>/`, so paths pass through. opencode
+ * OpenVSCode, Monaco, and Terminal serve under `/w/<id>/`, so paths pass through. opencode
  * has no base-path flag, so only that editor is translated to origin-root upstream
  * paths and authenticated with the workspace connection token as Basic auth. */
 function upstreamOptions(

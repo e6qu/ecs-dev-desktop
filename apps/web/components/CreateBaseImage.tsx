@@ -10,8 +10,7 @@ const api = new ApiClient({ baseUrl: "" });
 const EDITOR_OPTIONS: readonly { value: EditorKindDto; label: string }[] = [
   { value: "openvscode", label: "OpenVSCode" },
   { value: "monaco", label: "Monaco" },
-  { value: "claude", label: "Claude Local Web UI" },
-  { value: "codex", label: "Codex Local Web UI" },
+  { value: "terminal", label: "Terminal" },
   { value: "opencode", label: "opencode Local Web UI" },
 ];
 

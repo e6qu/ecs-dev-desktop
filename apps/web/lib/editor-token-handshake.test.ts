@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // End-to-end reproduction of the editor token handshake that produced the live
-// "unauthorized" on Monaco/Claude/Codex editors: the REAL in-app proxy functions
+// "unauthorized" on Monaco/Terminal editors: the REAL in-app proxy functions
 // (editorTokenRedirect + proxyWorkspaceHttp) in front of the REAL first-party Monaco
 // editor server, driving the exact production flow. Isolated unit-suite integration
 // (local HTTP servers only) — no sim/Docker. This is the regression guard the flow

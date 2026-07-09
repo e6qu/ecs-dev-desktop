@@ -34,13 +34,6 @@ const BAD_RENDER_TEXT = [
   "cannot edit in read-only editor",
 ];
 
-const VENDOR_EXTENSION_SURFACES: Partial<
-  Record<Editor, { readonly tabName: RegExp; readonly extensionId: string }>
-> = {
-  claude: { tabName: /^Claude Code$/i, extensionId: "Anthropic.claude-code" },
-  codex: { tabName: /^Codex$/i, extensionId: "openai.chatgpt" },
-};
-
 const MAX_BROWSER_EVENT_LINES = 80;
 
 function playwrightCookie(baseHost: string, cookie: StoredCookie) {
@@ -73,19 +66,6 @@ async function treeContainsSmokeFile(page: Page): Promise<boolean> {
     const raw: unknown = await res.json();
     return JSON.stringify(raw).includes("edd-smoke-monaco.txt");
   });
-}
-
-async function assertVendorExtensionSurface(editor: Editor, page: Page): Promise<void> {
-  const surface = VENDOR_EXTENSION_SURFACES[editor];
-  if (surface === undefined) throw new Error(`${editor} has no vendor extension surface`);
-  await page.getByRole("tab", { name: surface.tabName }).first().waitFor({
-    state: "visible",
-    timeout: 60_000,
-  });
-  await page
-    .locator(`iframe.webview.ready[src*="extensionId=${surface.extensionId}"]`)
-    .first()
-    .waitFor({ state: "attached", timeout: 60_000 });
 }
 
 async function writeDiagnostic(
@@ -161,10 +141,9 @@ async function assertRenderedWorkspace(editor: Editor, id: string, page: Page): 
     if (afterType.includes("Cannot edit in read-only editor")) {
       throw new Error("monaco rendered Cannot edit in read-only editor after opening a file");
     }
-  } else if (editor === "claude") {
-    await assertVendorExtensionSurface(editor, page);
-  } else if (editor === "codex") {
-    await assertVendorExtensionSurface(editor, page);
+  } else if (editor === "terminal") {
+    await page.waitForFunction(() => document.body.innerText.includes("Terminal"));
+    await page.locator("#terminal-panes .xterm").first().waitFor({ state: "visible" });
   } else if (editor === "opencode") {
     await page.waitForFunction(() => document.body.innerText.toLowerCase().includes("opencode"));
   }

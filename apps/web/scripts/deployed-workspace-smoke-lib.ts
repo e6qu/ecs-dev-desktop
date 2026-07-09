@@ -6,9 +6,9 @@ import { encode } from "next-auth/jwt";
 
 import { AUTH_SESSION_SCHEMA_VERSION, createAuthSession } from "../lib/auth-sessions";
 
-export type Editor = "openvscode" | "monaco" | "claude" | "codex" | "opencode";
+export type Editor = "openvscode" | "monaco" | "terminal" | "opencode";
 
-export const EDITORS: readonly Editor[] = ["openvscode", "monaco", "claude", "codex", "opencode"];
+export const EDITORS: readonly Editor[] = ["openvscode", "monaco", "terminal", "opencode"];
 const SESSION_MAX_AGE_S = 4 * 60 * 60;
 const AUTH_COOKIE_NAME = "__Secure-authjs.session-token";
 
@@ -27,10 +27,9 @@ export function requiredEnv(name: string): string {
 function cookieNameForEditor(editor: Editor): string {
   switch (editor) {
     case "openvscode":
-    case "claude":
-    case "codex":
       return "vscode-tkn";
     case "monaco":
+    case "terminal":
       return "edd-editor-token";
     case "opencode":
       return "opencode";

@@ -77,6 +77,5 @@ smoke_mode() {
 
 smoke_mode openvscode
 smoke_mode monaco
-smoke_mode claude
-smoke_mode codex
+smoke_mode terminal
 smoke_mode opencode

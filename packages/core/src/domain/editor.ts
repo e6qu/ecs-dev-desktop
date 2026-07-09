@@ -9,14 +9,12 @@
  *    (the historical default).
  *  - `monaco` — the first-party lightweight editor served by the in-container
  *    Monaco editor server.
- *  - `claude` — OpenVSCode Server with Anthropic's Claude Code extension UI
- *    opened against the in-workspace Claude Code CLI (not an EDD-reimplemented chat UI).
- *  - `codex` — OpenVSCode Server with OpenAI's Codex extension UI opened
- *    against the in-workspace Codex CLI (not an EDD-reimplemented chat UI).
+ *  - `terminal` — the first-party multi-tab terminal server. The image ships
+ *    both `claude` and `codex` CLIs for users to run from the shell.
  *  - `opencode` — opencode's local browser client, backed by the in-workspace
  *    `opencode web` process (not an EDD-reimplemented chat UI).
  */
-export const EDITOR_KINDS = ["openvscode", "monaco", "claude", "codex", "opencode"] as const;
+export const EDITOR_KINDS = ["openvscode", "monaco", "terminal", "opencode"] as const;
 
 export type EditorKind = (typeof EDITOR_KINDS)[number];
 

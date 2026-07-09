@@ -13,9 +13,8 @@ interface TerminalDeps {
   readonly root: string;
   readonly basePath: string;
   readonly token?: string;
-  /** Program each terminal boots into instead of a plain shell — the agent-first
-   * editor modes (`claude` / `codex`) set this via EDD_TERMINAL_COMMAND. Runs
-   * under a login shell (`$SHELL -lc "exec …"`) so it gets the image's full PATH;
+  /** Program each terminal boots into instead of a plain shell. Runs under a
+   * login shell (`$SHELL -lc "exec …"`) so it gets the image's full PATH;
    * when it exits, the PTY (and tab) closes — a new tab starts it fresh. Trusted
    * operator config from the container entrypoint, never user input. */
   readonly command?: string;

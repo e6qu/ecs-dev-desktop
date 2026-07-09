@@ -24,10 +24,9 @@ cd -- "$repo_root" || exit 1
 fail=0
 
 echo "=== Node/TypeScript: pnpm outdated (latest version >= 1 day old) ==="
-if pnpm outdated -r; then
-  echo "All JS/TS dependencies are on the latest age-eligible version."
+if pnpm check-deps:node; then
+  :
 else
-  echo "::error::JS/TS deps behind the latest age-eligible version — run 'pnpm update --latest -r' and commit."
   fail=1
 fi
 

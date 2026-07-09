@@ -184,6 +184,24 @@ body {
 #terminal-panel.maximized {
   height: calc(100vh - 32px);
 }
+body.terminal-only #sidebar,
+body.terminal-only #editor,
+body.terminal-only #toggle-terminal,
+body.terminal-only #terminal-minimize {
+  display: none;
+}
+body.terminal-only #terminal-panel {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  border-top: 0;
+}
+body.terminal-only #terminal-panel.maximized {
+  height: auto;
+}
+body.terminal-only #terminal-resizer {
+  display: none;
+}
 #terminal-resizer {
   height: 6px;
   flex: none;

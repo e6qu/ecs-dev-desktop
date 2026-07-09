@@ -572,8 +572,7 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
               default" option was indistinguishable from picking OpenVSCode — merged. */}
           <option value="openvscode">OpenVSCode (Default) — full IDE in the browser</option>
           <option value="monaco">Monaco — lightweight first-party editor</option>
-          <option value="claude">Claude Local Web UI</option>
-          <option value="codex">Codex Local Web UI</option>
+          <option value="terminal">Terminal — multi-tab shell with Claude and Codex CLI</option>
           <option value="opencode">opencode Local Web UI</option>
         </select>
         <div className="setting-grid">
