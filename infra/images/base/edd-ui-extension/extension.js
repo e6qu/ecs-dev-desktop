@@ -12,7 +12,8 @@
 //      to the chat entries, so these live in the status bar (right-aligned, top
 //      priority), the sanctioned always-visible surface for extension controls.
 //   3. Opens an interactive terminal on startup when none is open yet.
-//   4. Opens the selected vendor UI when EDD_EDITOR_MODE is claude/codex.
+//   4. Opens the selected vendor OpenVSCode extension UI when
+//      EDD_EDITOR_MODE is claude/codex.
 //   5. A once-per-workspace tip that the claude/codex OAuth browser redirect
 //      cannot reach a remote workspace -- paste the code shown in the browser
 //      instead (both CLIs support that flow natively).
@@ -34,7 +35,7 @@ const OAUTH_TIP =
   "this remote workspace — paste the code shown in the browser instead of waiting for it.";
 
 const VENDOR_COMMANDS = {
-  claude: "claude-vscode.editor.open",
+  claude: "claude-vscode.sidebar.open",
   codex: "chatgpt.openSidebar",
 };
 

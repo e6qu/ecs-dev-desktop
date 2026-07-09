@@ -4,6 +4,19 @@
 
 ## Open
 
+- **PR #212 post-deploy smoke failed before opencode and accepted weak
+  Claude/Codex evidence — FIXED in current branch (2026-07-09).** After
+  `af69bd829e6d` deployed, `post-deploy-smoke` run `29005606380` created
+  OpenVSCode, Monaco, Claude, and Codex workspaces on the new golden image, but
+  failed in Codex before reaching opencode. The Codex artifact showed the
+  OpenAI extension surface was present as an uppercase `CODEX` tab plus an
+  `openai.chatgpt` webview iframe, while the smoke waited for exact body text
+  `Codex`. The Claude screenshot showed the old smoke could pass on the
+  welcome-page Claude walkthrough text instead of the Anthropic webview. The
+  branch changed the EDD helper extension to open Claude via the verified
+  `claude-vscode.sidebar.open` command and changed the deployed screenshot smoke
+  to require the vendor extension tab and webview iframe for Claude and Codex.
+
 - **opencode workspace mode was missing — FIXED in current branch
   (2026-07-09).** EDD had OpenVSCode, Monaco, Claude, and Codex interface modes
   but no opencode local web client. The branch added `opencode` to the

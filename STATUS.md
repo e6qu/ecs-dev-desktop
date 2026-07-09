@@ -2,6 +2,44 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
+**Last updated:** 2026-07-09. After PR #212 merged as
+`af69bd829e6dc5dca5b717be60e4dbd92372af3a`, the `release` workflow completed
+successfully, production `/api/healthz` reported `deploy.sha=af69bd829e6d`, and
+`/api/readyz` was ready. ECS rolled `edd-prod-control-plane` to two healthy
+replicas and `edd-prod-ssh-gateway` to one healthy replica on task definition
+revision `:37`. The `golden-images` workflow also completed and pushed
+`729079515331.dkr.ecr.eu-west-1.amazonaws.com/edd-prod/golden/omnibus:af69bd829e6d`.
+
+The release was **not** accepted as fully verified because the authenticated
+`post-deploy-smoke` workflow run `29005606380` failed before reaching opencode.
+It captured OpenVSCode, Monaco, and Claude screenshots, then timed out in the
+Codex assertion. The failure artifact showed the Codex OpenVSCode extension tab
+rendered as `CODEX` with its `openai.chatgpt` webview iframe present, while the
+smoke waited for exact body text `Codex`. The Claude screenshot also exposed a
+weaker methodology issue: the old assertion passed on incidental welcome-page
+text from the Claude walkthrough instead of proving the Anthropic extension UI
+was open.
+
+The current branch tightened that verification and fixed the Claude opener. The
+EDD OpenVSCode helper extension now opened Anthropic's verified
+`claude-vscode.sidebar.open` command, and the deployed screenshot smoke required
+the vendor extension tab plus webview iframe for Claude (`Anthropic.claude-code`)
+and Codex (`openai.chatgpt`) instead of matching incidental body text. Local docs
+and comments were updated to state the verified implementation: Claude/Codex
+workspace modes used vendor OpenVSCode extension UIs, not EDD-authored wrappers
+or standalone local HTTP chat UIs.
+
+Focused verification passed with `pnpm --filter @edd/web build`, `pnpm --filter
+@edd/web lint`, `pnpm --filter @edd/web test` with loopback access,
+`pnpm --filter @edd/e2e lint`, `pnpm --filter @edd/core test`, focused eslint
+for `apps/web/scripts/screenshot-deployed-workspaces.ts`, and
+`git diff --check`. A sandboxed `@edd/web test` run failed only because the
+sandbox denied `listen 127.0.0.1`; the same suite passed with local loopback
+access. Attempting to inspect the deployed golden image locally with Docker
+failed because the host had only about 6 GiB free and Docker could not unpack
+the image layers; Open VSX manifests were used instead to verify the vendor
+command/view IDs.
+
 **Last updated:** 2026-07-09. The current branch added `opencode` as a fifth
 workspace interface without changing the locked single-domain proxy architecture.
 The control-plane/editor contracts, DynamoDB entity enums, workspace-create UI,
