@@ -3470,3 +3470,22 @@ walkthrough text rather than proving the Anthropic webview was open. The
 follow-up branch opened Claude via Anthropic's verified
 `claude-vscode.sidebar.open` command and made the smoke require the vendor
 extension tab plus webview iframe for both Claude and Codex.
+
+**2026-07-09 — PR #213 deployed, but opencode still rendered blank until the
+proxy rewrite was fixed.** PR #213's release and golden-image workflows
+succeeded for `d063fea1ec78`; production health/ready checks were green, and ECS
+showed the control plane and SSH gateway steady on task definition revision
+`:38`. The new deployed screenshot smoke correctly kept blocking acceptance: it
+captured OpenVSCode, Monaco, Claude, and Codex screenshots, then timed out on
+opencode with a blank OpenCode document shell.
+
+The failure was traced to EDD's opencode proxy adaptation, not to ECS rollout or
+workspace task health. The deployed opencode HTML and assets loaded through
+`/w/<id>/`, but the `opencode-linux-x64@1.17.15` bundle used root-origin client
+assumptions that the first rewrite missed: bare `location.origin` in a ternary
+expression and root-absolute API paths such as `/global/health`. The branch
+rewrote all root-absolute same-origin string paths and every `location.origin`
+occurrence to the workspace base path, while preserving fail-loud rejection for
+opencode proxy requests outside `/w/<id>/`. The deployed screenshot smoke also
+began recording browser console, pageerror, and requestfailed lines in failure
+artifacts.

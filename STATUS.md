@@ -2,6 +2,42 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
+**Last updated:** 2026-07-09. After PR #213 merged as
+`d063fea1ec787ce839bbe7f1e108fee8e0e007db`, the `release` workflow completed
+successfully in 4m29s, production `/api/healthz` reported
+`deploy.sha=d063fea1ec78`, and `/api/readyz` reported DynamoDB ready. ECS rolled
+`edd-prod-control-plane` to two healthy replicas and `edd-prod-ssh-gateway` to
+one healthy replica on task definition revision `:38`. The `golden-images`
+workflow completed in 13m52s and pushed
+`729079515331.dkr.ecr.eu-west-1.amazonaws.com/edd-prod/golden/omnibus:d063fea1ec78`.
+
+The release was **not** accepted as fully verified because `post-deploy-smoke`
+run `29014192952` failed after proving OpenVSCode, Monaco, Claude, and Codex
+screenshots. The opencode workspace reached a running task and returned the
+OpenCode HTML shell through `/w/<workspace-id>/`, but the browser body stayed
+blank until the smoke timed out. CloudWatch showed `opencode web` had started;
+the failure artifact showed the deployed page still loaded root-origin opencode
+client logic. Local inspection of `opencode-linux-x64@1.17.15` showed the bundle
+computed its API origin from a ternary ending in bare `location.origin` and used
+root-absolute API paths such as `/global/health`, while EDD's proxy rewrite only
+handled `/assets/...` plus one `: location.origin` object-literal shape.
+
+The current branch fixed that opencode proxy adaptation: rewritten opencode
+HTML/JS/CSS now rewrites all root-absolute same-origin string paths under
+`/w/<workspace-id>/` and rewrites every `location.origin` reference to include
+the workspace base path. Existing safeguards still left external URLs alone and
+still failed loudly for opencode proxy requests outside the workspace prefix. The
+deployed screenshot smoke diagnostics also captured browser console, pageerror,
+and failed-request lines in failure artifacts, so the next blank-client failure
+will include client-side evidence instead of only HTML/body/screenshot.
+
+Focused verification passed with `pnpm --filter @edd/web exec vitest run
+lib/workspace-proxy.test.ts`, `pnpm --filter @edd/web lint`, `pnpm --filter
+@edd/web build`, and `pnpm --filter @edd/web test` with loopback access. A first
+sandboxed install failed with npm DNS blocked, and a sandboxed broad web test
+failed only because the sandbox denied `listen 127.0.0.1`; the same dependency
+install and test suite passed with the required network/loopback access.
+
 **Last updated:** 2026-07-09. After PR #212 merged as
 `af69bd829e6dc5dca5b717be60e4dbd92372af3a`, the `release` workflow completed
 successfully, production `/api/healthz` reported `deploy.sha=af69bd829e6d`, and

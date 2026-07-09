@@ -426,8 +426,8 @@ export function rewriteOpencodeResponseBody(body: string, wsId: WorkspaceId): st
   return body
     .replace(/\b(src|href|content)=(["'])\/(?!\/|w\/)/g, `$1=$2${base}/`)
     .replace(/url\(\//g, `url(${base}/`)
-    .replace(/(["'`])\/assets\//g, `$1${base}/assets/`)
-    .replace(/(:\s*)location\.origin/g, `$1location.origin+"${base}"`);
+    .replace(/(["'`])\/(?!\/|w\/)/g, `$1${base}/`)
+    .replace(/\blocation\.origin\b/g, `location.origin+"${base}"`);
 }
 
 /** http.request options forwarding `req` to the workspace `upstream`. OpenVSCode,

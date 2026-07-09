@@ -4,6 +4,21 @@
 
 ## Open
 
+- **PR #213 post-deploy smoke failed on a blank opencode workspace — FIXED in
+  current branch (2026-07-09).** After `d063fea1ec78` deployed and the matching
+  golden image was pushed, `post-deploy-smoke` run `29014192952` captured
+  OpenVSCode, Monaco, Claude, and Codex screenshots, then timed out waiting for
+  opencode to render. The artifact showed an OpenCode document shell with an
+  empty body, and CloudWatch showed `opencode web` had started. Local inspection
+  of the installed `opencode-linux-x64@1.17.15` bundle showed root-origin client
+  assumptions that EDD's first proxy rewrite did not cover: a ternary ending in
+  bare `location.origin` and root-absolute API paths such as `/global/health`.
+  The branch rewrote all root-absolute same-origin string paths and every
+  `location.origin` occurrence under `/w/<workspace-id>/`, while keeping
+  external URLs unchanged and preserving the fail-loud outside-prefix guard.
+  The deployed screenshot smoke diagnostics also recorded browser console,
+  pageerror, and requestfailed lines in future artifacts.
+
 - **PR #212 post-deploy smoke failed before opencode and accepted weak
   Claude/Codex evidence — FIXED in current branch (2026-07-09).** After
   `af69bd829e6d` deployed, `post-deploy-smoke` run `29005606380` created
