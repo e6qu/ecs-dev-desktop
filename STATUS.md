@@ -2,6 +2,58 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
+**Last updated:** 2026-07-09. The current branch added `opencode` as a fifth
+workspace interface without changing the locked single-domain proxy architecture.
+The control-plane/editor contracts, DynamoDB entity enums, workspace-create UI,
+admin catalog UI, deployed smoke editor list, screenshot smoke, dev bootstrap,
+and e2e image/toolchain checks all included `opencode`. The golden base image
+installed `opencode-ai@1.17.15`, and `EDD_EDITOR_MODE=opencode` launched the
+real `opencode web` server on port 3000 with
+`OPENCODE_SERVER_USERNAME=opencode` and `OPENCODE_SERVER_PASSWORD` set from the
+workspace connection token. Missing opencode, missing `CONNECTION_TOKEN`, or
+`EDD_DISABLE_CONNECTION_TOKEN=1` in opencode mode failed loudly.
+
+PR #212 CI exposed stale e2e harness coordinates rather than a reason to restore
+fallbacks. Golden-image launch paths, the shared live ECS harness, and the older
+user-journey web-app harness now supplied explicit editor connection secrets;
+the production real-provider path still failed immediately if
+`COMPUTE_PROVIDER=ecs` lacked `EDD_AGENT_SECRET` or `EDD_CONNECTION_SECRET`.
+
+The branch also removed the remaining random OpenVSCode connection-token
+fallback: standalone/tokened editor startup now required `CONNECTION_TOKEN`
+unless `EDD_DISABLE_CONNECTION_TOKEN=1` was explicitly set. The in-app workspace
+proxy passed editor context from the custom server, preserved the existing
+OpenVSCode, Claude, Codex, and Monaco token behavior, and added an opencode-only
+adapter: strip `/w/<workspace-id>` for upstream requests, inject Basic auth from
+the derived workspace token, and rewrite opencode HTML/JS/CSS root references
+back under `/w/<workspace-id>/`. Local verification had shown opencode's web
+server had no base-path flag and emitted root-absolute assets/API base logic, so
+this was the minimal path-compatible integration rather than a second public
+surface.
+
+Focused verification passed with `pnpm exec vitest run src/domain/editor.test.ts`
+in `packages/core`, `pnpm exec vitest run lib/workspace-proxy.test.ts` in
+`apps/web` with loopback access, `pnpm exec vitest run src/dto.fuzz.test.ts` in
+`packages/control-plane`, `shellcheck infra/images/base/smoke.sh
+infra/images/base/entrypoint.sh`, `pnpm --filter @edd/web build`, and lint for
+`@edd/web`, `@edd/core`, `@edd/control-plane`, and `@edd/db`.
+
+After PR #212's first CI pass, the `e2e` job failed because golden workspace
+tasks exited before readiness: the branch had correctly removed OpenVSCode's
+random token fallback, but several golden-image e2e launch paths still omitted
+the editor connection secret. The branch then wired explicit
+`connectionSecret` values through the direct golden-image e2e providers and the
+shared live ECS app harness, and the real web provider path failed immediately
+when `COMPUTE_PROVIDER=ecs` lacked `EDD_AGENT_SECRET` or
+`EDD_CONNECTION_SECRET`. Verification after that fix passed `pnpm build`,
+`pnpm lint`, `pnpm test` with loopback access, `pnpm check-deps` with registry
+access, `pnpm --filter @edd/compute-ecs test`, `pnpm --filter @edd/e2e lint`,
+`pnpm exec vitest run lib/control-plane.test.ts` in `apps/web` with loopback
+access, and `git diff --check`. A local `pnpm test:e2e:local` attempted the
+same Docker-backed tier as CI and built the fixed golden base image, but the
+machine had only 12 GiB free and Podman failed committing the omnibus image
+layer with `no space left on device` before tests started.
+
 **Last updated:** 2026-07-08. The current branch made the production smoke and
 workspace UI stricter after PR #210's merge/deploy exposed that green ECS/app
 health did not prove the expected workspace image or rendered editor behavior.

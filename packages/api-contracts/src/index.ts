@@ -45,9 +45,9 @@ export type WorkspaceActionDto = z.infer<typeof workspaceAction>;
 
 /** Which primary interface a workspace serves (mirrors `@edd/core`'s EditorKind):
  * openvscode = OpenVSCode Server; monaco = the first-party lightweight editor;
- * claude / codex = vendor-provided local web UI harnesses backed by their local
- * app servers, not EDD-authored chat UIs. */
-export const editorKind = z.enum(["openvscode", "monaco", "claude", "codex"]);
+ * claude / codex / opencode = vendor-provided local web UI harnesses backed by
+ * their local app servers, not EDD-authored chat UIs. */
+export const editorKind = z.enum(["openvscode", "monaco", "claude", "codex", "opencode"]);
 export type EditorKindDto = z.infer<typeof editorKind>;
 
 export const workspaceCpuUnits = z.union([

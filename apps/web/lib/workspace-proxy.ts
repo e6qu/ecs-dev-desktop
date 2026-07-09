@@ -32,6 +32,12 @@ const EDITOR_TOKEN_COOKIE = "vscode-tkn";
 // nav and then forwards a clean request the Monaco server rejects with 401.
 // (Kept in sync with @edd/editor-monaco's TOKEN_COOKIE.)
 const MONACO_TOKEN_COOKIE = "edd-editor-token";
+const OPENCODE_USERNAME = "opencode";
+
+export interface WorkspaceProxyContext {
+  readonly wsId: WorkspaceId;
+  readonly editor: EditorKind;
+}
 
 /**
  * Defence-in-depth: when the editor runs with a connection token, hand the
@@ -52,6 +58,7 @@ export function editorTokenRedirect(
   wsId: WorkspaceId,
   editor: EditorKind = "openvscode",
 ): string | undefined {
+  if (editor === "opencode") return undefined;
   const secret = process.env[CONNECTION_SECRET_ENV] ?? "";
   if (secret.length === 0) return undefined; // tokenless / dev — nothing to inject
   if ((req.method ?? "GET").toUpperCase() !== "GET") return undefined;
@@ -100,6 +107,8 @@ function tokenCookieForEditor(editor: EditorKind): string {
       return EDITOR_TOKEN_COOKIE;
     case "monaco":
       return MONACO_TOKEN_COOKIE;
+    case "opencode":
+      return EDITOR_TOKEN_COOKIE;
   }
 }
 
@@ -371,30 +380,126 @@ export async function resolveWorkspaceUpstream(wsId: WorkspaceId): Promise<URL> 
   return new URL(`http://${host}:${String(DEFAULT_WORKSPACE_PORT)}`);
 }
 
-/** http.request options forwarding `req` to the workspace `upstream` verbatim (only
- * the Host header is rewritten). The path is preserved — the editor serves under the
- * same `/w/<id>/` base path, so no URL rewriting is needed. */
-function upstreamOptions(upstream: URL, req: IncomingMessage): RequestOptions {
+export function workspaceProxyRequestPath(
+  editor: EditorKind,
+  wsId: WorkspaceId,
+  reqUrl: string | undefined,
+): string | undefined {
+  if (editor !== "opencode" || reqUrl === undefined) return reqUrl;
+  const url = new URL(reqUrl, "http://internal");
+  const prefix = `/w/${wsId}`;
+  if (url.pathname === prefix || url.pathname === `${prefix}/`) {
+    url.pathname = "/";
+  } else if (url.pathname.startsWith(`${prefix}/`)) {
+    url.pathname = url.pathname.slice(prefix.length);
+  } else {
+    throw new Error(`opencode proxy path is outside workspace prefix: ${url.pathname}`);
+  }
+  return `${url.pathname}${url.search}`;
+}
+
+export function opencodeProxyAuthorization(secret: string, wsId: WorkspaceId): string {
+  if (secret.length === 0) {
+    throw new Error(`${CONNECTION_SECRET_ENV} is required to proxy opencode workspaces`);
+  }
+  const token = deriveWorkspaceToken(secret, wsId);
+  return `Basic ${Buffer.from(`${OPENCODE_USERNAME}:${token}`, "utf8").toString("base64")}`;
+}
+
+function opencodeRewriteBase(wsId: WorkspaceId): string {
+  return `/w/${wsId}`;
+}
+
+function responseCanBeRewritten(contentType: string | undefined): boolean {
+  if (contentType === undefined) return false;
+  const lower = contentType.toLowerCase();
+  return (
+    lower.includes("text/html") ||
+    lower.includes("javascript") ||
+    lower.includes("ecmascript") ||
+    lower.includes("text/css")
+  );
+}
+
+export function rewriteOpencodeResponseBody(body: string, wsId: WorkspaceId): string {
+  const base = opencodeRewriteBase(wsId);
+  return body
+    .replace(/\b(src|href|content)=(["'])\/(?!\/|w\/)/g, `$1=$2${base}/`)
+    .replace(/url\(\//g, `url(${base}/`)
+    .replace(/(["'`])\/assets\//g, `$1${base}/assets/`)
+    .replace(/(:\s*)location\.origin/g, `$1location.origin+"${base}"`);
+}
+
+/** http.request options forwarding `req` to the workspace `upstream`. OpenVSCode,
+ * Claude, Codex, and Monaco serve under `/w/<id>/`, so paths pass through. opencode
+ * has no base-path flag, so only that editor is translated to origin-root upstream
+ * paths and authenticated with the workspace connection token as Basic auth. */
+function upstreamOptions(
+  upstream: URL,
+  req: IncomingMessage,
+  context?: WorkspaceProxyContext,
+): RequestOptions {
   const headers = { ...req.headers, host: upstream.host };
   // Never forward the portal Auth.js session cookie into the workspace container.
   const cookie = stripSessionCookie(headerValue(req.headers.cookie));
   if (cookie === undefined) delete headers.cookie;
   else headers.cookie = cookie;
+  if (context?.editor === "opencode") {
+    const secret = process.env[CONNECTION_SECRET_ENV] ?? "";
+    headers.authorization = opencodeProxyAuthorization(secret, context.wsId);
+  } else {
+    delete headers.authorization;
+  }
   return {
     protocol: upstream.protocol,
     hostname: upstream.hostname,
     port: upstream.port,
     method: req.method,
-    path: req.url,
+    path:
+      context === undefined
+        ? req.url
+        : workspaceProxyRequestPath(context.editor, context.wsId, req.url),
     headers,
   };
 }
 
 /** Forward an authorized ordinary HTTP request to the upstream, streaming both ways. */
-export function proxyWorkspaceHttp(upstream: URL, req: IncomingMessage, res: ServerResponse): void {
-  const proxyReq = httpRequest(upstreamOptions(upstream, req), (proxyRes) => {
-    res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers);
-    proxyRes.pipe(res);
+export function proxyWorkspaceHttp(
+  upstream: URL,
+  req: IncomingMessage,
+  res: ServerResponse,
+  context?: WorkspaceProxyContext,
+): void {
+  const proxyReq = httpRequest(upstreamOptions(upstream, req, context), (proxyRes) => {
+    if (context?.editor !== "opencode") {
+      res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers);
+      proxyRes.pipe(res);
+      return;
+    }
+    const contentType = headerValue(proxyRes.headers["content-type"]);
+    if (!responseCanBeRewritten(contentType)) {
+      res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers);
+      proxyRes.pipe(res);
+      return;
+    }
+    const chunks: Buffer[] = [];
+    proxyRes.on("data", (chunk: Buffer | string) => {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+    });
+    proxyRes.on("end", () => {
+      const headers = { ...proxyRes.headers };
+      delete headers["content-length"];
+      const rewritten = rewriteOpencodeResponseBody(
+        Buffer.concat(chunks).toString("utf8"),
+        context.wsId,
+      );
+      res.writeHead(proxyRes.statusCode ?? 502, headers);
+      res.end(rewritten);
+    });
+    proxyRes.on("error", () => {
+      if (!res.headersSent) res.writeHead(502);
+      res.end();
+    });
   });
   proxyReq.on("error", () => {
     if (!res.headersSent) res.writeHead(502);
@@ -415,8 +520,9 @@ export function proxyWorkspaceUpgrade(
   req: IncomingMessage,
   clientSocket: Duplex,
   head: Buffer,
+  context?: WorkspaceProxyContext,
 ): void {
-  const proxyReq = httpRequest(upstreamOptions(upstream, req));
+  const proxyReq = httpRequest(upstreamOptions(upstream, req, context));
   // Tear down the upstream request if the client disconnects before the upstream
   // upgrades (no leaked socket); once upgraded, the per-socket teardown takes over.
   clientSocket.once("close", () => {

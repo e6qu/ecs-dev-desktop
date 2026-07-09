@@ -44,6 +44,17 @@ swappable** (bleephub conformant OAuth; azure sim Graph + ROPC). ✅ **Path-base
 editor proxy folded into the control-plane app** — the browser reaches the editor at
 `app.<domain>/w/<workspace-id>/` (no wildcard DNS/TLS, no cross-subdomain cookie),
 served by the custom server (`apps/web/server.ts` + `apps/web/lib/workspace-proxy.ts`).
+✅ **Workspace interface modes** — OpenVSCode, Monaco, Claude, Codex, and opencode
+were represented in the domain/API/DB contracts and workspace/admin UIs.
+Claude/Codex reused verified vendor OpenVSCode extension UIs, while opencode used
+the real `opencode web` server behind an opencode-only path/auth/rewrite adapter
+because the verified CLI exposed no base-path flag.
+✅ **Editor-token launch contract** — golden workspace launches now required an
+explicit `CONNECTION_TOKEN` unless an explicit tokenless mode was selected, and
+the real web provider path failed at startup when `EDD_AGENT_SECRET` or
+`EDD_CONNECTION_SECRET` was missing. E2e harnesses launching golden images
+supplied a connection secret instead of relying on a random fallback, including
+the legacy user-journey web-app harness.
 ✅ **Single-system authorization** — the proxy authorizes off the **same Auth.js
 session** that protects the portal, by uid-based ownership (`session.uid ===
 workspace.ownerId`) or admin, checked in-process; no Pomerium, no PDP round-trip, no

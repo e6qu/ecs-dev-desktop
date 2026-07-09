@@ -6,9 +6,9 @@ import { encode } from "next-auth/jwt";
 
 import { AUTH_SESSION_SCHEMA_VERSION, createAuthSession } from "../lib/auth-sessions";
 
-export type Editor = "openvscode" | "monaco" | "claude" | "codex";
+export type Editor = "openvscode" | "monaco" | "claude" | "codex" | "opencode";
 
-export const EDITORS: readonly Editor[] = ["openvscode", "monaco", "claude", "codex"];
+export const EDITORS: readonly Editor[] = ["openvscode", "monaco", "claude", "codex", "opencode"];
 const SESSION_MAX_AGE_S = 4 * 60 * 60;
 const AUTH_COOKIE_NAME = "__Secure-authjs.session-token";
 
@@ -32,6 +32,8 @@ function cookieNameForEditor(editor: Editor): string {
       return "vscode-tkn";
     case "monaco":
       return "edd-editor-token";
+    case "opencode":
+      return "opencode";
   }
 }
 
@@ -261,6 +263,19 @@ export async function openEditor(
   editor: Editor,
 ): Promise<void> {
   const root = `${baseUrl}/w/${id}/`;
+  if (editor === "opencode") {
+    const res = await fetchWithCookies(root, jar, {
+      headers: { "sec-fetch-dest": "document", accept: "text/html" },
+    });
+    if (res.status >= 400) {
+      throw new Error(`${editor} clean open failed: ${String(res.status)} ${await res.text()}`);
+    }
+    const html = await res.text();
+    if (!html.includes("opencode")) {
+      throw new Error("opencode clean open did not return the opencode web client document");
+    }
+    return;
+  }
   await primeEditorToken(baseUrl, jar, id, editor);
   if (!hasCookie(jar, root, cookieNameForEditor(editor))) {
     throw new Error(`${editor} token open did not set ${cookieNameForEditor(editor)}`);

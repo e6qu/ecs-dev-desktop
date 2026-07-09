@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { describe, expect, it } from "vitest";
 
-import { fakeProvidersAllowed } from "./control-plane";
+import { fakeProvidersAllowed, realProviderSecrets } from "./control-plane";
 
 describe("fakeProvidersAllowed (production guard against silent fake fallback)", () => {
   it("allows fakes outside production", () => {
@@ -23,5 +23,26 @@ describe("fakeProvidersAllowed (production guard against silent fake fallback)",
     );
     // a non-"1" value does not count
     expect(fakeProvidersAllowed({ NODE_ENV: "production", EDD_DEV_AUTH: "0" })).toBe(false);
+  });
+});
+
+describe("realProviderSecrets", () => {
+  it("requires both workspace machine-auth and editor-token secrets", () => {
+    expect(() => realProviderSecrets({})).toThrow("COMPUTE_PROVIDER=ecs requires EDD_AGENT_SECRET");
+    expect(() => realProviderSecrets({ EDD_AGENT_SECRET: "a".repeat(64) })).toThrow(
+      "COMPUTE_PROVIDER=ecs requires EDD_CONNECTION_SECRET",
+    );
+  });
+
+  it("returns the configured secrets when both are present", () => {
+    expect(
+      realProviderSecrets({
+        EDD_AGENT_SECRET: "a".repeat(64),
+        EDD_CONNECTION_SECRET: "b".repeat(64),
+      }),
+    ).toEqual({
+      agentSecret: "a".repeat(64),
+      connectionSecret: "b".repeat(64),
+    });
   });
 });

@@ -18,6 +18,7 @@ const E2E_IMAGE_SOURCE_SECRET = "e2e-image-source-webhook-secret";
 
 export interface WebApp {
   baseUrl: string;
+  output: () => string;
   stop: () => void;
 }
 
@@ -109,6 +110,7 @@ export async function startWebApp(
 
   return {
     baseUrl,
+    output: () => output,
     stop: () => {
       child.kill("SIGTERM");
     },

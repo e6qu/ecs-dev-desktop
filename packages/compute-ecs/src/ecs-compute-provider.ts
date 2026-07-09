@@ -110,9 +110,9 @@ export interface EcsComputeConfig {
    * token** = HMAC-SHA256(connectionSecret, workspaceId). When present, the task
    * receives it as `CONNECTION_TOKEN` (so the editor requires `?tkn=`), and the
    * in-app proxy derives the same value to hand the authenticated browser the token
-   * — defence-in-depth behind the session-authorizing proxy. Absent → the editor
-   * falls back to its own random per-boot token (dev) or tokenless if explicitly
-   * disabled.
+   * — defence-in-depth behind the session-authorizing proxy. Golden workspace
+   * images fail loudly when neither `CONNECTION_TOKEN` nor an explicit tokenless
+   * launch mode is supplied.
    */
   connectionSecret?: string;
   /** Idle-agent heartbeat interval (seconds) injected into the workspace

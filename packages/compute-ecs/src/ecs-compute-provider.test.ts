@@ -187,7 +187,7 @@ describe("workspaceEnvironment", () => {
     expect(env.map((e) => e.name)).not.toContain("EDD_REPO_REF");
   });
 
-  it("injects the editor connection token (plaintext fallback) when a connection secret is set", () => {
+  it("injects the editor connection token as plaintext when no Secrets Manager client is used", () => {
     const secret = randomBytes(16).toString("hex");
     const env = workspaceEnvironment(
       {
@@ -219,7 +219,7 @@ describe("workspaceEnvironment", () => {
     expect(env.map((e) => e.name)).not.toContain("CONNECTION_TOKEN");
   });
 
-  it("omits the connection token entirely when no connection secret is set (tokenless/dev)", () => {
+  it("omits the connection token entirely when no connection secret is set", () => {
     const env = workspaceEnvironment(
       { subnets: ["subnet-1"], ebsRoleArn: "arn:aws:iam::123456789012:role/x" },
       "ws-8",

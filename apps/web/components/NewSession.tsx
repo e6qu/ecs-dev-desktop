@@ -574,6 +574,7 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
           <option value="monaco">Monaco — lightweight first-party editor</option>
           <option value="claude">Claude Local Web UI</option>
           <option value="codex">Codex Local Web UI</option>
+          <option value="opencode">opencode Local Web UI</option>
         </select>
         <div className="setting-grid">
           <label className="stack" style={{ gap: 6 }}>

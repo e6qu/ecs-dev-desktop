@@ -169,6 +169,10 @@ describe.skipIf(!HAVE_VARIANT_IMAGES)(
         expect(claude, `${v.name}: agent CLI should be in every variant`).toBe("PRESENT");
         const codex = sh("command -v codex >/dev/null 2>&1 && echo PRESENT || echo ABSENT").trim();
         expect(codex, `${v.name}: agent CLI should be in every variant`).toBe("PRESENT");
+        const opencode = sh(
+          "command -v opencode >/dev/null 2>&1 && echo PRESENT || echo ABSENT",
+        ).trim();
+        expect(opencode, `${v.name}: agent CLI should be in every variant`).toBe("PRESENT");
         expect(builtin, `${v.name}: agent extension should be in every variant`).toContain(
           "anthropic.claude-code",
         );

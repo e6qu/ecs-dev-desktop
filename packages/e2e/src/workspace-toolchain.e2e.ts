@@ -163,6 +163,7 @@ describe("golden omnibus: AI agents + dev tooling", { timeout: 60_000 }, () => {
   it("ships the Claude Code + Codex agent CLIs and bakes in the agent extensions [#93]", () => {
     expect(sh("command -v claude")).toContain("claude");
     expect(sh("command -v codex")).toContain("codex");
+    expect(sh("command -v opencode")).toContain("opencode");
     const builtin = sh("ls /opt/openvscode-server/extensions");
     expect(builtin).toContain("anthropic.claude-code");
     expect(builtin).toContain("openai.chatgpt");

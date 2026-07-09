@@ -44,6 +44,7 @@ const EDITOR_LABEL: Record<string, string> = {
   monaco: "Monaco",
   claude: "Claude Code",
   codex: "Codex",
+  opencode: "opencode",
 };
 
 const READY_STATES: ReadonlySet<WorkspaceStateDto> = new Set(["running", "idle"]);

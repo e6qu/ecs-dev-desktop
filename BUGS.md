@@ -4,6 +4,37 @@
 
 ## Open
 
+- **opencode workspace mode was missing — FIXED in current branch
+  (2026-07-09).** EDD had OpenVSCode, Monaco, Claude, and Codex interface modes
+  but no opencode local web client. The branch added `opencode` to the
+  contracts, persisted editor enums, UI selectors, deployed smokes, golden image
+  toolchain checks, and image startup. It used `opencode web` rather than an
+  EDD-authored UI, authenticated upstream with the derived workspace connection
+  token, and added an opencode-only path/auth/rewrite adapter in the existing
+  in-app workspace proxy because the verified opencode CLI exposed no base-path
+  flag.
+
+- **OpenVSCode startup still had a random connection-token fallback — FIXED in
+  current branch (2026-07-09).** If `EDD_DISABLE_CONNECTION_TOKEN` was not set
+  and `CONNECTION_TOKEN` was missing, the entrypoint silently generated a random
+  token. That hid compute/secret injection mistakes. The entrypoint now required
+  `CONNECTION_TOKEN` unless tokenless mode was explicitly selected, and opencode
+  refused tokenless mode entirely.
+
+- **PR #212 e2e golden workspace tasks exited before readiness — FIXED in
+  current branch (2026-07-09).** Removing the random OpenVSCode token fallback
+  correctly made the entrypoint fail loudly without `CONNECTION_TOKEN`, but the
+  direct golden-image e2e launch paths and shared live ECS app harness still
+  launched tasks without a connection secret. The branch added explicit
+  `connectionSecret` values to those golden-image paths and made the real web
+  provider path throw immediately when `COMPUTE_PROVIDER=ecs` lacked
+  `EDD_AGENT_SECRET` or `EDD_CONNECTION_SECRET`, so missing deployment secrets
+  failed at control-plane construction instead of as opaque task exits. A later
+  PR #212 rerun found the older `user-journey.e2e.ts` web-app harness still
+  missed `EDD_CONNECTION_SECRET`; that harness now supplied the required secret
+  and printed the failed response body plus captured web-app output on status
+  mismatches.
+
 - **Golden image builds could be skipped after editor/runtime-only merges —
   FIXED in current branch (2026-07-08).** The asynchronous `golden-images`
   workflow still had `push.paths` filters, so a merge that changed app/editor

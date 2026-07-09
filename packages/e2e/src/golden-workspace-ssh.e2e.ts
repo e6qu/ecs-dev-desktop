@@ -49,6 +49,7 @@ const WORKSPACE_ID = `ws-golden-${RUN_ID}`;
 const LOG_GROUP = `/edd/e2e/golden-ssh-${RUN_ID}`;
 const EBS_ROLE = e2eEbsRoleArn();
 const AGENT_SECRET = "a".repeat(64);
+const CONNECTION_SECRET = "b".repeat(64);
 const SSH_ATTEMPTS = 30;
 /** Editor poll budget (phase 2): OpenVSCode accepts TCP early but is slow to
  * actually serve its token gate in the sim, so it gets a longer, separate budget. */
@@ -211,6 +212,7 @@ describe(
           containerName: WORKSPACE_CONTAINER,
           controlPlaneUrl,
           agentSecret: AGENT_SECRET,
+          connectionSecret: CONNECTION_SECRET,
           logGroupName: LOG_GROUP,
         },
       });

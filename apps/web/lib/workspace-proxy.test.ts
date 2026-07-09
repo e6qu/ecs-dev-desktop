@@ -34,7 +34,10 @@ const {
   editorTokenRedirect,
   isDocumentNavigation,
   isWorkspaceDocumentNavigation,
+  opencodeProxyAuthorization,
+  rewriteOpencodeResponseBody,
   stripSessionCookie,
+  workspaceProxyRequestPath,
 } = await import("./workspace-proxy");
 
 const WS = workspaceId("ws-abc123");
@@ -228,6 +231,15 @@ describe("editorTokenRedirect (editor connection-token handoff)", () => {
     expect(out).toBeUndefined();
   });
 
+  it("does not use the OpenVSCode token-query handoff for opencode", () => {
+    const out = editorTokenRedirect(
+      { method: "GET", url: `/w/${WS}/`, headers: docHeaders() },
+      WS,
+      "opencode",
+    );
+    expect(out).toBeUndefined();
+  });
+
   it("does not let a stale OpenVSCode token cookie suppress token injection", () => {
     const out = editorTokenRedirect(
       {
@@ -363,6 +375,56 @@ describe("editorTokenRedirect (editor connection-token handoff)", () => {
     vi.stubEnv("EDD_CONNECTION_SECRET", "");
     const out = editorTokenRedirect({ method: "GET", url: `/w/${WS}/`, headers: docHeaders() }, WS);
     expect(out).toBeUndefined();
+  });
+});
+
+describe("opencode proxy adaptation", () => {
+  const SECRET = randomBytes(16).toString("hex");
+
+  it("strips the workspace path prefix because opencode serves at origin root", () => {
+    expect(workspaceProxyRequestPath("opencode", WS, `/w/${WS}/`)).toBe("/");
+    expect(workspaceProxyRequestPath("opencode", WS, `/w/${WS}/assets/app.js`)).toBe(
+      "/assets/app.js",
+    );
+    expect(workspaceProxyRequestPath("opencode", WS, `/w/${WS}/global/health?x=1`)).toBe(
+      "/global/health?x=1",
+    );
+  });
+
+  it("preserves paths unchanged for base-path-aware editors", () => {
+    expect(workspaceProxyRequestPath("openvscode", WS, `/w/${WS}/static/out/main.js`)).toBe(
+      `/w/${WS}/static/out/main.js`,
+    );
+  });
+
+  it("fails loudly if an opencode request path is outside its workspace prefix", () => {
+    expect(() => workspaceProxyRequestPath("opencode", WS, "/assets/app.js")).toThrow(
+      /outside workspace prefix/,
+    );
+  });
+
+  it("injects Basic auth from the same derived workspace connection token", () => {
+    const expectedToken = deriveWorkspaceToken(SECRET, WS);
+    const encoded = Buffer.from(`opencode:${expectedToken}`, "utf8").toString("base64");
+    expect(opencodeProxyAuthorization(SECRET, WS)).toBe(`Basic ${encoded}`);
+  });
+
+  it("fails loudly when opencode auth cannot be derived", () => {
+    expect(() => opencodeProxyAuthorization("", WS)).toThrow(/required/);
+  });
+
+  it("rewrites the opencode HTML and bundle references under the workspace path", () => {
+    const input = [
+      '<script src="/assets/index.js"></script>',
+      '<link href="/assets/index.css">',
+      'const worker="/assets/worker.js";',
+      'const base=location.hostname.includes("opencode.ai")?"http://localhost:4096":location.origin;',
+    ].join("\n");
+    const out = rewriteOpencodeResponseBody(input, WS);
+    expect(out).toContain(`src="/w/${WS}/assets/index.js"`);
+    expect(out).toContain(`href="/w/${WS}/assets/index.css"`);
+    expect(out).toContain(`"/w/${WS}/assets/worker.js"`);
+    expect(out).toContain(`:location.origin+"/w/${WS}"`);
   });
 });
 

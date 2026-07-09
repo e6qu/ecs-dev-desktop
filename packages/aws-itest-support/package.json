@@ -11,9 +11,9 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@aws-sdk/client-iam": "^3.1080.0"
+    "@aws-sdk/client-iam": "^3.1081.0"
   },
   "devDependencies": {
-    "@types/node": "^26.1.0"
+    "@types/node": "^26.1.1"
   }
 }

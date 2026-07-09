@@ -13,8 +13,10 @@
  *    by the in-workspace Claude Code process (not an EDD-reimplemented chat UI).
  *  - `codex` — the OpenAI-provided local Codex browser harness, backed by the
  *    in-workspace Codex app-server (not an EDD-reimplemented chat UI).
+ *  - `opencode` — opencode's local browser client, backed by the in-workspace
+ *    `opencode web` process (not an EDD-reimplemented chat UI).
  */
-export const EDITOR_KINDS = ["openvscode", "monaco", "claude", "codex"] as const;
+export const EDITOR_KINDS = ["openvscode", "monaco", "claude", "codex", "opencode"] as const;
 
 export type EditorKind = (typeof EDITOR_KINDS)[number];
 

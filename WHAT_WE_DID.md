@@ -3390,3 +3390,70 @@ that Codex app-server was a protocol server and Claude Remote Control did not
 expose a local HTTP UI in the tested CLI surface, so the branch recorded that
 blocker rather than inventing an EDD Claude/Codex chat UI or calling Monaco/
 OpenVSCode a fallback solution.
+
+**2026-07-09 — Added opencode's local web client and removed the last random
+editor-token fallback.** The branch added `opencode` as a first-class workspace
+interface across the domain/API contracts, DynamoDB editor enums, workspace
+launcher, admin base-image form, workspace badges, deployed smoke scripts,
+screenshot smoke, dev bootstrap, and image/toolchain e2e assertions. The shared
+golden base image installed `opencode-ai@1.17.15`, and
+`EDD_EDITOR_MODE=opencode` launched the real `opencode web` server with
+`OPENCODE_SERVER_USERNAME=opencode` and `OPENCODE_SERVER_PASSWORD` set to the
+workspace connection token.
+
+The entrypoint failed loudly if opencode was selected without the CLI or
+`CONNECTION_TOKEN`, and refused `EDD_DISABLE_CONNECTION_TOKEN=1` for opencode.
+While touching the same auth path, the old OpenVSCode random connection-token
+generation was removed: tokened editor startup now required `CONNECTION_TOKEN`
+unless tokenless mode was explicitly selected.
+
+Local verification showed opencode's web server had no base-path flag and used
+root-absolute assets/API base logic. The existing in-app `/w/<id>/` workspace
+proxy therefore gained an opencode-only adapter: preserve current behavior for
+OpenVSCode, Claude, Codex, and Monaco; strip `/w/<id>` before forwarding
+opencode requests upstream; inject Basic auth derived from the workspace token;
+and rewrite opencode HTML/JS/CSS references back under `/w/<id>/`. The verified
+Claude/Codex/opencode harness facts and proxy contract were recorded in
+`docs/workspace-agent-harnesses.md`.
+
+**2026-07-09 — Fixed PR #212's e2e failure without restoring token
+fallbacks.** The first PR #212 CI pass failed only in the `e2e` job. The failure
+logs showed golden workspace tasks stopped before readiness with essential
+containers exiting; downstream user-journey and durability steps then observed
+workspaces stuck in `error` and 409s on snapshot/stop/connect. The root cause was
+the branch's intentional OpenVSCode fail-loud change exposing stale e2e launch
+configuration: several golden-image e2e providers and the shared live ECS app
+harness still omitted the editor connection secret, so the entrypoint had no
+`CONNECTION_TOKEN` and exited as designed.
+
+The fix kept the no-fallback architecture. Direct golden-image e2e launches and
+the shared live ECS harness now supplied explicit `connectionSecret` values, and
+the real web provider path threw immediately if `COMPUTE_PROVIDER=ecs` lacked
+`EDD_AGENT_SECRET` or `EDD_CONNECTION_SECRET`. The compute-provider comments and
+tests were updated to describe the current contract rather than the removed
+random-token behavior. `@types/node` was bumped to `26.1.1` because
+`check-deps` found it age-eligible.
+
+Verification passed with `pnpm build`, `pnpm lint`, `pnpm test` with loopback
+access, `pnpm check-deps` with registry access, `pnpm --filter @edd/compute-ecs
+test`, `pnpm --filter @edd/e2e lint`, the focused `apps/web` control-plane test,
+and `git diff --check`. The Docker-backed local `pnpm test:e2e:local` run built
+the fixed golden base image and verified `opencode`, `claude`, and `codex`
+binaries were present, but the local machine had only 12 GiB free and Podman
+failed committing the omnibus image layer with `no space left on device` before
+the e2e tests started; CI remained the full container-mode verification path.
+
+**2026-07-09 — Fixed the second PR #212 e2e failure in the legacy user-journey
+harness.** The PR #212 rerun passed build-test, integration, e2e-https,
+terraform-sim, golden image validation, and the security/static checks, but
+`e2e` still failed in `src/user-journey.e2e.ts`: create returned 500, then the
+shared `wsId` remained empty and follow-up snapshot/stop/connect/delete calls
+hit 405 routes. The missing root cause was the same fail-loud contract in one
+older harness: `user-journey.e2e.ts` started the production web app with
+`COMPUTE_PROVIDER=ecs` and `EDD_AGENT_SECRET` but no required
+`EDD_CONNECTION_SECRET`. The harness now supplied an explicit connection secret.
+Its HTTP status helper also printed the response body and captured web-app
+stdout/stderr on mismatches, so the next CI failure in that path would include
+the server-side reason instead of only assertion summaries. Focused verification
+passed with `pnpm --filter @edd/e2e lint` and `pnpm exec tsc -p
+packages/e2e/tsconfig.json --noEmit`; the package had no `build` script.
