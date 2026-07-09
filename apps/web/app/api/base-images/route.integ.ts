@@ -24,9 +24,9 @@ const admin = {
   [ROLE_HEADER]: "admin",
   "content-type": "application/json",
 };
-const member = {
+const developer = {
   [USER_ID_HEADER]: "al",
-  [ROLE_HEADER]: "member",
+  [ROLE_HEADER]: "developer",
   "content-type": "application/json",
 };
 const ctx = (id: string) => ({ params: Promise.resolve({ id }) });
@@ -44,7 +44,7 @@ describe("base-images API end-to-end (DynamoDB Local)", () => {
     await dropTable(client, TEST_TABLE);
   });
 
-  it("admins manage the catalog; members can read but not write", async () => {
+  it("admins manage the catalog; developers can read but not write", async () => {
     const body = JSON.stringify({
       name: "Node 20",
       image: "golden/node:20",
@@ -53,8 +53,8 @@ describe("base-images API end-to-end (DynamoDB Local)", () => {
       tools: ["pnpm", "eslint"],
     });
 
-    // A member cannot create.
-    const denied = await POST(new Request(url, { method: "POST", headers: member, body }));
+    // A developer cannot create.
+    const denied = await POST(new Request(url, { method: "POST", headers: developer, body }));
     expect(denied.status).toBe(403);
 
     // An admin creates.
@@ -68,8 +68,8 @@ describe("base-images API end-to-end (DynamoDB Local)", () => {
       tools: ["pnpm", "eslint"],
     });
 
-    // A member can browse the catalog.
-    const listRes = await GET(new Request(url, { headers: member }));
+    // A developer can browse the catalog.
+    const listRes = await GET(new Request(url, { headers: developer }));
     expect(listRes.status).toBe(200);
     const list = listBaseImagesResponse.parse(await listRes.json());
     expect(list.baseImages.map((e) => e.id)).toContain(entry.id);
@@ -102,9 +102,9 @@ describe("base-images API end-to-end (DynamoDB Local)", () => {
       tools: ["pnpm"],
     });
 
-    // A member cannot delete.
+    // A developer cannot delete.
     const delDenied = await DELETE(
-      new Request(one, { method: "DELETE", headers: member }),
+      new Request(one, { method: "DELETE", headers: developer }),
       ctx(entry.id),
     );
     expect(delDenied.status).toBe(403);

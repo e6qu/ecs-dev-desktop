@@ -4,6 +4,46 @@
 
 ## Open
 
+- **PR #214 post-deploy smoke saw a stale enabled golden image despite a
+  successful image build — FIXED in current branch (2026-07-09).** After merge
+  commit `7197f30de9d9` deployed, ECR contained
+  `edd-prod/golden/omnibus:7197f30de9d9`, but `post-deploy-smoke` run
+  `29020812950` failed because production's enabled catalog image still pointed
+  at `omnibus:d063fea1ec78`. Direct DynamoDB inspection found no durable
+  `imageSource` or `imageSourceTrigger` rows. The root cause was that the app
+  only observed source changes through webhook/admin paths and the
+  image-source decision logic skipped non-image commits, while the
+  golden-images workflow had already changed to publish images for every
+  `main` push. The branch added GitHub commit polling through the standard
+  commits API before every image-source reconcile sweep, recorded a trigger when
+  the configured branch SHA changed, made every `main` push decision build
+  golden images, failed loudly/retried when GitHub polling failed, and verified
+  pushed ECR tags in the golden-images workflow.
+
+- **Admin-managed users, invitations, and server-side session revocation were
+  missing — FIXED in current branch (2026-07-09).** EDD relied on external IdP
+  logins/dev fixtures and had no production admin UI for creating a password
+  admin, inviting developers, listing active auth sessions, or revoking existing
+  JWT cookies server-side. The branch added DynamoDB-backed local accounts,
+  scrypt password hashes, one-use invitation tokens with a 1-day default and
+  30-day maximum expiry, SES invitation email, invitation accept flow,
+  credentials login, server-side auth-session rows checked on every Auth.js
+  request, logout revocation/cookie clearing, and `/admin/users` /
+  `/admin/invitations` management pages.
+
+- **Live AWS cost pricing could silently use configured rates when Price List
+  access failed — FIXED in current branch (2026-07-09).** With
+  `EDD_AWS_PRICING=1`, missing or denied AWS Price List data now threw instead
+  of mixing live and configured values. The admin costs page also rejected an
+  invalid `window` query instead of silently showing all-time data, and IAM drift
+  expectations plus Terraform task-role policy included `pricing:GetProducts`.
+
+- **Circle-`i` help panels and long strings could still break admin/workspace
+  layouts — FIXED in current branch (2026-07-09).** Help/details panels used the
+  fixed overlay path, and card/admin rows gained bounded grid/flex sizing plus
+  `overflow-wrap:anywhere` for image names, hosts, ids, and detail strings so
+  long values did not compress panels or overflow the page.
+
 - **PR #213 post-deploy smoke failed on a blank opencode workspace — FIXED in
   current branch (2026-07-09).** After `d063fea1ec78` deployed and the matching
   golden image was pushed, `post-deploy-smoke` run `29014192952` captured
@@ -692,7 +732,7 @@ folded into the Next.js app (see _Resolved (repo)_ + `WHAT_WE_DID.md` 2026-06-20
   Done (batch 2): `ec2-storage-provider.test.ts` / `ecs-compute-provider.test.ts` assert `command.input`
   (the `edd:managed` tag, `edd:workspace-id` tag, `deleteOnTermination`, the Size↔snapshot branch, the
   `tag:` filters with `OwnerIds:self`, `copySnapshot` destination region); `role-mapping.test.ts` covers
-  the `member` branch and admin precedence; the `pricing.test.ts` / `contracts.test.ts` tautologies were
+  the `developer` branch and admin precedence; the `pricing.test.ts` / `contracts.test.ts` tautologies were
   replaced with real assertions. Done (deferred-cleanup PR): `storageProviderContract` gained a `{dataIo}`
   gate so its control-plane subset (lifecycle + snapshot-hydration lineage + retain) runs against the REAL
   `Ec2StorageProvider` in the integ tier (`dataIo:false`; EBS file bytes stay §6.8); a new
@@ -784,7 +824,7 @@ old STATIC-gate "tokenless behind the gate" framing (see _Resolved (repo)_).
 
 - **CloudWatch alarm SNS notification on ALARM transition — FIXED (2026-07-03).** Originally filed as **e6qu/sockerless#734**. The upstream fix chain: sockerless #739 (JSON body), #741/#742 (process-mode fan-out), #748 (isolated regression test), #756 (evaluator state per-alarm), #759 (dangling-alarm test), #761 (atomic read/dispatch/write), #764 (fan-out observability logging), #767 (SQS receive diagnostics). The remaining "delivery succeeded but ReceiveMessage empty" was **our bug**: the probe used `echo "$raw"` to pipe JSON to python, but POSIX `echo` corrupts backslash sequences in the nested-JSON SQS Body, causing `json.load` to fail silently. Fixed by using `printf '%s\n'` and parsing the nested SNS→CloudWatch JSON structure correctly. The sim was working all along. Closed **e6qu/sockerless#766** (not a sim bug).
 
-- **bleephub `GET /user/teams` returns empty list — FIXED upstream by sockerless #767 (2026-07-03).** sockerless #756 removed the OAuth-scope gate (#754), #764 attempted OAuth team fidelity, and **#767** fixed the root cause: `POST /orgs/{org}/teams` now auto-maintains the creator as a team member (matching real GitHub behaviour). Filed as **e6qu/sockerless#765**, closed by #767. Awaiting downstream CI verification.
+- **bleephub `GET /user/teams` returns empty list — FIXED upstream by sockerless #767 (2026-07-03).** sockerless #756 removed the OAuth-scope gate (#754), #764 attempted OAuth team fidelity, and **#767** fixed the root cause: `POST /orgs/{org}/teams` now auto-maintains the creator as a team developer (matching real GitHub behaviour). Filed as **e6qu/sockerless#765**, closed by #767. Awaiting downstream CI verification.
 
 - **EC2 `RevokeSecurityGroupIngress`/`Egress` by `SecurityGroupRuleIds` returned `InvalidPermission.NotFound` even when the rule existed — FIXED upstream on sockerless main, confirmed, issue closed (2026-06-30).** Filed as **e6qu/sockerless#727** after sockerless #725 fixed spec-based revoke-not-found (#722) but regressed rule-id-based revokes. Re-pinned the submodule past the fix (to `e2fafce6`) and verified locally that `revoke-security-group-ingress --security-group-rule-ids <id>` succeeds for an existing rule and is idempotent for a missing rule. Closed **e6qu/sockerless#727**. Terraform `aws_vpc_security_group_*_rule` destroy now works against the sim.
 
@@ -1415,7 +1455,7 @@ were unexpectedly found for this workflow run. Artifact count is 2.`). Confirmed
     from the client. `session.user.role` was a non-optional `Role` set only conditionally; the callback now
     always sets it (default `viewer`, least-privilege) so the type is honest. The git-credential route
     emitted an unvalidated body; added a `gitCredentialResponse` Zod contract + parse. The admin workspace
-    list was un-enriched vs the enriched member list; now runs through the same `enrichWorkspace`.
+    list was un-enriched vs the enriched developer list; now runs through the same `enrichWorkspace`.
 
   One item is **deferred** (recorded under _Open_, not fixed): the cost-model teardown-volume over-bill for
   a stopped-then-deleted workspace. Verified at close: `pnpm build`/`test`/`lint`, `check-deps`, and

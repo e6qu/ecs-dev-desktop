@@ -13,7 +13,7 @@ import { AGENT_SECRET_ENV, GATEWAY_SECRET_ENV } from "../../../../../lib/constan
 import {
   apiBase,
   createWorkspaceFor,
-  member,
+  developer,
   routeCtx,
   useWorkspaceTable,
 } from "../../../../../lib/test-support/workspace-route-harness";
@@ -59,7 +59,7 @@ const registerFor = (actor: string, publicKey: string): Promise<Response> =>
   registerKey(
     new Request("http://localhost/api/ssh-keys", {
       method: "POST",
-      headers: member(actor),
+      headers: developer(actor),
       body: JSON.stringify({ publicKey }),
     }),
   );

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { COST_WINDOW_DAYS, costReportQuery, type CostWindow } from "@edd/api-contracts";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 
 import { LiveRefresh } from "../../../components/LiveRefresh";
 import { StatTile } from "../../../components/StatTile";
@@ -101,11 +102,12 @@ export default async function AdminCostsPage({
 }: {
   searchParams: Promise<{ window?: string }>;
 }) {
-  // Validate the window with the SAME schema the `/api/admin/costs` route uses (an
-  // absent param defaults to `all`); a bad explicit value falls back to `all` rather
-  // than silently coercing via `.catch` (which made the route's validation dead code).
+  // Validate the window with the SAME schema the `/api/admin/costs` route uses.
+  // Absent defaults to all; an explicit invalid value fails the route/page
+  // boundary rather than silently showing the wrong cost window.
   const parsedWindow = costReportQuery.safeParse({ window: (await searchParams).window });
-  const window: CostWindow = parsedWindow.success ? parsedWindow.data.window : "all";
+  if (!parsedWindow.success) notFound();
+  const window: CostWindow = parsedWindow.data.window;
   const report = await (await getCostService()).report(COST_WINDOW_DAYS[window]);
   const { total, byUser, bySession, pricing } = report;
 

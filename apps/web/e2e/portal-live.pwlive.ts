@@ -39,12 +39,12 @@ async function inspectByImage(
   return workspaceInspection.parse(await inspectRes.json()).workspace;
 }
 
-test("member lifecycle in the browser acts on real ECS tasks (create → stop → wake → delete)", async ({
+test("developer lifecycle in the browser acts on real ECS tasks (create → stop → wake → delete)", async ({
   page,
   context,
   request,
 }) => {
-  await loginAs(context, "live-member", "member");
+  await loginAs(context, "live-developer", "developer");
   await page.goto("/sessions/new");
   await expect(page.getByRole("heading", { name: "Start a session" })).toBeVisible();
 
@@ -68,7 +68,7 @@ test("member lifecycle in the browser acts on real ECS tasks (create → stop �
 
   // The bindings behind the card are real: ECS task ARN + an ENI address from
   // the live subnet (admin Inspect API, same server).
-  const created = await inspectByImage(request, WORKSPACE_IMAGE, "live-member");
+  const created = await inspectByImage(request, WORKSPACE_IMAGE, "live-developer");
   expect(created.taskId).toMatch(/^arn:aws:ecs:/);
   expect(created.volumeId).toMatch(/^vol-/);
   expect(created.sshHost).toMatch(SUBNET_PREFIX);
@@ -99,11 +99,11 @@ test("member lifecycle in the browser acts on real ECS tasks (create → stop �
   await card.getByTestId(TESTID.workspaceResume).click();
   await expect(page).toHaveURL(new RegExp(`/workspaces/${created.id}`));
   await expect
-    .poll(async () => (await inspectByImage(request, WORKSPACE_IMAGE, "live-member")).state, {
+    .poll(async () => (await inspectByImage(request, WORKSPACE_IMAGE, "live-developer")).state, {
       timeout: 120_000,
     })
     .toBe("running");
-  const woken = await inspectByImage(request, WORKSPACE_IMAGE, "live-member");
+  const woken = await inspectByImage(request, WORKSPACE_IMAGE, "live-developer");
   expect(woken.id).toBe(created.id);
   expect(woken.taskId).toMatch(/^arn:aws:ecs:/);
   expect(woken.taskId).not.toBe(created.taskId);
@@ -114,11 +114,11 @@ test("member lifecycle in the browser acts on real ECS tasks (create → stop �
   // is a two-step confirm in the UI, but its transition is the same async
   // `deleting` tombstone the reconciler then converges).
   const deleteRes = await request.delete(`/api/workspaces/${created.id}`, {
-    headers: { cookie: devCookieHeader("live-member", "member") },
+    headers: { cookie: devCookieHeader("live-developer", "developer") },
   });
   expect(deleteRes.status()).toBe(202);
   await expect
-    .poll(async () => (await inspectByImage(request, WORKSPACE_IMAGE, "live-member")).state, {
+    .poll(async () => (await inspectByImage(request, WORKSPACE_IMAGE, "live-developer")).state, {
       timeout: 30_000,
     })
     .toBe("deleting");

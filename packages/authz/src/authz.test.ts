@@ -18,7 +18,7 @@ const ACTIONS: Action[] = ["create", "read", "update", "delete", "manage"];
 const SUBJECTS: Subject[] = ["Workspace", "User", "BaseImage", "all"];
 
 /**
- * The complete role × action × subject truth table (TESTING.md: "admin / member
+ * The complete role × action × subject truth table (TESTING.md: "admin / developer
  * / viewer × every action"). Each entry lists the (action, subject) pairs that
  * role may perform; everything else must be denied. Admin holds `manage all`,
  * so it can do every pair — encoded as the sentinel `"*"`.
@@ -28,7 +28,7 @@ const ALLOWED: Record<Role, [Action, Subject][] | "*"> = {
     ["read", "Workspace"],
     ["read", "BaseImage"],
   ],
-  member: [
+  developer: [
     ["read", "Workspace"],
     ["read", "BaseImage"],
     ["create", "Workspace"],
@@ -57,8 +57,8 @@ describe("RBAC ability matrix (every role × action × subject)", () => {
     }
   }
 
-  it("a member cannot touch Users at all", () => {
-    const a = defineAbilityFor({ id: ownerId("u"), role: "member" });
+  it("a developer cannot touch Users at all", () => {
+    const a = defineAbilityFor({ id: ownerId("u"), role: "developer" });
     for (const action of ACTIONS) expect(a.can(action, "User")).toBe(false);
   });
 
@@ -74,7 +74,7 @@ describe("RBAC ability matrix (every role × action × subject)", () => {
 describe("isRole", () => {
   it("accepts every real role, rejects everything else", () => {
     for (const r of ROLES) expect(isRole(r)).toBe(true);
-    for (const bad of ["", "root", "Admin", "admin ", "viewer,member"]) {
+    for (const bad of ["", "root", "Admin", "admin ", "viewer,developer"]) {
       expect(isRole(bad)).toBe(false);
     }
   });
@@ -83,16 +83,16 @@ describe("isRole", () => {
 describe("effectiveRole (persona clamp)", () => {
   it("a persona at or below the real role is honored", () => {
     expect(effectiveRole("admin", "admin")).toBe("admin");
-    expect(effectiveRole("admin", "member")).toBe("member");
+    expect(effectiveRole("admin", "developer")).toBe("developer");
     expect(effectiveRole("admin", "viewer")).toBe("viewer");
-    expect(effectiveRole("member", "viewer")).toBe("viewer");
-    expect(effectiveRole("member", "member")).toBe("member");
+    expect(effectiveRole("developer", "viewer")).toBe("viewer");
+    expect(effectiveRole("developer", "developer")).toBe("developer");
   });
 
   it("never escalates above the real role", () => {
-    expect(effectiveRole("viewer", "member")).toBe("viewer");
+    expect(effectiveRole("viewer", "developer")).toBe("viewer");
     expect(effectiveRole("viewer", "admin")).toBe("viewer");
-    expect(effectiveRole("member", "admin")).toBe("member");
+    expect(effectiveRole("developer", "admin")).toBe("developer");
   });
 
   it("an absent or invalid persona resolves to the real role unchanged", () => {
@@ -105,10 +105,10 @@ describe("effectiveRole (persona clamp)", () => {
 
 describe("personasFor", () => {
   it("admin may switch into every role", () => {
-    expect(personasFor("admin")).toEqual(["viewer", "member", "admin"]);
+    expect(personasFor("admin")).toEqual(["viewer", "developer", "admin"]);
   });
-  it("member may switch into member or viewer, never admin", () => {
-    expect(personasFor("member")).toEqual(["viewer", "member"]);
+  it("developer may switch into developer or viewer, never admin", () => {
+    expect(personasFor("developer")).toEqual(["viewer", "developer"]);
   });
   it("viewer has no lower persona (itself only)", () => {
     expect(personasFor("viewer")).toEqual(["viewer"]);

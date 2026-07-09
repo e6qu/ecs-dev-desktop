@@ -139,7 +139,7 @@ describe("POST /api/workspaces/:id/connect — wake-on-connect (DynamoDB Local)"
 });
 
 describe("lifecycle routes: authz and existence", () => {
-  it("forbids acting on another member's workspace (403, all four routes)", async () => {
+  it("forbids acting on another developer's workspace (403, all four routes)", async () => {
     const id = await createWorkspaceFor("authz-a");
     for (const call of [doStop, doStart, doSnapshot, doConnect]) {
       expect((await call("mallory", id)).status).toBe(403);

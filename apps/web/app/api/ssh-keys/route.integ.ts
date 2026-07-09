@@ -3,7 +3,7 @@ import { listSshKeysResponse, registerSshKeyResponse } from "@edd/api-contracts"
 import { describe, expect, it } from "vitest";
 
 import {
-  member,
+  developer,
   routeCtx,
   useWorkspaceTable,
 } from "../../../lib/test-support/workspace-route-harness";
@@ -24,17 +24,20 @@ function register(actor: string, publicKey: string, label?: string): Promise<Res
   return POST(
     new Request(base, {
       method: "POST",
-      headers: member(actor),
+      headers: developer(actor),
       body: JSON.stringify({ publicKey, ...(label !== undefined ? { label } : {}) }),
     }),
   );
 }
 
 const list = (actor: string): Promise<Response> =>
-  GET(new Request(base, { headers: member(actor) }));
+  GET(new Request(base, { headers: developer(actor) }));
 
 const remove = (actor: string, id: string): Promise<Response> =>
-  DELETE(new Request(`${base}/${id}`, { method: "DELETE", headers: member(actor) }), routeCtx(id));
+  DELETE(
+    new Request(`${base}/${id}`, { method: "DELETE", headers: developer(actor) }),
+    routeCtx(id),
+  );
 
 describe("/api/ssh-keys (DynamoDB Local)", () => {
   it("rejects an unauthenticated caller (401)", async () => {
@@ -60,7 +63,7 @@ describe("/api/ssh-keys (DynamoDB Local)", () => {
 
   it("rejects a malformed JSON body with 400, not a 500", async () => {
     const res = await POST(
-      new Request(base, { method: "POST", headers: member("alice"), body: "{ not json" }),
+      new Request(base, { method: "POST", headers: developer("alice"), body: "{ not json" }),
     );
     expect(res.status).toBe(400);
   });

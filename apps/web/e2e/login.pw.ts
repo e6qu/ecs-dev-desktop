@@ -32,8 +32,8 @@ test("admin signs in and reaches the admin console", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("member signs in but is denied the admin console", async ({ page }) => {
-  await formLogin(page, "member", "dev");
+test("developer signs in but is denied the admin console", async ({ page }) => {
+  await formLogin(page, "developer", "dev");
   await page.waitForURL("**/workspaces");
 
   await page.goto("/admin");

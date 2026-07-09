@@ -40,7 +40,7 @@ describe("GitHub repo routes (auth + preconditions)", () => {
   });
 
   it("GET with no connected GitHub credential → 409", async () => {
-    const res = await GET(new Request(base, { headers: headers("u1", "member") }));
+    const res = await GET(new Request(base, { headers: headers("u1", "developer") }));
     expect(res.status).toBe(409);
   });
 
@@ -62,7 +62,7 @@ describe("GitHub repo routes (auth + preconditions)", () => {
 
   it("POST with a malformed body → 400", async () => {
     const res = await POST(
-      new Request(base, { method: "POST", headers: headers("u1", "member"), body: "{}" }),
+      new Request(base, { method: "POST", headers: headers("u1", "developer"), body: "{}" }),
     );
     expect(res.status).toBe(400);
   });
@@ -71,7 +71,7 @@ describe("GitHub repo routes (auth + preconditions)", () => {
     const res = await POST(
       new Request(base, {
         method: "POST",
-        headers: headers("u1", "member"),
+        headers: headers("u1", "developer"),
         body: JSON.stringify({ owner: "u1", name: "demo", private: true, isPersonal: true }),
       }),
     );

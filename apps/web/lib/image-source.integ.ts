@@ -80,6 +80,7 @@ function service(args: {
       webhookSecret: "secret",
       appName: "edd-prod",
       goldenVariants: ["omnibus", "python"],
+      githubApiUrl: "https://api.github.test",
     },
     now: args.now ?? (() => new Date("2026-07-07T12:00:00.000Z")),
   });
@@ -145,6 +146,63 @@ describe("ImageSourceService catalog rollout", () => {
     expect(state.triggers[0]).toMatchObject({ status: "succeeded", tag: "1234567890ab" });
   });
 
+  it("polls GitHub main and rolls the CI-published golden tag without a webhook record", async () => {
+    const ops = new FakeImageOps();
+    const rolled: string[] = [];
+    const svc = service({
+      imageOps: ops,
+      roll: (repo, tag) => {
+        rolled.push(`${repo}:${tag}`);
+        return Promise.resolve();
+      },
+    });
+    const fetchCommit: typeof fetch = () =>
+      Promise.resolve(
+        Response.json({
+          sha: "1234567890abcdef1234567890abcdef12345678",
+          parents: [{ sha: "0000000000000000000000000000000000000000" }],
+          files: [{ filename: "apps/web/server.ts" }],
+        }),
+      );
+
+    const trigger = await svc.observeLatestGithubCommit(fetchCommit);
+    expect(trigger).toMatchObject({
+      status: "queued",
+      tag: "1234567890ab",
+      triggeredBy: "github-poll",
+    });
+
+    publishGoldenImages(ops, "1234567890ab");
+    await svc.reconcileRecentBuilds();
+
+    expect(rolled).toEqual([
+      "edd-prod/golden/omnibus:1234567890ab",
+      "edd-prod/golden/python:1234567890ab",
+    ]);
+    const state = await svc.state();
+    expect(state.lastHandledSha).toBe("1234567890abcdef1234567890abcdef12345678");
+    expect(state.triggers[0]).toMatchObject({
+      status: "succeeded",
+      reason: "main push publishes golden images",
+    });
+  });
+
+  it("does not create a duplicate trigger when GitHub polling sees the already handled commit", async () => {
+    const ops = new FakeImageOps();
+    const svc = service({
+      imageOps: ops,
+      roll: () => Promise.resolve(),
+    });
+    const fetchCommit: typeof fetch = () =>
+      Promise.resolve(Response.json({ sha: observation.afterSha, files: [] }));
+
+    await svc.handleObservation(observation);
+
+    await expect(svc.observeLatestGithubCommit(fetchCommit)).resolves.toBeNull();
+    const state = await svc.state();
+    expect(state.triggers).toHaveLength(1);
+  });
+
   it("marks the trigger failed when catalog rollout fails", async () => {
     const ops = new FakeImageOps();
     const svc = service({
@@ -198,7 +256,7 @@ describe("ImageSourceService catalog rollout", () => {
     expect(state.triggers[0]).toMatchObject({
       status: "succeeded",
       tag: "abcdef123456",
-      reason: "workspace image inputs changed",
+      reason: "main push publishes golden images",
     });
     expect(state.triggers[1]).toMatchObject({
       status: "succeeded",
@@ -287,7 +345,7 @@ describe("ImageSourceService catalog rollout", () => {
     expect(state.triggers[0]).toMatchObject({
       status: "succeeded",
       tag: "fedcba987654",
-      reason: "workspace image inputs changed",
+      reason: "main push publishes golden images",
     });
     expect(state.triggers[1]).toMatchObject({
       status: "succeeded",

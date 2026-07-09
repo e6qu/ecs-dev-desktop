@@ -50,7 +50,7 @@ beforeEach(() => {
   validateAuthSessionTokenMock.mockResolvedValue({
     id: "auth-session-1",
     ownerId: "u-1",
-    role: "member",
+    role: "developer",
     expiresAtMs: 1_900_000_000_000,
   });
   // authorizeWorkspace now fails loud without AUTH_SECRET (getToken itself is mocked).
@@ -68,7 +68,7 @@ describe("authorizeWorkspace (in-app proxy authz glue)", () => {
   });
 
   it("is unauthenticated when the signed cookie has no active server-side session", async () => {
-    getTokenMock.mockResolvedValue({ uid: "u-1", role: "member" });
+    getTokenMock.mockResolvedValue({ uid: "u-1", role: "developer" });
     validateAuthSessionTokenMock.mockResolvedValue(null);
     expect(await authorizeWorkspace(req(), WS)).toEqual({ kind: "unauthenticated" });
     expect(inspectMock).not.toHaveBeenCalled();
@@ -110,7 +110,7 @@ describe("authorizeWorkspace (in-app proxy authz glue)", () => {
   });
 
   it("forbids a non-admin whose session carries no subject (fails closed)", async () => {
-    getTokenMock.mockResolvedValue({ role: "member" });
+    getTokenMock.mockResolvedValue({ role: "developer" });
     inspectMock.mockResolvedValue({ workspace: { ownerId: "u-1" } });
     expect(await authorizeWorkspace(req(), WS)).toMatchObject({ kind: "forbidden" });
   });
@@ -477,7 +477,7 @@ describe("authorizeSpectate (read-only mirror authz)", () => {
     getTokenMock.mockResolvedValue({ uid: "u-admin", role: "admin" });
     inspectMock.mockResolvedValue(shared);
     expect(await authorizeSpectate(req(), WS, "publish")).toEqual({ kind: "forbidden" });
-    getTokenMock.mockResolvedValue({ uid: "u-owner", role: "member" });
+    getTokenMock.mockResolvedValue({ uid: "u-owner", role: "developer" });
     expect(await authorizeSpectate(req(), WS, "publish")).toEqual({
       kind: "allow",
       role: "publish",

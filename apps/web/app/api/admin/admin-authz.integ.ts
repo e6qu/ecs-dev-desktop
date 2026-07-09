@@ -43,8 +43,8 @@ function asRole(role: string): Request {
 
 describe("admin API authorization (RBAC gate)", () => {
   for (const ep of ENDPOINTS) {
-    it(`denies a member with 403: ${ep.name}`, async () => {
-      expect((await ep.call(asRole("member"))).status).toBe(403);
+    it(`denies a developer with 403: ${ep.name}`, async () => {
+      expect((await ep.call(asRole("developer"))).status).toBe(403);
     });
 
     it(`denies a viewer with 403: ${ep.name}`, async () => {

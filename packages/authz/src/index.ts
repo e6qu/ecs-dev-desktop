@@ -5,14 +5,14 @@ import type { OwnerId } from "@edd/core";
 /**
  * RBAC, defined once and enforced in both the API and the UI.
  *
- * Roles (least → most privilege): viewer < member < admin. Roles are derived
+ * Roles (least → most privilege): viewer < developer < admin. Roles are derived
  * from IdP groups/claims in `@edd/auth`; this module turns a role into a CASL
  * ability the rest of the system checks with `ability.can(action, subject)`.
  */
 /** The role vocabulary, least → most privilege. The single source of truth: the
  * `Role` union is derived from it, and consumers (e.g. quotas) key on it so a new
  * role is a compile error wherever roles are enumerated. */
-export const ROLES = ["viewer", "member", "admin"] as const;
+export const ROLES = ["viewer", "developer", "admin"] as const;
 export type Role = (typeof ROLES)[number];
 
 /** Whether `value` is one of the {@link ROLES}. */
@@ -21,7 +21,7 @@ export function isRole(value: string): value is Role {
 }
 
 /** Rank of each role, least → most privilege — the basis for persona clamping. */
-const ROLE_RANK: Readonly<Record<Role, number>> = { viewer: 0, member: 1, admin: 2 };
+const ROLE_RANK: Readonly<Record<Role, number>> = { viewer: 0, developer: 1, admin: 2 };
 
 /**
  * The effective role for a "view as" persona override: `requested` clamped to at
@@ -70,8 +70,8 @@ export function defineAbilityFor(principal: Principal): AppAbility {
   can("read", "BaseImage");
   can("read", "Workspace");
 
-  if (principal.role === "member" || principal.role === "admin") {
-    // Members manage their own workspaces (ownership enforced at the data layer).
+  if (principal.role === "developer" || principal.role === "admin") {
+    // Developers manage their own workspaces (ownership enforced at the data layer).
     can(["create", "update", "delete"], "Workspace");
   }
 

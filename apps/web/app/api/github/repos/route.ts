@@ -56,7 +56,7 @@ const createRepoRequest = z.object({
 async function handlePOST(req: Request) {
   const principal = await authenticate(req);
   if (isResponse(principal)) return principal;
-  // Creating a repo is a member+ action (same gate as creating a workspace).
+  // Creating a repo is a developer+ action (same gate as creating a workspace).
   if (!defineAbilityFor(principal).can("create", "Workspace")) return forbidden();
 
   let raw: unknown;

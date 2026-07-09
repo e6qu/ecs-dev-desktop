@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   apiBase,
   createWorkspaceFor,
-  member,
+  developer,
   routeCtx,
   useWorkspaceTable,
 } from "../../../../lib/test-support/workspace-route-harness";
@@ -14,7 +14,7 @@ useWorkspaceTable("ecs-dev-desktop-web-id-integ");
 
 function del(actor: string, id: string): Promise<Response> {
   return DELETE(
-    new Request(`${apiBase}/${id}`, { method: "DELETE", headers: member(actor) }),
+    new Request(`${apiBase}/${id}`, { method: "DELETE", headers: developer(actor) }),
     routeCtx(id),
   );
 }
@@ -34,7 +34,7 @@ describe("DELETE /api/workspaces/:id (DynamoDB Local)", () => {
     expect((await del("alice", id)).status).toBe(202);
   });
 
-  it("forbids deleting another member's workspace (403)", async () => {
+  it("forbids deleting another developer's workspace (403)", async () => {
     const id = await createWorkspaceFor("alice");
     expect((await del("bob", id)).status).toBe(403);
   });

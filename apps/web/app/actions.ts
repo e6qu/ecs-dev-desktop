@@ -14,7 +14,7 @@ const PERSONA_COOKIE_OPTS = { httpOnly: true, sameSite: "lax", path: "/" } as co
 /**
  * Set (or clear) the caller's "view as" persona override. Always re-derives the
  * real role from the live session/dev-auth (never trusts a client-supplied real
- * role) and clamps the requested persona against it — downgrade-only, so a member
+ * role) and clamps the requested persona against it — downgrade-only, so a developer
  * can never grant themselves admin by posting a crafted form value. Clears the
  * cookie entirely when the requested persona resolves back to the real role, so
  * "no override" stays the common, cookie-free case. The stored value carries the

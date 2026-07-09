@@ -100,7 +100,7 @@ export type WorkspaceResourcesDto = z.infer<typeof workspaceResources>;
 /** The RBAC roles (mirrors `@edd/authz` `ROLES` — kept here so the contract has no dep on authz;
  * the role-mapping test pins them in sync). A closed enum, not a bare string, so a typo'd/unknown
  * role can't ride a DTO. */
-export const role = z.enum(["viewer", "member", "admin"]);
+export const role = z.enum(["viewer", "developer", "admin"]);
 export type RoleDto = z.infer<typeof role>;
 
 export const workspace = z.object({

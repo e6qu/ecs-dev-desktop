@@ -73,7 +73,7 @@ describe("github adapter", () => {
     const ns = await listNamespaces(TOKEN, impl);
     const byLogin = new Map(ns.map((n) => [n.login, n]));
     expect(byLogin.get("alice")?.canCreate).toBe(true); // scope present
-    expect(byLogin.get("acme")?.canCreate).toBe(false); // org forbids member creation
+    expect(byLogin.get("acme")?.canCreate).toBe(false); // org forbids developer creation
     expect(byLogin.get("acme")?.reason).toMatch(/role/i);
     expect(byLogin.get("open-org")?.canCreate).toBe(true);
   });

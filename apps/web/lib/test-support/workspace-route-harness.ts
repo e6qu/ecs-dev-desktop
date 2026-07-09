@@ -17,10 +17,10 @@ const NODE_IMAGE = "golden/node:20";
 /** Base URL of the workspaces collection (route handlers ignore the host). */
 export const apiBase = "http://localhost/api/workspaces";
 
-/** Dev-auth headers identifying `id` as a `member` (gated on `EDD_DEV_AUTH`). */
-export const member = (id: string) => ({
+/** Dev-auth headers identifying `id` as a `developer` (gated on `EDD_DEV_AUTH`). */
+export const developer = (id: string) => ({
   [USER_ID_HEADER]: id,
-  [ROLE_HEADER]: "member",
+  [ROLE_HEADER]: "developer",
   "content-type": "application/json",
 });
 
@@ -47,7 +47,7 @@ export function postLifecycle(
   id: string,
 ): Promise<Response> {
   return handler(
-    new Request(`${apiBase}/${id}/${segment}`, { method: "POST", headers: member(actor) }),
+    new Request(`${apiBase}/${id}/${segment}`, { method: "POST", headers: developer(actor) }),
     routeCtx(id),
   );
 }
@@ -90,7 +90,7 @@ export async function createWorkspaceFor(owner: string): Promise<string> {
   const res = await createWorkspace(
     new Request(apiBase, {
       method: "POST",
-      headers: member(owner),
+      headers: developer(owner),
       body: JSON.stringify({ baseImage: NODE_IMAGE }),
     }),
   );

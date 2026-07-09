@@ -112,10 +112,11 @@ inputs = {
 1. **Remote state backend** — an S3 bucket + DynamoDB lock table for Terraform
    state. Bootstrap once with [`scripts/bootstrap-state.sh`](../../../../scripts/bootstrap-state.sh);
    Terragrunt can then manage it.
-2. **Auth + crypto secrets in Secrets Manager** — `AUTH_SECRET`, the GitHub/Entra
-   OAuth client id+secret, and the crypto HMAC/AES keys. Bootstrap with
+2. **Auth + runtime secrets in Secrets Manager** — `AUTH_SECRET`, the GitHub/Entra
+   OAuth client id+secret, crypto HMAC/AES keys, and image-source webhook secret.
+   Bootstrap with
    [`scripts/bootstrap-secrets.sh`](../../../../scripts/bootstrap-secrets.sh) (generates
-   the crypto secrets; prompts for IdP creds); pass the printed ARNs via
+   the crypto/webhook secrets; prompts for IdP creds); pass the printed ARNs via
    `secret_environment`.
 3. **Domain + Route53 zone** (only if using TLS / the editor/SSH front doors) —
    `app.<domain>` for the editor proxy, and (optionally) a separate

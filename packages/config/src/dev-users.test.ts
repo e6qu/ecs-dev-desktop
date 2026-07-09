@@ -18,7 +18,7 @@ describe("devUsers (config)", () => {
 
   it("returns the built-in default accounts with explicit passwords when EDD_DEV_USERS is unset", () => {
     const users = devUsers();
-    expect(users.map((u) => u.role)).toEqual(["admin", "member", "viewer"]);
+    expect(users.map((u) => u.role)).toEqual(["admin", "developer", "viewer"]);
     expect(users.map((u) => u.password)).toEqual(["dev", "dev", "dev"]);
   });
 

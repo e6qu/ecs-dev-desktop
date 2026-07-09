@@ -126,3 +126,16 @@ jobs:
             "$RELEASE_NAME_PREFIX" \
             "${TAG:0:12}" \
             "${variants[@]}"
+
+      - name: Verify pushed golden images in ECR
+        run: |
+          set -euo pipefail
+          read -r -a variants <<< "$RELEASE_GOLDEN_VARIANTS"
+          for variant in "${variants[@]}"; do
+            aws ecr describe-images \
+              --region "$RELEASE_AWS_REGION" \
+              --repository-name "${RELEASE_NAME_PREFIX}/golden/${variant}" \
+              --image-ids "imageTag=${TAG:0:12}" \
+              --query 'imageDetails[0].imageDigest' \
+              --output text
+          done

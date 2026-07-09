@@ -71,7 +71,7 @@ describe("SSH wake-on-connect chain against the real control plane", { timeout: 
   let proxyContainerId = "";
 
   async function api(path: string, init?: RequestInit): Promise<Response> {
-    return fetch(`${web.baseUrl}/api${path}`, { headers: devHeaders(OWNER, "member"), ...init });
+    return fetch(`${web.baseUrl}/api${path}`, { headers: devHeaders(OWNER, "developer"), ...init });
   }
 
   async function inspect(): Promise<WorkspaceDetailDto> {
@@ -99,7 +99,7 @@ describe("SSH wake-on-connect chain against the real control plane", { timeout: 
       ...imageSourceEnv(`edd-ssh-wake-${TABLE}`, "node"),
     }));
 
-    // Create the workspace through the real API, as a member.
+    // Create the workspace through the real API, as a developer.
     const created = await api("/workspaces", {
       method: "POST",
       body: JSON.stringify({ baseImage: NODE_IMAGE }),

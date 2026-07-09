@@ -92,7 +92,7 @@ describe("admin cost report", () => {
   it("denies non-admins", async () => {
     const res = await GET(
       new Request("http://localhost/api/admin/costs", {
-        headers: { "x-edd-user-id": "m", "x-edd-role": "member" },
+        headers: { "x-edd-user-id": "m", "x-edd-role": "developer" },
       }),
     );
     expect(res.status).toBe(403);

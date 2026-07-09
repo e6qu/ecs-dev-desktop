@@ -47,7 +47,7 @@ process.env[ADMIN_GROUPS_ENV] = `${ORG}/${TEAM}`;
 
 const csrfSchema = z.object({ csrfToken: z.string() });
 const sessionSchema = z.object({
-  user: z.object({ id: z.string(), role: z.enum(["viewer", "member", "admin"]) }),
+  user: z.object({ id: z.string(), role: z.enum(["viewer", "developer", "admin"]) }),
 });
 
 type Handler = (req: Request) => Promise<Response>;

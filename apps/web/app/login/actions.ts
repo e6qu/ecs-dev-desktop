@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 
 import { DEV_ROLE_COOKIE, DEV_USER_COOKIE } from "../../lib/constants";
 import { findDevUser } from "../../lib/dev-users";
+import { field } from "../../lib/forms";
 import { devAuthEnabled } from "../../lib/principal";
 
 // Host-only (no Domain), so the dev cookies are scoped to the exact host the app
@@ -19,16 +20,6 @@ const AUTH_COOKIE_STEMS = [
   "authjs.callback-url",
   "__Secure-authjs.callback-url",
 ] as const;
-
-/**
- * Local dev sign-in (gated on `EDD_DEV_AUTH=1`): authenticate against the seeded
- * accounts and set the dev principal cookies. On bad credentials, bounce back to
- * the form with an error. Never available in production (Auth.js OIDC there).
- */
-function field(formData: FormData, name: string): string {
-  const value = formData.get(name);
-  return typeof value === "string" ? value : "";
-}
 
 export async function devSignIn(formData: FormData): Promise<void> {
   if (!devAuthEnabled()) redirect("/login");
@@ -62,4 +53,14 @@ export async function signOutAction(): Promise<void> {
   }
   const { signOut } = await import("../../auth");
   await signOut({ redirectTo: "/login" });
+}
+
+export async function localAccountSignIn(formData: FormData): Promise<void> {
+  if (devAuthEnabled()) redirect("/login");
+  const { signIn } = await import("../../auth");
+  await signIn("credentials", {
+    email: field(formData, "email"),
+    password: field(formData, "password"),
+    redirectTo: "/workspaces",
+  });
 }

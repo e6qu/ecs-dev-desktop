@@ -15,7 +15,7 @@ interface Ctx {
 // GET /api/workspaces/:id/logs — the owner-facing slice of this workspace's
 // container log stream (boot + runtime), for the workspace status page. Same
 // CloudWatch source the admin Logs screen uses, narrowed to the workspace's own
-// ECS task and gated on ownership (owner or admin), so a member can watch their
+// ECS task and gated on ownership (owner or admin), so a developer can watch their
 // OWN session boot without the admin console.
 async function handleGET(req: Request, { params }: Ctx) {
   const loaded = await loadOwnedWorkspaceDetail(req, params);

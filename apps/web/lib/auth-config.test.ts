@@ -2,7 +2,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { roleMappingConfig } from "./auth-config";
-import { ADMIN_GROUPS_ENV, MEMBER_GROUPS_ENV } from "./constants";
+import { ADMIN_GROUPS_ENV, DEVELOPER_GROUPS_ENV } from "./constants";
 
 describe("roleMappingConfig", () => {
   afterEach(() => {
@@ -11,15 +11,15 @@ describe("roleMappingConfig", () => {
 
   it("parses comma-separated group lists", () => {
     vi.stubEnv(ADMIN_GROUPS_ENV, "a1, a2");
-    vi.stubEnv(MEMBER_GROUPS_ENV, "m1");
+    vi.stubEnv(DEVELOPER_GROUPS_ENV, "m1");
     const c = roleMappingConfig();
     expect(c.adminGroups).toEqual(["a1", "a2"]);
-    expect(c.memberGroups).toEqual(["m1"]);
+    expect(c.developerGroups).toEqual(["m1"]);
     expect(c.defaultRole).toBe("viewer");
   });
 
   it("defaults to empty lists when unset", () => {
     expect(roleMappingConfig().adminGroups).toEqual([]);
-    expect(roleMappingConfig().memberGroups).toEqual([]);
+    expect(roleMappingConfig().developerGroups).toEqual([]);
   });
 });

@@ -15,7 +15,7 @@ import { sshConnectInfo } from "@edd/api-contracts";
 import {
   apiBase,
   createWorkspaceFor,
-  member,
+  developer,
   routeCtx,
   useWorkspaceTable,
 } from "../../../../../lib/test-support/workspace-route-harness";
@@ -26,7 +26,7 @@ useWorkspaceTable(TABLE);
 
 function get(actor: string, id: string): Promise<Response> {
   return GET(
-    new Request(`${apiBase}/${id}/connect-info`, { headers: member(actor) }),
+    new Request(`${apiBase}/${id}/connect-info`, { headers: developer(actor) }),
     routeCtx(id),
   );
 }
@@ -88,7 +88,7 @@ describe("GET /api/workspaces/:id/connect-info (DynamoDB Local)", () => {
     expect(res.status).toBe(404);
   });
 
-  it("returns 403 for another member's workspace", async () => {
+  it("returns 403 for another developer's workspace", async () => {
     const id = await createWorkspaceFor("alice");
     const res = await get("bob", id);
     expect(res.status).toBe(403);

@@ -11,6 +11,8 @@ const ITEMS: { label: string; href: string | null }[] = [
   { label: "Infrastructure", href: "/admin/infrastructure" },
   { label: "Images", href: "/admin/images" },
   { label: "Workspaces", href: "/admin/workspaces" },
+  { label: "Users", href: "/admin/users" },
+  { label: "Invitations", href: "/admin/invitations" },
   { label: "Catalog", href: "/admin/catalog" },
   { label: "Costs", href: "/admin/costs" },
   { label: "Logs", href: "/admin/logs" },

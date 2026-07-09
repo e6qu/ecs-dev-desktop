@@ -22,7 +22,7 @@ spectators may watch concurrently.
 This is the largest new attack surface added since launch (materially reduced
 by the authenticated-viewer decision, but still real):
 
-- Sharing exposes live workspace content to every org member with a `viewer`+
+- Sharing exposes live workspace content to every org developer with a `viewer`+
   session: source code, terminal scrollback (which routinely contains secrets:
   env vars, tokens pasted by the user, `claude` output), and every keystroke —
   including passwords/tokens the owner types while sharing is on. The

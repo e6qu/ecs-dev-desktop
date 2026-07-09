@@ -41,6 +41,7 @@ export EDD_REGION="us-east-1"                   # AWS region
 export EDD_AZS="us-east-1a,us-east-1b"          # 2+ AZs, comma-separated
 export EDD_ADMIN_GROUPS="platform-admins"       # IdP group(s) granting admin (CSV).
                                                 #   WITHOUT THIS, NO ONE IS AN ADMIN.
+export EDD_IMAGE_SOURCE_REPO="e6qu/ecs-dev-desktop" # repo observed for golden catalog rollout
 
 # --- editor domain (omit both for an HTTP-only dev stack with no TLS) ---
 export EDD_DOMAIN="dev.example.com"             # app.<this> control-plane URL
@@ -62,7 +63,9 @@ export EDD_BOOTSTRAP_GITHUB_SECRET="yyyyyy"     # GitHub OAuth client secret
 # export EDD_IMAGE_TAG="v1.0.0"                 # image tag (default: main)
 # export EDD_CODEBUILD_SOURCE_REPO="https://github.com/..." # required for codebuild mode
 # export EDD_GOLDEN="omnibus typescript"        # golden variants to build (default: omnibus)
-# export EDD_MEMBER_GROUPS="engineering"        # IdP group(s) granting member (CSV)
+# export EDD_DEVELOPER_GROUPS="engineering"        # IdP group(s) granting developer (CSV)
+# export EDD_AWS_PRICING="1"                    # require live AWS Price List rates (default)
+# export EDD_EMAIL_FROM="EDD <noreply@dev.example.com>" # SES verified sender for invitations
 ```
 
 > You can run the IdP prompts interactively instead: leave the
@@ -83,8 +86,9 @@ This runs the whole linear flow, aborting on the first error:
    `edd-tfstate-locks`), idempotently.
 3. **Bootstrap secrets** — `scripts/bootstrap-secrets.sh` creates
    `<name>/AUTH_SECRET`, `<name>/EDD_TOKEN_ENC_KEY`, `<name>/EDD_GATEWAY_SECRET`,
-   `<name>/EDD_AGENT_SECRET`, `<name>/EDD_CONNECTION_SECRET` (randomly generated)
-   and the IdP creds you supplied, then prints their ARNs.
+   `<name>/EDD_AGENT_SECRET`, `<name>/EDD_CONNECTION_SECRET`,
+   `<name>/EDD_IMAGE_SOURCE_WEBHOOK_SECRET` (randomly generated) and the IdP creds
+   you supplied, then prints their ARNs.
 4. **Terraform init + apply** — writes an `install.tfvars` from your parameters,
    points at the remote state, and applies the
    [`complete` example](../infra/terraform/examples/complete) (VPC, DynamoDB, ECR,

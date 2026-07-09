@@ -7,6 +7,7 @@ import {
   decideImageSourceBuild,
   GITHUB_WEBHOOK_MAX_BODY_BYTES,
   imageSourceConfigFromEnv,
+  observationFromGithubCommit,
   observationFromGithubPush,
   validateGithubWebhookBody,
   validateGithubWebhookHeaders,
@@ -25,19 +26,16 @@ function webhookHeaders(extra: Record<string, string> = {}): Headers {
 }
 
 describe("decideImageSourceBuild", () => {
-  it("starts a golden build when workspace image inputs changed", () => {
+  it("tracks every main push as a CI-published golden image candidate", () => {
     expect(decideImageSourceBuild(["infra/images/base/entrypoint.sh"])).toEqual({
       decision: "build",
-      reason: "workspace image inputs changed",
+      reason: "main push publishes golden images",
       target: "golden",
     });
-    expect(decideImageSourceBuild(["scripts/publish-images.sh"]).decision).toBe("build");
-  });
-
-  it("skips when only control-plane files changed", () => {
     expect(decideImageSourceBuild(["apps/web/components/ImagesConsole.tsx"])).toEqual({
-      decision: "skip",
-      reason: "no workspace image inputs changed",
+      decision: "build",
+      reason: "main push publishes golden images",
+      target: "golden",
     });
   });
 });
@@ -79,6 +77,7 @@ describe("imageSourceConfigFromEnv", () => {
         EDD_IMAGE_SOURCE_WEBHOOK_SECRET: "secret",
         EDD_APP_NAME: "edd-prod",
         EDD_GOLDEN: "omnibus python",
+        AUTH_GITHUB_API_URL: "https://github.enterprise/api/v3/",
       }),
     ).toEqual({
       repo: "e6qu/ecs-dev-desktop",
@@ -86,6 +85,7 @@ describe("imageSourceConfigFromEnv", () => {
       webhookSecret: "secret",
       appName: "edd-prod",
       goldenVariants: ["omnibus", "python"],
+      githubApiUrl: "https://github.enterprise/api/v3",
     });
   });
 });
@@ -193,5 +193,27 @@ describe("observationFromGithubPush", () => {
         "main",
       ),
     ).toBeNull();
+  });
+});
+
+describe("observationFromGithubCommit", () => {
+  it("extracts the latest branch commit from GitHub's standard commit API", () => {
+    expect(
+      observationFromGithubCommit({
+        sha: "new",
+        parents: [{ sha: "old" }],
+        files: [{ filename: "apps/web/server.ts" }, { filename: "infra/images/base/Dockerfile" }],
+      }),
+    ).toEqual({
+      beforeSha: "old",
+      afterSha: "new",
+      changedPaths: ["apps/web/server.ts", "infra/images/base/Dockerfile"],
+      triggeredBy: "github-poll",
+    });
+  });
+
+  it("rejects malformed commit API payloads", () => {
+    expect(observationFromGithubCommit({})).toBeNull();
+    expect(observationFromGithubCommit({ sha: "" })).toBeNull();
   });
 });

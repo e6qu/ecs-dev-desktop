@@ -5,14 +5,14 @@ import { describe, expect, it } from "vitest";
 import { mapClaimsToRole, type IdentityClaims, type Role } from "./index";
 
 const groupId = fc.stringMatching(/^[a-z0-9][a-z0-9/_-]{0,30}$/);
-const ROLES: readonly Role[] = ["viewer", "member", "admin"];
+const ROLES: readonly Role[] = ["viewer", "developer", "admin"];
 
 interface DisjointConfig {
   /** Head is always present (a non-empty group set); the rest is the tail. */
   adminGroups: string[];
   adminHead: string;
-  memberGroups: string[];
-  memberHead: string;
+  developerGroups: string[];
+  developerHead: string;
   defaultRole: Role;
 }
 
@@ -25,16 +25,16 @@ const groupSet = fc
 const configArb: fc.Arbitrary<DisjointConfig> = fc
   .record({
     admin: groupSet,
-    member: groupSet,
-    defaultRole: fc.constantFrom<Role>("viewer", "member", "admin"),
+    developer: groupSet,
+    defaultRole: fc.constantFrom<Role>("viewer", "developer", "admin"),
   })
-  // Keep admin/member group sets disjoint so precedence is unambiguous.
-  .filter((c) => !c.admin.all.some((g) => c.member.all.includes(g)))
+  // Keep admin/developer group sets disjoint so precedence is unambiguous.
+  .filter((c) => !c.admin.all.some((g) => c.developer.all.includes(g)))
   .map((c) => ({
     adminGroups: c.admin.all,
     adminHead: c.admin.head,
-    memberGroups: c.member.all,
-    memberHead: c.member.head,
+    developerGroups: c.developer.all,
+    developerHead: c.developer.head,
     defaultRole: c.defaultRole,
   }));
 
@@ -45,7 +45,7 @@ const claimsWith = (groups: string[]): IdentityClaims => ({
 });
 
 describe("mapClaimsToRole (property)", () => {
-  it("always returns a role in {viewer, member, admin}", () => {
+  it("always returns a role in {viewer, developer, admin}", () => {
     fc.assert(
       fc.property(configArb, fc.array(fc.string(), { maxLength: 8 }), (config, groups) => {
         expect(ROLES).toContain(mapClaimsToRole(claimsWith(groups), config));
@@ -59,7 +59,7 @@ describe("mapClaimsToRole (property)", () => {
     const arb = fc
       .tuple(configArb, fc.nat({ max: 1 }), fc.array(fc.boolean(), { maxLength: 31, minLength: 1 }))
       .map(([config, groupIdx, flags]) => {
-        const group = groupIdx === 0 ? config.adminHead : config.memberHead;
+        const group = groupIdx === 0 ? config.adminHead : config.developerHead;
         const recased = Array.from(group)
           .map((ch, i) => (flags[i] === true ? ch.toUpperCase() : ch.toLowerCase()))
           .join("");
@@ -74,10 +74,10 @@ describe("mapClaimsToRole (property)", () => {
     );
   });
 
-  it("admin precedence: an admin group wins even alongside a member group", () => {
+  it("admin precedence: an admin group wins even alongside a developer group", () => {
     fc.assert(
       fc.property(configArb, (config) => {
-        const groups = [config.adminHead, config.memberHead];
+        const groups = [config.adminHead, config.developerHead];
         expect(mapClaimsToRole(claimsWith(groups), config)).toBe("admin");
       }),
     );
@@ -89,13 +89,13 @@ describe("mapClaimsToRole (property)", () => {
       fc.property(configArb, fc.array(unrelated, { maxLength: 5 }), (config, extras) => {
         // Drop any "unrelated" group that actually collides with a configured group.
         const configured = new Set(
-          [...config.adminGroups, ...config.memberGroups].map((g) => g.toLowerCase()),
+          [...config.adminGroups, ...config.developerGroups].map((g) => g.toLowerCase()),
         );
         const safeExtras = extras.filter((e) => !configured.has(e.toLowerCase()));
-        for (const base of [config.adminHead, config.memberHead]) {
+        for (const base of [config.adminHead, config.developerHead]) {
           const without = mapClaimsToRole(claimsWith([base]), config);
           const withExtras = mapClaimsToRole(claimsWith([base, ...safeExtras]), config);
-          // viewer < member < admin
+          // viewer < developer < admin
           expect(ROLES.indexOf(withExtras)).toBeGreaterThanOrEqual(ROLES.indexOf(without));
         }
       }),

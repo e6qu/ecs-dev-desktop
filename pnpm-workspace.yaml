@@ -10,8 +10,10 @@ minimumReleaseAge: 1440
 
 # Packages allowed to run install scripts. esbuild downloads its platform binary
 # in a postinstall step; node-pty compiles its native PTY binding (node-gyp) for
-# the Monaco editor terminal. Only packages with a well-understood, benign install
-# script are listed here (supply-chain safeguard).
+# the Monaco editor terminal; sharp installs native image-processing binaries
+# used by Next.js image tooling. Only packages with a well-understood, benign
+# install script are listed here (supply-chain safeguard).
 onlyBuiltDependencies:
   - esbuild
   - node-pty
+  - sharp

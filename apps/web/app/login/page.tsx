@@ -4,7 +4,7 @@ import { devUsers } from "@edd/config";
 import { signIn } from "../../auth";
 import { devAuthEnabled } from "../../lib/principal";
 import { TESTID } from "../../lib/testids";
-import { devSignIn } from "./actions";
+import { devSignIn, localAccountSignIn } from "./actions";
 
 const panelStyle = { maxWidth: 440, margin: "56px auto", textAlign: "center" as const };
 const kicker = { color: "var(--accent)", letterSpacing: "0.2em", fontSize: 11 } as const;
@@ -92,7 +92,7 @@ function DevLogin({ error }: { error?: string }) {
   );
 }
 
-/** Production sign-in: identity providers. */
+/** Production sign-in: identity providers plus admin-created local accounts. */
 function OidcLogin({ error }: { error?: string }) {
   const errorMessages: Record<string, string> = {
     OAuthCallback: "Sign-in failed — the identity provider rejected the request. Please try again.",
@@ -118,6 +118,34 @@ function OidcLogin({ error }: { error?: string }) {
         </p>
       )}
       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 24 }}>
+        <form
+          action={localAccountSignIn}
+          style={{ display: "flex", flexDirection: "column", gap: 10, textAlign: "left" }}
+        >
+          <label className="mono" style={{ fontSize: 12 }}>
+            email
+            <input
+              name="email"
+              type="email"
+              autoComplete="username"
+              className="input"
+              style={{ width: "100%" }}
+            />
+          </label>
+          <label className="mono" style={{ fontSize: 12 }}>
+            password
+            <input
+              name="password"
+              type="password"
+              autoComplete="current-password"
+              className="input"
+              style={{ width: "100%" }}
+            />
+          </label>
+          <button className="btn primary" type="submit" style={{ width: "100%" }}>
+            Continue with EDD account
+          </button>
+        </form>
         <form
           action={async () => {
             "use server";

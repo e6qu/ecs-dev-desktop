@@ -174,6 +174,16 @@ data "aws_iam_policy_document" "control_plane" {
     actions   = ["logs:GetLogEvents"]
     resources = ["arn:${local.partition}:logs:${local.region}:${local.account_id}:log-group:/aws/codebuild/${var.name}-build-images:*"]
   }
+  statement {
+    sid       = "AwsPriceListRead"
+    actions   = ["pricing:GetProducts"]
+    resources = ["*"]
+  }
+  statement {
+    sid       = "SendInvitationEmail"
+    actions   = ["ses:SendEmail"]
+    resources = ["*"]
+  }
 
   statement {
     sid       = "PassTaskRoles"

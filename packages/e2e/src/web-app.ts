@@ -117,8 +117,8 @@ export async function startWebApp(
   };
 }
 
-/** Dev-auth headers (`EDD_DEV_AUTH=1`) identifying a member/admin over HTTP. */
-export function devHeaders(userId: string, role: "member" | "admin"): Record<string, string> {
+/** Dev-auth headers (`EDD_DEV_AUTH=1`) identifying a developer/admin over HTTP. */
+export function devHeaders(userId: string, role: "developer" | "admin"): Record<string, string> {
   return {
     "x-edd-user-id": userId,
     "x-edd-role": role,

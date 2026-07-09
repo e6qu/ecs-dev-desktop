@@ -66,10 +66,11 @@ module "ecs_dev_desktop" {
   route53_ssh_zone_id = var.route53_ssh_zone_id
   ssh_gateway_image   = var.ssh_gateway_image
 
-  # Secrets (auth + crypto) live in Secrets Manager; the module grants the task read
+  # Secrets (auth + crypto + webhooks) live in Secrets Manager; the module grants the task read
   # access and injects them as env vars. Create the secrets out-of-band (see
   # docs/deploying.md, or scripts/bootstrap-secrets.sh). Non-secret config (RBAC groups,
-  # AUTH_TRUST_HOST, Entra issuer) goes through extra_environment.
+  # AUTH_TRUST_HOST/AUTH_URL, Entra issuer, SES sender, image-source repo/branch,
+  # pricing mode/rates) goes through extra_environment.
   secret_environment = var.auth_secret_arns
   extra_environment  = var.extra_environment
 

@@ -53,6 +53,29 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
+- **After this admin/auth/image-source branch merges, rerun release,
+  golden-images, and post-deploy-smoke and inspect artifacts again.** PR #214
+  deployed and built `omnibus:7197f30de9d9`, but `post-deploy-smoke` run
+  `29020812950` failed because the production catalog still pointed at
+  `omnibus:d063fea1ec78`. The branch added GitHub commit polling to the
+  long-lived image-source sweep, made every configured branch SHA change build
+  golden images, and made the golden-images workflow verify pushed ECR tags.
+  After merge, confirm the image-source records exist in DynamoDB, the enabled
+  catalog image rolls to the merge SHA, and screenshot smoke reaches all
+  workspace editor checks.
+
+- **Verify admin-managed auth in production after merge.** Create a local admin
+  account, create/reissue a developer invitation, confirm SES delivery or the
+  explicit SES failure, accept the invitation, log in as the developer, create a
+  workspace owned by that developer, and confirm an admin can see all
+  workspaces. Verify `/admin/users` lists auth sessions and that revoking one
+  user's sessions and then all sessions invalidates existing browser cookies.
+
+- **Verify live pricing/IAM in production after merge.** With
+  `EDD_AWS_PRICING=1`, confirm `/admin/costs` loads from AWS Price List data
+  and fails loudly if `pricing:GetProducts` is missing. Confirm the task role
+  includes both `pricing:GetProducts` and `ses:SendEmail`.
+
 - **After this opencode proxy fix merges, rerun release/golden-images/
   post-deploy-smoke and inspect artifacts again.** PR #213 deployed and built
   `omnibus:d063fea1ec78`, but `post-deploy-smoke` run `29014192952` failed on

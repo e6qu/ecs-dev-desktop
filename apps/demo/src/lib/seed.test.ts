@@ -14,11 +14,11 @@ describe("buildSeed", () => {
     expect(byState).toEqual({ running: 4, stopped: 3, error: 1 });
   });
 
-  it("seeds 3 users (admin/member/viewer), a 6-image catalog, and a member current user", () => {
+  it("seeds 3 users (admin/developer/viewer), a 6-image catalog, and a developer current user", () => {
     const s = buildSeed();
-    expect(s.users.map((u) => u.role).sort()).toEqual(["admin", "member", "viewer"]);
+    expect(s.users.map((u) => u.role).sort()).toEqual(["admin", "developer", "viewer"]);
     expect(s.catalog).toHaveLength(6);
-    expect(s.users.find((u) => u.id === s.currentUserId)?.role).toBe("member");
+    expect(s.users.find((u) => u.id === s.currentUserId)?.role).toBe("developer");
   });
 
   it("builds a backdated audit ledger, newest-first, that starts with a session.create", () => {

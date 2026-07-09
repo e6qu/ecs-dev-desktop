@@ -85,10 +85,14 @@ describe("Entra login → group → role (mock-free, standard Graph + ROPC)", ()
 
     // The admin group grants admin; an empty config falls back to the default.
     expect(
-      mapClaimsToRole(claims, { adminGroups: [groupId], memberGroups: [], defaultRole: "viewer" }),
+      mapClaimsToRole(claims, {
+        adminGroups: [groupId],
+        developerGroups: [],
+        defaultRole: "viewer",
+      }),
     ).toBe("admin");
     expect(
-      mapClaimsToRole(claims, { adminGroups: [], memberGroups: [], defaultRole: "viewer" }),
+      mapClaimsToRole(claims, { adminGroups: [], developerGroups: [], defaultRole: "viewer" }),
     ).toBe("viewer");
   });
 });

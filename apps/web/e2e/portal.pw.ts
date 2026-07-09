@@ -14,7 +14,7 @@ const loginAs = (context: BrowserContext, id: string, role: string): Promise<voi
   loginAsAt(context, BASE_URL, id, role);
 
 test.beforeAll(async ({ request }) => {
-  // Seed one enabled catalog entry so the member can launch a workspace.
+  // Seed one enabled catalog entry so the developer can launch a workspace.
   const res = await request.post("/api/base-images", {
     headers: { cookie: adminCookieHeader },
     data: {
@@ -64,7 +64,7 @@ test("page help opens as an overlay without changing document layout", async ({
   page,
   context,
 }) => {
-  await loginAs(context, "alice", "member");
+  await loginAs(context, "alice", "developer");
   await page.goto("/workspaces");
 
   const before = await page.evaluate(() => document.documentElement.scrollHeight);
@@ -84,8 +84,11 @@ test("page help opens as an overlay without changing document layout", async ({
   expect(after).toBeLessThanOrEqual(before + 1);
 });
 
-test("member chooses a session environment from the metadata picker", async ({ page, context }) => {
-  await loginAs(context, "alice", "member");
+test("developer chooses a session environment from the metadata picker", async ({
+  page,
+  context,
+}) => {
+  await loginAs(context, "alice", "developer");
   await page.goto("/sessions/new");
 
   const option = page
@@ -97,14 +100,14 @@ test("member chooses a session environment from the metadata picker", async ({ p
   await expect(option).toHaveAttribute("data-tools", "pnpm,eslint");
 });
 
-test("member creates, stops, and deletes a workspace from the catalog", async ({
+test("developer creates, stops, and deletes a workspace from the catalog", async ({
   page,
   context,
 }: {
   page: Page;
   context: BrowserContext;
 }) => {
-  await loginAs(context, "alice", "member");
+  await loginAs(context, "alice", "developer");
   await page.goto("/sessions/new");
 
   await expect(page.getByRole("heading", { name: "Start a session" })).toBeVisible();
@@ -174,7 +177,7 @@ test("admin sees the system health board with a live DynamoDB check", async ({ p
 });
 
 test("non-admins are denied the admin console", async ({ page, context }) => {
-  await loginAs(context, "alice", "member");
+  await loginAs(context, "alice", "developer");
   await page.goto("/admin/health");
   await expect(page.getByTestId(TESTID.adminDenied)).toBeVisible();
   await expect(page.getByRole("heading", { name: "System health" })).toHaveCount(0);
@@ -208,16 +211,16 @@ test("admin sees the infrastructure view: cluster, fleet, and topology", async (
 });
 
 test("non-admins are denied the infrastructure view", async ({ page, context }) => {
-  await loginAs(context, "alice", "member");
+  await loginAs(context, "alice", "developer");
   await page.goto("/admin/infrastructure");
   await expect(page.getByTestId(TESTID.adminDenied)).toBeVisible();
   await expect(page.getByRole("heading", { name: "Infrastructure", exact: true })).toHaveCount(0);
 });
 
 test("admin inspects a workspace's detail and timeline", async ({ page, context, request }) => {
-  // A member-owned workspace to inspect (left in place for the admin to open).
+  // A developer-owned workspace to inspect (left in place for the admin to open).
   const res = await request.post("/api/workspaces", {
-    headers: { cookie: devCookieHeader("carol", "member") },
+    headers: { cookie: devCookieHeader("carol", "developer") },
     data: { baseImage: NODE_IMAGE },
   });
   expect(res.ok()).toBeTruthy();
@@ -250,7 +253,7 @@ test("admin quotas page shows per-role limits and usage", async ({ page, context
   await page.goto("/admin/quotas");
   await expect(page.getByRole("heading", { name: "Quotas" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Limits" })).toBeVisible();
-  await expect(page.locator(sel(TESTID.quotaRow, { "data-role": "member" }))).toBeVisible();
+  await expect(page.locator(sel(TESTID.quotaRow, { "data-role": "developer" }))).toBeVisible();
 });
 
 test("admin costs page prices fleet spend per session and per user", async ({
@@ -258,9 +261,9 @@ test("admin costs page prices fleet spend per session and per user", async ({
   context,
   request,
 }) => {
-  // A member-owned workspace gives the cost report a priced session to render.
+  // A developer-owned workspace gives the cost report a priced session to render.
   const res = await request.post("/api/workspaces", {
-    headers: { cookie: devCookieHeader("erin", "member") },
+    headers: { cookie: devCookieHeader("erin", "developer") },
     data: { baseImage: NODE_IMAGE },
   });
   expect(res.ok()).toBeTruthy();
@@ -319,7 +322,7 @@ test("admin logs page shows the derived audit feed and the CloudWatch streams", 
 }) => {
   // A workspace gives the derived audit feed at least one event to render.
   const res = await request.post("/api/workspaces", {
-    headers: { cookie: devCookieHeader("dan", "member") },
+    headers: { cookie: devCookieHeader("dan", "developer") },
     data: { baseImage: NODE_IMAGE },
   });
   expect(res.ok()).toBeTruthy();
