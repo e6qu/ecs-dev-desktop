@@ -3,11 +3,18 @@ import { SendEmailCommand, SESv2Client, type SendEmailCommandInput } from "@aws-
 
 const EMAIL_FROM_ENV = "EDD_EMAIL_FROM";
 const PUBLIC_APP_URL_ENV = "EDD_PUBLIC_APP_URL";
+const AWS_REGION_ENV = "AWS_REGION";
 
 function requiredEnv(name: string): string {
   const value = process.env[name];
   if (value === undefined || value.length === 0) throw new Error(`${name} is required`);
   return value;
+}
+
+export function assertInvitationMailerConfigured(): void {
+  requiredEnv(PUBLIC_APP_URL_ENV);
+  requiredEnv(EMAIL_FROM_ENV);
+  requiredEnv(AWS_REGION_ENV);
 }
 
 export function invitationUrl(token: string): string {
@@ -41,7 +48,7 @@ export async function sendInvitationEmail(input: {
   readonly email: string;
   readonly token: string;
 }): Promise<void> {
-  await new SESv2Client({ region: requiredEnv("AWS_REGION") }).send(
+  await new SESv2Client({ region: requiredEnv(AWS_REGION_ENV) }).send(
     new SendEmailCommand(invitationEmail(input)),
   );
 }

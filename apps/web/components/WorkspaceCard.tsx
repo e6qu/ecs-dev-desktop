@@ -55,6 +55,7 @@ export function WorkspaceCard({
   ws,
   index,
   canShare = false,
+  canUpdateSettings = false,
 }: {
   /** A workspace DTO already enriched (catalog image fields + ssh command) by the
    * server / `enrichWorkspace`, so the card is a pure renderer. */
@@ -63,6 +64,8 @@ export function WorkspaceCard({
   /** True only when the VIEWER owns this workspace: the spectate share toggle is
    * strictly an owner control (the route re-enforces it). */
   canShare?: boolean;
+  /** True only when the viewer may PATCH workspace settings for this row. */
+  canUpdateSettings?: boolean;
 }) {
   const imageName = ws.imageName ?? ws.baseImage;
   const imageDescription = ws.imageDescription ?? "";
@@ -148,7 +151,18 @@ export function WorkspaceCard({
         <span className="meta-label">last snapshot</span>
         <span className="meta-value mono">{snapshotLabel(ws.latestSnapshotAt)}</span>
       </div>
-      <SnapshotIntervalControl id={ws.id} valueMs={ws.snapshotIntervalMs} />
+      {canUpdateSettings ? (
+        <SnapshotIntervalControl id={ws.id} valueMs={ws.snapshotIntervalMs} />
+      ) : (
+        ws.snapshotIntervalMs !== undefined && (
+          <div className="meta-line">
+            <span className="meta-label">snapshot interval</span>
+            <span className="meta-value mono">
+              {String(Math.round(ws.snapshotIntervalMs / 60000))} min
+            </span>
+          </div>
+        )
+      )}
       <div className="img">{ws.baseImage}</div>
       {imageDescription !== "" && <div className="desc">{imageDescription}</div>}
       {imageTags.length > 0 && (

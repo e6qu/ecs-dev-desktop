@@ -142,7 +142,10 @@ test("developer creates, stops, and deletes a workspace from the catalog", async
       }),
     )
     .toBe("fixed");
-  await page.locator(sel(TESTID.workspaceInfoClose)).click();
+  await page.evaluate(() => {
+    window.dispatchEvent(new CustomEvent("edd:modal-open", { detail: "page-help" }));
+  });
+  await expect(infoPanel).toBeHidden();
   await expect(infoPanel).toBeHidden();
 
   // Stop, then delete it. Manual stop is now cancelable: the card first moves to

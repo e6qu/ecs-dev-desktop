@@ -15,7 +15,11 @@ import {
   useWorkspaceTable,
 } from "../../lib/test-support/workspace-route-harness";
 import { GET as listWorkspaces, POST as createWorkspace } from "./workspaces/route";
-import { GET as getWorkspace, DELETE as deleteWorkspace } from "./workspaces/[id]/route";
+import {
+  GET as getWorkspace,
+  PATCH as updateWorkspace,
+  DELETE as deleteWorkspace,
+} from "./workspaces/[id]/route";
 import { POST as startWs } from "./workspaces/[id]/start/route";
 import { POST as stopWs } from "./workspaces/[id]/stop/route";
 import { POST as snapshotWs } from "./workspaces/[id]/snapshot/route";
@@ -97,6 +101,14 @@ describe("authorization matrix: item routes deny viewer and unauthenticated", ()
 
   const itemRoutes: { name: string; call: (id: string, role?: string) => Promise<Response> }[] = [
     { name: "GET /:id", call: (id, r) => getWorkspace(item(id, "", r, "GET"), routeCtx(id)) },
+    {
+      name: "PATCH /:id",
+      call: (id, r) =>
+        updateWorkspace(
+          item(id, "", r, "PATCH", { snapshotIntervalMs: 10 * 60 * 1000 }),
+          routeCtx(id),
+        ),
+    },
     {
       name: "DELETE /:id",
       call: (id, r) => deleteWorkspace(item(id, "", r, "DELETE"), routeCtx(id)),

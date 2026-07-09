@@ -53,6 +53,33 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
+- **After this follow-up branch merges, rerun release, golden-images, and
+  post-deploy-smoke and inspect artifacts again.** Confirm the `golden-images`
+  workflow uses direct BuildKit push and publishes
+  `edd-prod/golden/omnibus:<merge-sha>` without the previous runner-disk
+  `no space left on device` failure. Confirm the production catalog rolls to the
+  merge SHA and the screenshot smoke reaches all workspace editor checks.
+
+- **Verify production invitation mail configuration after merge/deploy.** The app
+  now showed explicit admin errors instead of a raw Next digest, but sending still
+  required real `EDD_PUBLIC_APP_URL`, `EDD_EMAIL_FROM`, `AWS_REGION`, SES sender
+  verification, and `ses:SendEmail`. Confirm the live ECS task definition carries
+  the mandatory env and that creating/reissuing an invitation sends email; if SES
+  is intentionally not configured, the admin UI must show the explicit failure.
+
+- **Verify production costs after merge/deploy.** Confirm `/admin/costs` no
+  longer renders `$NaN`. If old audit/rollup data is malformed, the page should
+  fail visibly with "Cost report unavailable" and the underlying bad persisted
+  row should be repaired or deleted by explicit operational action.
+
+- **Rerun local/CI Playwright with the simulator available.** Local verification
+  of `pnpm --filter @edd/web test:pw` was blocked because the CI-required
+  sockerless AWS simulator at `127.0.0.1:4566` was not running and a freshly
+  recreated default Podman machine never exposed SSH/API to gvproxy
+  (`timeout: connect tcp 192.168.127.2:22: no route to host`). CI should still
+  run the Playwright job after bringing up `docker-compose.tier2.yml`; inspect it
+  because this branch changed modal behavior in `portal.pw.ts`.
+
 - **After this admin/auth/image-source branch merges, rerun release,
   golden-images, and post-deploy-smoke and inspect artifacts again.** PR #214
   deployed and built `omnibus:7197f30de9d9`, but `post-deploy-smoke` run

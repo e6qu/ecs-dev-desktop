@@ -44,6 +44,7 @@ export default async function WorkspacesPage({
   const raw: WorkspaceDto[] = viewAll ? await cp.list() : await cp.list({ ownerId: principal.id });
 
   const canCreate = defineAbilityFor(principal).can("create", "Workspace");
+  const canUpdateWorkspace = defineAbilityFor(principal).can("update", "Workspace");
   // Enrich each workspace with its catalog image + ssh command (the same join the
   // API route does), then sort — so the card is a pure renderer of the DTO.
   const byImage = catalogByImage(await getCatalog().list());
@@ -111,7 +112,13 @@ export default async function WorkspacesPage({
         <div className="grid">
           {workspaces.map((ws, i) => {
             return (
-              <WorkspaceCard key={ws.id} ws={ws} index={i} canShare={ws.ownerId === principal.id} />
+              <WorkspaceCard
+                key={ws.id}
+                ws={ws}
+                index={i}
+                canShare={ws.ownerId === principal.id}
+                canUpdateSettings={isAdmin || (canUpdateWorkspace && ws.ownerId === principal.id)}
+              />
             );
           })}
         </div>
@@ -126,7 +133,14 @@ export default async function WorkspacesPage({
           </p>
           <div className="grid">
             {deleted.map((ws, i) => {
-              return <WorkspaceCard key={ws.id} ws={ws} index={i} />;
+              return (
+                <WorkspaceCard
+                  key={ws.id}
+                  ws={ws}
+                  index={i}
+                  canUpdateSettings={isAdmin || (canUpdateWorkspace && ws.ownerId === principal.id)}
+                />
+              );
             })}
           </div>
         </section>

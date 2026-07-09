@@ -1,9 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { COST_WINDOW_DAYS, costReportQuery, type CostWindow } from "@edd/api-contracts";
+import type { CostBreakdown, FleetCostReport, Pricing, WorkspaceSizing } from "@edd/core";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import { LiveRefresh } from "../../../components/LiveRefresh";
+import { StateBlock } from "../../../components/StateBlock";
 import { StatTile } from "../../../components/StatTile";
 import { getCostService } from "../../../lib/control-plane";
 import { TESTID } from "../../../lib/testids";
@@ -26,12 +28,14 @@ const WINDOWS: readonly { key: CostWindow; label: string }[] = [
 /** Display USD: cents for visible amounts, more precision for sub-cent figures
  * (sim/short runs) so a real-but-tiny cost never reads as exactly $0.00. */
 function usd(value: number): string {
+  assertFiniteNonNegative("usd value", value);
   if (value === 0) return "$0.00";
   return value >= 0.01 ? `$${value.toFixed(2)}` : `$${value.toFixed(4)}`;
 }
 
 /** Whole-ish hours, e.g. `12.3h`. */
 function hours(ms: number): string {
+  assertFiniteNonNegative("duration", ms);
   return `${(ms / MS_PER_HOUR).toFixed(1)}h`;
 }
 
@@ -53,8 +57,62 @@ interface BarRow {
 /** Width of a segment as a percent of the list's max spend, clamped to [0, 100].
  * `maxUsd === 0` (every row $0) yields 0 — never a divide-by-zero. */
 function pct(value: number, maxUsd: number): number {
+  assertFiniteNonNegative("bar value", value);
+  assertFiniteNonNegative("bar maximum", maxUsd);
   if (maxUsd <= 0) return 0;
   return Math.min(100, Math.max(0, (value / maxUsd) * 100));
+}
+
+function assertFiniteNonNegative(label: string, value: number): void {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`${label} must be a finite non-negative number, got ${String(value)}`);
+  }
+}
+
+function assertFinitePositive(label: string, value: number): void {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${label} must be a finite positive number, got ${String(value)}`);
+  }
+}
+
+function assertPricing(pricing: Pricing): void {
+  assertFiniteNonNegative("pricing.fargateVcpuHourUsd", pricing.fargateVcpuHourUsd);
+  assertFiniteNonNegative("pricing.fargateGbHourUsd", pricing.fargateGbHourUsd);
+  assertFiniteNonNegative("pricing.ebsGbMonthUsd", pricing.ebsGbMonthUsd);
+  assertFiniteNonNegative("pricing.snapshotGbMonthUsd", pricing.snapshotGbMonthUsd);
+}
+
+function assertBreakdown(label: string, row: CostBreakdown): void {
+  assertFiniteNonNegative(`${label}.computeUsd`, row.computeUsd);
+  assertFiniteNonNegative(`${label}.volumeUsd`, row.volumeUsd);
+  assertFiniteNonNegative(`${label}.snapshotUsd`, row.snapshotUsd);
+  assertFiniteNonNegative(`${label}.totalUsd`, row.totalUsd);
+  assertFiniteNonNegative(`${label}.runningMs`, row.runningMs);
+  assertFiniteNonNegative(`${label}.stoppedMs`, row.stoppedMs);
+  assertFiniteNonNegative(`${label}.teardownMs`, row.teardownMs);
+}
+
+function assertSizing(label: string, sizing: WorkspaceSizing): void {
+  assertFinitePositive(`${label}.vcpu`, sizing.vcpu);
+  assertFinitePositive(`${label}.memoryGib`, sizing.memoryGib);
+  assertFinitePositive(`${label}.volumeGib`, sizing.volumeGib);
+}
+
+function assertReportFinite(report: FleetCostReport): void {
+  assertPricing(report.pricing);
+  assertBreakdown("total", report.total);
+  for (const user of report.byUser) {
+    assertBreakdown(`user ${user.owner}`, user);
+    assertFiniteNonNegative(`user ${user.owner}.sessions`, user.sessions);
+  }
+  for (const session of report.bySession) {
+    assertBreakdown(`session ${session.workspaceId}`, session);
+    assertSizing(`session ${session.workspaceId}.sizing`, session.sizing);
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "unknown cost report failure";
 }
 
 /**
@@ -108,7 +166,13 @@ export default async function AdminCostsPage({
   const parsedWindow = costReportQuery.safeParse({ window: (await searchParams).window });
   if (!parsedWindow.success) notFound();
   const window: CostWindow = parsedWindow.data.window;
-  const report = await (await getCostService()).report(COST_WINDOW_DAYS[window]);
+  let report: FleetCostReport;
+  try {
+    report = await (await getCostService()).report(COST_WINDOW_DAYS[window]);
+    assertReportFinite(report);
+  } catch (error) {
+    return <StateBlock title="Cost report unavailable" detail={errorMessage(error)} />;
+  }
   const { total, byUser, bySession, pricing } = report;
 
   // The proportional bars are scaled per list to its most-expensive row, so the

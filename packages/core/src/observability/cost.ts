@@ -219,6 +219,41 @@ function totalMs(intervals: readonly Interval[]): number {
   return intervals.reduce((sum, i) => sum + (i.toMs - i.fromMs), 0);
 }
 
+function assertFiniteNonNegative(label: string, value: number): void {
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(`${label} must be a finite non-negative number, got ${String(value)}`);
+  }
+}
+
+function assertFinitePositive(label: string, value: number): void {
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${label} must be a finite positive number, got ${String(value)}`);
+  }
+}
+
+function assertPricing(pricing: Pricing): void {
+  assertFiniteNonNegative("pricing.fargateVcpuHourUsd", pricing.fargateVcpuHourUsd);
+  assertFiniteNonNegative("pricing.fargateGbHourUsd", pricing.fargateGbHourUsd);
+  assertFiniteNonNegative("pricing.ebsGbMonthUsd", pricing.ebsGbMonthUsd);
+  assertFiniteNonNegative("pricing.snapshotGbMonthUsd", pricing.snapshotGbMonthUsd);
+}
+
+function assertSizing(sizing: WorkspaceSizing): void {
+  assertFinitePositive("sizing.vcpu", sizing.vcpu);
+  assertFinitePositive("sizing.memoryGib", sizing.memoryGib);
+  assertFinitePositive("sizing.volumeGib", sizing.volumeGib);
+}
+
+function assertBreakdown(label: string, cost: CostBreakdown): void {
+  assertFiniteNonNegative(`${label}.computeUsd`, cost.computeUsd);
+  assertFiniteNonNegative(`${label}.volumeUsd`, cost.volumeUsd);
+  assertFiniteNonNegative(`${label}.snapshotUsd`, cost.snapshotUsd);
+  assertFiniteNonNegative(`${label}.totalUsd`, cost.totalUsd);
+  assertFiniteNonNegative(`${label}.runningMs`, cost.runningMs);
+  assertFiniteNonNegative(`${label}.stoppedMs`, cost.stoppedMs);
+  assertFiniteNonNegative(`${label}.teardownMs`, cost.teardownMs);
+}
+
 /** Intersect one interval with `[fromMs, toMs)`; `null` when they do not overlap. */
 function clipInterval(i: Interval, fromMs: number, toMs: number): Interval | null {
   const from = Math.max(i.fromMs, fromMs);
@@ -286,6 +321,11 @@ export function priceDurations(
   pricing: Pricing,
   sizing: WorkspaceSizing,
 ): CostBreakdown {
+  assertFiniteNonNegative("runningMs", runningMs);
+  assertFiniteNonNegative("stoppedMs", stoppedMs);
+  assertFiniteNonNegative("teardownMs", teardownMs);
+  assertPricing(pricing);
+  assertSizing(sizing);
   const runningHours = runningMs / MS_PER_HOUR;
   const computeUsd =
     runningHours *
@@ -297,7 +337,7 @@ export function priceDurations(
     ((runningMs + teardownMs) / MS_PER_MONTH) * sizing.volumeGib * pricing.ebsGbMonthUsd;
   const snapshotUsd =
     ((stoppedMs + teardownMs) / MS_PER_MONTH) * sizing.volumeGib * pricing.snapshotGbMonthUsd;
-  return {
+  const cost = {
     computeUsd,
     volumeUsd,
     snapshotUsd,
@@ -306,6 +346,8 @@ export function priceDurations(
     stoppedMs,
     teardownMs,
   };
+  assertBreakdown("cost", cost);
+  return cost;
 }
 
 /**
@@ -542,6 +584,8 @@ export function aggregateFleetCost(
   const canonical = [...bySession].sort((a, b) => a.workspaceId.localeCompare(b.workspaceId));
   const byUserMap = new Map<string, { cost: CostBreakdown; sessions: number }>();
   for (const s of canonical) {
+    assertBreakdown(`session ${s.workspaceId}`, s);
+    assertSizing(s.sizing);
     const entry = byUserMap.get(s.owner) ?? { cost: ZERO_COST, sessions: 0 };
     byUserMap.set(s.owner, { cost: addBreakdowns(entry.cost, s), sessions: entry.sessions + 1 });
   }

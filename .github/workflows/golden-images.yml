@@ -118,6 +118,8 @@ jobs:
         run: aws sts get-caller-identity
 
       - name: Build & push golden images
+        env:
+          EDD_BUILDX_OUTPUT: push
         run: |
           read -r -a variants <<< "$RELEASE_GOLDEN_VARIANTS"
           sh scripts/publish-images.sh \

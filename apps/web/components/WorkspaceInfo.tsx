@@ -2,7 +2,7 @@
 "use client";
 
 import type { WorkspaceDto } from "@edd/api-contracts";
-import { useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 import { gib } from "../lib/format";
 import { TESTID } from "../lib/testids";
@@ -14,6 +14,8 @@ import { TESTID } from "../lib/testids";
  */
 export function WorkspaceInfo({ ws }: { ws: WorkspaceDto }) {
   const [open, setOpen] = useState(false);
+  const reactId = useId();
+  const modalId = `workspace-info:${ws.id}:${reactId}`;
   const rows: [string, string][] = [
     ["image", ws.baseImage],
     ...(ws.imageName !== undefined ? ([["name", ws.imageName]] as [string, string][]) : []),
@@ -39,6 +41,28 @@ export function WorkspaceInfo({ ws }: { ws: WorkspaceDto }) {
       : []),
     ["created", new Date(ws.createdAt).toLocaleString()],
   ];
+
+  useEffect(() => {
+    const onModalOpen = (event: Event) => {
+      if (!(event instanceof CustomEvent) || event.detail !== modalId) setOpen(false);
+    };
+    window.addEventListener("edd:modal-open", onModalOpen);
+    return () => {
+      window.removeEventListener("edd:modal-open", onModalOpen);
+    };
+  }, [modalId]);
+
+  useEffect(() => {
+    if (!open) return;
+    window.dispatchEvent(new CustomEvent("edd:modal-open", { detail: modalId }));
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [modalId, open]);
 
   return (
     <span className="workspace-info">

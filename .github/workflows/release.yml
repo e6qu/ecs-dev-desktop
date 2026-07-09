@@ -104,6 +104,8 @@ jobs:
         run: aws sts get-caller-identity
 
       - name: Build & push images
+        env:
+          EDD_BUILDX_OUTPUT: push
         run: |
           sh scripts/publish-images.sh \
             "$RELEASE_AWS_ACCOUNT" \

@@ -34,9 +34,10 @@
 #                       your build host cannot emulate the other architecture
 #                       (e.g. a single-arch CI runner), set this to just the
 #                       host arch, e.g. "amd64".
-#   EDD_BUILDX_NO_LOAD  set to "1" to omit `--load` (only needed if you are
-#                       using a non-default buildx builder that stores images
-#                       internally).
+#   EDD_BUILDX_OUTPUT   buildx output mode: "load" (default; imports per-arch
+#                       images into the local Docker daemon before `docker push`)
+#                       or "push" (pushes directly from BuildKit to the registry;
+#                       required on small CI runners for large golden images).
 #   EDD_BUILDX_CACHE    set to "gha" on GitHub Actions to use BuildKit's
 #                       GitHub cache backend for repeat builds.
 #
@@ -83,6 +84,14 @@ echo "edd: build target = ${build_target} (web=${do_web} golden=${do_golden})"
 # it is. Computed once here so both arch builds carry the same timestamp.
 build_sha="${tag}"
 build_time="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+buildx_output="${EDD_BUILDX_OUTPUT:-load}"
+case "$buildx_output" in
+  load | push) ;;
+  *)
+    echo "edd: EDD_BUILDX_OUTPUT must be one of: load | push (got '$buildx_output')" >&2
+    exit 1
+    ;;
+esac
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "edd: docker (or podman aliased as docker) not found on PATH" >&2
@@ -93,9 +102,10 @@ echo "edd: authenticating to ECR $registry"
 aws ecr get-login-password --region "$region" |
   docker login --username AWS --password-stdin "$registry"
 
-# Run `docker buildx build` for a single architecture. The optional `--load` is
-# appended so the image is available in the local daemon for the base -> variant
-# chain; omit it only when the caller's buildx setup stores images internally.
+# Run `docker buildx build` for a single architecture. In load mode the image is
+# imported into the local daemon and pushed by the caller. In push mode BuildKit
+# pushes directly to the registry so large images never have to be imported into
+# the runner daemon.
 buildx_build() { # <arch> <full-tag> <dockerfile> <context> [extras...]
   arch="$1"
   full="$2"
@@ -103,9 +113,7 @@ buildx_build() { # <arch> <full-tag> <dockerfile> <context> [extras...]
   ctx="$4"
   shift 4
 
-  if [ "${EDD_BUILDX_NO_LOAD:-0}" != "1" ]; then
-    set -- "$@" "--load"
-  fi
+  set -- "$@" "--${buildx_output}"
   if [ "${EDD_BUILDX_CACHE:-}" = "gha" ]; then
     scope=$(printf '%s' "$full" | tr '/:' '--')
     set -- "$@" \
@@ -121,6 +129,16 @@ buildx_build() { # <arch> <full-tag> <dockerfile> <context> [extras...]
     "$ctx"
 }
 
+push_loaded_image() { # <full-tag>
+  full="$1"
+  if [ "$buildx_output" = "push" ]; then
+    echo "edd: ${full} already pushed by buildx"
+    return 0
+  fi
+  echo "edd: pushing ${full}"
+  docker push "$full"
+}
+
 # Build and push a per-arch image for a simple repo (control-plane, ssh-gateway).
 build_push_arch() { # <repo-short> <dockerfile> <context> [extras...]
   target="$1"
@@ -131,8 +149,7 @@ build_push_arch() { # <repo-short> <dockerfile> <context> [extras...]
     full="${registry}/${prefix}/${target}:${tag}-${arch}"
     echo "edd: building ${full}"
     buildx_build "$arch" "$full" "$dockerfile" "$ctx" "$@"
-    echo "edd: pushing ${full}"
-    docker push "$full"
+    push_loaded_image "$full"
   done
 }
 
@@ -144,7 +161,7 @@ build_golden_arch() { # <arch>
   base_full="${registry}/${prefix}/edd-base:${tag}-${arch}"
 
   echo "edd: building golden base ${base_full}"
-  set -- --platform "linux/${arch}" --load
+  set -- --platform "linux/${arch}" "--${buildx_output}"
   if [ "${EDD_BUILDX_CACHE:-}" = "gha" ]; then
     scope=$(printf '%s' "$base_full" | tr '/:' '--')
     set -- "$@" \
@@ -152,16 +169,14 @@ build_golden_arch() { # <arch>
       --cache-to "type=gha,scope=${scope},mode=max"
   fi
   sh "$repo/infra/images/base/build.sh" "$base_full" "$@"
-  echo "edd: pushing golden base ${base_full}"
-  docker push "$base_full"
+  push_loaded_image "$base_full"
 
   for v in $variants; do
     variant_full="${registry}/${prefix}/golden/${v}:${tag}-${arch}"
     echo "edd: building golden variant '$v' (${arch}) FROM ${base_full}"
     buildx_build "$arch" "$variant_full" "$repo/infra/images/${v}/Dockerfile" \
       "$repo/infra/images/${v}" --build-arg "BASE=${base_full}"
-    echo "edd: pushing ${variant_full}"
-    docker push "$variant_full"
+    push_loaded_image "$variant_full"
   done
 }
 

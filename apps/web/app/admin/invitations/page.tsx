@@ -1,9 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 import { StateBlock } from "../../../components/StateBlock";
 import { createDeveloperInvitation, listInvitations } from "../../../lib/local-accounts";
-import { sendInvitationEmail } from "../../../lib/invitation-mailer";
+import {
+  assertInvitationMailerConfigured,
+  sendInvitationEmail,
+} from "../../../lib/invitation-mailer";
 import { field } from "../../../lib/forms";
 import { getPagePrincipal } from "../../../lib/principal";
 
@@ -14,37 +18,68 @@ function adminOnly(principal: Awaited<ReturnType<typeof getPagePrincipal>>) {
   return principal;
 }
 
+function asMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "unknown error";
+}
+
+function redirectWithStatus(kind: "error" | "sent", message?: string): never {
+  const params = new URLSearchParams();
+  params.set(kind, message ?? "1");
+  redirect(`/admin/invitations?${params.toString()}`);
+}
+
 async function inviteDeveloperAction(formData: FormData): Promise<void> {
   "use server";
-  const principal = adminOnly(await getPagePrincipal());
-  const durationDays = Number(field(formData, "durationDays"));
-  const { token, invitation } = await createDeveloperInvitation({
-    email: field(formData, "email"),
-    durationDays,
-    createdBy: principal.id,
-  });
-  await sendInvitationEmail({ email: invitation.email, token });
-  revalidatePath("/admin/invitations");
+  try {
+    const principal = adminOnly(await getPagePrincipal());
+    assertInvitationMailerConfigured();
+    const durationDays = Number(field(formData, "durationDays"));
+    const { token, invitation } = await createDeveloperInvitation({
+      email: field(formData, "email"),
+      durationDays,
+      createdBy: principal.id,
+    });
+    await sendInvitationEmail({ email: invitation.email, token });
+    revalidatePath("/admin/invitations");
+  } catch (error) {
+    redirectWithStatus("error", `invitation email failed: ${asMessage(error)}`);
+  }
+  redirectWithStatus("sent");
 }
 
 async function reissueInvitationAction(formData: FormData): Promise<void> {
   "use server";
-  const principal = adminOnly(await getPagePrincipal());
-  const durationDays = Number(field(formData, "durationDays"));
-  const { token, invitation } = await createDeveloperInvitation({
-    email: field(formData, "email"),
-    durationDays,
-    createdBy: principal.id,
-  });
-  await sendInvitationEmail({ email: invitation.email, token });
-  revalidatePath("/admin/invitations");
+  try {
+    const principal = adminOnly(await getPagePrincipal());
+    assertInvitationMailerConfigured();
+    const durationDays = Number(field(formData, "durationDays"));
+    const { token, invitation } = await createDeveloperInvitation({
+      email: field(formData, "email"),
+      durationDays,
+      createdBy: principal.id,
+    });
+    await sendInvitationEmail({ email: invitation.email, token });
+    revalidatePath("/admin/invitations");
+  } catch (error) {
+    redirectWithStatus("error", `invitation email failed: ${asMessage(error)}`);
+  }
+  redirectWithStatus("sent");
 }
 
 function fmt(value: string): string {
   return new Date(value).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
 }
 
-export default async function AdminInvitationsPage() {
+function queryValue(value: string | undefined): string | undefined {
+  if (value === undefined || value.length === 0) return undefined;
+  return value.slice(0, 500);
+}
+
+export default async function AdminInvitationsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string; sent?: string }>;
+}) {
   const principal = await getPagePrincipal();
   if (principal?.role !== "admin") {
     return (
@@ -52,6 +87,9 @@ export default async function AdminInvitationsPage() {
     );
   }
   const invitations = await listInvitations();
+  const params = await searchParams;
+  const error = queryValue(params.error);
+  const sent = queryValue(params.sent);
 
   return (
     <>
@@ -65,6 +103,11 @@ export default async function AdminInvitationsPage() {
           </p>
         </div>
       </div>
+
+      {error !== undefined && <StateBlock title="Invitation failed" detail={error} />}
+      {sent !== undefined && (
+        <StateBlock title="Invitation sent" detail="The one-time developer link was emailed." />
+      )}
 
       <form className="panel field-stack" action={inviteDeveloperAction}>
         <h2>Invite developer</h2>
