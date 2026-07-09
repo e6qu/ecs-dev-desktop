@@ -139,7 +139,7 @@ describe("DemoControlPlane", () => {
       "edd-demo:state:v1",
       JSON.stringify({
         version: 1,
-        users: [{ id: "x", name: "X", email: "x@x", role: "member" }],
+        users: [{ id: "x", name: "X", email: "x@x", role: "developer" }],
         currentUserId: "x",
         catalog: [],
         workspaces: [],

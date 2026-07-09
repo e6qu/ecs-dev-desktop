@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { mapClaimsToRole } from "@edd/auth";
-import type { Role } from "@edd/authz";
+import { isRole, type Role } from "@edd/authz";
 import { ownerId } from "@edd/core";
 import NextAuth from "next-auth";
+import Credentials from "next-auth/providers/credentials";
 import GitHub from "next-auth/providers/github";
 import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
 
@@ -17,7 +18,7 @@ import { normalizeClaims } from "./lib/claims";
 import { GITHUB_URL_ENV } from "./lib/constants";
 import { getGitCredentials, gitCredentialsEnabled } from "./lib/git-credentials";
 import { fetchGithubTeamGroups } from "./lib/github-teams";
-import { errorField, log } from "./lib/logger";
+import { authenticateLocalAccount } from "./lib/local-accounts";
 
 /**
  * Auth.js (NextAuth v5) — GitHub OAuth + Azure Entra ID, with signed cookies
@@ -40,6 +41,24 @@ const SESSION_UPDATE_AGE_S = 30 * 60;
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
+    Credentials({
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        const email = typeof credentials.email === "string" ? credentials.email : "";
+        const password = typeof credentials.password === "string" ? credentials.password : "";
+        const account = await authenticateLocalAccount(email, password);
+        if (account === null) return null;
+        return {
+          id: account.ownerId,
+          email: account.email,
+          name: account.email,
+          role: account.role,
+        };
+      },
+    }),
     GitHub({
       ...(githubEnterpriseUrl !== undefined && githubEnterpriseUrl.length > 0
         ? { enterprise: { baseUrl: githubEnterpriseUrl } }
@@ -69,7 +88,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   // signed cookies. Old-format cookies fail closed and force a fresh login.
   session: { strategy: "jwt", maxAge: SESSION_MAX_AGE_S, updateAge: SESSION_UPDATE_AGE_S },
   callbacks: {
-    async jwt({ token, account, profile }) {
+    async jwt({ token, account, profile, user }) {
       if (account && profile) {
         const claims = normalizeClaims(account.provider, profile);
         const groups =
@@ -84,20 +103,33 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.authSessionVersion = AUTH_SESSION_SCHEMA_VERSION;
         // Capture the GitHub token (encrypted at rest) so a session can later
         // clone/push private repos via the boot-time credential broker. Stored
-        // server-side keyed by the user id; never exposed to the browser. Sign-in
-        // must not fail if storage is unavailable.
+        // server-side keyed by the user id; never exposed to the browser. If the
+        // broker is enabled, storing the token is part of sign-in and must fail
+        // loudly on write errors.
         if (
           account.provider === "github" &&
           typeof account.access_token === "string" &&
           account.access_token.length > 0 &&
           gitCredentialsEnabled()
         ) {
-          try {
-            await getGitCredentials().store(ownerId(claims.subject), account.access_token);
-          } catch (err) {
-            log.error("failed to store git credential at sign-in", { error: errorField(err) });
-          }
+          await getGitCredentials().store(ownerId(claims.subject), account.access_token);
         }
+      } else if (account?.provider === "credentials") {
+        const role = "role" in user ? user.role : undefined;
+        if (role !== "developer" && role !== "admin")
+          throw new Error("local account has invalid role");
+        if (typeof user.email !== "string" || user.email.length === 0) {
+          throw new Error("local account has no email");
+        }
+        if (typeof user.id !== "string" || user.id.length === 0) {
+          throw new Error("local account has no owner id");
+        }
+        token.uid = user.id;
+        token.email = user.email;
+        token.role = role;
+        const authSession = await createAuthSession({ ownerId: user.id, role });
+        token.authSessionId = authSession.id;
+        token.authSessionVersion = AUTH_SESSION_SCHEMA_VERSION;
       } else {
         const authSession = await validateAuthSessionToken(token);
         if (authSession === null) {
@@ -120,12 +152,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
       const { uid, role } = token;
       if (typeof uid === "string") session.user.id = uid;
-      // `Session.user.role` is non-optional, so ALWAYS set a concrete value. A JWT
-      // lacking a valid role defaults to the LEAST-privileged `viewer` (CASL grants
-      // read-only) — explicit least-privilege, never an accidental `undefined` that
-      // would make the non-optional type a lie.
-      session.user.role =
-        role === "viewer" || role === "member" || role === "admin" ? role : "viewer";
+      if (typeof token.email === "string") session.user.email = token.email;
+      if (typeof role !== "string" || !isRole(role)) {
+        throw new Error("validated auth session carried an invalid role");
+      }
+      session.user.role = role;
       session.user.authSessionId = authSession.id;
       return session;
     },

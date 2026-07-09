@@ -26,7 +26,7 @@ export type DesiredState = "present" | "deleted";
 
 /** The owner's role recorded on a workspace at create time. Mirrors `@edd/authz`'s `Role` (kept a
  * standalone union here because `@edd/authz` depends on `@edd/core`, so core can't import it). */
-export type WorkspaceOwnerRole = "viewer" | "member" | "admin";
+export type WorkspaceOwnerRole = "viewer" | "developer" | "admin";
 
 /**
  * The Workspace domain object — the typed value passed across boundaries (never

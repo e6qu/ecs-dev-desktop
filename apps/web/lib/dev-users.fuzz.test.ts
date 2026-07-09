@@ -9,7 +9,7 @@ import { matchDevUser } from "./dev-users";
 
 const userArb: fc.Arbitrary<DevUser> = fc.record({
   username: fc.string(),
-  role: fc.constantFrom("admin", "member", "viewer"),
+  role: fc.constantFrom("admin", "developer", "viewer"),
   email: fc.string(),
   password: fc.string(),
 });

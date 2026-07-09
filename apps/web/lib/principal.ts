@@ -61,7 +61,11 @@ export function principalFromSession(session: Session | null): Principal | null 
   if (session === null) return null;
   const id = session.user.id;
   const role = session.user.role;
-  if (typeof id !== "string" || typeof role !== "string" || !isRole(role)) return null;
+  if (id === undefined || role === undefined) return null;
+  if (typeof id !== "string") throw new Error("Auth.js session user id is not a string");
+  if (typeof role !== "string" || !isRole(role)) {
+    throw new Error("Auth.js session user role is invalid");
+  }
   const sessionEmail = session.user.email;
   return {
     id: ownerId(id),

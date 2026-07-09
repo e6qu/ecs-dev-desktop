@@ -5,9 +5,9 @@
  * Azure Entra ID). This is the pure, fully-testable core; the Auth.js provider
  * wiring (interactive flow) lands with `apps/web` in Phase 3.
  *
- * Mapping is config-driven so admin/member groups are not hard-coded per env.
+ * Mapping is config-driven so admin/developer groups are not hard-coded per env.
  */
-export type Role = "viewer" | "member" | "admin";
+export type Role = "viewer" | "developer" | "admin";
 
 export type IdP = "github" | "entra";
 
@@ -22,8 +22,8 @@ export interface IdentityClaims {
 export interface RoleMappingConfig {
   /** Group identifiers that grant admin. */
   adminGroups: string[];
-  /** Group identifiers that grant member. */
-  memberGroups: string[];
+  /** Group identifiers that grant developer. */
+  developerGroups: string[];
   /** Role assigned when no group matches. */
   defaultRole: Role;
 }
@@ -31,12 +31,12 @@ export interface RoleMappingConfig {
 export function mapClaimsToRole(claims: IdentityClaims, config: RoleMappingConfig): Role {
   // Group identifiers are case-insensitive on both IdPs — GitHub `org/team` slugs are
   // lowercased by GitHub, Entra group object-ids are hex GUIDs — but operators configure
-  // `EDD_ADMIN_GROUPS`/`EDD_MEMBER_GROUPS` with arbitrary casing. Match case-insensitively
-  // so a casing mismatch can't silently downgrade an admin/member to the default role.
+  // `EDD_ADMIN_GROUPS`/`EDD_DEVELOPER_GROUPS` with arbitrary casing. Match case-insensitively
+  // so a casing mismatch can't silently downgrade an admin/developer to the default role.
   const groups = new Set(claims.groups.map((g) => g.toLowerCase()));
   const granted = (configured: string[]): boolean =>
     configured.some((g) => groups.has(g.toLowerCase()));
   if (granted(config.adminGroups)) return "admin";
-  if (granted(config.memberGroups)) return "member";
+  if (granted(config.developerGroups)) return "developer";
   return config.defaultRole;
 }

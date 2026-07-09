@@ -204,7 +204,7 @@ export interface DevUser {
 
 const devUserSchema = z.object({
   username: z.string().min(1),
-  role: z.enum(["viewer", "member", "admin"]),
+  role: z.enum(["viewer", "developer", "admin"]),
   email: z.string().min(1),
   password: z.string().min(1),
 });
@@ -212,7 +212,7 @@ const devUsersSchema = z.array(devUserSchema).min(1);
 
 const DEFAULT_DEV_USERS: readonly DevUser[] = [
   { username: "admin", role: "admin", email: "admin@edd.local", password: "dev" },
-  { username: "member", role: "member", email: "member@edd.local", password: "dev" },
+  { username: "developer", role: "developer", email: "developer@edd.local", password: "dev" },
   { username: "viewer", role: "viewer", email: "viewer@edd.local", password: "dev" },
 ];
 
@@ -226,16 +226,16 @@ export function devUsers(): readonly DevUser[] {
 
 /**
  * Default per-role cap on the number of workspaces a user may own (`null` =
- * unlimited). Overridable per role via `EDD_QUOTA_<ROLE>` (e.g. `EDD_QUOTA_MEMBER=10`).
+ * unlimited). Overridable per role via `EDD_QUOTA_<ROLE>` (e.g. `EDD_QUOTA_DEVELOPER=10`).
  * Keyed by `Role` (not `string`): every role must have a quota, and a typo'd or
  * removed role is a compile error.
  */
 export const DEFAULT_WORKSPACE_QUOTAS: Record<Role, number | null> = {
   viewer: 0,
-  member: 5,
+  developer: 5,
   admin: null,
 };
-/** Env var prefix for a per-role quota override: `EDD_QUOTA_MEMBER`, etc. */
+/** Env var prefix for a per-role quota override: `EDD_QUOTA_DEVELOPER`, etc. */
 export const QUOTA_ENV_PREFIX = "EDD_QUOTA_";
 
 /**

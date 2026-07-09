@@ -16,7 +16,7 @@ describe("GET /api/admin/quotas", () => {
     const report = quotaReport.parse(await res.json());
     // Every role has a limit entry (from config/env), and usage is an array.
     expect(report.limits.length).toBeGreaterThan(0);
-    expect(report.limits.map((l) => l.role)).toContain("member");
+    expect(report.limits.map((l) => l.role)).toContain("developer");
     expect(Array.isArray(report.usage)).toBe(true);
   });
 });

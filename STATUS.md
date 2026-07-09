@@ -2,6 +2,62 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
+**Last updated:** 2026-07-09. After PR #214 merged as
+`7197f30de9d924550078bfbf5c0e726baeaedb64`, the `release` workflow completed,
+production `/api/healthz` reported `deploy.sha=7197f30de9d9`, `/api/readyz`
+was ready, and ECS rolled `edd-prod-control-plane` to two healthy replicas and
+`edd-prod-ssh-gateway` to one healthy replica on task definition revision `:39`.
+The `golden-images` workflow also completed and ECR contained
+`729079515331.dkr.ecr.eu-west-1.amazonaws.com/edd-prod/golden/omnibus:7197f30de9d9`.
+
+The release was **not** accepted as fully verified because `post-deploy-smoke`
+run `29020812950` failed before workspace screenshots: production's enabled
+base-image catalog still pointed at `omnibus:d063fea1ec78` instead of the
+merged SHA. Direct DynamoDB inspection showed no durable `imageSource` or
+`imageSourceTrigger` records, and the catalog row still contained the older
+image tag. The root issue was not a missing golden image: the image existed in
+ECR. The control plane had no durable source observation after the merge, and
+the image-source decision logic still skipped non-image commits even though the
+golden-images workflow now publishes on every `main` push.
+
+The current branch fixed that convergence gap and added the admin/user work
+requested for the next PR. Image-source reconciliation now polls GitHub's
+standard commits API before reconciling ECR and records a trigger whenever the
+latest configured branch SHA changes; every `main` push now decides to build
+golden images because CI publishes golden images for every merge. If GitHub
+polling fails, reconciliation fails loudly and retries later rather than
+silently reconciling stale ECR state. The golden-images workflow also verifies
+that the expected pushed tags exist in ECR after publish.
+
+The branch added first-party admin-managed local accounts, developer invitation
+links, SES invitation email, and server-side auth sessions. Admins could create
+admin/developer password accounts from `/admin/users`, send and reissue
+developer invitations from `/admin/invitations` with a 1-day default and 30-day
+maximum expiry, accept invitations at `/invitation/<token>`, inspect active auth
+sessions, and revoke one user's sessions or all sessions. Auth.js JWT cookies
+were backed by DynamoDB auth-session rows on every request, logout revoked and
+cleared cookies, and unknown/old session shapes failed closed instead of falling
+back. The role vocabulary was renamed from `member` to `developer` throughout
+code, config, docs, tests, and quotas.
+
+Cost/pricing and UI hardening also landed. Live AWS pricing mode now required
+all Price List rates and threw on missing/denied pricing instead of using
+configured fallback rates. The costs page rejected invalid windows instead of
+silently showing all-time data. Terraform/control-plane IAM requirements gained
+the explicit `pricing:GetProducts` and `ses:SendEmail` permissions. Circle-`i`
+help panels and long host/image/detail strings wrapped in fixed overlays and
+bounded grids instead of breaking page layout. The pnpm build-script allowlist
+explicitly included `sharp`, removing the ignored-build-script warning while
+keeping install-script execution reviewed and intentional.
+
+Verification passed with `pnpm lint`, `pnpm build`, `pnpm test` with loopback
+access, `pnpm check-deps` with registry access, `pnpm actionlint`,
+`CI=true pnpm install --frozen-lockfile` with registry access, `shellcheck
+scripts/install.sh scripts/bootstrap-secrets.sh`, `bash -n`/`zsh -n` for those
+scripts, and `git diff --check`. The first sandboxed dependency checks failed
+only on blocked DNS to Terraform/npm registries, and the same commands passed
+with the required network access.
+
 **Last updated:** 2026-07-09. After PR #213 merged as
 `d063fea1ec787ce839bbe7f1e108fee8e0e007db`, the `release` workflow completed
 successfully in 4m29s, production `/api/healthz` reported
@@ -1556,12 +1612,12 @@ example. `terraform fmt`/`validate` clean.
 the hand-edit-cookies dev-auth flow with a real `/login` form (gated on
 `EDD_DEV_AUTH=1`): pick a seeded account + password. The accounts are
 **configuration, not app code** — `@edd/config` `devUsers()` parses `EDD_DEV_USERS`
-(JSON) with a built-in default set (admin/member/viewer), and every account now
+(JSON) with a built-in default set (admin/developer/viewer), and every account now
 has an explicit `password`; missing configured passwords fail loudly. Server
 actions set host-only `edd-dev-*` cookies (scoped to `edd.localhost`, so other
 localhost apps' cookies aren't disturbed) and a dev-aware sign-out clears them.
 Playwright tests (`e2e/login.pw.ts`) sign in via the form as each role and assert
-role-appropriate access (admin reaches the console; member/viewer denied;
+role-appropriate access (admin reaches the console; developer/viewer denied;
 wrong-password rejected; sign-out clears). Also: `pnpm reap` now actually tears
 down profile-scoped sim containers (it was skipping `--profile` services), and a
 reusable `pnpm --filter @edd/web screenshot` captures the dev UI. Verified live
@@ -1847,7 +1903,7 @@ remaining unhappy paths and found one more real bug:
   snapshot-vs-wake race. Proven by `concurrency-pairs.integ.ts`.
 - **CASL matrices:** the unit ability table is now exhaustive (every
   role × action × subject, 62 cases); a route-level matrix asserts each HTTP
-  route enforces it (viewer denied across every verb, member can't mutate the
+  route enforces it (viewer denied across every verb, developer can't mutate the
   catalog, unauth → 401).
 - **Concurrency pairs:** stop-vs-snapshot, stop-vs-heartbeat, two-snapshots, and
   delete-vs-wake each prove exactly one winner + one clean conflict (no 500, no

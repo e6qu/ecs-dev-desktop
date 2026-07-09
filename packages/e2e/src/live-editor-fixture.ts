@@ -55,7 +55,7 @@ async function waitForWorkspaceState(
   const deadline = Date.now() + 120_000;
   for (;;) {
     const res = await fetch(`${app.web.baseUrl}/api/workspaces/${id}`, {
-      headers: devHeaders(owner, "member"),
+      headers: devHeaders(owner, "developer"),
     });
     expect(res.status).toBe(200);
     const ws = workspace.parse(await res.json());
@@ -74,7 +74,7 @@ export async function createRunningWorkspace(
 ): Promise<WorkspaceDto> {
   const created = await fetch(`${app.web.baseUrl}/api/workspaces`, {
     method: "POST",
-    headers: devHeaders(owner, "member"),
+    headers: devHeaders(owner, "developer"),
     body: JSON.stringify({ baseImage: WORKSPACE_IMAGE }),
   });
   expect(created.status).toBe(201);

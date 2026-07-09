@@ -34,7 +34,7 @@ const STREAM = "app/app/metrics-task";
 // hardcoded date). A single value emitted as a gauge → Maximum over the window is exact.
 const NOW_MS = Date.now();
 const UTILIZATION = 0.42;
-const ROLE = "member";
+const ROLE = "developer";
 
 describe("EmfMetricSink EMF → CloudWatch metric extraction (sockerless AWS sim)", () => {
   const cw = new CloudWatchClient({});

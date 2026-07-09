@@ -8,7 +8,7 @@ import {
   apiBase,
   createWorkspaceFor,
   stopWorkspaceFor,
-  member,
+  developer,
   routeCtx,
   useWorkspaceTable,
 } from "../../../../../lib/test-support/workspace-route-harness";
@@ -26,7 +26,7 @@ function agentToken(wsId: string): string {
 
 function beat(actor: string, id: string): Promise<Response> {
   return heartbeat(
-    new Request(`${apiBase}/${id}/heartbeat`, { method: "POST", headers: member(actor) }),
+    new Request(`${apiBase}/${id}/heartbeat`, { method: "POST", headers: developer(actor) }),
     routeCtx(id),
   );
 }
@@ -57,7 +57,7 @@ describe("POST /api/workspaces/:id/heartbeat (DynamoDB Local)", () => {
     expect(((await res.json()) as { error: string }).error).toMatch(/stopped/);
   });
 
-  it("forbids heartbeating another member's workspace (403)", async () => {
+  it("forbids heartbeating another developer's workspace (403)", async () => {
     const id = await createWorkspaceFor("alice");
     expect((await beat("bob", id)).status).toBe(403);
   });
@@ -67,7 +67,7 @@ describe("POST /api/workspaces/:id/heartbeat (DynamoDB Local)", () => {
     const res = await heartbeat(
       new Request(`${apiBase}/${id}/heartbeat`, {
         method: "POST",
-        headers: { ...member("alice"), "Content-Type": "application/json" },
+        headers: { ...developer("alice"), "Content-Type": "application/json" },
         body: JSON.stringify({ functional: { ide: false, workspace: true } }),
       }),
       routeCtx(id),
@@ -91,7 +91,7 @@ describe("POST /api/workspaces/:id/heartbeat (DynamoDB Local)", () => {
       vi.unstubAllEnvs();
     });
 
-    // Each test uses a distinct owner to avoid hitting the 5-workspace member quota
+    // Each test uses a distinct owner to avoid hitting the 5-workspace developer quota
     // shared across the whole suite (outer tests already consume 3 of alice's slots).
     it("accepts a valid agent token (200)", async () => {
       const id = await createWorkspaceFor("agent-user-1");

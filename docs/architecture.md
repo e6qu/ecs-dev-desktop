@@ -141,8 +141,8 @@ a branch to add.
 ## Auth model
 
 - **Auth.js** (NextAuth): GitHub OAuth (and/or GitHub App) + Azure Entra ID.
-- **RBAC is group-driven**: an account's role (`admin`/`member`/`viewer`) comes
-  from the intersection of its IdP groups with `EDD_ADMIN_GROUPS`/`EDD_MEMBER_GROUPS`.
+- **RBAC is group-driven**: an account's role (`admin`/`developer`/`viewer`) comes
+  from the intersection of its IdP groups with `EDD_ADMIN_GROUPS`/`EDD_DEVELOPER_GROUPS`.
   Default is `viewer`. **If `EDD_ADMIN_GROUPS` is unset, no one is an admin.**
   Abilities are CASL ([`packages/authz`](../packages/authz/)), shared by API and UI.
 - **Editor proxy auth** = the Auth.js session, checked in-process (uid-ownership or

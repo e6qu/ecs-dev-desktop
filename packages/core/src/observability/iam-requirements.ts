@@ -178,6 +178,16 @@ const CONTROL_PLANE_REQUIREMENTS: readonly IamRequirement[] = [
     actions: ["cloudtrail:LookupEvents"],
   },
   {
+    sid: "AwsPriceListRead",
+    resource: "any",
+    actions: ["pricing:GetProducts"],
+  },
+  {
+    sid: "SendInvitationEmail",
+    resource: "any",
+    actions: ["ses:SendEmail"],
+  },
+  {
     // Per-workspace monitoring reads; CloudWatch metrics have no resource-level
     // scoping, so account-wide "*" is the only shape this action supports.
     sid: "CloudWatchMetricsRead",

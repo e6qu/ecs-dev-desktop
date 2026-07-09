@@ -17,6 +17,7 @@ import {
   type ImageSourceTriggerEntity,
 } from "@edd/db";
 
+import { GITHUB_API_URL_ENV } from "./constants";
 import { getCatalog, tableName } from "./control-plane";
 import { getImageOps, type ImageOps } from "./image-ops";
 
@@ -24,23 +25,15 @@ const SOURCE_SCHEMA_VERSION = 2;
 const SOURCE_ID = "github-main";
 const RECENT_TRIGGER_LIMIT = 20;
 const TAG_LENGTH = 12;
-const WORKSPACE_IMAGE_INPUTS_CHANGED_REASON = "workspace image inputs changed";
-const NO_WORKSPACE_IMAGE_INPUTS_CHANGED_REASON = "no workspace image inputs changed";
+const CI_PUBLISHED_GOLDEN_IMAGE_REASON = "main push publishes golden images";
 const CATALOG_ROLLOUT_FAILED_REASON_PREFIX = "catalog rollout failed:";
 const SUPERSEDED_GOLDEN_BUILD_REASON = "superseded by newer successful golden build";
 const WAITING_FOR_GITHUB_ACTIONS_REASON =
   "waiting for golden image tag from GitHub Actions workflow";
+const DEFAULT_GITHUB_API_URL = "https://api.github.com";
 export const GITHUB_WEBHOOK_MAX_BODY_BYTES = 256 * 1024;
 const GITHUB_DELIVERY_ID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-const GOLDEN_REBUILD_PREFIXES = ["infra/images/"] as const;
-const GOLDEN_REBUILD_FILES = [
-  "pnpm-lock.yaml",
-  "package.json",
-  "scripts/publish-images.sh",
-  "infra/terraform/modules/ecs-dev-desktop/build-codebuild.tf",
-] as const;
 
 export interface ImageSourceConfig {
   readonly repo: string;
@@ -48,6 +41,7 @@ export interface ImageSourceConfig {
   readonly webhookSecret: string;
   readonly appName: string;
   readonly goldenVariants: readonly string[];
+  readonly githubApiUrl: string;
 }
 
 type EnvReader = Readonly<Record<string, string | undefined>>;
@@ -88,7 +82,7 @@ export interface SourceObservation {
   readonly beforeSha?: string;
   readonly afterSha: string;
   readonly changedPaths: readonly string[];
-  readonly triggeredBy: "github-webhook";
+  readonly triggeredBy: "github-webhook" | "github-poll";
 }
 
 export interface GithubPushPayload {
@@ -101,6 +95,12 @@ export interface GithubPushPayload {
     readonly removed?: readonly string[];
   }[];
   readonly repository?: { readonly full_name?: string };
+}
+
+export interface GithubCommitPayload {
+  readonly sha?: string;
+  readonly parents?: readonly { readonly sha?: string }[];
+  readonly files?: readonly { readonly filename?: string }[];
 }
 
 export interface GithubWebhookRejection {
@@ -127,6 +127,7 @@ export function imageSourceConfigFromEnv(env: EnvReader = process.env): ImageSou
     webhookSecret,
     appName,
     goldenVariants: golden.split(/\s+/).filter((v) => v.length > 0),
+    githubApiUrl: (env[GITHUB_API_URL_ENV] ?? DEFAULT_GITHUB_API_URL).replace(/\/+$/, ""),
   };
 }
 
@@ -173,14 +174,8 @@ export function decideImageSourceBuild(paths: readonly string[]): {
   readonly reason: string;
   readonly target?: BuildTargetDto;
 } {
-  const rebuild = paths.some(
-    (p) =>
-      GOLDEN_REBUILD_FILES.includes(p as (typeof GOLDEN_REBUILD_FILES)[number]) ||
-      GOLDEN_REBUILD_PREFIXES.some((prefix) => p.startsWith(prefix)),
-  );
-  if (rebuild)
-    return { decision: "build", reason: WORKSPACE_IMAGE_INPUTS_CHANGED_REASON, target: "golden" };
-  return { decision: "skip", reason: NO_WORKSPACE_IMAGE_INPUTS_CHANGED_REASON };
+  void paths;
+  return { decision: "build", reason: CI_PUBLISHED_GOLDEN_IMAGE_REASON, target: "golden" };
 }
 
 export function verifyGithubSignature(
@@ -214,6 +209,20 @@ export function observationFromGithubPush(
     afterSha: payload.after,
     changedPaths: [...changedPaths].sort(),
     triggeredBy: "github-webhook",
+  };
+}
+
+export function observationFromGithubCommit(
+  payload: GithubCommitPayload,
+): SourceObservation | null {
+  if (payload.sha === undefined || payload.sha === "") return null;
+  return {
+    ...(payload.parents?.[0]?.sha === undefined ? {} : { beforeSha: payload.parents[0].sha }),
+    afterSha: payload.sha,
+    changedPaths: (payload.files ?? []).flatMap((file) =>
+      file.filename === undefined || file.filename === "" ? [] : [file.filename],
+    ),
+    triggeredBy: "github-poll",
   };
 }
 
@@ -350,6 +359,27 @@ export class ImageSourceService {
     }
   }
 
+  async observeLatestGithubCommit(
+    fetchImpl: typeof fetch = fetch,
+  ): Promise<ImageSourceTriggerDto | null> {
+    const cfg = this.deps.cfg;
+    const source = await this.ensureSource(cfg.repo);
+    const url = `${cfg.githubApiUrl}/repos/${cfg.repo}/commits/${encodeURIComponent(cfg.branch)}`;
+    const res = await fetchImpl(url, {
+      headers: {
+        accept: "application/vnd.github+json",
+        "x-github-api-version": "2022-11-28",
+        "user-agent": "edd-image-source",
+      },
+    });
+    if (!res.ok) throw new Error(`GitHub commit poll failed: ${String(res.status)}`);
+    const raw = (await res.json()) as GithubCommitPayload;
+    const observation = observationFromGithubCommit(raw);
+    if (observation === null) throw new Error("GitHub commit poll returned no commit sha");
+    if (observation.afterSha === source.lastHandledSha) return null;
+    return this.handleObservation(observation);
+  }
+
   private async rollGoldenCatalog(tag: string): Promise<void> {
     await Promise.all(
       this.deps.cfg.goldenVariants.map(async (variant) => {
@@ -461,10 +491,10 @@ function successReason(trigger: TriggerRecord, status: ImageSourceTriggerStatusD
   }
   if (status !== "succeeded") return trigger.reason;
   if (trigger.reason.startsWith(CATALOG_ROLLOUT_FAILED_REASON_PREFIX)) {
-    return WORKSPACE_IMAGE_INPUTS_CHANGED_REASON;
+    return CI_PUBLISHED_GOLDEN_IMAGE_REASON;
   }
   if (trigger.reason === WAITING_FOR_GITHUB_ACTIONS_REASON) {
-    return WORKSPACE_IMAGE_INPUTS_CHANGED_REASON;
+    return CI_PUBLISHED_GOLDEN_IMAGE_REASON;
   }
   return trigger.reason;
 }

@@ -80,7 +80,7 @@ export async function provisionEntraUserWithGroup(
   const memberRes = await graph(`/groups/${groupId}/members/$ref`, {
     "@odata.id": `${entra.graphUrl}/directoryObjects/${userId}`,
   });
-  if (!memberRes.ok) throw new Error(`add member failed: ${String(memberRes.status)}`);
+  if (!memberRes.ok) throw new Error(`add developer failed: ${String(memberRes.status)}`);
 
   return { userId, groupId };
 }

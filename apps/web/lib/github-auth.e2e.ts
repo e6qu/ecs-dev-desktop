@@ -79,13 +79,13 @@ describe("GitHub login via github → team → role (mock-free, conformant flow)
     expect(
       mapClaimsToRole(
         { ...claims, groups },
-        { adminGroups: [TEAM_GROUP], memberGroups: [], defaultRole: "viewer" },
+        { adminGroups: [TEAM_GROUP], developerGroups: [], defaultRole: "viewer" },
       ),
     ).toBe("admin");
     expect(
       mapClaimsToRole(
         { ...claims, groups },
-        { adminGroups: [], memberGroups: [], defaultRole: "viewer" },
+        { adminGroups: [], developerGroups: [], defaultRole: "viewer" },
       ),
     ).toBe("viewer");
   });

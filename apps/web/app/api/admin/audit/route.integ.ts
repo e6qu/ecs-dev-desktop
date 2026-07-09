@@ -39,7 +39,7 @@ describe("admin audit feed (first-class events)", () => {
   it("denies non-admins", async () => {
     const res = await GET(
       new Request("http://localhost/api/admin/audit", {
-        headers: { "x-edd-user-id": "m", "x-edd-role": "member" },
+        headers: { "x-edd-user-id": "m", "x-edd-role": "developer" },
       }),
     );
     expect(res.status).toBe(403);

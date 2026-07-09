@@ -170,7 +170,7 @@ const loginHelp = (
       Directory) account.
     </H>
     <H>
-      Your role (viewer, member, or administrator) is determined by your organization's group
+      Your role (viewer, developer, or administrator) is determined by your organization's group
       membership and controls what you can see and do.
     </H>
   </>
@@ -401,15 +401,15 @@ const quotasHelp = (
     </H>
     <HelpSection title="How limits work">
       <H>
-        Each role (viewer, member, administrator) has a maximum number of workspaces a single user
-        can own. The default limits are:
+        Each role (viewer, developer, administrator) has a maximum number of workspaces a single
+        user can own. The default limits are:
       </H>
       <H>
         <strong>Viewers</strong> — 0 (cannot create workspaces, but can be given access to existing
         ones).
       </H>
       <H>
-        <strong>Members</strong> — a configurable number (default 5).
+        <strong>Developers</strong> — a configurable number (default 5).
       </H>
       <H>
         <strong>Administrators</strong> — unlimited.

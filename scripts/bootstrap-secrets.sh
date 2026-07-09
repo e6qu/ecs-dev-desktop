@@ -19,6 +19,7 @@
 #   EDD_GATEWAY_SECRET       hex HMAC (gateway<->control-plane machine auth)
 #   EDD_AGENT_SECRET         hex HMAC (idle-agent heartbeat + workspace auth)
 #   EDD_CONNECTION_SECRET    hex HMAC (per-workspace editor connection token)
+#   EDD_IMAGE_SOURCE_WEBHOOK_SECRET  HMAC secret for GitHub push webhooks
 #
 # You-must-supply secrets (prompted; leave blank to SKIP and create later):
 #   AUTH_GITHUB_ID / AUTH_GITHUB_SECRET          GitHub OAuth/App
@@ -76,6 +77,7 @@ arn_EDD_TOKEN_ENC_KEY=$(put_secret EDD_TOKEN_ENC_KEY "$(rand_hex 32)" "AES key (
 arn_EDD_GATEWAY_SECRET=$(put_secret EDD_GATEWAY_SECRET "$(rand_hex 32)" "HMAC (gateway machine auth)")
 arn_EDD_AGENT_SECRET=$(put_secret EDD_AGENT_SECRET "$(rand_hex 32)" "HMAC (idle-agent + workspace auth)")
 arn_EDD_CONNECTION_SECRET=$(put_secret EDD_CONNECTION_SECRET "$(rand_hex 32)" "HMAC (editor connection token)")
+arn_EDD_IMAGE_SOURCE_WEBHOOK_SECRET=$(put_secret EDD_IMAGE_SOURCE_WEBHOOK_SECRET "$(rand_url)" "HMAC (GitHub image-source webhook)")
 
 # IdP secrets: take from ENV if set (headless mode, e.g. install.sh), else prompt;
 # blank = skip (create later by deleting + re-running). For GitHub:
@@ -139,6 +141,7 @@ for kv in \
   "EDD_GATEWAY_SECRET=$arn_EDD_GATEWAY_SECRET" \
   "EDD_AGENT_SECRET=$arn_EDD_AGENT_SECRET" \
   "EDD_CONNECTION_SECRET=$arn_EDD_CONNECTION_SECRET" \
+  "EDD_IMAGE_SOURCE_WEBHOOK_SECRET=$arn_EDD_IMAGE_SOURCE_WEBHOOK_SECRET" \
   "AUTH_GITHUB_ID=$arn_AUTH_GITHUB_ID" \
   "AUTH_GITHUB_SECRET=$arn_AUTH_GITHUB_SECRET" \
   "AUTH_MICROSOFT_ENTRA_ID_ID=$arn_AUTH_ENTRA_ID" \

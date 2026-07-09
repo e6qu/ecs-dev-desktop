@@ -42,7 +42,7 @@ describe(
 
     async function api(path: string, init?: RequestInit): Promise<Response> {
       return fetch(`${app.web.baseUrl}/api${path}`, {
-        headers: devHeaders(OWNER, "member"),
+        headers: devHeaders(OWNER, "developer"),
         ...init,
       });
     }

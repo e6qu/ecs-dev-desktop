@@ -6,7 +6,7 @@ import { getImageSourceService, type ImageSourceService } from "./image-source";
 import { errorField, log } from "./logger";
 
 interface ImageSourceReconcileDeps {
-  readonly service: Pick<ImageSourceService, "reconcileRecentBuilds">;
+  readonly service: Pick<ImageSourceService, "observeLatestGithubCommit" | "reconcileRecentBuilds">;
   readonly logger: Pick<StructuredLogger, "warn">;
 }
 
@@ -23,6 +23,7 @@ export function createImageSourceReconcileRunner(
       if (running) return;
       running = true;
       try {
+        await deps.service.observeLatestGithubCommit();
         await deps.service.reconcileRecentBuilds();
       } catch (err) {
         deps.logger.warn("image-source reconcile sweep failed (will retry)", {

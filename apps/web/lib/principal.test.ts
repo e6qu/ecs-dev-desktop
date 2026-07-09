@@ -37,6 +37,14 @@ describe("principalFromSession", () => {
     };
     expect(principalFromSession(session)).toEqual({ id: "u1", role: "admin" });
   });
+
+  it("throws on an unknown role instead of falling back", () => {
+    const session = {
+      user: { id: "u1", role: "invalid-role" },
+      expires: "2026-12-31T00:00:00.000Z",
+    } as unknown as Session;
+    expect(() => principalFromSession(session)).toThrow("role is invalid");
+  });
 });
 
 describe("persona cookie schema (encode/decode)", () => {
@@ -69,8 +77,8 @@ describe("withPersona", () => {
   });
 
   it("ignores a persona that would escalate above the real role", () => {
-    const member = { id: ownerId("u2"), role: "member" as const };
-    expect(withPersona(member, encodePersonaCookie("admin"))).toBe(member);
+    const developer = { id: ownerId("u2"), role: "developer" as const };
+    expect(withPersona(developer, encodePersonaCookie("admin"))).toBe(developer);
   });
 
   it("ignores an invalid or legacy-schema persona cookie value", () => {

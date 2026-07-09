@@ -235,20 +235,27 @@ main {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+  min-width: 0;
 }
 
 .card .wid {
+  min-width: 0;
+  max-width: 100%;
   font-family: var(--font-mono), monospace;
   font-size: 13px;
   color: var(--text);
-  word-break: break-all;
+  overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 .card .img {
+  min-width: 0;
+  max-width: 100%;
   margin-top: 4px;
   font-family: var(--font-mono), monospace;
   font-size: 12px;
   color: var(--dim);
+  overflow-wrap: anywhere;
 }
 
 .card .subhead {
@@ -846,7 +853,7 @@ main {
 
 .adm-row {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 12px 16px;
   border: 1px solid var(--border);
@@ -856,6 +863,13 @@ main {
   transition:
     border-color 0.15s ease,
     transform 0.12s ease;
+}
+
+.adm-row > .wid,
+.adm-row > .detail {
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .adm-row:hover {
@@ -1435,11 +1449,14 @@ main {
 }
 
 .workspace-info {
-  display: inline-block;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 auto;
 }
 
 .workspace-info-panel {
-  width: min(760px, 100%);
+  width: min(860px, calc(100vw - 32px));
+  max-width: none;
 }
 
 .workspace-info-grid {
@@ -1463,9 +1480,11 @@ main {
 .workspace-info-row dd {
   margin: 0;
   min-width: 0;
+  max-width: 100%;
   font-size: 13px;
   line-height: 1.5;
   overflow-wrap: anywhere;
+  word-break: normal;
 }
 
 @media (max-width: 640px) {

@@ -51,13 +51,13 @@ variable "route53_zone_id" {
 }
 
 variable "auth_secret_arns" {
-  description = "Map of env-var name → Secrets Manager ARN for ALL secret env vars (auth + crypto), e.g. AUTH_SECRET, AUTH_GITHUB_*, EDD_TOKEN_ENC_KEY, EDD_GATEWAY_SECRET, EDD_AGENT_SECRET, EDD_CONNECTION_SECRET."
+  description = "Map of env-var name → Secrets Manager ARN for ALL secret env vars (auth + crypto + webhooks), e.g. AUTH_SECRET, AUTH_GITHUB_*, EDD_TOKEN_ENC_KEY, EDD_GATEWAY_SECRET, EDD_AGENT_SECRET, EDD_CONNECTION_SECRET, EDD_IMAGE_SOURCE_WEBHOOK_SECRET."
   type        = map(string)
   default     = {}
 }
 
 variable "extra_environment" {
-  description = "Plain (non-secret) control-plane env vars — RBAC groups (EDD_ADMIN_GROUPS/EDD_MEMBER_GROUPS), AUTH_TRUST_HOST/AUTH_URL, AUTH_MICROSOFT_ENTRA_ID_ISSUER."
+  description = "Plain (non-secret) control-plane env vars — RBAC groups, Auth.js/IdP URLs, SES sender, image-source repo/branch, pricing mode/rates."
   type        = map(string)
   default     = {}
 }

@@ -22,7 +22,7 @@ process.env.DYNAMODB_TABLE = TEST_TABLE;
 const url = "http://localhost/api/workspaces";
 const headers = {
   [USER_ID_HEADER]: "alice",
-  [ROLE_HEADER]: "member",
+  [ROLE_HEADER]: "developer",
   "content-type": "application/json",
 };
 
@@ -76,10 +76,10 @@ describe("workspaces API end-to-end (DynamoDB Local)", () => {
   });
 
   it("enforces the per-role workspace quota (409 when reached)", async () => {
-    process.env.EDD_QUOTA_MEMBER = "1";
+    process.env.EDD_QUOTA_DEVELOPER = "1";
     const h = {
       [USER_ID_HEADER]: "quotaperson",
-      [ROLE_HEADER]: "member",
+      [ROLE_HEADER]: "developer",
       "content-type": "application/json",
     };
     const body = JSON.stringify({ baseImage: "golden/node:20" });
@@ -89,7 +89,7 @@ describe("workspaces API end-to-end (DynamoDB Local)", () => {
       const second = await POST(new Request(url, { method: "POST", headers: h, body }));
       expect(second.status).toBe(409);
     } finally {
-      delete process.env.EDD_QUOTA_MEMBER;
+      delete process.env.EDD_QUOTA_DEVELOPER;
     }
   });
 });

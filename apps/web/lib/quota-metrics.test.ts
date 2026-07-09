@@ -7,14 +7,14 @@ import { recordQuotaUsage } from "./quota-metrics";
 describe("recordQuotaUsage", () => {
   it("emits the utilization gauge dimensioned by role, no denial when allowed", () => {
     const m = new InMemoryMetricSink();
-    recordQuotaUsage(m, { owned: 3, limit: 5, role: "member", allowed: true });
+    recordQuotaUsage(m, { owned: 3, limit: 5, role: "developer", allowed: true });
 
     expect(m.recorded).toEqual([
       {
         kind: "gauge",
         name: METRIC_QUOTA_UTILIZATION,
         value: 0.6,
-        dimensions: { role: "member" },
+        dimensions: { role: "developer" },
       },
     ]);
   });

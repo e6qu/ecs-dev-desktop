@@ -14,12 +14,11 @@ import type { Pricing } from "@edd/core";
  * prices for the deployment's region, not a static table.
  *
  * The pricing *model* (Fargate vCPU-hr + GB-hr, EBS gp3 GB-mo, snapshot GB-mo) is
- * the same everywhere; this only supplies the numbers. It is **opt-in**
- * (`EDD_AWS_PRICING=1`) and best-effort: any rate the API doesn't yield falls back
- * to the configured `@edd/config` value (us-east-1 default, `EDD_PRICE_*`-
- * overridable), so a missing/denied API or an unexpected product shape never
- * mis-prices — it just uses the documented fallback. The Price List API has no
- * simulator, so the live path is exercised against real AWS (`e2e-aws`); the
+ * the same everywhere; this only supplies the numbers. It is opt-in
+ * (`EDD_AWS_PRICING=1`). When enabled, all four live rates are required: a
+ * missing/denied Price List API call or an unexpected product shape fails the
+ * report loudly instead of silently mis-pricing the fleet. The Price List API has
+ * no simulator, so the live path is exercised against real AWS (`e2e-aws`); the
  * pure parser below is unit-tested against a recorded GetProducts response shape.
  */
 
@@ -97,10 +96,7 @@ async function getProducts(
   return asJsonStrings(out.PriceList);
 }
 
-/**
- * Best-effort: fetch the four rates for `region` from the Price List API. Returns
- * only the rates it could resolve; the caller fills the rest from config.
- */
+/** Fetch the four required rates for `region` from the Price List API. */
 async function fetchAwsPricing(region: string): Promise<Partial<Pricing>> {
   const client = new PricingClient({
     region: PRICE_LIST_ENDPOINT_REGION,
@@ -143,20 +139,41 @@ async function fetchAwsPricing(region: string): Promise<Partial<Pricing>> {
   return out;
 }
 
+export function requireLivePricing(region: string, live: Partial<Pricing>): Pricing {
+  const { fargateVcpuHourUsd, fargateGbHourUsd, ebsGbMonthUsd, snapshotGbMonthUsd } = live;
+  const missing: string[] = [];
+  if (fargateVcpuHourUsd === undefined) missing.push("fargateVcpuHourUsd");
+  if (fargateGbHourUsd === undefined) missing.push("fargateGbHourUsd");
+  if (ebsGbMonthUsd === undefined) missing.push("ebsGbMonthUsd");
+  if (snapshotGbMonthUsd === undefined) missing.push("snapshotGbMonthUsd");
+  if (missing.length > 0) {
+    throw new Error(
+      `AWS Price List did not return required ${region} rate(s): ${missing.join(", ")}`,
+    );
+  }
+  if (
+    fargateVcpuHourUsd === undefined ||
+    fargateGbHourUsd === undefined ||
+    ebsGbMonthUsd === undefined ||
+    snapshotGbMonthUsd === undefined
+  ) {
+    throw new Error("unreachable: live pricing guard failed to narrow all rates");
+  }
+  return {
+    fargateVcpuHourUsd,
+    fargateGbHourUsd,
+    ebsGbMonthUsd,
+    snapshotGbMonthUsd,
+  };
+}
+
 /**
- * The cost rates in effect: live Price List rates for the deployment's region when
- * `EDD_AWS_PRICING=1`, each falling back to the configured rate; otherwise the
- * configured rates alone. Never throws — a failed live fetch degrades to config.
+ * The cost rates in effect: configured rates unless `EDD_AWS_PRICING=1`; when
+ * live AWS pricing is enabled, every required live rate must resolve or the
+ * caller receives a loud configuration/permission/product-shape error.
  */
 export async function resolveWorkspacePricing(): Promise<Pricing> {
-  const configured = workspacePricing();
-  if (process.env[AWS_PRICING_ENV] !== "1") return configured;
+  if (process.env[AWS_PRICING_ENV] !== "1") return workspacePricing();
   const region = process.env.AWS_REGION ?? DEFAULT_AWS_REGION;
-  const live = await fetchAwsPricing(region).catch((): Partial<Pricing> => ({}));
-  return {
-    fargateVcpuHourUsd: live.fargateVcpuHourUsd ?? configured.fargateVcpuHourUsd,
-    fargateGbHourUsd: live.fargateGbHourUsd ?? configured.fargateGbHourUsd,
-    ebsGbMonthUsd: live.ebsGbMonthUsd ?? configured.ebsGbMonthUsd,
-    snapshotGbMonthUsd: live.snapshotGbMonthUsd ?? configured.snapshotGbMonthUsd,
-  };
+  return requireLivePricing(region, await fetchAwsPricing(region));
 }

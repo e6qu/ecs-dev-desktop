@@ -38,11 +38,11 @@ persistence is real DynamoDB Local; auth is **dev-auth**.
 `/login` page shows a **dev sign-in form** with seeded accounts — pick one and
 enter the dev password:
 
-| Username | Role     | Password                           |
-| -------- | -------- | ---------------------------------- |
-| `admin`  | `admin`  | `EDD_DEV_PASSWORD` (default `dev`) |
-| `member` | `member` | …                                  |
-| `viewer` | `viewer` | …                                  |
+| Username    | Role        | Password                           |
+| ----------- | ----------- | ---------------------------------- |
+| `admin`     | `admin`     | `EDD_DEV_PASSWORD` (default `dev`) |
+| `developer` | `developer` | …                                  |
+| `viewer`    | `viewer`    | …                                  |
 
 The accounts are **configuration, not app code**: override the whole set with
 `EDD_DEV_USERS` (a JSON array of `{username, role, email, password?}`) and/or the

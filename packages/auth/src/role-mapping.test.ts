@@ -5,7 +5,7 @@ import { mapClaimsToRole, type RoleMappingConfig } from "./index";
 
 const config: RoleMappingConfig = {
   adminGroups: ["acme/platform-admins", "entra-group-admin-guid"],
-  memberGroups: ["acme/engineers"],
+  developerGroups: ["acme/engineers"],
   defaultRole: "viewer",
 };
 
@@ -16,7 +16,7 @@ describe("mapClaimsToRole", () => {
     ).toBe("admin");
   });
 
-  it("maps an Entra group guid to member/admin", () => {
+  it("maps an Entra group guid to developer/admin", () => {
     expect(
       mapClaimsToRole({ idp: "entra", subject: "u", groups: ["entra-group-admin-guid"] }, config),
     ).toBe("admin");
@@ -33,13 +33,13 @@ describe("mapClaimsToRole", () => {
     ).toBe("admin");
   });
 
-  it("maps a member group to member", () => {
+  it("maps a developer group to developer", () => {
     expect(
       mapClaimsToRole({ idp: "github", subject: "u", groups: ["acme/engineers"] }, config),
-    ).toBe("member");
+    ).toBe("developer");
   });
 
-  it("admin takes precedence when a user is in both an admin and a member group", () => {
+  it("admin takes precedence when a user is in both an admin and a developer group", () => {
     expect(
       mapClaimsToRole(
         { idp: "github", subject: "u", groups: ["acme/engineers", "acme/platform-admins"] },

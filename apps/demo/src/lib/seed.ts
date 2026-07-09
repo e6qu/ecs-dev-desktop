@@ -39,7 +39,7 @@ const daysAgo = (d: number): IsoTimestamp =>
 
 const USERS: readonly DemoUser[] = [
   { id: "ada", name: "Ada Okafor", email: "ada@edd.demo", role: "admin" },
-  { id: "milo", name: "Milo Tan", email: "milo@edd.demo", role: "member" },
+  { id: "milo", name: "Milo Tan", email: "milo@edd.demo", role: "developer" },
   { id: "vera", name: "Vera Smit", email: "vera@edd.demo", role: "viewer" },
 ];
 
@@ -200,7 +200,7 @@ export function buildSeed(): DemoState {
     return u;
   };
   const ada = byRole("admin");
-  const milo = byRole("member");
+  const milo = byRole("developer");
   const vera = byRole("viewer");
 
   type Spec = Parameters<typeof buildWorkspace>[0] & { editor: EditorKind; agent: AgentKind };

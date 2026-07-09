@@ -79,7 +79,10 @@ describe(
     let activityAfterCreate = "";
 
     async function api(path: string, init?: RequestInit): Promise<Response> {
-      return fetch(`${web.baseUrl}/api${path}`, { headers: devHeaders(OWNER, "member"), ...init });
+      return fetch(`${web.baseUrl}/api${path}`, {
+        headers: devHeaders(OWNER, "developer"),
+        ...init,
+      });
     }
 
     /** Full persisted detail via the admin Inspect route. */

@@ -86,7 +86,7 @@ packages/
   compute-ecs/       real Fargate ComputeProvider (managed EBS; sim or AWS)
   api-contracts/     Zod contracts — single source of API truth
   api-client/        typed HTTP client over the contracts
-  authz/             CASL abilities (admin/member/viewer)
+  authz/             CASL abilities (admin/developer/viewer)
   auth/              IdP claim→role mapping
   config/            typed config: endpoints, ports, defaults, env schema
 infra/terraform/     all AWS infra        infra/images/   golden base images

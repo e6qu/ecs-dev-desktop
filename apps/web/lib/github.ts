@@ -76,7 +76,7 @@ function hasNextPage(linkHeader: string | null): boolean {
   return linkHeader.split(",").some((part) => part.includes('rel="next"'));
 }
 
-/** One page of repos the user can access (owner/collaborator/org-member),
+/** One page of repos the user can access (owner/collaborator/org-developer),
  * most-recent first. `page` is 1-indexed. */
 export async function listRepos(
   token: string,

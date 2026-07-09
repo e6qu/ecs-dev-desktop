@@ -30,8 +30,8 @@ export const PERSONA_COOKIE_SCHEMA_VERSION = "1";
 
 /** Comma-separated IdP group ids/slugs that grant the admin role. */
 export const ADMIN_GROUPS_ENV = "EDD_ADMIN_GROUPS";
-/** Comma-separated IdP group ids/slugs that grant the member role. */
-export const MEMBER_GROUPS_ENV = "EDD_MEMBER_GROUPS";
+/** Comma-separated IdP group ids/slugs that grant the developer role. */
+export const DEVELOPER_GROUPS_ENV = "EDD_DEVELOPER_GROUPS";
 
 /** Override the GitHub REST API base URL (GitHub Enterprise, or the github sim). */
 export const GITHUB_API_URL_ENV = "AUTH_GITHUB_API_URL";

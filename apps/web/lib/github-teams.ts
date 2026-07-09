@@ -8,7 +8,7 @@ import { GITHUB_API_URL_ENV } from "./constants";
  * GitHub OAuth profiles don't carry team membership, so the role-granting groups
  * are fetched from `GET /user/teams` with the access token (needs the `read:org`
  * scope). Each team becomes an `org/team` id, matched against
- * `EDD_ADMIN_GROUPS` / `EDD_MEMBER_GROUPS` exactly like Entra group object-ids.
+ * `EDD_ADMIN_GROUPS` / `EDD_DEVELOPER_GROUPS` exactly like Entra group object-ids.
  */
 
 const teamSchema = z.object({

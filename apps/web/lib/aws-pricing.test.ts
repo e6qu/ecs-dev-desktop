@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { describe, expect, it } from "vitest";
 
-import { parseOnDemandUsd, parseUsageType } from "./aws-pricing";
+import { parseOnDemandUsd, parseUsageType, requireLivePricing } from "./aws-pricing";
 
 // A representative AWS Price List `GetProducts` PriceList item (the real shape:
 // product.attributes + terms.OnDemand.<sku>.priceDimensions.<rate>.pricePerUnit.USD).
@@ -40,5 +40,33 @@ describe("AWS Price List parsing", () => {
       parseOnDemandUsd(JSON.stringify({ terms: { OnDemand: { x: { priceDimensions: {} } } } })),
     ).toBeUndefined();
     expect(parseUsageType("not json")).toBeUndefined();
+  });
+});
+
+describe("requireLivePricing", () => {
+  it("fails loudly when AWS Price List omitted any required live rate", () => {
+    expect(() =>
+      requireLivePricing("eu-west-1", {
+        fargateVcpuHourUsd: 0.04048,
+        fargateGbHourUsd: 0.004445,
+        ebsGbMonthUsd: 0.08,
+      }),
+    ).toThrow("AWS Price List did not return required eu-west-1 rate(s): snapshotGbMonthUsd");
+  });
+
+  it("returns the complete live AWS pricing set", () => {
+    expect(
+      requireLivePricing("eu-west-1", {
+        fargateVcpuHourUsd: 0.04048,
+        fargateGbHourUsd: 0.004445,
+        ebsGbMonthUsd: 0.08,
+        snapshotGbMonthUsd: 0.05,
+      }),
+    ).toEqual({
+      fargateVcpuHourUsd: 0.04048,
+      fargateGbHourUsd: 0.004445,
+      ebsGbMonthUsd: 0.08,
+      snapshotGbMonthUsd: 0.05,
+    });
   });
 });

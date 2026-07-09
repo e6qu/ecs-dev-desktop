@@ -161,9 +161,10 @@ variable "secret_environment" {
     read access to every referenced ARN. Provide the auth + crypto secrets here
     (never as plain env vars): AUTH_SECRET, AUTH_GITHUB_ID/SECRET,
     AUTH_MICROSOFT_ENTRA_ID_ID/SECRET, EDD_TOKEN_ENC_KEY, EDD_GATEWAY_SECRET,
-    EDD_AGENT_SECRET, EDD_CONNECTION_SECRET (the editor connection-token secret).
-    Non-secret config (RBAC groups, AUTH_TRUST_HOST, base domain, JWKS) goes in
-    extra_environment.
+    EDD_AGENT_SECRET, EDD_CONNECTION_SECRET (the editor connection-token secret),
+    and EDD_IMAGE_SOURCE_WEBHOOK_SECRET. Non-secret config (RBAC groups,
+    AUTH_TRUST_HOST/AUTH_URL, EDD_PUBLIC_APP_URL, EDD_EMAIL_FROM, image-source repo/branch, pricing)
+    goes in extra_environment.
   EOT
   type        = map(string)
   default     = {}

@@ -206,9 +206,10 @@ It also writes the non-secret `EDD_APP_URL` repo variable used by
 CI owns both the control-plane image build/publish path and post-merge
 **workspace/golden image** publishing. This is not a fallback release path: EDD
 must remain releasable from CI/operator release flows even when no EDD deployment
-exists. The deployed EDD control plane tracks signed source webhooks, verifies the
-expected golden tags in ECR, and rolls the base-image catalog only after every
-configured golden variant is present.
+exists. The deployed EDD control plane observes `main` through GitHub push
+webhooks and a GitHub commit poll, verifies the expected golden tags in ECR, and
+rolls the base-image catalog only after every configured golden variant is
+present.
 
 Set `EDD_IMAGE_SOURCE_REPO` (`owner/repo`, e.g. `e6qu/ecs-dev-desktop`) and
 optionally `EDD_IMAGE_SOURCE_BRANCH` (default `main`) before running
@@ -224,20 +225,23 @@ Store the webhook secret as the control-plane secret env var
 `EDD_IMAGE_SOURCE_WEBHOOK_SECRET` (for `scripts/install.sh`, creating a Secrets
 Manager secret named `<EDD_NAME>/EDD_IMAGE_SOURCE_WEBHOOK_SECRET` makes it part of
 the generated `auth_secret_arns` map). The webhook is HMAC-verified via
-`X-Hub-Signature-256`; there is no polling backstop. If source sync is
-misconfigured, `/admin/images` surfaces the API error instead of presenting a
-disabled or "not configured" state. The public receiver is intentionally narrow:
-the module attaches an AWS WAF web ACL to the control-plane ALB that blocks
-non-`POST` and non-JSON requests on the webhook path and rate-limits that path.
-The app then requires `X-GitHub-Event: push`, a UUID-shaped `X-GitHub-Delivery`,
+`X-Hub-Signature-256`. The public receiver is intentionally narrow: the module
+attaches an AWS WAF web ACL to the control-plane ALB that blocks non-`POST` and
+non-JSON requests on the webhook path and rate-limits that path. The app then
+requires `X-GitHub-Event: push`, a UUID-shaped `X-GitHub-Delivery`,
 `application/json`, a small body, and a valid HMAC before parsing the payload.
 
-When a new commit changes workspace-image inputs (`infra/images/**`,
-`pnpm-lock.yaml`, `package.json`, or the image publish/build wiring), the
-`golden-images` workflow publishes the short-SHA tag asynchronously. EDD records
-that expected tag from the signed push webhook, polls ECR through the standard API,
-and rolls each configured `<app>/golden/<variant>` catalog entry after the tag is
-present in every configured golden repo.
+The control plane also polls GitHub's standard commit API at
+`AUTH_GITHUB_API_URL` (default `https://api.github.com`) for
+`EDD_IMAGE_SOURCE_REPO` + `EDD_IMAGE_SOURCE_BRANCH`. This is not a release
+fallback; it is the self-healing source-observation path that lets the catalog
+converge if webhook delivery or setup is missed. If GitHub polling, ECR metadata,
+or catalog rollout fails, `/admin/images` and the logs surface the real error and
+the next sweep retries. The `golden-images` workflow publishes the short-SHA tag
+asynchronously on every `main` push. EDD records that expected tag from the
+webhook or poll observation, polls ECR through the standard API, and rolls each
+configured `<app>/golden/<variant>` catalog entry after the tag is present in
+every configured golden repo.
 
 ## Step 3 — Configure the control plane (env + secrets)
 
@@ -269,11 +273,13 @@ Secrets (`secret_environment`):
 
 Non-secret config (`extra_environment`):
 
-| Group       | Variable                                | Purpose                                            |
-| ----------- | --------------------------------------- | -------------------------------------------------- |
-| Auth.js     | `AUTH_URL` or `AUTH_TRUST_HOST=true`    | correct callback/redirect behind the ALB           |
-| IdP (Entra) | `AUTH_MICROSOFT_ENTRA_ID_ISSUER`        | Entra OIDC issuer URL                              |
-| RBAC        | `EDD_ADMIN_GROUPS`, `EDD_MEMBER_GROUPS` | IdP group → role mapping (**see admin bootstrap**) |
+| Group       | Variable                                            | Purpose                                             |
+| ----------- | --------------------------------------------------- | --------------------------------------------------- |
+| Auth.js     | `AUTH_URL` or `AUTH_TRUST_HOST=true`                | correct callback/redirect behind the ALB            |
+| IdP (Entra) | `AUTH_MICROSOFT_ENTRA_ID_ISSUER`                    | Entra OIDC issuer URL                               |
+| RBAC        | `EDD_ADMIN_GROUPS`, `EDD_DEVELOPER_GROUPS`          | IdP group → role mapping (**see admin bootstrap**)  |
+| Email       | `EDD_EMAIL_FROM`, `EDD_PUBLIC_APP_URL`              | SES sender identity + invitation-link base URL      |
+| Costs       | `EDD_AWS_PRICING=1` or explicit `EDD_PRICE_*` rates | live AWS Price List rates, or declared static rates |
 
 > **Admin bootstrap (important).** RBAC is purely IdP-group-driven: the default
 > role is `viewer`, and an account is an admin **only** if its IdP groups intersect

@@ -28,7 +28,7 @@ const asAdmin = (path: string) => new Request(`${ADMIN}/${path}`, { headers: adm
 const params = (id: string) => ({ params: Promise.resolve({ id }) });
 
 describe("admin data routes return real fleet data (DynamoDB Local)", () => {
-  it("GET /api/admin/workspaces lists every member's workspace", async () => {
+  it("GET /api/admin/workspaces lists every developer's workspace", async () => {
     const aliceWs = await createWorkspaceFor("alice");
     const bobWs = await createWorkspaceFor("bob");
 

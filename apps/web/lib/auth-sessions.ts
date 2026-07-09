@@ -2,7 +2,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { Role } from "@edd/authz";
-import { createDynamoClient, makeAuthSessionEntity, TABLE } from "@edd/db";
+import { createDynamoClient, makeAuthSessionEntity } from "@edd/db";
 import type { JWT } from "next-auth/jwt";
 
 import { tableName } from "./control-plane";
@@ -20,7 +20,7 @@ export interface ValidAuthSession {
 let entity: ReturnType<typeof makeAuthSessionEntity> | undefined;
 
 function sessions(): ReturnType<typeof makeAuthSessionEntity> {
-  entity ??= makeAuthSessionEntity(createDynamoClient(), tableName() || TABLE);
+  entity ??= makeAuthSessionEntity(createDynamoClient(), tableName());
   return entity;
 }
 

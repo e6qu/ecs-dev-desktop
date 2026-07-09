@@ -40,7 +40,9 @@
 #   EDD_IMAGE_SOURCE_BRANCH    optional  branch for image source sync (default: main)
 #   EDD_GOLDEN          optional  golden variants (space-separated; default: omnibus)
 #   EDD_ADMIN_GROUPS    REQUIRED  IdP group(s) granting admin (CSV; without it NO admin)
-#   EDD_MEMBER_GROUPS   optional  IdP group(s) granting member (CSV)
+#   EDD_DEVELOPER_GROUPS optional  IdP group(s) granting developer (CSV)
+#   EDD_AWS_PRICING     optional  1 = require live AWS Price List rates (default: 1)
+#   EDD_EMAIL_FROM       optional  SES verified sender for admin invitation links
 #   EDD_BOOTSTRAP_GITHUB_ID      optional  GitHub OAuth client id (skip = no GitHub)
 #   EDD_BOOTSTRAP_GITHUB_SECRET  optional  GitHub OAuth client secret
 #   EDD_BOOTSTRAP_ENTRA_ID       optional  Entra OIDC client id (skip = no Entra)
@@ -88,7 +90,9 @@ EDD_GOLDEN="${EDD_GOLDEN:-omnibus}"
 # deploy that skips the ~3GB golden rebuild.
 EDD_BUILD_TARGET="${EDD_BUILD_TARGET:-all}"
 EDD_ADMIN_GROUPS="${EDD_ADMIN_GROUPS:-}"
-EDD_MEMBER_GROUPS="${EDD_MEMBER_GROUPS:-}"
+EDD_DEVELOPER_GROUPS="${EDD_DEVELOPER_GROUPS:-}"
+EDD_AWS_PRICING="${EDD_AWS_PRICING:-1}"
+EDD_EMAIL_FROM="${EDD_EMAIL_FROM:-}"
 EDD_TF_DIR="${EDD_TF_DIR:-infra/terraform/examples/complete}"
 export EDD_BOOTSTRAP_GITHUB_ID="${EDD_BOOTSTRAP_GITHUB_ID:-}"
 export EDD_BOOTSTRAP_GITHUB_SECRET="${EDD_BOOTSTRAP_GITHUB_SECRET:-}"
@@ -283,10 +287,11 @@ tfvars="$tfdir/install.tfvars"
   printf 'auth_secret_arns = {\n%s}\n' "$secret_map"
   printf 'extra_environment = {\n'
   printf '  EDD_ADMIN_GROUPS = "%s"\n' "$EDD_ADMIN_GROUPS"
-  [ -n "$EDD_MEMBER_GROUPS" ] && printf '  EDD_MEMBER_GROUPS = "%s"\n' "$EDD_MEMBER_GROUPS"
+  [ -n "$EDD_DEVELOPER_GROUPS" ] && printf '  EDD_DEVELOPER_GROUPS = "%s"\n' "$EDD_DEVELOPER_GROUPS"
   printf '  AUTH_TRUST_HOST = "true"\n'
   printf '  EDD_IMAGE_SOURCE_REPO = "%s"\n' "$EDD_IMAGE_SOURCE_REPO"
   printf '  EDD_IMAGE_SOURCE_BRANCH = "%s"\n' "$EDD_IMAGE_SOURCE_BRANCH"
+  printf '  EDD_AWS_PRICING = "%s"\n' "$EDD_AWS_PRICING"
   # AUTH_TRUST_HOST alone isn't sufficient for this app's custom server
   # (apps/web/server.ts passes hostname/port to next(), which Next appears to use
   # for its own request-URL construction ahead of Auth.js's trustHost/header logic) —
@@ -294,7 +299,11 @@ tfvars="$tfdir/install.tfvars"
   # hostname instead of the public domain, and GitHub correctly rejected it
   # (redirect_uri_mismatch). Set AUTH_URL explicitly so there's no ambiguity; found
   # on the first real sign-in attempt against this deploy.
-  [ -n "$EDD_DOMAIN" ] && printf '  AUTH_URL = "https://app.%s"\n' "$EDD_DOMAIN"
+  if [ -n "$EDD_DOMAIN" ]; then
+    printf '  AUTH_URL = "https://app.%s"\n' "$EDD_DOMAIN"
+    printf '  EDD_PUBLIC_APP_URL = "https://app.%s"\n' "$EDD_DOMAIN"
+  fi
+  [ -n "$EDD_EMAIL_FROM" ] && printf '  EDD_EMAIL_FROM = "%s"\n' "$EDD_EMAIL_FROM"
   printf '}\n'
 } >"$tfvars"
 

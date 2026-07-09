@@ -21,7 +21,7 @@ export function makeWorkspaceEntity(client: DynamoDBClient, table = TABLE) {
         ownerEmail: { type: "string", required: false },
         // Owner's role at create time — lets the admin quota view flag a workspace against its
         // owner's per-role limit. Optional: records predating the field have none.
-        ownerRole: { type: ["viewer", "member", "admin"] as const, required: false },
+        ownerRole: { type: ["viewer", "developer", "admin"] as const, required: false },
         // Git repo cloned into the session at first boot ("one repo per
         // session"). Optional: blank/scratch sessions have none.
         repoUrl: { type: "string", required: false },
@@ -203,7 +203,7 @@ export function makeAuthSessionEntity(client: DynamoDBClient, table = TABLE) {
         id: { type: "string", required: true },
         schemaVersion: { type: "number", required: true },
         ownerId: { type: "string", required: true },
-        role: { type: ["viewer", "member", "admin"] as const, required: true },
+        role: { type: ["viewer", "developer", "admin"] as const, required: true },
         createdAt: { type: "string", required: true },
         refreshedAt: { type: "string", required: true },
         expiresAt: { type: "string", required: true },
@@ -226,6 +226,79 @@ export function makeAuthSessionEntity(client: DynamoDBClient, table = TABLE) {
 }
 
 export type AuthSessionEntity = ReturnType<typeof makeAuthSessionEntity>;
+
+/**
+ * EDD-managed local account. OAuth identities still come from their providers,
+ * but admins may create username/password accounts for break-glass/admin access
+ * and invited developers. Passwords are stored as versioned scrypt hashes only.
+ */
+export function makeLocalAccountEntity(client: DynamoDBClient, table = TABLE) {
+  return new Entity(
+    {
+      model: { entity: "localAccount", version: "1", service: "edd" },
+      attributes: {
+        email: { type: "string", required: true },
+        ownerId: { type: "string", required: true },
+        role: { type: ["developer", "admin"] as const, required: true },
+        passwordHash: { type: "string", required: true },
+        createdAt: { type: "string", required: true },
+        createdBy: { type: "string", required: true },
+        disabledAt: { type: "string", required: false },
+      },
+      indexes: {
+        primary: {
+          pk: { field: "PK", composite: ["email"] },
+          sk: { field: "SK", composite: [] },
+        },
+        byRole: {
+          index: "GSI1",
+          pk: { field: "GSI1PK", composite: ["role"] },
+          sk: { field: "GSI1SK", composite: ["createdAt", "email"] },
+        },
+      },
+    },
+    { client, table },
+  );
+}
+
+export type LocalAccountEntity = ReturnType<typeof makeLocalAccountEntity>;
+
+/**
+ * One-time developer invitation. The browser link carries the raw token; the
+ * table stores only a SHA-256 token hash, so database disclosure cannot redeem
+ * pending invitations.
+ */
+export function makeInvitationEntity(client: DynamoDBClient, table = TABLE) {
+  return new Entity(
+    {
+      model: { entity: "invitation", version: "1", service: "edd" },
+      attributes: {
+        tokenHash: { type: "string", required: true },
+        email: { type: "string", required: true },
+        ownerId: { type: "string", required: true },
+        role: { type: ["developer"] as const, required: true },
+        createdAt: { type: "string", required: true },
+        createdBy: { type: "string", required: true },
+        expiresAt: { type: "string", required: true },
+        acceptedAt: { type: "string", required: false },
+      },
+      indexes: {
+        primary: {
+          pk: { field: "PK", composite: ["tokenHash"] },
+          sk: { field: "SK", composite: [] },
+        },
+        byEmail: {
+          index: "GSI1",
+          pk: { field: "GSI1PK", composite: ["email"] },
+          sk: { field: "GSI1SK", composite: ["createdAt", "tokenHash"] },
+        },
+      },
+    },
+    { client, table },
+  );
+}
+
+export type InvitationEntity = ReturnType<typeof makeInvitationEntity>;
 
 /**
  * ElectroDB SSH-key entity over the same single table. Account-level public keys

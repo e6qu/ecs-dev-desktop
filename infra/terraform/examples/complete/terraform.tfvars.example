@@ -43,11 +43,17 @@ availability_zones = ["us-east-1a", "us-east-1b"]
 #   EDD_GATEWAY_SECRET    = "arn:aws:secretsmanager:us-east-1:111122223333:secret:edd/gateway-secret-AbCdEf"
 #   EDD_AGENT_SECRET      = "arn:aws:secretsmanager:us-east-1:111122223333:secret:edd/agent-secret-AbCdEf"
 #   EDD_CONNECTION_SECRET = "arn:aws:secretsmanager:us-east-1:111122223333:secret:edd/connection-secret-AbCdEf"
+#   EDD_IMAGE_SOURCE_WEBHOOK_SECRET = "arn:aws:secretsmanager:us-east-1:111122223333:secret:edd/image-webhook-AbCdEf"
 # }
 
 # Non-secret config. EDD_ADMIN_GROUPS is REQUIRED — without it no one is an admin.
 # extra_environment = {
-#   EDD_ADMIN_GROUPS = "platform-admins"
-#   EDD_MEMBER_GROUPS = "engineering"
-#   AUTH_TRUST_HOST  = "true"
+#   EDD_ADMIN_GROUPS        = "platform-admins"
+#   EDD_DEVELOPER_GROUPS    = "engineering"
+#   AUTH_TRUST_HOST         = "true"
+#   EDD_IMAGE_SOURCE_REPO   = "e6qu/ecs-dev-desktop"
+#   EDD_IMAGE_SOURCE_BRANCH = "main"
+#   EDD_AWS_PRICING         = "1"
+#   EDD_PUBLIC_APP_URL      = "https://app.dev.example.com"
+#   EDD_EMAIL_FROM          = "EDD <noreply@dev.example.com>"
 # }

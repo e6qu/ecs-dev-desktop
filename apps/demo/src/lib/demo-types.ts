@@ -6,7 +6,7 @@ export interface DemoUser {
   readonly id: string;
   readonly name: string;
   readonly email: string;
-  readonly role: "admin" | "member" | "viewer";
+  readonly role: "admin" | "developer" | "viewer";
 }
 
 /** The editor an environment runs. `openvscode` is the product default (the full IDE — the

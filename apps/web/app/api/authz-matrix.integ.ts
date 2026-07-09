@@ -2,8 +2,8 @@
 // Route-level authorization matrix. The ability unit matrix (packages/authz)
 // proves the CASL rules; this proves every HTTP route actually enforces them.
 // It fills the cells the per-route suites don't: the VIEWER role across every
-// workspace verb, the admin-only catalog guard against a member, and a uniform
-// unauthenticated → 401 sweep. (member-cross-owner → 403 lives in
+// workspace verb, the admin-only catalog guard against a developer, and a uniform
+// unauthenticated → 401 sweep. (developer-cross-owner → 403 lives in
 // lifecycle-routes.integ; the admin routes in admin-authz.integ.)
 import { describe, expect, it } from "vitest";
 
@@ -77,10 +77,10 @@ describe("authorization matrix: collection routes", () => {
     ).toBe(403);
   });
 
-  it("a member cannot mutate the catalog (admin-only)", async () => {
-    expect((await listBaseImages(catalog("member"))).status).toBe(200);
+  it("a developer cannot mutate the catalog (admin-only)", async () => {
+    expect((await listBaseImages(catalog("developer"))).status).toBe(200);
     expect(
-      (await createBaseImage(catalog("member", "POST", { name: "x", image: "y" }))).status,
+      (await createBaseImage(catalog("developer", "POST", { name: "x", image: "y" }))).status,
     ).toBe(403);
   });
 });
@@ -126,7 +126,7 @@ describe("authorization matrix: item routes deny viewer and unauthenticated", ()
 
   itemRoutes.forEach((route, i) => {
     it(`${route.name}: viewer → 403, unauthenticated → 401`, async () => {
-      // A distinct owner per case so the shared member workspace quota (5) is
+      // A distinct owner per case so the shared developer workspace quota (5) is
       // never the thing that fails.
       const id = await createWorkspaceFor(`owner-${String(i)}`);
       expect((await route.call(id, "viewer")).status, "viewer must be forbidden").toBe(403);
