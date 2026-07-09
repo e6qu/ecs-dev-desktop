@@ -25,12 +25,15 @@ a real editor we owned (`monaco`) or reused a vendor-provided client surface.
 - Claude Code on the web was a hosted Anthropic cloud product at
   `claude.ai/code`. It ran code on Anthropic-managed infrastructure. Claude
   Remote Control let `claude.ai/code` attach to a local Claude Code process, but
-  the local CLI did not expose an EDD-hostable HTTP web UI command during local
-  verification.
+  local verification did not find an EDD-hostable standalone HTTP web UI command.
+  EDD therefore used Anthropic's own OpenVSCode extension UI and opened its
+  `claude-vscode.sidebar.open` command.
 - Codex `app-server` was the local protocol server used by rich clients.
   Official OpenAI docs described stdio, Unix-socket, and experimental WebSocket
   transports, plus `/readyz` and `/healthz`. Exposing a non-loopback
-  unauthenticated WebSocket was unsafe; EDD did not expose it directly.
+  unauthenticated WebSocket was unsafe; EDD did not expose it directly. EDD used
+  OpenAI's own OpenVSCode extension UI and opened its `chatgpt.openSidebar`
+  command.
 - opencode exposed a local browser UI with `opencode web`. Local verification of
   `opencode-ai@1.17.15` showed `--hostname`, `--port`, `--mdns`,
   `--mdns-domain`, `--cors`, and `--print-logs`, but no base-path flag. Its HTML

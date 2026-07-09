@@ -3457,3 +3457,16 @@ stdout/stderr on mismatches, so the next CI failure in that path would include
 the server-side reason instead of only assertion summaries. Focused verification
 passed with `pnpm --filter @edd/e2e lint` and `pnpm exec tsc -p
 packages/e2e/tsconfig.json --noEmit`; the package had no `build` script.
+
+**2026-07-09 — PR #212 deployed, but post-deploy smoke correctly blocked
+acceptance.** The release workflow for merge commit `af69bd829e6d` succeeded,
+production `/api/healthz` reported that SHA, ECS rolled the control plane and
+SSH gateway to revision `:37`, and the golden-images workflow pushed
+`omnibus:af69bd829e6d`. The authenticated deployed smoke then failed before
+reaching opencode. Its artifacts showed a real methodology bug: Codex was
+rendered through the OpenAI OpenVSCode extension webview, but the assertion
+waited for case-sensitive body text; Claude had passed on welcome-page
+walkthrough text rather than proving the Anthropic webview was open. The
+follow-up branch opened Claude via Anthropic's verified
+`claude-vscode.sidebar.open` command and made the smoke require the vendor
+extension tab plus webview iframe for both Claude and Codex.

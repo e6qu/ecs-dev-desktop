@@ -53,19 +53,17 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
-- **After the opencode branch merges, rebuild and smoke all five workspace
-  interfaces in production.** The branch added `opencode` via the real
-  `opencode web` process and kept Claude/Codex on the verified vendor
-  OpenVSCode extension UIs rather than EDD-authored wrappers. After merge, watch
-  PR #212 CI, then `release`, `golden-images`, and `post-deploy-smoke`;
-  confirm the enabled catalog image tag matches the merge SHA and screenshots
-  exist for OpenVSCode, Monaco, Claude, Codex, and opencode. Specifically verify
-  OpenVSCode does not render `Forbidden`, Monaco accepts typing after opening a
-  file, Claude opens the Anthropic extension UI, Codex opens the OpenAI
-  extension UI, and opencode loads through `/w/<id>/` without leaking a second
-  public endpoint. The PR #212 `e2e` rerun exposed and fixed one remaining
-  legacy harness miss: `user-journey.e2e.ts` now supplied the required
-  `EDD_CONNECTION_SECRET`.
+- **After this post-deploy-smoke fix merges, rerun release/golden-images/
+  post-deploy-smoke and inspect artifacts again.** PR #212 deployed and built
+  `omnibus:af69bd829e6d`, but `post-deploy-smoke` run `29005606380` failed in
+  Codex before it reached opencode, and its Claude assertion was too weak. The
+  current branch opened Claude through the verified Anthropic sidebar command
+  and made the smoke require vendor extension webview iframes for Claude and
+  Codex. After merge, confirm screenshots exist for OpenVSCode, Monaco, Claude,
+  Codex, and opencode; verify OpenVSCode does not render `Forbidden`, Monaco
+  accepts typing after opening a file, Claude shows the Anthropic webview, Codex
+  shows the OpenAI webview, and opencode loads through `/w/<id>/` without a
+  second public endpoint.
 
 - **Change Claude/Codex workspace modes only if a better verified vendor browser
   entrypoint exists.** Local verification on 2026-07-08 found Codex app-server
