@@ -68,6 +68,7 @@ const FAKE_EBS_ROLE = "arn:aws:iam::000000000000:role/ecsInfrastructureRole";
 // The golden image validates these at startup; the agent's heartbeats failing
 // (TEST-NET control plane) is exactly the "user went away" idle scenario.
 const UNREACHABLE_CP = "http://192.0.2.1:9";
+const CONNECTION_SECRET = "e2".repeat(32);
 const AGENT_SECRET = "f".repeat(64);
 // Backdated past DEFAULT_IDLE_THRESHOLD_MS (5 min) so the sweep must stop it.
 const STALE_BY_MS = 45 * 60 * 1000;
@@ -142,6 +143,7 @@ describe(
             assignPublicIp: true,
             controlPlaneUrl: UNREACHABLE_CP,
             agentSecret: AGENT_SECRET,
+            connectionSecret: CONNECTION_SECRET,
           },
         }),
         clock: systemClock,

@@ -21,6 +21,16 @@
   `CONNECTION_TOKEN` unless tokenless mode was explicitly selected, and opencode
   refused tokenless mode entirely.
 
+- **PR #212 e2e golden workspace tasks exited before readiness — FIXED in
+  current branch (2026-07-09).** Removing the random OpenVSCode token fallback
+  correctly made the entrypoint fail loudly without `CONNECTION_TOKEN`, but the
+  direct golden-image e2e launch paths and shared live ECS app harness still
+  launched tasks without a connection secret. The branch added explicit
+  `connectionSecret` values to those golden-image paths and made the real web
+  provider path throw immediately when `COMPUTE_PROVIDER=ecs` lacked
+  `EDD_AGENT_SECRET` or `EDD_CONNECTION_SECRET`, so missing deployment secrets
+  failed at control-plane construction instead of as opaque task exits.
+
 - **Golden image builds could be skipped after editor/runtime-only merges —
   FIXED in current branch (2026-07-08).** The asynchronous `golden-images`
   workflow still had `push.paths` filters, so a merge that changed app/editor

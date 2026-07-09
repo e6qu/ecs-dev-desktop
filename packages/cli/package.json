@@ -16,7 +16,7 @@
     "@edd/api-contracts": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.1.0",
+    "@types/node": "^26.1.1",
     "esbuild": "^0.28.1"
   }
 }

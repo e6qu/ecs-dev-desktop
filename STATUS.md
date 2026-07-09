@@ -32,6 +32,22 @@ in `packages/core`, `pnpm exec vitest run lib/workspace-proxy.test.ts` in
 infra/images/base/entrypoint.sh`, `pnpm --filter @edd/web build`, and lint for
 `@edd/web`, `@edd/core`, `@edd/control-plane`, and `@edd/db`.
 
+After PR #212's first CI pass, the `e2e` job failed because golden workspace
+tasks exited before readiness: the branch had correctly removed OpenVSCode's
+random token fallback, but several golden-image e2e launch paths still omitted
+the editor connection secret. The branch then wired explicit
+`connectionSecret` values through the direct golden-image e2e providers and the
+shared live ECS app harness, and the real web provider path failed immediately
+when `COMPUTE_PROVIDER=ecs` lacked `EDD_AGENT_SECRET` or
+`EDD_CONNECTION_SECRET`. Verification after that fix passed `pnpm build`,
+`pnpm lint`, `pnpm test` with loopback access, `pnpm check-deps` with registry
+access, `pnpm --filter @edd/compute-ecs test`, `pnpm --filter @edd/e2e lint`,
+`pnpm exec vitest run lib/control-plane.test.ts` in `apps/web` with loopback
+access, and `git diff --check`. A local `pnpm test:e2e:local` attempted the
+same Docker-backed tier as CI and built the fixed golden base image, but the
+machine had only 12 GiB free and Podman failed committing the omnibus image
+layer with `no space left on device` before tests started.
+
 **Last updated:** 2026-07-08. The current branch made the production smoke and
 workspace UI stricter after PR #210's merge/deploy exposed that green ECS/app
 health did not prove the expected workspace image or rendered editor behavior.

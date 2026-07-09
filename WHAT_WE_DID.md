@@ -3415,3 +3415,30 @@ opencode requests upstream; inject Basic auth derived from the workspace token;
 and rewrite opencode HTML/JS/CSS references back under `/w/<id>/`. The verified
 Claude/Codex/opencode harness facts and proxy contract were recorded in
 `docs/workspace-agent-harnesses.md`.
+
+**2026-07-09 — Fixed PR #212's e2e failure without restoring token
+fallbacks.** The first PR #212 CI pass failed only in the `e2e` job. The failure
+logs showed golden workspace tasks stopped before readiness with essential
+containers exiting; downstream user-journey and durability steps then observed
+workspaces stuck in `error` and 409s on snapshot/stop/connect. The root cause was
+the branch's intentional OpenVSCode fail-loud change exposing stale e2e launch
+configuration: several golden-image e2e providers and the shared live ECS app
+harness still omitted the editor connection secret, so the entrypoint had no
+`CONNECTION_TOKEN` and exited as designed.
+
+The fix kept the no-fallback architecture. Direct golden-image e2e launches and
+the shared live ECS harness now supplied explicit `connectionSecret` values, and
+the real web provider path threw immediately if `COMPUTE_PROVIDER=ecs` lacked
+`EDD_AGENT_SECRET` or `EDD_CONNECTION_SECRET`. The compute-provider comments and
+tests were updated to describe the current contract rather than the removed
+random-token behavior. `@types/node` was bumped to `26.1.1` because
+`check-deps` found it age-eligible.
+
+Verification passed with `pnpm build`, `pnpm lint`, `pnpm test` with loopback
+access, `pnpm check-deps` with registry access, `pnpm --filter @edd/compute-ecs
+test`, `pnpm --filter @edd/e2e lint`, the focused `apps/web` control-plane test,
+and `git diff --check`. The Docker-backed local `pnpm test:e2e:local` run built
+the fixed golden base image and verified `opencode`, `claude`, and `codex`
+binaries were present, but the local machine had only 12 GiB free and Podman
+failed committing the omnibus image layer with `no space left on device` before
+the e2e tests started; CI remained the full container-mode verification path.

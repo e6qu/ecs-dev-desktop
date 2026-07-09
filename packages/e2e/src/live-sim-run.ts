@@ -31,6 +31,7 @@ const app = await startLiveEcsApp({
   vpcCidr: "10.70.0.0/16",
   subnetCidr: "10.70.1.0/24",
   agentSecret: randomBytes(32).toString("hex"),
+  connectionSecret: randomBytes(32).toString("hex"),
 });
 
 // Create one workspace through the real API (real RunTask on the sim cluster) and

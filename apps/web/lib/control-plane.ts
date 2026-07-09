@@ -252,12 +252,25 @@ export function getLogSource(): CloudWatchLogSource | DerivedLogSource {
   return new DerivedLogSource({ audit: getAuditSource() });
 }
 
+export function realProviderSecrets(env: Record<string, string | undefined>): {
+  agentSecret: string;
+  connectionSecret: string;
+} {
+  const agentSecret = env[AGENT_SECRET_ENV];
+  const connectionSecret = env[CONNECTION_SECRET_ENV];
+  if (agentSecret === undefined || agentSecret.length === 0) {
+    throw new Error(`COMPUTE_PROVIDER=ecs requires ${AGENT_SECRET_ENV}`);
+  }
+  if (connectionSecret === undefined || connectionSecret.length === 0) {
+    throw new Error(`COMPUTE_PROVIDER=ecs requires ${CONNECTION_SECRET_ENV}`);
+  }
+  return { agentSecret, connectionSecret };
+}
+
 function buildRealProviders(): { storage: Ec2StorageProvider; compute: EcsComputeProvider } {
+  const { agentSecret, connectionSecret } = realProviderSecrets(process.env);
   const storage = Ec2StorageProvider.fromEnv();
-  const compute = EcsComputeProvider.fromEnv(
-    process.env[AGENT_SECRET_ENV],
-    process.env[CONNECTION_SECRET_ENV],
-  );
+  const compute = EcsComputeProvider.fromEnv(agentSecret, connectionSecret);
   return { storage, compute };
 }
 

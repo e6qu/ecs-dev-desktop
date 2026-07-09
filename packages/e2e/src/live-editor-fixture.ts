@@ -40,7 +40,7 @@ export async function startEditorApp(opts: {
     vpcCidr: opts.vpcCidr,
     subnetCidr: opts.subnetCidr,
     agentSecret: newSecret(),
-    extraEnv: { EDD_CONNECTION_SECRET: opts.connectionSecret },
+    connectionSecret: opts.connectionSecret,
     ...(opts.editor === undefined ? {} : { editor: opts.editor }),
   });
 }

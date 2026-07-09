@@ -29,6 +29,7 @@ process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
 const RUN_ID = randomUUID().slice(0, 8);
 const WORKSPACE_IMAGE = e2eWorkspaceImage();
 const AGENT_SECRET = "a1".repeat(32);
+const CONNECTION_SECRET = "a2".repeat(32);
 const OWNER = "race-user";
 const RACERS = 5;
 
@@ -74,6 +75,7 @@ describe(
         vpcCidr: "10.74.0.0/16",
         subnetCidr: "10.74.1.0/24",
         agentSecret: AGENT_SECRET,
+        connectionSecret: CONNECTION_SECRET,
       });
     });
 

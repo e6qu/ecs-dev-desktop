@@ -44,6 +44,8 @@ export interface LiveEcsAppOptions {
   subnetCidr: string;
   /** 32-byte hex agent secret for the in-workspace idle-agent HMAC path. */
   agentSecret: string;
+  /** 32-byte hex secret for deriving per-workspace editor connection tokens. */
+  connectionSecret: string;
   /** Extra env merged into the web app (e.g. EDD_HEARTBEAT_INTERVAL_S). */
   extraEnv?: Record<string, string>;
   /** Editor the seeded catalog entry serves (default OpenVSCode) — drives EDD_EDITOR_MODE. */
@@ -101,6 +103,7 @@ export async function startLiveEcsApp(opts: LiveEcsAppOptions): Promise<LiveEcsA
     ECS_LOG_GROUP_WORKSPACES: logGroup,
     CONTROL_PLANE_URL: `http://${hostAlias}:${String(port)}`,
     EDD_AGENT_SECRET: opts.agentSecret,
+    EDD_CONNECTION_SECRET: opts.connectionSecret,
     ...imageSourceEnv(`edd-live-${opts.runId}`, "omnibus"),
     ...opts.extraEnv,
   }));

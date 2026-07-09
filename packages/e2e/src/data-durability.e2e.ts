@@ -55,6 +55,7 @@ const LOG_GROUP = `/edd/e2e/durability-${RUN_ID}`;
 const WORKSPACE_IMAGE = e2eWorkspaceImage();
 const EBS_ROLE = e2eEbsRoleArn();
 const AGENT_SECRET = "d2".repeat(32);
+const CONNECTION_SECRET = "d3".repeat(32);
 const SUBNET_CIDR_RE = /^10\.76\.1\.\d+$/;
 
 const USER_KEY = join(
@@ -113,6 +114,7 @@ describe(
             ebsRoleArn: EBS_ROLE,
             controlPlaneUrl: stub.controlPlaneUrl,
             agentSecret: AGENT_SECRET,
+            connectionSecret: CONNECTION_SECRET,
             logGroupName: LOG_GROUP,
           },
         }),
