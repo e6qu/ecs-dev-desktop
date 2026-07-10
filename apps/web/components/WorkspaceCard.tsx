@@ -42,8 +42,7 @@ function snapshotLabel(at: string | undefined): string {
 const EDITOR_LABEL: Record<string, string> = {
   openvscode: "VS Code",
   monaco: "Monaco",
-  claude: "Claude Code",
-  codex: "Codex",
+  terminal: "Terminal",
   opencode: "opencode",
 };
 

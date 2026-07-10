@@ -102,6 +102,7 @@ const editor = monaco.editor.create(el("editor"), {
 
 let currentPath: string | null = null;
 let currentTreeSignature = "";
+let terminalOnly = false;
 
 initSpectateCapture({ editor, getCurrentPath: () => currentPath });
 
@@ -151,6 +152,7 @@ async function save(): Promise<void> {
 }
 
 async function loadTree(opts: { force?: boolean; openPath?: string } = {}): Promise<void> {
+  if (terminalOnly) return;
   const filesEl = el("files");
   const res = await fetch("api/tree");
   if (!res.ok) {
@@ -430,6 +432,21 @@ window.addEventListener("keydown", (e: KeyboardEvent) => {
 // The terminal starts open with one tab, matching a normal dev environment.
 setTerminalPanelVisible(true);
 
+async function loadConfig(): Promise<void> {
+  const res = await fetch("api/config");
+  if (!res.ok) throw new Error(`config load failed: ${String(res.status)}`);
+  const raw: unknown = await res.json();
+  terminalOnly =
+    typeof raw === "object" && raw !== null && "terminalOnly" in raw && raw.terminalOnly === true;
+  document.body.classList.toggle("terminal-only", terminalOnly);
+  if (terminalOnly) {
+    document.title = "edd · Terminal";
+    el("current-file").textContent = "Terminal";
+    setTerminalMaximized(true);
+  }
+}
+
+await loadConfig();
 void loadTree({ force: true });
 window.setInterval(() => {
   void loadTree();

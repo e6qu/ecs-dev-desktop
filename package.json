@@ -16,6 +16,7 @@
     "test:e2e": "turbo run test:e2e",
     "test:e2e:local": "sh scripts/test-e2e.sh",
     "check-deps": "bash scripts/check-latest-deps.sh",
+    "check-deps:node": "node scripts/check-node-deps.mjs",
     "dead-code": "knip --no-config-hints",
     "cpd": "jscpd --no-tips apps packages services",
     "test:fuzz": "echo \"For deep fuzzing, edit fuzz-setup.ts interruptAfterTimeLimit to 60000 and run: pnpm turbo run test --force\" && exit 0"
@@ -25,7 +26,7 @@
     "@types/node": "^26.1.1",
     "eslint": "^10.6.0",
     "eslint-config-prettier": "^10.1.8",
-    "jscpd": "^5.0.11",
+    "jscpd": "^5.0.12",
     "knip": "^6.25.0",
     "turbo": "^2.10.4",
     "typescript": "^6.0.3",

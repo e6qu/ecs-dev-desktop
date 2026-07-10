@@ -12,7 +12,7 @@ export const TESTID = {
   /** Workspace card on the portal grid. Attrs: `data-image`, `data-status` (state). */
   workspaceCard: "workspace-card",
   workspaceDegraded: "workspace-degraded",
-  /** Editor-type badge on the card. Attr: `data-editor` (openvscode/monaco/claude/codex/opencode). */
+  /** Editor-type badge on the card. Attr: `data-editor` (openvscode/monaco/terminal/opencode). */
   workspaceEditorBadge: "workspace-editor-badge",
   /** "viewable" badge shown when spectate sharing is enabled. */
   workspaceViewableBadge: "workspace-viewable-badge",

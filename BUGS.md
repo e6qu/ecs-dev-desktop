@@ -4,6 +4,53 @@
 
 ## Open
 
+- **Claude/Codex workspace modes lacked verified first-party local browser UI
+  entrypoints — FIXED in current branch (2026-07-10).** Re-verification intentionally stopped treating
+  OpenVSCode extensions, Monaco, Remote Control, Desktop, Platform, or hosted web
+  products as acceptable substitutes. Claude Code 2.1.202 official/local checks
+  showed CLI, terminal agent view, daemon, Remote Control, gateway, and hosted
+  cloud/web-session commands, but no `claude web`/`claude serve` local HTTP UI
+  command and no separate local static web bundle. Codex 0.144.0 official/local
+  checks showed `codex app-server` as the JSON-RPC protocol server for rich
+  clients, with stdio/Unix/WebSocket transports and HTTP health probes only; a
+  local browser screenshot of the app-server root showed it rejected normal HTTP
+  navigation because the WebSocket `Upgrade` header was absent. The branch
+  removed `claude` and `codex` as workspace editor kinds from the core contract,
+  API contract, DynamoDB entity validation, admin/session UI, image entrypoint,
+  proxy token mapping, and deployed smoke checks. A new `terminal` workspace
+  type used EDD's multi-tab terminal surface and failed loudly at startup unless
+  both `claude` and `codex` CLIs were present on PATH.
+
+- **Local Docker/Podman breakage blocked simulator-backed Playwright —
+  FIXED in current branch (2026-07-10).** The previous branch could not run
+  `pnpm --filter @edd/web test:pw` because the CI-required sockerless AWS
+  simulator at `127.0.0.1:4566` was unavailable and the recreated Podman machine
+  did not expose SSH/API to gvproxy. The local host was repaired to use Podman as
+  the Docker-compatible runtime, Docker Compose was installed, the sockerless AWS
+  simulator was built and started, and the Playwright suite passed 19/19 against
+  it. No Playwright assertion result was claimed until the simulator was actually
+  running.
+
+- **Runtime AWS SDK clients used by the web server were declared as dev-only —
+  FIXED in current branch (2026-07-10).** After `node_modules` was recreated,
+  `pnpm --filter web test:pw` failed before assertions with
+  `Module not found: Can't resolve '@aws-sdk/client-sesv2'` from
+  `apps/web/lib/invitation-mailer.ts`. Source inspection showed server runtime
+  code also imported CodeBuild, ECR, CloudWatch Logs, and Pricing clients. The
+  branch moved those runtime imports into `apps/web` `dependencies` while
+  leaving test-only AWS clients in `devDependencies`, and the web build,
+  unit tests, and Playwright suite passed afterward.
+
+- **Dependency freshness tried to force TypeScript 7 despite the active
+  typescript-eslint peer range — FIXED in current branch (2026-07-10).** The
+  age-eligible dependency sweep reported TypeScript `7.0.2`, but
+  `typescript-eslint@8.63.0` declared `typescript >=4.8.4 <6.1.0`, including on
+  the latest/canary metadata inspected before the fix. The branch retained
+  TypeScript `6.0.3`, removed TypeScript 7 lockfile artifacts, and changed
+  `check-deps` to fail loudly for every stale JS dependency except a verified
+  TypeScript latest that is outside the installed `typescript-eslint` peer range
+  while the current TypeScript is inside it.
+
 - **PR #215 golden-images failed on GitHub runner disk during `--load` —
   FIXED in current branch (2026-07-09).** After merge commit `3886482cd83f`
   deployed, the separate `golden-images` workflow failed while exporting/loading

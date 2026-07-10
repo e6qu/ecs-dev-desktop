@@ -29,7 +29,7 @@ export function makeWorkspaceEntity(client: DynamoDBClient, table = TABLE) {
         // Which editor this workspace serves (drives EDD_EDITOR_MODE). Optional: records
         // predating the field are treated as the default (OpenVSCode).
         editor: {
-          type: ["openvscode", "monaco", "claude", "codex", "opencode"] as const,
+          type: ["openvscode", "monaco", "terminal", "opencode"] as const,
           required: false,
         },
         resources: {
@@ -132,7 +132,7 @@ export function makeBaseImageEntity(client: DynamoDBClient, table = TABLE) {
         // Which editor workspaces from this image serve. Optional: records predating the
         // field are treated as the default (OpenVSCode).
         editor: {
-          type: ["openvscode", "monaco", "claude", "codex", "opencode"] as const,
+          type: ["openvscode", "monaco", "terminal", "opencode"] as const,
           required: false,
         },
         createdAt: { type: "string", required: true },

@@ -55,6 +55,23 @@ describe("editor server auth", () => {
 });
 
 describe("editor server file API", () => {
+  it("reports whether the SPA should render terminal-only mode", async () => {
+    const normal: unknown = await (
+      await fetch(`${origin}${BASE}api/config`, { headers: cookie })
+    ).json();
+    expect(normal).toEqual({ terminalOnly: false });
+
+    await closeServer(server);
+    server = createEditorServer({ root, spaDir, basePath: BASE, token: TOKEN, terminalOnly: true });
+    const port = await listenOnLoopback(server);
+    origin = `http://127.0.0.1:${String(port)}`;
+
+    const terminal: unknown = await (
+      await fetch(`${origin}${BASE}api/config`, { headers: cookie })
+    ).json();
+    expect(terminal).toEqual({ terminalOnly: true });
+  });
+
   it("lists, reads, and writes files (round-trip), with the cookie", async () => {
     const tree: unknown = await (
       await fetch(`${origin}${BASE}api/tree`, { headers: cookie })

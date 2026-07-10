@@ -131,7 +131,7 @@ chown workspace:workspace "${settings_file}" 2>/dev/null || true
 chmod 0644 "${settings_file}" 2>/dev/null || true
 
 # (Terminal-open-on-startup, the "EDD home" portal link, the visible open-terminal
-# keybinding control, and the one-time claude/codex remote-OAuth tip all live in the
+# keybinding control, and the one-time CLI remote-OAuth tip all live in the
 # first-party edd-workspace-ui extension, baked into the built-in extensions dir at
 # image build — an extension opens a real interactive shell, unlike the earlier
 # folder-open-task approach, which only surfaced a read-only task-output panel.)
@@ -143,8 +143,7 @@ chmod 0644 "${settings_file}" 2>/dev/null || true
 # Editor selection. The control plane sets EDD_EDITOR_MODE from the workspace's editor choice
 # (a per-session pick at create, else its base-image catalog entry):
 #   monaco         -> the first-party Monaco editor server;
-#   claude         -> OpenVSCode Server with Anthropic's Claude Code extension UI.
-#   codex          -> OpenVSCode Server with OpenAI's Codex extension UI.
+#   terminal       -> the first-party multi-tab terminal server with the agent CLIs on PATH.
 #   opencode       -> opencode's local web client (`opencode web`).
 #   openvscode/unset -> OpenVSCode Server, the product default.
 #   anything else    -> fail loudly; unknown editor values are invalid config.
@@ -156,27 +155,16 @@ case "${EDD_EDITOR_MODE:-openvscode}" in
   monaco)
     exec gosu workspace node /opt/edd-editor-monaco/server.js
     ;;
-  claude)
+  terminal)
     command -v claude >/dev/null 2>&1 || {
-      echo "EDD_EDITOR_MODE=claude requires the Claude Code CLI on PATH" >&2
+      echo "EDD_EDITOR_MODE=terminal requires the Claude Code CLI on PATH" >&2
       exit 64
     }
-    set -- /opt/openvscode-server/extensions/anthropic.claude-code-*/package.json
-    if [ ! -f "$1" ]; then
-      echo "EDD_EDITOR_MODE=claude requires the Anthropic Claude Code OpenVSCode extension" >&2
-      exit 64
-    fi
-    ;;
-  codex)
     command -v codex >/dev/null 2>&1 || {
-      echo "EDD_EDITOR_MODE=codex requires the Codex CLI on PATH" >&2
+      echo "EDD_EDITOR_MODE=terminal requires the Codex CLI on PATH" >&2
       exit 64
     }
-    set -- /opt/openvscode-server/extensions/openai.chatgpt-*/package.json
-    if [ ! -f "$1" ]; then
-      echo "EDD_EDITOR_MODE=codex requires the OpenAI Codex OpenVSCode extension" >&2
-      exit 64
-    fi
+    exec gosu workspace env EDD_TERMINAL_ONLY=1 node /opt/edd-editor-monaco/server.js
     ;;
   opencode)
     command -v opencode >/dev/null 2>&1 || {

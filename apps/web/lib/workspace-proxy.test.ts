@@ -308,34 +308,30 @@ describe("editorTokenRedirect (editor connection-token handoff)", () => {
     expect(out).toBe(`/w/${WS}/?tkn=${expectedTkn}`);
   });
 
-  it("recognizes the OpenVSCode token cookie for Claude and Codex workspaces", () => {
-    for (const editor of ["claude", "codex"] as const) {
-      const out = editorTokenRedirect(
-        {
-          method: "GET",
-          url: `/w/${WS}/`,
-          headers: docHeaders({ cookie: `vscode-tkn=${expectedTkn}` }),
-        },
-        WS,
-        editor,
-      );
-      expect(out).toBeUndefined();
-    }
+  it("recognizes the Monaco token cookie for Terminal workspaces", () => {
+    const out = editorTokenRedirect(
+      {
+        method: "GET",
+        url: `/w/${WS}/`,
+        headers: docHeaders({ cookie: `edd-editor-token=${expectedTkn}` }),
+      },
+      WS,
+      "terminal",
+    );
+    expect(out).toBeUndefined();
   });
 
-  it("does not let a Monaco cookie suppress Claude/Codex token injection", () => {
-    for (const editor of ["claude", "codex"] as const) {
-      const out = editorTokenRedirect(
-        {
-          method: "GET",
-          url: `/w/${WS}/`,
-          headers: docHeaders({ cookie: `edd-editor-token=${expectedTkn}` }),
-        },
-        WS,
-        editor,
-      );
-      expect(out).toBe(`/w/${WS}/?tkn=${expectedTkn}`);
-    }
+  it("does not let an OpenVSCode cookie suppress Terminal token injection", () => {
+    const out = editorTokenRedirect(
+      {
+        method: "GET",
+        url: `/w/${WS}/`,
+        headers: docHeaders({ cookie: `vscode-tkn=${expectedTkn}` }),
+      },
+      WS,
+      "terminal",
+    );
+    expect(out).toBe(`/w/${WS}/?tkn=${expectedTkn}`);
   });
 
   it("does not let a stale removed vendor cookie suppress OpenVSCode token injection", () => {

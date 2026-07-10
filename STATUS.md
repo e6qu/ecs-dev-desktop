@@ -2,6 +2,87 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
+**Last updated:** 2026-07-10. After PR #216 merged as
+`4615ba2` on `origin/main`, a fresh follow-up branch
+`chore/reconcile-local-docker-state` was created from current `origin/main`; no
+open ecs-dev-desktop PR existed at the start of the branch. The stale local
+`main` work and old continuity edits were preserved in a stash rather than
+rebasing them over merged history.
+
+The branch rechecked the workspace agent-harness assumptions from installed
+local binaries, official docs/source, local browser screenshots, and
+community/news searches. `opencode web` was verified as a real local browser UI:
+it ran on `127.0.0.1:45678` with `OPENCODE_SERVER_PASSWORD` and Playwright
+captured `/private/tmp/opencode-local-web.png`. Codex `app-server` was verified
+as a local JSON-RPC/WebSocket protocol server rather than an HTTP web UI:
+`codex app-server --listen ws://127.0.0.1:45679` exposed only WebSocket plus
+`/readyz` and `/healthz`, and a browser screenshot of the root showed
+`Connection header did not include 'upgrade'`. Claude Code 2.1.202 was verified
+to expose local CLI/agent-view/daemon/remote-control/gateway/cloud commands, but
+no `claude web` or `claude serve` local browser UI command and no separate static
+web-app bundle were found locally or in the official CLI/agent-view docs.
+`docs/workspace-agent-harnesses.md` was updated to record that Claude/Codex
+local-browser workspace modes stayed blocked until the exact first-party local
+web command/client is identified; OpenVSCode, Monaco, Remote Control, Desktop,
+Platform, and hosted web products were not acceptable substitutes.
+Remote Control was then rechecked as a separate explicit option. Official
+Anthropic docs showed Claude Remote Control used `claude.ai/code` or the Claude
+mobile app to drive a locally running Claude Code process over outbound HTTPS,
+with no inbound local port, and required claude.ai login/subscription plus any
+organization enablement. Local testing confirmed this workstation was not logged
+in: `claude remote-control --help` failed with "You must be logged in to use
+Remote Control" and `claude auth status --text` reported not logged in. Codex
+Remote Control was also confirmed as a first-party command for starting/pairing
+the app-server daemon, but official docs stated it was not a replacement for
+`codex app-server --listen` when building a local protocol client.
+
+The product model was then simplified: separate Claude Code and Codex workspace
+types were removed instead of advertising unverified local web UI modes.
+`EditorKind`/API contracts/DynamoDB entity validation/admin and session UI now
+accepted `openvscode`, `monaco`, `terminal`, and `opencode` only; old `claude`
+and `codex` editor values failed loudly as invalid config/persisted state. The
+new `terminal` workspace used EDD's first-party multi-tab terminal server under
+the normal `/w/<workspace-id>/` proxy, hid the Monaco file/editor chrome via a
+token-gated `api/config` contract, and required both `claude` and `codex` CLIs
+on PATH before startup. The deployed screenshot smoke now created and checked a
+Terminal workspace instead of Claude/Codex extension workspaces.
+
+The branch completed the local Docker/Podman recovery that had previously
+blocked simulator-backed Playwright verification. The host used Podman as the
+Docker-compatible runtime, with the default machine recreated under `applehv`,
+rootful, 4 vCPU, 8 GiB RAM, and 100 GiB disk; `/var/run/docker.sock` pointed at
+the Podman API socket, `docker` CLI compatibility worked, and Docker Compose
+5.3.1 was installed. The sockerless AWS simulator was then built and started
+through `docker compose -f docker-compose.tier2.yml up -d --build --wait
+sockerless-aws`, and `pnpm --filter web test:pw` passed 19/19 locally against
+that simulator.
+
+The branch also fixed two dependency correctness issues found during that
+verification. Runtime AWS SDK clients imported by the Next.js server code
+(`CloudWatch Logs`, `CodeBuild`, `ECR`, `Pricing`, and `SESv2`) were moved from
+`apps/web` dev dependencies into runtime dependencies, fixing the production
+build/runtime class of `Module not found: Can't resolve
+'@aws-sdk/client-sesv2'`. Age-eligible dependency drift was refreshed
+(`@aws-sdk/*` to `3.1082.0`, `fast-check` to `4.9.0`, `jscpd` to `5.0.12`,
+and `@types/node` to `26.1.1`) while TypeScript stayed on `6.0.3` because the
+installed `typescript-eslint@8.63.0` officially declared a TypeScript peer range
+of `>=4.8.4 <6.1.0`. The `check-deps` gate was updated to remain fail-loud for
+real stale dependencies while accepting only this verified peer-blocked
+TypeScript case.
+
+Verification passed with `CI=true pnpm install --frozen-lockfile`,
+`shellcheck scripts/check-latest-deps.sh`, `bash -n
+scripts/check-latest-deps.sh`, `zsh -n scripts/check-latest-deps.sh`,
+`node scripts/check-node-deps.mjs`, `pnpm check-deps`, `pnpm lint`, `pnpm build`,
+`pnpm test`, `pnpm --filter @edd/editor-monaco test -- --runInBand` with
+loopback access, `pnpm --filter @edd/editor-monaco build`, `pnpm --filter
+@edd/editor-monaco lint`, `pnpm --filter web test:pw`, `sh -n
+infra/images/base/entrypoint.sh`, `sh -n infra/images/base/smoke.sh`, and `git
+diff --check`. The first frozen install and dependency checks failed under
+sandboxed DNS to npm/Terraform registries and passed with network access. The
+first broad test run failed only because the sandbox denied `listen 127.0.0.1`
+for token-gated editor server tests; the same suite passed with loopback access.
+
 **Last updated:** 2026-07-09. After PR #215 merged as
 `3886482cd83fcca8c62a5f9292f31c99654542e2`, the `release` workflow completed
 successfully and production `/api/healthz` reported `deploy.sha=3886482cd83f`;

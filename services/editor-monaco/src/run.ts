@@ -21,9 +21,10 @@ const token =
 // The SPA is bundled next to this server (dist/spa) at image build.
 const spaDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "spa");
 
-// Agent-first editor modes (EDD_EDITOR_MODE=claude|codex): the entrypoint sets
-// EDD_TERMINAL_COMMAND so every terminal boots straight into the agent CLI.
+// Optional command override for specialized terminal tabs; the Terminal workspace
+// itself uses the user's normal shell with the agent CLIs on PATH.
 const terminalCommand = process.env.EDD_TERMINAL_COMMAND;
+const terminalOnly = process.env.EDD_TERMINAL_ONLY === "1";
 
 const server = createEditorServer({
   root,
@@ -31,8 +32,10 @@ const server = createEditorServer({
   spaDir,
   ...(token === undefined || token === "" ? {} : { token }),
   ...(terminalCommand === undefined || terminalCommand === "" ? {} : { terminalCommand }),
+  ...(terminalOnly ? { terminalOnly } : {}),
 });
 
 server.listen(port, () => {
-  process.stdout.write(`edd: Monaco editor listening on :${String(port)}${basePath}\n`);
+  const label = terminalOnly ? "Terminal workspace" : "Monaco editor";
+  process.stdout.write(`edd: ${label} listening on :${String(port)}${basePath}\n`);
 });

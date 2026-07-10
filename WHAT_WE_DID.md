@@ -169,6 +169,24 @@
   workspace creation/opening for all four interface modes still needed live
   browser verification.
 
+- **2026-07-10** — **The Claude/Codex/opencode local-web assumptions were
+  re-audited from evidence.** The project stopped treating OpenVSCode extension
+  UIs, Monaco, Remote Control, Desktop, Platform, or hosted web products as
+  acceptable substitutes for a selected "local web UI" workspace mode.
+  `opencode web` was verified from official docs/source and a local Playwright
+  screenshot at `/private/tmp/opencode-local-web.png`: it started a local
+  browser UI protected by `OPENCODE_SERVER_PASSWORD`. Codex 0.144.0
+  `app-server` was verified from official OpenAI source/manual, local startup,
+  and `/private/tmp/codex-app-server-root.png` as a JSON-RPC/WebSocket protocol
+  server with health probes, not an HTTP web UI. Claude Code 2.1.202 was checked
+  through installed CLI help, `claude agents --json --all`, `claude daemon
+status`, `claude web --help`, `claude serve --help`, the installed version
+  tree, and official CLI/agent-view docs; no local browser UI command or static
+  web bundle was found. `docs/workspace-agent-harnesses.md` was updated so
+  Claude/Codex workspace modes stayed blocked/fail-loud until the exact
+  first-party local browser command/client bundle was identified and
+  screenshot-verified locally.
+
 - **2026-06-04** — **Error channel reaches the UI.** The typed-error work stopped at the
   wire: the server returns `{ error: <message> }` with the right status, but `@edd/api-client`
   threw `Error("POST … failed: 409")` and discarded the body, so the portal showed a bare
@@ -223,6 +241,26 @@ Error`, so the portal's existing `e.message` shows it. api-client 4 tests; build
   no longer altered page/card layout, and deleted-workspace snapshot behavior was
   pinned so terminated tombstones were neither explicit nor scheduled snapshot
   targets.
+
+- **2026-07-10** — **Local Docker recovery unblocked simulator Playwright and
+  dependency drift was reconciled.** After PR #216 merged, the local worktree was
+  reset onto current `origin/main` on `chore/reconcile-local-docker-state` and
+  stale pre-merge local edits were stashed. The host Docker-compatible runtime was
+  repaired around Podman, Docker Compose 5.3.1 was installed, and the sockerless
+  AWS simulator was built and started through `docker-compose.tier2.yml`.
+  `pnpm --filter web test:pw` then passed 19/19 locally, replacing the earlier
+  "simulator unavailable" non-result with a real browser assertion result.
+
+  The same run found a packaging bug after `node_modules` was recreated:
+  server-side Next.js code imported `@aws-sdk/client-sesv2` and other AWS runtime
+  clients while those packages were declared only as dev dependencies. The branch
+  moved the runtime AWS SDK clients into `apps/web` dependencies, refreshed
+  age-eligible package drift, and kept TypeScript on `6.0.3` because
+  `typescript-eslint@8.63.0` declared `typescript >=4.8.4 <6.1.0`. `check-deps`
+  was made peer-aware for that single verified TypeScript case while continuing
+  to fail loudly for any other stale JS dependency. Verification passed with the
+  frozen install, dependency gate, shell checks, lint, build, unit tests,
+  Playwright, and whitespace checks.
 
 - **2026-07-07** — **GitHub Actions → AWS release bootstrap shipped.** After PR #200
   merged, the release workflow failed loudly at AWS authentication because no
@@ -3550,3 +3588,20 @@ focused web/core/control-plane test/lint/build commands, `shellcheck`, `sh -n`,
 remained blocked before assertions because the required sockerless AWS simulator
 was absent and a freshly recreated Podman vfkit VM never exposed SSH/API to
 gvproxy (`no route to host`).
+
+**2026-07-10 — Replaced Claude/Codex workspace types with a generic Terminal
+workspace.** After rechecking the installed CLIs, official docs/source, and local
+browser screenshots, the branch stopped modeling Claude Code and Codex as
+separate workspace interface types because neither had a verified first-party
+EDD-hostable local browser UI. The accepted workspace kinds became OpenVSCode,
+Monaco, Terminal, and opencode. `claude` and `codex` editor values were removed
+from the core/API/DynamoDB contracts, UI selectors, proxy token mapping, image
+entrypoint, and deployed smoke scripts, so old values failed loudly instead of
+routing to an OpenVSCode or Monaco substitute. The new Terminal workspace reused
+the first-party multi-tab terminal server under `/w/<workspace-id>/`, added a
+token-gated `api/config` mode flag, hid the Monaco file/editor chrome in that
+mode, and required both `claude` and `codex` CLIs on PATH before startup.
+Verification passed with full lint/build/test, focused editor-monaco
+test/build/lint, shell syntax checks for the image entrypoint/smoke script, and
+`git diff --check`; the full test suite required loopback access for the
+editor-monaco HTTP/WebSocket server tests.
