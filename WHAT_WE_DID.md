@@ -187,6 +187,18 @@ status`, `claude web --help`, `claude serve --help`, the installed version
   first-party local browser command/client bundle was identified and
   screenshot-verified locally.
 
+- **2026-07-10** — **PR #217 merged but release failed before deployment.** The
+  merge commit `b95844c334e7453acb2f21b5e7f6ccb584420c8f` triggered `release`
+  and `golden-images`, but `release` failed in `Build & push images` before ECS
+  deployment. Production still reported `deploy.sha=3886482cd83f` and
+  `/api/readyz` was ready. The release log showed the new direct BuildKit push
+  mode had produced `edd-prod/control-plane:b95844c334e7-amd64` as a manifest
+  list, then `docker manifest create` failed because it expected per-arch image
+  manifests. The follow-up branch changed the direct-push manifest publication
+  path to `docker buildx imagetools create` and kept the existing local-load
+  manifest path unchanged. The branch also refreshed newly age-eligible
+  `vite`/AWS SDK dependencies after `check-deps` caught them on PR #218.
+
 - **2026-06-04** — **Error channel reaches the UI.** The typed-error work stopped at the
   wire: the server returns `{ error: <message> }` with the right status, but `@edd/api-client`
   threw `Error("POST … failed: 409")` and discarded the body, so the portal showed a bare

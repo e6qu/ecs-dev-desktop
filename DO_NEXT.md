@@ -53,6 +53,14 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
+- **After this release-manifest fix merges, rerun `release` and confirm actual
+  deployment.** PR #217's post-merge release failed before deployment because
+  the direct-push BuildKit path still used `docker manifest create` against a
+  pushed `-amd64` manifest list. After the fix merges, verify the release
+  publishes control-plane and ssh-gateway tags, deploys ECS, and production
+  `/api/healthz` reports the new merge SHA rather than the currently deployed
+  `3886482cd83f`.
+
 - **After this follow-up branch merges, rerun release, golden-images, and
   post-deploy-smoke and inspect artifacts again.** Confirm the `golden-images`
   workflow uses direct BuildKit push and publishes
