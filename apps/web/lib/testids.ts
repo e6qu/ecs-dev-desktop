@@ -9,6 +9,8 @@
  * compile error in the component and the test at once.
  */
 export const TESTID = {
+  /** Topbar reload control shown only after the control-plane connection is lost. */
+  connectionRefresh: "connection-refresh",
   /** Workspace card on the portal grid. Attrs: `data-image`, `data-status` (state). */
   workspaceCard: "workspace-card",
   workspaceDegraded: "workspace-degraded",

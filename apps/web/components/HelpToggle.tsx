@@ -2,10 +2,11 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 
 import { findHelp } from "../lib/help-content";
 import { TESTID } from "../lib/testids";
+import { Modal } from "./Modal";
 
 /**
  * A toggleable help overlay rendered from the topbar. Shows a circled-i (ⓘ) icon
@@ -21,28 +22,9 @@ export function HelpToggle() {
   const toggle = useCallback(() => {
     setOpen((v) => !v);
   }, []);
-
-  useEffect(() => {
-    if (!open) return;
-    window.dispatchEvent(new CustomEvent("edd:modal-open", { detail: modalId }));
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [modalId, open]);
-
-  useEffect(() => {
-    const onModalOpen = (event: Event) => {
-      if (!(event instanceof CustomEvent) || event.detail !== modalId) setOpen(false);
-    };
-    window.addEventListener("edd:modal-open", onModalOpen);
-    return () => {
-      window.removeEventListener("edd:modal-open", onModalOpen);
-    };
-  }, [modalId]);
+  const close = useCallback(() => {
+    setOpen(false);
+  }, []);
 
   if (content === null) return null;
 
@@ -62,38 +44,24 @@ export function HelpToggle() {
         <span aria-hidden="true">ⓘ</span>
       </button>
       {open && (
-        <div
-          className="help-overlay"
-          role="presentation"
-          onClick={() => {
-            setOpen(false);
-          }}
+        <Modal
+          modalId={modalId}
+          panelId="help-panel"
+          ariaLabel="Help for this page"
+          testId={TESTID.helpPanel}
+          onClose={close}
         >
-          <section
-            id="help-panel"
-            className="help-panel"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Help for this page"
-            data-testid={TESTID.helpPanel}
-            onClick={(e) => {
-              e.stopPropagation();
-            }}
+          <button
+            type="button"
+            className="help-panel-close"
+            aria-label="Close help"
+            data-testid={TESTID.helpPanelClose}
+            onClick={close}
           >
-            <button
-              type="button"
-              className="help-panel-close"
-              aria-label="Close help"
-              data-testid={TESTID.helpPanelClose}
-              onClick={() => {
-                setOpen(false);
-              }}
-            >
-              <span aria-hidden="true">×</span>
-            </button>
-            <div className="help-panel-inner">{content}</div>
-          </section>
-        </div>
+            <span aria-hidden="true">×</span>
+          </button>
+          <div className="help-panel-inner">{content}</div>
+        </Modal>
       )}
     </>
   );

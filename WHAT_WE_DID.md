@@ -3730,8 +3730,8 @@ to click the actual File menu, and required Terminal workspace checks to prove
 default tab, command execution, new tab, tab switching, tab close, and closed-tab
 cleanup.
 
-The implementation forced OpenVSCode's `window.menuBarVisibility` to `classic`
-on every workspace boot, injected a fixed top-level `EDD home` link into
+The initial implementation attempted to force OpenVSCode's
+`window.menuBarVisibility` to `classic` in remote workspace settings, injected a fixed top-level `EDD home` link into
 OpenVSCode and opencode HTML through the in-app proxy, kept Monaco/Terminal's
 topbar return link, and strengthened deployed smoke to click the return path for
 all workspace types. The smoke also clicked the real OpenVSCode File menu and
@@ -3747,3 +3747,27 @@ mode was fixed anyway: PTY startup failure left a visible failed terminal tab
 with the error text instead of silently removing all tabs and leaving a blank
 terminal surface; the screenshot was inspected at
 `/tmp/edd-terminal-local-visible-failure.png`.
+
+**2026-07-10 — Fixed the non-flaky OpenVSCode CI failure, stale cost schema,
+modal stacking, and disconnected UX in PR #220.** The failing e2e was reproduced
+against the local golden image. Source inspection showed OpenVSCode window
+settings lived in browser configuration, while the entrypoint wrote remote user
+settings; `classic` was also fullscreen-sensitive. The image added an
+exact-match, version-pinned patch to OpenVSCode's supported workbench
+`configurationDefaults` bootstrap with menu mode `visible`. Investigation also
+proved the unpacked EDD extension was absent from OpenVSCode's generated built-in
+registry; the entrypoint copied it into the runtime extension scan path. The real
+browser proof clicked File, asserted real file actions, compiled and ran a Go
+binary in the integrated terminal, and produced inspected screenshots. The noisy
+Semgrep UI extension was removed after its boot-time remote-config error appeared
+in the screenshot; the Semgrep CLI remained installed.
+
+The production Costs `sizing.vcpu=undefined` failure was traced to persisted
+cost-rollup v1 rows created before sizing fields were added. The ElectroDB entity
+moved to v2 and a DynamoDB integration test proved v1 rows did not enter v2
+queries. Help and workspace-info overlays moved through a shared body portal so
+card/header stacking contexts could not cover them. The root shell gained a
+confirmed-disconnect health probe, topbar refresh action, and automatic recovery
+refresh. Playwright exercised help/workspace modal layering, one-modal-at-a-time,
+offline/recovery, and workspace lifecycle convergence. `AGENTS.md` and
+`TESTING.md` made automatic no-hard-refresh convergence mandatory.

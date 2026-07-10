@@ -3,6 +3,7 @@
   "ignore": [
     "third_party/**",
     "infra/images/base/edd-ui-extension/**",
+    "infra/images/base/patch-openvscode.mjs",
     "infra/images/base/vendor-harness-server.js"
   ],
   "ignoreBinaries": ["ssh-keygen"],

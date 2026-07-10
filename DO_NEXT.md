@@ -65,6 +65,14 @@ deferral by choice.
   and the full command/tab proof must run in the intended Node 22 golden-image
   runtime.
 
+- **After deploy, verify the current branch's production fixes as one skeptical
+  browser flow.** Confirm `/admin/costs` no longer reports undefined sizing after
+  v2 rollup regeneration; open circle-i dialogs over cards and verify they remain
+  above the topbar/page; drive the browser offline and verify the topbar refresh
+  control appears and automatic recovery works; then open a newly built
+  OpenVSCode workspace and inspect the visible real File menu, EDD return link,
+  and terminal command output. Deployment/health success alone was not enough.
+
 - **Stage workspace provisioning/startup performance work and expose it to
   admins.** The current real launch path contains several potentially expensive
   phases: per-workspace Secrets Manager upserts, task-definition

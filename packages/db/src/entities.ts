@@ -420,7 +420,10 @@ export type AuditEventEntity = ReturnType<typeof makeAuditEventEntity>;
 export function makeCostRollupEntity(client: DynamoDBClient, table = TABLE) {
   return new Entity(
     {
-      model: { entity: "costRollup", version: "1", service: "edd" },
+      // Version 2 added per-workspace vCPU/RAM/disk sizing. Cost rollups are a
+      // derived cache, so a new entity version cleanly excludes incompatible v1
+      // rows; the reconciler then rebuilds v2 rows from the authoritative ledger.
+      model: { entity: "costRollup", version: "2", service: "edd" },
       attributes: {
         workspaceId: { type: "string", required: true },
         owner: { type: "string", required: true },

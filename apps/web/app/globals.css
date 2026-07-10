@@ -118,6 +118,12 @@ a {
   backdrop-filter: blur(10px);
 }
 
+.connection-refresh {
+  border-color: var(--danger);
+  color: var(--danger);
+  white-space: nowrap;
+}
+
 .brand {
   display: flex;
   align-items: center;

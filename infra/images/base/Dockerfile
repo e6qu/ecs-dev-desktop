@@ -63,6 +63,14 @@ RUN arch="$(dpkg --print-architecture)" \
     && rm /tmp/openvscode-server.tar.gz \
     && ln -s /opt/openvscode-server/bin/openvscode-server /usr/local/bin/openvscode-server
 
+# OpenVSCode keeps window settings in browser storage and exposes no CLI flag for
+# browser configuration defaults. Inject the workbench's supported
+# `configurationDefaults` bootstrap option. The patch is exact and version-pinned:
+# an upstream bundle change fails the image build loudly instead of silently
+# reverting to the compact hamburger menu.
+COPY patch-openvscode.mjs /tmp/patch-openvscode.mjs
+RUN node /tmp/patch-openvscode.mjs && rm /tmp/patch-openvscode.mjs
+
 # Default VS Code extensions (from Open VSX — OpenVSCode Server's default gallery):
 # the cross-cutting dev extensions (formatter/linter/GitHub) + the AI coding agent
 # companions (Claude Code, Codex/ChatGPT) — every variant gets both agent CLIs and

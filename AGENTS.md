@@ -60,6 +60,13 @@ live. Hence:
     branch/PR instead of splitting them into tiny review units. The human in
     command decides when the active work is done and when it is time to stop,
     review, or merge; big PRs are allowed and are the norm here.
+13. **The UI must converge without hard refreshes.** Every stateful screen must
+    receive or poll fresh state quickly enough that out-of-band lifecycle/admin
+    changes become visible without user action. A hard browser refresh is never a
+    normal workflow step. When the browser truly loses the control-plane
+    connection, the top-level shell must show a visible refresh/reconnect control
+    and automatically refresh server state after connectivity returns. Browser
+    tests must prove both automatic convergence and disconnected/recovered states.
 
 The engineering standards in §6 are also hard rules.
 

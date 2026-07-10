@@ -12,8 +12,14 @@ File menu was visible and opened from an actual click; Terminal checks had to
 prove the default tab, command execution, new tab, tab switching, tab close, and
 closed-tab cleanup.
 
-The implementation made the OpenVSCode File menu mandatory by forcing
-`window.menuBarVisibility=classic` at workspace boot. The in-app workspace proxy
+The implementation made the OpenVSCode File menu mandatory through the browser
+workbench's `configurationDefaults` bootstrap with the always-visible mode. The
+version-pinned image patch failed loudly if the upstream bundle no longer
+matched. Investigation proved that remote `settings.json` and extension defaults
+could not control this browser-local setting. It also proved that copying the
+first-party EDD extension into the release archive's generated built-in registry
+did not register it; the entrypoint copied the extension into the runtime scan
+directory instead. The in-app workspace proxy
 injected a fixed top-level `EDD home` link into OpenVSCode HTML and opencode
 HTML, while Monaco and Terminal continued to expose the first-party topbar link.
 The deployed screenshot smoke was strengthened to click the `/workspaces` return
@@ -30,6 +36,18 @@ surface; the failure screenshot was inspected at
 `/tmp/edd-terminal-local-visible-failure.png`. Full Terminal command/tab
 verification remained delegated to the deployed/golden-image smoke, where the
 workspace image ran the intended Node 22 runtime.
+
+The branch also fixed three production-facing regressions found during the CI
+investigation. Cost rollup entity version 1 had gained required sizing fields
+without a persisted-schema version bump, so old rows produced
+`sizing.vcpu=undefined`; the entity moved to version 2, and an integration test
+proved v1 rows were excluded before authoritative ledger regeneration. All help
+and workspace-info dialogs were mounted through a document-body portal above the
+sticky shell, with browser assertions for modal stacking and one-active-modal
+behavior. The root shell gained a confirmed-disconnect health probe: a topbar
+refresh control appeared when the control-plane connection was lost, and
+recovery refreshed server state without a hard reload. `AGENTS.md` made
+no-hard-refresh convergence a hard requirement.
 
 **Last updated:** 2026-07-10. After PR #218 merged as
 `5f052272c50524c951ce53c54a1d3e94449c1173`, the `release` workflow succeeded,

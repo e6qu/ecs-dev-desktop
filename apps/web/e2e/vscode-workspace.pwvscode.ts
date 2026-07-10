@@ -27,15 +27,39 @@ const BUILD_COMMAND = [
 
 async function assertFileMenuOpens(page: Page): Promise<void> {
   const fileMenu = page
-    .locator('[role="menuitem"][aria-label="File"], .menubar-menu-button', { hasText: /^File$/ })
+    .locator(
+      '[role="menuitem"][aria-label="File"], .menubar-menu-button[aria-label="File"], .menubar-menu-button:has-text("File")',
+    )
     .first();
-  await expect(fileMenu, "OpenVSCode must expose the actual File menu").toBeVisible({
+  await expect(fileMenu, "OpenVSCode must render the actual File menu element").toBeAttached({
     timeout: 30_000,
   });
+  const visibility = await fileMenu.evaluate((element) => {
+    const chain: string[] = [];
+    let current: HTMLElement | null = element as HTMLElement;
+    while (current !== null && chain.length < 6) {
+      const style = getComputedStyle(current);
+      const rect = current.getBoundingClientRect();
+      chain.push(
+        `${current.tagName}.${current.className} display=${style.display} visibility=${style.visibility} opacity=${style.opacity} rect=${String(Math.round(rect.width))}x${String(Math.round(rect.height))}`,
+      );
+      current = current.parentElement;
+    }
+    return chain.join(" | ");
+  });
+  await expect(fileMenu, `OpenVSCode must expose the actual File menu (${visibility})`).toBeVisible(
+    {
+      timeout: 30_000,
+    },
+  );
   await fileMenu.click();
   await expect(
     page.locator(".monaco-menu-container, .context-view.monaco-menu, [role='menu']").first(),
     "OpenVSCode File menu must open from a real click",
+  ).toBeVisible({ timeout: 10_000 });
+  await expect(
+    page.getByRole("menuitem", { name: /New (Text )?File|Open File|Open Folder/ }).first(),
+    "OpenVSCode File menu must expose real file actions",
   ).toBeVisible({ timeout: 10_000 });
   await page.keyboard.press("Escape");
 }

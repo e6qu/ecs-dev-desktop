@@ -47,6 +47,12 @@ actual click. Terminal workspace checks must additionally prove the default tab
 opens, commands execute, new tabs open, tab switching works, tab close works, and
 closed tabs disappear without leaving stale UI/session state.
 
+Stateful control-plane screens must also prove automatic convergence: a backend,
+reconciler, admin, or second-tab change becomes visible without a hard browser
+refresh. The root-shell browser suite drives the browser offline, asserts the
+top-level refresh control, restores connectivity, and verifies that the current
+page recovers automatically.
+
 ### 1. Unit / contract — every commit, local + CI
 
 Pure logic + adapters-with-fakes. No network, no Docker.

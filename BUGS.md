@@ -4,6 +4,24 @@
 
 ## Open
 
+- **Admin Costs failed with `sizing.vcpu ... undefined` — FIXED in current
+  branch (2026-07-10).** Sizing fields were added to persisted cost rollups
+  without changing the ElectroDB entity version. Existing v1 rows were decoded
+  as the new shape. The branch moved the derived rollup entity to v2, and a
+  DynamoDB integration test proved v1 rows were invisible to the v2 query before
+  regeneration from authoritative workspace/audit data.
+
+- **Circle-i dialogs could render behind page/card UI — FIXED in current branch
+  (2026-07-10).** Workspace cards created stacking contexts that trapped fixed
+  descendants below shell content. Help and workspace-info dialogs moved to a
+  shared document-body portal. Playwright proved body mounting above the sticky
+  topbar and one-active-modal behavior.
+
+- **A truly disconnected browser had no top-level recovery state — FIXED in
+  current branch (2026-07-10).** The root shell now confirms health failures,
+  shows a topbar refresh control, and refreshes server state automatically when
+  connectivity returns. A browser test exercised offline and recovered states.
+
 - **Local Terminal full-flow verification was blocked by host Node 26/node-pty
   PTY spawn failure — PARTIALLY FIXED in current branch (2026-07-10).** A real
   local browser exercise of the Terminal workspace loaded the UI but could not
@@ -21,8 +39,12 @@
   OpenVSCode lacked a proven File menu — FIXED in current branch (2026-07-10).**
   OpenVSCode only exposed `EDD home` as a status-bar extension item, which was
   not an acceptable top-level escape hatch, and tests did not fail when the real
-  File menu was absent or unclickable. The branch forced
-  `window.menuBarVisibility=classic` at OpenVSCode boot, injected a fixed
+  File menu was absent or unclickable. Local source/browser investigation proved
+  that remote settings and extension defaults did not govern browser window
+  settings, and that the copied first-party extension was not registered. The
+  branch injected the workbench's supported browser bootstrap defaults with
+  `window.menuBarVisibility=visible`, registered the EDD extension through the
+  runtime scan path, and injected a fixed
   top-level `EDD home` link into OpenVSCode and opencode HTML through the in-app
   proxy, kept Monaco/Terminal's first-party topbar link, and strengthened
   deployed smoke to click through the `/workspaces` return path for all workspace

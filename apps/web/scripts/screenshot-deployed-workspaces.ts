@@ -95,7 +95,9 @@ async function assertWorkspaceHomeLink(editor: Editor, page: Page): Promise<void
 
 async function assertOpenVscodeFileMenu(page: Page): Promise<void> {
   const fileMenu = page
-    .locator('[role="menuitem"][aria-label="File"], .menubar-menu-button', { hasText: /^File$/ })
+    .locator(
+      '[role="menuitem"][aria-label="File"], .menubar-menu-button[aria-label="File"], .menubar-menu-button:has-text("File")',
+    )
     .first();
   await expect(fileMenu, "OpenVSCode did not show a visible File menu").toBeVisible({
     timeout: 30_000,
@@ -104,6 +106,10 @@ async function assertOpenVscodeFileMenu(page: Page): Promise<void> {
   await expect(
     page.locator(".monaco-menu-container, .context-view.monaco-menu, [role='menu']").first(),
     "OpenVSCode File menu did not open after a real click",
+  ).toBeVisible({ timeout: 10_000 });
+  await expect(
+    page.getByRole("menuitem", { name: /New (Text )?File|Open File|Open Folder/ }).first(),
+    "OpenVSCode File menu did not expose real file actions",
   ).toBeVisible({ timeout: 10_000 });
   await page.keyboard.press("Escape");
 }

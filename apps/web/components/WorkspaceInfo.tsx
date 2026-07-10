@@ -2,10 +2,11 @@
 "use client";
 
 import type { WorkspaceDto } from "@edd/api-contracts";
-import { useEffect, useId, useState } from "react";
+import { useCallback, useId, useState } from "react";
 
 import { gib } from "../lib/format";
 import { TESTID } from "../lib/testids";
+import { Modal } from "./Modal";
 
 /**
  * The ⓘ control on a workspace card: a closeable overlay with the session's
@@ -42,27 +43,9 @@ export function WorkspaceInfo({ ws }: { ws: WorkspaceDto }) {
     ["created", new Date(ws.createdAt).toLocaleString()],
   ];
 
-  useEffect(() => {
-    const onModalOpen = (event: Event) => {
-      if (!(event instanceof CustomEvent) || event.detail !== modalId) setOpen(false);
-    };
-    window.addEventListener("edd:modal-open", onModalOpen);
-    return () => {
-      window.removeEventListener("edd:modal-open", onModalOpen);
-    };
-  }, [modalId]);
-
-  useEffect(() => {
-    if (!open) return;
-    window.dispatchEvent(new CustomEvent("edd:modal-open", { detail: modalId }));
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [modalId, open]);
+  const close = useCallback(() => {
+    setOpen(false);
+  }, []);
 
   return (
     <span className="workspace-info">
@@ -80,47 +63,34 @@ export function WorkspaceInfo({ ws }: { ws: WorkspaceDto }) {
         <span aria-hidden="true">ⓘ</span>
       </button>
       {open && (
-        <div
-          className="help-overlay"
-          role="presentation"
-          onClick={() => {
-            setOpen(false);
-          }}
+        <Modal
+          modalId={modalId}
+          ariaLabel="Session details"
+          panelClassName="workspace-info-panel"
+          testId={TESTID.workspaceInfoPanel}
+          onClose={close}
         >
-          <div
-            className="help-panel workspace-info-panel"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Session details"
-            data-testid={TESTID.workspaceInfoPanel}
-            onClick={(e) => {
-              e.stopPropagation();
-            }}
-          >
-            <div className="help-panel-header">
-              <h2>Session details</h2>
-              <button
-                type="button"
-                className="help-panel-close"
-                aria-label="Close session details"
-                data-testid={TESTID.workspaceInfoClose}
-                onClick={() => {
-                  setOpen(false);
-                }}
-              >
-                <span aria-hidden="true">×</span>
-              </button>
-            </div>
-            <dl className="workspace-info-grid">
-              {rows.map(([label, value]) => (
-                <div key={label} className="workspace-info-row">
-                  <dt className="mono">{label}</dt>
-                  <dd className="mono">{value}</dd>
-                </div>
-              ))}
-            </dl>
+          <div className="help-panel-header">
+            <h2>Session details</h2>
+            <button
+              type="button"
+              className="help-panel-close"
+              aria-label="Close session details"
+              data-testid={TESTID.workspaceInfoClose}
+              onClick={close}
+            >
+              <span aria-hidden="true">×</span>
+            </button>
           </div>
-        </div>
+          <dl className="workspace-info-grid">
+            {rows.map(([label, value]) => (
+              <div key={label} className="workspace-info-row">
+                <dt className="mono">{label}</dt>
+                <dd className="mono">{value}</dd>
+              </div>
+            ))}
+          </dl>
+        </Modal>
       )}
     </span>
   );
