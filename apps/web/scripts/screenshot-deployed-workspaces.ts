@@ -15,7 +15,9 @@ import {
   authSecret,
   createWorkspace,
   deleteWorkspace,
+  purgeWorkspace,
   requiredEnv,
+  waitPurged,
   waitTerminated,
   waitEnabledImage,
   waitReady,
@@ -158,7 +160,31 @@ const { jar, sessionId } = await authJar(secret, "smoke-shot");
 const created: string[] = [];
 const browser = await chromium.launch();
 try {
-  const baseImage = await waitEnabledImage(baseUrl, jar, expectedSha);
+  const catalogPolls: unknown[] = [];
+  let baseImage: string;
+  try {
+    baseImage = await waitEnabledImage(baseUrl, jar, expectedSha, (snapshot) => {
+      catalogPolls.push({
+        at: new Date().toISOString(),
+        ...snapshot,
+      });
+      if (catalogPolls.length > 100) catalogPolls.shift();
+    });
+  } catch (e) {
+    await writeFile(
+      join(OUT_DIR, "catalog-rollout-failure.json"),
+      `${JSON.stringify(
+        {
+          expectedSha,
+          error: e instanceof Error ? (e.stack ?? e.message) : String(e),
+          polls: catalogPolls,
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    throw e;
+  }
   const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
   await context.addCookies(jar.map((cookie) => playwrightCookie(baseHost, cookie)));
   const page = await context.newPage();
@@ -210,6 +236,8 @@ try {
     created.map(async (id) => {
       await deleteWorkspace(baseUrl, jar, id);
       await waitTerminated(baseUrl, jar, id);
+      await purgeWorkspace(baseUrl, jar, id);
+      await waitPurged(baseUrl, jar, id);
     }),
   );
   await revokeAuthSession(sessionId);

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import type { IsoTimestamp, SnapshotId, VolumeId } from "../domain/ids";
+import type { IsoTimestamp, SnapshotId, VolumeId, WorkspaceId } from "../domain/ids";
 import type { ComponentHealth } from "../observability/health";
 
 /**
@@ -42,7 +42,10 @@ export interface StorageProvider {
   writeFile(volumeId: VolumeId, path: string, data: Buffer): Promise<void>;
   /** Snapshot a volume. `retain: true` tags the snapshot as a data-safety keep
    * (the Middle policy's final snapshot at teardown) so orphan-GC never reaps it. */
-  createSnapshot(volumeId: VolumeId, opts?: { retain?: boolean }): Promise<Snapshot>;
+  createSnapshot(
+    volumeId: VolumeId,
+    opts?: { retain?: boolean; workspaceId?: WorkspaceId },
+  ): Promise<Snapshot>;
   /** Mark an existing snapshot retained — used when a workspace being torn down has
    * no live volume to re-snapshot but a prior snapshot already holds its data. */
   tagSnapshotRetained(snapshotId: SnapshotId): Promise<void>;

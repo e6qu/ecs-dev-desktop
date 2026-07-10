@@ -136,19 +136,35 @@ export async function waitEnabledImage(
   baseUrl: string,
   jar: readonly StoredCookie[],
   expectedTag: string,
+  onPoll?: (snapshot: {
+    readonly enabledImages: readonly string[];
+    readonly imageSource: unknown;
+  }) => void,
 ): Promise<string> {
-  const deadline = Date.now() + 20 * 60 * 1000;
+  const deadline = Date.now() + 4 * 60 * 1000;
   let lastImages: readonly string[] = [];
+  let lastImageSource: unknown = null;
   while (Date.now() < deadline) {
+    lastImageSource = await reconcileImageSource(baseUrl, jar);
     lastImages = await enabledCatalogImages(baseUrl, jar);
+    onPoll?.({ enabledImages: lastImages, imageSource: lastImageSource });
     if (lastImages.some((image) => image.endsWith(`:${expectedTag}`))) {
       return chooseEnabledImage(lastImages, expectedTag);
     }
-    await new Promise((resolve) => setTimeout(resolve, 10_000));
+    await new Promise((resolve) => setTimeout(resolve, 5_000));
   }
   throw new Error(
-    `enabled base image did not roll to expected tag ${expectedTag} before deadline; enabled images: ${lastImages.join(", ")}`,
+    `enabled base image did not roll to expected tag ${expectedTag} before deadline; enabled images: ${lastImages.join(", ")}; image-source: ${JSON.stringify(lastImageSource)}`,
   );
+}
+
+async function reconcileImageSource(
+  baseUrl: string,
+  jar: readonly StoredCookie[],
+): Promise<unknown> {
+  const res = await fetchWithCookies(`${baseUrl}/api/admin/image-source`, jar);
+  if (!res.ok) throw new Error(`/api/admin/image-source failed: ${String(res.status)}`);
+  return res.json();
 }
 
 async function enabledCatalogImages(
@@ -226,6 +242,21 @@ export async function waitTerminated(
   throw new Error(`workspace ${id} did not terminate after delete before deadline; last=${last}`);
 }
 
+export async function waitPurged(
+  baseUrl: string,
+  jar: readonly StoredCookie[],
+  id: string,
+): Promise<void> {
+  const deadline = Date.now() + 2 * 60 * 1000;
+  while (Date.now() < deadline) {
+    const res = await fetchWithCookies(`${baseUrl}/api/workspaces/${id}`, jar);
+    if (res.status === 404) return;
+    if (!res.ok) throw new Error(`inspect purged ${id} failed: ${String(res.status)}`);
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+  throw new Error(`workspace ${id} still existed after purge deadline`);
+}
+
 async function primeEditorToken(
   baseUrl: string,
   jar: StoredCookie[],
@@ -295,5 +326,18 @@ export async function deleteWorkspace(
   const res = await fetchWithCookies(`${baseUrl}/api/workspaces/${id}`, jar, { method: "DELETE" });
   if (res.status !== 202 && res.status !== 204 && res.status !== 404) {
     throw new Error(`delete ${id} failed: ${String(res.status)} ${await res.text()}`);
+  }
+}
+
+export async function purgeWorkspace(
+  baseUrl: string,
+  jar: readonly StoredCookie[],
+  id: string,
+): Promise<void> {
+  const res = await fetchWithCookies(`${baseUrl}/api/workspaces/${id}/purge`, jar, {
+    method: "POST",
+  });
+  if (res.status !== 202 && res.status !== 404) {
+    throw new Error(`purge ${id} failed: ${String(res.status)} ${await res.text()}`);
   }
 }

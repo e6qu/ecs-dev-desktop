@@ -686,11 +686,14 @@ export class WorkspaceService {
     return taskIds;
   }
 
-  /** Ids of every workspace that still exists (any state) — the orphan-secret
-   * reaper's keep-set. Fully paginated, like the other reconciler reads. */
-  async listWorkspaceIds(): Promise<readonly WorkspaceId[]> {
+  /** Ids of workspaces that still reference a runtime task — the workspace-secret
+   * reaper's keep-set. Stopped/deleted tombstones recreate deterministic runtime
+   * secrets on wake, so they do not keep Secrets Manager entries alive. */
+  async listRuntimeSecretWorkspaceIds(): Promise<readonly WorkspaceId[]> {
     const { data } = await this.deps.workspaces.scan.go({ pages: "all" });
-    return data.map((r: WorkspaceRecord) => workspaceId(r.id));
+    return data.flatMap((r: WorkspaceRecord) =>
+      r.taskId === undefined ? [] : [workspaceId(r.id)],
+    );
   }
 
   /**
@@ -773,7 +776,7 @@ export class WorkspaceService {
     version: number,
   ): Promise<Result<SnapshotId, DomainError>> {
     try {
-      const snap = await this.deps.storage.createSnapshot(volumeId);
+      const snap = await this.deps.storage.createSnapshot(volumeId, { workspaceId: id });
       return ok(snap.id);
     } catch (e) {
       // The volume vanished (concurrent teardown) OR the record already advanced
@@ -898,7 +901,9 @@ export class WorkspaceService {
     let freshSnapshot: { id: SnapshotId; at: IsoTimestamp } | undefined;
     if (found.ws.volumeId !== undefined) {
       try {
-        const snap = await this.deps.storage.createSnapshot(found.ws.volumeId);
+        const snap = await this.deps.storage.createSnapshot(found.ws.volumeId, {
+          workspaceId: found.ws.id,
+        });
         freshSnapshot = { id: snap.id, at };
       } catch (e) {
         if (!isResourceGoneError(e)) throw e;
@@ -1339,7 +1344,10 @@ export class WorkspaceService {
     // live volume, so its existing snapshot (the data) is tagged retained instead.
     try {
       if (ws.volumeId !== undefined && this.needsFreshTeardownSnapshot(ws)) {
-        const snap = await this.deps.storage.createSnapshot(ws.volumeId, { retain: true });
+        const snap = await this.deps.storage.createSnapshot(ws.volumeId, {
+          retain: true,
+          workspaceId: ws.id,
+        });
         // The tombstone's version is stable (only finishDeleting writes it), so this
         // version-conditioned patch records the snapshot without spuriously conflicting.
         const next = recordSnapshot(ws, snap.id, now);

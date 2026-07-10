@@ -53,6 +53,44 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
+- **After this cost/convergence branch merges, rerun release, golden-images, and
+  post-deploy-smoke and inspect artifacts again.** Confirm production
+  `/api/healthz` reports the merge SHA, the golden image exists in ECR, the
+  enabled catalog rolls to that same tag, and the smoke no longer times out on
+  stale catalog state. If rollout fails, inspect the new
+  `catalog-rollout-failure.json` artifact before making a code change.
+
+- **After this branch deploys, verify `/admin/costs` shows both accounting
+  layers.** The page should show workspace lifecycle spend from the ledger and a
+  separate AWS account Cost Explorer section. Confirm it does not render `$NaN`,
+  and confirm a missing/denied `ce:GetCostAndUsage` permission fails visibly
+  rather than falling back to configured rates or blank values.
+
+- **Run an explicit cleanup operation for existing retained snapshots only after
+  the operator chooses the data policy.** The live audit found 59 EDD-managed
+  retained snapshots, all missing `edd:workspace-id`, so the branch made future
+  snapshots attributable but did not delete existing retained data. If the
+  decision is "no legacy data matters", delete the existing EDD-managed retained
+  snapshots explicitly and verify the next Cost Explorer day drops EC2-Other
+  snapshot spend. If any data might matter, keep them until manually mapped.
+
+- **Verify runtime secret GC after deploy.** Live AWS had many active
+  `edd/workspace/<id>/{agent,connection}` Secrets Manager secrets while no
+  workspace tasks were running. The branch changed retention to task-referenced
+  runtime ids only; after the reconciler runs, confirm old workspace secrets are
+  deleted and Secrets Manager's daily cost starts falling.
+
+- **Resolve the remaining live cost/audit debris explicitly.** The live audit
+  still found 5 messages in `edd-prod-reconciler-dlq`, two untagged associated
+  Elastic IPs, retained EDD snapshots without historical workspace attribution,
+  stale workspace runtime secrets pending the new GC, and no AWS Budgets. The
+  operator chose to delete non-EDD leftovers, and the branch removed the
+  sockerless S3 buckets, sockerless EFS filesystem/access points, sockerless/skls
+  CloudWatch log groups, old sockerless ECS task definitions, and the non-EDD
+  ECR cache repository. Decide whether the remaining EDD-adjacent resources are
+  intentional, then tag, import, or delete them; do not let them stay
+  undocumented.
+
 - **After this release-manifest fix merges, rerun `release` and confirm actual
   deployment.** PR #217's post-merge release failed before deployment because
   the direct-push BuildKit path still used `docker manifest create` against a

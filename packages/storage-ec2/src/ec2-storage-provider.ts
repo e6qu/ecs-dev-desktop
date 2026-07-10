@@ -29,6 +29,7 @@ import {
   type Volume,
   type VolumeId,
   type VolumeRef,
+  type WorkspaceId,
 } from "@edd/core";
 
 /** Size of a freshly-created (non-hydrated) EBS volume, in GiB. */
@@ -49,6 +50,7 @@ const SCOPE_TAG_KEY = "edd:scope";
  * orphan-GC keeps any snapshot carrying it regardless of the grace window. */
 const RETAIN_TAG_KEY = "edd:retain";
 const RETAIN_TAG_VALUE = "true";
+const WORKSPACE_TAG_KEY = "edd:workspace-id";
 
 export interface Ec2StorageProviderDeps {
   client: EC2Client;
@@ -165,11 +167,17 @@ export class Ec2StorageProvider implements StorageProvider {
     return opts?.fromSnapshot ? { id, hydratedFrom: opts.fromSnapshot } : { id };
   }
 
-  async createSnapshot(volume: VolumeId, opts?: { retain?: boolean }): Promise<Snapshot> {
+  async createSnapshot(
+    volume: VolumeId,
+    opts?: { retain?: boolean; workspaceId?: WorkspaceId },
+  ): Promise<Snapshot> {
     const tags =
       opts?.retain === true
         ? [...this.managedTags(), { Key: RETAIN_TAG_KEY, Value: RETAIN_TAG_VALUE }]
         : this.managedTags();
+    if (opts?.workspaceId !== undefined) {
+      tags.push({ Key: WORKSPACE_TAG_KEY, Value: opts.workspaceId });
+    }
     const out = await this.client.send(
       new CreateSnapshotCommand({
         VolumeId: volume,

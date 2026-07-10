@@ -9,11 +9,12 @@ import {
   DescribeVolumesCommand,
   EC2Client,
   type CopySnapshotCommandInput,
+  type CreateSnapshotCommandInput,
   type CreateVolumeCommandInput,
   type DescribeSnapshotsCommandInput,
   type DescribeVolumesCommandInput,
 } from "@aws-sdk/client-ec2";
-import { snapshotId, volumeId } from "@edd/core";
+import { snapshotId, volumeId, workspaceId } from "@edd/core";
 import { describe, expect, it } from "vitest";
 
 import { Ec2StorageProvider } from "./index";
@@ -185,6 +186,25 @@ describe("Ec2StorageProvider AWS request shape (managed tags + filters + branche
     expect(input.SnapshotId).toBe("snap-src");
     expect(input.Size).toBeUndefined();
     expect(input.TagSpecifications?.[0]?.Tags).toContainEqual(MANAGED);
+  });
+
+  it("tags snapshots with managed, retain, and workspace attribution when provided", async () => {
+    const sent: Sent[] = [];
+    const sp = new Ec2StorageProvider({ client: capturing(sent), region: "us-east-1" });
+    await sp.createSnapshot(volumeId("vol-new"), {
+      retain: true,
+      workspaceId: workspaceId("ws-tagged"),
+    });
+    const input = inputOf(sent, "CreateSnapshotCommand") as CreateSnapshotCommandInput;
+    expect(input.TagSpecifications?.[0]?.Tags).toContainEqual(MANAGED);
+    expect(input.TagSpecifications?.[0]?.Tags).toContainEqual({
+      Key: "edd:retain",
+      Value: "true",
+    });
+    expect(input.TagSpecifications?.[0]?.Tags).toContainEqual({
+      Key: "edd:workspace-id",
+      Value: "ws-tagged",
+    });
   });
 
   it("scopes enumeration with server-side tag filters (+ OwnerIds:self for snapshots)", async () => {

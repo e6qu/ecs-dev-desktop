@@ -7,6 +7,7 @@ import { notFound } from "next/navigation";
 import { LiveRefresh } from "../../../components/LiveRefresh";
 import { StateBlock } from "../../../components/StateBlock";
 import { StatTile } from "../../../components/StatTile";
+import { getAwsAccountCostSummary, type AccountCostSummary } from "../../../lib/aws-account-costs";
 import { getCostService } from "../../../lib/control-plane";
 import { TESTID } from "../../../lib/testids";
 
@@ -167,8 +168,14 @@ export default async function AdminCostsPage({
   if (!parsedWindow.success) notFound();
   const window: CostWindow = parsedWindow.data.window;
   let report: FleetCostReport;
+  let accountCosts: AccountCostSummary | Error;
   try {
-    report = await (await getCostService()).report(COST_WINDOW_DAYS[window]);
+    [report, accountCosts] = await Promise.all([
+      (await getCostService()).report(COST_WINDOW_DAYS[window]),
+      getAwsAccountCostSummary().catch((error: unknown) =>
+        error instanceof Error ? error : new Error(String(error)),
+      ),
+    ]);
     assertReportFinite(report);
   } catch (error) {
     return <StateBlock title="Cost report unavailable" detail={errorMessage(error)} />;
@@ -200,11 +207,12 @@ export default async function AdminCostsPage({
           <div className="kicker">admin</div>
           <h1>Costs</h1>
           <p>
-            Spend computed from {scope} <Link href="/admin/logs">ledger</Link> — every
-            workspace&apos;s running vs. scaled-to-zero time, priced at the rates below and updated
-            live as workspaces run. Rates: {usd(pricing.fargateVcpuHourUsd)}/vCPU-hr,{" "}
-            {usd(pricing.fargateGbHourUsd)}/GB-hr, {usd(pricing.ebsGbMonthUsd)}/GB-mo volume,{" "}
-            {usd(pricing.snapshotGbMonthUsd)}/GB-mo snapshot.
+            Workspace lifecycle spend computed from {scope} <Link href="/admin/logs">ledger</Link> —
+            running vs. scaled-to-zero time, priced at the rates below and updated live as
+            workspaces run. This is not the full AWS bill; the AWS account summary below comes from
+            Cost Explorer. Rates: {usd(pricing.fargateVcpuHourUsd)}
+            /vCPU-hr, {usd(pricing.fargateGbHourUsd)}/GB-hr, {usd(pricing.ebsGbMonthUsd)}/GB-mo
+            volume, {usd(pricing.snapshotGbMonthUsd)}/GB-mo snapshot.
           </p>
         </div>
         <nav className="tabs" aria-label="Cost window">
@@ -235,6 +243,39 @@ export default async function AdminCostsPage({
           />
         ))}
       </div>
+
+      <h2 style={{ fontSize: 16, margin: "18px 0 10px" }}>AWS account</h2>
+      {accountCosts instanceof Error ? (
+        <StateBlock title="AWS account costs unavailable" detail={accountCosts.message} />
+      ) : (
+        <>
+          <div className="stat-grid">
+            {accountCosts.windows.map((w) => (
+              <StatTile
+                key={w.label}
+                attrs={{ "data-cost": `aws-${w.label}`, "data-usd": w.usd }}
+                num={usd(w.usd)}
+                label={w.label}
+                sub={`${w.start} through ${w.end}`}
+              />
+            ))}
+          </div>
+          {accountCosts.topServicesMonthToDate.length === 0 ? (
+            <p className="mono" style={{ color: "var(--dim)" }}>
+              no AWS service spend reported yet
+            </p>
+          ) : (
+            <div className="adm-rows">
+              {accountCosts.topServicesMonthToDate.map((row) => (
+                <div key={row.service} className="adm-row">
+                  <span className="wid">{row.service}</span>
+                  <span className="detail">{usd(row.usd)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
 
       <div className="cost-list-head">
         <h2 style={{ fontSize: 16, margin: "18px 0 10px" }}>By user</h2>

@@ -178,6 +178,11 @@ const CONTROL_PLANE_REQUIREMENTS: readonly IamRequirement[] = [
     actions: ["cloudtrail:LookupEvents"],
   },
   {
+    sid: "AwsCostExplorerRead",
+    resource: "any",
+    actions: ["ce:GetCostAndUsage"],
+  },
+  {
     sid: "AwsPriceListRead",
     resource: "any",
     actions: ["pricing:GetProducts"],

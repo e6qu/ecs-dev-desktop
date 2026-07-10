@@ -26,14 +26,7 @@ resource "aws_ecr_repository" "ssh_gateway" {
 
 resource "aws_ecr_lifecycle_policy" "ssh_gateway" {
   repository = aws_ecr_repository.ssh_gateway.name
-  policy = jsonencode({
-    rules = [{
-      rulePriority = 1
-      description  = "Expire untagged images after 14 days"
-      selection    = { tagStatus = "untagged", countType = "sinceImagePushed", countUnit = "days", countNumber = 14 }
-      action       = { type = "expire" }
-    }]
-  })
+  policy     = local.ecr_lifecycle_policy
 }
 
 resource "aws_cloudwatch_log_group" "ssh_gateway" {

@@ -4,6 +4,79 @@
 
 ## Open
 
+- **PR #218 post-deploy smoke failed because image-source convergence stopped on
+  stale/missing image metadata and GitHub poll failure — FIXED in current branch
+  (2026-07-10).** The release deployed `5f052272c505` and the matching golden
+  image existed in ECR, but `post-deploy-smoke` timed out with the enabled
+  catalog still on `omnibus:d063fea1ec78`. CloudWatch showed the image-source
+  sweep first aborted on `ImageNotFoundException` for stale older tags and later
+  kept logging GitHub commit poll `403`s. The branch made
+  `AwsImageOps.getImageMetadata` honor its `ImageMetadataDto | null` contract for
+  missing ECR images while still rethrowing all other AWS errors, and split the
+  long-lived image-source sweep so GitHub polling failures and ECR build
+  reconciliation failures were logged/retried independently. Already-recorded
+  queued triggers could therefore converge from ECR even while GitHub polling was
+  temporarily denied.
+
+- **Post-deploy smoke left stale resources and waited too long to show catalog
+  state — FIXED in current branch (2026-07-10).** The deployed smoke waited 20
+  minutes for catalog rollout but did not actively trigger the app's
+  image-source reconciliation endpoint and did not purge smoke workspace records
+  after termination. The branch made the smoke poll `/api/admin/image-source`
+  during catalog rollout, fail in about 4 minutes with the live
+  image-source/catalog payload captured in `catalog-rollout-failure.json`, and
+  delete+purge created workspaces during cleanup.
+
+- **Admin Costs showed only workspace lifecycle accounting, not the full AWS
+  account bill — FIXED in current branch (2026-07-10).** Live Cost Explorer
+  showed material non-workspace costs from ECS service replicas, ELB, Secrets
+  Manager, CodeBuild, EC2-Other, VPC public IPv4, CloudWatch, WAF, DynamoDB, ECR,
+  Route53, and KMS, while `/admin/costs` only priced workspace lifecycle ledger
+  rows. The branch added a Cost Explorer-backed AWS account section with
+  month-to-date, last-7-days, and last-24h windows plus top services, rejected
+  invalid/NaN Cost Explorer values, rendered visible failure if AWS cost
+  retrieval failed, and added `ce:GetCostAndUsage` to the control-plane task IAM
+  requirements and Terraform policy. PR #219's first Playwright CI run exposed a
+  test-only selector bug because the new visible failure heading contained the
+  substring "Costs"; the branch changed that assertion to match the page heading
+  exactly and local Playwright passed 19/19 afterward.
+
+- **Workspace runtime secrets were retained for every historical workspace id —
+  FIXED in current branch (2026-07-10).** The reconciler kept
+  `edd/workspace/<id>/{agent,connection}` secrets for all workspace records,
+  including stopped/terminated/deleted records, so Secrets Manager kept charging
+  for many stale runtime secrets. The branch changed the control-plane port to
+  return only task-referenced workspace ids for runtime secret retention, so
+  orphaned runtime secrets were eligible for normal age-gated GC while active
+  tasks stayed protected.
+
+- **EDD snapshots lacked workspace attribution, blocking safe per-workspace
+  retention decisions — FIXED for new snapshots in current branch (2026-07-10);
+  existing retained snapshots still required an explicit cleanup decision.** Live
+  AWS inspection found 59 EDD-managed retained snapshots and none had
+  `edd:workspace-id`, so code could not prove which retained snapshot belonged
+  to which historical workspace. The branch added `workspaceId` to the
+  `StorageProvider.createSnapshot` contract and tagged future EC2 snapshots with
+  `edd:workspace-id`. Existing retained snapshots were not deleted automatically
+  because they were retained data-bearing resources without attribution.
+
+- **SSH gateway ECR repository kept old tagged images — FIXED in current branch
+  (2026-07-10).** Live ECR showed `edd-prod/ssh-gateway` had grown to 99 image
+  details while its lifecycle policy only expired untagged images. The branch
+  applied the shared ECR lifecycle policy to the SSH gateway repository as well,
+  so old tagged service images aged out like the other EDD repos.
+
+- **Non-EDD sockerless resources were still present in the AWS account —
+  CLEANED UP during current branch verification (2026-07-10).** The live audit
+  found old sockerless state buckets, a `sockerless-volumes` EFS filesystem and
+  access points, sockerless/skls CloudWatch log groups, many sockerless ECS task
+  definitions, and a non-EDD pull-through/cache-style ECR repository
+  `public-ecr-aws/docker/library/alpine`. After the operator chose to keep only
+  EDD-related resources, those resources were deleted. Fresh verification showed
+  only EDD ECR repositories and the EDD Terraform state bucket remained; no EFS
+  filesystems remained. ECS task definitions were AWS metadata and were left in
+  `DELETE_IN_PROGRESS` while AWS completed asynchronous deletion.
+
 - **Post-merge release failed in direct BuildKit push manifest publication —
   FIXED in current branch (2026-07-10).** PR #217 merged as
   `b95844c334e7453acb2f21b5e7f6ccb584420c8f`, but the `release` workflow failed
