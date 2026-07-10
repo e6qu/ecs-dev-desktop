@@ -192,6 +192,11 @@ push_manifest() { # <repo-short>
     set -- "$@" "${registry}/${prefix}/${target}:${tag}-${arch}"
   done
 
+  if [ "$buildx_output" = "push" ]; then
+    docker buildx imagetools create -t "$manifest" "$@"
+    return 0
+  fi
+
   docker manifest create --amend "$manifest" "$@"
 
   for arch in $archs; do

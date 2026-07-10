@@ -2,6 +2,29 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
+**Last updated:** 2026-07-10. After PR #217 merged as
+`b95844c334e7453acb2f21b5e7f6ccb584420c8f`, the post-merge `release`
+workflow failed before deployment in `Build & push images`. Production stayed on
+`deploy.sha=3886482cd83f`; `/api/readyz` was still ready with DynamoDB ACTIVE.
+The failing log showed the direct BuildKit push path had pushed
+`edd-prod/control-plane:b95844c334e7-amd64` as a manifest list, then
+`docker manifest create` failed with
+`...:b95844c334e7-amd64 is a manifest list`. The root cause was the
+`EDD_BUILDX_OUTPUT=push` path in `scripts/publish-images.sh`: it switched the
+image export mechanism to registry-side BuildKit push but still used the local
+Docker manifest command that expects per-arch image manifests. The follow-up
+branch `fix/buildx-push-manifest` changed only the direct-push manifest path to
+use `docker buildx imagetools create -t <manifest> <arch-tags...>`, leaving the
+existing `load` path on `docker manifest create`. Validation passed with
+`sh -n scripts/publish-images.sh`, `bash -n scripts/publish-images.sh`,
+`zsh -n scripts/publish-images.sh`, and `shellcheck scripts/publish-images.sh`.
+The first PR #218 `check-deps` run failed because age-eligible dependency
+versions advanced again (`vite` to `8.1.4` and AWS SDK clients to `3.1083.0`);
+the branch refreshed those packages and lockfile instead of weakening the gate.
+Verification then passed with `pnpm check-deps`, `pnpm lint`, `pnpm test`,
+`pnpm build`, the publish-script syntax checks, `shellcheck
+scripts/publish-images.sh`, and `git diff --check`.
+
 **Last updated:** 2026-07-10. After PR #216 merged as
 `4615ba2` on `origin/main`, a fresh follow-up branch
 `chore/reconcile-local-docker-state` was created from current `origin/main`; no

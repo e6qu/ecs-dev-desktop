@@ -4,6 +4,20 @@
 
 ## Open
 
+- **Post-merge release failed in direct BuildKit push manifest publication —
+  FIXED in current branch (2026-07-10).** PR #217 merged as
+  `b95844c334e7453acb2f21b5e7f6ccb584420c8f`, but the `release` workflow failed
+  before ECS deployment while publishing images. The log showed
+  `docker manifest create` rejected
+  `edd-prod/control-plane:b95844c334e7-amd64` because it was already a manifest
+  list. The root cause was local to `scripts/publish-images.sh`: the
+  `EDD_BUILDX_OUTPUT=push` path pushed images from BuildKit to the registry but
+  still used the local Docker manifest command that expects per-arch image
+  manifests. The current branch used `docker buildx imagetools create` for
+  direct-push manifest tags while preserving the existing `load` path. The same
+  branch also refreshed newly age-eligible `vite`/AWS SDK dependency versions
+  after the fail-loud `check-deps` gate caught them on the PR.
+
 - **Claude/Codex workspace modes lacked verified first-party local browser UI
   entrypoints — FIXED in current branch (2026-07-10).** Re-verification intentionally stopped treating
   OpenVSCode extensions, Monaco, Remote Control, Desktop, Platform, or hosted web
