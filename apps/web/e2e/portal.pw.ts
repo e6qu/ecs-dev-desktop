@@ -274,7 +274,7 @@ test("admin costs page prices fleet spend per session and per user", async ({
 
   await loginAs(context, "root", "admin");
   await page.goto("/admin/costs");
-  await expect(page.getByRole("heading", { name: "Costs" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Costs", exact: true })).toBeVisible();
 
   // The fleet total tile renders.
   await expect(page.locator(sel(TESTID.costTile, { "data-cost": "total" }))).toBeVisible();

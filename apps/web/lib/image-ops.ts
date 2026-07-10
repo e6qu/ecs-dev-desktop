@@ -180,9 +180,15 @@ class AwsImageOps implements ImageOps {
   }
 
   async getImageMetadata(repo: string, tag: string): Promise<ImageMetadataDto | null> {
-    const described = await this.ecr.send(
-      new DescribeImagesCommand({ repositoryName: repo, imageIds: [{ imageTag: tag }] }),
-    );
+    let described;
+    try {
+      described = await this.ecr.send(
+        new DescribeImagesCommand({ repositoryName: repo, imageIds: [{ imageTag: tag }] }),
+      );
+    } catch (err) {
+      if (isEcrImageNotFoundError(err)) return null;
+      throw err;
+    }
     const detail = described.imageDetails?.[0];
     if (detail?.imageDigest === undefined) return null;
 
@@ -322,6 +328,10 @@ class AwsImageOps implements ImageOps {
       ...(res.nextForwardToken === undefined ? {} : { nextToken: res.nextForwardToken }),
     };
   }
+}
+
+export function isEcrImageNotFoundError(err: unknown): boolean {
+  return err instanceof Error && err.name === "ImageNotFoundException";
 }
 
 /** The platform's ECR repositories, given the golden variants deployed. Repo names

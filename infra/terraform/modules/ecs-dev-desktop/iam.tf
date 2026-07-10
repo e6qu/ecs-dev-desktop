@@ -180,6 +180,11 @@ data "aws_iam_policy_document" "control_plane" {
     resources = ["*"]
   }
   statement {
+    sid       = "AwsCostExplorerRead"
+    actions   = ["ce:GetCostAndUsage"]
+    resources = ["*"]
+  }
+  statement {
     sid       = "SendInvitationEmail"
     actions   = ["ses:SendEmail"]
     resources = ["*"]

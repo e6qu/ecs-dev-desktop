@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { describe, expect, it } from "vitest";
 
-import { buildSummaryFromCodeBuild, imageRepos } from "./image-ops";
+import { buildSummaryFromCodeBuild, imageRepos, isEcrImageNotFoundError } from "./image-ops";
 import { FakeImageOps } from "./image-ops.fake";
 
 describe("imageRepos", () => {
@@ -49,6 +49,15 @@ describe("buildSummaryFromCodeBuild", () => {
       status: "succeeded",
       durationMs: 180000,
     });
+  });
+});
+
+describe("isEcrImageNotFoundError", () => {
+  it("recognizes the AWS ECR missing-image exception name", () => {
+    const err = new Error("missing");
+    err.name = "ImageNotFoundException";
+    expect(isEcrImageNotFoundError(err)).toBe(true);
+    expect(isEcrImageNotFoundError(new Error("AccessDenied"))).toBe(false);
   });
 });
 

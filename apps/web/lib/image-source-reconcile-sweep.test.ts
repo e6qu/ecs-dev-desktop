@@ -56,13 +56,13 @@ describe("createImageSourceReconcileRunner", () => {
     await runner.run();
     await runner.run();
 
-    expect(warn).toHaveBeenCalledWith("image-source reconcile sweep failed (will retry)", {
+    expect(warn).toHaveBeenCalledWith("image-source build reconcile failed (will retry)", {
       error: "codebuild unavailable",
     });
     expect(reconcileRecentBuilds).toHaveBeenCalledTimes(2);
   });
 
-  it("does not reconcile against stale ECR state when GitHub polling fails", async () => {
+  it("still reconciles already-recorded triggers when GitHub polling fails", async () => {
     const warn = vi.fn();
     const observeLatestGithubCommit = vi.fn().mockRejectedValue(new Error("GitHub 403"));
     const reconcileRecentBuilds = vi.fn().mockResolvedValue(undefined);
@@ -73,9 +73,9 @@ describe("createImageSourceReconcileRunner", () => {
 
     await runner.run();
 
-    expect(warn).toHaveBeenCalledWith("image-source reconcile sweep failed (will retry)", {
+    expect(warn).toHaveBeenCalledWith("image-source GitHub poll failed (will retry)", {
       error: "GitHub 403",
     });
-    expect(reconcileRecentBuilds).not.toHaveBeenCalled();
+    expect(reconcileRecentBuilds).toHaveBeenCalledTimes(1);
   });
 });

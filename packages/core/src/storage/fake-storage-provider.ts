@@ -11,6 +11,7 @@ import {
   type IsoTimestamp,
   type SnapshotId,
   type VolumeId,
+  type WorkspaceId,
 } from "../domain/ids";
 import type { ComponentHealth } from "../observability/health";
 import type { Snapshot, SnapshotRef, StorageProvider, Volume, VolumeRef } from "./storage-provider";
@@ -82,7 +83,11 @@ export class FakeStorageProvider implements StorageProvider {
     await writeFile(full, data);
   }
 
-  async createSnapshot(volumeId: VolumeId, opts?: { retain?: boolean }): Promise<Snapshot> {
+  async createSnapshot(
+    volumeId: VolumeId,
+    opts?: { retain?: boolean; workspaceId?: WorkspaceId },
+  ): Promise<Snapshot> {
+    void opts?.workspaceId;
     const id = newSnapshotId();
     await cp(this.volumeDir(volumeId), this.snapshotDir(id), { recursive: true });
     this.snapshots.set(id, {

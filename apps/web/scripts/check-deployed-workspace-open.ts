@@ -8,7 +8,9 @@ import {
   createWorkspace,
   deleteWorkspace,
   openEditor,
+  purgeWorkspace,
   requiredEnv,
+  waitPurged,
   waitTerminated,
   waitEnabledImage,
   waitReady,
@@ -40,6 +42,8 @@ try {
     created.map(async (id) => {
       await deleteWorkspace(baseUrl, jar, id);
       await waitTerminated(baseUrl, jar, id);
+      await purgeWorkspace(baseUrl, jar, id);
+      await waitPurged(baseUrl, jar, id);
     }),
   );
   await revokeAuthSession(sessionId);

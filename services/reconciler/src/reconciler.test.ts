@@ -33,7 +33,7 @@ function fakeService(overrides: Partial<ReconcilerService> = {}): ReconcilerServ
     snapshot: () => Promise.reject(new Error("snapshot not expected")),
     listReferencedStorage: () => Promise.resolve({ volumeIds: [], snapshotIds: [] }),
     listReferencedTasks: () => Promise.resolve([]),
-    listWorkspaceIds: () => Promise.resolve([]),
+    listRuntimeSecretWorkspaceIds: () => Promise.resolve([]),
     listStuckProvisioning: () => Promise.resolve([]),
     recoverStuckProvisioning: () => Promise.reject(new Error("recover not expected")),
     listDeleting: () => Promise.resolve([]),
@@ -474,21 +474,22 @@ describe("Reconciler.reapOrphanSecrets", () => {
     };
   }
 
-  it("deletes a secret whose workspace is gone and spares one still live", async () => {
+  it("deletes secrets for non-runtime workspaces and spares one still referenced by a task", async () => {
     const deletes: string[] = [];
     const orphan = secretRef("ws-dead");
-    const live = secretRef("ws-live");
+    const stopped = secretRef("ws-stopped");
+    const live = secretRef("ws-running");
     const reconciler = new Reconciler({
       service: fakeService({
-        listWorkspaceIds: () => Promise.resolve([workspaceId("ws-live")]),
+        listRuntimeSecretWorkspaceIds: () => Promise.resolve([workspaceId("ws-running")]),
       }),
       storage: await emptyStorage(),
-      compute: fakeCompute({ secrets: [orphan, live], deletes }),
+      compute: fakeCompute({ secrets: [orphan, stopped, live], deletes }),
       clock: fixedClock("2026-06-01T02:00:00.000Z"),
       gcGraceMs: ONE_HOUR,
     });
-    expect(await reconciler.reapOrphanSecrets()).toEqual({ scanned: 2, reaped: 1, failed: 0 });
-    expect(deletes).toEqual([orphan.name]);
+    expect(await reconciler.reapOrphanSecrets()).toEqual({ scanned: 3, reaped: 2, failed: 0 });
+    expect(deletes).toEqual([orphan.name, stopped.name]);
   });
 
   it("counts (does not throw) a delete that fails, still reaping the rest", async () => {
@@ -497,7 +498,7 @@ describe("Reconciler.reapOrphanSecrets", () => {
     const a = secretRef("ws-a");
     const b = secretRef("ws-b");
     const reconciler = new Reconciler({
-      service: fakeService({ listWorkspaceIds: () => Promise.resolve([]) }),
+      service: fakeService({ listRuntimeSecretWorkspaceIds: () => Promise.resolve([]) }),
       storage: await emptyStorage(),
       compute: fakeCompute({ secrets: [a, b], deletes, failDelete: a.name }),
       clock: fixedClock("2026-06-01T02:00:00.000Z"),

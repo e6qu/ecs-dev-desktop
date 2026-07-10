@@ -199,6 +199,20 @@ status`, `claude web --help`, `claude serve --help`, the installed version
   manifest path unchanged. The branch also refreshed newly age-eligible
   `vite`/AWS SDK dependencies after `check-deps` caught them on PR #218.
 
+- **2026-07-10** — **The live AWS account was audited and non-EDD leftovers were
+  removed.** Cost Explorer was checked for both net unblended cost and usage-only
+  gross spend, and live AWS resources were enumerated directly across enabled
+  regions instead of trusting Terraform state. The audit found EDD's running
+  control-plane, SSH gateway, NAT instance, load balancers, ECR repos, DynamoDB,
+  SQS, WAF, Route53, KMS, Secrets Manager, CloudWatch, and retained snapshots,
+  plus non-EDD sockerless leftovers. After the operator chose to keep only
+  EDD-related resources, the sockerless S3 state buckets, `sockerless-volumes`
+  EFS filesystem/access points, sockerless/skls CloudWatch log groups, old
+  sockerless ECS task definitions, and the non-EDD ECR cache repository were
+  deleted. Fresh checks showed only EDD ECR repositories, only the EDD Terraform
+  S3 bucket, no EFS filesystems, and sockerless task definitions moving through
+  AWS `DELETE_IN_PROGRESS`.
+
 - **2026-06-04** — **Error channel reaches the UI.** The typed-error work stopped at the
   wire: the server returns `{ error: <message> }` with the right status, but `@edd/api-client`
   threw `Error("POST … failed: 409")` and discarded the body, so the portal showed a bare
@@ -3617,3 +3631,42 @@ Verification passed with full lint/build/test, focused editor-monaco
 test/build/lint, shell syntax checks for the image entrypoint/smoke script, and
 `git diff --check`; the full test suite required loopback access for the
 editor-monaco HTTP/WebSocket server tests.
+
+**2026-07-10 — Fixed image-source convergence and audited real AWS costs.**
+After PR #218 deployed commit `5f052272c505`, the control plane and golden image
+were live but `post-deploy-smoke` still failed because the enabled base-image
+catalog stayed on `omnibus:d063fea1ec78`. Direct CloudWatch/DynamoDB/ECR
+inspection showed the app had enough durable information to converge but the
+sweep stopped early: missing stale ECR tags threw `ImageNotFoundException`, and
+GitHub commit-poll `403`s prevented already-recorded queued triggers from being
+reconciled from ECR. The branch made missing ECR images return `null` per the
+image-ops port contract, kept non-missing AWS errors fail-loud, and split
+GitHub polling from ECR build reconciliation so either path retried
+independently. The deployed smoke began actively polling `/api/admin/image-source`
+during catalog rollout, wrote the live image-source payload into
+`catalog-rollout-failure.json` on failure, shortened the rollout deadline, and
+purged smoke workspaces after termination.
+
+The same branch replaced the partial workspace-only cost view with a full AWS
+account cost section backed by Cost Explorer. The admin Costs page still showed
+workspace lifecycle ledger accounting, but also displayed account month-to-date,
+last-7-days, last-24h, and top service costs, with finite-number validation and
+visible failure if Cost Explorer returned bad data. IAM requirements and
+Terraform granted `ce:GetCostAndUsage`. The first PR #219 Playwright CI run then
+found a test-only ambiguity introduced by that visible failure state:
+`getByRole("heading", { name: "Costs" })` also matched
+`AWS account costs unavailable`. The branch fixed the assertion to use the exact
+page heading and re-ran local Playwright 19/19 against the sockerless simulator.
+
+The live AWS audit intentionally looked beyond Terraform state. It found only
+the expected two control-plane tasks and one SSH gateway task running, no
+managed EDD EBS volumes, but 59 EDD-managed retained snapshots without
+`edd:workspace-id`, many active workspace runtime secrets, five messages in the
+reconciler DLQ, old ECR tagged images, two untagged associated Elastic IPs, the
+ALB/NLB, DynamoDB tables, S3 buckets, Route53 zone, WAF ACL, CodeBuild project,
+KMS keys, CloudWatch log groups, and a non-EDD `sockerless-volumes` EFS
+filesystem. The branch tagged future snapshots with `edd:workspace-id`, changed
+runtime-secret GC to keep only task-referenced runtime secrets, and applied the
+shared ECR lifecycle policy to the SSH gateway repo. Existing retained snapshots
+were deliberately not deleted by code because they were data-bearing retained
+resources without attribution; cleanup required an explicit operator decision.

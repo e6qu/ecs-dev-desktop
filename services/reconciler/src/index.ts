@@ -57,9 +57,10 @@ export interface ReconcilerService {
   /** Task ids still referenced by a workspace record — the orphan-task reaper's
    * keep-set (a RUNNING workspace task in none of these is an orphan). */
   listReferencedTasks(): Promise<readonly TaskId[]>;
-  /** Ids of every workspace that still exists — the orphan-secret reaper's keep-set
-   * (an agent secret tagged with a workspace id in none of these is an orphan). */
-  listWorkspaceIds(): Promise<readonly WorkspaceId[]>;
+  /** Workspace ids that still reference a runtime task — the workspace-secret
+   * reaper's keep-set. Stopped/deleted tombstones can recreate deterministic
+   * runtime secrets on wake, so they must not keep paid secrets alive. */
+  listRuntimeSecretWorkspaceIds(): Promise<readonly WorkspaceId[]>;
   /** Workspaces sitting in `provisioning` (claim time as `lastActivity`) — candidates
    * for stuck-wake recovery. */
   listStuckProvisioning(): Promise<readonly ActiveWorkspace[]>;
@@ -78,7 +79,10 @@ export interface ReconcilerService {
   listStopping(): Promise<readonly { readonly id: WorkspaceId }[]>;
   /** Converge a `stopping` workspace to stopped (snapshot + teardown; no grace —
    * a stopping record the reconciler sees has already outlived the cancel window). */
-  finishStop(id: WorkspaceId, opts?: { ignoreGrace?: boolean }): Promise<Result<unknown, DomainError>>;
+  finishStop(
+    id: WorkspaceId,
+    opts?: { ignoreGrace?: boolean },
+  ): Promise<Result<unknown, DomainError>>;
   /** `error` workspaces that still have a snapshot — the recover keep-set. */
   listRecoverableErrors(): Promise<readonly { readonly id: WorkspaceId }[]>;
   /** Move a recoverable `error` workspace back to `stopped` (wake-able). */
@@ -607,7 +611,7 @@ export class Reconciler {
     }
     const [existing, liveIds] = await Promise.all([
       listSecrets(),
-      this.deps.service.listWorkspaceIds(),
+      this.deps.service.listRuntimeSecretWorkspaceIds(),
     ]);
     const orphans = selectOrphanSecrets(existing, new Set(liveIds), this.now(), this.gcGraceMs);
 

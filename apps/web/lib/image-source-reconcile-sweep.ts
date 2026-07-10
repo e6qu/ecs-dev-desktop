@@ -23,10 +23,22 @@ export function createImageSourceReconcileRunner(
       if (running) return;
       running = true;
       try {
-        await deps.service.observeLatestGithubCommit();
-        await deps.service.reconcileRecentBuilds();
+        try {
+          await deps.service.observeLatestGithubCommit();
+        } catch (err) {
+          deps.logger.warn("image-source GitHub poll failed (will retry)", {
+            error: errorField(err),
+          });
+        }
+        try {
+          await deps.service.reconcileRecentBuilds();
+        } catch (err) {
+          deps.logger.warn("image-source build reconcile failed (will retry)", {
+            error: errorField(err),
+          });
+        }
       } catch (err) {
-        deps.logger.warn("image-source reconcile sweep failed (will retry)", {
+        deps.logger.warn("image-source sweep failed before reconciliation (will retry)", {
           error: errorField(err),
         });
       } finally {

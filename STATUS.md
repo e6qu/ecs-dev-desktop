@@ -2,6 +2,82 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
+**Last updated:** 2026-07-10. After PR #218 merged as
+`5f052272c50524c951ce53c54a1d3e94449c1173`, the `release` workflow succeeded,
+production `/api/healthz` reported `deploy.sha=5f052272c505`, `/api/readyz`
+was ready, and ECR contained `edd-prod/golden/omnibus:5f052272c505`. The
+post-deploy screenshot smoke still failed because production's enabled catalog
+image stayed on `omnibus:d063fea1ec78` until the 20-minute deadline. Direct
+CloudWatch/DynamoDB/ECR inspection showed two real convergence bugs: a stale
+queued trigger for an older tag could abort the whole image-source sweep because
+`AwsImageOps.getImageMetadata` threw on ECR `ImageNotFoundException` instead of
+returning the port-contract `null`, and one GitHub commit-poll `403` prevented
+reconciliation of already-recorded queued triggers from ECR. The branch fixed
+both paths: missing ECR images now returned `null` while other AWS errors still
+failed loudly, and GitHub polling and ECR build reconciliation ran as independent
+retrying steps so a poll failure did not block catalog convergence from known
+build records. The deployed smoke scripts were tightened to force an
+image-source reconcile during catalog polling, fail in about 4 minutes with the
+live image-source payload captured as an artifact, and purge smoke workspaces
+after termination so tests did not leave stale records.
+
+The same branch completed a live cost/resource audit from AWS APIs rather than
+Terraform assumptions. Cost Explorer usage for 2026-07-01 through the
+2026-07-10 billing window was about `$34.27` before credits, with top usage
+categories ECS (`$10.95`), ELB (`$5.05`), Secrets Manager (`$4.39`), CodeBuild
+(`$4.61`), EC2-Other (`$3.41`), VPC/public IPv4 (`$2.48`), CloudWatch
+(`$1.14`), EC2 compute (`$0.90`), WAF (`$0.62`), DynamoDB (`$0.55`), ECR
+(`$0.53`), Route53 (`$0.50`), and KMS (`$0.13`). Live ECS had only two
+control-plane tasks and one SSH gateway task running on cluster
+`edd-prod-workspaces`; there were no managed EDD EBS volumes. The audit found
+billable drift/stale items that stayed visible: 59 EDD-managed retained
+snapshots, all without `edd:workspace-id`; many active
+`edd/workspace/<id>/{agent,connection}` Secrets Manager secrets; 5 messages in
+`edd-prod-reconciler-dlq`; ECR repos with old tagged images (including
+`edd-prod/ssh-gateway` at 99 image details and `edd-prod/golden/omnibus` at 27);
+two untagged associated Elastic IPs; two active load balancers; three S3
+buckets; one Route53 zone; one EDD WAF ACL; one CodeBuild project; an EDD KMS key
+plus AWS-managed keys; and non-EDD sockerless/pull-through leftovers. No AWS
+Budgets existed. The operator then chose to keep only EDD-related AWS
+resources, so the non-EDD sockerless resources were deleted from the live
+account: `sockerless-terraform-state`, `sockerless-tf-state`, the
+`sockerless-volumes` EFS filesystem and its access points, sockerless/skls
+CloudWatch log groups, old sockerless ECS task definitions, and the non-EDD ECR
+cache repository `public-ecr-aws/docker/library/alpine`. Fresh verification
+showed ECR contained only `edd-prod/edd-base`, `edd-prod/control-plane`,
+`edd-prod/golden/omnibus`, and `edd-prod/ssh-gateway`; S3 contained only
+`edd-tfstate-edd-prod`; no EFS filesystems remained; and sockerless task
+definitions were in AWS `DELETE_IN_PROGRESS` rather than active/inactive use.
+The branch added full-account Cost Explorer visibility to the
+admin Costs page, with finite-number validation and visible failure on bad AWS
+cost data, and granted the control-plane task `ce:GetCostAndUsage`. It also
+tagged future EDD snapshots with `edd:workspace-id`, fixed runtime secret GC to
+retain only task-referenced runtime secrets rather than every historical
+workspace id, and applied the shared ECR lifecycle policy to the SSH gateway
+repository. Existing retained snapshots were not deleted by code because they
+were data-bearing retained resources without workspace attribution; an explicit
+operator cleanup decision stayed required.
+
+Verification passed with `pnpm check-deps`, `pnpm lint`, `pnpm build`,
+`pnpm test`, `pnpm --filter web test -- aws-account-costs
+image-source-reconcile-sweep image-ops iam-policy-drift` with loopback access,
+`pnpm --filter web lint`, `pnpm --filter web build`, `pnpm --filter @edd/core
+lint`, `pnpm --filter @edd/core build`, direct core Vitest for the touched files,
+full direct `pnpm exec vitest run` in `packages/core`, `pnpm --filter
+@edd/control-plane test -- --runInBand`, `pnpm --filter @edd/storage-ec2 test
+-- --runInBand`, `pnpm --filter @edd/reconciler test -- --runInBand`, package
+lints for control-plane/storage-ec2/reconciler, `pnpm --filter web test:pw`
+against the local sockerless simulator, and `git diff --check`. The first
+sandboxed web test failed only because the sandbox denied binding `127.0.0.1`;
+the same suite passed with loopback access. Core tests were run directly from
+`packages/core` after `pnpm --filter @edd/core test -- --runInBand` proved to be
+an invalid/opaque argument-forwarding form for this Vitest package. The first PR
+#219 Playwright CI run failed on a test selector ambiguity, not a page failure:
+`getByRole("heading", { name: "Costs" })` matched both the page `<h1>Costs</h1>`
+and the new `<h2>AWS account costs unavailable</h2>` failure surface. The branch
+fixed the selector to require the exact page heading and re-ran local Playwright
+successfully.
+
 **Last updated:** 2026-07-10. After PR #217 merged as
 `b95844c334e7453acb2f21b5e7f6ccb584420c8f`, the post-merge `release`
 workflow failed before deployment in `Build & push images`. Production stayed on
