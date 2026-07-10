@@ -24,6 +24,10 @@ export const EDD_METRIC_NAMESPACE = "edd/control-plane";
 // Metric names — named constants so call sites carry no magic strings (§6.2).
 /** Wake-on-connect / start cold-start latency (RunTask → routable), in ms. */
 export const METRIC_WORKSPACE_WAKE_LATENCY_MS = "workspace.wake.latency_ms";
+/** Phase-level workspace startup timing, dimensioned by operation/phase/outcome. */
+export const METRIC_WORKSPACE_STARTUP_PHASE_MS = "workspace.startup.phase_ms";
+/** Phase-level workspace startup failure count, dimensioned by operation/phase. */
+export const METRIC_WORKSPACE_STARTUP_PHASE_FAILED = "workspace.startup.phase_failed";
 /** One reconciler maintenance sweep ran to completion. */
 export const METRIC_RECONCILER_SWEEP = "reconciler.sweep.count";
 /** A reconciler sweep threw before completing. */

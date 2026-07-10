@@ -30,17 +30,32 @@ live. Hence:
    Don't hand-roll.
 7. **Components build independently** (`pnpm --filter <name> build`).
 8. **TDD**: failing test → make it pass → refactor. No feature without a test.
-9. **File upstream issues only in `github.com/e6qu/sockerless`** — never open
-   issues in any other external project (e.g. Pomerium, AWS, etc.).
-   If a third-party tool has a limitation, record it in `BUGS.md` and work
-   around it or wait; do not file in their tracker.
-10. **Only one active branch and one active PR at a time.** This prevents agents
+9. **User-flow verification is mandatory for UI/workspace/editor changes.** Do
+   not call UI work done from API/unit checks, health endpoints, ECS deployment
+   completion, or shallow screenshots alone. For every affected user/admin
+   workflow, exercise the real browser path with Playwright or an equivalent
+   local/deployed harness: open the page, perform the expected actions, assert the
+   visible result, and save/inspect screenshots when layout or editor behavior
+   matters. Workspace/editor changes must exercise every affected workspace type
+   end-to-end. Every workspace editor surface must expose and verify a visible
+   top-level route back to `/workspaces`. OpenVSCode verification must prove the
+   actual File menu is visible and opens from a real click. Terminal workspace
+   changes specifically must verify at least one tab opens by default, command
+   input/output works, creating a new tab works, switching tabs works, closing
+   tabs works, and closed tabs do not leave stale sessions. If the workflow
+   cannot be fully exercised, treat that as a blocker/bug to solve or record, not
+   as a pass.
+10. **File upstream issues only in `github.com/e6qu/sockerless`** — never open
+    issues in any other external project (e.g. Pomerium, AWS, etc.).
+    If a third-party tool has a limitation, record it in `BUGS.md` and work
+    around it or wait; do not file in their tracker.
+11. **Only one active branch and one active PR at a time.** This prevents agents
     from creating PRs or work streams casually and causing confusion about what is
     under review. Do not start parallel work on a second branch, and do not open a
     second PR (including a stacked PR) while another branch/PR is active. If a PR
     already exists for the current branch/work, keep delivering work as commits to
     that PR; never open a duplicate PR.
-11. **Resist anemic PRs.** This project prefers chunky, complete PRs over small
+12. **Resist anemic PRs.** This project prefers chunky, complete PRs over small
     fragments. Keep related fixes, tests, docs, and boyscout cleanup in the active
     branch/PR instead of splitting them into tiny review units. The human in
     command decides when the active work is done and when it is time to stop,
@@ -153,6 +168,14 @@ unique prefix, mandatory teardown, cost cap.
 
 Live simulator status and gaps live in `BUGS.md` → _External blockers_ (kept
 there, not inlined here, so it doesn't go stale).
+
+UI/browser gate: any change touching the app UI, admin UI, editor proxy,
+workspace images, workspace interfaces, terminal/editor behavior,
+auth/session/cookie flows, or deployed smoke checks must include browser-level
+verification of the actual workflow. The test must click/type through the flow
+and inspect screenshots/artifacts where rendering matters. A health endpoint,
+ready endpoint, or successful ECS deployment is not a substitute for opening the
+affected page or workspace and proving the expected user action works.
 
 ---
 

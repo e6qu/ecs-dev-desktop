@@ -196,6 +196,16 @@ conditions every transition write so concurrent wakes can't leak ECS tasks.
   _creation_ is covered by terraform-sim; this proves a _recurring_ schedule fires on cadence.
 - ⬜ **AWS-gated:** SOCI; real-cadence cost metric at scale. (Cron is now sim-proven above; `cron()` also
   works — BUG-1531/#489 fixed upstream.)
+- ⬜ **Workspace provisioning/startup performance — staged, evidence-first.**
+  First add phase-level telemetry for create and wake (secret upsert,
+  task-definition registration/cache, `RunTask`, Fargate pending/ENI, image pull,
+  managed-EBS attach or snapshot hydration, container start, editor readiness,
+  and first proxy success). Then optimize whichever phase dominates: split golden
+  images by workspace interface to reduce pulls; reuse stable task definitions
+  and pre-created per-workspace secrets if API setup is material; tune stopped
+  workspace wake with measured snapshot-hydration data and an explicit
+  cost-vs-latency decision for any warm-idle/warm-pool behavior. No fallback
+  auth or token shortcuts are allowed.
 - **Gate:** idle→stop→snapshot→wake ✅; GC reaps orphans only ✅; heartbeat keep-alive ✅
   (incl. live in-workspace agent); reconciler container + scheduler e2e ✅ (incl.
   real task stop); drift detection ✅; concurrent-wake no-leak ✅; recurring cron firing ✅ (sim);
@@ -243,6 +253,11 @@ is ports-and-adapters: events/audit/logs **derived from current state now**, fro
   `DerivedAuditSource`/`DerivedLogSource` local adapters, `GET /api/admin/audit` and
   `GET /api/admin/logs`, the `/admin/logs` page (derived audit feed plus the
   control-plane log stream; reconciler/container streams marked CloudWatch-on-AWS).
+- ⬜ **8D — Admin performance metrics for workspace startup:** expose create/wake
+  p50/p90/p99, latest slow starts, phase breakdowns, failure counts by phase, and
+  links to workspace/session/log context. The admin UI must show the difference
+  between ECS task readiness and editor/proxy readiness, grouped by workspace
+  interface, image ref, fresh-vs-snapshot launch, disk size, CPU, and memory.
   All Playwright-covered.
 - ✅ **8C — CloudTrail + CloudWatch Logs adapters (sim-proven):** `@edd/cloudtrail-audit`
   (`CloudTrailAuditSource`) + `@edd/cloudwatch-logs` (`CloudWatchLogSource`) — endpoint-only,

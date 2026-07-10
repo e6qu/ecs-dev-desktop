@@ -6,7 +6,7 @@
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { inWorkspace, VSCODE_URL } from "./vscode-support";
 
@@ -24,6 +24,21 @@ const BUILD_COMMAND = [
   "go build -o hello hello.go",
   "./hello",
 ].join(" && ");
+
+async function assertFileMenuOpens(page: Page): Promise<void> {
+  const fileMenu = page
+    .locator('[role="menuitem"][aria-label="File"], .menubar-menu-button', { hasText: /^File$/ })
+    .first();
+  await expect(fileMenu, "OpenVSCode must expose the actual File menu").toBeVisible({
+    timeout: 30_000,
+  });
+  await fileMenu.click();
+  await expect(
+    page.locator(".monaco-menu-container, .context-view.monaco-menu, [role='menu']").first(),
+    "OpenVSCode File menu must open from a real click",
+  ).toBeVisible({ timeout: 10_000 });
+  await page.keyboard.press("Escape");
+}
 
 test.beforeAll(() => {
   mkdirSync(SHOTS, { recursive: true });
@@ -44,6 +59,7 @@ test("OpenVSCode workspace: load the workbench, compile from the terminal, verif
     await trustButton.click();
     await page.waitForTimeout(500);
   }
+  await assertFileMenuOpens(page);
   await page.screenshot({ path: shot("01-workbench.png") });
 
   // 2. Open the integrated terminal. The welcome page is a webview iframe and the

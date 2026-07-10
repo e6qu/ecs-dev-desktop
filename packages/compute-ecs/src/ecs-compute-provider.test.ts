@@ -8,8 +8,10 @@ import {
   RegisterTaskDefinitionCommand,
   RunTaskCommand,
   StopTaskCommand,
+  type RegisterTaskDefinitionCommandInput,
   type RunTaskCommandInput,
 } from "@aws-sdk/client-ecs";
+import { COST_SCOPE_TAG_KEY } from "@edd/config";
 import { baseImage, deriveWorkspaceToken, snapshotId, taskId, workspaceId } from "@edd/core";
 import { describe, expect, it } from "vitest";
 
@@ -286,16 +288,21 @@ describe("EcsComputeProvider.runTask cleanup on a failed launch", () => {
 describe("EcsComputeProvider.runTask request shape (workspace tag + managed EBS + FARGATE)", () => {
   const ARN = "arn:aws:ecs:us-east-1:123456789012:task/edd/run1";
   const RESOURCES = { cpuUnits: 1024, memoryMiB: 4096, volumeGiB: 64 } as const;
+  const COST_SCOPE = { key: COST_SCOPE_TAG_KEY, value: "edd-alpha" };
 
-  function capturingClient(runInputs: RunTaskCommandInput[]): ECSClient {
+  function capturingClient(inputs: {
+    readonly taskDefinitions: RegisterTaskDefinitionCommandInput[];
+    readonly tasks: RunTaskCommandInput[];
+  }): ECSClient {
     const send = (command: unknown): Promise<unknown> => {
       if (command instanceof RegisterTaskDefinitionCommand) {
+        inputs.taskDefinitions.push(command.input);
         return Promise.resolve({
           taskDefinition: { taskDefinitionArn: "arn:aws:ecs:::task-definition/edd:1" },
         });
       }
       if (command instanceof RunTaskCommand) {
-        runInputs.push(command.input);
+        inputs.tasks.push(command.input);
         return Promise.resolve({ tasks: [{ taskArn: ARN }] });
       }
       if (command instanceof DescribeTasksCommand) {
@@ -311,34 +318,44 @@ describe("EcsComputeProvider.runTask request shape (workspace tag + managed EBS 
   const config = { subnets: ["subnet-1"], ebsRoleArn: "arn:aws:iam::123456789012:role/ebs" };
 
   it("tags edd:workspace-id, runs FARGATE, sizes a fresh managed volume w/ deleteOnTermination", async () => {
-    const runInputs: RunTaskCommandInput[] = [];
-    const provider = new EcsComputeProvider({ client: capturingClient(runInputs), config });
+    const inputs = {
+      taskDefinitions: [] as RegisterTaskDefinitionCommandInput[],
+      tasks: [] as RunTaskCommandInput[],
+    };
+    const provider = new EcsComputeProvider({ client: capturingClient(inputs), config });
     await provider.runTask({
       workspaceId: workspaceId("ws-1"),
       baseImage: baseImage("edd-workspace:e2e"),
       resources: RESOURCES,
     });
-    const input = runInputs[0];
+    const taskDef = inputs.taskDefinitions[0];
+    expect(taskDef?.tags).toContainEqual(COST_SCOPE);
+    const input = inputs.tasks[0];
     expect(input?.launchType).toBe("FARGATE");
     expect(input?.tags).toContainEqual({ key: "edd:workspace-id", value: "ws-1" });
+    expect(input?.tags).toContainEqual(COST_SCOPE);
     expect(input?.networkConfiguration?.awsvpcConfiguration?.subnets).toEqual(["subnet-1"]);
     const vol = input?.volumeConfigurations?.[0]?.managedEBSVolume;
     expect(vol?.roleArn).toBe("arn:aws:iam::123456789012:role/ebs");
     expect(vol?.terminationPolicy?.deleteOnTermination).toBe(true);
     expect(vol?.sizeInGiB).toBe(64);
     expect(vol?.snapshotId).toBeUndefined();
+    expect(vol?.tagSpecifications?.[0]?.tags).toContainEqual(COST_SCOPE);
   });
 
   it("hydrates the managed volume from a snapshot (snapshotId set, no sizeInGiB)", async () => {
-    const runInputs: RunTaskCommandInput[] = [];
-    const provider = new EcsComputeProvider({ client: capturingClient(runInputs), config });
+    const inputs = {
+      taskDefinitions: [] as RegisterTaskDefinitionCommandInput[],
+      tasks: [] as RunTaskCommandInput[],
+    };
+    const provider = new EcsComputeProvider({ client: capturingClient(inputs), config });
     await provider.runTask({
       workspaceId: workspaceId("ws-2"),
       baseImage: baseImage("edd-workspace:e2e"),
       resources: RESOURCES,
       fromSnapshot: snapshotId("snap-xyz"),
     });
-    const vol = runInputs[0]?.volumeConfigurations?.[0]?.managedEBSVolume;
+    const vol = inputs.tasks[0]?.volumeConfigurations?.[0]?.managedEBSVolume;
     expect(vol?.snapshotId).toBe("snap-xyz");
     expect(vol?.sizeInGiB).toBeUndefined();
   });

@@ -16,7 +16,13 @@ import {
   type Filter,
   type Tag,
 } from "@aws-sdk/client-ec2";
-import { AWS_SDK_MAX_ATTEMPTS, AWS_SDK_RETRY_MODE, DEFAULT_AWS_REGION } from "@edd/config";
+import {
+  AWS_SDK_MAX_ATTEMPTS,
+  AWS_SDK_RETRY_MODE,
+  COST_SCOPE,
+  COST_SCOPE_TAG_KEY,
+  DEFAULT_AWS_REGION,
+} from "@edd/config";
 import {
   isoTimestamp,
   snapshotId,
@@ -59,6 +65,8 @@ export interface Ec2StorageProviderDeps {
   region?: string;
   /** Restrict managed resources to this scope (tagged + filtered on enumerate). */
   scope?: string;
+  /** Value for the shared AWS cost-allocation tag key (`edd:cost-scope`). */
+  costScope?: string;
   /** Build an EC2 client for another region (cross-region snapshot copy / DR). The
    * same coordinates as the source — only the region changes — so it hits the sim
    * (shared endpoint) or real AWS (per-region endpoint) by config alone (§6.9).
@@ -101,6 +109,7 @@ export class Ec2StorageProvider implements StorageProvider {
   private readonly availabilityZone: string;
   private readonly region: string;
   private readonly scope?: string;
+  private readonly costScope: string;
   private readonly clientForRegion?: (region: string) => EC2Client;
 
   constructor(deps: Ec2StorageProviderDeps) {
@@ -108,11 +117,12 @@ export class Ec2StorageProvider implements StorageProvider {
     this.region = deps.region ?? DEFAULT_AWS_REGION;
     this.availabilityZone = deps.availabilityZone ?? `${this.region}a`;
     this.scope = deps.scope;
+    this.costScope = deps.costScope ?? COST_SCOPE;
     this.clientForRegion = deps.clientForRegion;
   }
 
   /** Build a provider from the ambient AWS env (`AWS_ENDPOINT_URL` → the sim). */
-  static fromEnv(opts: { scope?: string } = {}): Ec2StorageProvider {
+  static fromEnv(opts: { scope?: string; costScope?: string } = {}): Ec2StorageProvider {
     const region = process.env.AWS_REGION ?? DEFAULT_AWS_REGION;
     const endpoint = process.env.AWS_ENDPOINT_URL;
     const clientForRegion = (r: string): EC2Client =>
@@ -133,7 +143,10 @@ export class Ec2StorageProvider implements StorageProvider {
   }
 
   private managedTags(): Tag[] {
-    const tags: Tag[] = [{ Key: MANAGED_TAG_KEY, Value: MANAGED_TAG_VALUE }];
+    const tags: Tag[] = [
+      { Key: MANAGED_TAG_KEY, Value: MANAGED_TAG_VALUE },
+      { Key: COST_SCOPE_TAG_KEY, Value: this.costScope },
+    ];
     if (this.scope !== undefined) tags.push({ Key: SCOPE_TAG_KEY, Value: this.scope });
     return tags;
   }

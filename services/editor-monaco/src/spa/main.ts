@@ -351,7 +351,13 @@ function openNewTerminalTab(): void {
   sock.addEventListener("error", () => {
     t.write("\r\n\x1b[31m[terminal connection error]\x1b[0m\r\n");
   });
-  sock.addEventListener("close", () => {
+  sock.addEventListener("close", (event: CloseEvent) => {
+    if (event.code === 1011) {
+      tabShell.classList.add("error");
+      tabButton.textContent = `Terminal ${String(id)} failed`;
+      t.write("\r\n\x1b[31m[terminal session failed]\x1b[0m\r\n");
+      return;
+    }
     closeTerminalTab(id);
   });
   t.onData((data) => {

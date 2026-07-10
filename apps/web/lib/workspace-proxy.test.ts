@@ -32,6 +32,7 @@ const {
   authorizeSpectate,
   authorizeWorkspace,
   editorTokenRedirect,
+  injectWorkspaceHomeLink,
   isDocumentNavigation,
   isWorkspaceDocumentNavigation,
   opencodeProxyAuthorization,
@@ -431,6 +432,25 @@ describe("opencode proxy adaptation", () => {
     expect(out).toContain('"/w/not-this-workspace/assets/existing.js"');
     expect(out).toContain('"https://opencode.ai/logo.png"');
     expect(out).toContain(`?"http://localhost:4096":location.origin+"/w/${WS}"`);
+  });
+
+  it("injects a visible EDD workspaces link into opencode HTML without rewriting it", () => {
+    const out = injectWorkspaceHomeLink(
+      rewriteOpencodeResponseBody(
+        "<!doctype html><html><body><main>opencode</main></body></html>",
+        WS,
+      ),
+    );
+    expect(out).toContain('id="edd-workspaces-home"');
+    expect(out).toContain('href="/workspaces"');
+    expect(out).toContain("EDD home");
+    expect(out).not.toContain(`href="/w/${WS}/workspaces"`);
+  });
+
+  it("does not silently pass opencode HTML that cannot receive the required EDD navigation", () => {
+    expect(() =>
+      injectWorkspaceHomeLink("<!doctype html><html><main>opencode</main></html>"),
+    ).toThrow(/body/);
   });
 });
 

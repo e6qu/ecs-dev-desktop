@@ -169,6 +169,7 @@ sim (AGENTS.md §6.8).
 | `name`                                                | string       | —                       | Resource name prefix (lowercase, hyphenated).                                       |
 | `availability_zones`                                  | list(string) | —                       | AZs (≥2) to spread subnets across.                                                  |
 | `tags`                                                | map(string)  | `{}`                    | Extra tags on every resource.                                                       |
+| `cost_scope`                                          | string       | `"edd-alpha"`           | Value for `edd:cost-scope`; activate that tag key in AWS Billing for cost reports.  |
 | `vpc_cidr`                                            | string       | `10.42.0.0/16`          | VPC CIDR.                                                                           |
 | `nat_mode`                                            | string       | `gateway`               | Private egress: `gateway` (managed) or `instance` (fck-nat).                        |
 | `single_nat_gateway`                                  | bool         | `true`                  | (gateway) One shared NAT vs one per AZ.                                             |

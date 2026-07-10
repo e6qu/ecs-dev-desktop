@@ -14,6 +14,7 @@ import {
   type DescribeSnapshotsCommandInput,
   type DescribeVolumesCommandInput,
 } from "@aws-sdk/client-ec2";
+import { COST_SCOPE_TAG_KEY } from "@edd/config";
 import { snapshotId, volumeId, workspaceId } from "@edd/core";
 import { describe, expect, it } from "vitest";
 
@@ -165,6 +166,7 @@ describe("Ec2StorageProvider AWS request shape (managed tags + filters + branche
   }
 
   const MANAGED = { Key: "edd:managed", Value: "true" };
+  const COST_SCOPE = { Key: COST_SCOPE_TAG_KEY, Value: "edd-alpha" };
 
   it("tags a fresh volume edd:managed=true and sizes it (no SnapshotId)", async () => {
     const sent: Sent[] = [];
@@ -175,6 +177,7 @@ describe("Ec2StorageProvider AWS request shape (managed tags + filters + branche
     expect(input.Size).toBeGreaterThan(0);
     expect(input.SnapshotId).toBeUndefined();
     expect(input.TagSpecifications?.[0]?.Tags).toContainEqual(MANAGED);
+    expect(input.TagSpecifications?.[0]?.Tags).toContainEqual(COST_SCOPE);
   });
 
   it("hydrates from a snapshot (SnapshotId set, no Size) and tags it managed", async () => {
@@ -186,6 +189,7 @@ describe("Ec2StorageProvider AWS request shape (managed tags + filters + branche
     expect(input.SnapshotId).toBe("snap-src");
     expect(input.Size).toBeUndefined();
     expect(input.TagSpecifications?.[0]?.Tags).toContainEqual(MANAGED);
+    expect(input.TagSpecifications?.[0]?.Tags).toContainEqual(COST_SCOPE);
   });
 
   it("tags snapshots with managed, retain, and workspace attribution when provided", async () => {
@@ -197,6 +201,7 @@ describe("Ec2StorageProvider AWS request shape (managed tags + filters + branche
     });
     const input = inputOf(sent, "CreateSnapshotCommand") as CreateSnapshotCommandInput;
     expect(input.TagSpecifications?.[0]?.Tags).toContainEqual(MANAGED);
+    expect(input.TagSpecifications?.[0]?.Tags).toContainEqual(COST_SCOPE);
     expect(input.TagSpecifications?.[0]?.Tags).toContainEqual({
       Key: "edd:retain",
       Value: "true",
@@ -240,5 +245,6 @@ describe("Ec2StorageProvider AWS request shape (managed tags + filters + branche
     expect(input.SourceRegion).toBe("us-east-1");
     expect(input.SourceSnapshotId).toBe("snap-src");
     expect(input.TagSpecifications?.[0]?.Tags).toContainEqual(MANAGED);
+    expect(input.TagSpecifications?.[0]?.Tags).toContainEqual(COST_SCOPE);
   });
 });

@@ -20,9 +20,10 @@ locals {
   # (the control plane reaps only resources tagged edd:managed = true).
   tags = merge(
     {
-      "edd:managed"   = "true"
-      "edd:component" = "ecs-dev-desktop"
-      "Name"          = var.name
+      "edd:managed"    = "true"
+      "edd:component"  = "ecs-dev-desktop"
+      "edd:cost-scope" = var.cost_scope
+      "Name"           = var.name
     },
     var.tags,
   )

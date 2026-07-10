@@ -22,6 +22,8 @@ import {
 import {
   AWS_SDK_MAX_ATTEMPTS,
   AWS_SDK_RETRY_MODE,
+  COST_SCOPE,
+  COST_SCOPE_TAG_KEY,
   DEFAULT_AWS_REGION,
   DEFAULT_ECS_CLUSTER,
   DEFAULT_WORKSPACE_LOG_STREAM_PREFIX,
@@ -31,6 +33,8 @@ import {
 } from "@edd/config";
 import {
   DEFAULT_HEARTBEAT_INTERVAL_S,
+  METRIC_WORKSPACE_STARTUP_PHASE_FAILED,
+  METRIC_WORKSPACE_STARTUP_PHASE_MS,
   deriveWorkspaceToken,
   isoTimestamp,
   taskId,
@@ -43,6 +47,8 @@ import {
   type ComputeProvider,
   type ComputeTask,
   type EditorKind,
+  type MetricDimensions,
+  type MetricSink,
   type TaskLiveness,
   type RunTaskInput,
   type TaskId,
@@ -123,11 +129,15 @@ export interface EcsComputeConfig {
    * When set, every task definition includes logConfiguration pointing here.
    * Matches the log group created by the Terraform module (e.g. "/${appName}/workspaces"). */
   logGroupName?: string;
+  /** Value for the shared AWS cost-allocation tag key (`edd:cost-scope`). */
+  costScope?: string;
 }
 
 export interface EcsComputeProviderDeps {
   client: ECSClient;
   config: EcsComputeConfig;
+  /** Optional metric sink for startup sub-phases owned by the ECS adapter. */
+  metrics?: MetricSink;
   /** Secrets Manager client. When present (and `config.agentSecret` is set), the
    * per-workspace agent token is injected via ECS `secrets` (Secrets Manager)
    * instead of plaintext `environment`, so it never appears in DescribeTasks /
@@ -159,6 +169,25 @@ function positiveIntEnv(name: string): number | undefined {
 /** Prefix of every workspace task-definition family — distinguishes them from the
  * control-plane/reconciler task defs so the reconciler's task-def GC only prunes ours. */
 const WORKSPACE_TASKDEF_FAMILY_PREFIX = "edd-ws-";
+
+function costScopeTags(config: EcsComputeConfig): { key: string; value: string }[] {
+  return [{ key: COST_SCOPE_TAG_KEY, value: config.costScope ?? COST_SCOPE }];
+}
+
+function costScopeSecretTags(config: EcsComputeConfig): { Key: string; Value: string }[] {
+  return [{ Key: COST_SCOPE_TAG_KEY, Value: config.costScope ?? COST_SCOPE }];
+}
+
+function startupDimensions(input: RunTaskInput): MetricDimensions {
+  return {
+    operation: input.fromSnapshot === undefined ? "create" : "wake",
+    launch: input.fromSnapshot === undefined ? "fresh" : "snapshot",
+    editor: input.editor ?? "openvscode",
+    cpuUnits: input.resources.cpuUnits.toString(),
+    memoryMiB: input.resources.memoryMiB.toString(),
+    volumeGiB: input.resources.volumeGiB.toString(),
+  };
+}
 
 /** A valid ECS task-definition family derived from a base-image reference
  * (ECS families allow letters, numbers, hyphens, underscores). Fails loudly on an
@@ -277,11 +306,13 @@ export class EcsComputeProvider implements ComputeProvider {
   private readonly client: ECSClient;
   private readonly config: EcsComputeConfig;
   private readonly secrets?: SecretsManagerClient;
+  private readonly metrics?: MetricSink;
 
   constructor(deps: EcsComputeProviderDeps) {
     this.client = deps.client;
     this.config = deps.config;
     this.secrets = deps.secretsClient;
+    this.metrics = deps.metrics;
   }
 
   private cluster(): string {
@@ -356,6 +387,7 @@ export class EcsComputeProvider implements ComputeProvider {
           },
         ],
         volumes: [{ name: WORKSPACE_VOLUME, configuredAtLaunch: true }],
+        tags: costScopeTags(this.config),
       }),
     );
     const arn = required(out.taskDefinition?.taskDefinitionArn, "taskDefinitionArn");
@@ -388,6 +420,7 @@ export class EcsComputeProvider implements ComputeProvider {
           Tags: [
             { Key: WORKSPACE_TAG_KEY, Value: wsId },
             { Key: "edd:managed", Value: "true" },
+            ...costScopeSecretTags(this.config),
           ],
         }),
       );
@@ -475,6 +508,7 @@ export class EcsComputeProvider implements ComputeProvider {
   }
 
   async runTask(input: RunTaskInput): Promise<ComputeTask> {
+    const dimensions = startupDimensions(input);
     // Secure path: stash the per-workspace tokens (idle-agent + editor connection)
     // in Secrets Manager and reference them from a per-workspace task def, so they
     // are never injected as plaintext env.
@@ -483,33 +517,37 @@ export class EcsComputeProvider implements ComputeProvider {
     let agentViaSecret = false;
     let connectionViaSecret = false;
     if (this.secrets !== undefined) {
-      if (this.config.agentSecret !== undefined) {
-        const arn = await this.ensureWorkspaceSecret(
-          this.secrets,
-          wsId,
-          "agent",
-          agentToken(this.config.agentSecret, wsId),
+      const secrets = this.secrets;
+      const agentSecret = this.config.agentSecret;
+      if (agentSecret !== undefined) {
+        const arn = await this.timeStartupPhase("secret-agent", dimensions, () =>
+          this.ensureWorkspaceSecret(secrets, wsId, "agent", agentToken(agentSecret, wsId)),
         );
         entries.push({ name: "EDD_AGENT_TOKEN", valueFrom: arn });
         agentViaSecret = true;
       }
-      if (this.config.connectionSecret !== undefined) {
-        const arn = await this.ensureWorkspaceSecret(
-          this.secrets,
-          wsId,
-          "connection",
-          deriveWorkspaceToken(this.config.connectionSecret, wsId),
+      const connectionSecret = this.config.connectionSecret;
+      if (connectionSecret !== undefined) {
+        const arn = await this.timeStartupPhase("secret-connection", dimensions, () =>
+          this.ensureWorkspaceSecret(
+            secrets,
+            wsId,
+            "connection",
+            deriveWorkspaceToken(connectionSecret, wsId),
+          ),
         );
         entries.push({ name: "CONNECTION_TOKEN", valueFrom: arn });
         connectionViaSecret = true;
       }
     }
     const injected = entries.length > 0 ? { wsId, entries } : undefined;
-    const taskDef = await this.ensureTaskDef({
-      image: input.baseImage,
-      resources: input.resources,
-      ...(injected === undefined ? {} : { injected }),
-    });
+    const taskDef = await this.timeStartupPhase("task-definition", dimensions, () =>
+      this.ensureTaskDef({
+        image: input.baseImage,
+        resources: input.resources,
+        ...(injected === undefined ? {} : { injected }),
+      }),
+    );
 
     const workspaceEnv = workspaceEnvironment(
       this.config,
@@ -519,46 +557,57 @@ export class EcsComputeProvider implements ComputeProvider {
       input.editor,
     );
 
-    const out = await this.client.send(
-      new RunTaskCommand({
-        cluster: this.cluster(),
-        taskDefinition: taskDef,
-        launchType: "FARGATE",
-        // Tag the task with its workspace so the reconciler's orphan-task reaper can
-        // enumerate workspace tasks (and only those) and read the workspace id back.
-        tags: [{ key: WORKSPACE_TAG_KEY, value: input.workspaceId }],
-        // Inject the SSM exec agent so admins/automation can `aws ecs execute-command`
-        // into a live workspace (debugging, break-glass) — the capability was
-        // sim-proven on a standalone task; the production launch path enables it too.
-        enableExecuteCommand: true,
-        networkConfiguration: {
-          awsvpcConfiguration: {
-            subnets: this.config.subnets,
-            ...(this.config.securityGroups ? { securityGroups: this.config.securityGroups } : {}),
-            assignPublicIp: (this.config.assignPublicIp ?? true) ? "ENABLED" : "DISABLED",
+    const out = await this.timeStartupPhase("run-task-api", dimensions, () =>
+      this.client.send(
+        new RunTaskCommand({
+          cluster: this.cluster(),
+          taskDefinition: taskDef,
+          launchType: "FARGATE",
+          // Tag the task with its workspace so the reconciler's orphan-task reaper can
+          // enumerate workspace tasks (and only those) and read the workspace id back.
+          tags: [
+            { key: WORKSPACE_TAG_KEY, value: input.workspaceId },
+            ...costScopeTags(this.config),
+          ],
+          // Inject the SSM exec agent so admins/automation can `aws ecs execute-command`
+          // into a live workspace (debugging, break-glass) — the capability was
+          // sim-proven on a standalone task; the production launch path enables it too.
+          enableExecuteCommand: true,
+          networkConfiguration: {
+            awsvpcConfiguration: {
+              subnets: this.config.subnets,
+              ...(this.config.securityGroups ? { securityGroups: this.config.securityGroups } : {}),
+              assignPublicIp: (this.config.assignPublicIp ?? true) ? "ENABLED" : "DISABLED",
+            },
           },
-        },
-        overrides: {
-          containerOverrides: [
+          overrides: {
+            containerOverrides: [
+              {
+                name: this.config.containerName ?? DEFAULT_WORKSPACE_CONTAINER,
+                environment: workspaceEnv,
+              },
+            ],
+          },
+          volumeConfigurations: [
             {
-              name: this.config.containerName ?? DEFAULT_WORKSPACE_CONTAINER,
-              environment: workspaceEnv,
+              name: WORKSPACE_VOLUME,
+              managedEBSVolume: {
+                roleArn: this.config.ebsRoleArn,
+                ...(input.fromSnapshot === undefined
+                  ? { sizeInGiB: input.resources.volumeGiB }
+                  : { snapshotId: input.fromSnapshot }),
+                terminationPolicy: { deleteOnTermination: true },
+                tagSpecifications: [
+                  {
+                    resourceType: "volume",
+                    tags: costScopeTags(this.config),
+                  },
+                ],
+              },
             },
           ],
-        },
-        volumeConfigurations: [
-          {
-            name: WORKSPACE_VOLUME,
-            managedEBSVolume: {
-              roleArn: this.config.ebsRoleArn,
-              ...(input.fromSnapshot === undefined
-                ? { sizeInGiB: input.resources.volumeGiB }
-                : { snapshotId: input.fromSnapshot }),
-              terminationPolicy: { deleteOnTermination: true },
-            },
-          },
-        ],
-      }),
+        }),
+      ),
     );
     // RunTask returns HTTP 200 with an EMPTY tasks[] and a populated failures[] when
     // placement fails for a recoverable reason (RESOURCE:MEMORY / RESOURCE:CPU — no
@@ -577,7 +626,9 @@ export class EcsComputeProvider implements ComputeProvider {
     // never receives this ARN, so it cannot compensate; the managed volume's
     // deleteOnTermination then reaps the volume with the stopped task).
     try {
-      const ready = await this.awaitTaskReady(arn);
+      const ready = await this.timeStartupPhase("ecs-ready", dimensions, () =>
+        this.awaitTaskReady(arn),
+      );
       return { id: taskId(arn), volumeId: volumeId(ready.volumeId), sshHost: ready.sshHost };
     } catch (err) {
       try {
@@ -618,6 +669,34 @@ export class EcsComputeProvider implements ComputeProvider {
       await sleep(2000);
     }
     throw new Error(`timed out awaiting task ${taskArn} to become ready (RUNNING + volume + ENI)`);
+  }
+
+  private async timeStartupPhase<T>(
+    phase: string,
+    dimensions: MetricDimensions,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    const started = Date.now();
+    try {
+      const result = await fn();
+      this.metrics?.timing(METRIC_WORKSPACE_STARTUP_PHASE_MS, Date.now() - started, {
+        ...dimensions,
+        phase,
+        outcome: "ok",
+      });
+      return result;
+    } catch (err) {
+      this.metrics?.timing(METRIC_WORKSPACE_STARTUP_PHASE_MS, Date.now() - started, {
+        ...dimensions,
+        phase,
+        outcome: "error",
+      });
+      this.metrics?.count(METRIC_WORKSPACE_STARTUP_PHASE_FAILED, 1, {
+        ...dimensions,
+        phase,
+      });
+      throw err;
+    }
   }
 
   async stopTask(id: TaskId): Promise<void> {
@@ -821,7 +900,11 @@ export class EcsComputeProvider implements ComputeProvider {
    * Throws loudly if required vars are absent. Workspace CPU/RAM/disk are persisted
    * per workspace and supplied to runTask.
    */
-  static fromEnv(agentSecret?: string, connectionSecret?: string): EcsComputeProvider {
+  static fromEnv(
+    agentSecret?: string,
+    connectionSecret?: string,
+    metrics?: MetricSink,
+  ): EcsComputeProvider {
     const subnets = process.env.ECS_SUBNETS?.split(",").filter(Boolean) ?? [];
     const securityGroups = process.env.ECS_SECURITY_GROUPS?.split(",").filter(Boolean);
     const ebsRoleArn = process.env.ECS_EBS_ROLE_ARN;
@@ -831,6 +914,7 @@ export class EcsComputeProvider implements ComputeProvider {
       positiveIntEnv("EDD_HEARTBEAT_INTERVAL_S") ?? DEFAULT_HEARTBEAT_INTERVAL_S;
     return new EcsComputeProvider({
       client: EcsComputeProvider.client(),
+      ...(metrics === undefined ? {} : { metrics }),
       // Per-workspace tokens go into Secrets Manager (not plaintext env) whenever a
       // secret is configured — the production/e2e path always does.
       ...(agentSecret !== undefined || connectionSecret !== undefined
@@ -850,6 +934,7 @@ export class EcsComputeProvider implements ComputeProvider {
         connectionSecret,
         logGroupName: process.env.ECS_LOG_GROUP_WORKSPACES,
         heartbeatIntervalS,
+        costScope: COST_SCOPE,
       },
     });
   }

@@ -103,12 +103,11 @@ fi
 settings_dir=/home/workspace/.openvscode-server/data/User
 settings_file="${settings_dir}/settings.json"
 install -d -o workspace -g workspace -m 0755 "${settings_dir}"
-# Ensure our default UI settings are PRESENT without clobbering the user's own
-# choices: merge (add only missing keys). Seeding only when the file was absent
-# meant a workspace on a volume created by an OLDER image never got a later default
-# — which is why the OpenVSCode menu bar (window.menuBarVisibility: "classic", the
-# visible File/Edit/View… bar) was missing on pre-existing workspaces. Merging on
-# every boot fixes old volumes too; a key the user explicitly set is left untouched.
+# Ensure required/default UI settings are PRESENT. The OpenVSCode File menu is a
+# product requirement, not a personal preference: force `window.menuBarVisibility`
+# to `classic` on every boot so the visible File/Edit/View... bar cannot disappear
+# on older volumes or after a user setting sync. Other defaults are added only
+# when absent so normal editor preferences still persist across restarts.
 # node ships in the image (the base is node:22; the Monaco server runs bare `node`).
 gosu workspace node -e '
   const fs = require("node:fs");
@@ -116,12 +115,17 @@ gosu workspace node -e '
   let cur = {};
   try { cur = JSON.parse(fs.readFileSync(file, "utf8")); } catch { cur = {}; }
   if (cur === null || typeof cur !== "object") cur = {};
+  const required = {
+    "window.menuBarVisibility": "classic",
+  };
   const defaults = {
     "workbench.colorTheme": "Default Dark Modern",
-    "window.menuBarVisibility": "classic",
     "files.autoSave": "afterDelay",
   };
   let changed = false;
+  for (const [k, v] of Object.entries(required)) {
+    if (cur[k] !== v) { cur[k] = v; changed = true; }
+  }
   for (const [k, v] of Object.entries(defaults)) {
     if (!(k in cur)) { cur[k] = v; changed = true; }
   }

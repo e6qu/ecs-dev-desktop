@@ -31,6 +31,22 @@ in a **manual** suite on `main`.
 
 ## Test tiers
 
+## Browser/user-flow gate
+
+UI, workspace, editor, auth/session, and deployed-smoke changes require a real
+browser workflow, not only API checks or service health. The verification must
+open the affected page or workspace, perform the user action, assert the visible
+result, and save/inspect screenshots when layout/editor behavior matters.
+Production rollout is not considered healthy merely because ECS finished
+deploying or `/api/readyz` returned ready.
+
+Workspace editor checks must prove the editor surface is usable and that the user
+can return to the control plane via a visible top-level `/workspaces` link.
+OpenVSCode checks must also prove the real File menu is visible and opens from an
+actual click. Terminal workspace checks must additionally prove the default tab
+opens, commands execute, new tabs open, tab switching works, tab close works, and
+closed tabs disappear without leaving stale UI/session state.
+
 ### 1. Unit / contract — every commit, local + CI
 
 Pure logic + adapters-with-fakes. No network, no Docker.
