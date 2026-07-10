@@ -390,6 +390,15 @@ export function makeAuditEventEntity(client: DynamoDBClient, table = TABLE) {
         action: { type: "string", required: true },
         target: { type: "string", required: true },
         detail: { type: "string", required: true },
+        resources: {
+          type: "map",
+          required: false,
+          properties: {
+            cpuUnits: { type: "number", required: true },
+            memoryMiB: { type: "number", required: true },
+            volumeGiB: { type: "number", required: true },
+          },
+        },
       },
       indexes: {
         primary: {

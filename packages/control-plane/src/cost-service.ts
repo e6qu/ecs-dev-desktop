@@ -20,6 +20,7 @@ import {
   type Pricing,
   type SessionCost,
   type WorkspaceCostInput,
+  type CostIssue,
   type WorkspaceSizing,
 } from "@edd/core";
 
@@ -127,39 +128,17 @@ function resourcesToSizing(
   };
 }
 
-const CREATE_DETAIL_RESOURCES =
-  /(?:^|[;\s])resources cpuUnits=(\d+) memoryMiB=(\d+) volumeGiB=(\d+)(?:;|$)/;
-
-function sizingFromCreateDetail(
+function sizingFromCreateEvent(
   events: readonly AuditEvent[],
   workspaceId: string,
 ): WorkspaceSizing {
   const created = events.find((e) => e.action === "session.create");
-  const match = created?.detail.match(CREATE_DETAIL_RESOURCES);
-  if (match === undefined || match === null) {
+  if (created?.resources === undefined) {
     throw new Error(
-      `cost report cannot price workspace ${workspaceId}: session.create audit detail does not record resources`,
+      `cost report cannot price workspace ${workspaceId}: session.create audit event has no structured resources`,
     );
   }
-  const [, cpuUnitsRaw, memoryMiBRaw, volumeGiBRaw] = match;
-  if (cpuUnitsRaw === undefined || memoryMiBRaw === undefined || volumeGiBRaw === undefined) {
-    throw new Error(
-      `cost report cannot price workspace ${workspaceId}: malformed session.create resources detail`,
-    );
-  }
-  const cpuUnits = Number(cpuUnitsRaw);
-  const memoryMiB = Number(memoryMiBRaw);
-  const volumeGiB = Number(volumeGiBRaw);
-  if (![cpuUnits, memoryMiB, volumeGiB].every((n) => Number.isFinite(n) && n > 0)) {
-    throw new Error(
-      `cost report cannot price workspace ${workspaceId}: non-positive session.create resources detail`,
-    );
-  }
-  return {
-    vcpu: cpuUnits / 1024,
-    memoryGib: memoryMiB / 1024,
-    volumeGib: volumeGiB,
-  };
+  return resourcesToSizing(workspaceId, created.resources);
 }
 
 function sizingOf(
@@ -168,7 +147,7 @@ function sizingOf(
   record: WorkspaceDto | undefined,
 ): WorkspaceSizing {
   return record === undefined
-    ? sizingFromCreateDetail(events, workspaceId)
+    ? sizingFromCreateEvent(events, workspaceId)
     : resourcesToSizing(workspaceId, record.resources);
 }
 
@@ -270,18 +249,27 @@ export class CostService {
     const byWorkspace = groupSessions(events);
     const records = new Map(workspaces.map((w) => [w.id, w]));
     const ids = new Set<string>([...byWorkspace.keys(), ...records.keys()]);
-    const inputs: WorkspaceCostInput[] = [...ids].map((id) => {
+    const unpriced: CostIssue[] = [];
+    const inputs: WorkspaceCostInput[] = [...ids].flatMap((id) => {
       const wsEvents = byWorkspace.get(id) ?? [];
       const record = records.get(id);
-      return {
-        workspaceId: id,
-        owner: ownerOf(wsEvents, record),
-        ...(record === undefined ? {} : { state: record.state }),
-        sizing: sizingOf(id, wsEvents, record),
-        events: wsEvents,
-      };
+      try {
+        return [
+          {
+            workspaceId: id,
+            owner: ownerOf(wsEvents, record),
+            ...(record === undefined ? {} : { state: record.state }),
+            sizing: sizingOf(id, wsEvents, record),
+            events: wsEvents,
+          },
+        ];
+      } catch (error) {
+        if (!(error instanceof Error)) throw error;
+        unpriced.push({ workspaceId: id, reason: error.message });
+        return [];
+      }
     });
-    return computeFleetCost(inputs, this.deps.pricing, now, window);
+    return computeFleetCost(inputs, this.deps.pricing, now, window, unpriced);
   }
 
   /** Price from the checkpoints + the events since them (O(recent)). Resuming each
@@ -301,6 +289,7 @@ export class CostService {
     const records = new Map(workspaces.map((w) => [w.id, w]));
     const { pricing } = this.deps;
     const bySession: SessionCost[] = [];
+    const unpriced: CostIssue[] = [];
     const rolled = new Set<string>();
 
     for (const r of rollups) {
@@ -335,7 +324,14 @@ export class CostService {
       if (rolled.has(id)) continue;
       const intervals = deriveBillingIntervals(tailEvents, now);
       const record = records.get(id);
-      const sizing = sizingOf(id, tailEvents, record);
+      let sizing: WorkspaceSizing;
+      try {
+        sizing = sizingOf(id, tailEvents, record);
+      } catch (error) {
+        if (!(error instanceof Error)) throw error;
+        unpriced.push({ workspaceId: id, reason: error.message });
+        continue;
+      }
       bySession.push({
         workspaceId: id,
         owner: ownerOf(tailEvents, record),
@@ -346,7 +342,7 @@ export class CostService {
       });
     }
 
-    return aggregateFleetCost(bySession, pricing, now, windowStart);
+    return aggregateFleetCost(bySession, pricing, now, windowStart, unpriced);
   }
 
   private now() {

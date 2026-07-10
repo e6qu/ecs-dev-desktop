@@ -69,6 +69,7 @@ describe("cost rollup report == full-scan report (figure-equivalence)", () => {
         action,
         target,
         detail: action === "session.create" ? RESOURCE_DETAIL : "",
+        ...(action === "session.create" ? { resources: RESOURCES } : {}),
       })
       .go();
   }

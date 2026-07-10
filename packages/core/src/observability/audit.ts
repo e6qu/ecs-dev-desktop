@@ -3,6 +3,7 @@ import { DEFAULT_AUDIT_FEED_LIMIT } from "../domain/constants";
 import type { IsoTimestamp } from "../domain/ids";
 
 import { deriveWorkspaceTimeline } from "./timeline";
+import type { WorkspaceResources } from "../domain/workspace-resources";
 
 /**
  * One audit record: who did what to which resource, when. With no dedicated
@@ -17,6 +18,8 @@ export interface AuditEvent {
   readonly action: string;
   readonly target: string;
   readonly detail: string;
+  /** Structured provisioning inputs retained for billing after record deletion. */
+  readonly resources?: WorkspaceResources;
 }
 
 /** The fields of a workspace record the derived audit feed reads. */

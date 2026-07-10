@@ -311,6 +311,7 @@ export type {
   BillingIntervals,
   BillingState,
   CostBreakdown,
+  CostIssue,
   FleetCostReport,
   Interval,
   Pricing,
