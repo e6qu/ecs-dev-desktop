@@ -244,7 +244,9 @@ export default async function AdminCostsPage({
         ))}
       </div>
 
-      <h2 style={{ fontSize: 16, margin: "18px 0 10px" }}>AWS account</h2>
+      <h2 style={{ fontSize: 16, margin: "18px 0 10px" }}>
+        AWS account{accountCosts instanceof Error ? "" : ` (${accountCosts.costScope})`}
+      </h2>
       {accountCosts instanceof Error ? (
         <StateBlock title="AWS account costs unavailable" detail={accountCosts.message} />
       ) : (

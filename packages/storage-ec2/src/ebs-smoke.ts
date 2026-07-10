@@ -17,6 +17,7 @@ import {
   waitUntilSnapshotCompleted,
   waitUntilVolumeAvailable,
 } from "@aws-sdk/client-ec2";
+import { COST_SCOPE, COST_SCOPE_TAG_KEY } from "@edd/config";
 
 const VOLUME_SIZE_GIB = 8;
 const VOLUME_TYPE = "gp3";
@@ -51,6 +52,7 @@ export async function runEbsSmoke(ec2: EC2Client, prefix: string): Promise<EbsSm
       ResourceType: resourceType,
       Tags: [
         { Key: EBS_SMOKE_TAG_KEY, Value: prefix },
+        { Key: COST_SCOPE_TAG_KEY, Value: COST_SCOPE },
         { Key: "Name", Value: prefix },
       ],
     },

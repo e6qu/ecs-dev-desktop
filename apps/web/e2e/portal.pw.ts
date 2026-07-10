@@ -72,6 +72,7 @@ test("page help opens as an overlay without changing document layout", async ({
   const panel = page.locator(sel(TESTID.helpPanel));
   await expect(panel).toBeVisible();
   await expect(panel).toHaveJSProperty("tagName", "SECTION");
+  await expect(panel.locator("xpath=ancestor::body")).toBeVisible();
   await expect
     .poll(async () =>
       panel.evaluate((el) => {
@@ -82,6 +83,25 @@ test("page help opens as an overlay without changing document layout", async ({
     .toBe("fixed");
   const after = await page.evaluate(() => document.documentElement.scrollHeight);
   expect(after).toBeLessThanOrEqual(before + 1);
+});
+
+test("a lost control-plane connection exposes a top-level refresh control and recovers", async ({
+  page,
+  context,
+}) => {
+  await loginAs(context, "alice", "developer");
+  await page.goto("/workspaces");
+
+  const refresh = page.locator(sel(TESTID.connectionRefresh));
+  await expect(refresh).toBeHidden();
+  await context.setOffline(true);
+  await expect(refresh).toBeVisible();
+  await expect(refresh).toHaveText(/connection lost.*refresh/i);
+  await expect(refresh.locator("xpath=ancestor::header")).toHaveClass(/topbar/);
+
+  await context.setOffline(false);
+  await expect(refresh).toBeHidden({ timeout: 10_000 });
+  await expect(page.getByRole("heading", { name: "Your workspaces" })).toBeVisible();
 });
 
 test("developer chooses a session environment from the metadata picker", async ({
@@ -134,6 +154,17 @@ test("developer creates, stops, and deletes a workspace from the catalog", async
   await card.locator(sel(TESTID.workspaceInfoToggle)).click();
   const infoPanel = page.locator(sel(TESTID.workspaceInfoPanel));
   await expect(infoPanel).toBeVisible();
+  await expect
+    .poll(async () =>
+      infoPanel.evaluate((el) => {
+        const overlay = el.parentElement;
+        const topbar = document.querySelector(".topbar");
+        if (overlay === null || topbar === null || overlay.parentElement !== document.body)
+          return false;
+        return Number(getComputedStyle(overlay).zIndex) > Number(getComputedStyle(topbar).zIndex);
+      }),
+    )
+    .toBe(true);
   await expect
     .poll(async () =>
       infoPanel.evaluate((el) => {

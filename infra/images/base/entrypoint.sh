@@ -103,22 +103,33 @@ fi
 settings_dir=/home/workspace/.openvscode-server/data/User
 settings_file="${settings_dir}/settings.json"
 install -d -o workspace -g workspace -m 0755 "${settings_dir}"
-# Ensure our default UI settings are PRESENT without clobbering the user's own
-# choices: merge (add only missing keys). Seeding only when the file was absent
-# meant a workspace on a volume created by an OLDER image never got a later default
-# — which is why the OpenVSCode menu bar (window.menuBarVisibility: "classic", the
-# visible File/Edit/View… bar) was missing on pre-existing workspaces. Merging on
-# every boot fixes old volumes too; a key the user explicitly set is left untouched.
+
+# Register the first-party extension through OpenVSCode's runtime extension scan
+# path. The release archive's built-in extension registry is generated upstream;
+# copying an unpacked folder into /opt/openvscode-server/extensions after that
+# registry was built does not make the browser load it.
+user_extensions_dir=/home/workspace/.openvscode-server/extensions
+edd_extension_dir="${user_extensions_dir}/edd-workspace-ui"
+install -d -o workspace -g workspace -m 0755 "${user_extensions_dir}"
+rm -rf "${edd_extension_dir}"
+cp -R /opt/openvscode-server/extensions/edd-workspace-ui "${edd_extension_dir}"
+chown -R workspace:workspace "${edd_extension_dir}"
+# Ensure server-side editor defaults are present. Browser-window defaults such as
+# the visible File/Edit/View menu bar come from the patched workbench bootstrap:
+# OpenVSCode stores those on the browser side, so writing them into this remote
+# user-data directory has no effect on the workbench window.
 # node ships in the image (the base is node:22; the Monaco server runs bare `node`).
+# JavaScript template syntax must not expand in the shell.
+# shellcheck disable=SC2016
 gosu workspace node -e '
   const fs = require("node:fs");
   const file = process.argv[1];
-  let cur = {};
-  try { cur = JSON.parse(fs.readFileSync(file, "utf8")); } catch { cur = {}; }
-  if (cur === null || typeof cur !== "object") cur = {};
+  const cur = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : {};
+  if (cur === null || typeof cur !== "object" || Array.isArray(cur)) {
+    throw new Error(`${file} must contain a JSON object`);
+  }
   const defaults = {
     "workbench.colorTheme": "Default Dark Modern",
-    "window.menuBarVisibility": "classic",
     "files.autoSave": "afterDelay",
   };
   let changed = false;
@@ -126,9 +137,9 @@ gosu workspace node -e '
     if (!(k in cur)) { cur[k] = v; changed = true; }
   }
   if (changed) fs.writeFileSync(file, JSON.stringify(cur, null, 2) + "\n");
-' "${settings_file}" || true
-chown workspace:workspace "${settings_file}" 2>/dev/null || true
-chmod 0644 "${settings_file}" 2>/dev/null || true
+' "${settings_file}"
+chown workspace:workspace "${settings_file}"
+chmod 0644 "${settings_file}"
 
 # (Terminal-open-on-startup, the "EDD home" portal link, the visible open-terminal
 # keybinding control, and the one-time CLI remote-OAuth tip all live in the

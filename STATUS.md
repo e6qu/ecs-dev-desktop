@@ -2,6 +2,53 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
+**Last updated:** 2026-07-10. The branch updated the project SOP so UI,
+workspace, editor, auth/session, and deployed-smoke work required real
+browser/user-flow verification rather than API checks, health endpoints, ECS
+deployment completion, or screenshots alone. `AGENTS.md` and `TESTING.md`
+explicitly required every workspace surface to expose and verify a visible
+top-level route back to `/workspaces`; OpenVSCode checks had to prove the real
+File menu was visible and opened from an actual click; Terminal checks had to
+prove the default tab, command execution, new tab, tab switching, tab close, and
+closed-tab cleanup.
+
+The implementation made the OpenVSCode File menu mandatory through the browser
+workbench's `configurationDefaults` bootstrap with the always-visible mode. The
+version-pinned image patch failed loudly if the upstream bundle no longer
+matched. Investigation proved that remote `settings.json` and extension defaults
+could not control this browser-local setting. It also proved that copying the
+first-party EDD extension into the release archive's generated built-in registry
+did not register it; the entrypoint copied the extension into the runtime scan
+directory instead. The in-app workspace proxy
+injected a fixed top-level `EDD home` link into OpenVSCode HTML and opencode
+HTML, while Monaco and Terminal continued to expose the first-party topbar link.
+The deployed screenshot smoke was strengthened to click the `/workspaces` return
+link for OpenVSCode, Monaco, Terminal, and opencode; to click the real
+OpenVSCode File menu; and to exercise Terminal default tab, command execution,
+new tab, tab switching, and tab close. The local OpenVSCode browser proof also
+clicked the actual File menu. A local Terminal browser exercise against
+`@edd/editor-monaco` found that this host's Node `v26.5.0` plus
+`node-pty@1.1.0` failed to spawn a PTY with `posix_spawnp failed`, so full local
+command/new-tab verification could not complete on the host runtime. The
+Terminal UI was fixed to fail loudly in that case by keeping a visible failed
+terminal tab with the PTY error instead of erasing all tabs and leaving a blank
+surface; the failure screenshot was inspected at
+`/tmp/edd-terminal-local-visible-failure.png`. Full Terminal command/tab
+verification remained delegated to the deployed/golden-image smoke, where the
+workspace image ran the intended Node 22 runtime.
+
+The branch also fixed three production-facing regressions found during the CI
+investigation. Cost rollup entity version 1 had gained required sizing fields
+without a persisted-schema version bump, so old rows produced
+`sizing.vcpu=undefined`; the entity moved to version 2, and an integration test
+proved v1 rows were excluded before authoritative ledger regeneration. All help
+and workspace-info dialogs were mounted through a document-body portal above the
+sticky shell, with browser assertions for modal stacking and one-active-modal
+behavior. The root shell gained a confirmed-disconnect health probe: a topbar
+refresh control appeared when the control-plane connection was lost, and
+recovery refreshed server state without a hard reload. `AGENTS.md` made
+no-hard-refresh convergence a hard requirement.
+
 **Last updated:** 2026-07-10. After PR #218 merged as
 `5f052272c50524c951ce53c54a1d3e94449c1173`, the `release` workflow succeeded,
 production `/api/healthz` reported `deploy.sha=5f052272c505`, `/api/readyz`
@@ -48,6 +95,38 @@ showed ECR contained only `edd-prod/edd-base`, `edd-prod/control-plane`,
 `edd-prod/golden/omnibus`, and `edd-prod/ssh-gateway`; S3 contained only
 `edd-tfstate-edd-prod`; no EFS filesystems remained; and sockerless task
 definitions were in AWS `DELETE_IN_PROGRESS` rather than active/inactive use.
+After PR #219 merged, the operator explicitly approved deleting remaining
+non-EDD infrastructure. A follow-up AWS API cleanup verified that the
+Resource Groups tag index still listed old sockerless EFS access-point ARNs, but
+the EFS owner API returned no filesystems/access points and explicit
+`DeleteAccessPoint` calls returned `AccessPointNotFound` for all 87 tagged IDs.
+The stale sockerless ECS task definitions were re-issued to
+`DeleteTaskDefinitions` and remained only as AWS `DELETE_IN_PROGRESS` metadata;
+their referenced EFS filesystem, IAM roles/policies, security groups, log
+groups, and ECR repository no longer existed. Empty non-EDD default VPCs and
+their default subnets/internet gateways were deleted across enabled regions,
+including the old default VPC in `eu-west-1`. Final verification showed
+`eu-west-1` contained only the tagged EDD production VPC/subnets, ECR contained
+only EDD repositories, S3 contained only the EDD Terraform state bucket, EFS was
+empty, and no sockerless/skls IAM, CloudWatch Logs, ECR, or active/inactive ECS
+task-definition resources remained.
+The follow-up tagging branch added a shared cost-scope tag,
+`edd:cost-scope=edd-alpha`, to Terraform default/module tags, the ECS task
+definitions/tasks/managed EBS volume launch path, workspace runtime secrets, EC2
+volumes/snapshots/copy-snapshots, and the EBS smoke resources. The live AWS
+account was backfilled through AWS APIs: all Resource Groups resources with
+`edd:component=ecs-dev-desktop`, all `edd:managed` runtime secrets, 59
+EDD-managed snapshots, the two associated ALB Elastic IPs, the EDD Terraform S3
+state bucket, the DynamoDB lock table, EDD IAM roles/policies, and the
+`edd.e6qu.dev` Route53 hosted zone were tagged with `edd-alpha`. Verification
+showed no component-tagged resources, managed secrets, IAM roles, or IAM
+policies were missing the cost-scope tag; the state bucket/lock table/Route53
+zone returned `edd-alpha`; 59 snapshots and 2 EIPs carried the tag. AWS Cost
+Explorer/Billing did not yet list the new `edd:cost-scope` key, and
+`ce update-cost-allocation-tags-status` failed with `ValidationException: Tag
+keys not found: edd:cost-scope`; activation had to be retried after AWS Billing
+discovered the tag key. The admin AWS account cost query was intentionally
+changed to filter by `edd:cost-scope=edd-alpha` with no account-wide fallback.
 The branch added full-account Cost Explorer visibility to the
 admin Costs page, with finite-number validation and visible failure on bad AWS
 cost data, and granted the control-plane task `ce:GetCostAndUsage`. It also
@@ -57,6 +136,14 @@ workspace id, and applied the shared ECR lifecycle policy to the SSH gateway
 repository. Existing retained snapshots were not deleted by code because they
 were data-bearing retained resources without workspace attribution; an explicit
 operator cleanup decision stayed required.
+The local plan was updated to make workspace provisioning/startup optimization a
+staged, evidence-first effort: first measure phase timings for create and wake,
+then expose those timings to admins as p50/p90/p99, slow-start breakdowns, and
+failure counts by phase, and only then optimize image pulls, launch-path API
+work, snapshot hydration, and editor readiness based on production data. The
+planned admin UI explicitly distinguished "ECS task running" from "editor
+reachable". Cost-bearing warm idle/warm-pool behavior stayed an explicit policy
+decision, not a hidden default.
 
 Verification passed with `pnpm check-deps`, `pnpm lint`, `pnpm build`,
 `pnpm test`, `pnpm --filter web test -- aws-account-costs

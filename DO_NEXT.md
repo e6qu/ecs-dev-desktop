@@ -53,6 +53,59 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
+- **After this branch deploys and the golden image rebuilds, run the strengthened
+  deployed workspace smoke and inspect screenshots/artifacts.** It now must prove
+  OpenVSCode has a visible top-level `EDD home` link, the real File menu opens
+  from an actual click, Monaco/Terminal/opencode all click back to `/workspaces`,
+  and Terminal performs default-tab command execution, new tab, tab switching,
+  and tab close. Do not accept health endpoints, ECS deployment completion, or
+  static screenshots as a substitute. The local Terminal web UI was exercised
+  with Playwright, but host Node `v26.5.0` plus `node-pty@1.1.0` failed PTY
+  spawn with `posix_spawnp failed`; the UI was fixed to show that failure loudly,
+  and the full command/tab proof must run in the intended Node 22 golden-image
+  runtime.
+
+- **After deploy, verify the current branch's production fixes as one skeptical
+  browser flow.** Confirm `/admin/costs` no longer reports undefined sizing after
+  v2 rollup regeneration; open circle-i dialogs over cards and verify they remain
+  above the topbar/page; drive the browser offline and verify the topbar refresh
+  control appears and automatic recovery works; then open a newly built
+  OpenVSCode workspace and inspect the visible real File menu, EDD return link,
+  and terminal command output. Deployment/health success alone was not enough.
+
+- **Stage workspace provisioning/startup performance work and expose it to
+  admins.** The current real launch path contains several potentially expensive
+  phases: per-workspace Secrets Manager upserts, task-definition
+  registration/cache lookup, ECS `RunTask`, Fargate placement/ENI assignment, ECR
+  image pull, managed EBS volume attach or snapshot hydration, editor process
+  boot, and first successful proxy HTTP/WebSocket connection. Do the work in this
+  order:
+  1. **Instrumentation first:** emit phase timings for create and wake:
+     secret-upsert, task-definition, RunTask API, ECS pending/provisioning,
+     managed-EBS attach/hydrate, container start, editor readiness, and proxy
+     first-success. Include workspace id, workspace interface, image ref, resource
+     sizing, fresh-vs-snapshot launch, and failure phase.
+  2. **Admin metrics UI:** expand the EDD admin metrics/health surfaces to show
+     p50/p90/p99 provisioning and wake latency by workspace interface and image,
+     latest slow starts with phase breakdowns, failure counts by phase, and links
+     to the workspace/session/log context. The UI must distinguish "ECS task
+     running" from "editor reachable".
+  3. **Image-pull reduction:** split golden images by workspace interface when
+     measurements show image pull dominates, keep shared layers stable, and make
+     editor-specific layers last. Verify ECR layer reuse and screenshot smoke for
+     OpenVSCode, Monaco, Terminal, and opencode.
+  4. **Launch-path API reduction:** if task-definition or Secrets Manager latency
+     is material, redesign for stable reusable task definitions and pre-created
+     per-workspace secrets without weakening token revocation, no-fallback auth,
+     or fail-loud behavior.
+  5. **Stopped-workspace wake tuning:** measure snapshot-hydration cost by disk
+     size and workspace type, then decide whether to change default disk sizing,
+     avoid unnecessary shutdown snapshots when a fresh snapshot already exists, or
+     add a short paid warm-idle window before scale-to-zero.
+  6. **Policy decisions from evidence:** only consider cost-bearing warm pools,
+     longer warm-idle windows, or SOCI/lazy-loading after production phase data
+     shows they beat the simpler image/task-definition fixes.
+
 - **After this cost/convergence branch merges, rerun release, golden-images, and
   post-deploy-smoke and inspect artifacts again.** Confirm production
   `/api/healthz` reports the merge SHA, the golden image exists in ECR, the
@@ -65,6 +118,14 @@ deferral by choice.
   separate AWS account Cost Explorer section. Confirm it does not render `$NaN`,
   and confirm a missing/denied `ce:GetCostAndUsage` permission fails visibly
   rather than falling back to configured rates or blank values.
+
+- **Retry AWS Cost Allocation Tag activation for `edd:cost-scope`.** The live
+  resources were tagged with `edd:cost-scope=edd-alpha`, but AWS Billing had not
+  yet discovered the new key: `ce update-cost-allocation-tags-status` returned
+  `ValidationException: Tag keys not found: edd:cost-scope`, and
+  `list-cost-allocation-tags` returned no matching tag. Retry activation after
+  Billing's tag inventory catches up, then verify `/admin/costs` can read
+  Cost Explorer data scoped to `edd-alpha`. Do not add an account-wide fallback.
 
 - **Run an explicit cleanup operation for existing retained snapshots only after
   the operator chooses the data policy.** The live audit found 59 EDD-managed
@@ -84,11 +145,15 @@ deferral by choice.
   still found 5 messages in `edd-prod-reconciler-dlq`, two untagged associated
   Elastic IPs, retained EDD snapshots without historical workspace attribution,
   stale workspace runtime secrets pending the new GC, and no AWS Budgets. The
-  operator chose to delete non-EDD leftovers, and the branch removed the
+  operator chose to delete non-EDD leftovers, and the cleanup removed the
   sockerless S3 buckets, sockerless EFS filesystem/access points, sockerless/skls
-  CloudWatch log groups, old sockerless ECS task definitions, and the non-EDD
-  ECR cache repository. Decide whether the remaining EDD-adjacent resources are
-  intentional, then tag, import, or delete them; do not let them stay
+  CloudWatch log groups, old sockerless ECS task definitions, the non-EDD ECR
+  cache repository, and empty default VPCs/subnets/internet gateways across
+  enabled regions. The follow-up tagging branch tagged the two ALB EIPs, the EDD
+  Terraform state bucket, the DynamoDB lock table, Route53 zone, EDD IAM
+  roles/policies, runtime secrets, and retained snapshots with
+  `edd:cost-scope=edd-alpha`. Decide whether the remaining EDD-adjacent
+  resources are intentional, then import or delete them; do not let them stay
   undocumented.
 
 - **After this release-manifest fix merges, rerun `release` and confirm actual

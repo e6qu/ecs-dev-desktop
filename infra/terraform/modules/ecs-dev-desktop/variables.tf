@@ -19,6 +19,17 @@ variable "tags" {
   default     = {}
 }
 
+variable "cost_scope" {
+  description = "Value for the edd:cost-scope tag. Activate that tag key in AWS Billing/Cost Allocation Tags and use distinct values (for example edd-alpha) per environment."
+  type        = string
+  default     = "edd-alpha"
+
+  validation {
+    condition     = can(regex("^[A-Za-z0-9_.:/=+@-]{1,128}$", var.cost_scope))
+    error_message = "cost_scope must be 1-128 chars using AWS tag-safe printable characters."
+  }
+}
+
 # ---- Networking ----
 
 variable "vpc_cidr" {

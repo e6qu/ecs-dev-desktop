@@ -6,6 +6,7 @@ import {
   type Expression,
   type GetCostAndUsageCommandOutput,
 } from "@aws-sdk/client-cost-explorer";
+import { COST_SCOPE, COST_SCOPE_TAG_KEY } from "@edd/config";
 
 const COST_EXPLORER_REGION = "us-east-1";
 const USD_METRIC = "UnblendedCost";
@@ -25,6 +26,7 @@ interface AccountServiceCost {
 
 export interface AccountCostSummary {
   readonly generatedAt: string;
+  readonly costScope: string;
   readonly windows: readonly AccountCostWindow[];
   readonly topServicesMonthToDate: readonly AccountServiceCost[];
 }
@@ -67,17 +69,26 @@ function requiredBoundary(label: string, value: string | undefined): string {
   return value;
 }
 
-function usageFilter(): Expression {
-  return { Dimensions: { Key: "RECORD_TYPE", Values: ["Usage"] } };
+function usageFilter(costScope: string): Expression {
+  return {
+    And: [
+      { Dimensions: { Key: "RECORD_TYPE", Values: ["Usage"] } },
+      { Tags: { Key: COST_SCOPE_TAG_KEY, Values: [costScope] } },
+    ],
+  };
 }
 
-async function costFor(client: CostExplorerReader, window: DateInterval): Promise<number> {
+async function costFor(
+  client: CostExplorerReader,
+  window: DateInterval,
+  costScope: string,
+): Promise<number> {
   const out = await client.send(
     new GetCostAndUsageCommand({
       TimePeriod: window,
       Granularity: "DAILY",
       Metrics: [USD_METRIC],
-      Filter: usageFilter(),
+      Filter: usageFilter(costScope),
     }),
   );
   return (out.ResultsByTime ?? []).reduce(
@@ -90,13 +101,14 @@ async function costFor(client: CostExplorerReader, window: DateInterval): Promis
 async function serviceCostsFor(
   client: CostExplorerReader,
   window: DateInterval,
+  costScope: string,
 ): Promise<AccountServiceCost[]> {
   const out = await client.send(
     new GetCostAndUsageCommand({
       TimePeriod: window,
       Granularity: "MONTHLY",
       Metrics: [USD_METRIC],
-      Filter: usageFilter(),
+      Filter: usageFilter(costScope),
       GroupBy: [{ Type: "DIMENSION", Key: "SERVICE" }],
     }),
   );
@@ -121,6 +133,7 @@ async function serviceCostsFor(
 export async function getAwsAccountCostSummary(
   now: Date = new Date(),
   client: CostExplorerReader = new CostExplorerClient({ region: COST_EXPLORER_REGION }),
+  costScope = COST_SCOPE,
 ): Promise<AccountCostSummary> {
   const end = endExclusiveFor(now);
   const monthStart = startOfUtcMonth(now);
@@ -136,12 +149,13 @@ export async function getAwsAccountCostSummary(
       label: window.label,
       start: requiredBoundary(`${window.label} start`, window.range.Start),
       end: requiredBoundary(`${window.label} end`, window.range.End),
-      usd: await costFor(client, window.range),
+      usd: await costFor(client, window.range, costScope),
     })),
   );
   return {
     generatedAt: now.toISOString(),
+    costScope,
     windows: priced,
-    topServicesMonthToDate: await serviceCostsFor(client, interval(monthStart, end)),
+    topServicesMonthToDate: await serviceCostsFor(client, interval(monthStart, end), costScope),
   };
 }

@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { ConnectionStatus } from "../components/ConnectionStatus";
 import { StartupOverlay } from "../components/StartupOverlay";
 import { TopNav } from "../components/TopNav";
 import { HelpToggle } from "../components/HelpToggle";
@@ -36,6 +37,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
             <small>control plane</small>
           </Link>
           {principal && <TopNav isAdmin={principal.role === "admin"} />}
+          <ConnectionStatus />
           <span className="spacer" />
           <HelpToggle />
           {principal ? (

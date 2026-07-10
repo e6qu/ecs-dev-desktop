@@ -125,7 +125,7 @@ RUN gjf_ver="$(curl -fsS -o /dev/null -w '%{url_effective}' -L \
 # VS Code extensions into the built-in extensions dir: every language's (base
 # already baked the cross-cutting formatter/linter/GitHub ones + the AI agents).
 RUN for ext in \
-      ms-python.python detachhead.basedpyright charliermarsh.ruff astral-sh.ty semgrep.semgrep \
+      ms-python.python detachhead.basedpyright charliermarsh.ruff astral-sh.ty \
       golang.go redhat.java rust-lang.rust-analyzer ms-playwright.playwright ; do \
       openvscode-server --install-extension "$ext" --extensions-dir /opt/openvscode-server/extensions ; \
     done \

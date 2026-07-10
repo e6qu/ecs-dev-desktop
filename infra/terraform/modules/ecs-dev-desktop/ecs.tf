@@ -59,6 +59,9 @@ locals {
     AUDIT_PROVIDER = "cloudtrail"
     LOG_PROVIDER   = "cloudwatch"
     EDD_APP_NAME   = var.name
+    # Cost-allocation tag value injected into runtime-created resources
+    # (workspace tasks, managed EBS volumes, snapshots, runtime secrets).
+    EDD_COST_SCOPE = var.cost_scope
     # Golden variants this deployment builds — the Images console lists their ECR repos.
     EDD_GOLDEN = join(" ", var.golden_image_repos)
     # CloudWatch log group for workspace container stdout/stderr (awslogs driver).

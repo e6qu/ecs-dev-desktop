@@ -4,6 +4,53 @@
 
 ## Open
 
+- **Admin Costs failed with `sizing.vcpu ... undefined` — FIXED in current
+  branch (2026-07-10).** Sizing fields were added to persisted cost rollups
+  without changing the ElectroDB entity version. Existing v1 rows were decoded
+  as the new shape. The branch moved the derived rollup entity to v2, and a
+  DynamoDB integration test proved v1 rows were invisible to the v2 query before
+  regeneration from authoritative workspace/audit data.
+
+- **Circle-i dialogs could render behind page/card UI — FIXED in current branch
+  (2026-07-10).** Workspace cards created stacking contexts that trapped fixed
+  descendants below shell content. Help and workspace-info dialogs moved to a
+  shared document-body portal. Playwright proved body mounting above the sticky
+  topbar and one-active-modal behavior.
+
+- **A truly disconnected browser had no top-level recovery state — FIXED in
+  current branch (2026-07-10).** The root shell now confirms health failures,
+  shows a topbar refresh control, and refreshes server state automatically when
+  connectivity returns. A browser test exercised offline and recovered states.
+
+- **Local Terminal full-flow verification was blocked by host Node 26/node-pty
+  PTY spawn failure — PARTIALLY FIXED in current branch (2026-07-10).** A real
+  local browser exercise of the Terminal workspace loaded the UI but could not
+  execute commands because `node-pty@1.1.0` under host Node `v26.5.0` failed with
+  `posix_spawnp failed` even in a direct standalone spawn test. The intended
+  golden workspace runtime is Node 22, so deployed/golden-image smoke remained
+  the authoritative full command/new-tab/switch/close proof. The branch fixed the
+  UI failure mode: PTY startup failure now left a visible failed terminal tab with
+  the error text instead of closing the WebSocket, removing all tabs, and leaving
+  a blank terminal surface. Follow-up was to run the strengthened deployed smoke
+  after the golden image rebuilt and verify the full Terminal workflow in the
+  image runtime.
+
+- **Workspace editor surfaces lacked a tested top-level return path and
+  OpenVSCode lacked a proven File menu — FIXED in current branch (2026-07-10).**
+  OpenVSCode only exposed `EDD home` as a status-bar extension item, which was
+  not an acceptable top-level escape hatch, and tests did not fail when the real
+  File menu was absent or unclickable. Local source/browser investigation proved
+  that remote settings and extension defaults did not govern browser window
+  settings, and that the copied first-party extension was not registered. The
+  branch injected the workbench's supported browser bootstrap defaults with
+  `window.menuBarVisibility=visible`, registered the EDD extension through the
+  runtime scan path, and injected a fixed
+  top-level `EDD home` link into OpenVSCode and opencode HTML through the in-app
+  proxy, kept Monaco/Terminal's first-party topbar link, and strengthened
+  deployed smoke to click through the `/workspaces` return path for all workspace
+  types. The local OpenVSCode browser proof and deployed smoke now clicked the
+  actual File menu and failed if it did not open.
+
 - **PR #218 post-deploy smoke failed because image-source convergence stopped on
   stale/missing image metadata and GitHub poll failure — FIXED in current branch
   (2026-07-10).** The release deployed `5f052272c505` and the matching golden
@@ -74,8 +121,28 @@
   `public-ecr-aws/docker/library/alpine`. After the operator chose to keep only
   EDD-related resources, those resources were deleted. Fresh verification showed
   only EDD ECR repositories and the EDD Terraform state bucket remained; no EFS
-  filesystems remained. ECS task definitions were AWS metadata and were left in
-  `DELETE_IN_PROGRESS` while AWS completed asynchronous deletion.
+  filesystems remained. After PR #219 merged, the operator approved deleting all
+  remaining non-EDD infrastructure. Empty default VPCs/subnets/internet gateways
+  across enabled regions were deleted, including the old default VPC in
+  `eu-west-1`. Resource Groups still listed stale sockerless EFS access-point
+  ARNs, but EFS returned no filesystems/access points and explicit deletes
+  returned `AccessPointNotFound`. ECS task definitions were AWS metadata and were
+  left only in `DELETE_IN_PROGRESS` while AWS completed asynchronous deletion.
+  Final verification showed `eu-west-1` had only the tagged EDD VPC/subnets and
+  no sockerless/skls IAM, logs, EFS, ECR, or active/inactive ECS resources.
+
+- **AWS Cost Explorer could not yet activate the new EDD cost-scope tag —
+  OPERATIONAL BLOCKER (2026-07-10).** The branch tagged live EDD resources and
+  future runtime resources with `edd:cost-scope=edd-alpha`, then changed the
+  admin AWS account cost query to filter by that tag with no account-wide
+  fallback. Live verification showed Resource Groups resources, managed runtime
+  secrets, 59 retained EDD snapshots, 2 ALB EIPs, the Terraform state bucket,
+  DynamoDB lock table, EDD IAM roles/policies, and the Route53 hosted zone had
+  the tag. AWS Billing had not yet discovered the new tag key:
+  `list-cost-allocation-tags` returned no `edd:cost-scope` entry and
+  `update-cost-allocation-tags-status` failed with `ValidationException: Tag keys
+not found: edd:cost-scope`. This stayed open until AWS Billing exposed the tag
+  for activation.
 
 - **Post-merge release failed in direct BuildKit push manifest publication —
   FIXED in current branch (2026-07-10).** PR #217 merged as

@@ -9,6 +9,8 @@ import { z } from "zod";
 
 export const DEFAULT_AWS_REGION = "us-east-1";
 export const DEFAULT_DYNAMODB_TABLE = "ecs-dev-desktop";
+export const COST_SCOPE_TAG_KEY = "edd:cost-scope";
+export const DEFAULT_COST_SCOPE = "edd-alpha";
 
 /**
  * AWS SDK retry tuning for the control-plane clients. ECS mutating calls
@@ -121,6 +123,14 @@ export const entra = {
  * `EDD_SSH_BASE_DOMAIN` (e.g. `ssh.example.com`). Base-domain-only config (§6.8).
  */
 export const SSH_BASE_DOMAIN = process.env.EDD_SSH_BASE_DOMAIN ?? "";
+
+/** Cost-allocation grouping tag value for this EDD environment. AWS Cost
+ * Explorer groups by tag key, so every environment uses the same key
+ * (`edd:cost-scope`) and a distinct value (default: `edd-alpha`). */
+export const COST_SCOPE =
+  process.env.EDD_COST_SCOPE === undefined || process.env.EDD_COST_SCOPE.length === 0
+    ? DEFAULT_COST_SCOPE
+    : z.string().min(1).parse(process.env.EDD_COST_SCOPE);
 
 /** Deploy provenance baked into the control-plane image at build time (see
  * apps/web/Dockerfile + publish-images.sh): the short git sha it was built from and
@@ -246,6 +256,7 @@ export const baseEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   AWS_REGION: z.string().min(1).default(DEFAULT_AWS_REGION),
   DYNAMODB_TABLE: z.string().min(1).default(DEFAULT_DYNAMODB_TABLE),
+  EDD_COST_SCOPE: z.string().min(1).default(DEFAULT_COST_SCOPE),
 });
 
 export type BaseEnv = z.infer<typeof baseEnvSchema>;

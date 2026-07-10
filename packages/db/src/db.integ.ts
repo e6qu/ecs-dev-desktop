@@ -1,8 +1,16 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { Entity } from "electrodb";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createDynamoClient, dropTable, dynamodb, ensureTable, makeWorkspaceEntity } from "./index";
+import {
+  createDynamoClient,
+  dropTable,
+  dynamodb,
+  ensureTable,
+  makeCostRollupEntity,
+  makeWorkspaceEntity,
+} from "./index";
 
 // Tier-2: runs against the configured DynamoDB endpoint (the sockerless sim in CI; §6.9).
 process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
@@ -63,5 +71,41 @@ describe("@edd/db ElectroDB against the configured DynamoDB endpoint", () => {
     const { data } = await workspaces.query.byState({ state: "idle" }).go();
     expect(data.some((w) => w.id === "ws-2")).toBe(true);
     expect(data.every((w) => w.state === "idle")).toBe(true);
+  });
+
+  it("does not read incompatible version-1 cost rollups as current checkpoints", async () => {
+    const legacy = new Entity(
+      {
+        model: { entity: "costRollup", version: "1", service: "edd" },
+        attributes: {
+          workspaceId: { type: "string", required: true },
+          owner: { type: "string", required: true },
+          checkpointAt: { type: "string", required: true },
+        },
+        indexes: {
+          primary: {
+            pk: { field: "PK", composite: ["workspaceId"] },
+            sk: { field: "SK", composite: [] },
+          },
+          byAll: {
+            index: "GSI1",
+            pk: { field: "GSI1PK", composite: [] },
+            sk: { field: "GSI1SK", composite: ["workspaceId"] },
+          },
+        },
+      },
+      { client, table: TEST_TABLE },
+    );
+    await legacy
+      .put({
+        workspaceId: "ws-legacy-rollup",
+        owner: "alice",
+        checkpointAt: "2026-06-01T12:00:00.000Z",
+      })
+      .go();
+
+    const current = makeCostRollupEntity(client, TEST_TABLE);
+    const { data } = await current.query.byAll({}).go({ pages: "all" });
+    expect(data.some((row) => row.workspaceId === "ws-legacy-rollup")).toBe(false);
   });
 });

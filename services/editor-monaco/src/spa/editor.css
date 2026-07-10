@@ -232,6 +232,12 @@ body.terminal-only #terminal-resizer {
 .terminal-tab.active {
   background: #37373d;
 }
+.terminal-tab.error {
+  border-color: #d16969;
+}
+.terminal-tab.error .terminal-tab-select {
+  color: #f48771;
+}
 .terminal-tab-select {
   background: none;
   border: 0;

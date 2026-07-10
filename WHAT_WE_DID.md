@@ -3670,3 +3670,104 @@ runtime-secret GC to keep only task-referenced runtime secrets, and applied the
 shared ECR lifecycle policy to the SSH gateway repo. Existing retained snapshots
 were deliberately not deleted by code because they were data-bearing retained
 resources without attribution; cleanup required an explicit operator decision.
+
+**2026-07-10 — Removed the remaining non-EDD AWS infrastructure after PR #219
+merged.** The operator explicitly approved deleting anything not EDD-related.
+The follow-up cleanup verified the account from AWS APIs rather than Terraform
+state, then removed empty default VPCs, their default subnets, and their internet
+gateways across enabled regions, including the old default VPC in `eu-west-1`.
+The earlier sockerless cleanup was rechecked: ECR contained only EDD repos, S3
+contained only `edd-tfstate-edd-prod`, EFS returned no filesystems or access
+points, and there were no sockerless/skls IAM roles, IAM policies, CloudWatch log
+groups, ECR repositories, or active/inactive ECS task definitions. Resource
+Groups still listed stale sockerless EFS access-point ARNs, but explicit
+`DeleteAccessPoint` calls against all 87 IDs returned `AccessPointNotFound`; the
+remaining sockerless ECS task-definition ARNs were only AWS
+`DELETE_IN_PROGRESS` metadata. Final production-region verification showed
+`eu-west-1` had only the tagged `edd-prod-vpc` and its four tagged EDD subnets.
+
+**2026-07-10 — Added and backfilled the `edd-alpha` AWS cost-scope tag.** The
+branch introduced one shared cost-allocation key, `edd:cost-scope`, with default
+value `edd-alpha`. Terraform propagated it through provider default tags, module
+tags, ECS environment, and module variables. Runtime code tagged ECS workspace
+task definitions, tasks, configured-at-launch managed EBS volumes, workspace
+runtime secrets, EC2 volumes, snapshots, copied snapshots, and EBS smoke
+resources. The admin AWS account Cost Explorer query filtered usage by
+`edd:cost-scope=edd-alpha` and exposed the selected cost scope in the UI, with
+no account-wide fallback.
+
+The live AWS account was backfilled through AWS APIs. Verification showed no
+Resource Groups resources with `edd:component=ecs-dev-desktop`, no
+`edd:managed` workspace runtime secrets, no EDD IAM roles, and no EDD IAM
+policies were missing `edd:cost-scope=edd-alpha`. The state bucket
+`edd-tfstate-edd-prod`, DynamoDB lock table `edd-tfstate-locks`, Route53 hosted
+zone `edd.e6qu.dev`, 59 EDD-managed snapshots, and the two associated ALB
+Elastic IPs were tagged. AWS Cost Explorer/Billing had not yet discovered the
+new tag key: `list-cost-allocation-tags` returned no `edd:cost-scope` entry and
+activation failed with `ValidationException: Tag keys not found:
+edd:cost-scope`, so cost-allocation activation remained a follow-up retry rather
+than a completed billing state.
+
+**2026-07-10 — Staged the workspace provisioning/startup performance plan.** The
+local roadmap stopped treating faster workspace startup as a single vague task.
+The plan first measured create/wake phase timings, then expanded the admin
+metrics UI to show p50/p90/p99 provisioning and wake latency, latest slow starts
+with phase breakdowns, failure counts by phase, and links to workspace/session
+logs. It then sequenced optimizations by evidence: image-pull reduction through
+workspace-interface-specific golden images, launch-path API reduction through
+stable task definitions and pre-created secrets if those phases proved material,
+stopped-workspace wake tuning based on snapshot-hydration timing, and explicit
+editor-readiness checks. Cost-bearing warm-idle/warm-pool behavior remained a
+policy decision to make from production latency data, not a silent fallback.
+
+**2026-07-10 — Made browser user-flow verification part of the SOP and tightened
+workspace editor escape hatches.** `AGENTS.md` and `TESTING.md` were updated so
+UI/workspace/editor changes required real browser workflow verification rather
+than API checks, health endpoints, ECS deployment completion, or shallow
+screenshots. The SOP explicitly required every workspace surface to provide and
+verify a visible top-level route back to `/workspaces`, required OpenVSCode tests
+to click the actual File menu, and required Terminal workspace checks to prove
+default tab, command execution, new tab, tab switching, tab close, and closed-tab
+cleanup.
+
+The initial implementation attempted to force OpenVSCode's
+`window.menuBarVisibility` to `classic` in remote workspace settings, injected a fixed top-level `EDD home` link into
+OpenVSCode and opencode HTML through the in-app proxy, kept Monaco/Terminal's
+topbar return link, and strengthened deployed smoke to click the return path for
+all workspace types. The smoke also clicked the real OpenVSCode File menu and
+exercised the Terminal command/new-tab/switch/close flow. The local OpenVSCode
+browser proof clicked the File menu too.
+
+A local Terminal browser exercise against the built `@edd/editor-monaco` server
+found that this host's Node `v26.5.0` plus `node-pty@1.1.0` could not spawn a
+PTY (`posix_spawnp failed`), even in a direct node-pty spawn outside the app. The
+golden workspace image used the intended Node 22 runtime, so the full Terminal
+command/tab proof stayed in the deployed/golden-image smoke. The local UI failure
+mode was fixed anyway: PTY startup failure left a visible failed terminal tab
+with the error text instead of silently removing all tabs and leaving a blank
+terminal surface; the screenshot was inspected at
+`/tmp/edd-terminal-local-visible-failure.png`.
+
+**2026-07-10 — Fixed the non-flaky OpenVSCode CI failure, stale cost schema,
+modal stacking, and disconnected UX in PR #220.** The failing e2e was reproduced
+against the local golden image. Source inspection showed OpenVSCode window
+settings lived in browser configuration, while the entrypoint wrote remote user
+settings; `classic` was also fullscreen-sensitive. The image added an
+exact-match, version-pinned patch to OpenVSCode's supported workbench
+`configurationDefaults` bootstrap with menu mode `visible`. Investigation also
+proved the unpacked EDD extension was absent from OpenVSCode's generated built-in
+registry; the entrypoint copied it into the runtime extension scan path. The real
+browser proof clicked File, asserted real file actions, compiled and ran a Go
+binary in the integrated terminal, and produced inspected screenshots. The noisy
+Semgrep UI extension was removed after its boot-time remote-config error appeared
+in the screenshot; the Semgrep CLI remained installed.
+
+The production Costs `sizing.vcpu=undefined` failure was traced to persisted
+cost-rollup v1 rows created before sizing fields were added. The ElectroDB entity
+moved to v2 and a DynamoDB integration test proved v1 rows did not enter v2
+queries. Help and workspace-info overlays moved through a shared body portal so
+card/header stacking contexts could not cover them. The root shell gained a
+confirmed-disconnect health probe, topbar refresh action, and automatic recovery
+refresh. Playwright exercised help/workspace modal layering, one-modal-at-a-time,
+offline/recovery, and workspace lifecycle convergence. `AGENTS.md` and
+`TESTING.md` made automatic no-hard-refresh convergence mandatory.

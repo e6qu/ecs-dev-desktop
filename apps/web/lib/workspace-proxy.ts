@@ -33,6 +33,8 @@ const EDITOR_TOKEN_COOKIE = "vscode-tkn";
 // (Kept in sync with @edd/editor-monaco's TOKEN_COOKIE.)
 const MONACO_TOKEN_COOKIE = "edd-editor-token";
 const OPENCODE_USERNAME = "opencode";
+const EDD_WORKSPACES_HOME_HREF = "/workspaces";
+const EDD_WORKSPACES_HOME_ID = "edd-workspaces-home";
 
 export interface WorkspaceProxyContext {
   readonly wsId: WorkspaceId;
@@ -420,6 +422,25 @@ function responseCanBeRewritten(contentType: string | undefined): boolean {
   );
 }
 
+function responseIsHtml(contentType: string | undefined): boolean {
+  return contentType?.toLowerCase().includes("text/html") === true;
+}
+
+export function injectWorkspaceHomeLink(html: string): string {
+  if (html.includes(`id="${EDD_WORKSPACES_HOME_ID}"`)) return html;
+  const bodyMatch = /<body\b[^>]*>/i.exec(html);
+  if (bodyMatch === null) {
+    throw new Error("opencode HTML did not contain a <body> tag for EDD workspace navigation");
+  }
+  const insertAt = bodyMatch.index + bodyMatch[0].length;
+  const link = [
+    `<a id="${EDD_WORKSPACES_HOME_ID}" href="${EDD_WORKSPACES_HOME_HREF}"`,
+    ' style="position:fixed;z-index:2147483647;top:10px;left:10px;display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid rgba(255,255,255,.22);border-radius:6px;background:rgba(11,15,13,.92);color:#4ec9b0;text-decoration:none;font:600 13px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.35)"',
+    ' title="Back to EDD workspaces">⌂ EDD home</a>',
+  ].join("");
+  return `${html.slice(0, insertAt)}${link}${html.slice(insertAt)}`;
+}
+
 export function rewriteOpencodeResponseBody(body: string, wsId: WorkspaceId): string {
   const base = opencodeRewriteBase(wsId);
   return body
@@ -449,6 +470,9 @@ function upstreamOptions(
   } else {
     delete headers.authorization;
   }
+  if (context?.editor === "opencode" || context?.editor === "openvscode") {
+    delete headers["accept-encoding"];
+  }
   return {
     protocol: upstream.protocol,
     hostname: upstream.hostname,
@@ -470,12 +494,18 @@ export function proxyWorkspaceHttp(
   context?: WorkspaceProxyContext,
 ): void {
   const proxyReq = httpRequest(upstreamOptions(upstream, req, context), (proxyRes) => {
-    if (context?.editor !== "opencode") {
+    if (context === undefined) {
       res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers);
       proxyRes.pipe(res);
       return;
     }
     const contentType = headerValue(proxyRes.headers["content-type"]);
+    const injectOpenVscodeHome = context.editor === "openvscode" && responseIsHtml(contentType);
+    if (context.editor !== "opencode" && !injectOpenVscodeHome) {
+      res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers);
+      proxyRes.pipe(res);
+      return;
+    }
     if (!responseCanBeRewritten(contentType)) {
       res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers);
       proxyRes.pipe(res);
@@ -488,12 +518,19 @@ export function proxyWorkspaceHttp(
     proxyRes.on("end", () => {
       const headers = { ...proxyRes.headers };
       delete headers["content-length"];
-      const rewritten = rewriteOpencodeResponseBody(
-        Buffer.concat(chunks).toString("utf8"),
-        context.wsId,
-      );
-      res.writeHead(proxyRes.statusCode ?? 502, headers);
-      res.end(rewritten);
+      delete headers["content-encoding"];
+      try {
+        const content = Buffer.concat(chunks).toString("utf8");
+        const rewritten =
+          context.editor === "opencode"
+            ? rewriteOpencodeResponseBody(content, context.wsId)
+            : content;
+        res.writeHead(proxyRes.statusCode ?? 502, headers);
+        res.end(responseIsHtml(contentType) ? injectWorkspaceHomeLink(rewritten) : rewritten);
+      } catch (e) {
+        if (!res.headersSent) res.writeHead(502, { "content-type": "text/plain; charset=utf-8" });
+        res.end(e instanceof Error ? e.message : "opencode response rewrite failed");
+      }
     });
     proxyRes.on("error", () => {
       if (!res.headersSent) res.writeHead(502);

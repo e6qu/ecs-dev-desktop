@@ -19,7 +19,8 @@ provider "aws" {
 
   default_tags {
     tags = {
-      "edd:env" = var.environment
+      "edd:env"        = var.environment
+      "edd:cost-scope" = var.cost_scope
     }
   }
 }
@@ -29,6 +30,7 @@ module "ecs_dev_desktop" {
 
   name               = "edd-${var.environment}"
   availability_zones = var.availability_zones
+  cost_scope         = var.cost_scope
 
   # Private-subnet egress. Explicit var — do NOT derive from var.environment's name
   # (a stack happening to be named "...-prod" must not silently switch NAT modes).
@@ -80,7 +82,8 @@ module "ecs_dev_desktop" {
   alarm_sns_topic_arns = var.alarm_sns_topic_arns
 
   tags = {
-    "edd:env"   = var.environment
-    "ManagedBy" = "terraform"
+    "edd:env"        = var.environment
+    "edd:cost-scope" = var.cost_scope
+    "ManagedBy"      = "terraform"
   }
 }

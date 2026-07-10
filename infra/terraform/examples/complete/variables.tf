@@ -12,6 +12,12 @@ variable "environment" {
   default     = "dev"
 }
 
+variable "cost_scope" {
+  description = "Cost allocation scope tag value for this stack (edd:cost-scope). Use a distinct value per environment, e.g. edd-alpha."
+  type        = string
+  default     = "edd-alpha"
+}
+
 variable "availability_zones" {
   description = "AZs to spread across."
   type        = list(string)
