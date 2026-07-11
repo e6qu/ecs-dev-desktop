@@ -145,13 +145,11 @@ describe("InstallationGitProvider (via getGitProvider in App mode)", () => {
     const provider = await getGitProvider(ownerId("x"));
     const cred = await provider?.gitCredential({ owner: "acme", name: "web" });
     expect(cred).toEqual({ username: "x-access-token", token: "ghs_inst7" });
-    // The minted token must be restricted to the single repo + only `contents` — never
-    // the installation's whole org repo set / permissions (broken-access-control fix).
+    // The minted token is restricted to the single repo — never the installation's whole
+    // org repo set (broken-access-control fix). No `permissions` override is sent: the token
+    // inherits the installation's grants (requesting MORE than it holds is a 422 escalation).
     expect(tokenRequestBodies).toHaveLength(1);
-    expect(JSON.parse(tokenRequestBodies[0] ?? "{}")).toEqual({
-      repositories: ["web"],
-      permissions: { contents: "write" },
-    });
+    expect(JSON.parse(tokenRequestBodies[0] ?? "{}")).toEqual({ repositories: ["web"] });
   });
 
   it("fails closed: a repo owner with no matching installation gets NO token", async () => {

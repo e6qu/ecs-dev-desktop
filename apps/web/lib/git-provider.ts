@@ -180,14 +180,15 @@ class InstallationGitProvider implements GitProvider {
     // fall back to another installation — that would mint a token scoped to an UNRELATED org
     // (over-scoped credential issuance + a §6.5 silent fallback). The broker route → 404.
     if (matched === undefined) return null;
-    // Least privilege: scope the token to EXACTLY this one repository with only `contents`
-    // access (clone/push). Without this, the returned token carried the installation's whole
-    // org repo set + granted permissions, so a workspace owner could name any repo the App can
-    // reach in their repoUrl and receive an org-wide credential (broken access control). The
-    // scoped token is NOT cached — it's per-repo and short-lived, minted on the credential path.
+    // Least privilege: scope the token to EXACTLY this one repository. Without this, the
+    // returned token carried the installation's WHOLE org repo set, so a workspace owner could
+    // name any repo the App can reach in their repoUrl and receive an org-wide credential
+    // (broken access control). We do NOT also request a `permissions` subset: the token inherits
+    // the installation's configured grants (which the App owner already scoped), and requesting
+    // more than the installation holds is a 422 escalation — repo scoping is the load-bearing
+    // limit. The scoped token is NOT cached: it's per-repo and short-lived, minted on demand.
     const minted = await mintInstallationToken(this.cfg, matched.id, this.now(), fetch, {
       repositories: [repo.name],
-      permissions: { contents: "write" },
     });
     return { username: GIT_USERNAME, token: minted.token };
   }
