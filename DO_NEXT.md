@@ -53,6 +53,42 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
+- **After PR #222 merges, `terraform apply` the module, then confirm workspace
+  launch works in prod.** The `ecs:TagResource`-on-task-definition grant only lands
+  via Terraform (the release workflow rolls images, not IaC). Apply from the
+  authoritative remote state
+  (`s3://edd-tfstate-edd-prod/ecs-dev-desktop/edd-prod/terraform.tfstate`), then
+  create one workspace and confirm it reaches `running`/`functional=ok` instead of
+  the `ecs:TagResource` denial. Until this apply runs, prod workspace launch stays
+  broken and `post-deploy-smoke` will still fail on the workspace step (the smoke's
+  catalog-rollout timing is fixed, but the launch itself needs the IAM grant). The
+  same apply also picks up the still-outstanding 10-second target-group
+  health-check drift.
+
+- **Verify PR #222's fixes live after merge + apply.** Confirm: a stopped
+  workspace no longer carries `shareEnabled` (spectate requires re-consent);
+  `/admin/costs` shows nonzero cost for a terminated-but-unpurged workspace and for
+  a undeleted+rerun workspace, and the AWS section shows a "cached — as of HH:MM
+  UTC" stamp without repeated Cost Explorer calls; the reconciler's orphan-secret
+  reaper deletes the ~170 stale `edd/workspace/*` secrets over subsequent sweeps
+  (watch Secrets Manager count fall); the empty workspace list converges when a
+  workspace is created out-of-band; and a viewer persona sees no lifecycle buttons.
+
+- **Retry `edd:cost-scope` cost-allocation tag activation — now UNBLOCKED.** AWS
+  Billing has discovered the key (`list-cost-allocation-tags` returns it as
+  `Inactive`), so `ce update-cost-allocation-tags-status TagKey=edd:cost-scope,
+  Status=Active` should now succeed (it previously threw `ValidationException: Tag
+  keys not found`). This is a shared-account billing change — run it as the
+  operator, then confirm `/admin/costs` reads CE data scoped to `edd-alpha`.
+
+- **Clear the remaining live cost/ops debris (operator decisions).** The live
+  audit (2026-07-11) still found: 5 stale messages in `edd-prod-reconciler-dlq`
+  (its alarm is in ALARM — purge if they are the known old inactive-taskdef
+  messages); 60 EDD-managed retained snapshots without `edd:workspace-id` (decide
+  keep-vs-delete per the data policy); and no AWS Budget because
+  `var.monthly_budget_usd = 0` — set a dollar amount to enable the already-authored
+  `aws_budgets_budget.monthly` guardrail + its 80%/100% SNS alarms.
+
 - **After this branch deploys and the golden image rebuilds, run the strengthened
   deployed workspace smoke and inspect screenshots/artifacts.** It now must prove
   OpenVSCode has a visible top-level `EDD home` link, the real File menu opens
