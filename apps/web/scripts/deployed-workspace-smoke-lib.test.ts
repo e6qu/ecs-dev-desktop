@@ -351,9 +351,9 @@ describe("sweepSmokeWorkspaces", () => {
       if (method === "GET" && pathname === "/api/workspaces") {
         return jsonResponse({
           workspaces: [
-            { id: "ws-a", ownerId: "smoke-shot-11111111" },
-            { id: "ws-b", ownerId: "smoke-22222222" },
-            { id: "ws-c", ownerId: "alice" },
+            { id: "ws-a", ownerId: "smoke-shot-11111111", state: "running" },
+            { id: "ws-b", ownerId: "smoke-22222222", state: "running" },
+            { id: "ws-c", ownerId: "alice", state: "running" },
           ],
         });
       }
@@ -380,6 +380,39 @@ describe("sweepSmokeWorkspaces", () => {
     expect(purged).toEqual(["ws-a"]);
     expect(result.failures).toHaveLength(1);
     expect(result.failures[0].message).toMatch(/ws-b \(owner smoke-22222222\) failed/);
+  });
+
+  it("purges an already-terminated tombstone without re-issuing a delete (no 409)", async () => {
+    const clock = virtualClock();
+    const deleted: string[] = [];
+    const purged: string[] = [];
+    stubRouteFetch((method, pathname) => {
+      if (method === "GET" && pathname === "/api/workspaces") {
+        return jsonResponse({
+          workspaces: [{ id: "ws-tomb", ownerId: "smoke-shot-33333333", state: "terminated" }],
+        });
+      }
+      if (method === "DELETE" && pathname === "/api/workspaces/ws-tomb") {
+        deleted.push("ws-tomb");
+        return jsonResponse(
+          { error: "invalid transition: cannot 'requestDelete' while 'terminated'" },
+          409,
+        );
+      }
+      if (method === "POST" && pathname === "/api/workspaces/ws-tomb/purge") {
+        purged.push("ws-tomb");
+        return new Response(null, { status: 202 });
+      }
+      if (method === "GET" && pathname === "/api/workspaces/ws-tomb") {
+        return jsonResponse({ error: "gone" }, 404);
+      }
+      throw new Error(`unexpected fetch in test: ${method} ${pathname}`);
+    });
+    const result = await sweepSmokeWorkspaces(BASE_URL, [], undefined, clock);
+    expect(result.swept).toEqual(["ws-tomb"]);
+    expect(deleted).toEqual([]); // never tried to delete a terminated tombstone
+    expect(purged).toEqual(["ws-tomb"]);
+    expect(result.failures).toHaveLength(0);
   });
 
   it("fails loudly when the workspaces payload shape drifted", async () => {
