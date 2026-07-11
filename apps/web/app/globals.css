@@ -105,6 +105,38 @@ a {
   padding: 0 24px;
 }
 
+/* ---- generic layout primitives ----
+ * Used pervasively by the client components (NewSession, SshKeys, the workspace
+ * live/monitoring views, the admin consoles, the account page, …). `.stack` is a
+ * vertical flow whose spacing each call site sets via an inline `gap`; `.list`
+ * is a reset list laid out the same way; standalone `.row` is a horizontal
+ * label/value+action line (the `.card .row` rule below is the in-card variant).
+ * Without these the labels collapsed inline onto their controls. */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
 .topbar {
   position: sticky;
   top: 0;
@@ -166,10 +198,27 @@ a {
 .who {
   display: flex;
   align-items: center;
+  /* Wrap the identity + persona switcher + action buttons instead of forcing a
+   * single ~630px-wide row that overflows the viewport on phones (the whole
+   * block is one flex item of the topbar). */
+  flex-wrap: wrap;
   gap: 10px;
+  min-width: 0;
   font-family: var(--font-mono), monospace;
   font-size: 12.5px;
   color: var(--dim);
+}
+
+/* The account id can be a long uuid — let it wrap rather than widen the row. */
+.who > .mono {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The persona switcher must be free to shrink below its 220px control default
+ * on a narrow topbar. */
+.who .select {
+  min-width: 0;
 }
 
 .who b {
@@ -484,6 +533,10 @@ main {
   border-radius: 7px;
   padding: 8px 11px;
   min-width: 220px;
+  /* Never exceed the container: a long <option> (e.g. the interface picker) or a
+   * narrow phone viewport must not push the control — and the page — wider. The
+   * 220px floor still applies until the container itself is narrower. */
+  max-width: 100%;
 }
 
 .input:focus,
@@ -669,6 +722,14 @@ main {
   grid-template-columns: 188px 1fr;
   gap: 32px;
   align-items: start;
+}
+
+/* Let both tracks shrink below their content's intrinsic width so the `1fr`
+ * content column doesn't blow the page out horizontally on narrow screens —
+ * without this a wide table (even one wrapped in its own scroll container)
+ * expands the track and forces a body-level horizontal scrollbar. */
+.admin-shell > * {
+  min-width: 0;
 }
 
 .admin-side {

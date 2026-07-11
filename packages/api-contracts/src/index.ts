@@ -449,6 +449,47 @@ export const listBaseImagesResponse = z.object({
 });
 export type ListBaseImagesResponse = z.infer<typeof listBaseImagesResponse>;
 
+// --- Admin: EBS snapshots ---
+
+/** One EBS snapshot as the admin snapshot console sees it: storage attribution plus
+ * whether a live/stopped workspace still depends on it. A `retained` snapshot with no
+ * `workspaceId` and `referenced: false` is the safe-to-purge orphan the view targets. */
+export const adminSnapshot = z.object({
+  id: z.string(),
+  /** The workspace this snapshot was taken for (`edd:workspace-id` tag); absent =
+   * unattributed (typically a legacy snapshot predating the tag). */
+  workspaceId: z.string().optional(),
+  /** Logical size the snapshot pins, in GiB (EBS VolumeSize); absent if unreported. */
+  sizeGiB: z.number().int().positive().optional(),
+  createdAt: z.iso.datetime(),
+  /** Tagged retained (kept past workspace delete) — orphan-GC never reaps these, so
+   * they accumulate and are the main purge target. */
+  retained: z.boolean(),
+  /** A live/stopped workspace still lists this snapshot as its restore point. Purging a
+   * referenced snapshot is refused (it would strand the workspace). */
+  referenced: z.boolean(),
+});
+export type AdminSnapshotDto = z.infer<typeof adminSnapshot>;
+
+export const listSnapshotsResponse = z.object({
+  snapshots: z.array(adminSnapshot),
+});
+export type ListSnapshotsResponse = z.infer<typeof listSnapshotsResponse>;
+
+/** Result of purging a single snapshot. */
+export const purgeSnapshotResponse = z.object({
+  id: z.string(),
+  purged: z.boolean(),
+});
+export type PurgeSnapshotResponse = z.infer<typeof purgeSnapshotResponse>;
+
+/** Result of the bulk "purge all unreferenced" action: the ids actually reaped. */
+export const purgeUnreferencedSnapshotsResponse = z.object({
+  purged: z.number().int().nonnegative(),
+  snapshotIds: z.array(z.string()),
+});
+export type PurgeUnreferencedSnapshotsResponse = z.infer<typeof purgeUnreferencedSnapshotsResponse>;
+
 // --- Admin: health board ---
 
 export const healthStatus = z.enum(["ok", "degraded", "down", "unknown"]);

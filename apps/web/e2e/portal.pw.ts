@@ -305,6 +305,32 @@ test("non-admins are denied the infrastructure view", async ({ page, context }) 
   await expect(page.getByRole("heading", { name: "Infrastructure", exact: true })).toHaveCount(0);
 });
 
+test("admin sees the snapshot management console", async ({ page, context }) => {
+  await loginAs(context, "root", "admin");
+  // The nav exposes a Snapshots entry next to Images/Infrastructure.
+  await page.goto("/admin/images");
+  await page.getByRole("link", { name: "Snapshots" }).click();
+  await expect(page).toHaveURL(`${BASE_URL}/admin/snapshots`);
+  await expect(page.getByRole("heading", { name: "Snapshots" })).toBeVisible();
+
+  // The console mounts (bulk purge control is always present) and the table
+  // converges to a concrete state (rows, or the empty-state note) with no load
+  // error — never a silently blank table.
+  await expect(page.getByTestId("admin-snapshot-purge-all")).toBeVisible();
+  await expect(page.locator("table.data-table")).toBeVisible();
+  // No LOAD-ERROR alert row inside the table (a failed list surfaces one, per §6.5).
+  // Scope to the table so this ignores Next.js's always-present empty
+  // <next-route-announcer role="alert"> a11y live region.
+  await expect(page.locator("table.data-table").getByRole("alert")).toHaveCount(0);
+});
+
+test("non-admins are denied the snapshot console", async ({ page, context }) => {
+  await loginAs(context, "alice", "developer");
+  await page.goto("/admin/snapshots");
+  await expect(page.getByTestId(TESTID.adminDenied)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Snapshots" })).toHaveCount(0);
+});
+
 test("admin inspects a workspace's detail and timeline", async ({ page, context, request }) => {
   // A developer-owned workspace to inspect (left in place for the admin to open).
   const res = await request.post("/api/workspaces", {

@@ -112,7 +112,12 @@ async function assertOpenVscodeFileMenu(page: Page): Promise<void> {
 }
 
 async function writeTerminalFile(page: Page, file: string, value: string): Promise<void> {
-  await page.locator(".xterm-screen").first().click();
+  // Focus the ACTIVE terminal, not `.xterm-screen` .first(): once a second tab is
+  // open, the inactive pane is `[hidden]` (display:none), so `.first()` resolves to
+  // an invisible screen and the click never becomes actionable. Each inactive pane
+  // carries the `hidden` attribute (see the SPA's activateTab), so scope to the one
+  // without it.
+  await page.locator(".terminal-pane:not([hidden]) .xterm-screen").first().click();
   await page.keyboard.type(`printf '${value}\\n' > ${file}`, { delay: 10 });
   await page.keyboard.press("Enter");
   await page.waitForFunction(

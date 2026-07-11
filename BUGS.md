@@ -4,6 +4,49 @@
 
 ## Open
 
+- **No admin tool to list/purge EBS snapshots — ADDED in
+  `feat/admin-snapshots-and-boyscout` (2026-07-11).** The live account had 60
+  retained EBS snapshots with no attribution and no in-app way to inspect or
+  reclaim them. Added an admin snapshot console (`/admin/snapshots`): lists every
+  managed snapshot with workspace attribution, size, age, and retained/in-use
+  badges, with a per-row purge (two-step confirm) and a "purge all unreferenced"
+  bulk action. `WorkspaceService.deleteSnapshotById` REFUSES (typed conflict) to
+  delete a snapshot a live/stopped workspace still references, so a purge can
+  never strand a workspace's only restore point.
+
+- **stop() killed the ECS task before the version CAS (dead-task drift) —
+  FIXED in `feat/admin-snapshots-and-boyscout` (2026-07-11).** A heartbeat that
+  bumped the version during the minutes-long pre-stop snapshot made the CAS
+  persist fail AFTER the task was already killed, leaving a dead task behind a
+  still-`running` record until the next drift sweep. `stop()` now persists the
+  transition first (the CAS is the gate) and releases the task only after it
+  commits (orphan-task reaper is the backstop).
+
+- **Idle sweep could scale-to-zero a just-resumed workspace — FIXED in
+  `feat/admin-snapshots-and-boyscout` (2026-07-11).** The reconciler's idle list
+  is a point-in-time snapshot and the serial sweep takes minutes per workspace,
+  so a workspace resumed mid-sweep (heartbeat refreshed `lastActivity`) was still
+  stopped. `stop()` gained a `requireIdleForMs` guard checked against THIS read's
+  `lastActivity` (closing the TOCTOU); the reconciler passes its idle threshold,
+  so an active workspace is a benign skip.
+
+- **UI layout defects: mobile horizontal scroll + undefined layout classes —
+  FIXED in `feat/admin-snapshots-and-boyscout` (2026-07-11).** Every page had
+  horizontal body scroll at mobile widths (the topbar `.who` block didn't wrap),
+  and `.stack`/`.list`/`.row` were used across 12+ components but never defined in
+  CSS, collapsing vertical layouts (worst on `/settings/ssh-keys` and
+  `/sessions/new`). `/admin/costs` rendered 42 unpriced session ids as one
+  run-on paragraph. All fixed in `globals.css` (+ `SshKeys.tsx`, the costs page's
+  collapsible list).
+
+- **Post-deploy Terminal smoke clicked a hidden pane — FIXED in
+  `feat/admin-snapshots-and-boyscout` (2026-07-11).** With #223's OpenVSCode File
+  menu unblocked, the 80592bd smoke reached the Terminal step and failed:
+  `writeTerminalFile` clicked `.xterm-screen` `.first()`, which is the inactive
+  tab's now-`[hidden]` pane once a second tab is open. Scoped to
+  `.terminal-pane:not([hidden]) .xterm-screen`. The Terminal product itself was
+  healthy (the failure screenshot showed two working tabs).
+
 - **Production workspace launch was fully broken by #220's task-def tagging —
   FIXED in PR #222 (2026-07-11); needs `terraform apply`.** #220 added
   `tags: costScopeTags(...)` to the `RegisterTaskDefinition` call. AWS authorizes
@@ -11,7 +54,7 @@
   being registered, but the control-plane policy only granted `ecs:TagResource`
   under an `ecs:cluster` condition absent from the registration request context —
   so every workspace create/wake failed with `not authorized to perform:
-  ecs:TagResource on resource: .../edd-ws-*:*` and the workspace went to
+ecs:TagResource on resource: .../edd-ws-*:*` and the workspace went to
   `error`/`degraded`. This broke `post-deploy-smoke` on every release since #220
   and was reproduced live. Granted `ecs:TagResource` on the task-definition
   resource in `iam.tf` + the `IAM_REQUIREMENTS` manifest (kept the cluster-scoped

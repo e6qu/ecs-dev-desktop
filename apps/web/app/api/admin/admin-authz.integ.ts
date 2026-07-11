@@ -13,6 +13,9 @@ import { GET as healthGet } from "./health/route";
 import { GET as logsGet } from "./logs/route";
 import { GET as overviewGet } from "./overview/route";
 import { GET as quotasGet } from "./quotas/route";
+import { DELETE as snapshotPurgeDelete } from "./snapshots/[id]/route";
+import { POST as snapshotPurgeAllPost } from "./snapshots/purge-unreferenced/route";
+import { GET as snapshotsGet } from "./snapshots/route";
 import { GET as inspectGet } from "./workspaces/[id]/route";
 import { GET as workspacesGet } from "./workspaces/route";
 
@@ -35,6 +38,9 @@ const ENDPOINTS: { name: string; call: (req: Request) => Promise<Response> }[] =
   { name: "config-sync", call: (req) => configSyncGet(req) },
   { name: "quotas", call: (req) => quotasGet(req) },
   { name: "overview", call: (req) => overviewGet(req) },
+  { name: "snapshots", call: (req) => snapshotsGet(req) },
+  { name: "snapshots/:id purge", call: (req) => snapshotPurgeDelete(req, params("snap-x")) },
+  { name: "snapshots purge-unreferenced", call: (req) => snapshotPurgeAllPost(req) },
 ];
 
 function asRole(role: string): Request {

@@ -86,6 +86,11 @@ import { isVersionConflict } from "./version-conflict";
  * gate-wakes without a forwarded identity). */
 const SYSTEM_ACTOR = "system";
 
+/** Audit action recorded when an admin reaps an EBS snapshot from the snapshot
+ * console. Deliberately outside the `session.` cost-ledger vocabulary (it prices no
+ * workspace time) and its audit target is a SnapshotId, not a WorkspaceId. */
+const SNAPSHOT_PURGE_ACTION = "snapshot.purged";
+
 /** A concurrent waker that lost the claim waits up to this long for the winner's
  * wake to reach running (cold start = RunTask + readiness, tens of seconds),
  * polling at this interval. It blocks for the same window the old
@@ -255,6 +260,21 @@ function throwForCanceledCreate(
 export interface ActiveWorkspace {
   id: WorkspaceId;
   lastActivity: IsoTimestamp;
+}
+
+/**
+ * An EBS snapshot enriched for the admin snapshot console: storage attribution
+ * (from the snapshot's tags/size) plus `referenced` — whether a live/stopped
+ * workspace still lists it as its restore point. A `retained` snapshot with no
+ * owning `workspaceId` and `referenced: false` is the safe-to-purge orphan.
+ */
+export interface AdminSnapshotView {
+  readonly id: SnapshotId;
+  readonly workspaceId?: WorkspaceId;
+  readonly sizeGiB?: number;
+  readonly createdAt: IsoTimestamp;
+  readonly retained: boolean;
+  readonly referenced: boolean;
 }
 
 /** The string-shaped persistence record (the DynamoDB boundary). */
@@ -690,6 +710,99 @@ export class WorkspaceService {
     return { volumeIds, snapshotIds };
   }
 
+  /**
+   * Admin snapshot console read: every managed EBS snapshot enriched with a
+   * `referenced` flag (true iff a live/stopped workspace still lists it as its
+   * restore point, per {@link listReferencedStorage}). The console shows the
+   * attribution + size the provider reports and highlights the unreferenced,
+   * retained orphans that are safe to purge.
+   */
+  async listSnapshotsForAdmin(): Promise<readonly AdminSnapshotView[]> {
+    const [snapshots, referenced] = await Promise.all([
+      this.deps.storage.listSnapshots(),
+      this.listReferencedStorage(),
+    ]);
+    const referencedIds = new Set<string>(referenced.snapshotIds);
+    return snapshots.map((s) => ({
+      id: s.id,
+      ...(s.workspaceId === undefined ? {} : { workspaceId: s.workspaceId }),
+      ...(s.sizeGiB === undefined ? {} : { sizeGiB: s.sizeGiB }),
+      createdAt: s.createdAt,
+      retained: s.retained === true,
+      referenced: referencedIds.has(s.id),
+    }));
+  }
+
+  /**
+   * Admin purge of a single EBS snapshot by id. REFUSES (typed conflict, fail-loud)
+   * to reap a snapshot a live/stopped workspace still restores from — deleting it
+   * would strand that workspace so it could never wake. An unreferenced snapshot is
+   * deleted (idempotent — already-gone is success) and the action is audited.
+   */
+  async deleteSnapshotById(
+    id: SnapshotId,
+    actor: string = SYSTEM_ACTOR,
+  ): Promise<Result<void, DomainError>> {
+    const { snapshotIds } = await this.listReferencedStorage();
+    if (snapshotIds.includes(id)) {
+      return err(
+        conflictError(`snapshot ${id} is still referenced by a workspace and cannot be purged`),
+      );
+    }
+    try {
+      await this.deps.storage.deleteSnapshot(id);
+    } catch (e) {
+      if (!isResourceGoneError(e)) throw e; // already gone → idempotent success
+    }
+    await this.auditSnapshotPurge(id, actor);
+    return ok(undefined);
+  }
+
+  /**
+   * Admin bulk purge: reap every managed snapshot NOT referenced by a live/stopped
+   * workspace (the accumulated retained orphans). Each reap is idempotent and audited;
+   * referenced snapshots are skipped (never stranded). Returns the ids actually purged.
+   */
+  async purgeUnreferencedSnapshots(
+    actor: string = SYSTEM_ACTOR,
+  ): Promise<{ purged: readonly SnapshotId[] }> {
+    const [snapshots, referenced] = await Promise.all([
+      this.deps.storage.listSnapshots(),
+      this.listReferencedStorage(),
+    ]);
+    const referencedIds = new Set<string>(referenced.snapshotIds);
+    const purged: SnapshotId[] = [];
+    for (const s of snapshots) {
+      if (referencedIds.has(s.id)) continue;
+      try {
+        await this.deps.storage.deleteSnapshot(s.id);
+      } catch (e) {
+        if (!isResourceGoneError(e)) throw e;
+      }
+      await this.auditSnapshotPurge(s.id, actor);
+      purged.push(s.id);
+    }
+    return { purged };
+  }
+
+  /** Append a snapshot-purge audit event (target = the SnapshotId, not a workspace)
+   * directly to the ledger when one is configured — the admin action on a storage
+   * resource is audited like any other, outside the workspace-targeted lifecycle path. */
+  private async auditSnapshotPurge(id: SnapshotId, actor: string): Promise<void> {
+    const audit = this.deps.audit;
+    if (audit === undefined) return;
+    await audit
+      .put({
+        id: `evt-${randomUUID()}`,
+        at: this.deps.clock.now(),
+        actor,
+        action: SNAPSHOT_PURGE_ACTION,
+        target: id,
+        detail: "unreferenced EBS snapshot purged",
+      })
+      .go();
+  }
+
   /** Every task id any workspace record still references — the orphan-task reaper's
    * keep-set. Conservative: includes a stopped record's last task id (that task is
    * not RUNNING, so it is not a reap candidate anyway), so a task any record names is
@@ -827,9 +940,7 @@ export class WorkspaceService {
     if (opts?.requireIdleForMs !== undefined) {
       const idleForMs = Date.parse(this.deps.clock.now()) - Date.parse(ws.lastActivity);
       if (idleForMs < opts.requireIdleForMs) {
-        return err(
-          conflictError(`stop of ${id} skipped: last active ${String(idleForMs)}ms ago`),
-        );
+        return err(conflictError(`stop of ${id} skipped: last active ${String(idleForMs)}ms ago`));
       }
     }
     const at = isoTimestamp(this.deps.clock.now());

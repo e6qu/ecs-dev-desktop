@@ -2,6 +2,50 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
+**Last updated:** 2026-07-11 (evening). PR #222 merged (`d8b2ead`) and its
+`ecs:TagResource` IAM fix was applied to production via a TARGETED
+`terraform apply` — the operator's authoritative state is the LOCAL
+`infra/terraform/examples/complete/terraform.tfstate` (serial 564); the declared
+S3 backend bucket `edd-tfstate-edd-prod` is EMPTY, so a local-backend override
+was used for the apply and removed after. A FULL apply is unsafe (3 replacements
+that re-register control-plane/reconciler task defs the release workflow owns
+out-of-band, and it would roll ssh-gateway back to an old revision) — only the
+control-plane IAM policy and the LB target-group health-check interval drift
+(30s→10s, faster deploy convergence) were applied by target. Workspace launch
+was then verified live: a real browser opened a fully-rendered OpenVSCode
+workspace against production, and control-plane logs show zero `ecs:TagResource`
+denials since. PR #223 merged (`80592bd`), fixing the injected OpenVSCode home
+link that covered the File menu and the post-deploy sweep's 409 on terminated
+tombstones; the 80592bd smoke then got PAST OpenVSCode (File menu now clickable)
+and Monaco and reached the Terminal step, which exposed a SMOKE-SCRIPT bug (the
+terminal write clicked `.xterm-screen` first(), hitting the now-`[hidden]`
+inactive pane) — fixed to scope to the visible pane.
+
+The follow-up branch `feat/admin-snapshots-and-boyscout` added an admin snapshot
+management console (list every managed EBS snapshot with workspace attribution,
+size, age, retained/in-use badges; per-row purge with a two-step confirm and a
+"purge all unreferenced" bulk action; a control-plane guard REFUSES to delete a
+snapshot a live/stopped workspace still restores from) — this is the tool for
+cleaning up the 60 unattributed retained snapshots. It also landed two
+scale-to-zero correctness fixes: `stop()` now persists the transition BEFORE
+killing the ECS task (the CAS is the gate — a heartbeat racing the minutes-long
+pre-stop snapshot no longer leaves a dead task behind a running record), and the
+reconciler idle sweep re-checks each workspace's current `lastActivity` via a
+`requireIdleForMs` guard so a workspace resumed mid-sweep is skipped, not
+stopped. A UI/UX pass fixed page-wide mobile horizontal scroll (the topbar `.who`
+block didn't wrap), the undefined `.stack`/`.list`/`.row` CSS classes that
+collapsed layouts across 12+ components (worst on `/settings/ssh-keys` and
+`/sessions/new`), and the `/admin/costs` unpriced-sessions wall-of-text (now a
+collapsible list). Operational: the `edd:cost-scope` cost-allocation tag is now
+discoverable in Billing (activation retryable); the target-group health checks
+are live at 10s; the 5-message `edd-prod-reconciler-dlq` purge and the tag
+activation stayed operator-gated (blocked as shared-account mutations).
+
+Verification: build 21/21, lint 22/22, dead-code, all unit suites (core,
+storage-ec2, api-contracts, control-plane 62, web 255, reconciler 36),
+control-plane integ 78/78 against the sim, and Playwright 24/24 including two new
+snapshot-console specs. Every fix carries a regression test.
+
 **Last updated:** 2026-07-11. PR #222 (`fix/prod-journeys-cost-lifecycle`)
 opened from a full codebase review + live-production journey pass + a multi-agent
 code review. The headline finding was a **production-down regression from #220**:
