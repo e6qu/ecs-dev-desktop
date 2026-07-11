@@ -58,8 +58,20 @@ suite("GitHub App flow (app JWT → installation token → REST), coordinate-dri
     const page = await provider?.listRepos();
     expect(Array.isArray(page?.repos)).toBe(true);
 
-    // Scoped to exactly the one repo (owner + name) — the token GitHub mints is limited
-    // to that repository with only `contents`, not the installation's whole org.
+    // A repo-scoped credential requires the repo to EXIST and be accessible — real GitHub
+    // (and bleephub, faithfully) return 422 for a scoped token naming a non-existent repo.
+    // The App seed grants org-wide repo-admin but does not pre-create the coordinate repo, so
+    // create it here (idempotently — skip if a prior run/retry already made it), then mint the
+    // token scoped to EXACTLY that one repo (owner + name), not the installation's whole org.
+    const fullName = `${coords.org}/${coords.repo}`;
+    if (!(page?.repos ?? []).some((r) => r.fullName === fullName)) {
+      await provider?.createRepo({
+        owner: coords.org,
+        name: coords.repo,
+        private: true,
+        isPersonal: false,
+      });
+    }
     const cred = await provider?.gitCredential({ owner: coords.org, name: coords.repo });
     expect(cred?.username).toBe("x-access-token");
     expect(cred?.token.startsWith("ghs_")).toBe(true);
