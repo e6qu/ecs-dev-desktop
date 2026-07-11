@@ -27,7 +27,8 @@ describe("admin audit feed (first-class events)", () => {
 
     const created = events.find((e) => e.action === "session.create" && e.target === id);
     expect(created, "session.create event for the new workspace").toBeDefined();
-    expect(created?.resources).toEqual({ cpuUnits: 512, memoryMiB: 2048, volumeGiB: 8 });
+    // Default editor (openvscode) → its per-editor recommended tier (1 vCPU / 4 GiB).
+    expect(created?.resources).toEqual({ cpuUnits: 1024, memoryMiB: 4096, volumeGiB: 8 });
     expect(created?.actor).toBe("audit-user"); // dev-auth: actor = id (no email)
 
     // The derived lifecycle feed is merged in too (workspace.* from state).
