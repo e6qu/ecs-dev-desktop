@@ -240,7 +240,9 @@ fi
 oac_id=$(aws_use1 cloudfront create-origin-access-control \
   --origin-access-control-config "Name=edd-wake-oac-${suffix},Description=edd wake OAC probe,SigningProtocol=sigv4,SigningBehavior=always,OriginAccessControlOriginType=lambda" \
   --query 'OriginAccessControl.Id' --output text)
-[ -n "$oac_id" ] && [ "$oac_id" != "None" ] || fail "CreateOriginAccessControl (lambda) did not return an Id"
+if [ -z "$oac_id" ] || [ "$oac_id" = "None" ]; then
+  fail "CreateOriginAccessControl (lambda) did not return an Id"
+fi
 got_oac_type=$(aws_use1 cloudfront get-origin-access-control --id "$oac_id" \
   --query 'OriginAccessControl.OriginAccessControlConfig.OriginAccessControlOriginType' --output text)
 [ "$got_oac_type" = "lambda" ] || fail "OAC origin type is ${got_oac_type}, expected lambda"
