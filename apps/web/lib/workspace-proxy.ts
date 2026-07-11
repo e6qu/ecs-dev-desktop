@@ -426,16 +426,30 @@ function responseIsHtml(contentType: string | undefined): boolean {
   return contentType?.toLowerCase().includes("text/html") === true;
 }
 
-export function injectWorkspaceHomeLink(html: string): string {
+/**
+ * A fixed home-link pill unavoidably intercepts pointer events over whatever chrome
+ * it covers, so it must be anchored to each editor's DEAD zone:
+ * - OpenVSCode's menu bar (File/Edit/…) occupies the TOP-LEFT, so a top-left pill
+ *   sat on top of the File menu and blocked its click (found live). Anchor it
+ *   BOTTOM-left instead, above the status bar, where it only overlaps the low-value
+ *   activity-bar corner.
+ * - opencode's message input is at the BOTTOM, so it keeps the top-left anchor (its
+ *   header there is inert).
+ */
+function homeLinkPosition(editor: EditorKind): string {
+  return editor === "openvscode" ? "bottom:28px;left:12px" : "top:10px;left:10px";
+}
+
+export function injectWorkspaceHomeLink(html: string, editor: EditorKind): string {
   if (html.includes(`id="${EDD_WORKSPACES_HOME_ID}"`)) return html;
   const bodyMatch = /<body\b[^>]*>/i.exec(html);
   if (bodyMatch === null) {
-    throw new Error("opencode HTML did not contain a <body> tag for EDD workspace navigation");
+    throw new Error("workspace HTML did not contain a <body> tag for EDD workspace navigation");
   }
   const insertAt = bodyMatch.index + bodyMatch[0].length;
   const link = [
     `<a id="${EDD_WORKSPACES_HOME_ID}" href="${EDD_WORKSPACES_HOME_HREF}"`,
-    ' style="position:fixed;z-index:2147483647;top:10px;left:10px;display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid rgba(255,255,255,.22);border-radius:6px;background:rgba(11,15,13,.92);color:#4ec9b0;text-decoration:none;font:600 13px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.35)"',
+    ` style="position:fixed;z-index:2147483647;${homeLinkPosition(editor)};display:inline-flex;align-items:center;gap:6px;padding:7px 10px;border:1px solid rgba(255,255,255,.22);border-radius:6px;background:rgba(11,15,13,.92);color:#4ec9b0;text-decoration:none;font:600 13px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;box-shadow:0 4px 16px rgba(0,0,0,.35)"`,
     ' title="Back to EDD workspaces">⌂ EDD home</a>',
   ].join("");
   return `${html.slice(0, insertAt)}${link}${html.slice(insertAt)}`;
@@ -526,7 +540,11 @@ export function proxyWorkspaceHttp(
             ? rewriteOpencodeResponseBody(content, context.wsId)
             : content;
         res.writeHead(proxyRes.statusCode ?? 502, headers);
-        res.end(responseIsHtml(contentType) ? injectWorkspaceHomeLink(rewritten) : rewritten);
+        res.end(
+          responseIsHtml(contentType)
+            ? injectWorkspaceHomeLink(rewritten, context.editor)
+            : rewritten,
+        );
       } catch (e) {
         if (!res.headersSent) res.writeHead(502, { "content-type": "text/plain; charset=utf-8" });
         res.end(e instanceof Error ? e.message : "opencode response rewrite failed");

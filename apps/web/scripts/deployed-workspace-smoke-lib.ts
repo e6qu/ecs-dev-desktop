@@ -599,11 +599,12 @@ const LIST_POLL_INTERVAL_MS = 5_000;
 interface WorkspaceRef {
   readonly id: string;
   readonly ownerId: string;
+  readonly state: string;
 }
 
 /**
  * Extract workspace refs from the /api/workspaces payload. A payload without
- * a `workspaces` array of `{ id, ownerId }` objects is a contract problem —
+ * a `workspaces` array of `{ id, ownerId, state }` objects is a contract problem —
  * fail loudly (same policy as `enabledCatalogImages`).
  */
 function workspaceRefs(raw: unknown): readonly WorkspaceRef[] {
@@ -625,13 +626,15 @@ function workspaceRefs(raw: unknown): readonly WorkspaceRef[] {
       !("id" in candidate) ||
       typeof candidate.id !== "string" ||
       !("ownerId" in candidate) ||
-      typeof candidate.ownerId !== "string"
+      typeof candidate.ownerId !== "string" ||
+      !("state" in candidate) ||
+      typeof candidate.state !== "string"
     ) {
       throw new Error(
         `/api/workspaces entry was not a recognizable workspace: ${JSON.stringify(candidate)}`,
       );
     }
-    return { id: candidate.id, ownerId: candidate.ownerId };
+    return { id: candidate.id, ownerId: candidate.ownerId, state: candidate.state };
   });
 }
 
@@ -679,8 +682,13 @@ export async function sweepSmokeWorkspaces(
   const leftovers = await listSmokeWorkspaces(baseUrl, jar, ownerPrefixes, clock);
   const settled = await Promise.allSettled(
     leftovers.map(async (ws) => {
-      await deleteWorkspace(baseUrl, jar, ws.id);
-      await waitTerminated(baseUrl, jar, ws.id, clock);
+      // A `terminated` tombstone can't be deleted again (the API 409s
+      // "cannot 'requestDelete' while 'terminated'") — it's already torn down, so go
+      // straight to purge. Only a still-live workspace needs the delete→terminate step.
+      if (ws.state !== "terminated") {
+        await deleteWorkspace(baseUrl, jar, ws.id);
+        await waitTerminated(baseUrl, jar, ws.id, clock);
+      }
       await purgeWorkspace(baseUrl, jar, ws.id);
       await waitPurged(baseUrl, jar, ws.id, clock);
     }),

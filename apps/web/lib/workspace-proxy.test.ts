@@ -440,16 +440,31 @@ describe("opencode proxy adaptation", () => {
         "<!doctype html><html><body><main>opencode</main></body></html>",
         WS,
       ),
+      "opencode",
     );
     expect(out).toContain('id="edd-workspaces-home"');
     expect(out).toContain('href="/workspaces"');
     expect(out).toContain("EDD home");
     expect(out).not.toContain(`href="/w/${WS}/workspaces"`);
+    // opencode's message input is at the bottom, so its home pill stays top-left.
+    expect(out).toContain("top:10px;left:10px");
+  });
+
+  it("anchors the OpenVSCode home link to the bottom so it never covers the menu bar", () => {
+    // The File/Edit/… menu bar is top-left; a top-left pill intercepted its click
+    // (found live). OpenVSCode's pill must sit at the bottom instead.
+    const out = injectWorkspaceHomeLink(
+      "<!doctype html><html><body><div class='monaco-workbench'></div></body></html>",
+      "openvscode",
+    );
+    expect(out).toContain('id="edd-workspaces-home"');
+    expect(out).toContain("bottom:28px;left:12px");
+    expect(out).not.toContain("top:10px;left:10px");
   });
 
   it("does not silently pass opencode HTML that cannot receive the required EDD navigation", () => {
     expect(() =>
-      injectWorkspaceHomeLink("<!doctype html><html><main>opencode</main></html>"),
+      injectWorkspaceHomeLink("<!doctype html><html><main>opencode</main></html>", "opencode"),
     ).toThrow(/body/);
   });
 });
