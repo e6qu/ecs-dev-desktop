@@ -132,6 +132,13 @@ resource "aws_lambda_function" "wake" {
   timeout       = var.wake_lambda_timeout_seconds
   memory_size   = var.wake_lambda_memory_mb
 
+  # Cap concurrency: the wake path is public (the CloudFront failover origin), so an
+  # unbounded cold-start flood could otherwise spawn arbitrarily many concurrent
+  # invocations all hammering ECS DescribeServices/UpdateService (shared with
+  # workspace lifecycle + the reconciler). Waking is idempotent, so a small ceiling
+  # is safe and still always leaves the wake path capacity.
+  reserved_concurrent_executions = var.wake_lambda_reserved_concurrency
+
   filename         = var.wake_lambda_zip
   source_code_hash = fileexists(var.wake_lambda_zip) ? filebase64sha256(var.wake_lambda_zip) : null
 
@@ -148,12 +155,45 @@ resource "aws_lambda_function" "wake" {
   depends_on = [aws_cloudwatch_log_group.wake]
 }
 
-# Auth NONE: CloudFront is the only caller (the failover origin), and the wake path
-# is a public unauthenticated "the app is waking up" response — no AWS SigV4 in front.
+# AWS_IAM auth: the Function URL must NOT be world-invokable, or a caller could hit it
+# directly and bypass CloudFront + the CLOUDFRONT-scope WAF entirely (rate limit,
+# managed rules). CloudFront signs each origin request to this URL with SigV4 via the
+# Origin Access Control below, and the aws_lambda_permission grants only the CloudFront
+# service principal (scoped to THIS distribution) `lambda:InvokeFunctionUrl`. So the
+# only path that can invoke the wake Lambda is a request that already traversed
+# CloudFront + WAF.
 resource "aws_lambda_function_url" "wake" {
   count              = local.cloudfront_enabled ? 1 : 0
   function_name      = aws_lambda_function.wake[0].function_name
-  authorization_type = "NONE"
+  authorization_type = "AWS_IAM"
+}
+
+# Origin Access Control: makes CloudFront SigV4-sign every origin request to the wake
+# Lambda Function URL so the AWS_IAM-protected URL accepts it. `origin_type = "lambda"`
+# is the Lambda-URL signing mode; `signing_behavior = "always"` signs unconditionally.
+# Global CloudFront resource -> us-east-1 provider, like the distribution + web ACL.
+resource "aws_cloudfront_origin_access_control" "wake" {
+  count                             = local.cloudfront_enabled ? 1 : 0
+  provider                          = aws.us_east_1
+  name                              = "${var.name}-wake-oac"
+  description                       = "SigV4-signs CloudFront origin requests to the ${local.wake_lambda_name} Function URL"
+  origin_access_control_origin_type = "lambda"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
+
+# Allow ONLY the CloudFront service principal, scoped to THIS distribution's ARN, to
+# invoke the wake Function URL. Combined with AWS_IAM auth + the OAC signing above,
+# this is what forces all wake traffic through CloudFront + WAF. Depends on the
+# distribution for its ARN (no cycle: the distribution never references this grant).
+resource "aws_lambda_permission" "wake_cloudfront" {
+  count                  = local.cloudfront_enabled ? 1 : 0
+  statement_id           = "AllowCloudFrontInvokeFunctionUrl"
+  action                 = "lambda:InvokeFunctionUrl"
+  function_name          = aws_lambda_function.wake[0].function_name
+  principal              = "cloudfront.amazonaws.com"
+  source_arn             = aws_cloudfront_distribution.control_plane[0].arn
+  function_url_auth_type = "AWS_IAM"
 }
 
 # ---- CloudFront distribution ----
@@ -181,10 +221,12 @@ resource "aws_cloudfront_distribution" "control_plane" {
     }
   }
 
-  # Failover origin: the wake Lambda's Function URL, reached over HTTPS.
+  # Failover origin: the wake Lambda's Function URL, reached over HTTPS. The OAC makes
+  # CloudFront SigV4-sign requests to it so the AWS_IAM-protected URL accepts them.
   origin {
-    origin_id   = local.cloudfront_wake_origin_id
-    domain_name = local.wake_lambda_origin_hostname
+    origin_id                = local.cloudfront_wake_origin_id
+    domain_name              = local.wake_lambda_origin_hostname
+    origin_access_control_id = aws_cloudfront_origin_access_control.wake[0].id
 
     custom_origin_config {
       http_port              = 80
@@ -226,6 +268,24 @@ resource "aws_cloudfront_distribution" "control_plane" {
     cache_policy_id          = local.cloudfront_managed_caching_disabled_policy_id
     origin_request_policy_id = local.cloudfront_managed_all_viewer_orp_id
   }
+
+  # NOTE (cost): we deliberately do NOT add a cached `custom_error_response` to serve
+  # the cold-start placeholder from the edge and spare repeat wake-Lambda invokes.
+  # It is not feasible without breaking the wake or the readiness poll:
+  #   - The wake Lambda IS the scale-from-zero trigger (it calls ecs:UpdateService).
+  #     A cached CloudFront error page served instead of failing over to the Lambda
+  #     would mean the service never wakes.
+  #   - The Lambda answers a browser navigation with a 200 HTML placeholder (not an
+  #     error status), so a status-keyed `custom_error_response` never even matches it.
+  #   - It answers the startup page's `/api/readyz` poll with 503 ON PURPOSE so the
+  #     poll keeps waiting; caching that 503 (error_caching_min_ttl > 0) would serve a
+  #     stale "still down" to the browser after the service is actually back, breaking
+  #     recovery detection. Managed-CachingDisabled (required for the dynamic app +
+  #     WebSocket path) also forbids caching on this shared behavior.
+  # Wake-path cost is instead bounded upstream of the invoke: the CLOUDFRONT WAF
+  # rate-based rule blocks floods at the edge BEFORE failover (waf-cloudfront.tf), the
+  # wake Lambda has reserved_concurrent_executions + a small memory/timeout footprint,
+  # and the wake decision is idempotent (it "holds" cheaply once desired > 0).
 
   restrictions {
     geo_restriction {

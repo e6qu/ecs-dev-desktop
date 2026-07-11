@@ -149,6 +149,14 @@ export const COST_ROLLUP_CADENCE_MS = 15 * 60 * 1000;
  * must not leave the client socket hung open indefinitely. */
 export const WORKSPACE_PROXY_UPSTREAM_TIMEOUT_MS = 30000;
 
+/** Max bytes the proxy buffers when it must rewrite an editor response body (HTML shell
+ * / opencode asset). Only rewritable content types are buffered at all, but the buffer is
+ * still fully in-memory, so an oversized (or maliciously large) upstream body could
+ * exhaust the control plane's heap. A rewritable editor document is small in practice;
+ * this generous ceiling bounds memory and makes an over-cap body fail loudly (502) instead
+ * of OOM-ing the shared control plane. */
+export const WORKSPACE_PROXY_MAX_REWRITE_BYTES = 16 * 1024 * 1024;
+
 /** How often the server converges workspaces in the cancelable `stopping` state to
  * `stopped` (finishStop is grace-honoring + idempotent, so a tight tick is safe).
  * Convergence lands within ~DEFAULT_STOP_GRACE_MS + this interval. */

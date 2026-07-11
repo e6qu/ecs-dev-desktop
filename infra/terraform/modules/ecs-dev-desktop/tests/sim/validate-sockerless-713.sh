@@ -268,17 +268,21 @@ done
 assert_eq "CloudWatch Logs metric filter publishes metrics (#706)" "1" "${METRIC_FOUND}"
 aws_cmd logs delete-log-group --log-group-name "${FILTER_LOG_GROUP}" >/dev/null
 
-# --- #707 Application Auto Scaling target tracking adjusts DesiredCount -------
-# The module already registers an ECS scalable target. Verify it exists and has
-# a target-tracking policy; real scale-out is covered by container-mode e2e.
+# --- #707 Application Auto Scaling scalable target (scale-to-zero) ------------
+# The module registers an ECS scalable target (min 0, for control-plane
+# scale-to-zero) but NO scaling policy: the reconciler (idle shutdown) + wake
+# Lambda (scale-from-zero) are the sole authority over desiredCount, so a CPU
+# target-tracking policy (which can neither scale to/from 0 nor coexist with them)
+# was removed. The sim's target-tracking support itself is still exercised by
+# adversarial-slice-appautoscaling.sh, which registers + asserts its own policy.
 SCALABLE_TARGET=$(aws_cmd application-autoscaling describe-scalable-targets \
   --service-namespace ecs \
   --query 'length(ScalableTargets)' --output text)
 assert_eq "AppAutoScaling scalable target registered (#707)" "1" "${SCALABLE_TARGET}"
-POLICY_TYPE=$(aws_cmd application-autoscaling describe-scaling-policies \
+POLICY_COUNT=$(aws_cmd application-autoscaling describe-scaling-policies \
   --service-namespace ecs \
-  --query 'ScalingPolicies[0].PolicyType' --output text)
-assert_eq "AppAutoScaling policy is TargetTrackingScaling (#707)" "TargetTrackingScaling" "${POLICY_TYPE}"
+  --query 'length(ScalingPolicies)' --output text)
+assert_eq "AppAutoScaling has no scaling policy — reconciler/wake own desiredCount (#707)" "0" "${POLICY_COUNT}"
 
 # --- #711 ECS service scheduler reconciles DesiredCount ----------------------
 # Update the service desired count and verify DescribeServices reflects it.

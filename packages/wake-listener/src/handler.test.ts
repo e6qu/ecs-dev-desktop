@@ -84,10 +84,33 @@ describe("handleWake", () => {
     expect(calls[0]?.desiredCount).toBe(2);
   });
 
-  it("fails loud when DescribeServices errors", async () => {
-    await expect(handleWake({}, deps(failingEcs(), BASE_ENV))).rejects.toThrow(
-      /DescribeServices boom/,
-    );
+  it("answers a readiness probe (path === status path) with 503, not the 200 page", async () => {
+    const calls: SetDesiredCall[] = [];
+    const ecs = fakeEcs({ desiredCount: 0, runningCount: 0 }, calls);
+    const res = await handleWake({ rawPath: "/api/readyz" }, deps(ecs, BASE_ENV));
+    expect(res.statusCode).toBe(503);
+    expect(res.body).not.toContain("<html"); // poll must not reload on this
+    // still triggers the scale-up (idempotent) so the poll converges
+    expect(calls[0]?.desiredCount).toBe(2);
+  });
+
+  it("answers a navigation (other path) with the 200 startup page", async () => {
+    const calls: SetDesiredCall[] = [];
+    const ecs = fakeEcs({ desiredCount: 0, runningCount: 0 }, calls);
+    const res = await handleWake({ rawPath: "/" }, deps(ecs, BASE_ENV));
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain("<html");
+  });
+
+  it("does NOT return a raw 5xx when ECS is unreachable — keeps the browser retrying", async () => {
+    // A DescribeServices error is caught and the startup page (200) is served for a
+    // navigation, so a CloudFront error page can't swallow it and the browser keeps polling.
+    const res = await handleWake({ rawPath: "/" }, deps(failingEcs(), BASE_ENV));
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["x-edd-wake-action"]).toBe("hold");
+    // and a readiness probe under an ECS outage still gets 503 (poll keeps waiting)
+    const probe = await handleWake({ rawPath: "/api/readyz" }, deps(failingEcs(), BASE_ENV));
+    expect(probe.statusCode).toBe(503);
   });
 
   it("fails loud on a missing required env var", async () => {

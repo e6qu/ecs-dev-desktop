@@ -12,6 +12,13 @@
 
 locals {
   cloudfront_waf_enabled = local.cloudfront_enabled && var.enable_cloudfront_waf
+
+  # Fixed low-priority band for the Terraform-seeded baseline rules (lower number =
+  # evaluated first). The common rule set runs first, then the rate-based guard. The
+  # control plane owns every rule ABOVE this band (higher priority numbers) via
+  # UpdateWebACL at runtime; ignore_changes on `rule` keeps terraform off them.
+  cloudfront_waf_common_priority     = 0
+  cloudfront_waf_rate_limit_priority = 1
 }
 
 resource "aws_wafv2_web_acl" "cloudfront" {
@@ -28,10 +35,11 @@ resource "aws_wafv2_web_acl" "cloudfront" {
 
   # Seed only: a baseline managed rule group so the ACL is protective from the first
   # apply. The control plane adds/edits admin rules through UpdateWebACL at runtime;
-  # ignore_changes on `rule` keeps terraform from reverting them.
+  # ignore_changes on `rule` keeps terraform from reverting them. Both seeded rules
+  # sit in a FIXED LOW-priority band (0-1); the app owns the higher-priority band.
   rule {
     name     = "aws-common-rule-set"
-    priority = 0
+    priority = local.cloudfront_waf_common_priority
 
     override_action {
       none {}
@@ -47,6 +55,37 @@ resource "aws_wafv2_web_acl" "cloudfront" {
     visibility_config {
       cloudwatch_metrics_enabled = true
       metric_name                = "${var.name}-cloudfront-common"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  # Volumetric L7 guard the common rule set does NOT provide: block any source IP
+  # that exceeds cloudfront_rate_limit requests over WAF's rolling 5-minute window.
+  # COST + availability protection: the Web ACL is evaluated at the CloudFront edge on
+  # the VIEWER request, BEFORE origin selection / origin-group failover, so a blocked
+  # request returns 403 at the edge and NEVER reaches the ALB or fails over to the wake
+  # Lambda. That means a rate-limited flood triggers no scale-from-zero and no wake
+  # Lambda invocation — no per-invoke/GB-s Lambda bill and no ECS-API pressure from the
+  # flood. Priority ABOVE the common rule set; still in the seeded low band so the
+  # app-owned rules sit above both.
+  rule {
+    name     = "rate-limit-per-ip"
+    priority = local.cloudfront_waf_rate_limit_priority
+
+    action {
+      block {}
+    }
+
+    statement {
+      rate_based_statement {
+        aggregate_key_type = "IP"
+        limit              = var.cloudfront_rate_limit
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "${var.name}-cloudfront-rate-limit"
       sampled_requests_enabled   = true
     }
   }

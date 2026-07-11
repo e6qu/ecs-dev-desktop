@@ -21,7 +21,12 @@ export interface TrafficFilterPolicy {
   /** `allow` = allowlist (default-deny everything not matched); `block` = blocklist
    * (default-allow everything not matched). */
   readonly mode: FilterMode;
-  /** IPv4/IPv6 CIDRs (e.g. "203.0.113.0/24", "2001:db8::/32"). */
+  /**
+   * IPv4 CIDRs (e.g. "203.0.113.0/24"). IPv6 is intentionally rejected for now: the
+   * live WAF is fronted by a single IPv4 WAFv2 IPSet, and a WAFv2 IPSet holds exactly
+   * one address family, so an IPv6 entry would fail loudly only at apply time. IPv6
+   * support is gated on provisioning a second (IPV6) IPSet — see DO_NEXT.
+   */
   readonly cidrs: readonly string[];
   /** ISO 3166-1 alpha-2 country codes (e.g. "US", "DE"). */
   readonly countries: readonly string[];
@@ -71,7 +76,10 @@ export const NETWORK_PRESET_ASNS: Readonly<Record<string, readonly number[]>> = 
 /** Names admins may pass in {@link TrafficFilterPolicy.presets}. */
 export const NETWORK_PRESETS: readonly string[] = Object.keys(NETWORK_PRESET_ASNS);
 
-const CIDR_RE = /^([0-9]{1,3}\.){3}[0-9]{1,3}\/(3[0-2]|[12]?[0-9])$|^[0-9a-fA-F:]+\/(1[0-2][0-8]|[1-9]?[0-9])$/;
+/** Strict IPv4 CIDR: each octet 0-255, prefix /0../32. IPv6 is deliberately NOT
+ * accepted (single-family IPv4 IPSet — see {@link TrafficFilterPolicy.cidrs}). */
+const IPV4_OCTET = "(25[0-5]|2[0-4][0-9]|1[0-9]{2}|[1-9]?[0-9])";
+const CIDR_RE = new RegExp(`^(${IPV4_OCTET}\\.){3}${IPV4_OCTET}\\/(3[0-2]|[12]?[0-9])$`);
 const COUNTRY_RE = /^[A-Z]{2}$/;
 const ASN_MAX = 4_294_967_295; // 32-bit AS numbers
 
@@ -86,7 +94,12 @@ export interface PolicyIssue {
 export function validateTrafficFilterPolicy(policy: TrafficFilterPolicy): readonly PolicyIssue[] {
   const issues: PolicyIssue[] = [];
   for (const cidr of policy.cidrs) {
-    if (!CIDR_RE.test(cidr)) issues.push({ field: "cidrs", value: cidr, reason: "not a CIDR" });
+    if (CIDR_RE.test(cidr)) continue;
+    // A colon marks an IPv6-looking entry — reject with a specific reason.
+    const reason = cidr.includes(":")
+      ? "IPv6 is not supported yet (IPv4 CIDRs only)"
+      : "not an IPv4 CIDR";
+    issues.push({ field: "cidrs", value: cidr, reason });
   }
   for (const c of policy.countries) {
     if (!COUNTRY_RE.test(c))
@@ -99,6 +112,24 @@ export function validateTrafficFilterPolicy(policy: TrafficFilterPolicy): readon
   for (const p of policy.presets) {
     if (!(p in NETWORK_PRESET_ASNS))
       issues.push({ field: "presets", value: p, reason: "unknown network preset" });
+  }
+  // Lockout guard: an `allow`-mode policy compiles to default-BLOCK, so if it admits
+  // nothing (no cidrs/countries/asns/presets) it blocks ALL traffic — including the
+  // admin who set it and the wake listener's login. That is never a valid save; require
+  // at least one admit entry. (`block` mode with nothing listed is the harmless no-op
+  // allow-all, so it stays valid.)
+  if (
+    policy.mode === "allow" &&
+    policy.cidrs.length === 0 &&
+    policy.countries.length === 0 &&
+    policy.asns.length === 0 &&
+    policy.presets.length === 0
+  ) {
+    issues.push({
+      field: "mode",
+      value: "allow",
+      reason: "allow-mode policy admits no sources (would block all traffic)",
+    });
   }
   return issues;
 }

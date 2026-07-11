@@ -3808,3 +3808,88 @@ lint, control-plane 70 unit + traffic integ, admin-authz 39, waf-applier 4,
 Playwright 26/26. OPERATOR/Terraform: provision the CLOUDFRONT Web ACL + an
 associated IPSet and inject the four `EDD_WAF_*` coordinates into the control-plane
 task env before apply works in prod.
+
+---
+
+## Milestone — scale-to-zero + traffic-filter hardening (branch `harden/scale-to-zero-security`, 2026-07-11)
+
+Post-merge verification of the scale-to-zero / traffic-filter work (#225, `e6e84cf`)
+plus an adversarial DDoS / availability / cost-amplification sweep (subagent-driven
+review across the wake path, WAF apply, and control-plane activity). Verified fixes
+landed:
+
+- **Wake Lambda reload storm (readiness probe).** The startup page polls the readiness
+  coordinate through CloudFront, which fails that request over to the wake Lambda while
+  the control plane is still down. The Lambda answered it with the same HTTP 200 startup
+  page, so `res.ok` was true and the page reloaded instantly in a tight loop. The core
+  (`decideWakeResponse`) now distinguishes a readiness probe (request path === the polled
+  status path) and answers it `503` with a tiny JSON body (`WAKE_READINESS_STATUS`),
+  keeping the poll waiting; only a real navigation gets the 200 HTML page. The shell
+  (`@edd/wake-listener` `handleWake`) computes `isReadinessProbe` from the request path.
+- **Wake Lambda fails soft, not 5xx.** ECS `DescribeServices`/`UpdateService` errors are
+  caught and answered with the startup page (or the 503 probe response) so a CloudFront
+  custom-error page can't swallow a raw 5xx; the reconciler remains the never-scale-to-zero-
+  on-error backstop. Logged loudly for the alarm.
+- **Control plane could scale to zero mid editor session.** Editor traffic authorized via
+  `authorizeWorkspace` (and page views via `getPagePrincipal`) now stamp control-plane
+  activity (`recordSystemActivity`, fire-and-forget + throttled ≤1 write/min), so an active
+  editor/admin keeps the UI warm and the idle-shutdown sweep can't drop the live WebSocket.
+- **Traffic-filter lockout guard + strict IPv4.** `validateTrafficFilterPolicy` now rejects
+  an `allow`-mode policy that admits nothing (it compiles to default-BLOCK → would block ALL
+  traffic incl. the admin + wake login) and rejects IPv6 CIDRs with a specific reason (the
+  live WAF is a single IPv4 IPSet; IPv6 needs a second IPV6 IPSet — see DO_NEXT). The CIDR
+  regex is now a strict per-octet IPv4 matcher (rejects `999.0.0.0/8`).
+- **WAF apply preserved the Terraform baseline.** `RealWafApplier.materializeWebAcl` used to
+  send only the compiled rules, wiping the Terraform-provisioned managed CommonRuleSet +
+  rate-limit until the next `terraform apply`. It now keeps every non-`EddTraffic*` baseline
+  rule and replaces only the EDD-prefixed band, placing EDD rules ABOVE the baseline
+  priorities so an allow-listed source still passes through the managed protections (a WAF
+  `Allow` terminates evaluation).
+- **Editor-proxy response buffer cap.** The opencode/HTML rewrite path buffered the whole
+  upstream body in the shared control-plane heap with no cap. Added
+  `WORKSPACE_PROXY_MAX_REWRITE_BYTES` (16 MiB) — an over-cap body fails loud (502) instead
+  of risking OOM.
+
+Cost-amplification DoS controls (infra, same branch): wake Lambda
+`reserved_concurrent_executions = 5` (caps invoke fan-out + downstream ECS-API load), the
+Function URL flipped from public `NONE` to `AWS_IAM` with a CloudFront lambda-type OAC and a
+scoped `InvokeFunctionUrl` grant (no direct public invoke bypassing WAF/CloudFront), a
+CLOUDFRONT-scope per-IP `rate_based_statement` BLOCK (limit 2000) evaluated at the edge
+before origin-group failover, and the conflicting `control_plane_cpu` autoscaling policy
+removed (reconciler/wake are the sole desiredCount authority). Sim adversarial slice extended
+to assert reserved concurrency, AWS_IAM URL, scoped grant, OAC binding, and the rate rule.
+
+Verified: core/config/control-plane/wake-listener build + full unit suites green, web tsc +
+full web suite (266) green, lint clean across core/web/config/wake-listener, terraform fmt +
+examples/complete validate + cloudfront plan (0 cycles) + adversarial slice green.
+
+Same branch, two more items from the deployment-verification sweep:
+
+- **opencode blank-page in prod — the proxy corrupted the JS bundle (root-caused live).**
+  `post-deploy-smoke` had been red for days on opencode. Live repro (deployed `e6e84cf`)
+  showed an empty `<div id="root">` + one `Invalid regular expression flags` pageerror;
+  `node --check` on the proxy-served bundle reproduced it. Cause: the #225 fix made only the
+  CSS `url(` rewrite content-type-aware but left the blanket string-path rewrite running on
+  JS — it fired 575× and turned e.g. `.replace(/"/g,"&quot;")` into `.replace(/"/w/<id>/g,…)`
+  (`/w/` with flags `ws-…`). Fix: the proxy NEVER rewrites JavaScript (streams it byte-for-
+  byte); it rewrites only CSS `url()` and root-absolute HTML tag attributes. opencode's
+  root-absolute runtime requests are rebased by an injected base-path shim
+  (`buildOpencodeBasePathShim` patches fetch/XHR/WebSocket/EventSource/Worker), whose sha256
+  is whitelisted in the response CSP (`cspAllowingInlineScript`). The brittle smoke sentinel
+  (literal "opencode", which opencode never renders in body text) now asserts the SPA mounted
+  (`#root` gains children) + the document title. Regression tests use the exact prod
+  corruption pattern + a realistic HTML shell; residual risk (dynamic-`import()` of split
+  `/assets` chunks — not present in today's single-bundle) noted in `BUGS.md`.
+
+- **Per-workspace-type resource defaults (user request — "0.5 vCPU / 2 GiB is too small").**
+  Added `defaultResourcesForEditor` + `DEFAULT_WORKSPACE_RESOURCES_BY_EDITOR` in `@edd/core`
+  (exposed via a client-safe `@edd/core/domain/workspace-resources` subpath). Grounded in each
+  editor's real footprint + Fargate's valid CPU:memory pairs and confirmed with the user:
+  terminal & monaco stay 0.5 vCPU / 2 GiB; openvscode & opencode default to 1 vCPU / 4 GiB
+  (full VS Code server + language servers, and opencode's agent/tooling, exceed 2 GiB).
+  `reserve`/`provision` use the per-editor default when resources are omitted; the create form
+  (`NewSession`) pre-selects the recommended tier per chosen interface and shows a "Recommended
+  for <editor>" hint, still overridable to any smaller valid tier (a pre-selected default, not
+  a hard floor — user's call). Tests: core unit (per-editor validity + reserve/provision
+  defaults + explicit-override) and a portal Playwright assertion that the hint + CPU/RAM
+  pre-select and re-recommend as the editor changes.

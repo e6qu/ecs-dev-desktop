@@ -37,6 +37,32 @@ first-party local browser command/bundle and an explicit product decision.
 
 ---
 
+## Scale-to-zero DoS / cost-amplification hardening — notes (2026-07-11)
+
+Recorded decisions from the `harden/scale-to-zero-security` review (no user decision
+needed — logged so the boundary is explicit):
+
+- **Shield Advanced — OUT OF SCOPE (cost).** L3/L4 volumetric absorption + the WAF
+  DDoS cost-protection SLA would need AWS Shield Advanced (~$3k/mo + data fees). Not
+  added. The current edge defenses (CLOUDFRONT WAF managed common rule set + per-IP
+  `cloudfront_rate_limit` rate-based BLOCK, wake Lambda `reserved_concurrent_executions`,
+  AWS_IAM+OAC-locked Function URL) cover the L7/application + wake-amplification cost
+  vectors without it. Revisit only if a real volumetric attack or a billing scare
+  justifies the subscription.
+- **Cached `custom_error_response` for the cold-start placeholder — CONSIDERED, NOT
+  ADOPTED.** Caching the wake placeholder at the edge to spare repeat Lambda invokes is
+  infeasible without breaking wake/recovery: the wake Lambda is itself the
+  scale-from-zero trigger (a cached error page would never wake the service); the
+  navigation placeholder is a 200 (a status-keyed error response never matches it); and
+  the `/api/readyz` poll is answered 503 on purpose, so caching that 503 would serve a
+  stale "still down" after recovery. Managed-CachingDisabled (required for the dynamic
+  app + WebSocket path) also forbids caching on the shared behavior. Rationale is
+  inline in `cloudfront.tf` (default_cache_behavior NOTE). Wake-path cost is bounded
+  instead by the pre-failover WAF rate block + reserved concurrency + a tiny/idempotent
+  Lambda.
+
+---
+
 ## Code-review remediation (codex 2026-06-19) — DONE (merged #129, Phase 9)
 
 The deep `codex` review surfaced 12 findings (4 Critical, 3 High, 4 Medium/Low) — **all remediated and
@@ -66,6 +92,14 @@ deferral by choice.
   have no managed IPSet), then export those ids/names into the task env. Until
   then, a Save in the console fails loud with a 5xx naming the missing coordinate
   (recorded on the state, visible in the UI) — by design, not a bug.
+
+- **Traffic filter — IPv6 support needs a second (IPV6) WAF IPSet.** The core now
+  REJECTS IPv6 CIDRs (`validateTrafficFilterPolicy`) because a WAFv2 IPSet holds a
+  single address family and the live WAF is provisioned as one IPv4 IPSet, so an
+  IPv6 entry would only fail at apply time. To support IPv6: Terraform provisions a
+  second IPV6-family IPSet + exports its id/name as new coordinates; the applier
+  splits `ip` rules into a v4 IPSet and a v6 IPSet reference; the validator drops the
+  IPv6 rejection. Until then IPv4-only is the honest, fail-loud behavior.
 
 - **DONE 2026-07-11 (evening):** #222's `ecs:TagResource` IAM grant + the
   10-second LB target-group health checks were applied to prod via a TARGETED

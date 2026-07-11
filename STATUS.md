@@ -2,8 +2,23 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-11 (late). Branch `feat/control-plane-scale-to-zero`
-(after #224 merged as `94e9742`) adds three things plus boy-scout fixes.
+**Last updated:** 2026-07-11 (night). Active branch `harden/scale-to-zero-security`
+(after #225 merged as `e6e84cf`) is a post-merge verification + adversarial
+DDoS/security hardening pass over the scale-to-zero + traffic-filter work. It fixes
+the wake-Lambda readiness reload storm (503 for the poll, not the 200 page),
+fail-soft wake on ECS errors, control-plane activity stamping on editor/page traffic
+(so the UI can't scale to zero mid editor session), a traffic-filter allow-mode
+lockout guard + strict IPv4 validation, WAF-apply baseline preservation (keep the
+Terraform managed CommonRuleSet + rate limit, replace only the EDD rule band, placed
+above the baseline), an editor-proxy response-buffer cap, and infra cost-DoS controls
+(wake Lambda reserved concurrency = 5, Function URL → AWS_IAM + CloudFront OAC, a
+CLOUDFRONT per-IP rate-based BLOCK at limit 2000, and removal of the conflicting CPU
+autoscaling policy). Open item: `post-deploy-smoke` is still RED on the `opencode`
+editor (see `BUGS.md`) — a live repro is in flight to root-cause before that path is
+called green.
+
+The section below describes the now-merged `feat/control-plane-scale-to-zero` work
+for context.
 
 (1) **Control-plane scale-to-zero.** Design confirmed with the user: a CloudFront
 entry with an origin-group failover to a wake Lambda, wake-then-login on the

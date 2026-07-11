@@ -57,6 +57,48 @@ class FakeWafv2 implements Wafv2Port {
         Id: "acl-1",
         ARN: "arn:aws:wafv2:us-east-1:123456789012:global/webacl/edd/xyz",
         DefaultAction: { Allow: {} },
+        // The Terraform-provisioned baseline: managed CommonRuleSet + a rate limit,
+        // plus a STALE EddTraffic rule from a prior apply that must be replaced.
+        Rules: [
+          {
+            Name: "AWSManagedRulesCommonRuleSet",
+            Priority: 0,
+            OverrideAction: { None: {} },
+            Statement: {
+              ManagedRuleGroupStatement: {
+                VendorName: "AWS",
+                Name: "AWSManagedRulesCommonRuleSet",
+              },
+            },
+            VisibilityConfig: {
+              SampledRequestsEnabled: true,
+              CloudWatchMetricsEnabled: true,
+              MetricName: "CommonRuleSet",
+            },
+          },
+          {
+            Name: "EddRateLimit",
+            Priority: 1,
+            Action: { Block: {} },
+            Statement: { RateBasedStatement: { Limit: 2000, AggregateKeyType: "IP" } },
+            VisibilityConfig: {
+              SampledRequestsEnabled: true,
+              CloudWatchMetricsEnabled: true,
+              MetricName: "EddRateLimit",
+            },
+          },
+          {
+            Name: "EddTrafficGeo",
+            Priority: 5,
+            Action: { Block: {} },
+            Statement: { GeoMatchStatement: { CountryCodes: ["RU"] } },
+            VisibilityConfig: {
+              SampledRequestsEnabled: true,
+              CloudWatchMetricsEnabled: true,
+              MetricName: "EddTrafficGeo",
+            },
+          },
+        ],
         VisibilityConfig: {
           SampledRequestsEnabled: true,
           CloudWatchMetricsEnabled: true,
@@ -130,7 +172,8 @@ describe("RealWafApplier.apply", () => {
     // Preserves the ACL's own VisibilityConfig.
     expect(input.VisibilityConfig?.MetricName).toBe("eddWebAcl");
 
-    const rules = input.Rules ?? [];
+    // Scope to the rules THIS applier owns (the baseline also has a managed rule group).
+    const rules = (input.Rules ?? []).filter((r) => r.Name?.startsWith("EddTraffic"));
     const anon = rules.find((r) => r.Statement?.ManagedRuleGroupStatement !== undefined);
     expect(anon?.Statement?.ManagedRuleGroupStatement).toMatchObject({
       VendorName: "AWS",
@@ -147,6 +190,34 @@ describe("RealWafApplier.apply", () => {
 
     const ip = rules.find((r) => r.Statement?.IPSetReferenceStatement !== undefined);
     expect(ip?.Statement?.IPSetReferenceStatement?.ARN).toBe(IP_SET_ARN);
+  });
+
+  it("preserves the Terraform baseline rules and replaces only the EDD-prefixed ones", async () => {
+    const fake = new FakeWafv2();
+    await new RealWafApplier(fake).apply(compileTrafficFilter(POLICY));
+    const rules = fake.updatedWebAcls[0].Rules ?? [];
+    const names = rules.map((r) => r.Name);
+
+    // Baseline managed protections + rate limit survive the apply.
+    expect(names).toContain("AWSManagedRulesCommonRuleSet");
+    expect(names).toContain("EddRateLimit");
+    // The stale EddTrafficGeo (country RU) is replaced, not duplicated.
+    expect(names.filter((n) => n === "EddTrafficGeo")).toHaveLength(1);
+    const geo = rules.find((r) => r.Name === "EddTrafficGeo");
+    expect(geo?.Statement?.GeoMatchStatement?.CountryCodes).toEqual(["US", "DE"]);
+
+    // Every EDD rule evaluates AFTER every baseline rule (higher priority number),
+    // so an allow-listed source still passes through the managed CommonRuleSet.
+    const maxBaseline = Math.max(
+      ...rules.filter((r) => !r.Name?.startsWith("EddTraffic")).map((r) => r.Priority ?? 0),
+    );
+    const minEdd = Math.min(
+      ...rules.filter((r) => r.Name?.startsWith("EddTraffic")).map((r) => r.Priority ?? 0),
+    );
+    expect(minEdd).toBeGreaterThan(maxBaseline);
+    // Priorities are unique across the whole ACL (WAFv2 requires it).
+    const priorities = rules.map((r) => r.Priority);
+    expect(new Set(priorities).size).toBe(priorities.length);
   });
 
   it("clears the IPSet addresses when the policy has no ip rule", async () => {

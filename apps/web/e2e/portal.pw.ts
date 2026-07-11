@@ -132,6 +132,18 @@ test("developer creates, stops, and deletes a workspace from the catalog", async
 
   await expect(page.getByRole("heading", { name: "Start a session" })).toBeVisible();
 
+  // Per-editor resource defaults: the form pre-selects the recommended CPU/RAM for the
+  // chosen interface (heavy editors above the old flat 0.5 vCPU / 2 GiB) and the hint
+  // re-recommends when the editor changes.
+  const resourceHint = page.locator(sel(TESTID.sessionResourceHint));
+  await expect(resourceHint).toContainText("Recommended for openvscode: 1 vCPU / 4 GiB");
+  await page.locator(sel(TESTID.sessionEditor)).selectOption("terminal");
+  await expect(resourceHint).toContainText("Recommended for terminal: 0.5 vCPU / 2 GiB");
+  await expect(page.getByLabel("workspace CPU")).toHaveValue("512");
+  await page.locator(sel(TESTID.sessionEditor)).selectOption("openvscode");
+  await expect(page.getByLabel("workspace CPU")).toHaveValue("1024");
+  await expect(page.getByLabel("workspace RAM")).toHaveValue("4096");
+
   // Launch from the catalog picker: blank mode is the default; ONE Start button.
   await page
     .locator(sel(TESTID.catalogPickerOption, { "data-image": NODE_IMAGE }))

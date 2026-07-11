@@ -26,7 +26,8 @@ describe("toWorkspaceDto", () => {
       id: "ws-1",
       ownerId: "alice",
       baseImage: "golden/node:20",
-      resources: { cpuUnits: 512, memoryMiB: 2048, volumeGiB: 8 },
+      // No resources/editor given → the per-editor default for openvscode (1 vCPU / 4 GiB).
+      resources: { cpuUnits: 1024, memoryMiB: 4096, volumeGiB: 8 },
       editor: "openvscode",
       state: "running",
       createdAt: "2026-06-01T00:00:00.000Z",

@@ -15,9 +15,7 @@ import type {
 } from "./ids";
 import {
   assertValidWorkspaceResources,
-  DEFAULT_WORKSPACE_CPU_UNITS,
-  DEFAULT_WORKSPACE_MEMORY_MIB,
-  DEFAULT_WORKSPACE_VOLUME_GIB,
+  defaultResourcesForEditor,
   type WorkspaceResources,
 } from "./workspace-resources";
 
@@ -137,11 +135,7 @@ export function reserve(
   params: Omit<ProvisionParams, "volumeId" | "taskId" | "sshHost">,
 ): Workspace {
   const resources = assertValidWorkspaceResources(
-    params.resources ?? {
-      cpuUnits: DEFAULT_WORKSPACE_CPU_UNITS,
-      memoryMiB: DEFAULT_WORKSPACE_MEMORY_MIB,
-      volumeGiB: DEFAULT_WORKSPACE_VOLUME_GIB,
-    },
+    params.resources ?? defaultResourcesForEditor(params.editor ?? DEFAULT_EDITOR),
   );
   return {
     id: params.id,
@@ -162,11 +156,7 @@ export function reserve(
 
 export function provision(params: ProvisionParams): Workspace {
   const resources = assertValidWorkspaceResources(
-    params.resources ?? {
-      cpuUnits: DEFAULT_WORKSPACE_CPU_UNITS,
-      memoryMiB: DEFAULT_WORKSPACE_MEMORY_MIB,
-      volumeGiB: DEFAULT_WORKSPACE_VOLUME_GIB,
-    },
+    params.resources ?? defaultResourcesForEditor(params.editor ?? DEFAULT_EDITOR),
   );
   return {
     id: params.id,
