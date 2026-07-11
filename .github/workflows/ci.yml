@@ -843,7 +843,10 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" application-autoscaling describe-scaling-policies \
               --service-namespace ecs \
               --query 'ScalingPolicies[0].PolicyType' --output text)"
-          assert_eq "AppAutoScaling min capacity 2" "2" \
+          # min capacity is 0: the control plane scales to zero when idle (the wake
+          # Lambda + reconciler idle-shutdown drive desiredCount between 0 and the
+          # active count). control_plane_min_count defaults to 0.
+          assert_eq "AppAutoScaling min capacity 0 (scale-to-zero)" "0" \
             "$(aws --endpoint-url "${ENDPT}" application-autoscaling describe-scalable-targets \
               --service-namespace ecs \
               --query 'ScalableTargets[0].MinCapacity' --output text)"

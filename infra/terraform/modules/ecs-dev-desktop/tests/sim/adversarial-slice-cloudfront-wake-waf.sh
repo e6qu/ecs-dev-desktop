@@ -99,7 +99,9 @@ else
     --function-name "$fn_name" \
     --auth-type NONE \
     --query 'FunctionUrl' --output text)
-  [ -n "$fn_url" ] && [ "$fn_url" != "None" ] || fail "CreateFunctionUrlConfig did not return a URL"
+  if [ -z "$fn_url" ] || [ "$fn_url" = "None" ]; then
+    fail "CreateFunctionUrlConfig did not return a URL"
+  fi
   pass "Function URL: ${fn_url}"
   # Strip scheme + trailing slash to the bare host, exactly as the module does.
   wake_origin_domain=$(printf '%s' "$fn_url" | sed -e 's#^https://##' -e 's#/$##')
