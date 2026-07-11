@@ -53,6 +53,20 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
+- **Wire the admin traffic filter to real WAF coordinates (Terraform + operator).**
+  The admin traffic-filter console + backend shipped 2026-07-11
+  (`/admin/traffic`, `TrafficFilterService`, `apps/web/lib/waf-applier.ts`): it
+  persists an allow/block policy (IP CIDR / country / ASN / cloud-hoster preset /
+  block-anonymous) and applies the compiled rules to the live CLOUDFRONT-scope
+  WAFv2 Web ACL. `getState` works with no WAF env, but APPLY needs four env
+  coordinates on the control-plane task: `EDD_WAF_WEB_ACL_ID`,
+  `EDD_WAF_WEB_ACL_NAME`, `EDD_WAF_IP_SET_ID`, `EDD_WAF_IP_SET_NAME` (scope fixed
+  CLOUDFRONT → us-east-1). Terraform must provision (or already provisions) the
+  CloudFront-scope Web ACL AND an associated IPSet (currently the prod WAF may
+  have no managed IPSet), then export those ids/names into the task env. Until
+  then, a Save in the console fails loud with a 5xx naming the missing coordinate
+  (recorded on the state, visible in the UI) — by design, not a bug.
+
 - **DONE 2026-07-11 (evening):** #222's `ecs:TagResource` IAM grant + the
   10-second LB target-group health checks were applied to prod via a TARGETED
   `terraform apply` (local authoritative state; S3 backend bucket is empty).

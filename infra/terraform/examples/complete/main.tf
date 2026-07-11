@@ -25,8 +25,29 @@ provider "aws" {
   }
 }
 
+# CloudFront + its viewer ACM cert + the CLOUDFRONT-scope WAFv2 web ACL/IP set are
+# GLOBAL resources AWS only accepts in us-east-1. The module declares an aliased
+# provider requirement (aws.us_east_1); the root supplies it here and passes both
+# providers into the module below. Harmless when enable_cloudfront is off.
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+
+  default_tags {
+    tags = {
+      "edd:env"        = var.environment
+      "edd:cost-scope" = var.cost_scope
+    }
+  }
+}
+
 module "ecs_dev_desktop" {
   source = "../../modules/ecs-dev-desktop"
+
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
 
   name               = "edd-${var.environment}"
   availability_zones = var.availability_zones
@@ -60,6 +81,13 @@ module "ecs_dev_desktop" {
   # wildcard DNS/TLS (omit this whole block for an HTTP-only dev stack).
   domain_name     = var.domain_name
   route53_zone_id = var.route53_zone_id
+
+  # Control-plane scale-to-zero entry: CloudFront fronts app.<domain> and fails over to
+  # a wake Lambda when the control-plane ECS service is at zero. Needs domain_name set.
+  # Build the wake zip first: `pnpm --filter @edd/wake-listener build`.
+  enable_cloudfront     = var.enable_cloudfront
+  enable_cloudfront_waf = var.enable_cloudfront_waf
+  wake_lambda_zip       = var.wake_lambda_zip
 
   # Public SSH front door (NLB + `*.<ssh_base_domain>` wildcard). Independent of the editor
   # domain above; leave ssh_base_domain empty to skip SSH ingress. In "local" build mode the

@@ -18,6 +18,7 @@ import { iamPreflight } from "@edd/iam-preflight";
 import { resolveWorkspacePricing } from "./aws-pricing";
 import {
   CatalogService,
+  ControlPlaneActivityService,
   CostService,
   DerivedAuditSource,
   DerivedLogSource,
@@ -26,17 +27,20 @@ import {
   SshKeyService,
   StoredAuditSource,
   StoredCostRollupStore,
+  TrafficFilterService,
   WorkspaceService,
 } from "@edd/control-plane";
 import {
   createDynamoClient,
   makeAuditEventEntity,
+  makeControlPlaneActivityEntity,
   makeOwnerWorkspaceCountEntity,
   makeBaseImageEntity,
   makeCostRollupEntity,
   makeReconcilerHeartbeatEntity,
   makeSshKeyEntity,
   makeSshKeyFingerprintEntity,
+  makeTrafficFilterEntity,
   makeWorkspaceEntity,
   pingTable,
   RECONCILER_HEARTBEAT_ID,
@@ -45,6 +49,7 @@ import {
 import { Ec2StorageProvider } from "@edd/storage-ec2";
 
 import { AGENT_SECRET_ENV, CONNECTION_SECRET_ENV } from "./constants";
+import { RealWafApplier } from "./waf-applier";
 
 /**
  * Process-wide control plane. Persistence is always real DynamoDB.
@@ -58,6 +63,8 @@ let sshKeys: SshKeyService | undefined;
 let auditLog: StoredAuditSource | undefined;
 let auditEvents: ReturnType<typeof makeAuditEventEntity> | undefined;
 let ownerCounts: ReturnType<typeof makeOwnerWorkspaceCountEntity> | undefined;
+let controlPlaneActivity: ControlPlaneActivityService | undefined;
+let trafficFilter: TrafficFilterService | undefined;
 
 /** The shared `auditEvent` entity over the single table. `WorkspaceService`
  * writes lifecycle events to it atomically with each transition; the audit log
@@ -86,9 +93,33 @@ export function tableName(): string {
   return process.env.DYNAMODB_TABLE ?? TABLE;
 }
 
+/** The control-plane activity ledger (last real user request), for control-plane
+ * scale-to-zero. The web app upserts it (throttled) on each authenticated request; the
+ * reconciler reads it to decide when to scale the control-plane ECS service to zero. */
+export function getControlPlaneActivity(): ControlPlaneActivityService {
+  controlPlaneActivity ??= new ControlPlaneActivityService({
+    activity: makeControlPlaneActivityEntity(createDynamoClient(), tableName()),
+  });
+  return controlPlaneActivity;
+}
+
 export function getControlPlane(): Promise<WorkspaceService> {
   instance ??= build();
   return instance;
+}
+
+/** The admin traffic-filter service: persists the allow/block policy (IP / country /
+ * ASN / cloud-hoster preset / block-anonymous) and applies its compiled rules to the
+ * live CLOUDFRONT-scope WAFv2 Web ACL. Reads WAF coordinates from env only when it
+ * applies; `getState()` works without them, so the admin page renders in dev/sim. */
+export function getTrafficFilterService(): TrafficFilterService {
+  trafficFilter ??= new TrafficFilterService({
+    store: makeTrafficFilterEntity(createDynamoClient(), tableName()),
+    waf: new RealWafApplier(),
+    clock: systemClock,
+    audit: getAuditLog(),
+  });
+  return trafficFilter;
 }
 
 /** Admin Costs service: prices the lifecycle audit ledger at the configured

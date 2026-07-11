@@ -12,10 +12,14 @@
  * EDD_UNDELETE_RETENTION_MS,
  * EDD_EARLY_SESSION_MS, EDD_GC_GRACE_MS, EDD_PROVISIONING_TIMEOUT_MS,
  * EDD_CONVERGE_BUDGET.
+ * Control-plane scale-to-zero (opt-in): EDD_CONTROL_PLANE_SERVICE (the CP ECS service
+ * name — set it to enable idle-shutdown; unset ⇒ the CP-scaling sweep is a no-op) and
+ * EDD_CONTROL_PLANE_IDLE_MS (quiet period; default DEFAULT_CONTROL_PLANE_IDLE_MS, 15m).
  */
 import { metricSinkFromEnv } from "@edd/cloudwatch-metrics";
 import { EcsComputeProvider } from "@edd/compute-ecs";
 import {
+  ControlPlaneActivityService,
   CostService,
   StoredAuditSource,
   StoredCostRollupStore,
@@ -57,6 +61,7 @@ import {
 import {
   createDynamoClient,
   makeAuditEventEntity,
+  makeControlPlaneActivityEntity,
   makeCostRollupEntity,
   makeOwnerWorkspaceCountEntity,
   makeReconcilerHeartbeatEntity,
@@ -96,6 +101,11 @@ function tuningCount(name: string): number | undefined {
   return value;
 }
 
+/** Control-plane scale-to-zero metric names (local — CP scaling is a reconciler concern;
+ * the sink's `count` takes a plain string, so these need no @edd/core constant). */
+const METRIC_RECONCILER_CONTROL_PLANE_SCALED_TO_ZERO = "reconciler.control_plane.scaled_to_zero";
+const METRIC_RECONCILER_CONTROL_PLANE_FAILED = "reconciler.control_plane.failed";
+
 const idleThresholdMs = tuningMs("EDD_IDLE_THRESHOLD_MS");
 const snapshotIntervalMs = tuningMs("EDD_SNAPSHOT_INTERVAL_MS");
 const earlySnapshotIntervalMs = tuningMs("EDD_EARLY_SNAPSHOT_INTERVAL_MS");
@@ -104,6 +114,8 @@ const convergeBudget = tuningCount("EDD_CONVERGE_BUDGET");
 const gcGraceMs = tuningMs("EDD_GC_GRACE_MS");
 const undeleteRetentionMs = tuningMs("EDD_UNDELETE_RETENTION_MS");
 const provisioningTimeoutMs = tuningMs("EDD_PROVISIONING_TIMEOUT_MS");
+const controlPlaneService = process.env.EDD_CONTROL_PLANE_SERVICE;
+const controlPlaneIdleMs = tuningMs("EDD_CONTROL_PLANE_IDLE_MS");
 
 const dynamo = createDynamoClient();
 const storage = Ec2StorageProvider.fromEnv();
@@ -152,6 +164,22 @@ try {
   });
 }
 
+// Opt-in control-plane scale-to-zero: only when EDD_CONTROL_PLANE_SERVICE is set does
+// the reconciler manage the control-plane ECS service's desired count. The compute
+// provider (describeService/scaleService) is the scaler; the activity service reads the
+// last real user request. Absent ⇒ the idle-shutdown sweep is a no-op.
+const controlPlane =
+  controlPlaneService === undefined || controlPlaneService.length === 0
+    ? undefined
+    : {
+        scaler: compute,
+        activity: new ControlPlaneActivityService({
+          activity: makeControlPlaneActivityEntity(dynamo, table),
+        }),
+        serviceName: controlPlaneService,
+        ...(controlPlaneIdleMs === undefined ? {} : { idleThresholdMs: controlPlaneIdleMs }),
+      };
+
 const reconciler = new Reconciler({
   service,
   storage,
@@ -160,6 +188,7 @@ const reconciler = new Reconciler({
   clock: systemClock,
   // Surface best-effort GC delete + orphan-task stop failures loudly, per resource.
   logger: log,
+  ...(controlPlane === undefined ? {} : { controlPlane }),
   ...(idleThresholdMs === undefined ? {} : { idleThresholdMs }),
   ...(snapshotIntervalMs === undefined ? {} : { snapshotIntervalMs }),
   ...(earlySnapshotIntervalMs === undefined ? {} : { earlySnapshotIntervalMs }),
@@ -193,6 +222,14 @@ try {
   metrics.count(METRIC_RECONCILER_TASKDEFS_PRUNED, result.taskDefs.deregistered);
   metrics.count(METRIC_RECONCILER_TASKDEFS_PRUNE_FAILED, result.taskDefs.failed);
   metrics.count(METRIC_RECONCILER_QUOTA_DRIFT_CORRECTED, result.quotaDriftCorrected);
+  // Control-plane scale-to-zero: 1 when this sweep zeroed the CP service, and a
+  // separate failure counter so a persistently failing idle-shutdown surfaces on an
+  // alarm instead of the CP never scaling down in silence.
+  metrics.count(
+    METRIC_RECONCILER_CONTROL_PLANE_SCALED_TO_ZERO,
+    result.controlPlane.scaledToZero ? 1 : 0,
+  );
+  metrics.count(METRIC_RECONCILER_CONTROL_PLANE_FAILED, result.controlPlane.failed);
   // One source of truth for the two roll-ups (metric + log must never diverge — they did,
   // dropping storageDrift.skipped from the SKIPPED total). SKIPPED counts every benign
   // race/no-op across the sweeps that distinguish it (incl. the recover/finish-deletion
@@ -236,6 +273,11 @@ try {
     taskDefsPruned: result.taskDefs.deregistered,
     taskDefsPruneFailed: result.taskDefs.failed,
     quotaDriftCorrected: result.quotaDriftCorrected,
+    controlPlaneConfigured: result.controlPlane.configured,
+    controlPlaneDesired: result.controlPlane.desiredCount,
+    controlPlaneScaledToZero: result.controlPlane.scaledToZero,
+    controlPlaneReason: result.controlPlane.reason,
+    controlPlaneFailed: result.controlPlane.failed,
     skipped,
     convergeFailed,
   });

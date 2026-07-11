@@ -9,6 +9,10 @@
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
     },
+    "@edd/wake-listener#build": {
+      "dependsOn": ["^build"],
+      "outputs": ["dist/**"]
+    },
     "@edd/web#build": {
       "dependsOn": ["^build"],
       "outputs": [".next/**", "!.next/cache/**"]

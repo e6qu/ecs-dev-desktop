@@ -1,0 +1,23 @@
+{
+  "name": "@edd/wake-listener",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json && esbuild src/handler.ts --bundle --platform=node --target=node22 --format=esm --log-level=warning '--banner:js=import { createRequire } from \"module\"; const require = createRequire(import.meta.url);' --outfile=dist/handler.mjs",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aws-sdk/client-ecs": "^3.1084.0",
+    "@edd/config": "workspace:*",
+    "@edd/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^26.1.1",
+    "esbuild": "^0.28.1"
+  }
+}

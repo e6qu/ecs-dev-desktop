@@ -21,6 +21,12 @@ export const ID_PREFIX = {
  * by the auth session's 4-h validity, so this only starts once truly unloaded). */
 export const DEFAULT_IDLE_THRESHOLD_MS = 5 * 60 * 1000;
 
+/** Quiet period before the CONTROL PLANE itself scales to zero (the reconciler's
+ * idle-shutdown sweep): 15 minutes of no user requests. Distinct from a workspace's
+ * idle threshold above — this governs the admin/control-plane UI, which the wake
+ * listener brings back on the next request. */
+export const DEFAULT_CONTROL_PLANE_IDLE_MS = 15 * 60 * 1000;
+
 /** Grace window after a MANUAL stop is requested before the session is actually
  * torn down — the user's chance to cancel and resume. Short (seconds), since the
  * point is a brief "oops, keep it" window, not a long delay. */

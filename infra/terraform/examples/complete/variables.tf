@@ -56,6 +56,26 @@ variable "route53_zone_id" {
   default     = ""
 }
 
+# ---- Control-plane scale-to-zero entry (CloudFront + wake Lambda) ----
+
+variable "enable_cloudfront" {
+  description = "Front app.<domain> with CloudFront + a wake Lambda for control-plane scale-to-zero. No effect without domain_name."
+  type        = bool
+  default     = true
+}
+
+variable "enable_cloudfront_waf" {
+  description = "Create + attach the admin-managed CLOUDFRONT-scope WAFv2 web ACL + IP set (only when CloudFront is enabled)."
+  type        = bool
+  default     = true
+}
+
+variable "wake_lambda_zip" {
+  description = "Path to the built @edd/wake-listener zip (build with `pnpm --filter @edd/wake-listener build`). The module default resolves it from inside this repo."
+  type        = string
+  default     = "../../../../packages/wake-listener/dist/wake-listener.zip"
+}
+
 variable "auth_secret_arns" {
   description = "Map of env-var name → Secrets Manager ARN for ALL secret env vars (auth + crypto + webhooks), e.g. AUTH_SECRET, AUTH_GITHUB_*, EDD_TOKEN_ENC_KEY, EDD_GATEWAY_SECRET, EDD_AGENT_SECRET, EDD_CONNECTION_SECRET, EDD_IMAGE_SOURCE_WEBHOOK_SECRET."
   type        = map(string)

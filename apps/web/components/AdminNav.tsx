@@ -12,6 +12,7 @@ const ITEMS: { label: string; href: string | null }[] = [
   { label: "Images", href: "/admin/images" },
   { label: "Snapshots", href: "/admin/snapshots" },
   { label: "Workspaces", href: "/admin/workspaces" },
+  { label: "Traffic", href: "/admin/traffic" },
   { label: "Users", href: "/admin/users" },
   { label: "Invitations", href: "/admin/invitations" },
   { label: "Catalog", href: "/admin/catalog" },

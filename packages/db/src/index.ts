@@ -23,9 +23,11 @@ export { createWriteTransaction as writeTransaction } from "electrodb";
 export { dropTable, ensureTable, tableDefinition } from "./table";
 export { waitForDynamo } from "./wait";
 export {
+  CONTROL_PLANE_ACTIVITY_ID,
   makeAuditEventEntity,
   makeAuthSessionEntity,
   makeBaseImageEntity,
+  makeControlPlaneActivityEntity,
   makeCostRollupEntity,
   makeGitCredentialEntity,
   makeInvitationEntity,
@@ -36,11 +38,14 @@ export {
   makeReconcilerHeartbeatEntity,
   makeSshKeyEntity,
   makeSshKeyFingerprintEntity,
+  makeTrafficFilterEntity,
   makeWorkspaceEntity,
   RECONCILER_HEARTBEAT_ID,
+  TRAFFIC_FILTER_POLICY_ID,
   type AuditEventEntity,
   type AuthSessionEntity,
   type BaseImageEntity,
+  type ControlPlaneActivityEntity,
   type CostRollupEntity,
   type GitCredentialEntity,
   type InvitationEntity,
@@ -51,5 +56,6 @@ export {
   type ReconcilerHeartbeatEntity,
   type SshKeyEntity,
   type SshKeyFingerprintEntity,
+  type TrafficFilterEntity,
   type WorkspaceEntity,
 } from "./entities";

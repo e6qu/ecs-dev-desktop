@@ -58,6 +58,7 @@ export {
 // Domain constants.
 export {
   DEFAULT_AUDIT_FEED_LIMIT,
+  DEFAULT_CONTROL_PLANE_IDLE_MS,
   DEFAULT_CONVERGE_BUDGET,
   DEFAULT_EARLY_SESSION_MS,
   DEFAULT_EARLY_SNAPSHOT_INTERVAL_MS,
@@ -74,6 +75,45 @@ export {
   MAX_SNAPSHOT_INTERVAL_MS,
   MIN_SNAPSHOT_INTERVAL_MS,
 } from "./domain/constants";
+
+// Control-plane scale-to-zero decisions (idle-shutdown + wake).
+export {
+  decideControlPlaneIdle,
+  decideControlPlaneWake,
+  type ControlPlaneScaleDecision,
+  type ControlPlaneIdleInput,
+} from "./system/control-plane-scale";
+
+// Wake-listener (scale-to-zero cold entry): startup-page render + HTTP response.
+export {
+  DEFAULT_CONTROL_PLANE_ACTIVE_DESIRED,
+  DEFAULT_WAKE_POLL_INTERVAL_MS,
+  DEFAULT_WAKE_PAGE_TITLE,
+  WAKE_RESPONSE_STATUS,
+  WAKE_RESPONSE_CONTENT_TYPE,
+  WAKE_RESPONSE_CACHE_CONTROL,
+  WAKE_RESPONSE_ACTION_HEADER,
+  decideWakeResponse,
+  renderStartupPage,
+  type StartupPageConfig,
+  type WakeHttpResponse,
+  type WakeResponseInput,
+} from "./system/wake-listener";
+
+// Admin traffic-filter policy: model + validation + compile-to-WAF-rules.
+export {
+  EMPTY_TRAFFIC_FILTER_POLICY,
+  NETWORK_PRESET_ASNS,
+  NETWORK_PRESETS,
+  compileTrafficFilter,
+  effectiveAsns,
+  validateTrafficFilterPolicy,
+  type CompiledRule,
+  type CompiledTrafficFilter,
+  type FilterMode,
+  type PolicyIssue,
+  type TrafficFilterPolicy,
+} from "./system/traffic-filter";
 
 // Editor choice (OpenVSCode, Monaco, Terminal, opencode): flows base-image →
 // workspace → EDD_EDITOR_MODE.

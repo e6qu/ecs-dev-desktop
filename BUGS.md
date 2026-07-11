@@ -4,6 +4,18 @@
 
 ## Open
 
+- **opencode workspaces rendered blank in prod ('Invalid regular expression
+  flags') — FIXED in `feat/control-plane-scale-to-zero` (2026-07-11).** After
+  #223/#224 unblocked the OpenVSCode File menu and the Terminal step, the
+  `94e9742` post-deploy smoke reached opencode (the 4th editor) and failed with a
+  client-side `pageerror: Invalid regular expression flags`; the body was blank.
+  Root cause: `rewriteOpencodeResponseBody` applied its `url(/...)` rewrite to
+  JavaScript, where a minified call like `fn(/regex/)` matches `url(/` and the
+  inserted `/w/<id>/` turned the regex literal into `/w/` with flags `ws-…`. The
+  rewrites are now content-type-aware — `url(` runs on CSS only, and the string
+  char class dropped the backtick (it can precede a JS regex/division). Regression
+  tests assert a JS `fn(/re/)` is untouched and CSS `url(/x)` still relocates.
+
 - **No admin tool to list/purge EBS snapshots — ADDED in
   `feat/admin-snapshots-and-boyscout` (2026-07-11).** The live account had 60
   retained EBS snapshots with no attribution and no in-app way to inspect or
@@ -1186,6 +1198,44 @@ in-app path-based proxy hands the session-authorized browser the token, supersed
 old STATIC-gate "tokenless behind the gate" framing (see _Resolved (repo)_).
 
 ## External blockers (upstream — `e6qu/sockerless`)
+
+- **AWS sim: Lambda `GetFunctionCodeSigningConfig` returns 404 for a function with no
+  code-signing config, blocking the Terraform `aws_lambda_function` resource — OPEN,
+  needs an upstream `e6qu/sockerless` issue (2026-07-11).** Found while sim-asserting
+  the control-plane scale-to-zero entry (`feat/control-plane-scale-to-zero`,
+  `cloudfront.tf` wake Lambda). A full module apply against the sim
+  (`tests/sim` with `enable_dns=true` + `enable_cloudfront=true`) creates the wake
+  Lambda successfully, but the aws provider's automatic post-create read then calls
+  `GetFunctionCodeSigningConfig`, and the sim answers `404 ResourceNotFoundException`
+  ("The function ... does not have a code signing configuration") for a function that
+  has no code-signing config. The terraform-provider-aws lambda read errors on ANY
+  non-nil error from that call, so the apply fails with `reading Lambda Function
+(eddsim-wake) code signing config: ... StatusCode: 404`. Real AWS returns HTTP 200
+  (with no/empty `CodeSigningConfigArn`) for a no-CSC function — otherwise every
+  code-signing-less Lambda would be undeployable via Terraform, which it is not. The
+  sim's handler (`simulators/aws/lambda_extras2.go` `handleLambdaGetFunctionCodeSigningConfig`)
+  intentionally returns 404 with a comment "real Lambda returns 404", which is the
+  incorrect behavior for the no-CSC case. **Impact:** the module's CloudFront + wake
+  Lambda + CLOUDFRONT-WAF path cannot be applied through the module against the sim
+  yet, so `tests/sim` keeps `enable_cloudfront` default OFF; the shapes themselves
+  (CloudFront distribution with an origin group failing over on 502/503/504, Lambda +
+  Function URL, WAFv2 CLOUDFRONT scope web ACL/IP set + attach via `WebACLId`) are all
+  supported by the sim and proven end-to-end by
+  `tests/sim/adversarial-slice-cloudfront-wake-waf.sh` (CLI-driven, avoids the
+  provider's CSC read). **Fix wanted upstream:** `GetFunctionCodeSigningConfig` should
+  return 200 with an absent/empty `CodeSigningConfigArn` when a function has no CSC.
+  Flip `tests/sim` `enable_cloudfront` back on once fixed. (Do NOT file elsewhere —
+  `e6qu/sockerless` only, per §0.10.)
+
+- **AWS sim (informational): CloudFront `ListCachePolicies`/`ListOriginRequestPolicies`
+  return only `custom` policies, not the AWS-managed ones (2026-07-11).** The sim
+  (`simulators/aws/cloudfront_policies.go`) does not seed AWS's pre-baked managed
+  policies, so a `data "aws_cloudfront_cache_policy" { name = "Managed-CachingDisabled" }`
+  lookup would find nothing. Not a blocker for EDD: the module references the managed
+  `CachingDisabled` cache policy + `AllViewer` origin-request policy by their canonical
+  global ids (stable + identical across every account in the `aws` partition, so
+  real-AWS-correct), and CreateDistribution does not validate the ids exist. Recorded
+  only so a future data-source-based form knows the seeding gap exists.
 
 - **AWS sim: ECS task metadata advertised CPU/memory limits that Podman did not enforce
   — OPEN upstream as sockerless #776 (2026-07-07).** This was originally filed in

@@ -37,6 +37,18 @@ resource "aws_acm_certificate_validation" "this" {
   validation_record_fqdns = [for r in aws_route53_record.cert_validation : r.fqdn]
 }
 
+# `app.<domain>` A/AAAA alias. When CloudFront fronts the control plane (scale-to-zero
+# entry, cloudfront.tf) it points at the DISTRIBUTION; otherwise straight at the ALB.
+# Either way the ALB keeps its own DNS name and stays the CloudFront primary origin.
+# CloudFront's global zone id is the fixed AWS-published value Z2FDTNDATAQYW2.
+locals {
+  control_plane_alias_name = local.cloudfront_enabled ? aws_cloudfront_distribution.control_plane[0].domain_name : aws_lb.this.dns_name
+  # Route53 alias target zone: CloudFront's fixed global hosted-zone id, else the ALB's.
+  control_plane_alias_zone_id = local.cloudfront_enabled ? "Z2FDTNDATAQYW2" : aws_lb.this.zone_id
+  # CloudFront evaluates its own health; ALB alias health checks the target group.
+  control_plane_alias_eval_health = local.cloudfront_enabled ? false : true
+}
+
 resource "aws_route53_record" "control_plane" {
   count   = local.dns_enabled ? 1 : 0
   zone_id = var.route53_zone_id
@@ -44,8 +56,21 @@ resource "aws_route53_record" "control_plane" {
   type    = "A"
 
   alias {
-    name                   = aws_lb.this.dns_name
-    zone_id                = aws_lb.this.zone_id
-    evaluate_target_health = true
+    name                   = local.control_plane_alias_name
+    zone_id                = local.control_plane_alias_zone_id
+    evaluate_target_health = local.control_plane_alias_eval_health
+  }
+}
+
+resource "aws_route53_record" "control_plane_aaaa" {
+  count   = local.dns_enabled ? 1 : 0
+  zone_id = var.route53_zone_id
+  name    = local.control_plane_fqdn
+  type    = "AAAA"
+
+  alias {
+    name                   = local.control_plane_alias_name
+    zone_id                = local.control_plane_alias_zone_id
+    evaluate_target_health = local.control_plane_alias_eval_health
   }
 }

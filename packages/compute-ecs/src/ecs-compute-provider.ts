@@ -2,6 +2,7 @@
 import {
   DeregisterTaskDefinitionCommand,
   DescribeClustersCommand,
+  DescribeServicesCommand,
   DescribeTasksCommand,
   ECSClient,
   ListTasksCommand,
@@ -10,6 +11,7 @@ import {
   RegisterTaskDefinitionCommand,
   RunTaskCommand,
   StopTaskCommand,
+  UpdateServiceCommand,
   type Task,
 } from "@aws-sdk/client-ecs";
 import {
@@ -902,6 +904,54 @@ export class EcsComputeProvider implements ComputeProvider {
       activeServices: cluster.activeServicesCount ?? 0,
       registeredContainerInstances: cluster.registeredContainerInstancesCount ?? 0,
     };
+  }
+
+  /**
+   * Current desired/running replica counts of a long-lived ECS **service** (thin
+   * DescribeServices). Used by the reconciler's control-plane idle-shutdown sweep to
+   * read the control-plane service's current scale (and by the wake path to know when
+   * it is at zero). Fails loud (§6.5) when the named service does not exist — an
+   * INACTIVE (deleted) service or one ECS returns only in `failures[]` is NOT a live
+   * service to reason about, so silently treating it as scale 0 would be wrong.
+   */
+  async describeService(
+    serviceName: string,
+  ): Promise<{ desiredCount: number; runningCount: number }> {
+    const out = await this.client.send(
+      new DescribeServicesCommand({ cluster: this.cluster(), services: [serviceName] }),
+    );
+    const service = out.services?.find((s) => s.status !== "INACTIVE");
+    if (service === undefined) {
+      const failure = out.failures?.[0];
+      const detail =
+        failure === undefined
+          ? ""
+          : ` (${failure.reason ?? "unknown"}${failure.detail ? `: ${failure.detail}` : ""})`;
+      throw new Error(
+        `ECS DescribeServices found no active service '${serviceName}' in cluster ${this.cluster()}${detail}`,
+      );
+    }
+    return {
+      desiredCount: required(service.desiredCount, "service desiredCount"),
+      runningCount: required(service.runningCount, "service runningCount"),
+    };
+  }
+
+  /**
+   * Set an ECS **service's** desired replica count (thin UpdateService). The
+   * reconciler's idle-shutdown sweep calls this with `0` to scale the control plane to
+   * zero after a quiet period; the wake path calls it with the active count to bring it
+   * back. UpdateService raises on a missing service, so this fails loud rather than
+   * silently no-op'ing on a typo'd service name.
+   */
+  async scaleService(serviceName: string, desiredCount: number): Promise<void> {
+    await this.client.send(
+      new UpdateServiceCommand({
+        cluster: this.cluster(),
+        service: serviceName,
+        desiredCount,
+      }),
+    );
   }
 
   /** Build an ECS client from the ambient AWS env (`AWS_ENDPOINT_URL` → the sim). */

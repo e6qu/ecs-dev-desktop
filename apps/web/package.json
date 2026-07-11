@@ -24,6 +24,7 @@
     "@aws-sdk/client-ecr": "^3.1084.0",
     "@aws-sdk/client-pricing": "^3.1084.0",
     "@aws-sdk/client-sesv2": "^3.1084.0",
+    "@aws-sdk/client-wafv2": "^3.1084.0",
     "@edd/api-client": "workspace:*",
     "@edd/api-contracts": "workspace:*",
     "@edd/auth": "workspace:*",

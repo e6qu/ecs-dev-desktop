@@ -12,6 +12,7 @@ import {
   purgeUnreferencedSnapshotsResponse,
   registerSshKeyRequest,
   sshKeyDto,
+  trafficFilterPolicy,
   workspace,
 } from "./index";
 
@@ -169,6 +170,22 @@ describe("api-contracts", () => {
     // An explicit garbage value must fail (so the route boundary returns 400, not a
     // silent lifetime report) — `.default("all")`, not `.catch("all")`.
     expect(costReportQuery.safeParse({ window: "bogus" }).success).toBe(false);
+  });
+
+  it("accepts a valid traffic-filter policy and rejects a bad country/mode", () => {
+    const ok = {
+      version: 1,
+      mode: "allow",
+      cidrs: ["10.0.0.0/8"],
+      countries: ["US"],
+      asns: [16509],
+      presets: ["aws"],
+      blockAnonymous: true,
+    };
+    expect(trafficFilterPolicy.safeParse(ok).success).toBe(true);
+    expect(trafficFilterPolicy.safeParse({ ...ok, countries: ["USA"] }).success).toBe(false);
+    expect(trafficFilterPolicy.safeParse({ ...ok, mode: "nope" }).success).toBe(false);
+    expect(trafficFilterPolicy.safeParse({ ...ok, asns: [-1] }).success).toBe(false);
   });
 
   it("maps every cost window to its day span exhaustively (all = lifetime; Nd = N days)", () => {

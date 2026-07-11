@@ -16,6 +16,7 @@ import { GET as quotasGet } from "./quotas/route";
 import { DELETE as snapshotPurgeDelete } from "./snapshots/[id]/route";
 import { POST as snapshotPurgeAllPost } from "./snapshots/purge-unreferenced/route";
 import { GET as snapshotsGet } from "./snapshots/route";
+import { GET as trafficGet, PUT as trafficPut } from "./traffic/route";
 import { GET as inspectGet } from "./workspaces/[id]/route";
 import { GET as workspacesGet } from "./workspaces/route";
 
@@ -41,6 +42,8 @@ const ENDPOINTS: { name: string; call: (req: Request) => Promise<Response> }[] =
   { name: "snapshots", call: (req) => snapshotsGet(req) },
   { name: "snapshots/:id purge", call: (req) => snapshotPurgeDelete(req, params("snap-x")) },
   { name: "snapshots purge-unreferenced", call: (req) => snapshotPurgeAllPost(req) },
+  { name: "traffic GET", call: (req) => trafficGet(req) },
+  { name: "traffic PUT", call: (req) => trafficPut(req) },
 ];
 
 function asRole(role: string): Request {

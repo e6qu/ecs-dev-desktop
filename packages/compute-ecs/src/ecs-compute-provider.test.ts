@@ -2,14 +2,17 @@
 import { randomBytes } from "node:crypto";
 
 import {
+  DescribeServicesCommand,
   DescribeTasksCommand,
   ECSClient,
   ListTasksCommand,
   RegisterTaskDefinitionCommand,
   RunTaskCommand,
   StopTaskCommand,
+  UpdateServiceCommand,
   type RegisterTaskDefinitionCommandInput,
   type RunTaskCommandInput,
+  type UpdateServiceCommandInput,
 } from "@aws-sdk/client-ecs";
 import { COST_SCOPE_TAG_KEY } from "@edd/config";
 import { baseImage, deriveWorkspaceToken, snapshotId, taskId, workspaceId } from "@edd/core";
@@ -485,6 +488,107 @@ describe("EcsComputeProvider.runTask placement failure (failures[])", () => {
         resources: RESOURCES,
       }),
     ).rejects.toThrow(/RESOURCE:MEMORY/);
+  });
+});
+
+// The reconciler's control-plane idle-shutdown sweep reads the CP service's current
+// desired count (DescribeServices) and scales it to zero (UpdateService). Both are thin
+// wrappers that must fail loud on a missing service rather than silently no-op.
+describe("EcsComputeProvider.describeService / scaleService", () => {
+  const config = { subnets: ["subnet-1"], ebsRoleArn: "arn:aws:iam::123456789012:role/ebs" };
+
+  it("returns the service's desired + running counts", async () => {
+    const client = {
+      send: (command: unknown): Promise<unknown> => {
+        if (command instanceof DescribeServicesCommand) {
+          return Promise.resolve({
+            services: [
+              {
+                serviceName: "edd-prod-control-plane",
+                status: "ACTIVE",
+                desiredCount: 2,
+                runningCount: 2,
+              },
+            ],
+          });
+        }
+        return Promise.reject(new Error("unexpected command"));
+      },
+    } as unknown as ECSClient;
+    const provider = new EcsComputeProvider({ client, config });
+    expect(await provider.describeService("edd-prod-control-plane")).toEqual({
+      desiredCount: 2,
+      runningCount: 2,
+    });
+  });
+
+  it("reports a desiredCount of 0 for a scaled-to-zero service (0 is a valid count)", async () => {
+    const client = {
+      send: (command: unknown): Promise<unknown> => {
+        if (command instanceof DescribeServicesCommand) {
+          return Promise.resolve({
+            services: [{ status: "ACTIVE", desiredCount: 0, runningCount: 0 }],
+          });
+        }
+        return Promise.reject(new Error("unexpected command"));
+      },
+    } as unknown as ECSClient;
+    const provider = new EcsComputeProvider({ client, config });
+    expect(await provider.describeService("cp")).toEqual({ desiredCount: 0, runningCount: 0 });
+  });
+
+  it("fails loud when the service is missing (returned only in failures[])", async () => {
+    const client = {
+      send: (command: unknown): Promise<unknown> => {
+        if (command instanceof DescribeServicesCommand) {
+          return Promise.resolve({
+            services: [],
+            failures: [{ arn: "svc/missing", reason: "MISSING" }],
+          });
+        }
+        return Promise.reject(new Error("unexpected command"));
+      },
+    } as unknown as ECSClient;
+    const provider = new EcsComputeProvider({ client, config });
+    await expect(provider.describeService("missing")).rejects.toThrow(
+      /no active service 'missing'.*MISSING/,
+    );
+  });
+
+  it("ignores an INACTIVE (deleted) service and fails loud", async () => {
+    const client = {
+      send: (command: unknown): Promise<unknown> => {
+        if (command instanceof DescribeServicesCommand) {
+          return Promise.resolve({
+            services: [{ status: "INACTIVE", desiredCount: 0, runningCount: 0 }],
+          });
+        }
+        return Promise.reject(new Error("unexpected command"));
+      },
+    } as unknown as ECSClient;
+    const provider = new EcsComputeProvider({ client, config });
+    await expect(provider.describeService("cp")).rejects.toThrow(/no active service 'cp'/);
+  });
+
+  it("scales the service via UpdateService (cluster + service + desiredCount)", async () => {
+    const updates: UpdateServiceCommandInput[] = [];
+    const client = {
+      send: (command: unknown): Promise<unknown> => {
+        if (command instanceof UpdateServiceCommand) {
+          updates.push(command.input);
+          return Promise.resolve({});
+        }
+        return Promise.reject(new Error("unexpected command"));
+      },
+    } as unknown as ECSClient;
+    const provider = new EcsComputeProvider({
+      client,
+      config: { ...config, cluster: "edd-prod-workspaces" },
+    });
+    await provider.scaleService("edd-prod-control-plane", 0);
+    expect(updates).toEqual([
+      { cluster: "edd-prod-workspaces", service: "edd-prod-control-plane", desiredCount: 0 },
+    ]);
   });
 });
 

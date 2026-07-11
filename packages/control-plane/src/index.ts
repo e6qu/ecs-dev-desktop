@@ -27,3 +27,18 @@ export type { CostRollupRecord, CostRollupStore, CostServiceDeps } from "./cost-
 export { DerivedLogSource } from "./log-source";
 export type { DerivedLogSourceDeps } from "./log-source";
 export { isVersionConflict } from "./version-conflict";
+export {
+  ControlPlaneActivityService,
+  CONTROL_PLANE_ACTIVITY_SCHEMA_VERSION,
+} from "./control-plane-activity";
+export type { ControlPlaneActivityServiceDeps } from "./control-plane-activity";
+export {
+  TrafficFilterService,
+  TRAFFIC_FILTER_SCHEMA_VERSION,
+  WafApplyError,
+} from "./traffic-filter-service";
+export type {
+  TrafficFilterAuditRecorder,
+  TrafficFilterServiceDeps,
+  WafApplier,
+} from "./traffic-filter-service";

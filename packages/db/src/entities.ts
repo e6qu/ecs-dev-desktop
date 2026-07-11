@@ -615,3 +615,80 @@ export function makeImageSourceTriggerEntity(client: DynamoDBClient, table = TAB
 }
 
 export type ImageSourceTriggerEntity = ReturnType<typeof makeImageSourceTriggerEntity>;
+
+/**
+ * ElectroDB control-plane-activity entity over the same single table: one fixed-id
+ * record stamped with the time of the last real authenticated user request the
+ * control plane served. The reconciler's idle-shutdown sweep reads it to decide when
+ * to scale the control-plane ECS service to zero (see `decideControlPlaneIdle`); the
+ * web app upserts it (throttled) on each authenticated request. One fixed-id record —
+ * a plain get/put, no secondary index. Carries a `schemaVersion` (§6.5a) so a shape
+ * change discards the stale blob on read instead of feeding a newer reader an absent
+ * field.
+ */
+export function makeControlPlaneActivityEntity(client: DynamoDBClient, table = TABLE) {
+  return new Entity(
+    {
+      model: { entity: "controlPlaneActivity", version: "1", service: "edd" },
+      attributes: {
+        id: { type: "string", required: true },
+        schemaVersion: { type: "number", required: true },
+        lastActivityAt: { type: "string", required: true },
+      },
+      indexes: {
+        primary: {
+          pk: { field: "PK", composite: ["id"] },
+          sk: { field: "SK", composite: [] },
+        },
+      },
+    },
+    { client, table },
+  );
+}
+
+export type ControlPlaneActivityEntity = ReturnType<typeof makeControlPlaneActivityEntity>;
+
+/** The fixed primary-key id of the singleton control-plane-activity record. */
+export const CONTROL_PLANE_ACTIVITY_ID = "control-plane";
+
+/**
+ * ElectroDB traffic-filter-policy entity over the same single table: one fixed-id
+ * record holding the admin-authored traffic-filter policy (IP CIDRs / countries /
+ * ASNs / cloud-hoster presets / block-anonymous), the mode, and the outcome of the
+ * last apply to the live WAFv2 Web ACL (`appliedAt` / `appliedError`). The pure
+ * policy model + compilation live in `@edd/core`; this only persists the one row.
+ * Carries a `schemaVersion` (§6.5a) so a shape change discards a stale blob on read
+ * instead of feeding a newer reader an absent field.
+ */
+export function makeTrafficFilterEntity(client: DynamoDBClient, table = TABLE) {
+  return new Entity(
+    {
+      model: { entity: "trafficFilterPolicy", version: "1", service: "edd" },
+      attributes: {
+        id: { type: "string", required: true },
+        schemaVersion: { type: "number", required: true },
+        mode: { type: ["allow", "block"] as const, required: true },
+        cidrs: { type: "list", items: { type: "string" }, required: true },
+        countries: { type: "list", items: { type: "string" }, required: true },
+        asns: { type: "list", items: { type: "number" }, required: true },
+        presets: { type: "list", items: { type: "string" }, required: true },
+        blockAnonymous: { type: "boolean", required: true },
+        appliedAt: { type: "string", required: false },
+        appliedError: { type: "string", required: false },
+        updatedAt: { type: "string", required: true },
+      },
+      indexes: {
+        primary: {
+          pk: { field: "PK", composite: ["id"] },
+          sk: { field: "SK", composite: [] },
+        },
+      },
+    },
+    { client, table },
+  );
+}
+
+export type TrafficFilterEntity = ReturnType<typeof makeTrafficFilterEntity>;
+
+/** The fixed primary-key id of the singleton traffic-filter-policy record. */
+export const TRAFFIC_FILTER_POLICY_ID = "traffic-filter";

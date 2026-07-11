@@ -933,3 +933,43 @@ export const buildLogChunk = z.object({
   nextToken: z.string().optional(),
 });
 export type BuildLogChunkDto = z.infer<typeof buildLogChunk>;
+
+// ── Admin traffic filter (IP / country / ASN / cloud-hoster presets / anonymous) ──
+// Mirrors @edd/core's TrafficFilterPolicy; the control plane compiles it into WAFv2
+// rules and applies them to the CLOUDFRONT-scope Web ACL.
+export const filterMode = z.enum(["allow", "block"]);
+export type FilterModeDto = z.infer<typeof filterMode>;
+
+export const trafficFilterPolicy = z.object({
+  version: z.literal(1),
+  mode: filterMode,
+  cidrs: z.array(z.string().min(1)),
+  countries: z.array(z.string().length(2)),
+  asns: z.array(z.number().int().positive()),
+  presets: z.array(z.string().min(1)),
+  blockAnonymous: z.boolean(),
+});
+export type TrafficFilterPolicyDto = z.infer<typeof trafficFilterPolicy>;
+
+/** One compiled WAF rule, previewed to the admin before/after apply. */
+export const compiledFilterRule = z.object({
+  kind: z.enum(["ip", "geo", "asn", "managed-anonymous"]),
+  action: z.enum(["allow", "block"]),
+  detail: z.string(),
+});
+export type CompiledFilterRuleDto = z.infer<typeof compiledFilterRule>;
+
+/** GET /api/admin/traffic — the current policy, the compiled rule preview, the
+ * available presets, and whether the last apply to the live WAF succeeded. */
+export const trafficFilterState = z.object({
+  policy: trafficFilterPolicy,
+  defaultAction: z.enum(["allow", "block"]),
+  compiled: z.array(compiledFilterRule),
+  presets: z.array(z.string().min(1)),
+  appliedAt: z.iso.datetime().optional(),
+  appliedError: z.string().optional(),
+});
+export type TrafficFilterStateDto = z.infer<typeof trafficFilterState>;
+
+// PUT /api/admin/traffic replaces the policy (and applies it to the live WAF); its
+// request body is exactly a `trafficFilterPolicy`, so callers parse with that schema.

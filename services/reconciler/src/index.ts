@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import {
+  DEFAULT_CONTROL_PLANE_IDLE_MS,
   DEFAULT_CONVERGE_BUDGET,
   DEFAULT_EARLY_SESSION_MS,
   DEFAULT_EARLY_SNAPSHOT_INTERVAL_MS,
@@ -9,6 +10,7 @@ import {
   DEFAULT_PROVISIONING_TIMEOUT_MS,
   DEFAULT_SNAPSHOT_INTERVAL_MS,
   DEFAULT_TASKDEF_KEEP_REVISIONS,
+  decideControlPlaneIdle,
   isoTimestamp,
   selectDueForSnapshot,
   selectOrphanSecrets,
@@ -126,6 +128,55 @@ export interface ReconcilerLogger {
   warn(message: string, fields?: Record<string, unknown>): void;
 }
 
+/**
+ * Reads/writes a long-lived ECS **service's** replica count — the control-plane
+ * service the idle-shutdown sweep scales to zero. A narrow port (not the whole
+ * `ComputeProvider`) so the reconciler stays decoupled; `EcsComputeProvider`
+ * satisfies it structurally via its `describeService`/`scaleService` methods.
+ */
+export interface ControlPlaneServiceScaler {
+  describeService(serviceName: string): Promise<{ desiredCount: number; runningCount: number }>;
+  scaleService(serviceName: string, desiredCount: number): Promise<void>;
+}
+
+/** Reads the last recorded control-plane activity instant (undefined when none has
+ * been recorded, or the persisted blob is a stale schema — see
+ * `@edd/control-plane` `ControlPlaneActivityService`). */
+export interface ControlPlaneActivityReader {
+  readLastActivity(): Promise<IsoTimestamp | undefined>;
+}
+
+/**
+ * Opt-in configuration for the control-plane idle-shutdown sweep. Present ⇒ the
+ * reconciler manages control-plane scale-to-zero; ABSENT ⇒ the sweep is a no-op (so
+ * existing deployments/tests are unaffected). Deliberately bundles the service name
+ * WITH the scaler + activity reader: a deployment that asks the reconciler to manage
+ * CP scaling (by setting the service name) must supply both, so a half-configured
+ * setup fails loud at wiring time rather than silently never scaling down.
+ */
+export interface ControlPlaneScaleConfig {
+  scaler: ControlPlaneServiceScaler;
+  activity: ControlPlaneActivityReader;
+  /** The ECS service name of the control plane (e.g. `edd-prod-control-plane`). */
+  serviceName: string;
+  /** Quiet period before scale-to-zero; defaults to `DEFAULT_CONTROL_PLANE_IDLE_MS` (15 min). */
+  idleThresholdMs?: number;
+}
+
+/** Outcome of the control-plane idle-shutdown sweep step. */
+export interface ControlPlaneIdleResult {
+  /** Whether CP scaling is configured at all (false ⇒ the step was a no-op). */
+  configured: boolean;
+  /** The CP service's observed desired count (0 when unconfigured / not read). */
+  desiredCount: number;
+  /** Whether this sweep scaled the CP service to zero. */
+  scaledToZero: boolean;
+  /** The decision reason (for logs); `unconfigured`/`error` for the no-op/failure paths. */
+  reason: string;
+  /** 1 when the step THREW (isolated + counted, retried next sweep), else 0. */
+  failed: number;
+}
+
 export interface ReconcilerDeps {
   service: ReconcilerService;
   /** Storage port used to enumerate and reap orphaned volumes/snapshots. */
@@ -157,6 +208,8 @@ export interface ReconcilerDeps {
   /** How long a record may sit in `provisioning` before its crashed wake is reverted
    * to `stopped`; defaults to `DEFAULT_PROVISIONING_TIMEOUT_MS`. */
   provisioningTimeoutMs?: number;
+  /** Opt-in control-plane scale-to-zero. Absent ⇒ the idle-shutdown sweep is a no-op. */
+  controlPlane?: ControlPlaneScaleConfig;
 }
 
 export interface DriftResult {
@@ -247,6 +300,8 @@ export interface MaintenanceResult {
   purged: number;
   /** Per-owner quota counters corrected against actual records this sweep. */
   quotaDriftCorrected: number;
+  /** Control-plane idle-shutdown outcome (no-op when CP scaling isn't configured). */
+  controlPlane: ControlPlaneIdleResult;
 }
 
 /**
@@ -469,7 +524,10 @@ export class Reconciler {
         // Re-check idleness against the workspace's CURRENT lastActivity (not the
         // point-in-time list): a workspace resumed during this serial sweep is a
         // benign skip, not a stop. See WorkspaceService.stop's requireIdleForMs guard.
-        if ((await this.deps.service.stop(id, undefined, { requireIdleForMs: this.idleThresholdMs })).ok)
+        if (
+          (await this.deps.service.stop(id, undefined, { requireIdleForMs: this.idleThresholdMs }))
+            .ok
+        )
           stopped += 1;
         else skipped += 1;
       } catch (err) {
@@ -665,6 +723,72 @@ export class Reconciler {
     }
   }
 
+  /**
+   * Scale the CONTROL PLANE's own ECS service to zero after it has been idle (no real
+   * user request) past the threshold — the reconciler half of control-plane
+   * scale-to-zero. Reads the service's current desired count (`describeService`) and
+   * the last recorded activity instant, then defers the decision to the pure
+   * `decideControlPlaneIdle` (@edd/core): an absent activity, a still-busy window, an
+   * already-zeroed service, or clock skew all HOLD; only a genuinely idle, running
+   * service scales to zero. NOTE: the control plane may scale to zero even while
+   * workspaces run — workspace tasks are independent of the admin/control-plane UI,
+   * which the wake path brings back on the next request.
+   *
+   * A no-op when CP scaling isn't configured (`deps.controlPlane` absent). Isolated
+   * like every other sweep step: a thrown error is counted + logged, never aborts the
+   * sweep.
+   */
+  async controlPlaneIdleShutdown(): Promise<ControlPlaneIdleResult> {
+    const cp = this.deps.controlPlane;
+    if (cp === undefined) {
+      return {
+        configured: false,
+        desiredCount: 0,
+        scaledToZero: false,
+        reason: "unconfigured",
+        failed: 0,
+      };
+    }
+    const idleThresholdMs = cp.idleThresholdMs ?? DEFAULT_CONTROL_PLANE_IDLE_MS;
+    try {
+      const { desiredCount } = await cp.scaler.describeService(cp.serviceName);
+      const lastActivityAt = await cp.activity.readLastActivity();
+      const decision = decideControlPlaneIdle({
+        currentDesired: desiredCount,
+        lastActivityAt,
+        now: this.now(),
+        idleThresholdMs,
+      });
+      if (decision.action === "scale-to-zero") {
+        await cp.scaler.scaleService(cp.serviceName, 0);
+        this.deps.logger?.warn("control-plane idle: scaled service to zero", {
+          service: cp.serviceName,
+          reason: decision.reason,
+        });
+        return {
+          configured: true,
+          desiredCount,
+          scaledToZero: true,
+          reason: decision.reason,
+          failed: 0,
+        };
+      }
+      return {
+        configured: true,
+        desiredCount,
+        scaledToZero: false,
+        reason: decision.reason,
+        failed: 0,
+      };
+    } catch (err) {
+      this.deps.logger?.warn("control-plane idle: idle-shutdown sweep step threw", {
+        service: cp.serviceName,
+        error: err instanceof Error ? err.message : String(err),
+      });
+      return { configured: true, desiredCount: 0, scaledToZero: false, reason: "error", failed: 1 };
+    }
+  }
+
   /** One full maintenance sweep: scale-to-zero, scheduled snapshots, reap orphaned
    * tasks + secrets, prune stale task defs, then GC. */
   async runMaintenance(): Promise<MaintenanceResult> {
@@ -702,6 +826,9 @@ export class Reconciler {
     // decrement on teardown can drift them); cheap full-table tally, last so it sees
     // this sweep's finished deletes.
     const quotaDriftCorrected = await this.reconcileOwnerCounts();
+    // Control-plane scale-to-zero: independent of the workspace sweeps above (the CP
+    // may scale down even while workspaces run), so it runs last and can't affect them.
+    const controlPlane = await this.controlPlaneIdleShutdown();
     return {
       provisioning,
       drift,
@@ -717,6 +844,7 @@ export class Reconciler {
       taskDefs,
       gc,
       quotaDriftCorrected,
+      controlPlane,
     };
   }
 

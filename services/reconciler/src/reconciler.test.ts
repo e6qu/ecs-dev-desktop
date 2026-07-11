@@ -17,7 +17,13 @@ import {
 } from "@edd/core";
 import { describe, expect, it } from "vitest";
 
-import { Reconciler, selectIdle, type ActiveWorkspace, type ReconcilerService } from "./index";
+import {
+  Reconciler,
+  selectIdle,
+  type ActiveWorkspace,
+  type ControlPlaneScaleConfig,
+  type ReconcilerService,
+} from "./index";
 
 const THIRTY_MIN = 30 * 60 * 1000;
 const ONE_HOUR = 60 * 60 * 1000;
@@ -800,5 +806,109 @@ describe("Reconciler.reconcileOwnerCounts (quota drift self-heal)", () => {
       clock: fixedClock("2026-06-01T02:00:00.000Z"),
     });
     expect((await reconciler.runMaintenance()).quotaDriftCorrected).toBe(2);
+  });
+});
+
+describe("Reconciler.controlPlaneIdleShutdown", () => {
+  const FIFTEEN_MIN = 15 * 60 * 1000;
+  const NOW = "2026-06-01T02:00:00.000Z";
+
+  /** A control-plane scaler/activity config wired to a spy that records scale calls. */
+  function cpConfig(opts: {
+    desiredCount: number;
+    lastActivityAt: string | undefined;
+    scaled: [string, number][];
+    describeThrows?: boolean;
+  }): ControlPlaneScaleConfig {
+    return {
+      serviceName: "edd-prod-control-plane",
+      idleThresholdMs: FIFTEEN_MIN,
+      scaler: {
+        describeService: (_s) =>
+          opts.describeThrows === true
+            ? Promise.reject(new Error("no active service 'edd-prod-control-plane'"))
+            : Promise.resolve({ desiredCount: opts.desiredCount, runningCount: opts.desiredCount }),
+        scaleService: (s, n) => {
+          opts.scaled.push([s, n]);
+          return Promise.resolve();
+        },
+      },
+      activity: {
+        readLastActivity: () =>
+          Promise.resolve(
+            opts.lastActivityAt === undefined ? undefined : isoTimestamp(opts.lastActivityAt),
+          ),
+      },
+    };
+  }
+
+  async function run(controlPlane: ControlPlaneScaleConfig | undefined) {
+    const reconciler = new Reconciler({
+      service: fakeService(),
+      storage: await emptyStorage(),
+      clock: fixedClock(isoTimestamp(NOW)),
+      ...(controlPlane === undefined ? {} : { controlPlane }),
+    });
+    return (await reconciler.runMaintenance()).controlPlane;
+  }
+
+  it("scales the control-plane service to zero once idle past the threshold", async () => {
+    const scaled: [string, number][] = [];
+    const result = await run(
+      cpConfig({ desiredCount: 2, lastActivityAt: "2026-06-01T01:30:00.000Z", scaled }),
+    );
+    expect(result).toMatchObject({
+      configured: true,
+      desiredCount: 2,
+      scaledToZero: true,
+      failed: 0,
+    });
+    expect(scaled).toEqual([["edd-prod-control-plane", 0]]);
+  });
+
+  it("holds (no scale) while the control plane is still within the idle window", async () => {
+    const scaled: [string, number][] = [];
+    const result = await run(
+      cpConfig({ desiredCount: 2, lastActivityAt: "2026-06-01T01:59:00.000Z", scaled }),
+    );
+    expect(result).toMatchObject({ configured: true, scaledToZero: false, failed: 0 });
+    expect(scaled).toEqual([]);
+  });
+
+  it("holds during startup grace (no activity recorded yet) — never kills a waking CP", async () => {
+    const scaled: [string, number][] = [];
+    const result = await run(cpConfig({ desiredCount: 2, lastActivityAt: undefined, scaled }));
+    expect(result.scaledToZero).toBe(false);
+    expect(scaled).toEqual([]);
+  });
+
+  it("is a no-op when control-plane scaling is not configured", async () => {
+    const result = await run(undefined);
+    expect(result).toEqual({
+      configured: false,
+      desiredCount: 0,
+      scaledToZero: false,
+      reason: "unconfigured",
+      failed: 0,
+    });
+  });
+
+  it("isolates a thrown describeService — counts a failure, never aborts the sweep", async () => {
+    const scaled: [string, number][] = [];
+    const result = await run(
+      cpConfig({
+        desiredCount: 2,
+        lastActivityAt: "2026-06-01T01:00:00.000Z",
+        scaled,
+        describeThrows: true,
+      }),
+    );
+    expect(result).toMatchObject({
+      configured: true,
+      scaledToZero: false,
+      failed: 1,
+      reason: "error",
+    });
+    expect(scaled).toEqual([]);
   });
 });
