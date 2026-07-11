@@ -208,6 +208,28 @@ describe("Reconciler.runOnce", () => {
     });
     expect(await reconciler.runOnce()).toEqual({ scanned: 1, stopped: 0, skipped: 1, failed: 0 });
   });
+
+  it("passes the idle threshold to stop so a workspace resumed mid-sweep is re-checked", async () => {
+    let seenOpts: { requireIdleForMs?: number } | undefined;
+    const service = fakeService({
+      listActive: () =>
+        Promise.resolve([
+          { id: workspaceId("ws-1"), lastActivity: isoTimestamp("2026-06-01T00:00:00.000Z") },
+        ]),
+      stop: (_id, _actor, opts) => {
+        seenOpts = opts;
+        return Promise.resolve(ok(undefined));
+      },
+    });
+    const reconciler = new Reconciler({
+      service,
+      storage: await emptyStorage(),
+      clock: fixedClock("2026-06-01T02:00:00.000Z"),
+      idleThresholdMs: THIRTY_MIN,
+    });
+    await reconciler.runOnce();
+    expect(seenOpts).toEqual({ requireIdleForMs: THIRTY_MIN });
+  });
 });
 
 describe("Reconciler.snapshotDue", () => {

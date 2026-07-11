@@ -812,18 +812,39 @@ export class WorkspaceService {
   async stop(
     id: WorkspaceId,
     actor: string = SYSTEM_ACTOR,
+    opts?: { readonly requireIdleForMs?: number },
   ): Promise<Result<WorkspaceDto, DomainError>> {
     const found = await this.require(id);
     if (!found.ok) return found;
     const { ws, version } = found.value;
     const validated = transition(ws.state, "stop"); // validate-first, before any I/O
     if (!validated.ok) return validated;
+    // Idle-stop recency guard (reconciler path): the idle list is a point-in-time
+    // snapshot, and the serial idle sweep takes minutes per workspace, so a workspace
+    // resumed since it was listed (heartbeat refreshed `lastActivity`) must NOT be
+    // scaled to zero. Checking against THIS read's `lastActivity` (not the stale list)
+    // closes the race — a still-active workspace is a benign skip, not a stop.
+    if (opts?.requireIdleForMs !== undefined) {
+      const idleForMs = Date.parse(this.deps.clock.now()) - Date.parse(ws.lastActivity);
+      if (idleForMs < opts.requireIdleForMs) {
+        return err(
+          conflictError(`stop of ${id} skipped: last active ${String(idleForMs)}ms ago`),
+        );
+      }
+    }
     const at = isoTimestamp(this.deps.clock.now());
     const snapped = await this.snapshotBeforeStop(id, ws, version, at);
     if (!snapped.ok) return snapped;
-    if (ws.taskId !== undefined) await this.deps.compute.stopTask(ws.taskId);
     const next = markStopped(ws, snapped.value, at);
     if (!next.ok) return next;
+    // Persist the transition FIRST (version CAS), THEN release the task. Killing the
+    // task before the CAS meant a heartbeat that bumped the version during the
+    // (minutes-long) snapshot left a DEAD task behind a still-`running` record until
+    // the next drift sweep. Persist-first makes the CAS the gate: on a lost race the
+    // task is untouched (record and task stay consistent); on success the record no
+    // longer references the task, so releasing it is best-effort (the orphan-task
+    // reaper is the backstop if this stop fails).
+    const taskToStop = ws.taskId;
     try {
       await this.persistTransition(next.value, version, {
         action: "session.stop",
@@ -833,14 +854,21 @@ export class WorkspaceService {
       });
     } catch (e) {
       if (!isVersionConflict(e)) throw e;
-      // A concurrent writer advanced the record. If it also reached "stopped"
-      // the outcome stands (idempotent); anything else is a real conflict.
-      // The stopTask/snapshot already performed are safe: stopping a stopped
-      // task is a no-op, and an unreferenced snapshot is reaped by GC.
+      // A concurrent writer advanced the record. If it also reached "stopped" the
+      // outcome stands (idempotent); anything else is a real conflict. The task was
+      // NOT killed, so the record and the live task remain consistent; the
+      // now-unreferenced snapshot is reaped by GC.
       const current = await this.find(id);
       if (current === null) return err(notFoundError("workspace", id));
       if (current.ws.state === "stopped") return ok(toWorkspaceDto(current.ws));
       return err(conflictError(`stop of ${id} lost a concurrent update (now ${current.ws.state})`));
+    }
+    if (taskToStop !== undefined) {
+      try {
+        await this.deps.compute.stopTask(taskToStop);
+      } catch {
+        /* orphan-task reaper backstop */
+      }
     }
     return ok(toWorkspaceDto(next.value));
   }

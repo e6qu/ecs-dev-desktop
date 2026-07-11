@@ -46,8 +46,14 @@ export interface ReconcilerService {
     id: WorkspaceId,
   ): Promise<Result<{ lost: boolean; workspace: unknown }, DomainError>>;
   /** Scale to zero. Returns a typed Result so a benign race (the workspace
-   * changed state since it was listed) is skipped, not thrown — see `runOnce`. */
-  stop(id: WorkspaceId): Promise<Result<unknown, DomainError>>;
+   * changed state since it was listed) is skipped, not thrown — see `runOnce`.
+   * `requireIdleForMs` re-checks the workspace's current idleness so one resumed
+   * during the serial sweep is skipped rather than stopped. */
+  stop(
+    id: WorkspaceId,
+    actor?: string,
+    opts?: { readonly requireIdleForMs?: number },
+  ): Promise<Result<unknown, DomainError>>;
   /** Workspaces with a live volume, eligible for a scheduled snapshot. */
   listSnapshotCandidates(): Promise<readonly SnapshotCandidate[]>;
   /** Take a point-in-time snapshot of a running workspace. */
@@ -460,7 +466,11 @@ export class Reconciler {
     let failed = 0;
     for (const id of toStop) {
       try {
-        if ((await this.deps.service.stop(id)).ok) stopped += 1;
+        // Re-check idleness against the workspace's CURRENT lastActivity (not the
+        // point-in-time list): a workspace resumed during this serial sweep is a
+        // benign skip, not a stop. See WorkspaceService.stop's requireIdleForMs guard.
+        if ((await this.deps.service.stop(id, undefined, { requireIdleForMs: this.idleThresholdMs })).ok)
+          stopped += 1;
         else skipped += 1;
       } catch (err) {
         failed += 1;

@@ -154,6 +154,24 @@ describe("WorkspaceService lifecycle ", () => {
     expect(started.state).toBe("running");
   });
 
+  it("idle-stop with requireIdleForMs skips a workspace active within the window (stays running)", async () => {
+    const ws = await service.create({
+      ownerId: ownerId("idle-guard"),
+      baseImage: baseImage("golden/node:20"),
+    });
+    // create just set lastActivity to now, so the workspace is NOT idle for an hour:
+    // the guarded stop must skip it (conflict), leaving it running with its live task.
+    const guarded = await service.stop(workspaceId(ws.id), undefined, {
+      requireIdleForMs: 60 * 60 * 1000,
+    });
+    expect(guarded.ok).toBe(false);
+    expect((await service.get(workspaceId(ws.id)))?.state).toBe("running");
+
+    // Without the guard the same workspace stops normally (proving it was only the
+    // recency guard, not some other state issue, that skipped it).
+    expect(unwrap(await service.stop(workspaceId(ws.id))).state).toBe("stopped");
+  });
+
   it("emits a wake cold-start latency metric on start()", async () => {
     // A deterministic clock that advances a fixed step per read, so the wake
     // latency (clock reads spanning the start path) is a stable positive number.
