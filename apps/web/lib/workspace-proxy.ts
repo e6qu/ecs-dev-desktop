@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { createHash } from "node:crypto";
 import {
   request as httpRequest,
   type IncomingMessage,
@@ -7,7 +8,11 @@ import {
 } from "node:http";
 import type { Duplex } from "node:stream";
 
-import { DEFAULT_WORKSPACE_PORT, WORKSPACE_PROXY_UPSTREAM_TIMEOUT_MS } from "@edd/config";
+import {
+  DEFAULT_WORKSPACE_PORT,
+  WORKSPACE_PROXY_MAX_REWRITE_BYTES,
+  WORKSPACE_PROXY_UPSTREAM_TIMEOUT_MS,
+} from "@edd/config";
 import {
   decideWorkspaceAccessBySubject,
   deriveWorkspaceToken,
@@ -20,6 +25,7 @@ import { validateAuthSessionToken } from "./auth-sessions";
 import { CONNECTION_SECRET_ENV } from "./constants";
 import { getControlPlane } from "./control-plane";
 import { log } from "./logger";
+import { recordSystemActivity } from "./system-activity";
 
 /** The OpenVSCode query param that carries the connection token, and the cookie it
  * sets once validated — so the proxy injects the token exactly once per session. */
@@ -307,6 +313,12 @@ export async function authorizeWorkspace(
     typeof token.exp === "number"
       ? Math.min(token.exp * 1000, authSession.expiresAtMs)
       : Math.min(Date.now() + FALLBACK_PRESENCE_GRANT_MS, authSession.expiresAtMs);
+  // An authorized editor request is live use of the control plane: stamp CP activity
+  // so control-plane scale-to-zero does not tear down the app (and drop this session's
+  // editor WebSocket) mid-use. Editor surfaces generate steady proxied traffic (asset
+  // fetches, saves, LSP), so this keeps the CP warm for the whole session. Fire-and-forget
+  // + throttled internally (≤1 DynamoDB write/min); it never blocks or fails the request.
+  void recordSystemActivity();
   const ready = detail.workspace.state === "running" && detail.workspace.functional === "ok";
   return {
     kind: "allow",
@@ -414,12 +426,14 @@ function opencodeRewriteBase(wsId: WorkspaceId): string {
 function responseCanBeRewritten(contentType: string | undefined): boolean {
   if (contentType === undefined) return false;
   const lower = contentType.toLowerCase();
-  return (
-    lower.includes("text/html") ||
-    lower.includes("javascript") ||
-    lower.includes("ecmascript") ||
-    lower.includes("text/css")
-  );
+  // HTML + CSS ONLY. JavaScript is NEVER rewritten: a byte-level regex over a minified
+  // bundle inevitably mangles string/regex literals — a `"…"/re/` boundary turns into an
+  // invalid regex literal ("Invalid regular expression flags") and the whole module
+  // aborts, leaving opencode blank (reproduced live: the blanket rewrite fired 575× in a
+  // 2.78 MB opencode bundle and corrupted it). opencode's root-absolute RUNTIME requests
+  // are rebased by the injected base-path shim (buildOpencodeBasePathShim), not by editing
+  // the bundle text; static `<script src>`/`<link href>` are rewritten as HTML attributes.
+  return lower.includes("text/html") || lower.includes("text/css");
 }
 
 function responseIsHtml(contentType: string | undefined): boolean {
@@ -461,21 +475,110 @@ export function rewriteOpencodeResponseBody(
   contentType: string | undefined,
 ): string {
   const base = opencodeRewriteBase(wsId);
-  if (contentType?.toLowerCase().includes("text/css") === true) {
-    // CSS: only `url(/...)` needs relocating. The `url(` rewrite is CSS-ONLY: in
-    // JavaScript `fn(/regex/)` matches `url(/` when a call ends in "url(", and
-    // inserting `/w/<id>/` into the regex literal makes JS parse `/w/` with flags
-    // `ws-…` → "Invalid regular expression flags", which blanked opencode in prod.
+  const lower = contentType?.toLowerCase();
+  if (lower?.includes("text/css") === true) {
+    // CSS: only `url(/...)` needs relocating. Safe here because CSS has no regex/division
+    // ambiguity (unlike JS, where a call ending in "url(" followed by a regex would match).
     return body.replace(/url\(\s*\/(?!\/|w\/)/g, `url(${base}/`);
   }
-  // HTML + JS: relocate root-absolute asset/API string paths and `location.origin`.
-  // Note the string char class is `["']` (NOT backtick): a backtick can precede a JS
-  // regex/division token, so rewriting `` `x`/re/ `` would corrupt it. Template-literal
-  // URL building is handled at runtime by the `location.origin` rewrite instead.
-  return body
-    .replace(/\b(src|href|content)=(["'])\/(?!\/|w\/)/g, `$1=$2${base}/`)
-    .replace(/(["'])\/(?!\/|w\/)/g, `$1${base}/`)
-    .replace(/\blocation\.origin\b/g, `location.origin+"${base}"`);
+  if (lower?.includes("text/html") === true) {
+    // HTML: rewrite ONLY root-absolute TAG ATTRIBUTES that point at opencode's own
+    // assets/APIs (`<script src="/…">`, `<link href="/…">`, `<meta … content="/…">`).
+    // HTML has no regex-literal ambiguity, so an attribute-scoped rewrite is safe. The old
+    // blanket "quote-then-slash" rewrite (which also ran on JS) is GONE — it was the source
+    // of the bundle corruption. Everything the client requests at RUNTIME from a
+    // root-absolute path is rebased by the injected shim instead.
+    return body.replace(/\b(src|href|content)=(["'])\/(?!\/|w\/)/g, `$1=$2${base}/`);
+  }
+  // Any other content type — notably JavaScript — is returned VERBATIM. The proxy never
+  // buffers JS for rewrite (see responseCanBeRewritten); this pass-through is the
+  // defensive guarantee that a byte-level rewrite can never touch a JS bundle.
+  return body;
+}
+
+/**
+ * Inline JavaScript (no external deps) injected into opencode's HTML `<head>` BEFORE its
+ * bundle. opencode is served at origin-root by the workspace but proxied under `/w/<id>/`,
+ * and its client issues ROOT-ABSOLUTE requests (`/auth`, `/event`, `/global/*`, workers,
+ * WebSockets). We cannot rewrite those in the minified bundle without corrupting it, so we
+ * rebase them at RUNTIME: patch fetch/XHR/WebSocket/EventSource/Worker so a same-origin
+ * root-absolute URL is prefixed with the workspace base. This operates on real URL values,
+ * so — unlike a source-text rewrite — it can never produce invalid JavaScript. A classic
+ * inline script in `<head>` runs during parse, before the deferred module bundle executes.
+ */
+export function buildOpencodeBasePathShim(base: string): string {
+  // `base` is `/w/<id>` (opaque id chars only), embedded via JSON.stringify.
+  return [
+    "(function(){",
+    `var base=${JSON.stringify(base)};`,
+    "function rebase(u){",
+    "if(u==null)return u;",
+    "try{",
+    "var s=typeof u==='string'?u:(u&&u.url)?u.url:String(u);",
+    "var url=new URL(s,location.href);",
+    "if(url.host===location.host&&url.pathname!==base&&url.pathname.indexOf(base+'/')!==0){",
+    "url.pathname=base+url.pathname;return url.toString();",
+    "}",
+    "return s;",
+    "}catch(e){return u;}",
+    "}",
+    "var of=window.fetch;",
+    "if(of){window.fetch=function(input,init){",
+    "if(typeof input==='string'||input instanceof URL){return of.call(this,rebase(String(input)),init);}",
+    "if(input&&input.url){try{return of.call(this,new Request(rebase(input.url),input),init);}catch(e){return of.call(this,input,init);}}",
+    "return of.call(this,input,init);",
+    "};}",
+    "var ox=XMLHttpRequest.prototype.open;",
+    "XMLHttpRequest.prototype.open=function(m,u){arguments[1]=rebase(u);return ox.apply(this,arguments);};",
+    "var OW=window.WebSocket;",
+    "if(OW){var NW=function(u,p){return p===undefined?new OW(rebase(u)):new OW(rebase(u),p);};NW.prototype=OW.prototype;NW.CONNECTING=OW.CONNECTING;NW.OPEN=OW.OPEN;NW.CLOSING=OW.CLOSING;NW.CLOSED=OW.CLOSED;window.WebSocket=NW;}",
+    "if(window.EventSource){var OE=window.EventSource;var NE=function(u,c){return new OE(rebase(u),c);};NE.prototype=OE.prototype;NE.CONNECTING=OE.CONNECTING;NE.OPEN=OE.OPEN;NE.CLOSED=OE.CLOSED;window.EventSource=NE;}",
+    "if(window.Worker){var OWk=window.Worker;var NWk=function(u,o){return new OWk(rebase(u),o);};NWk.prototype=OWk.prototype;window.Worker=NWk;}",
+    "})();",
+  ].join("");
+}
+
+/**
+ * Inject the base-path shim into opencode's HTML `<head>` and return the new HTML plus the
+ * exact script source (so the caller can whitelist its hash in the response CSP). Fails
+ * loud if the HTML has no `<head>` — opencode without the shim is non-functional (all its
+ * root-absolute API/WS calls would escape the workspace), so a silent pass is not allowed.
+ */
+export function injectOpencodeBasePathShim(
+  html: string,
+  wsId: WorkspaceId,
+): { html: string; scriptSource: string } {
+  const scriptSource = buildOpencodeBasePathShim(opencodeRewriteBase(wsId));
+  const headMatch = /<head\b[^>]*>/i.exec(html);
+  if (headMatch === null) {
+    throw new Error("opencode HTML did not contain a <head> tag for the base-path shim");
+  }
+  const insertAt = headMatch.index + headMatch[0].length;
+  const tag = `<script>${scriptSource}</script>`;
+  return { html: `${html.slice(0, insertAt)}${tag}${html.slice(insertAt)}`, scriptSource };
+}
+
+/**
+ * Add an inline script's `sha256` to a CSP so an injected inline `<script>` is allowed
+ * under opencode's hash-based policy. The hash is added to `script-src-elem` and
+ * `script-src` when present; if neither directive exists there is nothing to satisfy and
+ * the CSP is returned unchanged. Never widens the policy beyond this one script.
+ */
+export function cspAllowingInlineScript(csp: string, scriptSource: string): string {
+  const hash = `'sha256-${createHash("sha256").update(scriptSource, "utf8").digest("base64")}'`;
+  const isScriptDirective = (d: string): boolean => {
+    const name = d.split(/\s+/)[0]?.toLowerCase();
+    return name === "script-src" || name === "script-src-elem";
+  };
+  const directives = csp
+    .split(";")
+    .map((d) => d.trim())
+    .filter((d) => d.length > 0);
+  // Nothing to satisfy: no script directive means no restriction to whitelist against.
+  if (!directives.some(isScriptDirective)) return csp;
+  return directives
+    .map((d) => (isScriptDirective(d) && !d.includes(hash) ? `${d} ${hash}` : d))
+    .join("; ");
 }
 
 /** http.request options forwarding `req` to the workspace `upstream`. OpenVSCode,
@@ -540,25 +643,60 @@ export function proxyWorkspaceHttp(
       return;
     }
     const chunks: Buffer[] = [];
+    let bufferedBytes = 0;
+    let overCap = false;
     proxyRes.on("data", (chunk: Buffer | string) => {
-      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      if (overCap) return;
+      const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+      bufferedBytes += buf.length;
+      if (bufferedBytes > WORKSPACE_PROXY_MAX_REWRITE_BYTES) {
+        // Refuse to buffer an unbounded body into the shared control plane's heap.
+        // Fail loud (502) rather than OOM; drop the chunks so they can be GC'd.
+        overCap = true;
+        chunks.length = 0;
+        log.warn("workspace-proxy rewrite body exceeded cap", {
+          wsId: context.wsId,
+          cap: WORKSPACE_PROXY_MAX_REWRITE_BYTES,
+        });
+        if (!res.headersSent) res.writeHead(502, { "content-type": "text/plain; charset=utf-8" });
+        res.end("upstream response too large to process");
+        proxyRes.destroy();
+        return;
+      }
+      chunks.push(buf);
     });
     proxyRes.on("end", () => {
+      if (overCap) return;
       const headers = { ...proxyRes.headers };
       delete headers["content-length"];
       delete headers["content-encoding"];
       try {
         const content = Buffer.concat(chunks).toString("utf8");
-        const rewritten =
+        let outBody =
           context.editor === "opencode"
             ? rewriteOpencodeResponseBody(content, context.wsId, contentType)
             : content;
+        if (responseIsHtml(contentType)) {
+          outBody = injectWorkspaceHomeLink(outBody, context.editor);
+          if (context.editor === "opencode") {
+            // Inject the runtime base-path shim and whitelist its hash in the response CSP
+            // (opencode ships a hash-based script-src, so an un-hashed inline script would
+            // be blocked). Header mutation must happen BEFORE writeHead below.
+            const shimmed = injectOpencodeBasePathShim(outBody, context.wsId);
+            outBody = shimmed.html;
+            for (const cspHeader of [
+              "content-security-policy",
+              "content-security-policy-report-only",
+            ]) {
+              const value = headerValue(headers[cspHeader]);
+              if (value !== undefined) {
+                headers[cspHeader] = cspAllowingInlineScript(value, shimmed.scriptSource);
+              }
+            }
+          }
+        }
         res.writeHead(proxyRes.statusCode ?? 502, headers);
-        res.end(
-          responseIsHtml(contentType)
-            ? injectWorkspaceHomeLink(rewritten, context.editor)
-            : rewritten,
-        );
+        res.end(outBody);
       } catch (e) {
         if (!res.headersSent) res.writeHead(502, { "content-type": "text/plain; charset=utf-8" });
         res.end(e instanceof Error ? e.message : "opencode response rewrite failed");

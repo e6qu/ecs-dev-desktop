@@ -102,7 +102,7 @@ function titleEnv(env: Env): string {
  * page. Fails loud on a missing env var or an ECS error.
  */
 export async function handleWake(
-  _event: FunctionUrlEvent,
+  event: FunctionUrlEvent,
   deps: WakeDeps,
 ): Promise<FunctionUrlResult> {
   const { env, ecs, logger } = deps;
@@ -120,28 +120,62 @@ export async function handleWake(
     DEFAULT_WAKE_POLL_INTERVAL_MS,
   );
   const title = titleEnv(env);
+  const page = { statusUrl, pollIntervalMs, title };
 
-  const scale = await ecs.describe({ cluster, service });
-  const decision = decideControlPlaneWake({ currentDesired: scale.desiredCount, activeDesired });
+  // Is this the startup page's readiness poll (CloudFront failed `/api/readyz`
+  // over to us because the control plane is still down), or a browser
+  // navigation? A readiness probe is answered 503 so the poll keeps waiting; a
+  // navigation is answered with the 200 HTML page.
+  const requestPath = event.rawPath ?? event.requestContext?.http?.path ?? "/";
+  const statusPath = safePathname(statusUrl);
+  const isReadinessProbe = statusPath !== undefined && requestPath === statusPath;
 
-  if (decision.action === "wake") {
-    await ecs.setDesiredCount({ cluster, service, desiredCount: decision.to });
-    logger.info("control-plane wake", {
+  try {
+    const scale = await ecs.describe({ cluster, service });
+    const decision = decideControlPlaneWake({ currentDesired: scale.desiredCount, activeDesired });
+
+    if (decision.action === "wake") {
+      await ecs.setDesiredCount({ cluster, service, desiredCount: decision.to });
+      logger.info("control-plane wake", {
+        cluster,
+        service,
+        from: scale.desiredCount,
+        to: decision.to,
+      });
+    } else {
+      logger.info("control-plane wake hold", {
+        cluster,
+        service,
+        desired: scale.desiredCount,
+        reason: decision.reason,
+      });
+    }
+    return decideWakeResponse({ decision, page, isReadinessProbe });
+  } catch (e) {
+    // ECS unreachable/throttled: DON'T return a raw 5xx (a CloudFront error page
+    // could swallow it). Keep the browser retrying — serve the startup page (or a
+    // 503 for a readiness probe) and log loudly so the alarm fires. The reconciler
+    // is the backstop that never scales-to-zero on error.
+    logger.error("control-plane wake failed to reach ECS", {
       cluster,
       service,
-      from: scale.desiredCount,
-      to: decision.to,
+      error: e instanceof Error ? e.message : String(e),
     });
-  } else {
-    logger.info("control-plane wake hold", {
-      cluster,
-      service,
-      desired: scale.desiredCount,
-      reason: decision.reason,
+    return decideWakeResponse({
+      decision: { action: "hold", reason: "ecs unreachable" },
+      page,
+      isReadinessProbe,
     });
   }
+}
 
-  return decideWakeResponse({ decision, page: { statusUrl, pollIntervalMs, title } });
+/** The pathname of a URL, or undefined if it can't be parsed. */
+function safePathname(url: string): string | undefined {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return undefined;
+  }
 }
 
 /** Build the real deps from the ambient environment. */

@@ -166,31 +166,25 @@ resource "aws_ecs_service" "control_plane" {
   tags       = local.tags
 }
 
-# ---- Autoscaling for the control plane ----
-
+# ---- Autoscaling scalable target for the control plane ----
+# The reconciler (idle shutdown) and the wake Lambda (scale-from-zero) are the SOLE
+# authority over the control-plane service's desiredCount now: they drive it between 0
+# and control_plane_active_desired for scale-to-zero. We register the service as a
+# scalable target (min=0, max) but deliberately attach NO scaling policy:
+#   - A CPU target-tracking policy can neither scale FROM 0 (no running task = no CPU
+#     metric to react to) nor TO 0 (target tracking's floor is the target's min, and it
+#     never sets desiredCount to 0), so it cannot participate in scale-to-zero at all.
+#   - Worse, it would FIGHT the reconciler/wake: two controllers writing the same
+#     desiredCount race each other (target tracking scaling a woken service back down,
+#     or clamping a just-woken service). One capacity authority, not two.
+# The scalable target itself is harmless and left registered (min/max are the guard
+# rails the reconciler/wake honor, and downstream code/asserts reference it).
 resource "aws_appautoscaling_target" "control_plane" {
   max_capacity       = var.control_plane_max_count
   min_capacity       = var.control_plane_min_count
   resource_id        = "service/${aws_ecs_cluster.this.name}/${aws_ecs_service.control_plane.name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
-}
-
-resource "aws_appautoscaling_policy" "control_plane_cpu" {
-  name               = "${var.name}-control-plane-cpu"
-  policy_type        = "TargetTrackingScaling"
-  resource_id        = aws_appautoscaling_target.control_plane.resource_id
-  scalable_dimension = aws_appautoscaling_target.control_plane.scalable_dimension
-  service_namespace  = aws_appautoscaling_target.control_plane.service_namespace
-
-  target_tracking_scaling_policy_configuration {
-    predefined_metric_specification {
-      predefined_metric_type = "ECSServiceAverageCPUUtilization"
-    }
-    target_value       = 60
-    scale_in_cooldown  = 300
-    scale_out_cooldown = 60
-  }
 }
 
 # ---- Reconciler task definition ----

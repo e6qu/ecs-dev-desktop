@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { randomBytes } from "node:crypto";
 import type { IncomingHttpHeaders } from "node:http";
+import vm from "node:vm";
 
 import { deriveWorkspaceToken, workspaceId } from "@edd/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -27,11 +28,17 @@ vi.mock("./auth-sessions", () => ({ validateAuthSessionToken: validateAuthSessio
 vi.mock("./control-plane", () => ({
   getControlPlane: vi.fn(() => Promise.resolve({ inspect: inspectMock })),
 }));
+// authorizeWorkspace stamps control-plane activity (fire-and-forget) on a granted
+// request; stub it so the authz tests don't drag in the control-plane activity graph.
+vi.mock("./system-activity", () => ({ recordSystemActivity: vi.fn(() => Promise.resolve()) }));
 
 const {
   authorizeSpectate,
   authorizeWorkspace,
+  buildOpencodeBasePathShim,
+  cspAllowingInlineScript,
   editorTokenRedirect,
+  injectOpencodeBasePathShim,
   injectWorkspaceHomeLink,
   isDocumentNavigation,
   isWorkspaceDocumentNavigation,
@@ -410,37 +417,75 @@ describe("opencode proxy adaptation", () => {
     expect(() => opencodeProxyAuthorization("", WS)).toThrow(/required/);
   });
 
-  it("rewrites the opencode HTML and bundle references under the workspace path", () => {
+  it("rewrites opencode HTML tag attributes only — never non-attribute string paths", () => {
     const input = [
       '<script src="/assets/index.js"></script>',
       '<link href="/assets/index.css">',
-      'const worker="/assets/worker.js";',
-      'const health="/global/health";',
-      "const config='/global/config';",
-      'const errors="/_bun/report_error";',
+      '<meta name="x" content="/global/config">',
+      'const worker="/assets/worker.js";', // inline string, NOT an attribute → left for the shim
       'const already="/w/not-this-workspace/assets/existing.js";',
       'const external="https://opencode.ai/logo.png";',
-      'const base=location.hostname.includes("opencode.ai")?"http://localhost:4096":location.origin;',
     ].join("\n");
     const out = rewriteOpencodeResponseBody(input, WS, "text/html");
+    // Static tag attributes are relocated (safe: HTML has no regex ambiguity).
     expect(out).toContain(`src="/w/${WS}/assets/index.js"`);
     expect(out).toContain(`href="/w/${WS}/assets/index.css"`);
-    expect(out).toContain(`"/w/${WS}/assets/worker.js"`);
-    expect(out).toContain(`"/w/${WS}/global/health"`);
-    expect(out).toContain(`'/w/${WS}/global/config'`);
-    expect(out).toContain(`"/w/${WS}/_bun/report_error"`);
+    expect(out).toContain(`content="/w/${WS}/global/config"`);
+    // Non-attribute string paths are NOT rewritten — the runtime shim rebases those.
+    expect(out).toContain('const worker="/assets/worker.js";');
+    // Already-prefixed and external references are untouched.
     expect(out).toContain('"/w/not-this-workspace/assets/existing.js"');
     expect(out).toContain('"https://opencode.ai/logo.png"');
-    expect(out).toContain(`?"http://localhost:4096":location.origin+"/w/${WS}"`);
   });
 
-  it("does NOT corrupt a JS regex literal in a call that ends in url( (found live: 'Invalid regular expression flags')", () => {
-    // Minified opencode JS: a function whose name ends in "url" called with a regex.
-    // The old `url(/...)` rewrite injected `/w/<id>/` into the regex literal.
-    const js = "const m=parseurl(/[a-z]+/g);const n=curl(/x/);";
+  it("returns a JS bundle VERBATIM — no byte-level rewrite can corrupt it", () => {
+    // The live failure: the old blanket `(["'])\/` rewrite injected `/w/<id>/` into
+    // string/regex literals of a 2.78 MB minified bundle → "Invalid regular expression
+    // flags" → blank page. JS must now pass through unchanged (proxy never buffers it).
+    const js =
+      'const m=parseurl(/[a-z]+/g);const n=curl(/x/);a.src="/logo.png";fetch("/global/health");';
     const out = rewriteOpencodeResponseBody(js, WS, "application/javascript");
-    expect(out).toBe(js); // untouched — no /w/<id>/ inserted into any regex
+    expect(out).toBe(js); // byte-for-byte identical
     expect(out).not.toContain(`/w/${WS}/`);
+  });
+
+  it('leaves the EXACT prod bundle pattern that broke (`replace(/"/g,…)`) valid', () => {
+    // Captured verbatim from the live opencode bundle the old rewrite corrupted: it turned
+    // `.replace(/"/g,"&quot;")` into `.replace(/"/w/<id>/g,"&quot;")` — `/w/` with flags
+    // `ws-…` → "Invalid regular expression flags". Our rewrite must not touch it.
+    const js =
+      'function KMe(e){return e.replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/\'/g,"&#39;")}';
+    expect(rewriteOpencodeResponseBody(js, WS, "text/javascript")).toBe(js);
+    expect(
+      () => new vm.Script(rewriteOpencodeResponseBody(js, WS, "text/javascript")),
+    ).not.toThrow();
+  });
+
+  it("transforms a realistic opencode HTML shell into a valid shimmed document", () => {
+    // Mirrors the real prod shell: <head> with an inline classic script + the module
+    // bundle + a stylesheet link, and an empty <div id="root"> the SPA mounts into.
+    const shell = [
+      "<!doctype html><html><head>",
+      "<title>OpenCode</title>",
+      '<script id="oc-theme">;(function(){localStorage.getItem("opencode-theme-id")})()</script>',
+      '<script type="module" crossorigin src="/assets/index-DMJ0TRh9.js"></script>',
+      '<link rel="stylesheet" href="/assets/index.css">',
+      '</head><body><div id="root"></div></body></html>',
+    ].join("");
+    let html = rewriteOpencodeResponseBody(shell, WS, "text/html");
+    html = injectWorkspaceHomeLink(html, "opencode");
+    const { html: shimmed, scriptSource } = injectOpencodeBasePathShim(html, WS);
+    // The module bundle + stylesheet are relocated under the workspace path…
+    expect(shimmed).toContain(`src="/w/${WS}/assets/index-DMJ0TRh9.js"`);
+    expect(shimmed).toContain(`href="/w/${WS}/assets/index.css"`);
+    // …the shim is injected and runs before the module bundle…
+    expect(shimmed.indexOf(scriptSource)).toBeLessThan(shimmed.indexOf('type="module"'));
+    // …the home link is present…
+    expect(shimmed).toContain('id="edd-workspaces-home"');
+    // …opencode's own inline theme script is left byte-for-byte intact…
+    expect(shimmed).toContain('localStorage.getItem("opencode-theme-id")');
+    // …and the injected shim is valid JS.
+    expect(() => new vm.Script(scriptSource)).not.toThrow();
   });
 
   it("rewrites url(/...) in CSS but leaves CSS string paths alone", () => {
@@ -484,6 +529,100 @@ describe("opencode proxy adaptation", () => {
     expect(() =>
       injectWorkspaceHomeLink("<!doctype html><html><main>opencode</main></html>", "opencode"),
     ).toThrow(/body/);
+  });
+});
+
+describe("opencode base-path shim", () => {
+  it("builds valid JavaScript that patches fetch/XHR/WebSocket/EventSource/Worker", () => {
+    const shim = buildOpencodeBasePathShim(`/w/${WS}`);
+    // Must COMPILE as valid JS (the whole point — a source rewrite could not guarantee
+    // this; a byte-level bundle rewrite is exactly what produced invalid JS in prod).
+    expect(() => new vm.Script(shim)).not.toThrow();
+    expect(shim).toContain(`var base=${JSON.stringify(`/w/${WS}`)};`);
+    for (const api of [
+      "window.fetch",
+      "XMLHttpRequest.prototype.open",
+      "window.WebSocket",
+      "window.EventSource",
+      "window.Worker",
+    ]) {
+      expect(shim).toContain(api);
+    }
+  });
+
+  it("rebases same-origin root-absolute URLs but leaves prefixed/external/protocol-relative ones", () => {
+    // Execute the real shim in an isolated VM context with a faked window/location, then
+    // drive the patched fetch to observe how each URL is rebased.
+    const shim = buildOpencodeBasePathShim(`/w/${WS}`);
+    const calls: string[] = [];
+    const fetchProbe = (u: unknown): void => {
+      calls.push(String(u));
+    };
+    const location = { host: "app.edd.example", href: "https://app.edd.example/w/ws-abc123/" };
+    const windowObj: Record<string, unknown> = { fetch: fetchProbe };
+    const sandbox: Record<string, unknown> = {
+      window: windowObj,
+      location,
+      URL,
+      Request,
+      XMLHttpRequest: class {
+        open(): void {
+          /* noop */
+        }
+      },
+      WebSocket: undefined,
+      EventSource: undefined,
+      Worker: undefined,
+    };
+    vm.runInNewContext(shim, sandbox);
+    const patched = windowObj.fetch as (u: unknown) => void;
+    for (const u of [
+      "/global/health",
+      "/w/ws-abc123/already",
+      "https://cdn.example/x.png",
+      "//proto-relative/x",
+    ]) {
+      patched(u);
+    }
+    expect(calls).toEqual([
+      `https://app.edd.example/w/${WS}/global/health`,
+      "/w/ws-abc123/already",
+      "https://cdn.example/x.png",
+      "//proto-relative/x",
+    ]);
+  });
+
+  it("injects the shim into <head> and reports the exact script source", () => {
+    const { html, scriptSource } = injectOpencodeBasePathShim(
+      "<!doctype html><html><head><title>OpenCode</title></head><body></body></html>",
+      WS,
+    );
+    expect(html).toContain(`<script>${scriptSource}</script>`);
+    // The shim runs BEFORE opencode's own scripts: it sits at the very start of <head>.
+    expect(html.indexOf("<script>")).toBeLessThan(html.indexOf("<title>"));
+  });
+
+  it("fails loud when opencode HTML has no <head> for the shim", () => {
+    expect(() => injectOpencodeBasePathShim("<html><body>x</body></html>", WS)).toThrow(/head/);
+  });
+
+  it("whitelists the injected script's sha256 in a hash-based CSP script-src", () => {
+    const { scriptSource } = injectOpencodeBasePathShim(
+      "<html><head></head><body></body></html>",
+      WS,
+    );
+    const csp = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-abc'";
+    const out = cspAllowingInlineScript(csp, scriptSource);
+    expect(out).toMatch(/script-src [^;]*'sha256-[A-Za-z0-9+/=]+'/);
+    // Only script-src is widened; default-src is untouched.
+    expect(out).toContain("default-src 'self'");
+    // Idempotent: applying twice does not duplicate the hash.
+    expect(cspAllowingInlineScript(out, scriptSource)).toBe(out);
+  });
+
+  it("leaves a CSP without a script directive unchanged (nothing to satisfy)", () => {
+    const csp = "default-src 'self'; img-src *";
+    expect(cspAllowingInlineScript(csp, "x")).toBe(csp);
   });
 });
 

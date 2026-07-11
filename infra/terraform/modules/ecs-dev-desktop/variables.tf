@@ -266,6 +266,45 @@ variable "wake_lambda_memory_mb" {
   default     = 128
 }
 
+variable "wake_lambda_reserved_concurrency" {
+  description = <<-EOT
+    Reserved concurrent executions for the wake Lambda. The wake path is a public,
+    unauthenticated failover origin, so a cold-start flood could otherwise spawn
+    unbounded concurrent invocations all calling ECS DescribeServices/UpdateService —
+    an API shared with workspace lifecycle and the reconciler. A small reservation
+    both caps that blast radius and guarantees the wake path always has capacity.
+    Waking is idempotent (each invocation just lifts desiredCount off zero), so a
+    low ceiling is safe.
+  EOT
+  type        = number
+  default     = 5
+
+  validation {
+    condition     = var.wake_lambda_reserved_concurrency >= 1 && var.wake_lambda_reserved_concurrency <= 100
+    error_message = "wake_lambda_reserved_concurrency must be between 1 and 100 (0 would throttle the wake path entirely)."
+  }
+}
+
+variable "cloudfront_rate_limit" {
+  description = <<-EOT
+    Per-source-IP request ceiling (over WAF's rolling 5-minute window) for the
+    CLOUDFRONT-scope WAFv2 rate-based rule. Requests from an IP above this limit are
+    blocked, capping L7 floods and wake-amplification at the edge before they reach
+    the ALB/control plane. AWS's managed common rule set (signature filtering) does
+    NOT rate-limit, so this is the dedicated volumetric guard. The rate rule is seeded
+    by Terraform at a fixed low priority; the control plane owns higher-priority rules
+    at runtime (see waf-cloudfront.tf).
+  EOT
+  type        = number
+  default     = 2000
+
+  validation {
+    # AWS WAFv2 rate_based_statement accepts a limit of 10 to 2,000,000,000.
+    condition     = var.cloudfront_rate_limit >= 10 && var.cloudfront_rate_limit <= 2000000000
+    error_message = "cloudfront_rate_limit must be between 10 and 2000000000 (AWS WAFv2 rate-based limit range)."
+  }
+}
+
 # ---- SSH ingress (Slice 3) ----
 # Public SSH front door: an NLB + TCP:22 listener + a `*.<ssh_base_domain>` wildcard, so a workspace
 # is reachable as `ssh <principal>@<ws-id>.<ssh_base_domain>` (registered-key dual-trust auth). Gated

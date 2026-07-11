@@ -86,7 +86,28 @@ async function assertWorkspaceHomeLink(editor: Editor, page: Page): Promise<void
   } else if (editor === "monaco") {
     await page.locator("#editor").waitFor({ state: "visible" });
   } else {
-    await page.waitForFunction(() => document.body.innerText.toLowerCase().includes("opencode"));
+    await assertOpencodeMounted(page);
+  }
+}
+
+/**
+ * opencode is a SolidJS SPA mounted into `<div id="root">`; assert the app actually
+ * MOUNTED (root gains children) rather than that some literal string is visible. The old
+ * `innerText.includes("opencode")` check was doubly wrong: opencode renders its brand as
+ * `<title>OpenCode</title>` (mixed case, and not part of body.innerText), so the check
+ * only ever passed by accident — and it masked the real failure where the proxy corrupted
+ * the JS bundle and `#root` stayed empty (blank page). `#root` gaining children is the true
+ * "opencode rendered" signal; the document title is a robust secondary marker.
+ */
+async function assertOpencodeMounted(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () => (document.querySelector("#root")?.childElementCount ?? 0) > 0,
+    undefined,
+    { timeout: 60_000 },
+  );
+  const title = await page.title();
+  if (!title.toLowerCase().includes("opencode")) {
+    throw new Error(`opencode mounted but document.title was unexpectedly "${title}"`);
   }
 }
 
@@ -227,7 +248,7 @@ async function assertRenderedWorkspace(editor: Editor, page: Page): Promise<void
       await assertTerminalWorkflow(page);
       break;
     case "opencode":
-      await page.waitForFunction(() => document.body.innerText.toLowerCase().includes("opencode"));
+      await assertOpencodeMounted(page);
       break;
     case "openvscode":
       await expect(page.locator(".monaco-workbench")).toBeVisible({ timeout: 60_000 });

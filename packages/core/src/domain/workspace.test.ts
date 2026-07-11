@@ -41,6 +41,35 @@ describe("workspace domain (functional core)", () => {
     expect(base.volumeId).toBe("vol-1");
   });
 
+  it("defaults resources to the chosen editor's recommended tier when none given", () => {
+    // `base` has no editor → openvscode → the heavier recommended tier (was 0.5/2).
+    expect(base.editor).toBe("openvscode");
+    expect(base.resources).toMatchObject({ cpuUnits: 1024, memoryMiB: 4096 });
+    // A light editor keeps the small default.
+    const term = provision({
+      id: workspaceId("ws-t"),
+      ownerId: ownerId("alice"),
+      baseImage: baseImage("golden/node:20"),
+      editor: "terminal",
+      volumeId: volumeId("vol-t"),
+      taskId: taskId("task-t"),
+      at: t0,
+    });
+    expect(term.resources).toMatchObject({ cpuUnits: 512, memoryMiB: 2048 });
+    // An explicit resources object still wins over the per-editor default.
+    const pinned = provision({
+      id: workspaceId("ws-p"),
+      ownerId: ownerId("alice"),
+      baseImage: baseImage("golden/node:20"),
+      editor: "openvscode",
+      resources: { cpuUnits: 512, memoryMiB: 2048, volumeGiB: 8 },
+      volumeId: volumeId("vol-p"),
+      taskId: taskId("task-p"),
+      at: t0,
+    });
+    expect(pinned.resources).toMatchObject({ cpuUnits: 512, memoryMiB: 2048 });
+  });
+
   it("stop snapshots and clears runtime bindings", () => {
     const stopped = unwrap(markStopped(base, { id: snapshotId("snap-1"), at: t1 }, t1));
     expect(stopped.state).toBe("stopped");

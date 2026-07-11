@@ -4,6 +4,34 @@
 
 ## Open
 
+- **opencode rendered BLANK in prod — the proxy JS rewrite corrupted the bundle —
+  FIXED in `harden/scale-to-zero-security` (2026-07-11).** `post-deploy-smoke` had
+  been RED for days on the opencode editor. Root-caused live (deployed `e6e84cf`):
+  the opencode page mounted an EMPTY `<div id="root">` and threw one `pageerror:
+Invalid regular expression flags`; `node --check` on the proxy-served
+  `assets/index-*.js` (2.78 MB) reproduced the SAME SyntaxError. Cause: the #225 fix
+  made the CSS `url(` rewrite content-type-aware but left the GENERAL string-path
+  rewrite (`.replace(/(["'])\/(?!\/|w\/)/, "$1/w/<id>/")`) running on the JS bundle.
+  It fired 575× and mangled string/regex literals — e.g. opencode's
+  `.replace(/"/g,"&quot;")` became `.replace(/"/w/<id>/g,…)`, i.e. `/w/` with flags
+  `ws-…` → invalid regex → the whole module aborts → blank page. Fix (proxy):
+  **never rewrite JavaScript** — `responseCanBeRewritten` drops JS so bundles stream
+  byte-for-byte; `rewriteOpencodeResponseBody` rewrites only CSS `url()` and root-
+  absolute HTML **tag attributes** (`<script src>`/`<link href>`). opencode's
+  root-absolute RUNTIME requests are handled by a new injected base-path shim
+  (`buildOpencodeBasePathShim`) that patches fetch/XHR/WebSocket/EventSource/Worker to
+  prefix same-origin absolute URLs with `/w/<id>/`; the shim's `sha256` is added to the
+  response CSP `script-src` (`cspAllowingInlineScript`). The smoke assertion was also
+  brittle (it matched the literal lowercase "opencode", which opencode never renders in
+  `body.innerText` — its brand is `<title>OpenCode</title>`); it now asserts the SPA
+  actually mounted (`#root` gains children) + the document title. Regression tests use
+  the exact prod corruption pattern and a realistic HTML shell. KNOWN RESIDUAL RISK: if
+  opencode ever code-splits and dynamic-`import()`s a root-absolute `/assets/*` chunk,
+  the shim can't intercept the module loader (only fetch/XHR/WS) — the live bundle is a
+  single file today, so this doesn't arise; revisit with an import-map if it does.
+  (An earlier build also failed the smoke on `terminal` at `writeTerminalFile` ~line
+  115 — not reproduced this pass; watch for it.)
+
 - **opencode workspaces rendered blank in prod ('Invalid regular expression
   flags') — FIXED in `feat/control-plane-scale-to-zero` (2026-07-11).** After
   #223/#224 unblocked the OpenVSCode File menu and the Terminal step, the
@@ -1226,6 +1254,30 @@ old STATIC-gate "tokenless behind the gate" framing (see _Resolved (repo)_).
   return 200 with an absent/empty `CodeSigningConfigArn` when a function has no CSC.
   Flip `tests/sim` `enable_cloudfront` back on once fixed. (Do NOT file elsewhere —
   `e6qu/sockerless` only, per §0.10.)
+
+- **AWS sim (informational): scale-to-zero DoS hardening — shapes modelled, SigV4/OAC
+  enforcement is not behaviorally validated (2026-07-11).** The
+  `harden/scale-to-zero-security` branch locked the wake path down: the wake Lambda
+  Function URL moved to `authorization_type = "AWS_IAM"`, a CloudFront Origin Access
+  Control (`origin_access_control_origin_type = "lambda"`, `signing_behavior = "always"`,
+  `signing_protocol = "sigv4"`) signs CloudFront's origin requests to it, and a
+  `lambda:InvokeFunctionUrl` resource policy scopes invocation to the
+  `cloudfront.amazonaws.com` principal + this distribution's ARN. It also seeds a
+  CLOUDFRONT-scope WAFv2 `rate_based_statement` (per-IP block) alongside the managed
+  common rule set, and added `reserved_concurrent_executions` to the wake Lambda. The
+  sim (`sockerless`) models ALL of these SHAPES — proven end-to-end by
+  `tests/sim/adversarial-slice-cloudfront-wake-waf.sh`: it creates a lambda-type OAC,
+  an `AWS_IAM` Function URL, the scoped CloudFront `InvokeFunctionUrl` grant, binds the
+  OAC to the wake origin, and round-trips the rate-based BLOCK rule (limit 2000). What
+  the sim does NOT model is the runtime BEHAVIOR — it does not actually reject an
+  unsigned/anonymous request to the `AWS_IAM` URL, verify CloudFront's SigV4 OAC
+  signature, or enforce the rate limit under load. That authorization/signing-enforcement
+  and WAF-rate-limiting behavior is validated only on the real-AWS tier
+  (`e2e-aws`); the sim + slice cover configuration fidelity. Combined with the
+  `GetFunctionCodeSigningConfig` gap above, the module's CloudFront/wake path still can
+  only be exercised via the CLI slice against the sim, not a full module apply. Not a
+  blocker; recorded so the behavioral coverage boundary is explicit. (Do NOT file
+  elsewhere — `e6qu/sockerless` only, per §0.10.)
 
 - **AWS sim (informational): CloudFront `ListCachePolicies`/`ListOriginRequestPolicies`
   return only `custom` policies, not the AWS-managed ones (2026-07-11).** The sim

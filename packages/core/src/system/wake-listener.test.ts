@@ -69,11 +69,12 @@ describe("renderStartupPage", () => {
 });
 
 describe("decideWakeResponse", () => {
-  it("serves a 200 startup page with no-store, echoing the wake action", () => {
+  it("serves a 200 startup page with no-store for a navigation, echoing the wake action", () => {
     const decision = decideControlPlaneWake({ currentDesired: 0, activeDesired: 2 });
     const res = decideWakeResponse({
       decision,
       page: { statusUrl: STATUS_URL, pollIntervalMs: 3000, title: "Starting EDD…" },
+      isReadinessProbe: false,
     });
     expect(res.statusCode).toBe(WAKE_RESPONSE_STATUS);
     expect(res.statusCode).toBe(200);
@@ -83,11 +84,25 @@ describe("decideWakeResponse", () => {
     expect(res.body).toContain(`var statusUrl = "${STATUS_URL}";`);
   });
 
+  it("answers a READINESS PROBE with 503 (not the 200 page) so the poll keeps waiting", () => {
+    const decision = decideControlPlaneWake({ currentDesired: 0, activeDesired: 2 });
+    const res = decideWakeResponse({
+      decision,
+      page: { statusUrl: STATUS_URL, pollIntervalMs: 3000, title: "Starting EDD…" },
+      isReadinessProbe: true,
+    });
+    expect(res.statusCode).toBe(503);
+    expect(res.headers["content-type"]).toContain("application/json");
+    expect(res.body).not.toContain("<html"); // not the HTML page — the poll must not reload
+    expect(res.headers["cache-control"]).toBe(WAKE_RESPONSE_CACHE_CONTROL);
+  });
+
   it("still serves the page (hold) when the service is already at desired", () => {
     const decision = decideControlPlaneWake({ currentDesired: 2, activeDesired: 2 });
     const res = decideWakeResponse({
       decision,
       page: { statusUrl: STATUS_URL, pollIntervalMs: 3000, title: "Starting EDD…" },
+      isReadinessProbe: false,
     });
     expect(res.statusCode).toBe(200);
     expect(res.headers[WAKE_RESPONSE_ACTION_HEADER]).toBe("hold");

@@ -6,6 +6,15 @@
 #   (B) a Lambda function with a Function URL (the failover origin);
 #   (C) a CLOUDFRONT-scope WAFv2 web ACL + IP set, and attaching the ACL to the
 #       distribution via the distribution's WebACLId.
+# Plus the DoS/cost-amplification hardening (harden/scale-to-zero-security):
+#   - the Function URL is AWS_IAM (not publicly invokable), fronted by a lambda-type
+#     Origin Access Control that SigV4-signs CloudFront's origin requests, and a
+#     CloudFront-scoped lambda:InvokeFunctionUrl grant;
+#   - the wake Lambda carries a bounded reserved-concurrency ceiling;
+#   - the CLOUDFRONT WAF seeds a per-IP rate_based_statement BLOCK rule (limit 2000)
+#     alongside the managed common rule set — evaluated at the edge on the VIEWER
+#     request, BEFORE origin-group failover, so a blocked flood never invokes the wake
+#     Lambda (no per-invoke/GB-s cost, no ECS-API pressure).
 # These are the shapes cloudfront.tf / waf-cloudfront.tf create. Endpoint-only:
 # targets AWS_ENDPOINT_URL from the environment (sockerless sim or real AWS).
 #
@@ -53,11 +62,16 @@ dist_id=""
 dist_etag=""
 acl_id=""
 ipset_id=""
+oac_id=""
 
 cleanup() {
   if [ -n "${dist_id:-}" ]; then
     # Disable then delete requires the ETag dance; best-effort teardown only.
     aws_use1 cloudfront delete-distribution --id "$dist_id" --if-match "${dist_etag:-}" >/dev/null 2>&1 || true
+  fi
+  if [ -n "${oac_id:-}" ]; then
+    oac_etag=$(aws_use1 cloudfront get-origin-access-control --id "$oac_id" --query 'ETag' --output text 2>/dev/null || true)
+    aws_use1 cloudfront delete-origin-access-control --id "$oac_id" --if-match "${oac_etag:-}" >/dev/null 2>&1 || true
   fi
   if [ -n "${fn_created:-}" ]; then
     aws lambda delete-function --function-name "$fn_name" >/dev/null 2>&1 || true
@@ -95,14 +109,39 @@ else
   fn_created=1
   pass "Created Lambda ${fn_name}"
 
+  # AWS_IAM (not NONE): the module locks the Function URL to IAM so only CloudFront —
+  # via OAC SigV4 signing + a scoped invoke permission — can reach it, keeping the
+  # wake path behind CloudFront + the CLOUDFRONT WAF.
   fn_url=$(aws lambda create-function-url-config \
     --function-name "$fn_name" \
-    --auth-type NONE \
+    --auth-type AWS_IAM \
     --query 'FunctionUrl' --output text)
   if [ -z "$fn_url" ] || [ "$fn_url" = "None" ]; then
     fail "CreateFunctionUrlConfig did not return a URL"
   fi
-  pass "Function URL: ${fn_url}"
+  # (b) The Function URL must NOT be publicly invokable: AWS_IAM means every caller
+  # must present SigV4 creds. Combined with the scoped CloudFront InvokeFunctionUrl
+  # grant added after the distribution exists, only CloudFront (post-WAF) can invoke
+  # it — closing the direct-invoke cost hole that auth NONE would open.
+  got_auth=$(aws lambda get-function-url-config --function-name "$fn_name" \
+    --query 'AuthType' --output text)
+  [ "$got_auth" = "AWS_IAM" ] || fail "Function URL auth type is ${got_auth}, expected AWS_IAM (auth NONE is a direct-invoke cost hole)"
+  pass "Function URL is AWS_IAM (not publicly invokable): ${fn_url}"
+
+  # (a) Bound the wake Lambda's concurrency so a CloudFront-failover flood can't fan
+  # out into unbounded concurrent invocations (billed per-invoke + GB-s) or hammer the
+  # ECS DescribeServices/UpdateService APIs. Prove the reserved-concurrency ceiling
+  # sticks — the module sets var.wake_lambda_reserved_concurrency (default 5).
+  wake_reserved=5
+  aws lambda put-function-concurrency \
+    --function-name "$fn_name" \
+    --reserved-concurrent-executions "$wake_reserved" >/dev/null ||
+    fail "PutFunctionConcurrency rejected the reserved-concurrency ceiling"
+  got_reserved=$(aws lambda get-function-concurrency --function-name "$fn_name" \
+    --query 'ReservedConcurrentExecutions' --output text)
+  [ "$got_reserved" = "$wake_reserved" ] ||
+    fail "Reserved concurrency did not round-trip (got ${got_reserved}, expected ${wake_reserved})"
+  pass "Wake Lambda reserved concurrency bounded at ${wake_reserved} (cost + ECS-API ceiling)"
   # Strip scheme + trailing slash to the bare host, exactly as the module does.
   wake_origin_domain=$(printf '%s' "$fn_url" | sed -e 's#^https://##' -e 's#/$##')
 fi
@@ -115,10 +154,33 @@ waf_ok=0
 if ! aws_use1 wafv2 list-web-acls --scope CLOUDFRONT >/dev/null 2>&1; then
   skip "WAFv2 CLOUDFRONT scope not available on this target"
 else
+  # Seed the SAME baseline rule band the module creates: the AWS common managed rule
+  # set at priority 0 and a per-IP rate-based BLOCK rule at priority 1. The managed
+  # common rule set is signature filtering only — the rate-based rule is the dedicated
+  # volumetric guard that caps L7 floods + wake-amplification at the edge.
+  cat >"${work}/waf-rules.json" <<'JSON'
+[
+  {
+    "Name": "aws-common-rule-set",
+    "Priority": 0,
+    "OverrideAction": { "None": {} },
+    "Statement": { "ManagedRuleGroupStatement": { "VendorName": "AWS", "Name": "AWSManagedRulesCommonRuleSet" } },
+    "VisibilityConfig": { "SampledRequestsEnabled": true, "CloudWatchMetricsEnabled": true, "MetricName": "edd-probe-common" }
+  },
+  {
+    "Name": "rate-limit-per-ip",
+    "Priority": 1,
+    "Action": { "Block": {} },
+    "Statement": { "RateBasedStatement": { "Limit": 2000, "AggregateKeyType": "IP" } },
+    "VisibilityConfig": { "SampledRequestsEnabled": true, "CloudWatchMetricsEnabled": true, "MetricName": "edd-probe-rate-limit" }
+  }
+]
+JSON
   acl_out=$(aws_use1 wafv2 create-web-acl \
     --name "$acl_name" \
     --scope CLOUDFRONT \
     --default-action Allow={} \
+    --rules "file://${work}/waf-rules.json" \
     --visibility-config "SampledRequestsEnabled=true,CloudWatchMetricsEnabled=true,MetricName=${acl_name}" \
     --output json)
   acl_id=$(printf '%s' "$acl_out" | python3 -c 'import sys,json; print(json.load(sys.stdin)["Summary"]["Id"])')
@@ -128,6 +190,16 @@ else
     *:global/webacl/*) pass "CLOUDFRONT web ACL ARN is global-scoped: ${acl_arn}" ;;
     *) fail "Expected a :global/webacl/ ARN, got: ${acl_arn}" ;;
   esac
+
+  # Prove the rate-based BLOCK rule round-trips with its limit intact.
+  rate_limit=$(aws_use1 wafv2 get-web-acl --name "$acl_name" --scope CLOUDFRONT --id "$acl_id" \
+    --query "WebACL.Rules[?Name=='rate-limit-per-ip'].Statement.RateBasedStatement.Limit | [0]" \
+    --output text)
+  [ "$rate_limit" = "2000" ] || fail "Rate-based rule limit did not round-trip (got ${rate_limit})"
+  rate_action=$(aws_use1 wafv2 get-web-acl --name "$acl_name" --scope CLOUDFRONT --id "$acl_id" \
+    --query "WebACL.Rules[?Name=='rate-limit-per-ip'].Action.Block | [0]" --output json)
+  [ "$rate_action" != "null" ] || fail "Rate-based rule is not a Block action"
+  pass "CLOUDFRONT web ACL seeds common rule set + per-IP rate-based BLOCK (limit 2000)"
 
   ipset_out=$(aws_use1 wafv2 create-ip-set \
     --name "$ipset_name" \
@@ -163,6 +235,17 @@ if ! aws_use1 cloudfront list-distributions >/dev/null 2>&1; then
   exit 0
 fi
 
+# Origin Access Control for the wake origin: CloudFront SigV4-signs origin requests to
+# the AWS_IAM Function URL so it accepts them (origin_type "lambda", signing always).
+oac_id=$(aws_use1 cloudfront create-origin-access-control \
+  --origin-access-control-config "Name=edd-wake-oac-${suffix},Description=edd wake OAC probe,SigningProtocol=sigv4,SigningBehavior=always,OriginAccessControlOriginType=lambda" \
+  --query 'OriginAccessControl.Id' --output text)
+[ -n "$oac_id" ] && [ "$oac_id" != "None" ] || fail "CreateOriginAccessControl (lambda) did not return an Id"
+got_oac_type=$(aws_use1 cloudfront get-origin-access-control --id "$oac_id" \
+  --query 'OriginAccessControl.OriginAccessControlConfig.OriginAccessControlOriginType' --output text)
+[ "$got_oac_type" = "lambda" ] || fail "OAC origin type is ${got_oac_type}, expected lambda"
+pass "Created lambda-type OAC ${oac_id} (sigv4, signing always)"
+
 cat >"${work}/dist.json" <<JSON
 {
   "CallerReference": "edd-cf-probe-${suffix}",
@@ -184,6 +267,7 @@ cat >"${work}/dist.json" <<JSON
       {
         "Id": "wake-lambda",
         "DomainName": "${wake_origin_domain}",
+        "OriginAccessControlId": "${oac_id}",
         "CustomOriginConfig": {
           "HTTPPort": 80, "HTTPSPort": 443,
           "OriginProtocolPolicy": "https-only",
@@ -222,8 +306,36 @@ JSON
 create_out=$(aws_use1 cloudfront create-distribution \
   --distribution-config "file://${work}/dist.json" --output json) || fail "CreateDistribution rejected"
 dist_id=$(printf '%s' "$create_out" | python3 -c 'import sys,json; print(json.load(sys.stdin)["Distribution"]["Id"])')
+dist_arn=$(printf '%s' "$create_out" | python3 -c 'import sys,json; print(json.load(sys.stdin)["Distribution"]["ARN"])')
 [ -n "$dist_id" ] || fail "CreateDistribution did not return an Id"
 pass "Created distribution ${dist_id}"
+
+echo "=== CloudFront: read back the wake origin's OAC binding ==="
+got_origin_oac=$(aws_use1 cloudfront get-distribution --id "$dist_id" \
+  --query "Distribution.DistributionConfig.Origins.Items[?Id=='wake-lambda'].OriginAccessControlId | [0]" \
+  --output text)
+[ "$got_origin_oac" = "$oac_id" ] || fail "wake origin OAC id is ${got_origin_oac}, expected ${oac_id}"
+pass "Wake origin is bound to the lambda OAC ${oac_id} (CloudFront signs origin requests)"
+
+# The module grants ONLY the CloudFront service principal, scoped to THIS distribution,
+# lambda:InvokeFunctionUrl — so only CloudFront (after WAF) can invoke the AWS_IAM URL.
+if [ -n "${fn_created:-}" ] && [ -n "${dist_arn:-}" ]; then
+  echo "=== Lambda: grant CloudFront (scoped to this distribution) InvokeFunctionUrl ==="
+  aws lambda add-permission \
+    --function-name "$fn_name" \
+    --statement-id AllowCloudFrontInvokeFunctionUrl \
+    --action lambda:InvokeFunctionUrl \
+    --principal cloudfront.amazonaws.com \
+    --source-arn "$dist_arn" \
+    --function-url-auth-type AWS_IAM >/dev/null || fail "AddPermission (CloudFront InvokeFunctionUrl) rejected"
+  got_policy=$(aws lambda get-policy --function-name "$fn_name" --query 'Policy' --output text)
+  case "$got_policy" in
+    *cloudfront.amazonaws.com*InvokeFunctionUrl* | *InvokeFunctionUrl*cloudfront.amazonaws.com*)
+      pass "Resource policy allows cloudfront.amazonaws.com lambda:InvokeFunctionUrl scoped to the distribution"
+      ;;
+    *) fail "Function policy missing the scoped CloudFront InvokeFunctionUrl grant" ;;
+  esac
+fi
 
 echo "=== CloudFront: read back the origin group + failover criteria ==="
 get_out=$(aws_use1 cloudfront get-distribution --id "$dist_id" --output json)

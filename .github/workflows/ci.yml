@@ -835,14 +835,20 @@ jobs:
               --query 'length(services[0].networkConfiguration.awsvpcConfiguration.securityGroups)' --output text)"
 
           # -- AppAutoScaling -----------------------------------------------------
+          # The control-plane service is registered as a scalable target (min=0, max)
+          # but carries NO scaling policy: the reconciler (idle shutdown) + wake Lambda
+          # (scale-from-zero) are the sole authority over desiredCount, so a CPU
+          # target-tracking policy (which can neither scale to/from 0 nor coexist with
+          # them) was removed. Assert the target + its scale-to-zero bounds, and that
+          # no scaling policy exists.
           assert_eq "AppAutoScaling target registered" "1" \
             "$(aws --endpoint-url "${ENDPT}" application-autoscaling describe-scalable-targets \
               --service-namespace ecs \
               --query 'length(ScalableTargets)' --output text)"
-          assert_eq "AppAutoScaling policy TargetTrackingScaling" "TargetTrackingScaling" \
+          assert_eq "AppAutoScaling has no scaling policy (reconciler/wake own desiredCount)" "0" \
             "$(aws --endpoint-url "${ENDPT}" application-autoscaling describe-scaling-policies \
               --service-namespace ecs \
-              --query 'ScalingPolicies[0].PolicyType' --output text)"
+              --query 'length(ScalingPolicies)' --output text)"
           # min capacity is 0: the control plane scales to zero when idle (the wake
           # Lambda + reconciler idle-shutdown drive desiredCount between 0 and the
           # active count). control_plane_min_count defaults to 0.
@@ -854,11 +860,6 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" application-autoscaling describe-scalable-targets \
               --service-namespace ecs \
               --query 'ScalableTargets[0].MaxCapacity' --output text)"
-          assert_eq "AppAutoScaling CPU target value 60" "60" \
-            "$(aws --endpoint-url "${ENDPT}" application-autoscaling describe-scaling-policies \
-              --service-namespace ecs \
-              --query 'ScalingPolicies[0].TargetTrackingScalingPolicyConfiguration.TargetValue' \
-              --output text)"
 
           # -- EventBridge Scheduler ----------------------------------------------
           assert_eq "Scheduler reconciler ENABLED" "ENABLED" \

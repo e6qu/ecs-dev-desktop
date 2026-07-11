@@ -51,12 +51,23 @@ export const WAF_WEB_ACL_NAME_ENV = "EDD_WAF_WEB_ACL_NAME";
 export const WAF_IP_SET_ID_ENV = "EDD_WAF_IP_SET_ID";
 export const WAF_IP_SET_NAME_ENV = "EDD_WAF_IP_SET_NAME";
 
+/**
+ * Shared name/metric prefix for every rule THIS applier owns. It is load-bearing:
+ * `materializeWebAcl` preserves every rule on the Web ACL that does NOT start with it
+ * (the Terraform-provisioned baseline — managed CommonRuleSet, rate limits, admin IPSet)
+ * and replaces only the rules that do. Renaming it would orphan the previous EDD rules.
+ */
+const EDD_RULE_PREFIX = "EddTraffic";
+
 /** Per-rule metric/name stems (WAFv2 requires alphanumeric metric names). */
 const RULE_META: Record<CompiledRule["kind"], { name: string; metric: string }> = {
-  ip: { name: "EddTrafficIp", metric: "EddTrafficIp" },
-  geo: { name: "EddTrafficGeo", metric: "EddTrafficGeo" },
-  asn: { name: "EddTrafficAsn", metric: "EddTrafficAsn" },
-  "managed-anonymous": { name: "EddTrafficAnonymous", metric: "EddTrafficAnonymous" },
+  ip: { name: `${EDD_RULE_PREFIX}Ip`, metric: `${EDD_RULE_PREFIX}Ip` },
+  geo: { name: `${EDD_RULE_PREFIX}Geo`, metric: `${EDD_RULE_PREFIX}Geo` },
+  asn: { name: `${EDD_RULE_PREFIX}Asn`, metric: `${EDD_RULE_PREFIX}Asn` },
+  "managed-anonymous": {
+    name: `${EDD_RULE_PREFIX}Anonymous`,
+    metric: `${EDD_RULE_PREFIX}Anonymous`,
+  },
 };
 
 interface WafCoordinates {
@@ -111,6 +122,13 @@ export class RealWafApplier implements WafApplier {
 
   async apply(compiled: CompiledTrafficFilter): Promise<void> {
     const coords = this.coordinates();
+
+    // WAFv2 has no transaction across IPSet + Web ACL, so this is two calls. The IPSet
+    // is written FIRST, then the Web ACL: the IPSet's ARN is stable (only its addresses
+    // change), so a Web-ACL rule referencing it is valid whether the addresses updated or
+    // not, and a failure between the two throws (surfaced + recorded as WafApplyError by
+    // the caller). A re-apply is fully idempotent — it converges both to the same policy —
+    // so the recovery is simply to apply again; there is no partial rule set left behind.
 
     // 1) Materialize the IPSet: the ip rule's CIDRs become the IPSet addresses (or []
     //    when the policy has no ip rule — clearing any stale addresses). Capture the
@@ -170,7 +188,24 @@ export class RealWafApplier implements WafApplier {
     if (lockToken === undefined) throw new Error("WAFv2 GetWebACL returned no LockToken");
     if (visibility === undefined) throw new Error("WAFv2 GetWebACL returned no VisibilityConfig");
 
-    const rules = compiled.rules.map((rule, index) => toWafRule(rule, index, ipSetArn));
+    // Preserve the Terraform-provisioned baseline (managed CommonRuleSet, rate-based
+    // limits, admin IPSet, …): keep every existing rule that this applier does NOT own,
+    // and replace only the EDD-prefixed ones. Overwriting with just the compiled rules
+    // would strip those managed protections until the next `terraform apply` re-added
+    // them — a security regression on every filter save.
+    const baseline = (current.WebACL?.Rules ?? []).filter(
+      (r) => !r.Name?.startsWith(EDD_RULE_PREFIX),
+    );
+    // EDD rules evaluate AFTER the baseline (higher priority numbers) so a request from
+    // an allow-listed source still passes through the managed protections first — a WAF
+    // `Allow` terminates evaluation, so if the allowlist ran first it would exempt those
+    // sources from the CommonRuleSet. Baseline priorities are unknown, so slot the EDD
+    // band above the current max (unique priorities are required across the ACL).
+    const maxBaselinePriority = baseline.reduce((max, r) => Math.max(max, r.Priority ?? 0), -1);
+    const eddBasePriority = maxBaselinePriority + 1;
+    const eddRules = compiled.rules.map((rule, index) =>
+      toWafRule(rule, eddBasePriority + index, ipSetArn),
+    );
     const defaultAction: DefaultAction =
       compiled.defaultAction === "allow" ? { Allow: {} } : { Block: {} };
 
@@ -180,7 +215,7 @@ export class RealWafApplier implements WafApplier {
         Scope: WAF_SCOPE,
         Id: coords.webAclId,
         DefaultAction: defaultAction,
-        Rules: rules,
+        Rules: [...baseline, ...eddRules],
         VisibilityConfig: visibility,
         LockToken: lockToken,
       }),

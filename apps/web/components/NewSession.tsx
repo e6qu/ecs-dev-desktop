@@ -11,6 +11,7 @@ import {
   type WorkspaceMemoryMiBDto,
   type WorkspaceVolumeGiBDto,
 } from "@edd/api-contracts";
+import { defaultResourcesForEditor } from "@edd/core/domain/workspace-resources";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
@@ -127,8 +128,13 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
   const [mode, setMode] = useState<StartMode>("blank");
   // Per-session interface; defaults to OpenVSCode (every curated image's default).
   const [editor, setEditor] = useState<"" | EditorKindDto>("openvscode");
+  // CPU/RAM are pre-selected from the chosen editor's recommended tier (heavy editors
+  // like OpenVSCode/opencode default higher than the old flat 0.5 vCPU / 2 GiB). The
+  // initial values are set by the editor effect below; `resourcesTouched` tracks a manual
+  // override so re-recommending on an editor change never clobbers a deliberate choice.
   const [cpuUnits, setCpuUnits] = useState<WorkspaceCpuUnitsDto>(512);
   const [memoryMiB, setMemoryMiB] = useState<WorkspaceMemoryMiBDto>(2048);
+  const [resourcesTouched, setResourcesTouched] = useState(false);
   const [volumeGiB, setVolumeGiB] = useState<WorkspaceVolumeGiBDto>(8);
   const [snapshotIntervalMinutes, setSnapshotIntervalMinutes] = useState(
     String(DEFAULT_SNAPSHOT_INTERVAL_MINUTES),
@@ -155,6 +161,17 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
   const [ns, setNs] = useState("");
   const [repoName, setRepoName] = useState("");
   const [isPrivate, setIsPrivate] = useState(true);
+
+  // Pre-select the recommended CPU/RAM for the chosen editor. Runs on mount (openvscode →
+  // 1 vCPU / 4 GiB) and whenever the editor changes; the editor <select> clears
+  // `resourcesTouched` on change so this re-recommends, while a manual CPU/RAM edit sets it
+  // so the user's choice is never clobbered mid-selection.
+  useEffect(() => {
+    if (resourcesTouched) return;
+    const rec = defaultResourcesForEditor(editor === "" ? "openvscode" : editor);
+    setCpuUnits(rec.cpuUnits);
+    setMemoryMiB(rec.memoryMiB);
+  }, [editor, resourcesTouched]);
 
   useEffect(() => {
     void (async () => {
@@ -583,6 +600,8 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
           value={editor}
           onChange={(e) => {
             setEditor(editorKind.parse(e.target.value));
+            // Re-recommend CPU/RAM for the newly chosen editor (clears any prior override).
+            setResourcesTouched(false);
           }}
           style={{ alignSelf: "flex-start" }}
         >
@@ -604,6 +623,7 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
               value={cpuUnits}
               onChange={(e) => {
                 const next = Number(e.target.value) as WorkspaceCpuUnitsDto;
+                setResourcesTouched(true);
                 setCpuUnits(next);
                 if (!memoryFitsCpu(next, memoryMiB)) {
                   const first = MEMORY_OPTIONS.find((opt) => memoryFitsCpu(next, opt.value));
@@ -627,6 +647,7 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
               aria-label="workspace RAM"
               value={memoryMiB}
               onChange={(e) => {
+                setResourcesTouched(true);
                 setMemoryMiB(Number(e.target.value) as WorkspaceMemoryMiBDto);
               }}
             >
@@ -660,6 +681,23 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
               ))}
             </select>
           </label>
+        </div>
+        <div
+          className="mono"
+          data-testid={TESTID.sessionResourceHint}
+          style={{ color: "var(--dim)", fontSize: 12, alignSelf: "flex-start" }}
+        >
+          {(() => {
+            const rec = defaultResourcesForEditor(editor === "" ? "openvscode" : editor);
+            const fmt = (r: { cpuUnits: number; memoryMiB: number }): string =>
+              `${(r.cpuUnits / 1024).toString()} vCPU / ${(r.memoryMiB / 1024).toString()} GiB`;
+            const atRec = cpuUnits === rec.cpuUnits && memoryMiB === rec.memoryMiB;
+            return atRec
+              ? `Recommended for ${editor === "" ? "openvscode" : editor}: ${fmt(rec)}`
+              : `Using ${fmt({ cpuUnits, memoryMiB })} — recommended for ${
+                  editor === "" ? "openvscode" : editor
+                } is ${fmt(rec)}`;
+          })()}
         </div>
         <label className="stack" style={{ gap: 6, alignSelf: "flex-start" }}>
           <span className="mono" style={{ color: "var(--dim)", fontSize: 12 }}>

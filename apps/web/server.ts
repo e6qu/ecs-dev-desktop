@@ -20,6 +20,7 @@ import { getControlPlane } from "./lib/control-plane";
 import { startImageSourceReconcileSweep } from "./lib/image-source-reconcile-sweep";
 import { log } from "./lib/logger";
 import { NO_PUBLISHER_CODE, spectateRelay } from "./lib/spectate-relay";
+import { recordSystemActivity } from "./lib/system-activity";
 import { PRESENCE_SWEEP_MS, sweepPresence, workspacePresence } from "./lib/workspace-presence";
 import {
   authorizeSpectate,
@@ -239,3 +240,14 @@ startImageSourceReconcileSweep();
 
 server.listen(port, bindHost);
 process.stdout.write(`edd control plane listening on http://${bindHost}:${String(port)}\n`);
+
+// Boot/wake activity stamp. Control-plane scale-to-zero wakes this service by scaling
+// its ECS desired count up; the reconciler's idle sweep reads the PERSISTED activity
+// record, which still holds the stale timestamp from before the service slept. Without
+// a fresh stamp the sweep would see "idle for >threshold" the instant we boot and scale
+// us straight back to zero — killing the wake before the user's page ever loads (thrash).
+// Stamping once on boot gives every freshly-started replica a full idle window, which is
+// exactly the invariant `decideControlPlaneIdle` documents ("a freshly-woken control
+// plane stamps its activity on wake"). Fire-and-forget: it logs its own errors and must
+// never crash startup.
+void recordSystemActivity();

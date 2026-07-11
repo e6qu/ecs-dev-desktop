@@ -42,6 +42,18 @@ export const WAKE_RESPONSE_CACHE_CONTROL = "no-store, must-revalidate";
 /** Response header carrying the wake decision's action, for observability. */
 export const WAKE_RESPONSE_ACTION_HEADER = "x-edd-wake-action";
 
+/**
+ * HTTP status the wake listener returns for a READINESS-PROBE request (the
+ * startup page polling `/api/readyz` through CloudFront, which fails over to the
+ * wake Lambda while the control plane is still at zero / cold-starting). It MUST
+ * be non-2xx so the poll's `res.ok` stays false and the page keeps waiting — if
+ * the wake Lambda answered readiness with 200 (like the navigation page), the
+ * page would reload immediately, in a tight loop, long before the control plane
+ * is actually healthy. Once the ALB has a healthy target, readyz is served by the
+ * real control plane (200) and the poll reloads for real.
+ */
+export const WAKE_READINESS_STATUS = 503;
+
 /** Inputs to {@link renderStartupPage}. */
 export interface StartupPageConfig {
   /** The readiness coordinate the page polls (e.g. the control plane's `/api/readyz`). */
@@ -180,6 +192,14 @@ export interface WakeResponseInput {
   readonly decision: ControlPlaneScaleDecision;
   /** The startup page to render into the body. */
   readonly page: StartupPageConfig;
+  /**
+   * Whether the request being answered is the startup page's READINESS PROBE
+   * (its path matches the polled status coordinate) rather than a browser
+   * navigation. A readiness probe reaching the wake listener means the control
+   * plane is NOT yet up (else the ALB would have served it), so it is answered
+   * `503` — keeping the poll waiting — instead of the 200 HTML page.
+   */
+  readonly isReadinessProbe: boolean;
 }
 
 /**
@@ -198,6 +218,20 @@ export interface WakeResponseInput {
  * The wake decision's action is echoed in a response header for observability.
  */
 export function decideWakeResponse(input: WakeResponseInput): WakeHttpResponse {
+  // A readiness probe that reached the wake listener means the control plane is
+  // still down: answer 503 (a tiny JSON body, NOT the HTML page) so the startup
+  // page's `res.ok` stays false and it keeps polling instead of reload-looping.
+  if (input.isReadinessProbe) {
+    return {
+      statusCode: WAKE_READINESS_STATUS,
+      headers: {
+        "content-type": "application/json; charset=utf-8",
+        "cache-control": WAKE_RESPONSE_CACHE_CONTROL,
+        [WAKE_RESPONSE_ACTION_HEADER]: input.decision.action,
+      },
+      body: '{"ready":false,"reason":"control-plane waking"}',
+    };
+  }
   const body = renderStartupPage(input.page);
   return {
     statusCode: WAKE_RESPONSE_STATUS,

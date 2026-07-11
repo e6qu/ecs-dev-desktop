@@ -26,6 +26,27 @@ describe("validateTrafficFilterPolicy", () => {
     });
     expect(issues.map((i) => i.field).sort()).toEqual(["asns", "cidrs", "countries", "presets"]);
   });
+
+  it("rejects a malformed IPv4 octet (>255) that a loose regex would accept", () => {
+    const issues = validateTrafficFilterPolicy({ ...base, cidrs: ["999.0.0.0/8"] });
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ field: "cidrs" });
+  });
+
+  it("rejects an IPv6 CIDR with a specific reason (single-family IPv4 IPSet)", () => {
+    const issues = validateTrafficFilterPolicy({ ...base, cidrs: ["2001:db8::/32"] });
+    expect(issues).toHaveLength(1);
+    expect(issues[0]?.reason).toMatch(/IPv6/);
+  });
+
+  it("rejects an allow-mode policy that admits nothing (would block ALL traffic)", () => {
+    const issues = validateTrafficFilterPolicy({ ...base, mode: "allow" });
+    expect(issues.map((i) => i.field)).toContain("mode");
+  });
+
+  it("accepts an allow-mode policy once it admits at least one source", () => {
+    expect(validateTrafficFilterPolicy({ ...base, mode: "allow", countries: ["US"] })).toEqual([]);
+  });
 });
 
 describe("effectiveAsns", () => {
@@ -74,6 +95,8 @@ describe("compileTrafficFilter", () => {
   });
 
   it("throws on an invalid policy rather than applying a partial WAF config", () => {
-    expect(() => compileTrafficFilter({ ...base, cidrs: ["bad"] })).toThrow(/invalid traffic-filter/);
+    expect(() => compileTrafficFilter({ ...base, cidrs: ["bad"] })).toThrow(
+      /invalid traffic-filter/,
+    );
   });
 });

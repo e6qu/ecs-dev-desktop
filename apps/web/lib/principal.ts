@@ -142,5 +142,9 @@ export async function getPagePrincipal(): Promise<Principal | null> {
     ? devPrincipal(store.get(DEV_USER_COOKIE)?.value, store.get(DEV_ROLE_COOKIE)?.value)
     : principalFromSession(await (await import("../auth")).auth());
   if (principal === null) return null;
+  // A rendered page view is live use of the control plane — stamp activity so
+  // scale-to-zero doesn't tear the app down under an active operator. Same
+  // fire-and-forget + throttled contract as {@link getPrincipal}.
+  void recordSystemActivity();
   return withPersona(principal, store.get(PERSONA_COOKIE)?.value);
 }

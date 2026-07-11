@@ -7,7 +7,8 @@
     ".": "./src/index.ts",
     "./storage/storage-provider-contract": "./src/storage/storage-provider-contract.ts",
     "./compute/compute-provider-contract": "./src/compute/compute-provider-contract.ts",
-    "./system/traffic-filter": "./src/system/traffic-filter.ts"
+    "./system/traffic-filter": "./src/system/traffic-filter.ts",
+    "./domain/workspace-resources": "./src/domain/workspace-resources.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
