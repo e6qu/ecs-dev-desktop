@@ -429,10 +429,14 @@ export type AuditEventEntity = ReturnType<typeof makeAuditEventEntity>;
 export function makeCostRollupEntity(client: DynamoDBClient, table = TABLE) {
   return new Entity(
     {
-      // Version 2 added per-workspace vCPU/RAM/disk sizing. Cost rollups are a
-      // derived cache, so a new entity version cleanly excludes incompatible v1
-      // rows; the reconciler then rebuilds v2 rows from the authoritative ledger.
-      model: { entity: "costRollup", version: "2", service: "edd" },
+      // Version 2 added per-workspace vCPU/RAM/disk sizing. Version 3 changed the
+      // `phase` vocabulary (added the post-teardown `retained` retention phase and
+      // the `unpriced` marker sentinel, and narrowed `terminated` to mean billing
+      // permanently ended at the retention purge) and added `unpricedReason`. Cost
+      // rollups are a derived cache, so a new entity version cleanly excludes
+      // incompatible older rows; the reconciler then rebuilds current rows from
+      // the authoritative ledger.
+      model: { entity: "costRollup", version: "3", service: "edd" },
       attributes: {
         workspaceId: { type: "string", required: true },
         owner: { type: "string", required: true },
@@ -445,6 +449,9 @@ export function makeCostRollupEntity(client: DynamoDBClient, table = TABLE) {
         stoppedMs: { type: "number", required: true },
         teardownMs: { type: "number", required: true, default: 0 },
         phase: { type: "string", required: true },
+        // Present only on `phase: "unpriced"` marker rows: why the workspace could
+        // not be priced at rollup time (surfaced in the report's `unpriced` list).
+        unpricedReason: { type: "string" },
       },
       indexes: {
         primary: {

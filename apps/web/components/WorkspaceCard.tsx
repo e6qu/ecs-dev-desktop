@@ -55,6 +55,7 @@ export function WorkspaceCard({
   index,
   canShare = false,
   canUpdateSettings = false,
+  canMutate = false,
 }: {
   /** A workspace DTO already enriched (catalog image fields + ssh command) by the
    * server / `enrichWorkspace`, so the card is a pure renderer. */
@@ -65,6 +66,11 @@ export function WorkspaceCard({
   canShare?: boolean;
   /** True only when the viewer may PATCH workspace settings for this row. */
   canUpdateSettings?: boolean;
+  /** True only when the viewer may run lifecycle actions (stop/snapshot/delete/
+   * purge) on this row — the caller's `update` ability, mirrored here so a
+   * read-only viewer (e.g. an admin "viewing as viewer") never sees buttons
+   * whose POSTs would just 403. */
+  canMutate?: boolean;
 }) {
   const imageName = ws.imageName ?? ws.baseImage;
   const imageDescription = ws.imageDescription ?? "";
@@ -239,8 +245,8 @@ export function WorkspaceCard({
           </a>
         </div>
       )}
-      <WorkspaceActions id={ws.id} actions={cardActions} />
-      {ws.state === "terminated" && (
+      {canMutate && <WorkspaceActions id={ws.id} actions={cardActions} />}
+      {canMutate && ws.state === "terminated" && (
         <div className="meta-line">
           <PurgeButton id={ws.id} />
         </div>

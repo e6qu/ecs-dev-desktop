@@ -102,6 +102,17 @@ echo "edd: authenticating to ECR $registry"
 aws ecr get-login-password --region "$region" |
   docker login --username AWS --password-stdin "$registry"
 
+# The ECR repos are IMMUTABLE: pushing an already-published tag fails the whole
+# run. Return 0 when <repo-short>:<tag> already exists so callers can skip the
+# build/push for that tag (idempotent re-runs after partial failures).
+ecr_tag_exists() { # <repo-short> <tag>
+  aws ecr describe-images \
+    --region "$region" \
+    --repository-name "${prefix}/$1" \
+    --image-ids "imageTag=$2" \
+    >/dev/null 2>&1
+}
+
 # Run `docker buildx build` for a single architecture. In load mode the image is
 # imported into the local daemon and pushed by the caller. In push mode BuildKit
 # pushes directly to the registry so large images never have to be imported into
@@ -147,6 +158,10 @@ build_push_arch() { # <repo-short> <dockerfile> <context> [extras...]
   shift 3
   for arch in $archs; do
     full="${registry}/${prefix}/${target}:${tag}-${arch}"
+    if ecr_tag_exists "$target" "${tag}-${arch}"; then
+      echo "edd: ${full} already published, skipping"
+      continue
+    fi
     echo "edd: building ${full}"
     buildx_build "$arch" "$full" "$dockerfile" "$ctx" "$@"
     push_loaded_image "$full"
@@ -160,19 +175,27 @@ build_golden_arch() { # <arch>
   arch="$1"
   base_full="${registry}/${prefix}/edd-base:${tag}-${arch}"
 
-  echo "edd: building golden base ${base_full}"
-  set -- --platform "linux/${arch}" "--${buildx_output}"
-  if [ "${EDD_BUILDX_CACHE:-}" = "gha" ]; then
-    scope=$(printf '%s' "$base_full" | tr '/:' '--')
-    set -- "$@" \
-      --cache-from "type=gha,scope=${scope}" \
-      --cache-to "type=gha,scope=${scope},mode=max"
+  if ecr_tag_exists edd-base "${tag}-${arch}"; then
+    echo "edd: ${base_full} already published, skipping"
+  else
+    echo "edd: building golden base ${base_full}"
+    set -- --platform "linux/${arch}" "--${buildx_output}"
+    if [ "${EDD_BUILDX_CACHE:-}" = "gha" ]; then
+      scope=$(printf '%s' "$base_full" | tr '/:' '--')
+      set -- "$@" \
+        --cache-from "type=gha,scope=${scope}" \
+        --cache-to "type=gha,scope=${scope},mode=max"
+    fi
+    sh "$repo/infra/images/base/build.sh" "$base_full" "$@"
+    push_loaded_image "$base_full"
   fi
-  sh "$repo/infra/images/base/build.sh" "$base_full" "$@"
-  push_loaded_image "$base_full"
 
   for v in $variants; do
     variant_full="${registry}/${prefix}/golden/${v}:${tag}-${arch}"
+    if ecr_tag_exists "golden/${v}" "${tag}-${arch}"; then
+      echo "edd: ${variant_full} already published, skipping"
+      continue
+    fi
     echo "edd: building golden variant '$v' (${arch}) FROM ${base_full}"
     buildx_build "$arch" "$variant_full" "$repo/infra/images/${v}/Dockerfile" \
       "$repo/infra/images/${v}" --build-arg "BASE=${base_full}"
@@ -185,6 +208,10 @@ build_golden_arch() { # <arch>
 push_manifest() { # <repo-short>
   target="$1"
   manifest="${registry}/${prefix}/${target}:${tag}"
+  if ecr_tag_exists "$target" "$tag"; then
+    echo "edd: ${manifest} already published, skipping"
+    return 0
+  fi
   echo "edd: creating manifest ${manifest}"
 
   set --

@@ -73,14 +73,92 @@ describe("deriveBillingIntervals", () => {
     expect(intervals.terminated).toBe(false);
   });
 
-  it("ends all billing at teardown completion (session.terminated)", () => {
+  it("bills the retained snapshot from teardown completion (session.terminated) until now", () => {
+    // Teardown completion releases the volume but KEEPS the retained snapshot for
+    // the undelete-retention window — snapshot GB-month accrues (as stopped time)
+    // until session.purged/undelete, not $0 the moment teardown ends.
     const intervals = deriveBillingIntervals(
       [evt("session.create", 0), evt("session.delete", 1), evt("session.terminated", 2)],
       at(10),
     );
     expect(intervals.running).toEqual([{ fromMs: T0, toMs: T0 + HOUR }]);
     expect(intervals.teardown).toEqual([{ fromMs: T0 + HOUR, toMs: T0 + 2 * HOUR }]);
+    expect(intervals.stopped).toEqual([{ fromMs: T0 + 2 * HOUR, toMs: T0 + 10 * HOUR }]);
     expect(intervals.terminated).toBe(true);
+  });
+
+  it("ends all billing at the retention purge (session.purged)", () => {
+    const intervals = deriveBillingIntervals(
+      [
+        evt("session.create", 0),
+        evt("session.delete", 1),
+        evt("session.terminated", 2),
+        evt("session.purged", 3),
+      ],
+      at(10),
+    );
+    expect(intervals.running).toEqual([{ fromMs: T0, toMs: T0 + HOUR }]);
+    expect(intervals.teardown).toEqual([{ fromMs: T0 + HOUR, toMs: T0 + 2 * HOUR }]);
+    // Retention snapshot billed only until the purge removed it.
+    expect(intervals.stopped).toEqual([{ fromMs: T0 + 2 * HOUR, toMs: T0 + 3 * HOUR }]);
+    expect(intervals.terminated).toBe(true);
+  });
+
+  it("resumes billing after session.undelete (retention → stopped → wake)", () => {
+    // A real production flow: delete → terminated → undelete (within retention) →
+    // start. The old model broke the walk permanently at session.terminated, so
+    // every post-undelete run was billed $0 forever.
+    const intervals = deriveBillingIntervals(
+      [
+        evt("session.create", 0),
+        evt("session.delete", 1),
+        evt("session.terminated", 2),
+        evt("session.undelete", 3),
+        evt("session.start", 4),
+      ],
+      at(6),
+    );
+    expect(intervals.running).toEqual([
+      { fromMs: T0, toMs: T0 + HOUR },
+      { fromMs: T0 + 4 * HOUR, toMs: T0 + 6 * HOUR }, // post-undelete compute IS billed
+    ]);
+    expect(intervals.teardown).toEqual([{ fromMs: T0 + HOUR, toMs: T0 + 2 * HOUR }]);
+    // Retention (2h→3h) + undeleted-stopped (3h→4h): the same snapshot, continuous.
+    expect(intervals.stopped).toEqual([
+      { fromMs: T0 + 2 * HOUR, toMs: T0 + 3 * HOUR },
+      { fromMs: T0 + 3 * HOUR, toMs: T0 + 4 * HOUR },
+    ]);
+    expect(intervals.terminated).toBe(false); // undeleted — the session lives again
+  });
+
+  it("stops snapshot billing at session.snapshot_lost (the storage is gone)", () => {
+    const intervals = deriveBillingIntervals(
+      [evt("session.create", 0), evt("session.stop", 1), evt("session.snapshot_lost", 2)],
+      at(10),
+    );
+    expect(intervals.running).toEqual([{ fromMs: T0, toMs: T0 + HOUR }]);
+    expect(intervals.stopped).toEqual([{ fromMs: T0 + HOUR, toMs: T0 + 2 * HOUR }]);
+    expect(intervals.terminated).toBe(false); // the (error-state) record survives
+  });
+
+  it("ends billing when the RETAINED snapshot is lost (nothing left to restore or bill)", () => {
+    const intervals = deriveBillingIntervals(
+      [evt("session.create", 0), evt("session.terminated", 1), evt("session.snapshot_lost", 2)],
+      at(10),
+    );
+    expect(intervals.stopped).toEqual([{ fromMs: T0 + HOUR, toMs: T0 + 2 * HOUR }]);
+    expect(intervals.terminated).toBe(true);
+  });
+
+  it("ignores events timestamped after `now` (writer clock skew can't bill the future)", () => {
+    // The same clamp walkBilling applies (`m <= throughMs`), keeping the full-scan
+    // and checkpoint/resume paths equivalent under a skewed writer clock.
+    const intervals = deriveBillingIntervals(
+      [evt("session.create", 0), evt("session.stop", 5)], // stop is 3h in the future
+      at(2),
+    );
+    expect(intervals.running).toEqual([{ fromMs: T0, toMs: T0 + 2 * HOUR }]);
+    expect(intervals.stopped).toEqual([]);
   });
 
   it("ignores a start during teardown (a deleting workspace can't wake → no phantom compute)", () => {
@@ -102,6 +180,8 @@ describe("deriveBillingIntervals", () => {
     );
     expect(intervals.running).toEqual([{ fromMs: T0, toMs: T0 + 2 * HOUR }]);
     expect(intervals.teardown).toEqual([]);
+    // The retained snapshot bills through the retention window (as stopped time).
+    expect(intervals.stopped).toEqual([{ fromMs: T0 + 2 * HOUR, toMs: T0 + 10 * HOUR }]);
     expect(intervals.terminated).toBe(true);
   });
 
@@ -288,6 +368,37 @@ describe("deriveBillingState + resumeBilling (rollup figure-equivalence)", () =>
       events: [evt("session.create", 0), evt("session.start", 1), evt("session.stop", 3)],
       nowH: 4,
     },
+    {
+      name: "retention open (terminated, not purged)",
+      events: [evt("session.create", 0), evt("session.delete", 1), evt("session.terminated", 2)],
+      nowH: 8,
+    },
+    {
+      name: "undeleted and rewoken",
+      events: [
+        evt("session.create", 0),
+        evt("session.delete", 1),
+        evt("session.terminated", 2),
+        evt("session.undelete", 3),
+        evt("session.start", 4),
+      ],
+      nowH: 6,
+    },
+    {
+      name: "purged",
+      events: [
+        evt("session.create", 0),
+        evt("session.delete", 1),
+        evt("session.terminated", 2),
+        evt("session.purged", 3),
+      ],
+      nowH: 9,
+    },
+    {
+      name: "snapshot lost while stopped",
+      events: [evt("session.create", 0), evt("session.stop", 1), evt("session.snapshot_lost", 2)],
+      nowH: 7,
+    },
   ];
 
   // A rollup checkpointed at ANY instant, then resumed with the remaining events,
@@ -368,30 +479,52 @@ describe("computeFleetCost windowing", () => {
       events: [evt("session.create", 60, "ws-recent")], // started 12h before NOW, still running
     },
     {
-      workspaceId: "ws-old",
+      workspaceId: "ws-purged",
       owner: "bob",
       sizing: SIZING,
       state: "deleted",
-      // Created and fully torn down early (terminated) — no in-window activity.
+      // Fully ended early (terminated AND purged) — no in-window activity at all.
       events: [
-        evt("session.create", 0, "ws-old"),
-        evt("session.delete", 2, "ws-old"),
-        evt("session.terminated", 2, "ws-old"),
+        evt("session.create", 0, "ws-purged"),
+        evt("session.delete", 2, "ws-purged"),
+        evt("session.terminated", 2, "ws-purged"),
+        evt("session.purged", 4, "ws-purged"),
+      ],
+    },
+    {
+      workspaceId: "ws-retained",
+      owner: "carol",
+      sizing: SIZING,
+      state: "terminated",
+      // Terminated early but never purged: its retained snapshot still exists —
+      // and bills — through the window.
+      events: [
+        evt("session.create", 0, "ws-retained"),
+        evt("session.delete", 2, "ws-retained"),
+        evt("session.terminated", 2, "ws-retained"),
       ],
     },
   ];
 
-  it("prices only in-window run-time and drops sessions inactive in the window", () => {
+  it("prices only in-window time and drops sessions with none (a purged one)", () => {
     const report = computeFleetCost(inputs, PRICING, NOW, relativeWindow(NOW, 1));
-    expect(report.bySession.map((s) => s.workspaceId)).toEqual(["ws-recent"]);
-    expect(report.bySession[0]?.runningMs).toBe(12 * HOUR); // clipped to the last day
-    expect(report.byUser.map((u) => u.owner)).toEqual(["alice"]);
+    expect(report.bySession.map((s) => s.workspaceId).sort()).toEqual(["ws-recent", "ws-retained"]);
+    const recent = report.bySession.find((s) => s.workspaceId === "ws-recent");
+    expect(recent?.runningMs).toBe(12 * HOUR); // clipped to the last day
+    // The retained snapshot billed for the whole in-window day (stopped time).
+    const retained = report.bySession.find((s) => s.workspaceId === "ws-retained");
+    expect(retained?.stoppedMs).toBe(24 * HOUR);
+    expect(report.byUser.map((u) => u.owner).sort()).toEqual(["alice", "carol"]);
     expect(report.windowStart).toBe(at(48));
   });
 
   it("without a window prices the full lifetime (windowStart = earliest event)", () => {
     const report = computeFleetCost(inputs, PRICING, NOW);
-    expect(report.bySession.map((s) => s.workspaceId).sort()).toEqual(["ws-old", "ws-recent"]);
+    expect(report.bySession.map((s) => s.workspaceId).sort()).toEqual([
+      "ws-purged",
+      "ws-recent",
+      "ws-retained",
+    ]);
     expect(report.windowStart).toBe(at(0));
   });
 });

@@ -106,6 +106,15 @@ async function startShell(ws: WebSocket, root: string, command?: string): Promis
     }
     return;
   }
+  // The socket may have closed DURING the async `loadPty()`/spawn above (tab closed,
+  // navigated away, network drop) — before any close→kill handler was registered. Node
+  // does not replay that `close` event, so without this guard the freshly-spawned login
+  // shell (which never self-exits) would be orphaned inside the container and accumulate
+  // one leaked PTY per raced connection. If the socket is already gone, kill and bail.
+  if (ws.readyState !== ws.OPEN) {
+    pty.kill();
+    return;
+  }
   pty.onData((data) => {
     if (ws.readyState === ws.OPEN) ws.send(data);
   });

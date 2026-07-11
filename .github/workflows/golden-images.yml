@@ -26,7 +26,10 @@ on:
 
 concurrency:
   group: golden-images-${{ github.ref }}
-  cancel-in-progress: true
+  # Queue main-branch builds instead of cancelling them: a cancelled publish
+  # leaves the catalog waiting on a tag that never reaches ECR. PR refs still
+  # cancel superseded validation runs.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
   id-token: write

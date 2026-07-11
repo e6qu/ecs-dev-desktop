@@ -55,11 +55,13 @@ export default async function WorkspacesPage({
   // grid — present (the user can undelete) but never mixed in with active work.
   const workspaces = enriched.filter((w) => w.state !== "terminated");
   const deleted = enriched.filter((w) => w.state === "terminated");
-  const hasWorkspaces = enriched.length > 0;
 
   return (
     <>
-      {hasWorkspaces && <LiveRefresh intervalMs={WORKSPACE_LIST_REFRESH_MS} />}
+      {/* Always mounted — an EMPTY list must converge too: a workspace created
+          out-of-band (API, another tab, an admin) has to appear here without a
+          hard refresh (AGENTS.md rule 13). */}
+      <LiveRefresh intervalMs={WORKSPACE_LIST_REFRESH_MS} />
       <div className="page-head">
         <div>
           <div className="kicker">workspaces</div>
@@ -111,13 +113,15 @@ export default async function WorkspacesPage({
       ) : (
         <div className="grid">
           {workspaces.map((ws, i) => {
+            const canMutate = isAdmin || (canUpdateWorkspace && ws.ownerId === principal.id);
             return (
               <WorkspaceCard
                 key={ws.id}
                 ws={ws}
                 index={i}
                 canShare={ws.ownerId === principal.id}
-                canUpdateSettings={isAdmin || (canUpdateWorkspace && ws.ownerId === principal.id)}
+                canUpdateSettings={canMutate}
+                canMutate={canMutate}
               />
             );
           })}
@@ -133,12 +137,14 @@ export default async function WorkspacesPage({
           </p>
           <div className="grid">
             {deleted.map((ws, i) => {
+              const canMutate = isAdmin || (canUpdateWorkspace && ws.ownerId === principal.id);
               return (
                 <WorkspaceCard
                   key={ws.id}
                   ws={ws}
                   index={i}
-                  canUpdateSettings={isAdmin || (canUpdateWorkspace && ws.ownerId === principal.id)}
+                  canUpdateSettings={canMutate}
+                  canMutate={canMutate}
                 />
               );
             })}

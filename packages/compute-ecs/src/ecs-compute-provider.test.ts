@@ -359,6 +359,58 @@ describe("EcsComputeProvider.runTask request shape (workspace tag + managed EBS 
     expect(vol?.snapshotId).toBe("snap-xyz");
     expect(vol?.sizeInGiB).toBeUndefined();
   });
+
+  // The in-process task-def ARN cache can outlive the revision (the reconciler prunes
+  // old revisions in another process). RunTask against the pruned INACTIVE ARN must not
+  // brick the wake: the provider evicts the cache, re-registers a fresh revision, and
+  // retries once.
+  it("re-registers and retries when a cached task definition is INACTIVE", async () => {
+    let registers = 0;
+    let runAttempts = 0;
+    const arns: string[] = [];
+    const client = {
+      send: (command: unknown): Promise<unknown> => {
+        if (command instanceof RegisterTaskDefinitionCommand) {
+          registers += 1;
+          return Promise.resolve({
+            taskDefinition: {
+              taskDefinitionArn: `arn:aws:ecs:::task-definition/edd:${String(registers)}`,
+            },
+          });
+        }
+        if (command instanceof RunTaskCommand) {
+          runAttempts += 1;
+          arns.push(command.input.taskDefinition ?? "");
+          if (runAttempts === 1) {
+            return Promise.reject(
+              new Error(
+                "The task definition is inactive. Ensure that you are using an active task definition.",
+              ),
+            );
+          }
+          return Promise.resolve({ tasks: [{ taskArn: ARN }] });
+        }
+        if (command instanceof DescribeTasksCommand) {
+          return Promise.resolve({
+            tasks: [{ taskArn: ARN, lastStatus: "RUNNING", attachments: [eni, ebs] }],
+          });
+        }
+        return Promise.reject(new Error("unexpected command"));
+      },
+    } as unknown as ECSClient;
+
+    const provider = new EcsComputeProvider({ client, config });
+    await provider.runTask({
+      workspaceId: workspaceId("ws-inactive"),
+      baseImage: baseImage("edd-workspace:e2e"),
+      resources: RESOURCES,
+    });
+
+    expect(runAttempts).toBe(2); // failed once (inactive) → retried
+    expect(registers).toBe(2); // re-registered a fresh revision after eviction
+    expect(arns[0]).toBe("arn:aws:ecs:::task-definition/edd:1");
+    expect(arns[1]).toBe("arn:aws:ecs:::task-definition/edd:2"); // used the fresh ARN
+  });
 });
 
 describe("EcsComputeProvider.listWorkspaceTasks", () => {

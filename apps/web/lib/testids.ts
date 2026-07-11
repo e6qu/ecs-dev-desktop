@@ -95,6 +95,8 @@ export const TESTID = {
   costBar: "cost-bar",
   /** A time-window selector link on the admin Costs page. Attrs: `data-window`, `data-active`. */
   costWindow: "cost-window",
+  /** The AWS account section's cache-freshness line ("as of HH:MM UTC") on the admin Costs page. Attr: `data-generated-at` (ISO). */
+  costAwsAsOf: "cost-aws-as-of",
   /** A cluster-metric tile on the Infrastructure view. Attrs: `data-metric`, `data-value`. */
   clusterStat: "cluster-stat",
   /** A node in the Infrastructure topology graph. Attrs: `data-node`, `data-kind`, `data-h` (status). */
@@ -113,6 +115,8 @@ export const TESTID = {
   workspaceOpen: "workspace-open",
   /** The "Resume" link on a stopped workspace card → the status page (wakes + opens). Attr: `data-href`. */
   workspaceResume: "workspace-resume",
+  /** Visible resume-failure notice on the status page (shown with the Resume button restored). */
+  workspaceResumeError: "workspace-resume-error",
   /** The "Status" link on a workspace card → the per-workspace status page. */
   workspaceStatusLink: "workspace-status-link",
   /** Dev-login form (EDD_DEV_AUTH=1) controls + error. */

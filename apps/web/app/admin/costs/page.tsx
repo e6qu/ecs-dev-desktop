@@ -7,7 +7,10 @@ import { notFound } from "next/navigation";
 import { LiveRefresh } from "../../../components/LiveRefresh";
 import { StateBlock } from "../../../components/StateBlock";
 import { StatTile } from "../../../components/StatTile";
-import { getAwsAccountCostSummary, type AccountCostSummary } from "../../../lib/aws-account-costs";
+import {
+  getCachedAwsAccountCostSummary,
+  type AccountCostSummary,
+} from "../../../lib/aws-account-costs";
 import { getCostService } from "../../../lib/control-plane";
 import { TESTID } from "../../../lib/testids";
 
@@ -15,7 +18,11 @@ export const dynamic = "force-dynamic";
 
 const MS_PER_HOUR = 60 * 60 * 1000;
 /** How often the page re-computes live consumption (running workspaces accrue
- * cost continuously; this keeps the figures current without a manual reload). */
+ * cost continuously; this keeps the figures current without a manual reload).
+ * Only the lifecycle-ledger report is recomputed per refresh — the AWS account
+ * summary is served from a process-shared TTL cache (Cost Explorer bills per
+ * request and its data updates only a few times a day), so the refresh cadence
+ * does not multiply Cost Explorer spend. */
 const LIVE_REFRESH_MS = 15_000;
 
 /** The window selector, in display order, with their human labels. */
@@ -38,6 +45,14 @@ function usd(value: number): string {
 function hours(ms: number): string {
   assertFiniteNonNegative("duration", ms);
   return `${(ms / MS_PER_HOUR).toFixed(1)}h`;
+}
+
+/** `HH:MM` (UTC) of an ISO instant — the AWS summary's cache-freshness stamp.
+ * Fails loud on an unparseable timestamp rather than rendering a bogus time. */
+function utcHhMm(iso: string): string {
+  const ms = Date.parse(iso);
+  if (Number.isNaN(ms)) throw new Error(`invalid account-cost timestamp: ${iso}`);
+  return new Date(ms).toISOString().slice(11, 16);
 }
 
 /** The three priced components of a row, in stack order (largest share first). */
@@ -172,7 +187,7 @@ export default async function AdminCostsPage({
   try {
     [report, accountCosts] = await Promise.all([
       (await getCostService()).report(COST_WINDOW_DAYS[window]),
-      getAwsAccountCostSummary().catch((error: unknown) =>
+      getCachedAwsAccountCostSummary().catch((error: unknown) =>
         error instanceof Error ? error : new Error(String(error)),
       ),
     ]);
@@ -257,6 +272,16 @@ export default async function AdminCostsPage({
         <StateBlock title="AWS account costs unavailable" detail={accountCosts.message} />
       ) : (
         <>
+          {/* The summary is served from a shared TTL cache (Cost Explorer bills per
+              request); show when it was actually fetched so staleness is honest. */}
+          <p
+            className="mono"
+            style={{ color: "var(--dim)" }}
+            data-testid={TESTID.costAwsAsOf}
+            data-generated-at={accountCosts.generatedAt}
+          >
+            Cost Explorer data, cached — as of {utcHhMm(accountCosts.generatedAt)} UTC
+          </p>
           <div className="stat-grid">
             {accountCosts.windows.map((w) => (
               <StatTile

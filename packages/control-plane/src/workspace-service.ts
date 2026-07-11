@@ -635,10 +635,25 @@ export class WorkspaceService {
     if (loaded?.ws.state !== "provisioning") {
       return err(conflictError(`workspace ${id} is no longer provisioning`));
     }
-    const reverted = markStopped(loaded.ws, undefined, isoTimestamp(this.deps.clock.now()));
-    if (!reverted.ok) return err(reverted.error);
+    const now = isoTimestamp(this.deps.clock.now());
+    // A stuck `provisioning` record is EITHER a crashed wake (has a snapshot to hydrate
+    // from) OR a crashed initial create (a fresh reservation, no snapshot yet). Reverting
+    // a snapshot-less create to `stopped` bricks it: `start()` hard-fails forever with
+    // "no snapshot to hydrate from", and `retry` is only reachable from `error`, so the
+    // user is left a Start button that always 409s. Send a snapshot-less record to
+    // `error` instead (surfacing Retry/Delete); only a snapshot-bearing wake reverts to
+    // the wake-able `stopped`.
+    const recovered =
+      loaded.ws.latestSnapshotId === undefined
+        ? markProvisioningFailed(
+            loaded.ws,
+            "provisioning did not complete (no snapshot to resume from)",
+            now,
+          )
+        : markStopped(loaded.ws, undefined, now);
+    if (!recovered.ok) return err(recovered.error);
     try {
-      await this.persistTransition(reverted.value, loaded.version);
+      await this.persistTransition(recovered.value, loaded.version);
       return ok(undefined);
     } catch (e) {
       if (isVersionConflict(e)) {
@@ -1654,15 +1669,15 @@ export class WorkspaceService {
     reason: string,
     actor: string = SYSTEM_ACTOR,
   ): Promise<boolean> {
-    // Snapshot first: if the reap fails transiently, the tombstone stays and a
-    // later sweep/retry cleans it — never a record-less snapshot leak.
-    if (r.latestSnapshotId !== undefined) {
-      try {
-        await this.deps.storage.deleteSnapshot(snapshotId(r.latestSnapshotId));
-      } catch (e) {
-        if (!isResourceGoneError(e)) throw e;
-      }
-    }
+    // RECORD FIRST, then snapshot. Deleting the (irreversible) snapshot before the
+    // version-conditioned record delete was a data-loss race: a concurrent `undelete`
+    // committing between our `find` and this delete cancels the CAS (we return false),
+    // but the retained snapshot is already gone — the restored workspace then references
+    // destroyed data and can never wake. Removing the record under its version condition
+    // FIRST means a lost race leaves the snapshot untouched (still correctly owned by the
+    // record that won), and only a record we provably removed has its snapshot reaped.
+    // A tombstone-less retained snapshot on a transient reap failure is an orphan the
+    // retained-snapshot GC tolerates — strictly preferable to losing live data.
     const audit = this.auditItem({
       action: "session.purged",
       target: workspaceId(r.id),
@@ -1680,12 +1695,21 @@ export class WorkspaceService {
           ev.put(audit.attrs).commit(),
         ],
       ).go();
-      return !result.canceled;
+      if (result.canceled) return false; // race lost — snapshot deliberately untouched
+    } else {
+      await this.deps.workspaces
+        .delete({ id: r.id })
+        .where(({ version: v }, { eq }) => eq(v, r.version))
+        .go();
     }
-    await this.deps.workspaces
-      .delete({ id: r.id })
-      .where(({ version: v }, { eq }) => eq(v, r.version))
-      .go();
+    // Record is gone (no undelete can reference the snapshot now) — safe to reap it.
+    if (r.latestSnapshotId !== undefined) {
+      try {
+        await this.deps.storage.deleteSnapshot(snapshotId(r.latestSnapshotId));
+      } catch (e) {
+        if (!isResourceGoneError(e)) throw e;
+      }
+    }
     return true;
   }
 
@@ -1892,12 +1916,26 @@ export class WorkspaceService {
     audit?: LifecycleAudit,
   ): Promise<void> {
     const detail = toWorkspaceDetail(ws);
+    // A field is REMOVED only when the transition actually cleared it (detail[field]
+    // is undefined ⇒ toWorkspaceDetail omitted it ⇒ set() won't carry it and remove()
+    // drops the stale stored value). Adding a field here is therefore additive-safe.
+    // sharing/stop-request/functional fields MUST be listed: markStopped/markDeleting
+    // clear sharing in-memory ("sharing never outlives the live session"), but without
+    // removal the stored `shareEnabled: true` survived a stop and let a spectator
+    // resubscribe on the next wake with no re-consent — and a stale "degraded" functional
+    // report lingered across a successful retry.
     const clearable = [
       "volumeId",
       "taskId",
       "latestSnapshotId",
       "latestSnapshotAt",
       "sshHost",
+      "shareEnabled",
+      "stopRequestedAt",
+      "stopRequestedBy",
+      "functional",
+      "functionalDetail",
+      "functionalAt",
     ] as const;
     const cleared = clearable.filter((field) => detail[field] === undefined);
     const { id, ...fields } = detail;

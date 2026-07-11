@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 
 import {
   createLocalAccount,
@@ -19,48 +20,84 @@ function adminOnly(principal: Awaited<ReturnType<typeof getPagePrincipal>>) {
   return principal;
 }
 
+function asMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "unknown error";
+}
+
+/** Re-render this page with the failure visible (mirrors admin/invitations)
+ * instead of crashing the action to the generic error screen. */
+function redirectWithError(message: string): never {
+  const params = new URLSearchParams();
+  params.set("error", message);
+  redirect(`/admin/users?${params.toString()}`);
+}
+
 async function createAdminAccountAction(formData: FormData): Promise<void> {
   "use server";
-  const principal = adminOnly(await getPagePrincipal());
-  const role = field(formData, "role");
-  if (role !== "admin" && role !== "developer") throw new Error("invalid local-account role");
-  await createLocalAccount({
-    email: field(formData, "email"),
-    password: field(formData, "password"),
-    role,
-    createdBy: principal.id,
-  });
-  revalidatePath("/admin/users");
+  try {
+    const principal = adminOnly(await getPagePrincipal());
+    const role = field(formData, "role");
+    if (role !== "admin" && role !== "developer") throw new Error("invalid local-account role");
+    await createLocalAccount({
+      email: field(formData, "email"),
+      password: field(formData, "password"),
+      role,
+      createdBy: principal.id,
+    });
+    revalidatePath("/admin/users");
+  } catch (error) {
+    redirectWithError(`create account failed: ${asMessage(error)}`);
+  }
 }
 
 async function revokeUserSessionsAction(formData: FormData): Promise<void> {
   "use server";
-  adminOnly(await getPagePrincipal());
-  await revokeUserSessions(field(formData, "ownerId"));
-  revalidatePath("/admin/users");
+  try {
+    adminOnly(await getPagePrincipal());
+    await revokeUserSessions(field(formData, "ownerId"));
+    revalidatePath("/admin/users");
+  } catch (error) {
+    redirectWithError(`revoke sessions failed: ${asMessage(error)}`);
+  }
 }
 
 async function revokeAllSessionsAction(): Promise<void> {
   "use server";
-  adminOnly(await getPagePrincipal());
-  await revokeAllSessions();
-  revalidatePath("/admin/users");
+  try {
+    adminOnly(await getPagePrincipal());
+    await revokeAllSessions();
+    revalidatePath("/admin/users");
+  } catch (error) {
+    redirectWithError(`revoke sessions failed: ${asMessage(error)}`);
+  }
 }
 
 function fmt(value: string): string {
   return new Date(value).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
 }
 
-export default async function AdminUsersPage() {
+/** Cap the reflected query-string message (defensive; mirrors admin/invitations). */
+function queryValue(value: string | undefined): string | undefined {
+  if (value === undefined || value.length === 0) return undefined;
+  return value.slice(0, 500);
+}
+
+export default async function AdminUsersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
   const principal = await getPagePrincipal();
   if (principal?.role !== "admin") {
     return <StateBlock title="Admins only" detail="The user console requires an administrator." />;
   }
+  const error = queryValue((await searchParams).error);
   const [accounts, sessions] = await Promise.all([listLocalAccounts(), listAuthSessions()]);
   const activeSessions = sessions.filter((s) => s.revokedAt === undefined);
 
   return (
     <>
+      {error !== undefined && <StateBlock title="Action failed" detail={error} />}
       <div className="page-head">
         <div>
           <div className="kicker">admin</div>

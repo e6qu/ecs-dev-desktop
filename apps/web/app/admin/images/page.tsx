@@ -11,9 +11,9 @@ export default function AdminImagesPage() {
           <div className="kicker">platform</div>
           <h1>Images &amp; builds</h1>
           <p>
-            Container image sizes and per-layer breakdown, plus build history and live logs.
-            Trigger a fast control-plane rebuild (<span className="mono">web</span>) or a golden
-            workspace-image rebuild (<span className="mono">golden</span>) without a full deploy.
+            Container image sizes with per-layer breakdown, the golden-image source-sync state, and
+            recent build trigger decisions. Builds are launched by GitHub Actions on push to the
+            source repository — this console observes them; it cannot start one.
           </p>
         </div>
       </div>

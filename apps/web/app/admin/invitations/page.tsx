@@ -28,26 +28,9 @@ function redirectWithStatus(kind: "error" | "sent", message?: string): never {
   redirect(`/admin/invitations?${params.toString()}`);
 }
 
-async function inviteDeveloperAction(formData: FormData): Promise<void> {
-  "use server";
-  try {
-    const principal = adminOnly(await getPagePrincipal());
-    assertInvitationMailerConfigured();
-    const durationDays = Number(field(formData, "durationDays"));
-    const { token, invitation } = await createDeveloperInvitation({
-      email: field(formData, "email"),
-      durationDays,
-      createdBy: principal.id,
-    });
-    await sendInvitationEmail({ email: invitation.email, token });
-    revalidatePath("/admin/invitations");
-  } catch (error) {
-    redirectWithStatus("error", `invitation email failed: ${asMessage(error)}`);
-  }
-  redirectWithStatus("sent");
-}
-
-async function reissueInvitationAction(formData: FormData): Promise<void> {
+// A new invitation and a re-issue are the same operation: create a fresh token for
+// the email and mail it. One server action backs both the "invite" and "reissue" forms.
+async function sendInvitationAction(formData: FormData): Promise<void> {
   "use server";
   try {
     const principal = adminOnly(await getPagePrincipal());
@@ -109,7 +92,7 @@ export default async function AdminInvitationsPage({
         <StateBlock title="Invitation sent" detail="The one-time developer link was emailed." />
       )}
 
-      <form className="panel field-stack" action={inviteDeveloperAction}>
+      <form className="panel field-stack" action={sendInvitationAction}>
         <h2>Invite developer</h2>
         <div className="form-grid">
           <label className="field">
@@ -142,7 +125,7 @@ export default async function AdminInvitationsPage({
           <div key={`${i.email}-${i.createdAt}`} className="adm-row">
             <span className="wid">{i.email}</span>
             <span className="detail">{i.acceptedAt === undefined ? "pending" : "accepted"}</span>
-            <form action={reissueInvitationAction} className="field-stack" style={{ gap: 8 }}>
+            <form action={sendInvitationAction} className="field-stack" style={{ gap: 8 }}>
               <input type="hidden" name="email" value={i.email} />
               <select className="input" name="durationDays" defaultValue="1" aria-label="duration">
                 <option value="1">1 day</option>

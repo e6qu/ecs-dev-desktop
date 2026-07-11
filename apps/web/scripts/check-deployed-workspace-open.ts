@@ -5,13 +5,10 @@ import {
   EDITORS,
   authJar,
   authSecret,
+  cleanupSmokeWorkspaces,
   createWorkspace,
-  deleteWorkspace,
   openEditor,
-  purgeWorkspace,
   requiredEnv,
-  waitPurged,
-  waitTerminated,
   waitEnabledImage,
   waitReady,
 } from "./deployed-workspace-smoke-lib";
@@ -28,6 +25,9 @@ process.env.AWS_REGION = region;
 const secret = await authSecret(region, secretId);
 const { jar, sessionId } = await authJar(secret, "smoke");
 const created: string[] = [];
+
+let bodyFailed = false;
+let bodyError: unknown;
 try {
   const baseImage = await waitEnabledImage(baseUrl, jar, expectedSha);
   for (const editor of EDITORS) {
@@ -37,14 +37,19 @@ try {
     await openEditor(baseUrl, jar, id, editor);
     console.log(`edd: ${editor} workspace opened through public app (${id})`);
   }
-} finally {
-  await Promise.all(
-    created.map(async (id) => {
-      await deleteWorkspace(baseUrl, jar, id);
-      await waitTerminated(baseUrl, jar, id);
-      await purgeWorkspace(baseUrl, jar, id);
-      await waitPurged(baseUrl, jar, id);
-    }),
-  );
-  await revokeAuthSession(sessionId);
+} catch (e) {
+  bodyFailed = true;
+  bodyError = e;
+}
+
+const cleanupFailures = await cleanupSmokeWorkspaces(baseUrl, jar, created, () =>
+  revokeAuthSession(sessionId),
+);
+for (const failure of cleanupFailures) {
+  console.error("edd: cleanup failure:", failure);
+}
+// A body failure is the primary signal — cleanup failures must never mask it.
+if (bodyFailed) throw bodyError;
+if (cleanupFailures.length > 0) {
+  throw new Error(`workspace cleanup failed for ${String(cleanupFailures.length)} step(s)`);
 }

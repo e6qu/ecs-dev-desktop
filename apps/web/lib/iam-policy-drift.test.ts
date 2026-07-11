@@ -52,4 +52,21 @@ describe("IAM manifest ⊆ terraform-granted actions (drift gate)", () => {
   it("the parser actually found a non-trivial policy (guards against a silent empty match)", () => {
     expect(grantedActions(tf, "control_plane").size).toBeGreaterThan(10);
   });
+
+  // Scoping regression: RegisterTaskDefinition sends inline cost-scope tags, so
+  // ecs:TagResource must be granted on the TASK-DEFINITION resource, not only under
+  // the cluster-scoped RunAndManageWorkspaceTasks statement (ecs:cluster is absent
+  // from the registration request context, so that grant can never satisfy it). The
+  // set-based drift gate above cannot see this because TagResource is present as an
+  // action either way — this asserts the statement that carries the edd-ws-*
+  // task-definition resource also carries ecs:TagResource.
+  it("ecs:TagResource is granted on the workspace task-definition resource", () => {
+    const start = tf.indexOf('sid       = "RegisterWorkspaceTaskDefinitions"');
+    expect(start, "RegisterWorkspaceTaskDefinitions statement not found").toBeGreaterThan(0);
+    const block = tf.slice(start, start + 400);
+    expect(block).toContain("task-definition/edd-ws-*");
+    const actions = /actions\s*=\s*\[([\s\S]*?)\]/.exec(block)?.[1] ?? "";
+    expect(actions).toContain("ecs:RegisterTaskDefinition");
+    expect(actions).toContain("ecs:TagResource");
+  });
 });

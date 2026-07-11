@@ -13,12 +13,9 @@ import {
   type StoredCookie,
   authJar,
   authSecret,
+  cleanupSmokeWorkspaces,
   createWorkspace,
-  deleteWorkspace,
-  purgeWorkspace,
   requiredEnv,
-  waitPurged,
-  waitTerminated,
   waitEnabledImage,
   waitReady,
 } from "./deployed-workspace-smoke-lib";
@@ -183,7 +180,7 @@ async function writeDiagnostic(
   );
 }
 
-async function assertRenderedWorkspace(editor: Editor, id: string, page: Page): Promise<void> {
+async function assertRenderedWorkspace(editor: Editor, page: Page): Promise<void> {
   await page.waitForTimeout(5_000);
   const bodyText = (
     await page
@@ -242,7 +239,35 @@ await mkdir(OUT_DIR, { recursive: true });
 const secret = await authSecret(region, secretId);
 const { jar, sessionId } = await authJar(secret, "smoke-shot");
 const created: string[] = [];
+
+/**
+ * Failure record for the artifact upload: failures before the browser section
+ * (createWorkspace/waitReady) would otherwise leave OUT_DIR empty and the
+ * upload with nothing to attach.
+ */
+async function writeFailureRecord(error: unknown): Promise<void> {
+  try {
+    await writeFile(
+      join(OUT_DIR, "smoke-failure.json"),
+      `${JSON.stringify(
+        {
+          at: new Date().toISOString(),
+          expectedSha,
+          createdWorkspaces: created,
+          error: error instanceof Error ? (error.stack ?? error.message) : String(error),
+        },
+        null,
+        2,
+      )}\n`,
+    );
+  } catch (writeError) {
+    console.error("edd: failed to write smoke failure record:", writeError);
+  }
+}
+
 const browser = await chromium.launch();
+let bodyFailed = false;
+let bodyError: unknown;
 try {
   const catalogPolls: unknown[] = [];
   let baseImage: string;
@@ -300,7 +325,7 @@ try {
     }
     const path = join(OUT_DIR, `${editor}-${id}.png`);
     try {
-      await assertRenderedWorkspace(editor, id, page);
+      await assertRenderedWorkspace(editor, page);
       await page.screenshot({ path, fullPage: true });
       console.log(`edd: captured ${editor} screenshot ${path}`);
     } catch (e) {
@@ -314,15 +339,25 @@ try {
       throw e;
     }
   }
-} finally {
+} catch (e) {
+  bodyFailed = true;
+  bodyError = e;
+  await writeFailureRecord(e);
+}
+
+try {
   await browser.close();
-  await Promise.all(
-    created.map(async (id) => {
-      await deleteWorkspace(baseUrl, jar, id);
-      await waitTerminated(baseUrl, jar, id);
-      await purgeWorkspace(baseUrl, jar, id);
-      await waitPurged(baseUrl, jar, id);
-    }),
-  );
-  await revokeAuthSession(sessionId);
+} catch (e) {
+  console.error("edd: browser close failed:", e);
+}
+const cleanupFailures = await cleanupSmokeWorkspaces(baseUrl, jar, created, () =>
+  revokeAuthSession(sessionId),
+);
+for (const failure of cleanupFailures) {
+  console.error("edd: cleanup failure:", failure);
+}
+// A body failure is the primary signal — cleanup failures must never mask it.
+if (bodyFailed) throw bodyError;
+if (cleanupFailures.length > 0) {
+  throw new Error(`workspace cleanup failed for ${String(cleanupFailures.length)} step(s)`);
 }

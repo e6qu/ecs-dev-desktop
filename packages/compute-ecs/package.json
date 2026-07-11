@@ -13,13 +13,13 @@
     "test:integ": "vitest run --config vitest.integ.config.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-ecs": "^3.1083.0",
-    "@aws-sdk/client-secrets-manager": "^3.1083.0",
+    "@aws-sdk/client-ecs": "^3.1084.0",
+    "@aws-sdk/client-secrets-manager": "^3.1084.0",
     "@edd/config": "workspace:*",
     "@edd/core": "workspace:*"
   },
   "devDependencies": {
-    "@aws-sdk/client-iam": "^3.1083.0",
+    "@aws-sdk/client-iam": "^3.1084.0",
     "@edd/aws-itest-support": "workspace:*",
     "@types/node": "^26.1.1",
     "fast-check": "^4.9.0"

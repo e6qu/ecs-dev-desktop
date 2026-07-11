@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 "use client";
 
-import { ApiClient } from "@edd/api-client";
+import { ApiClient, ApiError } from "@edd/api-client";
 import type { WorkspaceDto, WorkspaceLogsDto } from "@edd/api-contracts";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -16,6 +16,13 @@ const STATUS_POLL_MS = 1000;
 const LOGS_POLL_MS = 4000;
 /** Seconds the "opening editor" countdown runs before auto-navigating. */
 const AUTO_OPEN_COUNTDOWN_S = 3;
+/** The record is gone (deleted + purged, or never existed). */
+const HTTP_NOT_FOUND = 404;
+/** Lifecycle conflict: the wake we asked for already happened / is in flight. */
+const HTTP_CONFLICT = 409;
+/** How close (px) to the bottom of the log panel still counts as "pinned" —
+ * only then does a new line auto-scroll the tail into view. */
+const LOG_PIN_THRESHOLD_PX = 8;
 
 type StepState = "done" | "active" | "pending" | "failed";
 
@@ -79,7 +86,11 @@ function elapsedSince(iso: string): string {
 export function WorkspaceLive({ id }: { id: string }) {
   const loadWs = useCallback(() => api.getWorkspace(id), [id]);
   const loadLogs = useCallback(() => api.getWorkspaceLogs(id), [id]);
-  const { data: ws, error } = usePoll<WorkspaceDto>(loadWs, STATUS_POLL_MS, "workspace not found");
+  const {
+    data: ws,
+    error,
+    errorStatus,
+  } = usePoll<WorkspaceDto>(loadWs, STATUS_POLL_MS, "workspace not found");
   const { data: logs } = usePoll<WorkspaceLogsDto>(loadLogs, LOGS_POLL_MS, "logs unavailable");
 
   // Auto-open: only on the launch-initiated visit (?autoopen=1 from the session
@@ -112,13 +123,20 @@ export function WorkspaceLive({ id }: { id: string }) {
   // Resume: waking a stopped workspace and dropping the user back into the editor
   // is driven from this page (the card's "Resume" links here with ?autoopen=1).
   // `resume()` kicks the wake and arms auto-open so the page redirects into the
-  // editor once ready; a 409 just means it already woke (the poll reflects it).
+  // editor once ready. Only a 409 is benign (the wake already happened / is in
+  // flight — the poll reflects it); any other failure (403, 5xx, quota) must put
+  // the Resume button back with the reason, never a permanent "Resuming…" (§6.5).
   const [resuming, setResuming] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
   const resume = useCallback(() => {
     setResuming(true);
+    setResumeError(null);
     setAutoOpen(true);
-    void api.startWorkspace(id).catch(() => {
-      /* already waking/woken — the poll shows the real state */
+    void api.startWorkspace(id).catch((e: unknown) => {
+      if (e instanceof ApiError && e.status === HTTP_CONFLICT) return;
+      setResuming(false);
+      setAutoOpen(false);
+      setResumeError(e instanceof Error ? e.message : "resume failed");
     });
   }, [id]);
   // Arriving via the card's Resume link (autoopen) on a still-stopped workspace:
@@ -127,11 +145,20 @@ export function WorkspaceLive({ id }: { id: string }) {
     if (autoOpen && !resuming && ws?.state === "stopped") resume();
   }, [autoOpen, resuming, ws?.state, resume]);
 
-  // Follow the log tail as new lines arrive (unless the panel isn't rendered).
+  // Follow the log tail as new lines arrive — but only while the user is pinned
+  // to the bottom. Scrolling up to read an earlier line must not be yanked back
+  // down by the next poll; scrolling back to the bottom re-pins.
+  const logBoxRef = useRef<HTMLDivElement | null>(null);
   const logEndRef = useRef<HTMLDivElement | null>(null);
+  const logPinnedRef = useRef(true);
+  const onLogScroll = useCallback(() => {
+    const el = logBoxRef.current;
+    if (el === null) return;
+    logPinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= LOG_PIN_THRESHOLD_PX;
+  }, []);
   const lineCount = logs?.lines.length ?? 0;
   useEffect(() => {
-    logEndRef.current?.scrollIntoView({ block: "nearest" });
+    if (logPinnedRef.current) logEndRef.current?.scrollIntoView({ block: "nearest" });
   }, [lineCount]);
 
   if (ws === null) {
@@ -172,6 +199,20 @@ export function WorkspaceLive({ id }: { id: string }) {
 
   return (
     <div className="stack" style={{ gap: 20 }}>
+      {/* Poll failures AFTER data exists must stay visible (§6.5): a purged record
+          (404) means this page is describing something that no longer exists, and
+          any other failure means the hero below is last-known state, not live. */}
+      {error !== null &&
+        (errorStatus === HTTP_NOT_FOUND ? (
+          <div className="notice" role="alert" data-testid="stale-banner" data-gone="1">
+            this workspace no longer exists (it may have been deleted and purged) — the state below
+            is its last known state. <Link href="/workspaces">back to workspaces</Link>
+          </div>
+        ) : (
+          <div className="notice" role="status" data-testid="stale-banner">
+            last refresh failed ({error}) — showing the last known state
+          </div>
+        ))}
       <section
         className="stack"
         style={{ gap: 12 }}
@@ -250,6 +291,16 @@ export function WorkspaceLive({ id }: { id: string }) {
             </button>
           </p>
         )}
+        {resumeError !== null && (
+          <p
+            className="mono"
+            role="alert"
+            data-testid={TESTID.workspaceResumeError}
+            style={{ color: "var(--st-error, #ff6b6b)", fontSize: 13 }}
+          >
+            resume failed: {resumeError} — you can try again below.
+          </p>
+        )}
         <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
           {ready && (
             <a
@@ -297,6 +348,8 @@ export function WorkspaceLive({ id }: { id: string }) {
         <h2>Boot &amp; runtime log</h2>
         <div
           className="mono"
+          ref={logBoxRef}
+          onScroll={onLogScroll}
           data-testid={TESTID.workspaceBootLog}
           data-available={String(logs?.available ?? false)}
           style={{
