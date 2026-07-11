@@ -86,6 +86,11 @@ import { isVersionConflict } from "./version-conflict";
  * gate-wakes without a forwarded identity). */
 const SYSTEM_ACTOR = "system";
 
+/** Audit action recorded when an admin reaps an EBS snapshot from the snapshot
+ * console. Deliberately outside the `session.` cost-ledger vocabulary (it prices no
+ * workspace time) and its audit target is a SnapshotId, not a WorkspaceId. */
+const SNAPSHOT_PURGE_ACTION = "snapshot.purged";
+
 /** A concurrent waker that lost the claim waits up to this long for the winner's
  * wake to reach running (cold start = RunTask + readiness, tens of seconds),
  * polling at this interval. It blocks for the same window the old
@@ -255,6 +260,21 @@ function throwForCanceledCreate(
 export interface ActiveWorkspace {
   id: WorkspaceId;
   lastActivity: IsoTimestamp;
+}
+
+/**
+ * An EBS snapshot enriched for the admin snapshot console: storage attribution
+ * (from the snapshot's tags/size) plus `referenced` — whether a live/stopped
+ * workspace still lists it as its restore point. A `retained` snapshot with no
+ * owning `workspaceId` and `referenced: false` is the safe-to-purge orphan.
+ */
+export interface AdminSnapshotView {
+  readonly id: SnapshotId;
+  readonly workspaceId?: WorkspaceId;
+  readonly sizeGiB?: number;
+  readonly createdAt: IsoTimestamp;
+  readonly retained: boolean;
+  readonly referenced: boolean;
 }
 
 /** The string-shaped persistence record (the DynamoDB boundary). */
@@ -690,6 +710,99 @@ export class WorkspaceService {
     return { volumeIds, snapshotIds };
   }
 
+  /**
+   * Admin snapshot console read: every managed EBS snapshot enriched with a
+   * `referenced` flag (true iff a live/stopped workspace still lists it as its
+   * restore point, per {@link listReferencedStorage}). The console shows the
+   * attribution + size the provider reports and highlights the unreferenced,
+   * retained orphans that are safe to purge.
+   */
+  async listSnapshotsForAdmin(): Promise<readonly AdminSnapshotView[]> {
+    const [snapshots, referenced] = await Promise.all([
+      this.deps.storage.listSnapshots(),
+      this.listReferencedStorage(),
+    ]);
+    const referencedIds = new Set<string>(referenced.snapshotIds);
+    return snapshots.map((s) => ({
+      id: s.id,
+      ...(s.workspaceId === undefined ? {} : { workspaceId: s.workspaceId }),
+      ...(s.sizeGiB === undefined ? {} : { sizeGiB: s.sizeGiB }),
+      createdAt: s.createdAt,
+      retained: s.retained === true,
+      referenced: referencedIds.has(s.id),
+    }));
+  }
+
+  /**
+   * Admin purge of a single EBS snapshot by id. REFUSES (typed conflict, fail-loud)
+   * to reap a snapshot a live/stopped workspace still restores from — deleting it
+   * would strand that workspace so it could never wake. An unreferenced snapshot is
+   * deleted (idempotent — already-gone is success) and the action is audited.
+   */
+  async deleteSnapshotById(
+    id: SnapshotId,
+    actor: string = SYSTEM_ACTOR,
+  ): Promise<Result<void, DomainError>> {
+    const { snapshotIds } = await this.listReferencedStorage();
+    if (snapshotIds.includes(id)) {
+      return err(
+        conflictError(`snapshot ${id} is still referenced by a workspace and cannot be purged`),
+      );
+    }
+    try {
+      await this.deps.storage.deleteSnapshot(id);
+    } catch (e) {
+      if (!isResourceGoneError(e)) throw e; // already gone → idempotent success
+    }
+    await this.auditSnapshotPurge(id, actor);
+    return ok(undefined);
+  }
+
+  /**
+   * Admin bulk purge: reap every managed snapshot NOT referenced by a live/stopped
+   * workspace (the accumulated retained orphans). Each reap is idempotent and audited;
+   * referenced snapshots are skipped (never stranded). Returns the ids actually purged.
+   */
+  async purgeUnreferencedSnapshots(
+    actor: string = SYSTEM_ACTOR,
+  ): Promise<{ purged: readonly SnapshotId[] }> {
+    const [snapshots, referenced] = await Promise.all([
+      this.deps.storage.listSnapshots(),
+      this.listReferencedStorage(),
+    ]);
+    const referencedIds = new Set<string>(referenced.snapshotIds);
+    const purged: SnapshotId[] = [];
+    for (const s of snapshots) {
+      if (referencedIds.has(s.id)) continue;
+      try {
+        await this.deps.storage.deleteSnapshot(s.id);
+      } catch (e) {
+        if (!isResourceGoneError(e)) throw e;
+      }
+      await this.auditSnapshotPurge(s.id, actor);
+      purged.push(s.id);
+    }
+    return { purged };
+  }
+
+  /** Append a snapshot-purge audit event (target = the SnapshotId, not a workspace)
+   * directly to the ledger when one is configured — the admin action on a storage
+   * resource is audited like any other, outside the workspace-targeted lifecycle path. */
+  private async auditSnapshotPurge(id: SnapshotId, actor: string): Promise<void> {
+    const audit = this.deps.audit;
+    if (audit === undefined) return;
+    await audit
+      .put({
+        id: `evt-${randomUUID()}`,
+        at: this.deps.clock.now(),
+        actor,
+        action: SNAPSHOT_PURGE_ACTION,
+        target: id,
+        detail: "unreferenced EBS snapshot purged",
+      })
+      .go();
+  }
+
   /** Every task id any workspace record still references — the orphan-task reaper's
    * keep-set. Conservative: includes a stopped record's last task id (that task is
    * not RUNNING, so it is not a reap candidate anyway), so a task any record names is
@@ -812,18 +925,37 @@ export class WorkspaceService {
   async stop(
     id: WorkspaceId,
     actor: string = SYSTEM_ACTOR,
+    opts?: { readonly requireIdleForMs?: number },
   ): Promise<Result<WorkspaceDto, DomainError>> {
     const found = await this.require(id);
     if (!found.ok) return found;
     const { ws, version } = found.value;
     const validated = transition(ws.state, "stop"); // validate-first, before any I/O
     if (!validated.ok) return validated;
+    // Idle-stop recency guard (reconciler path): the idle list is a point-in-time
+    // snapshot, and the serial idle sweep takes minutes per workspace, so a workspace
+    // resumed since it was listed (heartbeat refreshed `lastActivity`) must NOT be
+    // scaled to zero. Checking against THIS read's `lastActivity` (not the stale list)
+    // closes the race — a still-active workspace is a benign skip, not a stop.
+    if (opts?.requireIdleForMs !== undefined) {
+      const idleForMs = Date.parse(this.deps.clock.now()) - Date.parse(ws.lastActivity);
+      if (idleForMs < opts.requireIdleForMs) {
+        return err(conflictError(`stop of ${id} skipped: last active ${String(idleForMs)}ms ago`));
+      }
+    }
     const at = isoTimestamp(this.deps.clock.now());
     const snapped = await this.snapshotBeforeStop(id, ws, version, at);
     if (!snapped.ok) return snapped;
-    if (ws.taskId !== undefined) await this.deps.compute.stopTask(ws.taskId);
     const next = markStopped(ws, snapped.value, at);
     if (!next.ok) return next;
+    // Persist the transition FIRST (version CAS), THEN release the task. Killing the
+    // task before the CAS meant a heartbeat that bumped the version during the
+    // (minutes-long) snapshot left a DEAD task behind a still-`running` record until
+    // the next drift sweep. Persist-first makes the CAS the gate: on a lost race the
+    // task is untouched (record and task stay consistent); on success the record no
+    // longer references the task, so releasing it is best-effort (the orphan-task
+    // reaper is the backstop if this stop fails).
+    const taskToStop = ws.taskId;
     try {
       await this.persistTransition(next.value, version, {
         action: "session.stop",
@@ -833,14 +965,21 @@ export class WorkspaceService {
       });
     } catch (e) {
       if (!isVersionConflict(e)) throw e;
-      // A concurrent writer advanced the record. If it also reached "stopped"
-      // the outcome stands (idempotent); anything else is a real conflict.
-      // The stopTask/snapshot already performed are safe: stopping a stopped
-      // task is a no-op, and an unreferenced snapshot is reaped by GC.
+      // A concurrent writer advanced the record. If it also reached "stopped" the
+      // outcome stands (idempotent); anything else is a real conflict. The task was
+      // NOT killed, so the record and the live task remain consistent; the
+      // now-unreferenced snapshot is reaped by GC.
       const current = await this.find(id);
       if (current === null) return err(notFoundError("workspace", id));
       if (current.ws.state === "stopped") return ok(toWorkspaceDto(current.ws));
       return err(conflictError(`stop of ${id} lost a concurrent update (now ${current.ws.state})`));
+    }
+    if (taskToStop !== undefined) {
+      try {
+        await this.deps.compute.stopTask(taskToStop);
+      } catch {
+        /* orphan-task reaper backstop */
+      }
     }
     return ok(toWorkspaceDto(next.value));
   }

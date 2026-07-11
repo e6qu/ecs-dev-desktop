@@ -247,10 +247,24 @@ export default async function AdminCostsPage({
         </nav>
       </div>
       {unpriced.length > 0 ? (
-        <StateBlock
-          title={`${String(unpriced.length)} lifecycle session(s) not priced`}
-          detail={unpriced.map((issue) => `${issue.workspaceId}: ${issue.reason}`).join("; ")}
-        />
+        // Historical sessions with no recoverable sizing can number in the dozens;
+        // render them as a collapsible, scroll-contained list rather than one
+        // run-on paragraph that dominates the page.
+        <details className="panel" style={{ marginBottom: 20 }}>
+          <summary style={{ cursor: "pointer", fontWeight: 600 }}>
+            {unpriced.length} lifecycle session(s) not priced
+          </summary>
+          <ul className="list" style={{ marginTop: 12, maxHeight: 240, overflowY: "auto", gap: 6 }}>
+            {unpriced.map((issue) => (
+              <li key={issue.workspaceId} className="mono" style={{ fontSize: 12 }}>
+                <span style={{ color: "var(--text)", overflowWrap: "anywhere" }}>
+                  {issue.workspaceId}
+                </span>
+                <span style={{ color: "var(--dim)" }}> — {issue.reason}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
       ) : null}
 
       <div className="stat-grid">

@@ -30,11 +30,22 @@ function isFileNotFound(err: unknown): boolean {
  * (`listVolumes`/`listSnapshots`) back the orphan-GC logic the same way
  * `DescribeVolumes`/`DescribeSnapshots` do against real EBS.
  */
+/** Size a fresh fake volume reports, mirroring the real adapter's default EBS size.
+ * Snapshots inherit their source volume's size, so this flows through to the admin
+ * snapshot view the same way EBS `VolumeSize` does. */
+const FAKE_VOLUME_SIZE_GIB = 8;
+
 export class FakeStorageProvider implements StorageProvider {
-  private readonly volumes = new Map<VolumeId, IsoTimestamp>();
+  private readonly volumes = new Map<VolumeId, { createdAt: IsoTimestamp; sizeGiB: number }>();
   private readonly snapshots = new Map<
     SnapshotId,
-    { createdAt: IsoTimestamp; source: VolumeId; retained: boolean }
+    {
+      createdAt: IsoTimestamp;
+      source: VolumeId;
+      retained: boolean;
+      sizeGiB: number;
+      workspaceId?: WorkspaceId;
+    }
   >();
 
   private constructor(
@@ -61,10 +72,14 @@ export class FakeStorageProvider implements StorageProvider {
     const id = newVolumeId();
     const dir = this.volumeDir(id);
     await mkdir(dir, { recursive: true });
+    let sizeGiB = FAKE_VOLUME_SIZE_GIB;
     if (opts?.fromSnapshot) {
       await cp(this.snapshotDir(opts.fromSnapshot), dir, { recursive: true });
+      // A hydrated volume inherits the size of the snapshot it restored from (as an
+      // EBS restore does), so a snapshot chain reports a stable size.
+      sizeGiB = this.snapshots.get(opts.fromSnapshot)?.sizeGiB ?? FAKE_VOLUME_SIZE_GIB;
     }
-    this.volumes.set(id, isoTimestamp(this.clock.now()));
+    this.volumes.set(id, { createdAt: isoTimestamp(this.clock.now()), sizeGiB });
     return { id, hydratedFrom: opts?.fromSnapshot };
   }
 
@@ -87,13 +102,14 @@ export class FakeStorageProvider implements StorageProvider {
     volumeId: VolumeId,
     opts?: { retain?: boolean; workspaceId?: WorkspaceId },
   ): Promise<Snapshot> {
-    void opts?.workspaceId;
     const id = newSnapshotId();
     await cp(this.volumeDir(volumeId), this.snapshotDir(id), { recursive: true });
     this.snapshots.set(id, {
       createdAt: isoTimestamp(this.clock.now()),
       source: volumeId,
       retained: opts?.retain ?? false,
+      sizeGiB: this.volumes.get(volumeId)?.sizeGiB ?? FAKE_VOLUME_SIZE_GIB,
+      ...(opts?.workspaceId === undefined ? {} : { workspaceId: opts.workspaceId }),
     });
     return { id, sourceVolumeId: volumeId };
   }
@@ -115,7 +131,9 @@ export class FakeStorageProvider implements StorageProvider {
   }
 
   listVolumes(): Promise<readonly VolumeRef[]> {
-    return Promise.resolve([...this.volumes].map(([id, createdAt]) => ({ id, createdAt })));
+    return Promise.resolve(
+      [...this.volumes].map(([id, meta]) => ({ id, createdAt: meta.createdAt })),
+    );
   }
 
   listSnapshots(): Promise<readonly SnapshotRef[]> {
@@ -124,7 +142,9 @@ export class FakeStorageProvider implements StorageProvider {
         id,
         createdAt: meta.createdAt,
         sourceVolumeId: meta.source,
+        sizeGiB: meta.sizeGiB,
         ...(meta.retained ? { retained: true } : {}),
+        ...(meta.workspaceId === undefined ? {} : { workspaceId: meta.workspaceId }),
       })),
     );
   }

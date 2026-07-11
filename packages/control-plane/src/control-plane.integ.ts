@@ -10,6 +10,7 @@ import {
   METRIC_SECURITY_PRIVILEGE_ATTEMPT,
   METRIC_WORKSPACE_WAKE_LATENCY_MS,
   ownerId,
+  snapshotId,
   unwrap,
   workspaceId,
   type Clock,
@@ -39,6 +40,7 @@ import {
   DerivedLogSource,
   HealthService,
   QuotaExceededError,
+  StoredAuditSource,
   WorkspaceService,
 } from "./index";
 
@@ -152,6 +154,24 @@ describe("WorkspaceService lifecycle ", () => {
 
     const started = unwrap(await service.start(workspaceId(ws.id)));
     expect(started.state).toBe("running");
+  });
+
+  it("idle-stop with requireIdleForMs skips a workspace active within the window (stays running)", async () => {
+    const ws = await service.create({
+      ownerId: ownerId("idle-guard"),
+      baseImage: baseImage("golden/node:20"),
+    });
+    // create just set lastActivity to now, so the workspace is NOT idle for an hour:
+    // the guarded stop must skip it (conflict), leaving it running with its live task.
+    const guarded = await service.stop(workspaceId(ws.id), undefined, {
+      requireIdleForMs: 60 * 60 * 1000,
+    });
+    expect(guarded.ok).toBe(false);
+    expect((await service.get(workspaceId(ws.id)))?.state).toBe("running");
+
+    // Without the guard the same workspace stops normally (proving it was only the
+    // recency guard, not some other state issue, that skipped it).
+    expect(unwrap(await service.stop(workspaceId(ws.id))).state).toBe("stopped");
   });
 
   it("emits a wake cold-start latency metric on start()", async () => {
@@ -1057,5 +1077,104 @@ describe("WorkspaceService.recordSecurityEvent idempotency", () => {
     expect(metrics.recorded.filter((m) => m.name === METRIC_SECURITY_PRIVILEGE_ATTEMPT)).toEqual(
       [],
     );
+  });
+});
+
+describe("WorkspaceService admin snapshot management", () => {
+  const SNAP_TABLE = "ecs-dev-desktop-cp-snap-integ";
+  let client: ReturnType<typeof createDynamoClient>;
+  let storage: FakeStorageProvider;
+  let audit: ReturnType<typeof makeAuditEventEntity>;
+  let service: WorkspaceService;
+
+  beforeAll(async () => {
+    client = createDynamoClient();
+    await dropTable(client, SNAP_TABLE);
+    await ensureTable(client, SNAP_TABLE);
+  });
+  afterAll(async () => {
+    await dropTable(client, SNAP_TABLE);
+  });
+
+  beforeEach(async () => {
+    storage = await FakeStorageProvider.create();
+    audit = makeAuditEventEntity(client, SNAP_TABLE);
+    service = new WorkspaceService({
+      workspaces: makeWorkspaceEntity(client, SNAP_TABLE),
+      storage,
+      compute: new FakeComputeProvider(storage),
+      clock: fixedClock(),
+      audit,
+    });
+  });
+
+  it("refuses to purge a snapshot a stopped workspace still restores from", async () => {
+    // Stopping a workspace snapshots its volume and records the snapshot as its restore
+    // point (a referenced snapshot the console must protect).
+    const ws = await service.create({
+      ownerId: ownerId("snap-owner"),
+      baseImage: baseImage("img"),
+    });
+    const stopped = unwrap(await service.stop(workspaceId(ws.id), "admin"));
+    const referencedSnap = stopped.latestSnapshotId;
+    expect(referencedSnap).toBeDefined();
+    if (referencedSnap === undefined) throw new Error("expected a snapshot after stop");
+
+    // The admin view flags it referenced and attributes it to the owning workspace.
+    const view = await service.listSnapshotsForAdmin();
+    const entry = view.find((s) => s.id === referencedSnap);
+    expect(entry?.referenced).toBe(true);
+    expect(entry?.workspaceId).toBe(ws.id);
+    expect(entry?.sizeGiB).toBeGreaterThan(0);
+
+    // Purge is refused (conflict) and the snapshot is left intact.
+    const refused = await service.deleteSnapshotById(snapshotId(referencedSnap), "admin");
+    expect(refused.ok).toBe(false);
+    if (refused.ok) throw new Error("expected purge to be refused");
+    expect(refused.error.kind).toBe("conflict");
+    expect((await storage.listSnapshots()).some((s) => s.id === referencedSnap)).toBe(true);
+  });
+
+  it("purges an unattributed, unreferenced retained snapshot and audits it", async () => {
+    // An orphan retained snapshot with no owning workspace — the exact cleanup target.
+    const volume = await storage.createVolume();
+    const orphan = await storage.createSnapshot(volume.id, { retain: true });
+
+    const before = await service.listSnapshotsForAdmin();
+    const orphanView = before.find((s) => s.id === orphan.id);
+    expect(orphanView?.referenced).toBe(false);
+    expect(orphanView?.retained).toBe(true);
+    expect(orphanView?.workspaceId).toBeUndefined();
+
+    const purged = await service.deleteSnapshotById(snapshotId(orphan.id), "admin@edd");
+    expect(purged.ok).toBe(true);
+    expect((await storage.listSnapshots()).some((s) => s.id === orphan.id)).toBe(false);
+
+    // The purge is recorded as a first-class audit event attributed to the actor.
+    const events = await new StoredAuditSource({ events: audit, clock: fixedClock() }).recent();
+    const purgeEvent = events.find((e) => e.action === "snapshot.purged" && e.target === orphan.id);
+    expect(purgeEvent?.actor).toBe("admin@edd");
+  });
+
+  it("bulk-purges only the unreferenced snapshots, keeping referenced ones", async () => {
+    // A referenced snapshot (from a stopped workspace) plus two orphans.
+    const ws = await service.create({
+      ownerId: ownerId("bulk-owner"),
+      baseImage: baseImage("img"),
+    });
+    const stopped = unwrap(await service.stop(workspaceId(ws.id), "admin"));
+    const referencedSnap = stopped.latestSnapshotId;
+    if (referencedSnap === undefined) throw new Error("expected a snapshot after stop");
+    const volA = await storage.createVolume();
+    const orphanA = await storage.createSnapshot(volA.id, { retain: true });
+    const orphanB = await storage.createSnapshot(volA.id);
+
+    const result = await service.purgeUnreferencedSnapshots("admin@edd");
+    expect([...result.purged].sort()).toEqual([orphanA.id, orphanB.id].sort());
+
+    const remaining = (await storage.listSnapshots()).map((s) => s.id);
+    expect(remaining).toContain(referencedSnap);
+    expect(remaining).not.toContain(orphanA.id);
+    expect(remaining).not.toContain(orphanB.id);
   });
 });

@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { describe, expect, it } from "vitest";
 
+import { workspaceId } from "../domain/ids";
 import type { StorageProvider } from "./storage-provider";
 
 /** Options for {@link storageProviderContract}. */
@@ -92,6 +93,23 @@ export function storageProviderContract(
       expect(retainedById.get(retainedAtCreate.id)).toBe(true);
       expect(retainedById.get(retainedLater.id)).toBe(true);
       expect(retainedById.get(plain.id)).toBe(false);
+    });
+
+    it("carries workspace attribution and a size on enumerated snapshots", async () => {
+      const sp = await makeProvider();
+      const v = await sp.createVolume();
+      const owner = workspaceId("ws-attributed");
+      const attributed = await sp.createSnapshot(v.id, { workspaceId: owner });
+      const anonymous = await sp.createSnapshot(v.id);
+
+      const byId = new Map((await sp.listSnapshots()).map((s) => [s.id, s]));
+      // The workspace id set at create time round-trips through enumeration (the
+      // `edd:workspace-id` tag on real EBS), so the admin view can attribute it.
+      expect(byId.get(attributed.id)?.workspaceId).toBe(owner);
+      // A snapshot taken without attribution reports none — the "unattributed" case.
+      expect(byId.get(anonymous.id)?.workspaceId).toBeUndefined();
+      // Every snapshot reports the size it pins (EBS VolumeSize), a positive GiB figure.
+      expect(byId.get(attributed.id)?.sizeGiB).toBeGreaterThan(0);
     });
 
     it("enumerates volumes and snapshots, dropping deleted ones", async () => {

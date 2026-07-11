@@ -53,6 +53,31 @@ deferral by choice.
 
 ## Available now (decision-free — immediate)
 
+- **DONE 2026-07-11 (evening):** #222's `ecs:TagResource` IAM grant + the
+  10-second LB target-group health checks were applied to prod via a TARGETED
+  `terraform apply` (local authoritative state; S3 backend bucket is empty).
+  Workspace launch verified live (OpenVSCode renders; zero `ecs:TagResource`
+  denials). #223 merged and deployed (`80592bd`). The
+  `feat/admin-snapshots-and-boyscout` branch added the admin snapshot console,
+  two scale-to-zero correctness fixes, a UI/UX layout pass, and a Terminal
+  smoke-selector fix. Remaining OPERATOR-ONLY items (blocked as shared-account
+  mutations, run them yourself):
+  - Activate the cost-allocation tag: `aws ce update-cost-allocation-tags-status
+--cost-allocation-tags-status TagKey=edd:cost-scope,Status=Active` (now
+    discoverable in Billing), then confirm `/admin/costs` reads `edd-alpha`-scoped
+    Cost Explorer data.
+  - Purge the 5 stale reconciler-DLQ messages (they are old RunTask payloads for
+    reconciler task-def revision `:6`, keeping the DLQ alarm in ALARM): `aws sqs
+purge-queue --queue-url <edd-prod-reconciler-dlq> --region eu-west-1`.
+  - Use the new `/admin/snapshots` console to purge the 60 unattributed retained
+    snapshots (all are unreferenced retained orphans), then confirm the next Cost
+    Explorer day drops EC2-Other snapshot spend.
+  - Set `monthly_budget_usd` (a dollar amount) to enable the authored AWS Budgets
+    guardrail + its 80%/100% SNS alarms.
+    A FULL `terraform apply` is still NOT safe (it re-registers the
+    control-plane/reconciler task defs the release workflow owns and would roll
+    ssh-gateway back a revision) — keep applying by target.
+
 - **After PR #222 merges, `terraform apply` the module, then confirm workspace
   launch works in prod.** The `ecs:TagResource`-on-task-definition grant only lands
   via Terraform (the release workflow rolls images, not IaC). Apply from the
@@ -77,8 +102,8 @@ deferral by choice.
 - **Retry `edd:cost-scope` cost-allocation tag activation — now UNBLOCKED.** AWS
   Billing has discovered the key (`list-cost-allocation-tags` returns it as
   `Inactive`), so `ce update-cost-allocation-tags-status TagKey=edd:cost-scope,
-  Status=Active` should now succeed (it previously threw `ValidationException: Tag
-  keys not found`). This is a shared-account billing change — run it as the
+Status=Active` should now succeed (it previously threw `ValidationException: Tag
+keys not found`). This is a shared-account billing change — run it as the
   operator, then confirm `/admin/costs` reads CE data scoped to `edd-alpha`.
 
 - **Clear the remaining live cost/ops debris (operator decisions).** The live

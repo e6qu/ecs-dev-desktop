@@ -34,6 +34,14 @@ export interface SnapshotRef {
   /** Marked retained (the data-safety snapshot kept past delete per the Middle
    * policy). Orphan-GC must keep these regardless of the grace window. */
   readonly retained?: boolean;
+  /** The workspace this snapshot was taken for, from the `edd:workspace-id` tag —
+   * the attribution the admin snapshot view shows. Absent on legacy snapshots
+   * captured before the workspace tag was written. */
+  readonly workspaceId?: WorkspaceId;
+  /** The snapshot's logical volume size in GiB (EBS `VolumeSize`) — surfaced so the
+   * admin can see the storage each snapshot pins. Absent when the provider does not
+   * report a size. */
+  readonly sizeGiB?: number;
 }
 
 export interface StorageProvider {

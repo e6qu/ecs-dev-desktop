@@ -262,6 +262,52 @@ describe("Ec2StorageProvider AWS request shape (managed tags + filters + branche
     expect(sf.Filters).toContainEqual({ Name: "tag:edd:managed", Values: ["true"] });
   });
 
+  it("parses retain, workspace attribution, and size from enumerated snapshots", async () => {
+    const client = new EC2Client({ region: "us-east-1" });
+    const CREATED = new Date("2026-06-01T00:00:00.000Z"); // fixed inert fixture (§6.10)
+    const send = (command: unknown): Promise<unknown> => {
+      if (command instanceof DescribeSnapshotsCommand)
+        return Promise.resolve({
+          Snapshots: [
+            {
+              SnapshotId: "snap-attributed",
+              State: "completed",
+              StartTime: CREATED,
+              VolumeId: "vol-a",
+              VolumeSize: 20,
+              Tags: [
+                { Key: "edd:managed", Value: "true" },
+                { Key: "edd:retain", Value: "true" },
+                { Key: "edd:workspace-id", Value: "ws-owner" },
+              ],
+            },
+            {
+              SnapshotId: "snap-anon",
+              State: "completed",
+              StartTime: CREATED,
+              VolumeId: "vol-b",
+              VolumeSize: 8,
+              Tags: [{ Key: "edd:managed", Value: "true" }],
+            },
+          ],
+        });
+      return Promise.reject(new Error("unexpected command"));
+    };
+    (client as unknown as { send: typeof send }).send = send;
+    const sp = new Ec2StorageProvider({ client, region: "us-east-1" });
+
+    const byId = new Map((await sp.listSnapshots()).map((s) => [s.id, s]));
+    const attributed = byId.get(snapshotId("snap-attributed"));
+    expect(attributed?.retained).toBe(true);
+    expect(attributed?.workspaceId).toBe(workspaceId("ws-owner"));
+    expect(attributed?.sizeGiB).toBe(20);
+
+    const anon = byId.get(snapshotId("snap-anon"));
+    expect(anon?.retained).toBeUndefined();
+    expect(anon?.workspaceId).toBeUndefined();
+    expect(anon?.sizeGiB).toBe(8);
+  });
+
   it("copySnapshot issues against the destination region, naming the source region + id", async () => {
     const srcSent: Sent[] = [];
     const destSent: Sent[] = [];

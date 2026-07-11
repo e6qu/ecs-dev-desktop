@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 export { WorkspaceService, ComputeUnavailableError, QuotaExceededError } from "./workspace-service";
-export type { ActiveWorkspace, WorkspaceServiceDeps } from "./workspace-service";
+export type { ActiveWorkspace, AdminSnapshotView, WorkspaceServiceDeps } from "./workspace-service";
 export { toWorkspaceDetail, toWorkspaceDto } from "./dto";
 export { CatalogService } from "./catalog-service";
 export type { CatalogServiceDeps } from "./catalog-service";

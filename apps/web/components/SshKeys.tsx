@@ -76,7 +76,7 @@ export function SshKeys() {
     <div className="stack" style={{ gap: 24 }}>
       <section className="stack" style={{ gap: 10 }}>
         <h2 className="mono section-h">add a key</h2>
-        <label className="mono" style={{ fontSize: 12 }}>
+        <label className="mono stack" style={{ fontSize: 12, gap: 6 }}>
           Public key
           <textarea
             className="input"
@@ -90,7 +90,7 @@ export function SshKeys() {
             }}
           />
         </label>
-        <label className="mono" style={{ fontSize: 12 }}>
+        <label className="mono stack" style={{ fontSize: 12, gap: 6 }}>
           Label (optional)
           <input
             className="input"

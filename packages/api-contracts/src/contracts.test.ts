@@ -2,11 +2,14 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  adminSnapshot,
   COST_WINDOW_DAYS,
   costReportQuery,
   costWindow,
   createWorkspaceRequest,
   infrastructureReport,
+  listSnapshotsResponse,
+  purgeUnreferencedSnapshotsResponse,
   registerSshKeyRequest,
   sshKeyDto,
   workspace,
@@ -32,6 +35,61 @@ describe("api-contracts", () => {
 
   it("rejects an empty baseImage on create", () => {
     expect(() => createWorkspaceRequest.parse({ baseImage: "" })).toThrow();
+  });
+
+  it("accepts an attributed admin snapshot and an unattributed one", () => {
+    const attributed = adminSnapshot.parse({
+      id: "snap-1",
+      workspaceId: "ws-1",
+      sizeGiB: 20,
+      createdAt: "2026-06-01T00:00:00.000Z",
+      retained: true,
+      referenced: false,
+    });
+    expect(attributed.workspaceId).toBe("ws-1");
+    expect(attributed.referenced).toBe(false);
+
+    // Unattributed (no workspaceId/sizeGiB) is valid — the legacy orphan case.
+    const unattributed = adminSnapshot.parse({
+      id: "snap-2",
+      createdAt: "2026-06-01T00:00:00.000Z",
+      retained: true,
+      referenced: false,
+    });
+    expect(unattributed.workspaceId).toBeUndefined();
+  });
+
+  it("rejects a non-positive snapshot size and a missing retained flag", () => {
+    expect(() =>
+      adminSnapshot.parse({
+        id: "snap-1",
+        sizeGiB: 0,
+        createdAt: "2026-06-01T00:00:00.000Z",
+        retained: true,
+        referenced: false,
+      }),
+    ).toThrow();
+    expect(() =>
+      adminSnapshot.parse({
+        id: "snap-1",
+        createdAt: "2026-06-01T00:00:00.000Z",
+        referenced: false,
+      }),
+    ).toThrow();
+  });
+
+  it("parses the snapshot list and bulk-purge responses", () => {
+    const list = listSnapshotsResponse.parse({
+      snapshots: [
+        { id: "snap-1", createdAt: "2026-06-01T00:00:00.000Z", retained: true, referenced: true },
+      ],
+    });
+    expect(list.snapshots).toHaveLength(1);
+    const bulk = purgeUnreferencedSnapshotsResponse.parse({
+      purged: 2,
+      snapshotIds: ["snap-a", "snap-b"],
+    });
+    expect(bulk.purged).toBe(2);
   });
 
   it("accepts a full infrastructure report (cluster + fleet + topology)", () => {

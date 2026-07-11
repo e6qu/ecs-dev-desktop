@@ -27,6 +27,7 @@ import {
   isoTimestamp,
   snapshotId,
   volumeId,
+  workspaceId,
   type ComponentHealth,
   type Snapshot,
   type SnapshotId,
@@ -376,14 +377,19 @@ export class Ec2StorageProvider implements StorageProvider {
       { OwnerIds: ["self"], Filters: this.managedFilters() },
     )) {
       for (const s of page.Snapshots ?? []) {
-        const retained = (s.Tags ?? []).some(
-          (t) => t.Key === RETAIN_TAG_KEY && t.Value === RETAIN_TAG_VALUE,
-        );
+        const tags = s.Tags ?? [];
+        const retained = tags.some((t) => t.Key === RETAIN_TAG_KEY && t.Value === RETAIN_TAG_VALUE);
+        // `edd:workspace-id` is the attribution written at createSnapshot; absent on
+        // snapshots taken before the tag existed (which is precisely why the admin
+        // view flags them "unattributed" for cleanup).
+        const wsTag = tags.find((t) => t.Key === WORKSPACE_TAG_KEY)?.Value;
         refs.push({
           id: snapshotId(required(s.SnapshotId, "SnapshotId")),
           createdAt: isoTimestamp(required(s.StartTime, "StartTime").toISOString()),
           sourceVolumeId: volumeId(required(s.VolumeId, "VolumeId")),
           ...(retained ? { retained: true } : {}),
+          ...(wsTag === undefined ? {} : { workspaceId: workspaceId(wsTag) }),
+          ...(s.VolumeSize === undefined ? {} : { sizeGiB: s.VolumeSize }),
         });
       }
     }
