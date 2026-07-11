@@ -22,9 +22,16 @@ import type { AuditEvent } from "./audit";
  * A workspace's lifecycle has a fourth billable phase, **teardown**: the window
  * between the delete *request* (`session.delete`) and teardown *completion*
  * (`session.terminated`, emitted by `finishDeleting` once the task is stopped and
- * the record removed). The EBS volume and its data-safety snapshot keep costing
+ * the record tombstoned). The EBS volume and its data-safety snapshot keep costing
  * real money through that window, so it bills volume + snapshot (no compute) —
  * otherwise teardown lag would be silently free (an under-count).
+ *
+ * Teardown completion does NOT end billing: the RETAINED snapshot (the undelete
+ * retention window's restore point) keeps accruing snapshot GB-month until the
+ * retention purge (`session.purged`) removes it — or `session.undelete` restores
+ * the workspace to `stopped`, where the same snapshot simply keeps billing. Both
+ * are priced as stopped (snapshot-only) time; only `session.purged` (or a lost
+ * retained snapshot) truly ends billing.
  */
 
 /** Milliseconds in one hour. */
@@ -48,8 +55,66 @@ const STOP_ACTION = "session.stop";
  * keep billing through the teardown window (it opens the `teardown` phase). */
 const TEARDOWN_START_ACTION = "session.delete";
 /** Audit action for teardown *completion* (finishDeleting stopped the task and
- * removed the record) — ends all billing. */
+ * tombstoned the record) — the volume stops billing, but the RETAINED snapshot
+ * keeps billing through the undelete-retention window (the `retained` phase). */
 const TERMINATE_ACTION = "session.terminated";
+/** Audit action restoring a terminated tombstone to `stopped` within the retention
+ * window — the retained snapshot keeps billing and the workspace can wake again. */
+const UNDELETE_ACTION = "session.undelete";
+/** Audit action for the retention purge (tombstone + retained snapshot removed) —
+ * the true, permanent end of all billing. */
+const PURGE_ACTION = "session.purged";
+/** Audit action recording that a workspace's referenced snapshot vanished
+ * out-of-band — the snapshot storage is gone, so snapshot billing stops. */
+const SNAPSHOT_LOST_ACTION = "session.snapshot_lost";
+
+/** Billing phases with an interval open (accruing) at a walk instant. `retained`
+ * is the post-`session.terminated` retention window: the record is a tombstone but
+ * its retained snapshot still exists — and bills — until `session.purged` removes
+ * it or `session.undelete` restores the workspace to `stopped`. */
+type OpenPhase = "none" | "running" | "stopped" | "teardown" | "retained";
+/** `terminated` is terminal: the retained snapshot is gone (`session.purged`, or a
+ * lost retained snapshot), so nothing bills ever again. */
+type WalkPhase = OpenPhase | "terminated";
+
+/**
+ * Pure: the lifecycle transition table shared by BOTH walk paths (the full-scan
+ * {@link deriveBillingIntervals} and the checkpoint {@link walkBilling}) so their
+ * semantics can never diverge. Returns the phase the event moves the workspace
+ * into, or `null` when the event does not change the billing phase (idempotent
+ * repeats, transitions the lifecycle makes impossible).
+ */
+function nextPhase(phase: OpenPhase, action: string): WalkPhase | null {
+  if (RUNNING_START_ACTIONS.has(action)) {
+    // A start during teardown/retention is impossible (a deleting workspace can't
+    // wake; a tombstone must be undeleted first) — only open from none/stopped.
+    return phase === "none" || phase === "stopped" ? "running" : null;
+  }
+  switch (action) {
+    case STOP_ACTION:
+      return phase === "running" ? "stopped" : null;
+    case TEARDOWN_START_ACTION:
+      return phase === "running" || phase === "stopped" ? "teardown" : null;
+    case TERMINATE_ACTION:
+      // Teardown completion: the volume is released but the retained snapshot
+      // keeps billing through the retention window (idempotent while retained).
+      return phase === "retained" ? null : "retained";
+    case UNDELETE_ACTION:
+      // Restores the tombstone to a stopped workspace held by the same snapshot —
+      // snapshot billing continues seamlessly, and the workspace can wake again.
+      return phase === "retained" ? "stopped" : null;
+    case PURGE_ACTION:
+      // Tombstone + retained snapshot removed — the permanent end of all billing.
+      return "terminated";
+    case SNAPSHOT_LOST_ACTION:
+      // The snapshot vanished out-of-band: close the open snapshot-billing phase.
+      // From `stopped` the record survives (marked error) with nothing billing; a
+      // lost RETAINED snapshot leaves nothing to restore or bill — terminal.
+      return phase === "stopped" ? "none" : phase === "retained" ? "terminated" : null;
+    default:
+      return null;
+  }
+}
 
 /**
  * Per-hour / per-month USD rates the cost model applies. Every rate is supplied
@@ -87,12 +152,15 @@ export interface Interval {
 export interface BillingIntervals {
   /** Windows the workspace held a live task + volume (compute + volume cost). */
   readonly running: readonly Interval[];
-  /** Windows the workspace was scaled to zero, held by a snapshot (snapshot cost). */
+  /** Windows only a snapshot billed (snapshot cost): scaled-to-zero time AND the
+   * post-teardown retention window (the retained snapshot exists until purged). */
   readonly stopped: readonly Interval[];
   /** Windows between the delete request and teardown completion — the volume +
    * snapshot still exist and bill (no compute). */
   readonly teardown: readonly Interval[];
-  /** True once the workspace finished teardown — no interval is left open to `now`. */
+  /** True when the session's lifecycle stands terminated: tombstoned awaiting the
+   * retention purge (its retained snapshot still bills into `stopped`), or purged.
+   * A `session.undelete` clears it. */
   readonly terminated: boolean;
 }
 
@@ -159,7 +227,10 @@ export interface CostIssue {
  * audit events. Events are sorted chronologically here, so callers may pass them
  * in any order. A start while already running (e.g. an idempotent reconnect that
  * still logged) is ignored — it does not double-open an interval. Any open
- * interval is closed at `now` unless the workspace was terminated.
+ * interval is closed at `now` unless billing permanently ended (`session.purged`).
+ * Events timestamped AFTER `now` are ignored — the identical clamp `walkBilling`
+ * applies (`m <= throughMs`), so writer clock skew can't make the two paths
+ * diverge on a future-dated event.
  */
 export function deriveBillingIntervals(
   events: readonly AuditEvent[],
@@ -171,55 +242,49 @@ export function deriveBillingIntervals(
   // or a later event could sort before an earlier one and clamp an interval to zero,
   // silently losing billable time. Drop unparseable timestamps up front.
   const sorted = [...events]
-    .filter((e) => !Number.isNaN(Date.parse(e.at)))
+    .filter((e) => {
+      const m = Date.parse(e.at);
+      return !Number.isNaN(m) && m <= nowMs;
+    })
     .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
   const running: Interval[] = [];
   const stopped: Interval[] = [];
   const teardown: Interval[] = [];
-  let phase: "none" | "running" | "stopped" | "teardown" = "none";
+  let phase: WalkPhase = "none";
   let openSince = 0;
-  let terminated = false;
 
-  const bucketFor = (p: typeof phase): Interval[] | null =>
-    p === "running" ? running : p === "stopped" ? stopped : p === "teardown" ? teardown : null;
+  // The retained (retention-window) snapshot bills exactly like a stopped one, so
+  // retained windows land in the `stopped` bucket.
+  const bucketFor = (p: WalkPhase): Interval[] | null =>
+    p === "running"
+      ? running
+      : p === "stopped" || p === "retained"
+        ? stopped
+        : p === "teardown"
+          ? teardown
+          : null;
   const closeOpen = (toMs: number): void => {
     const bucket = bucketFor(phase);
     if (bucket !== null) bucket.push({ fromMs: openSince, toMs: Math.max(openSince, toMs) });
   };
 
   for (const event of sorted) {
-    if (terminated) break;
+    if (phase === "terminated") break;
+    const next = nextPhase(phase, event.action);
+    if (next === null) continue;
     const atMs = Date.parse(event.at);
-    if (Number.isNaN(atMs)) continue;
-    if (RUNNING_START_ACTIONS.has(event.action)) {
-      // A start during teardown is impossible (a deleting workspace can't wake), so
-      // only re-open from none/stopped — never reverse a committed teardown.
-      if (phase === "stopped") closeOpen(atMs);
-      if (phase === "none" || phase === "stopped") {
-        phase = "running";
-        openSince = atMs;
-      }
-    } else if (event.action === STOP_ACTION) {
-      if (phase === "running") {
-        closeOpen(atMs);
-        phase = "stopped";
-        openSince = atMs;
-      }
-    } else if (event.action === TEARDOWN_START_ACTION) {
-      if (phase === "running" || phase === "stopped") {
-        closeOpen(atMs);
-        phase = "teardown";
-        openSince = atMs;
-      }
-    } else if (event.action === TERMINATE_ACTION) {
-      closeOpen(atMs);
-      terminated = true;
-      phase = "none";
-    }
+    closeOpen(atMs);
+    phase = next;
+    openSince = atMs;
   }
 
-  if (!terminated) closeOpen(nowMs);
-  return { running, stopped, teardown, terminated };
+  if (phase !== "terminated") closeOpen(nowMs);
+  return {
+    running,
+    stopped,
+    teardown,
+    terminated: phase === "retained" || phase === "terminated",
+  };
 }
 
 function totalMs(intervals: readonly Interval[]): number {
@@ -366,43 +431,50 @@ export function priceDurations(
  */
 export interface BillingState {
   readonly runningMs: number;
+  /** Snapshot-billed ms: scaled-to-zero AND retention-window (retained) time. */
   readonly stoppedMs: number;
   readonly teardownMs: number;
-  readonly phase: "running" | "stopped" | "teardown" | "none" | "terminated";
+  readonly phase: WalkPhase;
+}
+
+/** Accumulated running/stopped/teardown durations mid-walk. */
+interface WalkTotals {
+  readonly runningMs: number;
+  readonly stoppedMs: number;
+  readonly teardownMs: number;
+}
+
+/** Pure: `totals` with the interval open in `phase` since `openSince` closed at
+ * `toMs` and folded into its bucket (retained bills into `stoppedMs`, exactly as
+ * {@link deriveBillingIntervals} buckets retained windows into `stopped`). */
+function foldOpen(
+  totals: WalkTotals,
+  phase: WalkPhase,
+  openSince: number,
+  toMs: number,
+): WalkTotals {
+  const d = Math.max(0, toMs - openSince);
+  if (phase === "running") return { ...totals, runningMs: totals.runningMs + d };
+  if (phase === "stopped" || phase === "retained") {
+    return { ...totals, stoppedMs: totals.stoppedMs + d };
+  }
+  if (phase === "teardown") return { ...totals, teardownMs: totals.teardownMs + d };
+  return totals;
 }
 
 /** The lifecycle transition walk, shared by the checkpoint helpers so they price
- * identically to {@link deriveBillingIntervals}. Accumulates closed running/stopped
- * durations from an initial `phase`/`openSince`, over events in `(after, through]`,
- * and returns the carry state. Does not close the final open interval — the caller
- * decides where to close it (at the checkpoint, or at `now`). */
+ * identically to {@link deriveBillingIntervals} (both drive {@link nextPhase}).
+ * Accumulates closed durations from an initial `phase`/`openSince`, over events in
+ * `(after, through]`, and returns the carry state. Does not close the final open
+ * interval — the caller decides where to close it (at the checkpoint, or `now`). */
 function walkBilling(
   events: readonly AuditEvent[],
   afterMs: number,
   throughMs: number,
-  init: {
-    phase: "running" | "stopped" | "teardown" | "none";
-    openSince: number;
-    runningMs: number;
-    stoppedMs: number;
-    teardownMs: number;
-  },
-): {
-  phase: "running" | "stopped" | "teardown" | "none";
-  openSince: number;
-  runningMs: number;
-  stoppedMs: number;
-  teardownMs: number;
-  terminated: boolean;
-} {
-  let { phase, openSince, runningMs, stoppedMs, teardownMs } = init;
-  let terminated = false;
-  const add = (toMs: number): void => {
-    const d = Math.max(0, toMs - openSince);
-    if (phase === "running") runningMs += d;
-    else if (phase === "stopped") stoppedMs += d;
-    else if (phase === "teardown") teardownMs += d;
-  };
+  init: WalkTotals & { phase: WalkPhase; openSince: number },
+): WalkTotals & { phase: WalkPhase; openSince: number } {
+  let { phase, openSince } = init;
+  let totals: WalkTotals = init;
   const sorted = [...events]
     .filter((e) => {
       const m = Date.parse(e.at);
@@ -410,33 +482,15 @@ function walkBilling(
     })
     .sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
   for (const event of sorted) {
-    if (terminated) break;
+    if (phase === "terminated") break;
+    const next = nextPhase(phase, event.action);
+    if (next === null) continue;
     const atMs = Date.parse(event.at);
-    if (RUNNING_START_ACTIONS.has(event.action)) {
-      if (phase === "none" || phase === "stopped") {
-        add(atMs);
-        phase = "running";
-        openSince = atMs;
-      }
-    } else if (event.action === STOP_ACTION) {
-      if (phase === "running") {
-        add(atMs);
-        phase = "stopped";
-        openSince = atMs;
-      }
-    } else if (event.action === TEARDOWN_START_ACTION) {
-      if (phase === "running" || phase === "stopped") {
-        add(atMs);
-        phase = "teardown";
-        openSince = atMs;
-      }
-    } else if (event.action === TERMINATE_ACTION) {
-      add(atMs);
-      terminated = true;
-      phase = "none";
-    }
+    totals = foldOpen(totals, phase, openSince, atMs);
+    phase = next;
+    openSince = atMs;
   }
-  return { phase, openSince, runningMs, stoppedMs, teardownMs, terminated };
+  return { ...totals, phase, openSince };
 }
 
 /**
@@ -460,23 +514,20 @@ export function deriveBillingState(
   });
   // Close the still-open interval at the checkpoint (fold through-checkpoint time
   // in); the phase is retained so the resume re-opens from here.
-  let { runningMs, stoppedMs, teardownMs } = w;
-  if (!w.terminated) {
-    const d = Math.max(0, cutMs - w.openSince);
-    if (w.phase === "running") runningMs += d;
-    else if (w.phase === "stopped") stoppedMs += d;
-    else if (w.phase === "teardown") teardownMs += d;
-  }
-  return { runningMs, stoppedMs, teardownMs, phase: w.terminated ? "terminated" : w.phase };
+  const totals = foldOpen(w, w.phase, w.openSince, cutMs);
+  return { ...totals, phase: w.phase };
 }
 
 /**
  * Pure: resume pricing from a checkpoint {@link BillingState} — replay only the
  * events after `checkpointAt`, re-opening the checkpoint's phase from there, and
- * close the final open interval at `now` (unless terminated). Returns the TOTAL
- * running/stopped ms (checkpoint + since). Combined with `deriveBillingState`, this
- * is exactly what `deriveBillingIntervals` would compute over the whole ledger —
- * the invariant the rollup relies on (and the figure-equivalence test asserts).
+ * close the final open interval at `now` (unless billing permanently ended).
+ * Returns the TOTAL running/stopped ms (checkpoint + since). Combined with
+ * `deriveBillingState`, this is exactly what `deriveBillingIntervals` would compute
+ * over the whole ledger — the invariant the rollup relies on (and the
+ * figure-equivalence tests assert). The returned `terminated` mirrors
+ * {@link BillingIntervals.terminated}: the lifecycle stands terminated (retention
+ * tombstone or purged), even while the retained snapshot still bills.
  */
 export function resumeBilling(
   state: BillingState,
@@ -501,14 +552,8 @@ export function resumeBilling(
     stoppedMs: state.stoppedMs,
     teardownMs: state.teardownMs,
   });
-  let { runningMs, stoppedMs, teardownMs } = w;
-  if (!w.terminated) {
-    const d = Math.max(0, nowMs - w.openSince);
-    if (w.phase === "running") runningMs += d;
-    else if (w.phase === "stopped") stoppedMs += d;
-    else if (w.phase === "teardown") teardownMs += d;
-  }
-  return { runningMs, stoppedMs, teardownMs, terminated: w.terminated };
+  const totals = foldOpen(w, w.phase, w.openSince, nowMs);
+  return { ...totals, terminated: w.phase === "retained" || w.phase === "terminated" };
 }
 
 function addBreakdowns(a: CostBreakdown, b: CostBreakdown): CostBreakdown {
@@ -539,7 +584,9 @@ const ZERO_COST: CostBreakdown = {
  * the lifetime cost (the whole ledger the caller supplies). With `window`, each
  * session is priced over only the part of its run-time inside `[from, to)`, and
  * sessions with no activity in the window are dropped. Sessions and users are
- * returned most-expensive first.
+ * returned most-expensive first. `ledgerStart` lets the caller supply the true
+ * ledger start when it knows events `inputs` excludes (e.g. an unpriceable legacy
+ * session's) — the default is the earliest event across `inputs`.
  */
 export function computeFleetCost(
   inputs: readonly WorkspaceCostInput[],
@@ -547,6 +594,7 @@ export function computeFleetCost(
   now: IsoTimestamp,
   window?: Interval,
   unpriced: readonly CostIssue[] = [],
+  ledgerStart?: IsoTimestamp,
 ): FleetCostReport {
   const bySession: SessionCost[] = [];
   for (const w of inputs) {
@@ -569,7 +617,7 @@ export function computeFleetCost(
 
   const windowStart = window
     ? isoTimestamp(new Date(window.fromMs).toISOString())
-    : earliestEventAt(inputs, now);
+    : (ledgerStart ?? earliestEventAt(inputs, now));
   return aggregateFleetCost(bySession, pricing, now, windowStart, unpriced);
 }
 
@@ -613,7 +661,9 @@ export function aggregateFleetCost(
     total,
     byUser,
     bySession: sortedSessions,
-    unpriced,
+    // Canonical order: the full-scan and rollup paths collect unpriced sessions in
+    // different orders — sort so the two reports stay byte-identical.
+    unpriced: [...unpriced].sort((a, b) => a.workspaceId.localeCompare(b.workspaceId)),
   };
 }
 

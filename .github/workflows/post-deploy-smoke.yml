@@ -16,8 +16,10 @@ permissions:
   contents: read
   id-token: write
 
+# Single shared group: only the newest smoke matters, and per-sha groups let an
+# older run keep verifying a build that has already been superseded.
 concurrency:
-  group: post-deploy-smoke-${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || inputs.expected_sha }}
+  group: post-deploy-smoke
   cancel-in-progress: true
 
 jobs:
@@ -25,7 +27,10 @@ jobs:
     name: verify deployed app
     if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    # Above the provable worst case so a timeout SIGKILL can never abort cleanup
+    # mid-flight and leak workspaces: setup ~6 + app-build wait 9 + playwright 2
+    # + smoke step <=110 + upload + re-auth + sweep <=35 ~= 165 min.
+    timeout-minutes: 180
     env:
       EDD_APP_URL: ${{ vars.EDD_APP_URL }}
       RELEASE_AWS_ROLE_ARN: ${{ vars.RELEASE_AWS_ROLE_ARN }}
@@ -90,7 +95,9 @@ jobs:
             echo "::error::expected deployed sha is required"
             exit 1
           fi
-          printf 'EXPECTED_SHA=%s\n' "$expected_sha" >> "$GITHUB_ENV"
+          # Image tags are the 12-char short sha; truncate once here so every
+          # consumer (workflow_run head sha or manual dispatch input) matches.
+          printf 'EXPECTED_SHA=%s\n' "${expected_sha:0:12}" >> "$GITHUB_ENV"
 
       - name: Configure AWS credentials for authenticated smoke
         uses: aws-actions/configure-aws-credentials@v6.2.1
@@ -105,11 +112,10 @@ jobs:
             echo "::error::expected deployed sha is required"
             exit 1
           fi
-          short="${EXPECTED_SHA:0:12}"
           deadline=$((SECONDS + 540))
           last=""
           while [ "$SECONDS" -lt "$deadline" ]; do
-            if output=$(sh scripts/check-deployed-app.sh "$EDD_APP_URL" "$short" 2>&1); then
+            if output=$(sh scripts/check-deployed-app.sh "$EDD_APP_URL" "$EXPECTED_SHA" 2>&1); then
               printf '%s\n' "$output"
               exit 0
             fi
@@ -125,6 +131,12 @@ jobs:
         run: pnpm --filter web exec playwright install chromium
 
       - name: Open and screenshot one fresh workspace per editor
+        # Worst case inside this step: catalog rollout hard cap 30 min + 4
+        # editors x (8 min ready + ~5 min browser assertions) + parallel
+        # best-effort cleanup (20 min terminate + 2 min purge) ~= 105 min. The
+        # step-level timeout (below the job's) guarantees the sweep below
+        # still runs inside the job budget.
+        timeout-minutes: 110
         run: pnpm --filter web exec tsx scripts/screenshot-deployed-workspaces.ts
         env:
           AWS_REGION: ${{ env.RELEASE_AWS_REGION }}
@@ -136,4 +148,59 @@ jobs:
         with:
           name: workspace-screenshots
           path: temp/workspace-screenshots
-          if-no-files-found: error
+          if-no-files-found: warn
+
+      - name: Re-assume AWS role for the sweep
+        # The OIDC role session from the first configure step lasts 1 h; a
+        # slow smoke outlives it, so the sweep re-assumes before touching
+        # Secrets Manager / DynamoDB.
+        if: always()
+        uses: aws-actions/configure-aws-credentials@v6.2.1
+        with:
+          role-to-assume: ${{ env.RELEASE_AWS_ROLE_ARN }}
+          aws-region: ${{ env.RELEASE_AWS_REGION }}
+
+      - name: Sweep leftover smoke workspaces
+        # Safety net: a failed or killed smoke step must never leak smoke
+        # workspaces (real Fargate + EBS cost) in production. Lists every
+        # workspace via the admin API and best-effort deletes any owned by the
+        # smoke prefixes (smoke-shot-/smoke-); fails only when a leftover
+        # cannot be deleted.
+        if: always()
+        timeout-minutes: 35
+        env:
+          AWS_REGION: ${{ env.RELEASE_AWS_REGION }}
+        run: |
+          set -euo pipefail
+          mkdir -p temp
+          cat > temp/sweep-smoke-workspaces.mts <<'EOF'
+          // SPDX-License-Identifier: AGPL-3.0-or-later
+          import { revokeAuthSession } from "../apps/web/lib/auth-sessions";
+
+          import {
+            authJar,
+            authSecret,
+            requiredEnv,
+            sweepSmokeWorkspaces,
+          } from "../apps/web/scripts/deployed-workspace-smoke-lib";
+
+          const baseUrl = requiredEnv("EDD_APP_URL").replace(/\/$/, "");
+          const region = requiredEnv("AWS_REGION");
+          process.env.DYNAMODB_TABLE = requiredEnv("DYNAMODB_TABLE");
+          const secret = await authSecret(region, requiredEnv("AUTH_SECRET_ID"));
+          const { jar, sessionId } = await authJar(secret, "smoke-sweep");
+          try {
+            const { swept, failures } = await sweepSmokeWorkspaces(baseUrl, jar);
+            for (const id of swept) console.log(`edd: swept leftover smoke workspace ${id}`);
+            if (swept.length === 0 && failures.length === 0) {
+              console.log("edd: no leftover smoke workspaces");
+            }
+            if (failures.length > 0) {
+              for (const failure of failures) console.error("edd: sweep failure:", failure);
+              process.exitCode = 1;
+            }
+          } finally {
+            await revokeAuthSession(sessionId);
+          }
+          EOF
+          pnpm --filter web exec tsx "$GITHUB_WORKSPACE/temp/sweep-smoke-workspaces.mts"

@@ -30,6 +30,9 @@ const ACTIONS = [
   "session.stop",
   "session.delete",
   "session.terminated",
+  "session.undelete",
+  "session.purged",
+  "session.snapshot_lost",
   "session.snapshot", // a no-op for billing — exercises the "ignore unknown action" path
 ];
 const BASE = Date.parse("2026-01-01T00:00:00.000Z");
@@ -60,8 +63,18 @@ const makeStreamArb = (minGap: number) =>
         { minLength: 0, maxLength: 14 },
       ),
       tail: fc.integer({ min: 0, max: 200_000 }),
+      // Optionally one event slightly AFTER `now` (a skewed writer clock): every
+      // derivation must ignore it — and both walk paths must ignore it IDENTICALLY,
+      // or the full scan and the checkpoint/resume would report different figures.
+      future: fc.option(
+        fc.record({
+          gap: fc.integer({ min: 1, max: 100_000 }),
+          action: fc.constantFrom(...ACTIONS),
+        }),
+        { nil: undefined },
+      ),
     })
-    .map(({ steps, tail }) => {
+    .map(({ steps, tail, future }) => {
       let t = BASE;
       const events: AuditEvent[] = [];
       const times: number[] = [];
@@ -70,7 +83,17 @@ const makeStreamArb = (minGap: number) =>
         times.push(t);
         events.push({ at: iso(t), actor: "system", action, target: "ws-x", detail: "" });
       }
-      return { events, times, nowMs: t + tail, now: iso(t + tail) };
+      const nowMs = t + tail;
+      if (future !== undefined) {
+        events.push({
+          at: iso(nowMs + future.gap),
+          actor: "system",
+          action: future.action,
+          target: "ws-x",
+          detail: "",
+        });
+      }
+      return { events, times, nowMs, now: iso(nowMs) };
     });
 
 const streamArb = makeStreamArb(0);

@@ -91,6 +91,10 @@ const CONTROL_PLANE_REQUIREMENTS: readonly IamRequirement[] = [
     actions: ["kms:Decrypt", "kms:GenerateDataKey", "kms:DescribeKey"],
   },
   {
+    // TagResource is cluster-scoped here for RunTask's inline task tags (the
+    // workspace-id + cost-scope tags the orphan-task reaper enumerates): ecs:cluster
+    // IS present in the RunTask request context, so the condition is satisfiable.
+    // Task-DEFINITION tagging is authorized separately below (no ecs:cluster context).
     sid: "RunAndManageWorkspaceTasks",
     resource: "any",
     actions: [
@@ -109,9 +113,17 @@ const CONTROL_PLANE_REQUIREMENTS: readonly IamRequirement[] = [
     // "Resource: *" + condition row the way RunTask/StopTask/DescribeTasks/ListTasks
     // each have); DescribeTaskDefinition supports no resource types or condition
     // keys at all.
+    //
+    // ecs:TagResource lives here, on the task-definition resource, because
+    // RegisterTaskDefinition sends inline cost-scope tags: AWS authorizes those tags
+    // against ecs:TagResource on the task-definition being registered, and the
+    // cluster-scoped grant cannot satisfy it (ecs:cluster is absent from the
+    // registration request context). Cluster-scoped RunTask tagging is authorized by
+    // the cluster condition on RunTask itself, so TagResource is not needed on
+    // RunAndManageWorkspaceTasks.
     sid: "RegisterWorkspaceTaskDefinitions",
     resource: "workspace-task-definitions",
-    actions: ["ecs:RegisterTaskDefinition"],
+    actions: ["ecs:RegisterTaskDefinition", "ecs:TagResource"],
   },
   {
     sid: "DescribeTaskDefinitions",

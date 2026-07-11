@@ -10,6 +10,7 @@ import { usePoll } from "../lib/usePoll";
 type ImageEntry = ImageMetadataDto | { repo: string; tag: null };
 
 const SOURCE_POLL_MS = 5000;
+const IMAGES_POLL_MS = 30_000;
 
 async function jsonOrThrow<T>(res: Response): Promise<T> {
   if (res.ok) return (await res.json()) as T;
@@ -45,18 +46,24 @@ function LoadingRow({ colSpan, label }: { colSpan: number; label: string }) {
   );
 }
 
-/** The admin Images console: per-image size + layer breakdown, a Rebuild trigger,
- * the last 20 builds, and live streaming logs for a selected build. */
+/** The admin Images console: per-image size + layer breakdown, the golden-image
+ * source-sync state, and the recent webhook trigger decisions. Builds themselves
+ * are launched by GitHub Actions on push — this console observes them; it does
+ * not start them (POST /api/admin/builds deliberately answers 410). */
 export function ImagesConsole() {
   const loadImages = useCallback(
-    () => fetch("/api/admin/images").then((r) => r.json() as Promise<{ images: ImageEntry[] }>),
+    () => fetch("/api/admin/images").then((r) => jsonOrThrow<{ images: ImageEntry[] }>(r)),
     [],
   );
   const loadSource = useCallback(
     () => fetch("/api/admin/image-source").then((r) => jsonOrThrow<ImageSourceStateDto>(r)),
     [],
   );
-  const { data: imagesData } = usePoll(loadImages, 30_000, "images unavailable");
+  const { data: imagesData, error: imagesError } = usePoll(
+    loadImages,
+    IMAGES_POLL_MS,
+    "images unavailable",
+  );
   const { data: sourceData, error: sourceError } = usePoll(
     loadSource,
     SOURCE_POLL_MS,
@@ -147,7 +154,23 @@ export function ImagesConsole() {
                   />
                 );
               })}
-              {imagesData === null && <LoadingRow colSpan={6} label="loading images…" />}
+              {/* A failed images fetch must be visible (§6.5), never a silently
+                  empty table; rows already loaded stay as last-known state. */}
+              {imagesError !== null && (
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="state-note"
+                    role="alert"
+                    style={{ color: "var(--st-error)" }}
+                  >
+                    {imagesError}
+                  </td>
+                </tr>
+              )}
+              {imagesError === null && imagesData === null && (
+                <LoadingRow colSpan={6} label="loading images…" />
+              )}
             </tbody>
           </table>
         </div>

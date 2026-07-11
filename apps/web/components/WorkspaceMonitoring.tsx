@@ -12,6 +12,8 @@ import { gib } from "../lib/format";
 
 const api = new ApiClient({ baseUrl: "" });
 const POLL_MS = 30_000;
+/** The record is gone (deleted + purged, or never existed). */
+const HTTP_NOT_FOUND = 404;
 
 function fmtDuration(ms: number): string {
   const h = Math.floor(ms / 3_600_000);
@@ -88,7 +90,11 @@ function MetricPanel({
  * line broken out), utilization + IOPS series. Polls every 30s. */
 export function WorkspaceMonitoring({ id }: { id: string }) {
   const load = useCallback(() => api.getWorkspaceMonitoring(id), [id]);
-  const { data, error } = usePoll<WorkspaceMonitoringDto>(load, POLL_MS, "monitoring unavailable");
+  const { data, error, errorStatus } = usePoll<WorkspaceMonitoringDto>(
+    load,
+    POLL_MS,
+    "monitoring unavailable",
+  );
 
   if (data === null) {
     return error !== null ? (
@@ -105,6 +111,20 @@ export function WorkspaceMonitoring({ id }: { id: string }) {
   const totalMs = data.uptime.runningMs + data.uptime.stoppedMs;
   return (
     <div className="stack" style={{ gap: 20 }}>
+      {/* Keep the last-known view on a poll failure, but say so (§6.5) — and call
+          out a genuine 404 (the workspace was purged) instead of pretending the
+          figures below are still live. */}
+      {error !== null &&
+        (errorStatus === HTTP_NOT_FOUND ? (
+          <div className="notice" role="alert" data-testid="stale-banner" data-gone="1">
+            this workspace no longer exists (it may have been deleted and purged) — showing its last
+            known monitoring data. <Link href="/workspaces">back to workspaces</Link>
+          </div>
+        ) : (
+          <div className="notice" role="status" data-testid="stale-banner">
+            last refresh failed ({error}) — showing the last known state
+          </div>
+        ))}
       <section className="stack" style={{ gap: 6 }}>
         <div className="mono" style={{ color: "var(--dim)", fontSize: 12 }}>
           provisioned

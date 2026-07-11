@@ -127,9 +127,19 @@ data "aws_iam_policy_document" "control_plane" {
   # the workspace family prefix, WORKSPACE_TASKDEF_FAMILY_PREFIX in
   # @edd/compute-ecs); DescribeTaskDefinition supports no resource types or
   # condition keys at all (wildcard-only), so it gets its own unscoped statement.
+  #
+  # ecs:TagResource is granted HERE (on the task-definition resource), not only on
+  # RunAndManageWorkspaceTasks: `RegisterTaskDefinition` now sends cost-scope `tags`,
+  # and AWS authorizes those inline tags against `ecs:TagResource` on the
+  # task-definition being registered. The cluster-scoped TagResource above cannot
+  # satisfy it because `ecs:cluster` is absent from the registration request context —
+  # exactly the same false-drift class as the RegisterTaskDefinition bug above. Found
+  # live after tagging landed: workspace launch failed with "not authorized to perform:
+  # ecs:TagResource on resource: .../edd-ws-*:* because no identity-based policy allows
+  # the ecs:TagResource action".
   statement {
     sid       = "RegisterWorkspaceTaskDefinitions"
-    actions   = ["ecs:RegisterTaskDefinition"]
+    actions   = ["ecs:RegisterTaskDefinition", "ecs:TagResource"]
     resources = ["arn:${local.partition}:ecs:${local.region}:${local.account_id}:task-definition/edd-ws-*:*"]
   }
 

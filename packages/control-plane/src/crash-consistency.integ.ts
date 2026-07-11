@@ -198,4 +198,27 @@ describe("crash-consistency: persist failure compensates the launched task", () 
     expect(retried.ok).toBe(true);
     if (retried.ok) expect(retried.value.state).toBe("running");
   });
+
+  it("recoverStuckProvisioning sends a snapshot-less crashed CREATE to error (not a bricked stopped)", async () => {
+    // A crashed CREATE = reserveWorkspace persisted a `provisioning` reservation, then
+    // the detached launchReserved never ran (process died). There is NO snapshot yet.
+    const dto = await service.reserveWorkspace({
+      ownerId: ownerId("crash-e"),
+      baseImage: baseImage("golden/node:20"),
+    });
+    expect((await service.get(workspaceId(dto.id)))?.state).toBe("provisioning");
+
+    // Recovery must NOT revert it to `stopped` — start() would then 409 forever
+    // ("no snapshot to hydrate from") and retry is unreachable. It goes to `error`,
+    // which surfaces Retry/Delete.
+    expect((await service.recoverStuckProvisioning(workspaceId(dto.id))).ok).toBe(true);
+    const recovered = await service.get(workspaceId(dto.id));
+    expect(recovered?.state).toBe("error");
+    expect(recovered?.availableActions).toContain("retry");
+
+    // And retry actually relaunches it (proving it is not bricked).
+    const retried = await service.retry(workspaceId(dto.id));
+    expect(retried.ok).toBe(true);
+    if (retried.ok) expect(retried.value.state).toBe("running");
+  });
 });

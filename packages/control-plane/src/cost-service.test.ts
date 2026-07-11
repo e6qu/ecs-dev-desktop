@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { WorkspaceDto } from "@edd/api-contracts";
 import { workspacePricing } from "@edd/config";
-import { isoTimestamp, type AuditEvent, type Clock } from "@edd/core";
+import { deriveBillingState, isoTimestamp, type AuditEvent, type Clock } from "@edd/core";
 import { describe, expect, it } from "vitest";
 
 import type { CostRollupEntity } from "@edd/db";
@@ -9,6 +9,7 @@ import type { CostRollupEntity } from "@edd/db";
 import {
   CostService,
   StoredCostRollupStore,
+  type CostRollupCheckpoint,
   type CostRollupRecord,
   type CostRollupStore,
 } from "./cost-service";
@@ -170,26 +171,40 @@ describe("CostService.report windowing", () => {
     });
   }
 
-  // An old (days 0-1) session, fully torn down early, and a recent (day 9 → still
-  // running at day 10) one.
+  // An old (days 0-1) session torn down early and PURGED on day 2 (billing truly
+  // ended), an old tombstone whose retained snapshot still exists (retention bills
+  // through the window), and a recent (day 9 → still running at day 10) one.
   const events: AuditEvent[] = [
-    ev("session.create", 0, "ws-old"),
-    ev("session.delete", 1, "ws-old"),
-    ev("session.terminated", 1, "ws-old"),
+    ev("session.create", 0, "ws-purged"),
+    ev("session.delete", 1, "ws-purged"),
+    ev("session.terminated", 1, "ws-purged"),
+    ev("session.purged", 2, "ws-purged"),
+    ev("session.create", 0, "ws-retained"),
+    ev("session.delete", 1, "ws-retained"),
+    ev("session.terminated", 1, "ws-retained"),
     ev("session.create", 9, "ws-recent"),
   ];
-  const workspaces = [dto("ws-recent", "alice", "running")]; // ws-old's record is gone
+  const workspaces = [dto("ws-recent", "alice", "running")]; // old records are gone
 
   it("limits the report to the last N days, dropping sessions inactive in the window", async () => {
     const report = await winService(events, workspaces).report(7); // last 7 days
-    expect(report.bySession.map((s) => s.workspaceId)).toEqual(["ws-recent"]);
-    expect(report.bySession[0]?.runningMs).toBe(DAY); // day 9 → now (day 10), clipped to window
+    // ws-purged ended on day 2 (before the window) — dropped. ws-retained's
+    // snapshot was never purged, so it billed through the whole window.
+    expect(report.bySession.map((s) => s.workspaceId).sort()).toEqual(["ws-recent", "ws-retained"]);
+    const recent = report.bySession.find((s) => s.workspaceId === "ws-recent");
+    expect(recent?.runningMs).toBe(DAY); // day 9 → now (day 10), clipped to window
+    const retained = report.bySession.find((s) => s.workspaceId === "ws-retained");
+    expect(retained?.stoppedMs).toBe(7 * DAY); // retained snapshot, whole window
     expect(report.windowStart).toBe(day(3)); // now - 7 days
   });
 
   it("prices the full lifetime when no window is given", async () => {
     const report = await winService(events, workspaces).report();
-    expect(report.bySession.map((s) => s.workspaceId).sort()).toEqual(["ws-old", "ws-recent"]);
+    expect(report.bySession.map((s) => s.workspaceId).sort()).toEqual([
+      "ws-purged",
+      "ws-recent",
+      "ws-retained",
+    ]);
     expect(report.windowStart).toBe(day(0)); // earliest event
   });
 });
@@ -228,12 +243,13 @@ describe("CostService.rollupIfStale", () => {
     });
   }
 
-  const checkpoint = (checkpointAt: string): CostRollupRecord => ({
-    workspaceId: "ws-r",
+  const checkpoint = (checkpointAt: string, workspaceId = "ws-r"): CostRollupCheckpoint => ({
+    workspaceId,
     owner: "alice@example.com",
-    sizing: { vcpu: 0.5, memoryGib: 2, volumeGib: 8 },
     checkpointAt,
     windowStart: at(0),
+    priced: true,
+    sizing: { vcpu: 0.5, memoryGib: 2, volumeGib: 8 },
     runningMs: 0,
     stoppedMs: 0,
     teardownMs: 0,
@@ -259,11 +275,151 @@ describe("CostService.rollupIfStale", () => {
     expect(f.records[0]?.checkpointAt).toBe(at(4)); // regenerated to now
   });
 
+  it("regenerates when the OLDEST checkpoint is stale, even if another is fresh", async () => {
+    // A partial replaceAll left one old-generation row behind: freshness must be
+    // judged by the oldest row, not whichever happens to list first.
+    const f = fakeStore([checkpoint(at(3.9)), checkpoint(at(0), "ws-old")]);
+    await svc(at(4), f.store).rollupIfStale(2 * 3_600_000);
+    expect(f.records.every((r) => r.checkpointAt === at(4))).toBe(true);
+  });
+
+  it("regenerates on MIXED checkpoint generations regardless of age", async () => {
+    const f = fakeStore([checkpoint(at(3.8)), checkpoint(at(3.9), "ws-o")]); // both "fresh"
+    await svc(at(4), f.store).rollupIfStale(2 * 3_600_000);
+    expect(f.records.every((r) => r.checkpointAt === at(4))).toBe(true);
+  });
+
   it("fails loudly when a persisted rollup phase is invalid", async () => {
     const f = fakeStore([{ ...checkpoint(at(3)), phase: "bogus" }]);
     await expect(svc(at(4), f.store).report()).rejects.toThrow(
       "cost rollup for ws-r has invalid billing phase 'bogus'",
     );
+  });
+});
+
+/** A minimal in-memory CostRollupStore for the rollup/report tests. */
+function memoryStore(initial: CostRollupRecord[] = []) {
+  let records = [...initial];
+  const store: CostRollupStore = {
+    list: () => Promise.resolve(records),
+    replaceAll: (next) => {
+      records = [...next];
+      return Promise.resolve();
+    },
+  };
+  return {
+    store,
+    get records() {
+      return records;
+    },
+  };
+}
+
+function serviceWith(events: AuditEvent[], rollups?: CostRollupStore): CostService {
+  return new CostService({
+    audit: {
+      all: () => Promise.resolve(events),
+      since: (from: string) => Promise.resolve(events.filter((e) => e.at.localeCompare(from) > 0)),
+    },
+    workspaces: { list: () => Promise.resolve([]) },
+    clock,
+    pricing: PRICING,
+    ...(rollups === undefined ? {} : { rollups }),
+  });
+}
+
+describe("CostService.rollup — unpriceable legacy sessions", () => {
+  // Production regression: ONE legacy session.create without structured resources
+  // (and no surviving record) threw from rollup() and aborted the whole checkpoint
+  // job every reconciler sweep ("post-sweep observability step failed …"), so no
+  // workspace ever got a checkpoint.
+  const legacy: AuditEvent = {
+    at: at(0),
+    actor: "legacy@example.com",
+    action: "session.create",
+    target: "ws-legacy",
+    detail: "blank session", // no structured resources
+  };
+  const modern = evt("session.create", 1, "ws-modern", "alice@example.com");
+
+  it("checkpoints priceable workspaces and marks the legacy one unpriced", async () => {
+    const f = memoryStore();
+    await serviceWith([legacy, modern], f.store).rollup();
+
+    const modernRow = f.records.find((r) => r.workspaceId === "ws-modern");
+    expect(modernRow?.priced).toBe(true);
+    const legacyRow = f.records.find((r) => r.workspaceId === "ws-legacy");
+    expect(legacyRow?.priced).toBe(false);
+    expect(legacyRow !== undefined && !legacyRow.priced ? legacyRow.reason : "").toContain(
+      "session.create audit event has no structured resources",
+    );
+  });
+
+  it("surfaces the legacy session as unpriced in the rollup report, identically to the full scan", async () => {
+    const f = memoryStore();
+    const withRollups = serviceWith([legacy, modern], f.store);
+    await withRollups.rollup();
+
+    const fromRollup = await withRollups.report();
+    const fullScan = await serviceWith([legacy, modern]).report();
+    expect(fromRollup).toEqual(fullScan);
+    expect(fromRollup.bySession.map((s) => s.workspaceId)).toEqual(["ws-modern"]);
+    expect(fromRollup.unpriced).toEqual([
+      {
+        workspaceId: "ws-legacy",
+        reason:
+          "cost report cannot price workspace ws-legacy: session.create audit event has no structured resources",
+      },
+    ]);
+  });
+});
+
+describe("CostService.rollupReport — mixed checkpoint generations", () => {
+  // After a partial BatchWrite failure, rows from two generations coexist. Each
+  // row must resume from ITS OWN checkpointAt: replaying an older row from a
+  // newer row's checkpoint drops the time between them, and replaying a newer
+  // row from an older checkpoint double-counts it.
+  const events = [
+    evt("session.create", 0, "ws-x", "alice@example.com"),
+    evt("session.stop", 1, "ws-x", "alice@example.com"),
+    evt("session.create", 0.5, "ws-y", "bob@example.com"),
+    evt("session.start", 2, "ws-x", "alice@example.com"), // wakes between the two checkpoints
+  ];
+  const SIZING = { vcpu: 0.5, memoryGib: 2, volumeGib: 8 };
+  const rowFor = (id: string, owner: string, checkpointAt: string): CostRollupRecord => {
+    const state = deriveBillingState(
+      events.filter((e) => e.target === id),
+      isoTimestamp(checkpointAt),
+    );
+    return {
+      workspaceId: id,
+      owner,
+      checkpointAt,
+      windowStart: at(0),
+      priced: true,
+      sizing: SIZING,
+      runningMs: state.runningMs,
+      stoppedMs: state.stoppedMs,
+      teardownMs: state.teardownMs,
+      phase: state.phase,
+    };
+  };
+
+  it("prices mixed-generation rows identically to the full scan", async () => {
+    const f = memoryStore([
+      rowFor("ws-x", "alice@example.com", at(1.5)), // older generation
+      rowFor("ws-y", "bob@example.com", at(3)), // newer generation
+    ]);
+
+    const fromRollup = await serviceWith(events, f.store).report();
+    const fullScan = await serviceWith(events).report();
+    expect(fromRollup).toEqual(fullScan);
+    // Sanity against vacuous equality: ws-x really ran 1h + 2h and ws-y 3.5h.
+    const x = fullScan.bySession.find((s) => s.workspaceId === "ws-x");
+    const y = fullScan.bySession.find((s) => s.workspaceId === "ws-y");
+    expect(x?.runningMs).toBe(hoursMs(3));
+    expect(x?.stoppedMs).toBe(hoursMs(1));
+    expect(y?.runningMs).toBe(hoursMs(3.5));
   });
 });
 
@@ -275,9 +431,10 @@ describe("StoredCostRollupStore.replaceAll — unprocessed items", () => {
   const rec: CostRollupRecord = {
     workspaceId: "ws-1",
     owner: "u1",
-    sizing: { vcpu: 0.5, memoryGib: 2, volumeGib: 8 },
     checkpointAt: at(4),
     windowStart: at(0),
+    priced: true,
+    sizing: { vcpu: 0.5, memoryGib: 2, volumeGib: 8 },
     runningMs: 0,
     stoppedMs: 0,
     teardownMs: 0,
@@ -301,5 +458,28 @@ describe("StoredCostRollupStore.replaceAll — unprocessed items", () => {
   it("resolves when nothing is left unprocessed", async () => {
     const store = new StoredCostRollupStore(entityWithUnprocessedPut([]));
     await expect(store.replaceAll([rec])).resolves.toBeUndefined();
+  });
+
+  it("round-trips priced checkpoints and unpriced markers (reason preserved)", async () => {
+    const rows: Record<string, unknown>[] = [];
+    const entity = {
+      query: { byAll: () => ({ go: () => Promise.resolve({ data: rows }) }) },
+      put: (items: Record<string, unknown>[]) => {
+        rows.push(...items);
+        return { go: () => Promise.resolve({ unprocessed: [] }) };
+      },
+      delete: () => ({ go: () => Promise.resolve({ unprocessed: [] }) }),
+    } as unknown as CostRollupEntity;
+    const store = new StoredCostRollupStore(entity);
+    const unpricedRec: CostRollupRecord = {
+      workspaceId: "ws-legacy",
+      owner: "legacy@example.com",
+      checkpointAt: at(4),
+      windowStart: at(0),
+      priced: false,
+      reason: "session.create audit event has no structured resources",
+    };
+    await store.replaceAll([rec, unpricedRec]);
+    expect(await store.list()).toEqual([rec, unpricedRec]);
   });
 });

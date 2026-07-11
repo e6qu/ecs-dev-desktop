@@ -2,6 +2,79 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
+**Last updated:** 2026-07-11. PR #222 (`fix/prod-journeys-cost-lifecycle`)
+opened from a full codebase review + live-production journey pass + a multi-agent
+code review. The headline finding was a **production-down regression from #220**:
+`RegisterTaskDefinition` began sending cost-scope `tags`, which AWS authorizes
+against `ecs:TagResource` on the task-definition being registered, but the
+control-plane policy only granted `ecs:TagResource` under an `ecs:cluster`
+condition that is never present in the registration request context — so EVERY
+workspace create/wake failed with `not authorized to perform: ecs:TagResource on
+.../edd-ws-*:*` and dropped straight to `error`/`degraded`. This is why
+`post-deploy-smoke` had failed on every release since #220. It was reproduced
+live (a fresh smoke workspace hit exactly that error). Fixed by granting
+`ecs:TagResource` on the task-definition resource in `iam.tf` and the
+`IAM_REQUIREMENTS` manifest, plus a scoping-aware drift test so the set-based
+drift gate can no longer miss a mis-scoped grant. The fix needs a real
+`terraform apply` to land in prod (release only rolls images); a direct
+`put-role-policy` was intentionally not run (protected prod IAM).
+
+The branch also fixed, each with a regression test: (storage) `createSnapshot`
+no longer deletes a healthy still-`pending` snapshot when the 60 s completion
+waiter times out, which had made scale-to-zero/delete/scheduled snapshots never
+converge on real multi-GiB volumes; (compute) `EcsComputeProvider` evicts its
+in-process task-def ARN cache and re-registers on an INACTIVE/missing task-def
+`RunTask` error, and `fromEnv` always wires the Secrets Manager client so the
+reconciler's orphan-secret reaper actually runs (it had been a permanent no-op —
+the live account held ~170 leaked `edd/workspace/*` secrets); (control-plane)
+`persistTransition` removes cleared `shareEnabled`/stop-request/functional fields
+from storage so spectate no longer survives a stop and stale degraded reports
+clear, `purgeTombstoneRecord` deletes the record under its version CAS before
+reaping the retained snapshot (closing an undelete-vs-purge data-loss race), and
+`recoverStuckProvisioning` sends a snapshot-less crashed CREATE to `error`
+(Retry/Delete) instead of a bricked `stopped`; (editor) the terminal server
+guards a PTY leak when the socket closes during async startup.
+
+Cost accounting now bills post-`undelete` activity and the retained-snapshot
+window (both were $0), stops snapshot charges after `session.snapshot_lost`,
+clamps future-timestamped events so full-scan and rollup stay figure-equivalent,
+records an `unpriced` marker so one unpriceable legacy session no longer 500s the
+whole rollup, sources exact x86 Fargate/snapshot pricing SKUs with pagination
+(was last-match-wins across ARM/Windows/ephemeral rows), and TTL-caches the AWS
+Cost Explorer summary so an open `/admin/costs` tab cannot burn ~960 CE calls/hr.
+The `costRollup` entity moved to v3 for the new phase vocabulary + `unpricedReason`.
+
+UI/RBAC: the empty workspace list now polls (out-of-band creates appear without a
+hard refresh), status/monitoring show a visible stale/gone banner when a poll
+fails after first success, resume failures surface with the Resume button
+restored, invitation-accept and admin-user server actions catch and display
+errors, a top-level `error.tsx` replaced raw Next digest screens, viewers no
+longer see lifecycle buttons that 403, `usePoll` pauses in hidden tabs, and the
+help/detail modal traps focus. Post-deploy smoke's catalog-rollout wait now
+tracks the image-source trigger and extends while the golden build is in flight
+(it had a hard 4-min deadline vs a ~12-min build — the direct cause of the
+current smoke failure), shares `Promise.allSettled` cleanup across both smoke
+scripts and adds a smoke-workspace sweep, tolerates transient 5xx, and
+`golden-images` now queues on `main` instead of cancelling while `publish-images`
+skips existing immutable tags.
+
+A live AWS audit ran alongside: MTD spend ~$0 (credits); the `edd:cost-scope`
+cost-allocation tag is now DISCOVERABLE in Billing (Inactive) so activation can
+be retried (still a shared-account billing action, left to the operator); the
+`edd-prod-reconciler-dlq` still holds 5 stale messages (its alarm is in ALARM);
+60 EDD-managed retained snapshots remain unattributed; and no AWS Budget exists
+(`monthly_budget_usd=0`).
+
+Verification: `pnpm build` (21/21), `pnpm lint` (22/22), `pnpm dead-code`,
+`pnpm cpd`, `pnpm check-deps` (bumped AWS SDK 3.1084.0 + knip 6.26.0), frozen
+install — all green. Unit suites for core (126 cost), control-plane (unit +
+integ against the sim incl. the new crashed-create test and the cost
+figure-equivalence invariant), compute-ecs (incl. INACTIVE-retry), storage-ec2
+(incl. pending-snapshot-kept), reconciler, and web (253); Playwright 22/22
+against the sim incl. two new specs (empty-list convergence, viewer read-only).
+Live production journeys were exercised with a real browser + screenshots across
+every admin page and all four editor kinds — that is how the IAM error surfaced.
+
 **Last updated:** 2026-07-10. The branch updated the project SOP so UI,
 workspace, editor, auth/session, and deployed-smoke work required real
 browser/user-flow verification rather than API checks, health endpoints, ECS

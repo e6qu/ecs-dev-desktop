@@ -195,6 +195,60 @@ test("developer creates, stops, and deletes a workspace from the catalog", async
   await expect(card).toHaveAttribute("data-status", "deleting");
 });
 
+test("an empty workspace list converges when a workspace is created out-of-band", async ({
+  page,
+  context,
+  request,
+}) => {
+  // A user with NO workspaces still gets live refresh (AGENTS.md rule 13): a
+  // workspace created out-of-band must appear without any reload.
+  await loginAs(context, "frank", "developer");
+  await page.goto("/workspaces");
+  await expect(page.locator(sel(TESTID.workspaceCard))).toHaveCount(0);
+
+  const res = await request.post("/api/workspaces", {
+    headers: { cookie: devCookieHeader("frank", "developer") },
+    data: { baseImage: NODE_IMAGE },
+  });
+  expect(res.ok()).toBeTruthy();
+
+  // No page.reload(): the always-mounted LiveRefresh must surface the new card.
+  await expect(page.locator(sel(TESTID.workspaceCard)).first()).toBeVisible({ timeout: 15_000 });
+});
+
+test("a viewer persona sees a read-only workspace list (no lifecycle buttons)", async ({
+  page,
+  context,
+  request,
+}) => {
+  // The workspace exists (created while gina had developer rights)…
+  const res = await request.post("/api/workspaces", {
+    headers: { cookie: devCookieHeader("gina", "developer") },
+    data: { baseImage: NODE_IMAGE },
+  });
+  expect(res.ok()).toBeTruthy();
+
+  // …but viewed with the viewer role every mutating control must be absent —
+  // the lifecycle POSTs would all 403, so the buttons must not render.
+  await loginAs(context, "gina", "viewer");
+  await page.goto("/workspaces");
+  const card = page.locator(sel(TESTID.workspaceCard)).first();
+  await expect(card).toBeVisible();
+  await expect(card.getByRole("button", { name: "stop" })).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "delete" })).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "snapshot" })).toHaveCount(0);
+  await expect(card.locator(sel(TESTID.workspacePurge))).toHaveCount(0);
+  // The snapshot-interval editor collapses to its read-only meta line.
+  await expect(card.getByRole("button", { name: "save" })).toHaveCount(0);
+
+  // The same list under the developer role still offers the lifecycle actions.
+  await loginAs(context, "gina", "developer");
+  await page.goto("/workspaces");
+  const devCard = page.locator(sel(TESTID.workspaceCard)).first();
+  await expect(devCard).toBeVisible();
+  await expect(devCard.getByRole("button", { name: "stop" })).toBeVisible();
+});
+
 test("admin sees the system health board with a live DynamoDB check", async ({ page, context }) => {
   await loginAs(context, "root", "admin");
   await page.goto("/admin/health");

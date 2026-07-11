@@ -154,6 +154,25 @@ function required<T>(value: T | undefined | null, field: string): T {
   return value;
 }
 
+/**
+ * Whether a RunTask error means the referenced task definition is no longer usable —
+ * an INACTIVE (deregistered/pruned) revision, or one that can't be found. AWS raises
+ * these as `ClientException`/`InvalidParameterException` with a message naming the task
+ * definition; matching the message keeps us resilient to the exact exception class.
+ * Used to evict the stale in-process ARN cache and re-register rather than fail the wake.
+ */
+function isInactiveTaskDefError(e: unknown): boolean {
+  if (!(e instanceof Error)) return false;
+  const msg = e.message.toLowerCase();
+  if (!msg.includes("task definition")) return false;
+  return (
+    msg.includes("inactive") ||
+    msg.includes("does not exist") ||
+    msg.includes("not found") ||
+    msg.includes("unable to describe")
+  );
+}
+
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 /** Parse an env var as a positive integer, or undefined if unset/empty. Throws
@@ -319,19 +338,26 @@ export class EcsComputeProvider implements ComputeProvider {
     return this.config.cluster ?? DEFAULT_ECS_CLUSTER;
   }
 
+  private taskDefCacheKey(input: {
+    image: BaseImage;
+    resources: WorkspaceResources;
+    injected?: { wsId: string; entries: { name: string; valueFrom: string }[] };
+  }): string {
+    // A secret ARN is per-workspace, so the task def referencing it must be too;
+    // cache by (image, workspace, resources). The plaintext-env path stays cached
+    // per image/resources pair.
+    const resourceKey = `${input.resources.cpuUnits.toString()}-${input.resources.memoryMiB.toString()}`;
+    return input.injected !== undefined
+      ? `${input.image}::${resourceKey}::${input.injected.wsId}`
+      : `${input.image}::${resourceKey}`;
+  }
+
   private async ensureTaskDef(input: {
     image: BaseImage;
     resources: WorkspaceResources;
     injected?: { wsId: string; entries: { name: string; valueFrom: string }[] };
   }): Promise<string> {
-    // A secret ARN is per-workspace, so the task def referencing it must be too;
-    // cache by (image, workspace, resources). The plaintext-env path stays cached
-    // per image/resources pair.
-    const resourceKey = `${input.resources.cpuUnits.toString()}-${input.resources.memoryMiB.toString()}`;
-    const cacheKey =
-      input.injected !== undefined
-        ? `${input.image}::${resourceKey}::${input.injected.wsId}`
-        : `${input.image}::${resourceKey}`;
+    const cacheKey = this.taskDefCacheKey(input);
     const cached = this.registered.get(cacheKey);
     if (cached !== undefined) return cached;
     const out = await this.client.send(
@@ -541,12 +567,13 @@ export class EcsComputeProvider implements ComputeProvider {
       }
     }
     const injected = entries.length > 0 ? { wsId, entries } : undefined;
+    const taskDefInput = {
+      image: input.baseImage,
+      resources: input.resources,
+      ...(injected === undefined ? {} : { injected }),
+    };
     const taskDef = await this.timeStartupPhase("task-definition", dimensions, () =>
-      this.ensureTaskDef({
-        image: input.baseImage,
-        resources: input.resources,
-        ...(injected === undefined ? {} : { injected }),
-      }),
+      this.ensureTaskDef(taskDefInput),
     );
 
     const workspaceEnv = workspaceEnvironment(
@@ -557,58 +584,69 @@ export class EcsComputeProvider implements ComputeProvider {
       input.editor,
     );
 
-    const out = await this.timeStartupPhase("run-task-api", dimensions, () =>
-      this.client.send(
-        new RunTaskCommand({
-          cluster: this.cluster(),
-          taskDefinition: taskDef,
-          launchType: "FARGATE",
-          // Tag the task with its workspace so the reconciler's orphan-task reaper can
-          // enumerate workspace tasks (and only those) and read the workspace id back.
-          tags: [
-            { key: WORKSPACE_TAG_KEY, value: input.workspaceId },
-            ...costScopeTags(this.config),
-          ],
-          // Inject the SSM exec agent so admins/automation can `aws ecs execute-command`
-          // into a live workspace (debugging, break-glass) — the capability was
-          // sim-proven on a standalone task; the production launch path enables it too.
-          enableExecuteCommand: true,
-          networkConfiguration: {
-            awsvpcConfiguration: {
-              subnets: this.config.subnets,
-              ...(this.config.securityGroups ? { securityGroups: this.config.securityGroups } : {}),
-              assignPublicIp: (this.config.assignPublicIp ?? true) ? "ENABLED" : "DISABLED",
-            },
+    const runTaskCommand = (td: string): RunTaskCommand =>
+      new RunTaskCommand({
+        cluster: this.cluster(),
+        taskDefinition: td,
+        launchType: "FARGATE",
+        // Tag the task with its workspace so the reconciler's orphan-task reaper can
+        // enumerate workspace tasks (and only those) and read the workspace id back.
+        tags: [{ key: WORKSPACE_TAG_KEY, value: input.workspaceId }, ...costScopeTags(this.config)],
+        // Inject the SSM exec agent so admins/automation can `aws ecs execute-command`
+        // into a live workspace (debugging, break-glass) — the capability was
+        // sim-proven on a standalone task; the production launch path enables it too.
+        enableExecuteCommand: true,
+        networkConfiguration: {
+          awsvpcConfiguration: {
+            subnets: this.config.subnets,
+            ...(this.config.securityGroups ? { securityGroups: this.config.securityGroups } : {}),
+            assignPublicIp: (this.config.assignPublicIp ?? true) ? "ENABLED" : "DISABLED",
           },
-          overrides: {
-            containerOverrides: [
-              {
-                name: this.config.containerName ?? DEFAULT_WORKSPACE_CONTAINER,
-                environment: workspaceEnv,
-              },
-            ],
-          },
-          volumeConfigurations: [
+        },
+        overrides: {
+          containerOverrides: [
             {
-              name: WORKSPACE_VOLUME,
-              managedEBSVolume: {
-                roleArn: this.config.ebsRoleArn,
-                ...(input.fromSnapshot === undefined
-                  ? { sizeInGiB: input.resources.volumeGiB }
-                  : { snapshotId: input.fromSnapshot }),
-                terminationPolicy: { deleteOnTermination: true },
-                tagSpecifications: [
-                  {
-                    resourceType: "volume",
-                    tags: costScopeTags(this.config),
-                  },
-                ],
-              },
+              name: this.config.containerName ?? DEFAULT_WORKSPACE_CONTAINER,
+              environment: workspaceEnv,
             },
           ],
-        }),
-      ),
-    );
+        },
+        volumeConfigurations: [
+          {
+            name: WORKSPACE_VOLUME,
+            managedEBSVolume: {
+              roleArn: this.config.ebsRoleArn,
+              ...(input.fromSnapshot === undefined
+                ? { sizeInGiB: input.resources.volumeGiB }
+                : { snapshotId: input.fromSnapshot }),
+              terminationPolicy: { deleteOnTermination: true },
+              tagSpecifications: [
+                {
+                  resourceType: "volume",
+                  tags: costScopeTags(this.config),
+                },
+              ],
+            },
+          },
+        ],
+      });
+
+    const out = await this.timeStartupPhase("run-task-api", dimensions, async () => {
+      try {
+        return await this.client.send(runTaskCommand(taskDef));
+      } catch (e) {
+        // The in-process task-def ARN cache can outlive the revision: the reconciler
+        // prunes old revisions in a DIFFERENT process, and a per-workspace secret can be
+        // recreated with a new ARN. A cached ARN then points at an INACTIVE/missing task
+        // definition, and RunTask fails — permanently, since the cache would keep
+        // returning the dead ARN. Evict the entry, re-register a fresh revision, and
+        // retry once so a pruned/stale task def self-heals instead of bricking the wake.
+        if (!isInactiveTaskDefError(e)) throw e;
+        this.registered.delete(this.taskDefCacheKey(taskDefInput));
+        const fresh = await this.ensureTaskDef(taskDefInput);
+        return await this.client.send(runTaskCommand(fresh));
+      }
+    });
     // RunTask returns HTTP 200 with an EMPTY tasks[] and a populated failures[] when
     // placement fails for a recoverable reason (RESOURCE:MEMORY / RESOURCE:CPU — no
     // Fargate capacity, AGENT, subnet/ENI exhaustion). It does not throw. Surface the
@@ -915,11 +953,14 @@ export class EcsComputeProvider implements ComputeProvider {
     return new EcsComputeProvider({
       client: EcsComputeProvider.client(),
       ...(metrics === undefined ? {} : { metrics }),
-      // Per-workspace tokens go into Secrets Manager (not plaintext env) whenever a
-      // secret is configured — the production/e2e path always does.
-      ...(agentSecret !== undefined || connectionSecret !== undefined
-        ? { secretsClient: EcsComputeProvider.secretsClient() }
-        : {}),
+      // Always wire the Secrets Manager client in the ECS path. Injecting per-workspace
+      // tokens needs the agent/connection secret VALUES (present on the web app), but
+      // ENUMERATING and REAPING orphaned runtime secrets (the reconciler's GC) needs only
+      // the client — and the reconciler constructs the provider WITHOUT secret values, so
+      // gating the client on those values left `listWorkspaceAgentSecrets`/
+      // `deleteAgentSecret` permanently inert there, leaking two paid secrets per
+      // workspace forever. The client alone does no I/O and is safe to always create.
+      secretsClient: EcsComputeProvider.secretsClient(),
       config: {
         cluster: process.env.ECS_CLUSTER,
         subnets,

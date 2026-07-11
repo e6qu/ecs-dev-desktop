@@ -139,9 +139,11 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
   const [error, setError] = useState<string | null>(null);
 
   // Existing-repo mode: lazy, paginated browse (fetched on first entry into the
-  // mode); a row SELECTS the repo — the shared Start button launches it.
+  // mode); a row SELECTS the repo — the shared Start button launches it. A load
+  // failure is surfaced IN the panel with a retry (never a perpetual "loading…").
   const [repos, setRepos] = useState<RepoSummary[] | null>(null);
   const [reposLoading, setReposLoading] = useState(false);
+  const [reposError, setReposError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [hasMore, setHasMore] = useState(false);
   const [search, setSearch] = useState("");
@@ -180,6 +182,7 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
 
   async function loadRepoPage(targetPage: number): Promise<void> {
     setReposLoading(true);
+    setReposError(null);
     try {
       const res = await fetch(`/api/github/repos?page=${String(targetPage)}`);
       if (res.status === 409) {
@@ -192,10 +195,10 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
         setHasMore(more);
         setPage(targetPage);
       } else {
-        setError("failed to load GitHub repositories");
+        setReposError("failed to load GitHub repositories");
       }
     } catch {
-      setError("failed to load GitHub repositories");
+      setReposError("failed to load GitHub repositories");
     } finally {
       setReposLoading(false);
     }
@@ -427,10 +430,25 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
                 setSearch(e.target.value);
               }}
             />
-            {repos === null ? (
-              <p className="state-note" role="status">
-                loading repositories…
+            {reposError !== null && (
+              <p role="alert" className="mono" style={{ color: "var(--st-error)", margin: 0 }}>
+                {reposError}{" "}
+                <button
+                  type="button"
+                  className="btn"
+                  disabled={reposLoading}
+                  onClick={() => void loadRepoPage(repos === null ? 1 : page + 1)}
+                >
+                  retry
+                </button>
               </p>
+            )}
+            {repos === null ? (
+              reposError === null && (
+                <p className="state-note" role="status">
+                  loading repositories…
+                </p>
+              )
             ) : (
               <ul className="list">
                 {filtered.map((repo) => {

@@ -72,6 +72,10 @@ export interface Ec2StorageProviderDeps {
    * (shared endpoint) or real AWS (per-region endpoint) by config alone (§6.9).
    * Absent ⇒ `copySnapshot` is unavailable. */
   clientForRegion?: (region: string) => EC2Client;
+  /** Seconds to wait for a created volume/snapshot to settle before checking state.
+   * Defaults to {@link SETTLE_WAIT_SECONDS}. Overridable so tests can exercise the
+   * settle-timeout path without real-time waits. */
+  settleWaitSeconds?: number;
 }
 
 /** Throw if a required field the cloud should have returned is absent. */
@@ -111,6 +115,7 @@ export class Ec2StorageProvider implements StorageProvider {
   private readonly scope?: string;
   private readonly costScope: string;
   private readonly clientForRegion?: (region: string) => EC2Client;
+  private readonly settleWaitSeconds: number;
 
   constructor(deps: Ec2StorageProviderDeps) {
     this.client = deps.client;
@@ -119,6 +124,7 @@ export class Ec2StorageProvider implements StorageProvider {
     this.scope = deps.scope;
     this.costScope = deps.costScope ?? COST_SCOPE;
     this.clientForRegion = deps.clientForRegion;
+    this.settleWaitSeconds = deps.settleWaitSeconds ?? SETTLE_WAIT_SECONDS;
   }
 
   /** Build a provider from the ambient AWS env (`AWS_ENDPOINT_URL` → the sim). */
@@ -171,7 +177,7 @@ export class Ec2StorageProvider implements StorageProvider {
     const id = volumeId(required(out.VolumeId, "VolumeId"));
     try {
       await waitUntilVolumeAvailable(
-        { client: this.client, maxWaitTime: SETTLE_WAIT_SECONDS },
+        { client: this.client, maxWaitTime: this.settleWaitSeconds },
         { VolumeIds: [id] },
       );
     } catch (err) {
@@ -198,13 +204,25 @@ export class Ec2StorageProvider implements StorageProvider {
       }),
     );
     const id = snapshotId(required(out.SnapshotId, "SnapshotId"));
+    // A snapshot is DURABLE the instant CreateSnapshot returns: the point-in-time copy
+    // is captured, and deleting the source volume while the snapshot is still `pending`
+    // does NOT corrupt it — completion just proceeds asynchronously. Real multi-GiB
+    // snapshots take minutes, far longer than SETTLE_WAIT_SECONDS, so we must NOT treat
+    // "not yet completed" as a failed create and delete it (that destroyed the very
+    // data-safety snapshot scale-to-zero / delete depend on, and the create/delete churn
+    // never converged). We wait only to catch a genuine terminal `error` state promptly;
+    // on timeout with the snapshot still pending/completed we return it as created.
     try {
       await waitUntilSnapshotCompleted(
-        { client: this.client, maxWaitTime: SETTLE_WAIT_SECONDS },
+        { client: this.client, maxWaitTime: this.settleWaitSeconds },
         { SnapshotIds: [id] },
       );
     } catch (err) {
-      return await this.deleteOrSurfaceLeak(() => this.deleteSnapshot(id), `snapshot ${id}`, err);
+      const state = await this.snapshotState(id);
+      if (state === "error") {
+        return await this.deleteOrSurfaceLeak(() => this.deleteSnapshot(id), `snapshot ${id}`, err);
+      }
+      // pending / completed / not-yet-visible → durable and healthy; keep it.
     }
     return { id, sourceVolumeId: volume };
   }
@@ -260,7 +278,7 @@ export class Ec2StorageProvider implements StorageProvider {
     // snapshot, so wait for it to settle in the destination region before returning.
     try {
       await waitUntilSnapshotCompleted(
-        { client: dest, maxWaitTime: SETTLE_WAIT_SECONDS },
+        { client: dest, maxWaitTime: this.settleWaitSeconds },
         { SnapshotIds: [id] },
       );
     } catch (err) {
@@ -302,6 +320,21 @@ export class Ec2StorageProvider implements StorageProvider {
    * retry storm piling up orphans faster than GC reaps). If the cleanup delete
    * ALSO fails it is surfaced, not swallowed (§6.5), so a leaked resource is visible.
    */
+  /**
+   * Best-effort read of a snapshot's current `State` (e.g. `pending`, `completed`,
+   * `error`), or `undefined` if it can't be read (not yet visible / describe failed).
+   * Used to tell a still-completing snapshot (durable, keep it) from a genuinely failed
+   * one (delete + surface) after the completion waiter times out.
+   */
+  private async snapshotState(id: SnapshotId): Promise<string | undefined> {
+    try {
+      const out = await this.client.send(new DescribeSnapshotsCommand({ SnapshotIds: [id] }));
+      return out.Snapshots?.[0]?.State;
+    } catch {
+      return undefined;
+    }
+  }
+
   private async deleteOrSurfaceLeak(
     remove: () => Promise<void>,
     what: string,

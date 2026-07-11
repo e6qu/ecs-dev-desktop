@@ -75,11 +75,44 @@ describe("Ec2StorageProvider create cleanup on a failed settle", () => {
     expect(deletes).toEqual(["vol-stuck"]);
   });
 
-  it("deletes a snapshot that never completes (no leaked snapshot)", async () => {
+  it("deletes a snapshot that reports a terminal error state (no leaked snapshot)", async () => {
     const deletes: string[] = [];
     const sp = new Ec2StorageProvider({ client: snapshotStuckClient(deletes) });
     await expect(sp.createSnapshot(volumeId("vol-source"))).rejects.toThrow();
     expect(deletes).toEqual(["snap-stuck"]);
+  });
+
+  /** A client where the created snapshot is still `pending` when the completion waiter
+   * times out — the real case for a multi-GiB snapshot. It is DURABLE and must be kept,
+   * never deleted (deleting it destroyed the scale-to-zero/delete data-safety snapshot). */
+  function snapshotPendingClient(deletes: string[]): EC2Client {
+    const send = (command: unknown): Promise<unknown> => {
+      if (command instanceof CreateSnapshotCommand) {
+        return Promise.resolve({ SnapshotId: "snap-pending" });
+      }
+      if (command instanceof DescribeSnapshotsCommand) {
+        // Always pending → the completion waiter never resolves and times out.
+        return Promise.resolve({ Snapshots: [{ SnapshotId: "snap-pending", State: "pending" }] });
+      }
+      if (command instanceof DeleteSnapshotCommand) {
+        deletes.push(String(command.input.SnapshotId));
+        return Promise.resolve({});
+      }
+      return Promise.reject(new Error("unexpected command"));
+    };
+    return { send } as unknown as EC2Client;
+  }
+
+  it("keeps a still-pending snapshot after the completion waiter times out", async () => {
+    const deletes: string[] = [];
+    // Tiny settle window so the waiter times out near-instantly (the snapshot stays pending).
+    const sp = new Ec2StorageProvider({
+      client: snapshotPendingClient(deletes),
+      settleWaitSeconds: 1,
+    });
+    const snap = await sp.createSnapshot(volumeId("vol-source"));
+    expect(snap.id).toBe("snap-pending");
+    expect(deletes).toEqual([]);
   });
 });
 

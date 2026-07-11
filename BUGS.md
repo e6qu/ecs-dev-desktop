@@ -4,6 +4,87 @@
 
 ## Open
 
+- **Production workspace launch was fully broken by #220's task-def tagging —
+  FIXED in PR #222 (2026-07-11); needs `terraform apply`.** #220 added
+  `tags: costScopeTags(...)` to the `RegisterTaskDefinition` call. AWS authorizes
+  inline task-definition tags against `ecs:TagResource` on the task-definition
+  being registered, but the control-plane policy only granted `ecs:TagResource`
+  under an `ecs:cluster` condition absent from the registration request context —
+  so every workspace create/wake failed with `not authorized to perform:
+  ecs:TagResource on resource: .../edd-ws-*:*` and the workspace went to
+  `error`/`degraded`. This broke `post-deploy-smoke` on every release since #220
+  and was reproduced live. Granted `ecs:TagResource` on the task-definition
+  resource in `iam.tf` + the `IAM_REQUIREMENTS` manifest (kept the cluster-scoped
+  grant on `RunAndManageWorkspaceTasks` for RunTask's task tags) and added a
+  scoping-aware drift test. Live prod stays broken until a `terraform apply`; a
+  direct `put-role-policy` was intentionally not run (protected prod IAM).
+
+- **createSnapshot destroyed a healthy pending snapshot on waiter timeout —
+  FIXED in PR #222 (2026-07-11).** `Ec2StorageProvider.createSnapshot` waited ≤60 s
+  for `completed` and, on timeout, DELETED the snapshot and threw. Real multi-GiB
+  EBS snapshots take minutes and are durable while `pending`, so this made
+  scale-to-zero/delete/scheduled snapshots churn create→delete forever (only the
+  instant-completing sim hid it). A timeout now keeps the still-pending snapshot;
+  only a genuine `error` state is reaped.
+
+- **Reconciler orphan-secret reaper was a permanent no-op — FIXED in PR #222
+  (2026-07-11).** `EcsComputeProvider.fromEnv()` (no secret args, as the
+  reconciler calls it) only wired the Secrets Manager client when a secret VALUE
+  was passed, but reaping needs only the client — so every workspace leaked two
+  paid `edd/workspace/<id>/{agent,connection}` secrets forever (~170 live).
+  `fromEnv` now always wires the client in the ECS path.
+
+- **Stale task-def ARN cache bricked wakes after a prune — FIXED in PR #222
+  (2026-07-11).** `EcsComputeProvider`'s in-process ARN cache was never
+  invalidated; the reconciler prunes revisions in another process, so a cached
+  ARN could point at an INACTIVE task def and RunTask failed permanently. RunTask
+  now evicts + re-registers + retries once on an INACTIVE/missing-task-def error.
+
+- **Cleared share/stop/functional fields were never removed from storage — FIXED
+  in PR #222 (2026-07-11).** `persistTransition`'s clearable list omitted
+  `shareEnabled`/`stopRequested*`/`functional*`, so a stored `shareEnabled: true`
+  survived a stop and let a spectator re-subscribe on the next wake with no
+  re-consent, and a stale "degraded" report lingered across a successful retry.
+
+- **Purge could destroy the snapshot on a lost undelete race — FIXED in PR #222
+  (2026-07-11).** `purgeTombstoneRecord` deleted the retained snapshot before the
+  version-CAS record delete; a concurrent `undelete` cancelled the CAS but the
+  snapshot was already gone. Reordered: record delete under its version condition
+  first, snapshot reaped only after the record is provably removed.
+
+- **Crashed CREATE recovered to an un-startable stopped — FIXED in PR #222
+  (2026-07-11).** `recoverStuckProvisioning` reverted every stuck `provisioning`
+  record to `stopped`, but a crashed create has no snapshot, so `start()` 409'd
+  forever and `retry` was unreachable. A snapshot-less record now recovers to
+  `error`.
+
+- **Terminal PTY leak on close during async startup — FIXED in PR #222
+  (2026-07-11).** If the WebSocket closed during `await loadPty()`/spawn, the
+  spawned login shell was orphaned. A post-spawn `readyState` guard kills it.
+
+- **Cost model billed $0 after undelete and for retained snapshots; one bad
+  session poisoned the rollup; pricing picked wrong SKUs; /admin/costs burned
+  Cost Explorer calls — FIXED in PR #222 (2026-07-11).** Fixed via a shared phase
+  transition table (retained/undelete/purge), a `session.snapshot_lost` accrual
+  stop, a future-event clamp for full-scan↔rollup equivalence, an `unpriced`
+  marker row, exact x86 Fargate/snapshot SKU matching with pagination, and a
+  TTL-cached Cost Explorer summary. `costRollup` entity → v3.
+
+- **Several UI convergence/RBAC/error-handling gaps — FIXED in PR #222
+  (2026-07-11).** Empty workspace list never polled; status/monitoring froze on
+  the last good state after a poll failure; a resume failure showed "Resuming…"
+  forever; invitation-accept and admin-user server actions threw to a raw Next
+  digest (no `error.tsx`); viewers saw lifecycle buttons that 403; `usePoll`
+  polled hidden tabs; the modal never trapped focus. All addressed.
+
+- **Post-deploy smoke failed whenever a golden build was in flight — FIXED in
+  PR #222 (2026-07-11).** The catalog-rollout wait had a hard 4-min deadline vs a
+  ~12-min golden build. It now tracks the image-source trigger and extends (30-min
+  cap) while a matching build is in flight, failing fast on a terminal/absent
+  trigger. Also shared `Promise.allSettled` cleanup + a smoke-workspace sweep,
+  transient-5xx tolerance, `golden-images` queues on `main`, and `publish-images`
+  skips existing immutable tags.
+
 - **Historical cost reports could fail on deleted sessions with no resource
   attribution — FIXED in this branch (2026-07-10).** The live audit ledger for
   `ws-4030ffa7-0962-4f33-8405-9e33bfeea89d` contained a `session.create` event
