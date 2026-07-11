@@ -834,3 +834,10 @@ evidence-backed from the four audits):
   session; ensure access logs redact `tkn`. Also: a full script/style CSP on the control-plane
   surface (needs nonce plumbing through Next's hydration scripts) beyond the frame-ancestors
   header already shipped.
+
+- **SECURITY (deferred): dev-auth production backstop.** `devAuthEnabled()` is guarded only
+  by `EDD_DEV_AUTH=1` (the deployment never sets it). A code backstop can't key off
+  `NODE_ENV=production` — the Playwright harness runs a prod build WITH dev-auth, so that
+  breaks the test harness. Add a backstop keyed on an EXPLICIT real-prod signal the harness
+  never sets (e.g. `EDD_ENV=production` set only by the deploy, or "real IdP configured"),
+  then fail closed if `EDD_DEV_AUTH=1` appears alongside it.

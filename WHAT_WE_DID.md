@@ -3934,9 +3934,11 @@ Boy-scout fixes across four parallel audits (cost/UI/security/perf), all evidenc
   non-admins, one refactor from leaking). Added a page-level `isAdminViewer()` guard to every
   async admin data-fetching page (workspaces, workspaces/[id], overview, quotas, logs, catalog,
   costs) so the query is skipped for non-admins.
-- **Security — dev-auth had no `NODE_ENV` backstop.** `EDD_DEV_AUTH=1` derives identity+role
-  from request headers; it's now hard-disabled in production (falls back to real Auth.js) with a
-  loud one-time error, so a leaked prod flag can't turn on header-controlled auth.
+- **Security — dev-auth backstop (deferred).** A `NODE_ENV=production` hard-disable of
+  `EDD_DEV_AUTH=1` was attempted but reverted: the Playwright harness legitimately runs a
+  production build WITH dev-auth, so `NODE_ENV` can't distinguish it from real prod. The
+  deployment never sets `EDD_DEV_AUTH` (the real control); a backstop keyed on an explicit
+  real-prod signal is tracked in DO_NEXT.
 - **Security — no security headers.** Added CSP `frame-ancestors 'none'`, `X-Frame-Options: DENY`,
   `X-Content-Type-Options: nosniff`, HSTS, and a tight referrer policy on the Next surface (the
   `/w/*` editor proxy is served by the custom server and keeps its own CSP).

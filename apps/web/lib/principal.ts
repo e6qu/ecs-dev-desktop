@@ -16,30 +16,16 @@ import {
 import { recordSystemActivity } from "./system-activity";
 
 /**
- * Whether the dev-auth shim is active (`EDD_DEV_AUTH=1`). Dev-auth derives the WHOLE
- * principal — identity AND role, up to `admin` — from attacker-suppliable request
- * headers/cookies with no IdP, so it must NEVER run in production. `NODE_ENV=production`
- * hard-disables it regardless of the env flag, so a leaked/misconfigured `EDD_DEV_AUTH=1`
- * in a prod task can't turn the platform into header-controlled auth — it safely falls back
- * to real Auth.js OIDC instead. The guarantee is enforced in code, not just by convention.
- * The dangerous combination is logged loudly (once) rather than crashing every request.
+ * Whether the dev-auth shim is active (`EDD_DEV_AUTH=1`) — never in production. Dev-auth
+ * derives the whole principal (identity AND role, up to `admin`) from request
+ * headers/cookies with no IdP, so the deployment MUST NOT set `EDD_DEV_AUTH` in prod (it
+ * doesn't — see `extra_environment`). A `NODE_ENV=production` backstop can't be used here:
+ * the Playwright harness legitimately runs a PRODUCTION build with `EDD_DEV_AUTH=1`, so
+ * keying off `NODE_ENV` would break the test harness (and any prod-build-with-dev-auth
+ * staging). A backstop keyed on an explicit real-prod signal is tracked in DO_NEXT.
  */
 export function devAuthEnabled(): boolean {
-  if (process.env[DEV_AUTH_ENV] !== DEV_AUTH_ENABLED) return false;
-  if (process.env.NODE_ENV === "production") {
-    warnDevAuthIgnoredInProd();
-    return false;
-  }
-  return true;
-}
-
-let warnedDevAuthInProd = false;
-function warnDevAuthIgnoredInProd(): void {
-  if (warnedDevAuthInProd) return;
-  warnedDevAuthInProd = true;
-  console.error(
-    "[edd] SECURITY: EDD_DEV_AUTH=1 is set with NODE_ENV=production — IGNORING dev-auth (header-controlled identity must never run in production); using real Auth.js instead. Unset EDD_DEV_AUTH in production.",
-  );
+  return process.env[DEV_AUTH_ENV] === DEV_AUTH_ENABLED;
 }
 
 /** Decode the persona cookie's `<version>:<role>` value. Any shape other than the
