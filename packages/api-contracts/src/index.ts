@@ -523,6 +523,7 @@ export const auditEvent = z.object({
   action: z.string(),
   target: z.string(),
   detail: z.string(),
+  resources: workspaceResources.optional(),
 });
 export type AuditEventDto = z.infer<typeof auditEvent>;
 
@@ -588,6 +589,7 @@ export const costReport = z.object({
   total: costBreakdown,
   byUser: z.array(userCost),
   bySession: z.array(sessionCost),
+  unpriced: z.array(z.object({ workspaceId: z.string(), reason: z.string() })),
 });
 export type CostReport = z.infer<typeof costReport>;
 

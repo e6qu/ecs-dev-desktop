@@ -4,6 +4,18 @@
 
 ## Open
 
+- **Historical cost reports could fail on deleted sessions with no resource
+  attribution — FIXED in this branch (2026-07-10).** The live audit ledger for
+  `ws-4030ffa7-0962-4f33-8405-9e33bfeea89d` contained a `session.create` event
+  with only `detail: "blank session"`; the workspace record and all other
+  workspace rows had already been removed, so pricing had no authoritative
+  sizing and made the entire report unavailable. New lifecycle creates now
+  persist validated resources as structured audit data. Cost reports now keep
+  working and identify legacy sessions that cannot be priced instead of hiding
+  the whole report. The live legacy row remains explicitly unpriced; its sizing
+  cannot be recovered from current AWS/DynamoDB/CloudWatch data without
+  inventing values.
+
 - **Admin Costs failed with `sizing.vcpu ... undefined` — FIXED in current
   branch (2026-07-10).** Sizing fields were added to persisted cost rollups
   without changing the ElectroDB entity version. Existing v1 rows were decoded

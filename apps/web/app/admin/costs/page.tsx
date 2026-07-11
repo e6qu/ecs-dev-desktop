@@ -180,7 +180,7 @@ export default async function AdminCostsPage({
   } catch (error) {
     return <StateBlock title="Cost report unavailable" detail={errorMessage(error)} />;
   }
-  const { total, byUser, bySession, pricing } = report;
+  const { total, byUser, bySession, pricing, unpriced } = report;
 
   // The proportional bars are scaled per list to its most-expensive row, so the
   // top spender fills the bar and the rest read as a fraction of it.
@@ -231,6 +231,12 @@ export default async function AdminCostsPage({
           ))}
         </nav>
       </div>
+      {unpriced.length > 0 ? (
+        <StateBlock
+          title={`${String(unpriced.length)} lifecycle session(s) not priced`}
+          detail={unpriced.map((issue) => `${issue.workspaceId}: ${issue.reason}`).join("; ")}
+        />
+      ) : null}
 
       <div className="stat-grid">
         {tiles.map((t) => (

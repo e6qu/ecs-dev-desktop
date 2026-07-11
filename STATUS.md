@@ -12,6 +12,11 @@ File menu was visible and opened from an actual click; Terminal checks had to
 prove the default tab, command execution, new tab, tab switching, tab close, and
 closed-tab cleanup.
 
+The follow-up cost fix recorded workspace resources as structured fields on
+`session.create` audit events, so pricing no longer depended on free-form detail
+text. Reports explicitly identified historical deleted sessions whose sizing
+was not present instead of making the complete report unavailable.
+
 The implementation made the OpenVSCode File menu mandatory through the browser
 workbench's `configurationDefaults` bootstrap with the always-visible mode. The
 version-pinned image patch failed loudly if the upstream bundle no longer

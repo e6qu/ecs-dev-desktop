@@ -65,6 +65,12 @@ deferral by choice.
   and the full command/tab proof must run in the intended Node 22 golden-image
   runtime.
 
+- **After the structured-cost-attribution fix deploys, verify `/admin/costs` in
+  production.** Confirm the report remains available, the legacy workspace
+  appears in the explicit unpriced warning, and a newly created workspace is
+  priced from structured audit resources after deletion. Do not backfill the
+  legacy workspace with guessed sizing.
+
 - **After deploy, verify the current branch's production fixes as one skeptical
   browser flow.** Confirm `/admin/costs` no longer reports undefined sizing after
   v2 rollup regeneration; open circle-i dialogs over cards and verify they remain

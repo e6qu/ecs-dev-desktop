@@ -8,6 +8,7 @@ import {
   type AuditSource,
   type Clock,
 } from "@edd/core";
+import type { WorkspaceResources } from "@edd/core";
 import type { AuditEventEntity } from "@edd/db";
 
 /** The actor-attributed action to record (timestamp + id are assigned here). */
@@ -16,6 +17,7 @@ export interface AuditAction {
   action: string;
   target: string;
   detail: string;
+  resources?: WorkspaceResources;
 }
 
 interface AuditRecord {
@@ -25,6 +27,7 @@ interface AuditRecord {
   action: string;
   target: string;
   detail: string;
+  resources?: unknown;
 }
 
 export interface StoredAuditSourceDeps {
@@ -73,11 +76,23 @@ export class StoredAuditSource implements AuditSource {
 }
 
 function toEvent(r: AuditRecord): AuditEvent {
+  if (r.resources !== undefined && !isWorkspaceResources(r.resources)) {
+    throw new Error(`audit event ${r.id} contains invalid structured workspace resources`);
+  }
   return {
     at: isoTimestamp(r.at),
     actor: r.actor,
     action: r.action,
     target: r.target,
     detail: r.detail,
+    ...(r.resources === undefined ? {} : { resources: r.resources }),
   };
+}
+
+function isWorkspaceResources(value: unknown): value is WorkspaceResources {
+  if (typeof value !== "object" || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return [candidate.cpuUnits, candidate.memoryMiB, candidate.volumeGiB].every(
+    (item) => typeof item === "number" && Number.isFinite(item) && item > 0,
+  );
 }

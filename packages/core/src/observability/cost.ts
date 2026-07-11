@@ -145,6 +145,13 @@ export interface FleetCostReport {
   readonly total: CostBreakdown;
   readonly byUser: readonly UserCost[];
   readonly bySession: readonly SessionCost[];
+  /** Lifecycle sessions that could not be priced from authoritative attribution. */
+  readonly unpriced: readonly CostIssue[];
+}
+
+export interface CostIssue {
+  readonly workspaceId: string;
+  readonly reason: string;
 }
 
 /**
@@ -539,6 +546,7 @@ export function computeFleetCost(
   pricing: Pricing,
   now: IsoTimestamp,
   window?: Interval,
+  unpriced: readonly CostIssue[] = [],
 ): FleetCostReport {
   const bySession: SessionCost[] = [];
   for (const w of inputs) {
@@ -562,7 +570,7 @@ export function computeFleetCost(
   const windowStart = window
     ? isoTimestamp(new Date(window.fromMs).toISOString())
     : earliestEventAt(inputs, now);
-  return aggregateFleetCost(bySession, pricing, now, windowStart);
+  return aggregateFleetCost(bySession, pricing, now, windowStart, unpriced);
 }
 
 /**
@@ -576,6 +584,7 @@ export function aggregateFleetCost(
   pricing: Pricing,
   generatedAt: IsoTimestamp,
   windowStart: IsoTimestamp,
+  unpriced: readonly CostIssue[] = [],
 ): FleetCostReport {
   // Sum in a canonical (workspaceId) order first: float addition is not
   // associative, so the full-scan and rollup paths — which build the session list
@@ -604,6 +613,7 @@ export function aggregateFleetCost(
     total,
     byUser,
     bySession: sortedSessions,
+    unpriced,
   };
 }
 

@@ -153,6 +153,7 @@ interface LifecycleAudit {
   target: WorkspaceId;
   actor: string;
   detail: string;
+  resources?: WorkspaceResources;
 }
 
 export interface WorkspaceServiceDeps {
@@ -442,6 +443,7 @@ export class WorkspaceService {
         detail:
           `resources cpuUnits=${String(ws.resources.cpuUnits)} memoryMiB=${String(ws.resources.memoryMiB)} volumeGiB=${String(ws.resources.volumeGiB)}; ` +
           (input.repoUrl === undefined ? "blank session" : `repo ${input.repoUrl}`),
+        resources: ws.resources,
       },
       input.quotaLimit,
     );
@@ -1814,6 +1816,7 @@ export class WorkspaceService {
           action: string;
           target: string;
           detail: string;
+          resources?: WorkspaceResources;
         };
       }
     | undefined {
@@ -1828,6 +1831,7 @@ export class WorkspaceService {
         action: a.action,
         target: a.target,
         detail: a.detail,
+        ...(a.resources === undefined ? {} : { resources: a.resources }),
       },
     };
   }

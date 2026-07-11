@@ -31,6 +31,7 @@ const evt = (action: string, h: number, target: string, actor: string): AuditEve
   actor,
   target,
   detail: action === "session.create" ? RESOURCE_DETAIL : "",
+  ...(action === "session.create" ? { resources: RESOURCES } : {}),
 });
 
 const dto = (id: string, ownerId: string, state: WorkspaceDto["state"]): WorkspaceDto => ({
@@ -56,6 +57,41 @@ function service(events: AuditEvent[], workspaces: WorkspaceDto[]): CostService 
 }
 
 describe("CostService.report", () => {
+  it("prices a deleted workspace from structured resources, independent of detail text", async () => {
+    const event: AuditEvent = {
+      ...evt("session.create", 0, "ws-structured", "alice@example.com"),
+      detail: "created workspace",
+      resources: RESOURCES,
+    };
+    const report = await service(
+      [event, evt("session.delete", 1, "ws-structured", "alice@example.com")],
+      [],
+    ).report();
+
+    expect(report.bySession[0]?.workspaceId).toBe("ws-structured");
+    expect(report.bySession[0]?.sizing).toEqual({ vcpu: 0.5, memoryGib: 2, volumeGib: 8 });
+  });
+
+  it("keeps the report available and identifies an unpriceable legacy session", async () => {
+    const legacy: AuditEvent = {
+      at: at(0),
+      actor: "alice@example.com",
+      action: "session.create",
+      target: "ws-legacy",
+      detail: "blank session",
+    };
+    const report = await service([legacy], []).report();
+
+    expect(report.bySession).toHaveLength(0);
+    expect(report.unpriced).toEqual([
+      {
+        workspaceId: "ws-legacy",
+        reason:
+          "cost report cannot price workspace ws-legacy: session.create audit event has no structured resources",
+      },
+    ]);
+  });
+
   it("prices a workspace from its lifecycle ledger, attributing the creator's email", async () => {
     const report = await service(
       [evt("session.create", 0, "ws-1", "alice@example.com")],
@@ -118,6 +154,7 @@ describe("CostService.report windowing", () => {
     actor: target,
     target,
     detail: action === "session.create" ? RESOURCE_DETAIL : "",
+    ...(action === "session.create" ? { resources: RESOURCES } : {}),
   });
 
   function winService(events: AuditEvent[], workspaces: WorkspaceDto[]): CostService {
