@@ -1,7 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 "use client";
 
-import type { ImageSourceStateDto, ImageMetadataDto } from "@edd/api-contracts";
+import type {
+  ImageBuildRecordDto,
+  ImageSourceStateDto,
+  ImageMetadataDto,
+} from "@edd/api-contracts";
 import { useCallback, useState } from "react";
 
 import { humanBytes } from "../lib/format";
@@ -36,6 +40,15 @@ function shortSha(sha: string | undefined): string {
   return sha === undefined ? "—" : sha.slice(0, 12);
 }
 
+/** A build's wall-clock duration as `m:ss`, or "—" while still running (no end yet). */
+function buildDuration(durationMs: number | undefined): string {
+  if (durationMs === undefined) return "—";
+  const totalSec = Math.round(durationMs / 1000);
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  return `${min.toString()}:${sec.toString().padStart(2, "0")}`;
+}
+
 function LoadingRow({ colSpan, label }: { colSpan: number; label: string }) {
   return (
     <tr>
@@ -47,9 +60,9 @@ function LoadingRow({ colSpan, label }: { colSpan: number; label: string }) {
 }
 
 /** The admin Images console: per-image size + layer breakdown, the golden-image
- * source-sync state, and the recent webhook trigger decisions. Builds themselves
- * are launched by GitHub Actions on push — this console observes them; it does
- * not start them (POST /api/admin/builds deliberately answers 410). */
+ * source-sync state, and build history from BOTH builders — GitHub Actions webhook
+ * triggers AND AWS CodeBuild builds (via /api/admin/builds). This console observes
+ * builds; it does not start them (POST /api/admin/builds deliberately answers 410). */
 export function ImagesConsole() {
   const loadImages = useCallback(
     () => fetch("/api/admin/images").then((r) => jsonOrThrow<{ images: ImageEntry[] }>(r)),
@@ -57,6 +70,10 @@ export function ImagesConsole() {
   );
   const loadSource = useCallback(
     () => fetch("/api/admin/image-source").then((r) => jsonOrThrow<ImageSourceStateDto>(r)),
+    [],
+  );
+  const loadBuilds = useCallback(
+    () => fetch("/api/admin/builds").then((r) => jsonOrThrow<{ builds: ImageBuildRecordDto[] }>(r)),
     [],
   );
   const { data: imagesData, error: imagesError } = usePoll(
@@ -68,6 +85,11 @@ export function ImagesConsole() {
     loadSource,
     SOURCE_POLL_MS,
     "image source unavailable",
+  );
+  const { data: buildsData, error: buildsError } = usePoll(
+    loadBuilds,
+    SOURCE_POLL_MS,
+    "build history unavailable",
   );
 
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -177,7 +199,7 @@ export function ImagesConsole() {
       </section>
 
       <section className="stack" style={{ gap: 10 }}>
-        <h2 style={{ margin: 0 }}>Source triggers</h2>
+        <h2 style={{ margin: 0 }}>GitHub Actions builds (source triggers)</h2>
         <div className="table-scroll" style={{ overflowX: "auto" }}>
           <table className="data-table">
             <thead>
@@ -216,6 +238,84 @@ export function ImagesConsole() {
                 </tr>
               ))}
               {sourceData === null && <LoadingRow colSpan={8} label="loading source triggers…" />}
+            </tbody>
+          </table>
+        </div>
+        <p className="state-note" style={{ margin: 0 }}>
+          These builds run in <strong>GitHub Actions</strong> (webhook-driven on push). Builds run
+          via <strong>AWS CodeBuild</strong> — e.g. the terraform-apply bootstrap build — are
+          tracked separately below.
+        </p>
+      </section>
+
+      <section className="stack" style={{ gap: 10 }}>
+        <h2 style={{ margin: 0 }}>CodeBuild builds</h2>
+        <div className="table-scroll" style={{ overflowX: "auto" }}>
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>status</th>
+                <th>target</th>
+                <th>tag</th>
+                <th>ref</th>
+                <th>started</th>
+                <th>duration</th>
+                <th>build</th>
+                <th>by</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(buildsData?.builds ?? []).map((b) => (
+                <tr key={b.buildId}>
+                  <td style={{ color: statusColor(b.status) }}>
+                    {b.status}
+                    {b.phase !== undefined ? ` · ${b.phase.toLowerCase()}` : ""}
+                  </td>
+                  <td className="mono" style={{ fontSize: 12 }}>
+                    {b.target}
+                  </td>
+                  <td className="mono" style={{ fontSize: 12 }}>
+                    {b.tag}
+                  </td>
+                  <td className="mono" style={{ fontSize: 12 }}>
+                    {shortSha(b.ref)}
+                  </td>
+                  <td className="mono" style={{ fontSize: 12 }}>
+                    {new Date(b.startedAt).toLocaleString()}
+                  </td>
+                  <td className="mono" style={{ fontSize: 12 }}>
+                    {buildDuration(b.durationMs)}
+                  </td>
+                  <td className="mono" style={{ fontSize: 12 }}>
+                    {b.buildId.split(":").pop() ?? "—"}
+                  </td>
+                  <td className="mono" style={{ fontSize: 12 }}>
+                    {b.triggeredBy}
+                  </td>
+                </tr>
+              ))}
+              {buildsError !== null && (
+                <tr>
+                  <td
+                    colSpan={8}
+                    className="state-note"
+                    role="alert"
+                    style={{ color: "var(--st-error)" }}
+                  >
+                    {buildsError}
+                  </td>
+                </tr>
+              )}
+              {buildsError === null && buildsData === null && (
+                <LoadingRow colSpan={8} label="loading CodeBuild builds…" />
+              )}
+              {buildsError === null && buildsData?.builds.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="state-note">
+                    no CodeBuild builds recorded (this project may build only via GitHub Actions)
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

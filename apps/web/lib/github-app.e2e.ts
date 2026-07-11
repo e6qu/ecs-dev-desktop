@@ -58,7 +58,9 @@ suite("GitHub App flow (app JWT → installation token → REST), coordinate-dri
     const page = await provider?.listRepos();
     expect(Array.isArray(page?.repos)).toBe(true);
 
-    const cred = await provider?.gitCredential(coords.org);
+    // Scoped to exactly the one repo (owner + name) — the token GitHub mints is limited
+    // to that repository with only `contents`, not the installation's whole org.
+    const cred = await provider?.gitCredential({ owner: coords.org, name: coords.repo });
     expect(cred?.username).toBe("x-access-token");
     expect(cred?.token.startsWith("ghs_")).toBe(true);
   });

@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import Link from "next/link";
 
+import { LiveRefresh } from "../../../components/LiveRefresh";
+import { isAdminViewer } from "../../../lib/principal";
 import { StatTile } from "../../../components/StatTile";
 import { getOverviewReport } from "../../../lib/overview-report";
 import { TESTID } from "../../../lib/testids";
@@ -10,6 +12,7 @@ export const dynamic = "force-dynamic";
 // Admin-only (the /admin layout gates it). Renders the overview report (fleet + catalog
 // counts) from the shared builder — the same data `GET /api/admin/overview` serves.
 export default async function AdminOverviewPage() {
+  if (!(await isAdminViewer())) return null;
   const { workspaces, activeUsers, baseImages, byState } = await getOverviewReport();
 
   const tiles = [
@@ -25,6 +28,8 @@ export default async function AdminOverviewPage() {
 
   return (
     <>
+      {/* Converge without a manual refresh (rule 13): fleet/user/image counts move out-of-band. */}
+      <LiveRefresh intervalMs={6000} />
       <div className="page-head">
         <div>
           <div className="kicker">admin</div>

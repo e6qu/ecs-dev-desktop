@@ -52,19 +52,36 @@ export interface InstallationToken {
 
 const tokenResponse = z.object({ token: z.string(), expires_at: z.string() });
 
-/** Exchange the app JWT for an installation access token (`ghs_…`). */
+/**
+ * Optional least-privilege scoping for a minted installation token. GitHub restricts the
+ * returned token to `repositories` (by name) and the requested `permissions` subset — so a
+ * token handed to a single workspace can be limited to exactly the one repo it clones with
+ * only the access it needs, instead of the installation's full org-wide repo set/permissions.
+ */
+export interface InstallationTokenScope {
+  readonly repositories?: readonly string[];
+  readonly permissions?: Readonly<Record<string, string>>;
+}
+
+/** Exchange the app JWT for an installation access token (`ghs_…`), optionally scoped down
+ * to specific repositories/permissions (least privilege — see {@link InstallationTokenScope}). */
 export async function mintInstallationToken(
   cfg: GitHubAppConfig,
   installationId: number,
   nowSec: number,
   fetchImpl: typeof fetch = fetch,
+  scope?: InstallationTokenScope,
 ): Promise<InstallationToken> {
   const jwt = await signAppJwt(cfg, nowSec);
+  const requestBody: Record<string, unknown> = {};
+  if (scope?.repositories !== undefined) requestBody.repositories = [...scope.repositories];
+  if (scope?.permissions !== undefined) requestBody.permissions = scope.permissions;
   const res = await fetchImpl(
     `${cfg.apiBase}/app/installations/${String(installationId)}/access_tokens`,
     {
       method: "POST",
-      headers: ghHeaders(jwt),
+      headers: { ...ghHeaders(jwt), "content-type": "application/json" },
+      body: JSON.stringify(requestBody),
     },
   );
   if (!res.ok) {

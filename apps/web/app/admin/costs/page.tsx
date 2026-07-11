@@ -1,6 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { COST_WINDOW_DAYS, costReportQuery, type CostWindow } from "@edd/api-contracts";
-import type { CostBreakdown, FleetCostReport, Pricing, WorkspaceSizing } from "@edd/core";
+import { controlPlaneSizing } from "@edd/config";
+import {
+  projectRunRate,
+  type CostBreakdown,
+  type FleetCostReport,
+  type Pricing,
+  type RunRateProjection,
+  type WorkspaceSizing,
+} from "@edd/core";
+import { isAdminViewer } from "../../../lib/principal";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
@@ -131,6 +140,23 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : "unknown cost report failure";
 }
 
+/** Human label for how the AWS account bill was scoped. */
+function accountScopeLabel(scope: AccountCostSummary["scope"]): string {
+  return scope.kind === "account" ? "whole account" : `scoped to ${scope.value}`;
+}
+
+/** The AWS bill reads ~$0 for every window even though workspaces have accrued run-time —
+ * a near-certain sign the Cost Explorer data is missing (unactivated cost-allocation tag,
+ * permissions, or lag), not that the platform is genuinely free. Surfaced loudly (§6.5). */
+function suspiciousZeroAccountBill(
+  summary: AccountCostSummary,
+  bySession: readonly { runningMs: number }[],
+): boolean {
+  const anyBill = summary.windows.some((w) => w.usd > 0.005);
+  const anyRun = bySession.some((s) => s.runningMs > 0);
+  return anyRun && !anyBill;
+}
+
 /**
  * A horizontal, proportional spend bar for a cost row: its full width is the
  * row's share of the list max (`totalUsd / maxUsd`), stacked from the three
@@ -176,6 +202,7 @@ export default async function AdminCostsPage({
 }: {
   searchParams: Promise<{ window?: string }>;
 }) {
+  if (!(await isAdminViewer())) return null;
   // Validate the window with the SAME schema the `/api/admin/costs` route uses.
   // Absent defaults to all; an explicit invalid value fails the route/page
   // boundary rather than silently showing the wrong cost window.
@@ -197,6 +224,16 @@ export default async function AdminCostsPage({
   }
   const { total, byUser, bySession, pricing, unpriced } = report;
 
+  // Forward-looking run-rate: what the fleet WOULD cost per hour/day if everything ran at once,
+  // split control plane vs workspaces. Uses every non-terminated session's sizing (a stopped
+  // workspace would cost this if resumed) + the control plane at its active replica count.
+  // On-demand rates, no discounts — same basis as the account bill.
+  const runRate: RunRateProjection = projectRunRate(
+    bySession.filter((s) => !s.terminated).map((s) => s.sizing),
+    controlPlaneSizing(),
+    pricing,
+  );
+
   // The proportional bars are scaled per list to its most-expensive row, so the
   // top spender fills the bar and the rest read as a fraction of it.
   const maxUserUsd = byUser.reduce((m, u) => Math.max(m, u.totalUsd), 0);
@@ -208,7 +245,12 @@ export default async function AdminCostsPage({
       : `the last ${WINDOWS.find((w) => w.key === window)?.label ?? window} of the lifecycle`;
 
   const tiles = [
-    { kind: "total", label: "total", value: total.totalUsd, sub: "all components" },
+    {
+      kind: "total",
+      label: "attributable total",
+      value: total.totalUsd,
+      sub: "direct workspace cost",
+    },
     { kind: "compute", label: "compute", value: total.computeUsd, sub: "Fargate vCPU + memory" },
     { kind: "volume", label: "storage", value: total.volumeUsd, sub: "live EBS volumes" },
     { kind: "snapshot", label: "snapshots", value: total.snapshotUsd, sub: "scaled-to-zero" },
@@ -267,6 +309,12 @@ export default async function AdminCostsPage({
         </details>
       ) : null}
 
+      <h2 style={{ fontSize: 16, margin: "8px 0 10px" }}>
+        Attributable workspace cost{" "}
+        <span style={{ color: "var(--dim)", fontWeight: 400, fontSize: 13 }}>
+          — direct compute + storage per user/session, not the full bill
+        </span>
+      </h2>
       <div className="stat-grid">
         {tiles.map((t) => (
           <StatTile
@@ -279,13 +327,74 @@ export default async function AdminCostsPage({
         ))}
       </div>
 
-      <h2 style={{ fontSize: 16, margin: "18px 0 10px" }}>
-        AWS account{accountCosts instanceof Error ? "" : ` (${accountCosts.costScope})`}
+      <h2 style={{ fontSize: 16, margin: "18px 0 4px" }}>
+        Run-rate if everything is running{" "}
+        <span style={{ color: "var(--dim)", fontWeight: 400, fontSize: 13 }}>
+          — every workspace + the control plane, at on-demand rates
+        </span>
       </h2>
+      <p style={{ color: "var(--dim)", margin: "0 0 10px", fontSize: 12, maxWidth: "60ch" }}>
+        Projected Fargate + volume cost if all {bySession.filter((s) => !s.terminated).length}{" "}
+        workspaces ran at once, plus the control plane at {controlPlaneSizing().replicas} replicas.
+        Scale-to-zero means real spend is usually well below this ceiling.
+      </p>
+      <div className="stat-grid" data-testid={TESTID.costRunRate}>
+        <StatTile
+          attrs={{ "data-cost": "runrate-total-hr", "data-usd": runRate.totalUsdPerHour }}
+          num={`${usd(runRate.totalUsdPerHour)}/hr`}
+          label="total"
+          sub={`${usd(runRate.totalUsdPerDay)}/day`}
+        />
+        <StatTile
+          attrs={{ "data-cost": "runrate-workspaces-hr", "data-usd": runRate.workspacesUsdPerHour }}
+          num={`${usd(runRate.workspacesUsdPerHour)}/hr`}
+          label="workspaces"
+          sub={`${usd(runRate.workspacesUsdPerDay)}/day`}
+        />
+        <StatTile
+          attrs={{
+            "data-cost": "runrate-controlplane-hr",
+            "data-usd": runRate.controlPlaneUsdPerHour,
+          }}
+          num={`${usd(runRate.controlPlaneUsdPerHour)}/hr`}
+          label="control plane"
+          sub={`${usd(runRate.controlPlaneUsdPerDay)}/day`}
+        />
+      </div>
+
+      <h2 style={{ fontSize: 16, margin: "18px 0 10px" }}>
+        AWS account bill
+        {accountCosts instanceof Error ? "" : ` — ${accountScopeLabel(accountCosts.scope)}`}
+      </h2>
+      <p style={{ color: "var(--dim)", margin: "0 0 8px", maxWidth: "60ch" }}>
+        The authoritative spend (all services), from Cost Explorer. The per-workspace figures above
+        are only the <strong>direct, attributable</strong> compute + storage — they exclude shared
+        platform costs (control plane, NAT, load balancer, CloudFront, DynamoDB, logs, image builds,
+        data transfer), so they are always far smaller than this bill.
+      </p>
+      <p
+        data-testid={TESTID.costOnDemandNotice}
+        style={{ color: "var(--dim)", margin: "0 0 12px", maxWidth: "60ch", fontSize: 12 }}
+      >
+        Figures are <strong>on-demand usage cost</strong> — published on-demand rates with{" "}
+        <strong>no discounts</strong> applied: credits, refunds, reservations, and Savings Plans are
+        all excluded. This is the true run-rate, which can be far higher than your net invoice if
+        promotional credits currently cover it.
+      </p>
       {accountCosts instanceof Error ? (
         <StateBlock title="AWS account costs unavailable" detail={accountCosts.message} />
       ) : (
         <>
+          {suspiciousZeroAccountBill(accountCosts, bySession) ? (
+            <StateBlock
+              title="AWS account bill reads $0 while workspaces have run"
+              detail={
+                accountCosts.scope.kind === "tag"
+                  ? `Scoped to the ${accountCosts.scope.value} cost tag, which returns $0 unless the edd:cost-scope cost-allocation tag is ACTIVATED in AWS Billing and every resource carries it. Set EDD_COST_SCOPE_ENABLED=0 to report the whole-account bill, or activate the tag.`
+                  : "Cost Explorer returned $0 for the account. Its data lags ~24-48h and needs the SDK's cost:GetCostAndUsage permission; if usage is real this is almost certainly a data-lag or permissions gap, not genuinely-zero spend."
+              }
+            />
+          ) : null}
           {/* The summary is served from a shared TTL cache (Cost Explorer bills per
               request); show when it was actually fetched so staleness is honest. */}
           <p

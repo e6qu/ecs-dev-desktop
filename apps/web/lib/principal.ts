@@ -15,9 +15,31 @@ import {
 } from "./constants";
 import { recordSystemActivity } from "./system-activity";
 
-/** Whether the dev-auth shim is active (`EDD_DEV_AUTH=1`) — never in production. */
+/**
+ * Whether the dev-auth shim is active (`EDD_DEV_AUTH=1`). Dev-auth derives the WHOLE
+ * principal — identity AND role, up to `admin` — from attacker-suppliable request
+ * headers/cookies with no IdP, so it must NEVER run in production. `NODE_ENV=production`
+ * hard-disables it regardless of the env flag, so a leaked/misconfigured `EDD_DEV_AUTH=1`
+ * in a prod task can't turn the platform into header-controlled auth — it safely falls back
+ * to real Auth.js OIDC instead. The guarantee is enforced in code, not just by convention.
+ * The dangerous combination is logged loudly (once) rather than crashing every request.
+ */
 export function devAuthEnabled(): boolean {
-  return process.env[DEV_AUTH_ENV] === DEV_AUTH_ENABLED;
+  if (process.env[DEV_AUTH_ENV] !== DEV_AUTH_ENABLED) return false;
+  if (process.env.NODE_ENV === "production") {
+    warnDevAuthIgnoredInProd();
+    return false;
+  }
+  return true;
+}
+
+let warnedDevAuthInProd = false;
+function warnDevAuthIgnoredInProd(): void {
+  if (warnedDevAuthInProd) return;
+  warnedDevAuthInProd = true;
+  console.error(
+    "[edd] SECURITY: EDD_DEV_AUTH=1 is set with NODE_ENV=production — IGNORING dev-auth (header-controlled identity must never run in production); using real Auth.js instead. Unset EDD_DEV_AUTH in production.",
+  );
 }
 
 /** Decode the persona cookie's `<version>:<role>` value. Any shape other than the
@@ -147,4 +169,17 @@ export async function getPagePrincipal(): Promise<Principal | null> {
   // fire-and-forget + throttled contract as {@link getPrincipal}.
   void recordSystemActivity();
   return withPersona(principal, store.get(PERSONA_COOKIE)?.value);
+}
+
+/**
+ * Independent page-level admin gate for admin server components. The `/admin` layout
+ * denies non-admins by discarding `{children}`, but in the App Router the page RSC — and
+ * its privileged data-fetch (e.g. `cp.list()` across every user's workspaces) — STILL runs
+ * regardless of the layout's decision. Calling this at the TOP of each admin page, before any
+ * fetch, short-circuits so the privileged query never runs for a non-admin: authorization is
+ * on the page itself, not one refactor away in the layout. Returns true iff the viewer is an
+ * admin; a non-admin page should `return null` (the layout renders the "Admins only" block).
+ */
+export async function isAdminViewer(): Promise<boolean> {
+  return (await getPagePrincipal())?.role === "admin";
 }

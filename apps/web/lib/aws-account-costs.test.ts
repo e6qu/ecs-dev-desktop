@@ -52,20 +52,20 @@ class FakeCostExplorer implements CostExplorerReader {
 }
 
 describe("getAwsAccountCostSummary", () => {
+  const usageOnlyFilter = { Dimensions: { Key: "RECORD_TYPE", Values: ["Usage"] } };
   const usageAndCostScopeFilter = {
-    And: [
-      { Dimensions: { Key: "RECORD_TYPE", Values: ["Usage"] } },
-      { Tags: { Key: COST_SCOPE_TAG_KEY, Values: ["edd-alpha"] } },
-    ],
+    And: [usageOnlyFilter, { Tags: { Key: COST_SCOPE_TAG_KEY, Values: ["edd-alpha"] } }],
   };
 
-  it("queries deterministic UTC windows and sorts non-zero service costs", async () => {
+  it("defaults to WHOLE-ACCOUNT usage (no tag filter) — the real bill", async () => {
     const client = new FakeCostExplorer();
 
+    // Default scope: whole account. The tag-filtered path returns $0 when the
+    // cost-allocation tag is unactivated, so the honest default is the account bill.
     const summary = await getAwsAccountCostSummary(new Date("2026-07-10T12:34:56.000Z"), client);
 
     expect(summary.generatedAt).toBe("2026-07-10T12:34:56.000Z");
-    expect(summary.costScope).toBe("edd-alpha");
+    expect(summary.scope).toEqual({ kind: "account" });
     expect(summary.windows).toEqual([
       { label: "month to date", start: "2026-07-01", end: "2026-07-11", usd: 1.25 },
       { label: "last 7 days", start: "2026-07-04", end: "2026-07-11", usd: 2.5 },
@@ -78,12 +78,22 @@ describe("getAwsAccountCostSummary", () => {
       { service: "Amazon Elastic Container Service", usd: 10.3 },
       { service: "AWS CodeBuild", usd: 4.61 },
     ]);
-    expect(client.inputs.map((input) => input.TimePeriod)).toEqual([
-      { Start: "2026-07-01", End: "2026-07-11" },
-      { Start: "2026-07-04", End: "2026-07-11" },
-      { Start: "2026-07-10", End: "2026-07-11" },
-      { Start: "2026-07-01", End: "2026-07-11" },
+    // Every query constrains to RECORD_TYPE=Usage but adds NO tag filter.
+    expect(client.inputs.map((input) => input.Filter)).toEqual([
+      usageOnlyFilter,
+      usageOnlyFilter,
+      usageOnlyFilter,
+      usageOnlyFilter,
     ]);
+  });
+
+  it("scopes to the cost-allocation tag when a tag scope is supplied (shared-account mode)", async () => {
+    const client = new FakeCostExplorer();
+    const summary = await getAwsAccountCostSummary(new Date("2026-07-10T12:34:56.000Z"), client, {
+      kind: "tag",
+      value: "edd-alpha",
+    });
+    expect(summary.scope).toEqual({ kind: "tag", value: "edd-alpha" });
     expect(client.inputs.map((input) => input.Filter)).toEqual([
       usageAndCostScopeFilter,
       usageAndCostScopeFilter,

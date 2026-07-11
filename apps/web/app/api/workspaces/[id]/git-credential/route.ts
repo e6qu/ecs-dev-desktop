@@ -14,14 +14,19 @@ interface Ctx {
   params: Promise<{ id: string }>;
 }
 
-/** The owner login from an `https://host/owner/repo(.git)` URL, for picking the
- * right GitHub App installation; undefined when there is no/odd repo URL.
- * Exported for property testing (never throws on arbitrary input). */
-export function repoOwner(repoUrl: string | undefined): string | undefined {
+/** The `{ owner, name }` from an `https://host/owner/repo(.git)` URL — the owner picks the
+ * GitHub App installation, and `name` scopes the minted token to exactly that repo. Undefined
+ * when there is no/odd repo URL. Exported for property testing (never throws on arbitrary
+ * input). The `.git` suffix (git's own clone URLs carry it) is stripped from the name. */
+export function repoRef(repoUrl: string | undefined): { owner: string; name: string } | undefined {
   if (repoUrl === undefined) return undefined;
   try {
     const segments = new URL(repoUrl).pathname.split("/").filter((s) => s.length > 0);
-    return segments[0];
+    // Need both an owner and a repo segment (an owner-only URL yields no credential).
+    if (segments.length < 2) return undefined;
+    const name = segments[1].replace(/\.git$/, "");
+    if (name.length === 0) return undefined;
+    return { owner: segments[0], name };
   } catch {
     return undefined;
   }
@@ -52,7 +57,7 @@ async function handleGET(req: Request, { params }: Ctx) {
   if (ws.state === "deleting" || ws.state === "terminated") return notFound();
 
   const provider = await getGitProvider(ownerId(ws.ownerId));
-  const credential = provider === null ? null : await provider.gitCredential(repoOwner(ws.repoUrl));
+  const credential = provider === null ? null : await provider.gitCredential(repoRef(ws.repoUrl));
   if (credential === null) {
     return NextResponse.json({ error: "no credential" }, { status: 404 });
   }

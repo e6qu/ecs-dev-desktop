@@ -353,11 +353,13 @@ export {
 export type {
   BillingIntervals,
   BillingState,
+  ControlPlaneSizing,
   CostBreakdown,
   CostIssue,
   FleetCostReport,
   Interval,
   Pricing,
+  RunRateProjection,
   SessionCost,
   UserCost,
   WorkspaceCostInput,
@@ -371,6 +373,7 @@ export {
   deriveBillingState,
   priceDurations,
   priceIntervals,
+  projectRunRate,
   relativeWindow,
   resumeBilling,
 } from "./observability/cost";

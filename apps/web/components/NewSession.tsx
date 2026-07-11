@@ -143,6 +143,10 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
   const [ghConnected, setGhConnected] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // A failure loading GitHub namespaces is scoped to the GitHub-backed modes (repo/create),
+  // NOT the global launcher error — a blank or public-URL session needs no GitHub link, so
+  // surfacing a red "failed to load GitHub namespaces" banner there just looks broken.
+  const [ghNamespacesError, setGhNamespacesError] = useState<string | null>(null);
 
   // Existing-repo mode: lazy, paginated browse (fetched on first entry into the
   // mode); a row SELECTS the repo — the shared Start button launches it. A load
@@ -189,10 +193,11 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
           // Surface the real failure — leaving `namespaces` empty would otherwise tell the
           // user "you do not have permission to create repositories", misattributing a
           // server error as a permission denial (§6.5 — no silent, misleading fallback).
-          setError("failed to load GitHub namespaces");
+          // Scoped to the GitHub modes, not the global launcher error.
+          setGhNamespacesError("failed to load GitHub namespaces");
         }
       } catch {
-        setError("failed to load GitHub namespaces");
+        setGhNamespacesError("failed to load GitHub namespaces");
       }
     })();
   }, []);
@@ -541,6 +546,15 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
 
         {mode === "create" && ghConnected && (
           <div data-testid={TESTID.createRepoPanel} data-enabled={String(createEnabled)}>
+            {ghNamespacesError !== null && (
+              <p
+                role="alert"
+                className="mono"
+                style={{ color: "var(--st-error)", margin: "0 0 8px" }}
+              >
+                {ghNamespacesError}
+              </p>
+            )}
             {createEnabled ? (
               <div className="stack" style={{ gap: 10 }}>
                 <select

@@ -8,6 +8,7 @@ import { StatusBadge } from "../../../../components/StatusBadge";
 import { SnapshotIntervalControl } from "../../../../components/SnapshotIntervalControl";
 import { WorkspaceActions } from "../../../../components/WorkspaceActions";
 import { getCatalog, getControlPlane } from "../../../../lib/control-plane";
+import { isAdminViewer } from "../../../../lib/principal";
 import { TESTID } from "../../../../lib/testids";
 import { catalogByImage } from "../../../../lib/workspace-enrich";
 
@@ -27,6 +28,7 @@ export default async function InspectWorkspacePage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  if (!(await isAdminViewer())) return null;
   const { id } = await params;
   const cp = await getControlPlane();
   const [inspection, catalog] = await Promise.all([

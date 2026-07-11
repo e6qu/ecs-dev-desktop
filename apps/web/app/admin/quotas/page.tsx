@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { getQuotaReport } from "../../../lib/quota-report";
+import { isAdminViewer } from "../../../lib/principal";
 import { TESTID } from "../../../lib/testids";
 
 export const dynamic = "force-dynamic";
@@ -11,6 +12,7 @@ function fmtLimit(limit: number | null): string {
 // Admin-only (the /admin layout gates it). Renders the quota report (per-role limits +
 // per-user usage) from the shared builder — the same data `GET /api/admin/quotas` serves.
 export default async function AdminQuotasPage() {
+  if (!(await isAdminViewer())) return null;
   const { limits, usage } = await getQuotaReport();
 
   return (

@@ -56,4 +56,13 @@ availability_zones = ["us-east-1a", "us-east-1b"]
 #   EDD_AWS_PRICING         = "1"
 #   EDD_PUBLIC_APP_URL      = "https://app.dev.example.com"
 #   EDD_EMAIL_FROM          = "EDD <noreply@dev.example.com>"
+#   # Region-accurate rate for the derived per-workspace cost estimate. The config defaults
+#   # are us-east-1; only EBS gp3 differs by region (e.g. eu-west-1 = 0.088 vs 0.080/GB-mo,
+#   # verified via the Price List API). Fargate + snapshot match across regions. The
+#   # authoritative bill comes from Cost Explorer (whole-account on-demand), so this only
+#   # tunes the "attributable workspace cost" estimate.
+#   EDD_PRICE_EBS_GB_MONTH  = "0.088"
+#   # Whole-account cost is the default. Set to "1" only for a SHARED account, and only after
+#   # activating the edd:cost-scope cost-allocation tag in AWS Billing (see DO_NEXT).
+#   EDD_COST_SCOPE_ENABLED  = "0"
 # }

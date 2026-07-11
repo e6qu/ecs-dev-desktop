@@ -794,3 +794,43 @@ count>10`; `DescribeTasks` empty `tasks`) and **#619** (Scheduler accepts an inv
   with `EcsComputeProvider` managed EBS. Real deploy remains AWS-account gated.
 - **Pinned versions:** `@playwright/test` ^1.60. (Pomerium was removed 2026-06-20 — the editor
   proxy is now in-process in the Next.js app.)
+
+## Follow-ups from the cost-accuracy + boy-scout sweep (2026-07-12)
+
+Deferred from `fix/cost-accuracy-and-boyscout-sweep` (recorded, not ignored — each is
+evidence-backed from the four audits):
+
+- **Cost-allocation tag activation (only for shared-account/scoped mode).** The account
+  cost view now defaults to whole-account (correct for the dedicated EDD account), so this
+  isn't needed today. If a shared account ever runs EDD with `EDD_COST_SCOPE_ENABLED=1`, the
+  operator must ACTIVATE `edd:cost-scope` as a cost-allocation tag in AWS Billing (non-retroactive)
+  AND confirm tag coverage; add it to the deploy runbook. (Automating via `aws_ce_cost_allocation_tag`
+  is fragile — the tag must be billing-visible first — so it's a documented step, not terraform.)
+- **PERF (deferred): editor-proxy re-authorizes every sub-resource request with 2 DynamoDB
+  reads + a JWE decrypt** (`authorizeWorkspace`, called per proxied HTTP request). Memoize the
+  decision for a short TTL keyed by (session-cookie hash + wsId); highest per-request cost on the
+  proxy path. Deferred because it touches the security-critical auth path and wants a 200-user
+  load test to confirm the gain and the fail-closed-at-exp behaviour.
+- **PERF (deferred): the WINDOWED cost report (1d/7d/30d) re-scans the entire audit ledger every
+  15s refresh** (`cost-service.ts` forces `fullScanReport` when `windowDays != null`; the rollup
+  `since()` fast path is used only for `window=all`). Bound the windowed read (windowed checkpoint,
+  or `byTime ≥ windowStart` + per-workspace create lookup) or TTL-cache the windowed report. Guard
+  with the existing figure-equivalence integ.
+- **PERF (smaller, deferred):** reconciler issues ~6-7 independent full-table scans of the same
+  table per sweep (read the fleet once, derive keep-sets); catalog `list()` uncached (short TTL,
+  invalidate on catalog mutation); image-source reconcile sweep runs on every web replica (make
+  single-owner via a DynamoDB lease or move to the reconciler); `getCostService()` not memoized;
+  `WorkspaceLive` polls at 1s with no backoff once running/ok; live AWS pricing (opt-in
+  `EDD_AWS_PRICING=1`) is uncached + re-fetched per report (wrap in a TTL cache before enabling).
+- **UX (deferred):** SpectateViewer's full-container interaction shield also blocks scrolling the
+  mirrored file/terminal, and the spectate page has no in-content back link (only TopNav) — let
+  wheel/scroll reach the scroll containers while still blocking clicks/keys, and add a visible
+  "back to workspaces" link. Add `LiveRefresh` to the remaining `force-dynamic` admin pages
+  (users, quotas, logs, catalog). Costs page's derived tiles: also consider a computed
+  "unattributed platform overhead" line = CE-total − attributed-workspace-total.
+- **SECURITY (low, deferred):** the per-workspace connection token is a non-rotating HMAC placed in
+  the `?tkn=` URL (browser history / access logs) and reused as the container credential. Prefer
+  handing it via `Set-Cookie` on the redirect (the `vscode-tkn` cookie path exists) or rotate per
+  session; ensure access logs redact `tkn`. Also: a full script/style CSP on the control-plane
+  surface (needs nonce plumbing through Next's hydration scripts) beyond the frame-ancestors
+  header already shipped.

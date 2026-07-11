@@ -16,6 +16,7 @@ import {
   deriveBillingState,
   priceIntervals,
   priceDurations,
+  projectRunRate,
   relativeWindow,
   resumeBilling,
 } from "./cost";
@@ -261,6 +262,41 @@ describe("priceIntervals", () => {
     ).toThrow("pricing.fargateVcpuHourUsd must be a finite non-negative number");
     expect(() => priceDurations(0, 0, 0, PRICING, { ...SIZING, volumeGib: Number.NaN })).toThrow(
       "sizing.volumeGib must be a finite positive number",
+    );
+  });
+});
+
+describe("projectRunRate", () => {
+  const CP = { vcpu: 0.5, memoryGib: 1, replicas: 2 };
+  // One running workspace's hourly cost: compute + the live EBS volume (no snapshot).
+  const wsHour =
+    SIZING.vcpu * PRICING.fargateVcpuHourUsd +
+    SIZING.memoryGib * PRICING.fargateGbHourUsd +
+    (SIZING.volumeGib * PRICING.ebsGbMonthUsd) / 730;
+  const cpHour =
+    CP.replicas * (CP.vcpu * PRICING.fargateVcpuHourUsd + CP.memoryGib * PRICING.fargateGbHourUsd);
+
+  it("projects $/hr and $/day split control-plane vs workspaces, all running", () => {
+    const rr = projectRunRate([SIZING, SIZING], CP, PRICING);
+    expect(rr.workspacesUsdPerHour).toBeCloseTo(2 * wsHour, 10);
+    expect(rr.controlPlaneUsdPerHour).toBeCloseTo(cpHour, 10);
+    expect(rr.totalUsdPerHour).toBeCloseTo(2 * wsHour + cpHour, 10);
+    // Per-day is exactly ×24 of per-hour.
+    expect(rr.workspacesUsdPerDay).toBeCloseTo(rr.workspacesUsdPerHour * 24, 10);
+    expect(rr.controlPlaneUsdPerDay).toBeCloseTo(rr.controlPlaneUsdPerHour * 24, 10);
+    expect(rr.totalUsdPerDay).toBeCloseTo(rr.totalUsdPerHour * 24, 10);
+  });
+
+  it("counts only the control plane when there are no workspaces", () => {
+    const rr = projectRunRate([], CP, PRICING);
+    expect(rr.workspacesUsdPerHour).toBe(0);
+    expect(rr.totalUsdPerHour).toBeCloseTo(cpHour, 10);
+  });
+
+  it("fails loud on invalid pricing / control-plane sizing", () => {
+    expect(() => projectRunRate([], { ...CP, vcpu: 0 }, PRICING)).toThrow(/controlPlane.vcpu/);
+    expect(() => projectRunRate([], CP, { ...PRICING, fargateGbHourUsd: Number.NaN })).toThrow(
+      /fargateGbHourUsd/,
     );
   });
 });
