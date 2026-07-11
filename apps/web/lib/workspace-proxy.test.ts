@@ -422,7 +422,7 @@ describe("opencode proxy adaptation", () => {
       'const external="https://opencode.ai/logo.png";',
       'const base=location.hostname.includes("opencode.ai")?"http://localhost:4096":location.origin;',
     ].join("\n");
-    const out = rewriteOpencodeResponseBody(input, WS);
+    const out = rewriteOpencodeResponseBody(input, WS, "text/html");
     expect(out).toContain(`src="/w/${WS}/assets/index.js"`);
     expect(out).toContain(`href="/w/${WS}/assets/index.css"`);
     expect(out).toContain(`"/w/${WS}/assets/worker.js"`);
@@ -434,11 +434,29 @@ describe("opencode proxy adaptation", () => {
     expect(out).toContain(`?"http://localhost:4096":location.origin+"/w/${WS}"`);
   });
 
+  it("does NOT corrupt a JS regex literal in a call that ends in url( (found live: 'Invalid regular expression flags')", () => {
+    // Minified opencode JS: a function whose name ends in "url" called with a regex.
+    // The old `url(/...)` rewrite injected `/w/<id>/` into the regex literal.
+    const js = "const m=parseurl(/[a-z]+/g);const n=curl(/x/);";
+    const out = rewriteOpencodeResponseBody(js, WS, "application/javascript");
+    expect(out).toBe(js); // untouched — no /w/<id>/ inserted into any regex
+    expect(out).not.toContain(`/w/${WS}/`);
+  });
+
+  it("rewrites url(/...) in CSS but leaves CSS string paths alone", () => {
+    const css = ".x{background:url(/assets/bg.png)}.y{content:'/not-a-url'}";
+    const out = rewriteOpencodeResponseBody(css, WS, "text/css");
+    expect(out).toContain(`url(/w/${WS}/assets/bg.png)`);
+    // CSS is not JS/HTML: the string-path rewrite must not run here.
+    expect(out).toContain("content:'/not-a-url'");
+  });
+
   it("injects a visible EDD workspaces link into opencode HTML without rewriting it", () => {
     const out = injectWorkspaceHomeLink(
       rewriteOpencodeResponseBody(
         "<!doctype html><html><body><main>opencode</main></body></html>",
         WS,
+        "text/html",
       ),
       "opencode",
     );

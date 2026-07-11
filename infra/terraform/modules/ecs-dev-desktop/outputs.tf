@@ -75,6 +75,55 @@ output "control_plane_task_role_arn" {
   value       = aws_iam_role.control_plane.arn
 }
 
+# ---- Scale-to-zero entry (CloudFront + wake Lambda) ----
+
+output "cloudfront_distribution_id" {
+  description = "CloudFront distribution id fronting app.<domain> (null when CloudFront is disabled)."
+  value       = local.cloudfront_enabled ? aws_cloudfront_distribution.control_plane[0].id : null
+}
+
+output "cloudfront_domain_name" {
+  description = "CloudFront distribution domain name (the *.cloudfront.net host the app.<domain> alias targets; null when disabled)."
+  value       = local.cloudfront_enabled ? aws_cloudfront_distribution.control_plane[0].domain_name : null
+}
+
+output "wake_lambda_name" {
+  description = "Name of the wake Lambda that scales the control plane off zero (null when CloudFront is disabled)."
+  value       = local.cloudfront_enabled ? aws_lambda_function.wake[0].function_name : null
+}
+
+output "wake_lambda_function_url" {
+  description = "Wake Lambda Function URL used as the CloudFront failover origin (null when CloudFront is disabled)."
+  value       = local.cloudfront_enabled ? aws_lambda_function_url.wake[0].function_url : null
+}
+
+# ---- Admin-managed CLOUDFRONT WAF (coordinates the control plane needs) ----
+
+output "cloudfront_web_acl_arn" {
+  description = "ARN of the CLOUDFRONT-scope WAFv2 web ACL the control plane manages (null when disabled)."
+  value       = local.cloudfront_waf_enabled ? aws_wafv2_web_acl.cloudfront[0].arn : null
+}
+
+output "cloudfront_web_acl_id" {
+  description = "Id of the CLOUDFRONT-scope WAFv2 web ACL (null when disabled)."
+  value       = local.cloudfront_waf_enabled ? aws_wafv2_web_acl.cloudfront[0].id : null
+}
+
+output "cloudfront_ip_set_arn" {
+  description = "ARN of the admin CIDR IP set the control plane populates (null when disabled)."
+  value       = local.cloudfront_waf_enabled ? aws_wafv2_ip_set.cloudfront_admin[0].arn : null
+}
+
+output "cloudfront_ip_set_id" {
+  description = "Id of the admin CIDR IP set (null when disabled)."
+  value       = local.cloudfront_waf_enabled ? aws_wafv2_ip_set.cloudfront_admin[0].id : null
+}
+
+output "cloudfront_ip_set_name" {
+  description = "Name of the admin CIDR IP set (null when disabled)."
+  value       = local.cloudfront_waf_enabled ? aws_wafv2_ip_set.cloudfront_admin[0].name : null
+}
+
 output "ecs_infrastructure_role_arn" {
   description = "Role ECS assumes to manage workspace EBS volumes (pass on RunTask)."
   value       = aws_iam_role.ecs_infrastructure.arn

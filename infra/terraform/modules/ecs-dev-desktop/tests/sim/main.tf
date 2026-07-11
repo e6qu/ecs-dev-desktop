@@ -48,6 +48,45 @@ provider "aws" {
     sqs            = var.sim_endpoint
     budgets        = var.sim_endpoint
     wafv2          = var.sim_endpoint
+    cloudfront     = var.sim_endpoint
+    lambda         = var.sim_endpoint
+  }
+}
+
+# The module requires an aws.us_east_1 aliased provider for the global CloudFront/
+# viewer-cert/CLOUDFRONT-WAF resources. Against the sim it is the SAME endpoint as the
+# regional provider (the sim serves all regions) — endpoint-only, no sim branch.
+provider "aws" {
+  alias                       = "us_east_1"
+  region                      = "us-east-1"
+  access_key                  = "test"
+  secret_key                  = "test"
+  skip_credentials_validation = true
+  skip_metadata_api_check     = true
+  skip_requesting_account_id  = false
+
+  endpoints {
+    sts            = var.sim_endpoint
+    ec2            = var.sim_endpoint
+    ecs            = var.sim_endpoint
+    ecr            = var.sim_endpoint
+    dynamodb       = var.sim_endpoint
+    iam            = var.sim_endpoint
+    kms            = var.sim_endpoint
+    elbv2          = var.sim_endpoint
+    route53        = var.sim_endpoint
+    acm            = var.sim_endpoint
+    cloudwatch     = var.sim_endpoint
+    cloudwatchlogs = var.sim_endpoint
+    secretsmanager = var.sim_endpoint
+    scheduler      = var.sim_endpoint
+    appautoscaling = var.sim_endpoint
+    cloudtrail     = var.sim_endpoint
+    sqs            = var.sim_endpoint
+    budgets        = var.sim_endpoint
+    wafv2          = var.sim_endpoint
+    cloudfront     = var.sim_endpoint
+    lambda         = var.sim_endpoint
   }
 }
 
@@ -83,8 +122,31 @@ variable "monthly_budget_usd" {
   default     = 0
 }
 
+# CloudFront scale-to-zero entry toggle for the MODULE apply. Default OFF: the sim
+# supports the underlying shapes (CloudFront distributions/origin-groups, Lambda +
+# Function URL, WAFv2 CLOUDFRONT scope — all proven by
+# adversarial-slice-cloudfront-wake-waf.sh), but the aws provider's automatic
+# post-create `GetFunctionCodeSigningConfig` read of `aws_lambda_function` fails
+# against the sim: the sim returns 404 ResourceNotFoundException for a function with
+# no code-signing config, whereas real AWS returns 200 (the provider errors on any
+# non-nil error from that call, so no-CSC lambdas deploy fine on real AWS). That gap
+# blocks the module's wake Lambda — and therefore the CloudFront distribution that
+# fails over to it — from applying here. Recorded as an upstream e6qu/sockerless gap
+# in BUGS.md. The CLI slice covers the resource shapes end-to-end in the meantime;
+# flip this to true once the sim's GetFunctionCodeSigningConfig is fixed upstream.
+variable "enable_cloudfront" {
+  description = "Exercise the module's CloudFront + wake Lambda + CLOUDFRONT-WAF path against the sim. Default off — blocked by the sim's GetFunctionCodeSigningConfig 404 gap (see BUGS.md); the CLI slice covers the shapes."
+  type        = bool
+  default     = false
+}
+
 module "edd" {
   source = "../.."
+
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
 
   name                            = "eddsim"
   availability_zones              = ["us-east-1a", "us-east-1b"]
@@ -117,6 +179,14 @@ module "edd" {
   # Control-plane TLS routing (ACM cert, DNS validation, HTTPS listener for `app.<domain>`).
   domain_name     = var.enable_dns ? "edd-sim.example.com" : ""
   route53_zone_id = var.enable_dns ? aws_route53_zone.test[0].zone_id : ""
+
+  # Scale-to-zero entry. Off by default against the sim (see enable_cloudfront above:
+  # the GetFunctionCodeSigningConfig gap). Still needs a domain, so it also requires
+  # enable_dns. The committed dummy wake zip lets the module's Lambda plan/apply here
+  # without a real @edd/wake-listener build once the upstream gap is fixed.
+  enable_cloudfront     = var.enable_dns && var.enable_cloudfront
+  enable_cloudfront_waf = var.enable_dns && var.enable_cloudfront
+  wake_lambda_zip       = "${path.module}/wake-listener-sim.zip"
 
   # SSH ingress (Slice 3): the NLB + TCP:22 listener + target group + gateway service + the
   # `*.<ssh_base_domain>` wildcard — exercised against the sim's ELBv2 `network` LB + Route53. The
@@ -184,4 +254,32 @@ output "tasks_security_group_id" {
 
 output "nat_instance_eni_id" {
   value = module.edd.nat_instance_eni_id
+}
+
+output "cloudfront_distribution_id" {
+  value = module.edd.cloudfront_distribution_id
+}
+
+output "cloudfront_domain_name" {
+  value = module.edd.cloudfront_domain_name
+}
+
+output "wake_lambda_name" {
+  value = module.edd.wake_lambda_name
+}
+
+output "wake_lambda_function_url" {
+  value = module.edd.wake_lambda_function_url
+}
+
+output "cloudfront_web_acl_arn" {
+  value = module.edd.cloudfront_web_acl_arn
+}
+
+output "cloudfront_ip_set_id" {
+  value = module.edd.cloudfront_ip_set_id
+}
+
+output "cloudfront_ip_set_name" {
+  value = module.edd.cloudfront_ip_set_name
 }

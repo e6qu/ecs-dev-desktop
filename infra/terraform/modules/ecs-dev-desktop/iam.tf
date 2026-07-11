@@ -200,6 +200,29 @@ data "aws_iam_policy_document" "control_plane" {
     resources = ["*"]
   }
 
+  # ---- Admin-managed CloudFront WAF (waf-cloudfront.tf) ----
+  # The control plane owns the live edge rule set + admin CIDR IP set after terraform
+  # seeds them (terraform then ignores those changes). Get/Update are scoped to the two
+  # CLOUDFRONT-scope ARNs the module creates; List/DescribeManagedRuleGroup have no
+  # resource-level scoping (account-wide by API design). Gated so an HTTP-only or
+  # WAF-disabled stack grants nothing here.
+  dynamic "statement" {
+    for_each = local.cloudfront_waf_enabled ? [1] : []
+    content {
+      sid       = "ManageCloudFrontWaf"
+      actions   = ["wafv2:GetWebACL", "wafv2:UpdateWebACL", "wafv2:GetIPSet", "wafv2:UpdateIPSet"]
+      resources = [aws_wafv2_web_acl.cloudfront[0].arn, aws_wafv2_ip_set.cloudfront_admin[0].arn]
+    }
+  }
+  dynamic "statement" {
+    for_each = local.cloudfront_waf_enabled ? [1] : []
+    content {
+      sid       = "IntrospectCloudFrontWaf"
+      actions   = ["wafv2:ListIPSets", "wafv2:ListWebACLs", "wafv2:GetManagedRuleSet", "wafv2:DescribeManagedRuleGroup"]
+      resources = ["*"]
+    }
+  }
+
   statement {
     sid       = "PassTaskRoles"
     actions   = ["iam:PassRole"]
@@ -345,6 +368,21 @@ data "aws_iam_policy_document" "reconciler" {
     resources = ["*"]
     condition {
       test     = "StringEquals"
+      variable = "ecs:cluster"
+      values   = [aws_ecs_cluster.this.arn]
+    }
+  }
+  # Scale-to-zero for the control plane itself: the idle-shutdown sweep flips the
+  # control-plane ECS service's desired count to 0 (and back up) once the last human
+  # session goes idle. Scoped to the control-plane service ARN — the reconciler can
+  # scale ONLY that service, not arbitrary services. UpdateService with the service's
+  # own name in the request context populates ecs:cluster, so the condition holds.
+  statement {
+    sid       = "ScaleControlPlaneService"
+    actions   = ["ecs:DescribeServices", "ecs:UpdateService"]
+    resources = [local.control_plane_service_arn]
+    condition {
+      test     = "ArnEquals"
       variable = "ecs:cluster"
       values   = [aws_ecs_cluster.this.arn]
     }

@@ -460,11 +460,15 @@ jobs:
         with:
           terraform_wrapper: false
       - run: terraform fmt -check -recursive infra/terraform
-      - name: Validate the platform module
-        run: |
-          terraform -chdir=infra/terraform/modules/ecs-dev-desktop init -backend=false -input=false
-          terraform -chdir=infra/terraform/modules/ecs-dev-desktop validate
-      - name: Validate the complete example
+      # `terraform validate` on the module STANDALONE is not possible: it declares
+      # `configuration_aliases = [aws.us_east_1]` for the CloudFront/us-east-1 cert +
+      # CLOUDFRONT-scope WAF resources, and an aliased provider config can only be
+      # supplied by a parent. `init` still checks the provider/version constraints and
+      # that the config parses; the module's `validate` runs transitively through the
+      # complete example below (which passes both providers).
+      - name: Init the platform module (parse + provider constraints)
+        run: terraform -chdir=infra/terraform/modules/ecs-dev-desktop init -backend=false -input=false
+      - name: Validate the complete example (validates the module transitively)
         run: |
           terraform -chdir=infra/terraform/examples/complete init -backend=false -input=false
           terraform -chdir=infra/terraform/examples/complete validate

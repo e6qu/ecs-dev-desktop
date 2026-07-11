@@ -32,6 +32,36 @@ locals {
   # SSH ingress (Slice 3) is independent of the editor domain — it has its own zone.
   ssh_enabled = var.ssh_base_domain != ""
 
+  # CloudFront fronts `app.<domain>` for control-plane scale-to-zero: when the
+  # control-plane ECS service is at 0 the ALB origin has no healthy targets and
+  # returns 503, so CloudFront fails over to the wake Lambda origin (which scales
+  # the service back up). It needs a domain (aliases + a us-east-1 viewer cert), so
+  # it is gated on BOTH the feature flag and dns being enabled — an HTTP-only dev
+  # stack (no domain) never creates CloudFront even with enable_cloudfront = true.
+  cloudfront_enabled = var.enable_cloudfront && local.dns_enabled
+
+  # AWS-managed CloudFront policy IDs. These are GLOBAL, stable, identical in every
+  # account in the `aws` partition (they are AWS's own managed policies), so they are
+  # referenced by their canonical id rather than looked up per-apply:
+  #   Managed-CachingDisabled  — never cache; every request goes to the origin (the
+  #     control plane is fully dynamic and proxies editor WebSockets).
+  #   Managed-AllViewer        — forward ALL viewer headers, cookies, and query string
+  #     to the origin (so auth cookies + the WebSocket Upgrade/Connection headers pass
+  #     through untouched).
+  # https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-managed-cache-policies.html
+  cloudfront_managed_caching_disabled_policy_id = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+  cloudfront_managed_all_viewer_orp_id          = "216adef6-5c7f-47e4-b989-5492eafa07d3"
+
+  # The wake Lambda flips the control-plane ECS service back to this desired count
+  # on the first request that arrives while the service is scaled to zero.
+  control_plane_active_desired = var.control_plane_desired_count
+
+  # ARN of the control-plane ECS service, scoped tightly for the wake Lambda + the
+  # reconciler's scale-to-zero grant. aws_ecs_service.id is the service ARN in
+  # provider v6, but the constructed form keeps the IAM policy readable and avoids a
+  # cycle (the wake Lambda's role must not depend on the service that references it).
+  control_plane_service_arn = "arn:${local.partition}:ecs:${local.region}:${local.account_id}:service/${aws_ecs_cluster.this.name}/${var.name}-control-plane"
+
   control_plane_fqdn        = local.dns_enabled ? "app.${var.domain_name}" : null
   github_image_webhook_path = "/api/integrations/github/image-webhook"
   # `*.<ssh_base_domain>` — every workspace is reached at `<ws-id>.<ssh_base_domain>`.

@@ -455,12 +455,26 @@ export function injectWorkspaceHomeLink(html: string, editor: EditorKind): strin
   return `${html.slice(0, insertAt)}${link}${html.slice(insertAt)}`;
 }
 
-export function rewriteOpencodeResponseBody(body: string, wsId: WorkspaceId): string {
+export function rewriteOpencodeResponseBody(
+  body: string,
+  wsId: WorkspaceId,
+  contentType: string | undefined,
+): string {
   const base = opencodeRewriteBase(wsId);
+  if (contentType?.toLowerCase().includes("text/css") === true) {
+    // CSS: only `url(/...)` needs relocating. The `url(` rewrite is CSS-ONLY: in
+    // JavaScript `fn(/regex/)` matches `url(/` when a call ends in "url(", and
+    // inserting `/w/<id>/` into the regex literal makes JS parse `/w/` with flags
+    // `ws-…` → "Invalid regular expression flags", which blanked opencode in prod.
+    return body.replace(/url\(\s*\/(?!\/|w\/)/g, `url(${base}/`);
+  }
+  // HTML + JS: relocate root-absolute asset/API string paths and `location.origin`.
+  // Note the string char class is `["']` (NOT backtick): a backtick can precede a JS
+  // regex/division token, so rewriting `` `x`/re/ `` would corrupt it. Template-literal
+  // URL building is handled at runtime by the `location.origin` rewrite instead.
   return body
     .replace(/\b(src|href|content)=(["'])\/(?!\/|w\/)/g, `$1=$2${base}/`)
-    .replace(/url\(\//g, `url(${base}/`)
-    .replace(/(["'`])\/(?!\/|w\/)/g, `$1${base}/`)
+    .replace(/(["'])\/(?!\/|w\/)/g, `$1${base}/`)
     .replace(/\blocation\.origin\b/g, `location.origin+"${base}"`);
 }
 
@@ -537,7 +551,7 @@ export function proxyWorkspaceHttp(
         const content = Buffer.concat(chunks).toString("utf8");
         const rewritten =
           context.editor === "opencode"
-            ? rewriteOpencodeResponseBody(content, context.wsId)
+            ? rewriteOpencodeResponseBody(content, context.wsId, contentType)
             : content;
         res.writeHead(proxyRes.statusCode ?? 502, headers);
         res.end(

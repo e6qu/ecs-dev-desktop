@@ -38,6 +38,13 @@ repos:
     hooks:
       - id: terraform_fmt
       - id: terraform_validate
+        # The platform module declares `configuration_aliases = [aws.us_east_1]`
+        # (CloudFront + us-east-1 cert + CLOUDFRONT-scope WAF), so it cannot be
+        # `terraform validate`d standalone — the aliased provider is supplied by a
+        # parent. It is validated transitively via examples/complete (and CI +
+        # terraform-sim). fmt still runs on it above; examples/ (outside modules/)
+        # are still validated by this hook.
+        exclude: ^infra/terraform/modules/
 
   - repo: local
     hooks:

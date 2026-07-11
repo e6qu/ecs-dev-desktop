@@ -148,9 +148,9 @@ variable "workspace_port" {
 }
 
 variable "control_plane_min_count" {
-  description = "Autoscaling floor for the control-plane service."
+  description = "Autoscaling floor for the control-plane service. Default 0 so the reconciler/wake Lambda can scale the control plane to zero (scale-to-zero entry, cloudfront.tf); raise it to keep a warm floor. The service's desired_count is lifecycle-ignored, so the reconciler/wake own it at runtime."
   type        = number
-  default     = 2
+  default     = 0
 }
 
 variable "control_plane_max_count" {
@@ -197,6 +197,73 @@ variable "route53_zone_id" {
   description = "Route53 hosted-zone id for `domain_name`. Required when `domain_name` is set."
   type        = string
   default     = ""
+}
+
+# ---- Control-plane scale-to-zero entry (CloudFront + wake Lambda) ----
+# CloudFront fronts `app.<domain>` so a request that arrives while the control-plane
+# ECS service is at zero fails over (ALB 503) to a wake Lambda that scales it back up.
+# Requires a domain — an HTTP-only dev stack (no domain_name) never builds CloudFront
+# even with enable_cloudfront = true. All CloudFront/viewer-cert/WAF-CLOUDFRONT
+# resources are created in us-east-1 via the aws.us_east_1 aliased provider.
+
+variable "enable_cloudfront" {
+  description = "Front `app.<domain>` with a CloudFront distribution + wake Lambda for control-plane scale-to-zero. No effect unless `domain_name` is also set (CloudFront needs the alias + a us-east-1 viewer cert)."
+  type        = bool
+  default     = true
+}
+
+variable "enable_cloudfront_waf" {
+  description = "Create the admin-managed CLOUDFRONT-scope WAFv2 web ACL + IP set and attach the ACL to the distribution. Only applies when CloudFront is enabled."
+  type        = bool
+  default     = true
+}
+
+variable "cloudfront_price_class" {
+  description = "CloudFront price class (edge-location coverage vs cost): PriceClass_100 (NA+EU), PriceClass_200 (+ Asia), or PriceClass_All."
+  type        = string
+  default     = "PriceClass_100"
+
+  validation {
+    condition     = contains(["PriceClass_100", "PriceClass_200", "PriceClass_All"], var.cloudfront_price_class)
+    error_message = "cloudfront_price_class must be PriceClass_100, PriceClass_200, or PriceClass_All."
+  }
+}
+
+variable "wake_lambda_zip" {
+  description = <<-EOT
+    Path to the built @edd/wake-listener deployment zip. Build it first with
+    `pnpm --filter @edd/wake-listener build` (produces
+    packages/wake-listener/dist/wake-listener.zip). The default resolves that path
+    from inside this repo. The module stays VALID before the artifact exists —
+    `source_code_hash` is computed only when the file is present — but a real
+    `terraform apply` requires the zip.
+  EOT
+  type        = string
+  default     = "../../../../packages/wake-listener/dist/wake-listener.zip"
+}
+
+variable "wake_lambda_runtime" {
+  description = "Lambda runtime for the wake listener."
+  type        = string
+  default     = "nodejs22.x"
+}
+
+variable "wake_lambda_handler" {
+  description = "Lambda handler entrypoint for the wake listener (module.export)."
+  type        = string
+  default     = "index.handler"
+}
+
+variable "wake_lambda_timeout_seconds" {
+  description = "Wake Lambda timeout (seconds). Enough to call DescribeServices + UpdateService and return a 'waking' response."
+  type        = number
+  default     = 10
+}
+
+variable "wake_lambda_memory_mb" {
+  description = "Wake Lambda memory (MiB). The wake shim is tiny; the 128 MiB floor is plenty."
+  type        = number
+  default     = 128
 }
 
 # ---- SSH ingress (Slice 3) ----

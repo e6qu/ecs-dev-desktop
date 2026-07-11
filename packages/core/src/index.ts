@@ -84,6 +84,22 @@ export {
   type ControlPlaneIdleInput,
 } from "./system/control-plane-scale";
 
+// Wake-listener (scale-to-zero cold entry): startup-page render + HTTP response.
+export {
+  DEFAULT_CONTROL_PLANE_ACTIVE_DESIRED,
+  DEFAULT_WAKE_POLL_INTERVAL_MS,
+  DEFAULT_WAKE_PAGE_TITLE,
+  WAKE_RESPONSE_STATUS,
+  WAKE_RESPONSE_CONTENT_TYPE,
+  WAKE_RESPONSE_CACHE_CONTROL,
+  WAKE_RESPONSE_ACTION_HEADER,
+  decideWakeResponse,
+  renderStartupPage,
+  type StartupPageConfig,
+  type WakeHttpResponse,
+  type WakeResponseInput,
+} from "./system/wake-listener";
+
 // Admin traffic-filter policy: model + validation + compile-to-WAF-rules.
 export {
   EMPTY_TRAFFIC_FILTER_POLICY,

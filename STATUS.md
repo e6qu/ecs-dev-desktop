@@ -2,6 +2,53 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
+**Last updated:** 2026-07-11 (late). Branch `feat/control-plane-scale-to-zero`
+(after #224 merged as `94e9742`) adds three things plus boy-scout fixes.
+
+(1) **Control-plane scale-to-zero.** Design confirmed with the user: a CloudFront
+entry with an origin-group failover to a wake Lambda, wake-then-login on the
+woken control plane, and running workspaces stay alive while the UI scales down.
+Functional core: `decideControlPlaneIdle`/`decideControlPlaneWake` +
+`DEFAULT_CONTROL_PLANE_IDLE_MS` (15 min) + the wake-listener `renderStartupPage`/
+`decideWakeResponse` in `@edd/core`. App: a throttled control-plane activity
+record, `/api/system-status` for the wake page to poll, and a reconciler
+idle-shutdown sweep that scales the control-plane ECS service to 0 after 15 min
+(opt-in via `EDD_CONTROL_PLANE_SERVICE`; `EcsComputeProvider` gained
+`describeService`/`scaleService`). New `@edd/wake-listener` package: a Lambda that
+scales the service up on a cold hit and serves a self-refreshing status page.
+Terraform: `cloudfront.tf` (us-east-1 cert, wake Lambda + Function URL, the
+CloudFront distribution with an ALB→wake-Lambda origin-group failover on
+502/503/504 and full websocket pass-through), `control_plane_min_count → 0`,
+reconciler IAM to scale the service, and `app.<domain>` A/AAAA → CloudFront.
+NOT applied to prod — a risky DNS cutover with an operator runbook in the module
+README; one sim gap (post-create Lambda code-signing read 404s) is recorded in
+`BUGS.md` → External blockers (kept `enable_cloudfront` off in the sim tier).
+
+(2) **Admin traffic filtering.** Functional core `TrafficFilterPolicy` +
+`compileTrafficFilter` (allow/block by IP CIDR, country, ASN, curated cloud/hoster
+ASN presets, and a block-anonymous toggle → ordered WAFv2 rule specs). Persisted
+(versioned) + applied to a CLOUDFRONT-scope WAFv2 Web ACL via the WAFv2 API
+(`AsnMatchStatement` is native; anonymous = `AWSManagedRulesAnonymousIpList`) from
+a new `/admin/traffic` console. Terraform `waf-cloudfront.tf` adds the CLOUDFRONT
+Web ACL + IP set (both `ignore_changes` so the app owns the rules) and the
+control-plane WAFv2 update IAM; coordinates via `EDD_WAF_WEB_ACL_ID/NAME` +
+`EDD_WAF_IP_SET_ID/NAME`.
+
+(3) **opencode fix (test-and-fix).** With #223/#224 deployed, the `94e9742`
+post-deploy smoke got PAST OpenVSCode (File menu), Monaco, AND Terminal — then
+failed on opencode with `pageerror: Invalid regular expression flags`. Root cause:
+the proxy's `rewriteOpencodeResponseBody` ran its `url(/...)` rewrite on JS too,
+matching a call like `fn(/regex/)` and injecting `/w/<id>/` into the regex literal
+(`/w/` + flags `ws-…`). Fixed by making the rewrites content-type-aware (`url(` is
+CSS-only; the string char class dropped backtick) with regression tests. Confirmed
+by the smoke after this deploys.
+
+Verification: build 22/22 (incl. `@edd/wake-listener`), lint 23/23, dead-code,
+check-deps (added `@aws-sdk/client-wafv2`), terraform fmt/validate + the new sim
+slice, provider lock all platforms; full unit suite 38/38 packages, control-plane
+integ 84/84 against the sim, Playwright 26/26 (incl. new snapshot + traffic
+specs). Every change carries a test.
+
 **Last updated:** 2026-07-11 (evening). PR #222 merged (`d8b2ead`) and its
 `ecs:TagResource` IAM fix was applied to production via a TARGETED
 `terraform apply` — the operator's authoritative state is the LOCAL

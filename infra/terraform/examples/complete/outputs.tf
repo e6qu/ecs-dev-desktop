@@ -34,3 +34,28 @@ output "ecs_cluster_name" {
   description = "ECS cluster name."
   value       = module.ecs_dev_desktop.ecs_cluster_name
 }
+
+output "cloudfront_domain_name" {
+  description = "CloudFront distribution domain name fronting app.<domain> (null when disabled)."
+  value       = module.ecs_dev_desktop.cloudfront_domain_name
+}
+
+output "cloudfront_distribution_id" {
+  description = "CloudFront distribution id (null when disabled)."
+  value       = module.ecs_dev_desktop.cloudfront_distribution_id
+}
+
+output "wake_lambda_name" {
+  description = "Wake Lambda function name (null when disabled)."
+  value       = module.ecs_dev_desktop.wake_lambda_name
+}
+
+output "cloudfront_web_acl_arn" {
+  description = "CLOUDFRONT-scope WAFv2 web ACL ARN the control plane manages (null when disabled)."
+  value       = module.ecs_dev_desktop.cloudfront_web_acl_arn
+}
+
+output "cloudfront_ip_set_id" {
+  description = "Admin CIDR IP set id the control plane populates (null when disabled)."
+  value       = module.ecs_dev_desktop.cloudfront_ip_set_id
+}

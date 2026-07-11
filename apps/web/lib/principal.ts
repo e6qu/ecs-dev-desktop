@@ -13,6 +13,7 @@ import {
   ROLE_HEADER,
   USER_ID_HEADER,
 } from "./constants";
+import { recordSystemActivity } from "./system-activity";
 
 /** Whether the dev-auth shim is active (`EDD_DEV_AUTH=1`) — never in production. */
 export function devAuthEnabled(): boolean {
@@ -120,6 +121,11 @@ export async function getPrincipal(req: Request): Promise<Principal | null> {
     ? devRequestPrincipal(req)
     : principalFromSession(await (await import("../auth")).auth());
   if (principal === null) return null;
+  // Stamp control-plane activity on real authenticated requests (control-plane
+  // scale-to-zero). Fire-and-forget + throttled internally: it never blocks or fails the
+  // request (it catches + logs its own errors), and a busy CP writes DynamoDB ~1/min.
+  // The heavy control-plane graph is lazy-imported inside `recordSystemActivity`.
+  void recordSystemActivity();
   return withPersona(principal, cookieValue(req.headers.get("cookie"), PERSONA_COOKIE));
 }
 

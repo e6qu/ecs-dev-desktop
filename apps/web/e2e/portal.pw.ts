@@ -331,6 +331,39 @@ test("non-admins are denied the snapshot console", async ({ page, context }) => 
   await expect(page.getByRole("heading", { name: "Snapshots" })).toHaveCount(0);
 });
 
+test("admin configures traffic filtering", async ({ page, context }) => {
+  await loginAs(context, "root", "admin");
+  // The nav exposes a Traffic entry next to Snapshots/Users.
+  await page.goto("/admin/images");
+  await page.getByRole("link", { name: "Traffic" }).click();
+  await expect(page).toHaveURL(`${BASE_URL}/admin/traffic`);
+  await expect(page.getByRole("heading", { name: "Traffic filtering" })).toBeVisible();
+
+  // The console loads without a load error (never a silently blank surface, §6.5) and
+  // the cloud/hoster presets came through from the server.
+  await expect(page.getByTestId("traffic-load-error")).toHaveCount(0);
+  await expect(page.getByTestId("traffic-preset-aws")).toBeVisible();
+
+  // Default (empty) policy is block mode → default action ALLOW, no compiled rules.
+  await expect(page.getByTestId("traffic-default-action")).toHaveText("allow");
+  await expect(page.getByTestId("traffic-preview-rule")).toHaveCount(0);
+
+  // Set a country → a geo rule appears in the LIVE compiled preview (compiled by the
+  // same @edd/core the server applies), with no save/WAF round-trip needed.
+  await page.getByTestId("traffic-countries").fill("US");
+  const geoRule = page.getByTestId("traffic-preview-rule").filter({ hasText: "US" });
+  await expect(geoRule).toHaveCount(1);
+  await expect(geoRule).toHaveAttribute("data-kind", "geo");
+  await expect(geoRule).toHaveAttribute("data-action", "block");
+});
+
+test("non-admins are denied the traffic filter console", async ({ page, context }) => {
+  await loginAs(context, "alice", "developer");
+  await page.goto("/admin/traffic");
+  await expect(page.getByTestId(TESTID.adminDenied)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Traffic filtering" })).toHaveCount(0);
+});
+
 test("admin inspects a workspace's detail and timeline", async ({ page, context, request }) => {
   // A developer-owned workspace to inspect (left in place for the admin to open).
   const res = await request.post("/api/workspaces", {

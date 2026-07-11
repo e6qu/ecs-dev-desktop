@@ -3771,3 +3771,40 @@ confirmed-disconnect health probe, topbar refresh action, and automatic recovery
 refresh. Playwright exercised help/workspace modal layering, one-modal-at-a-time,
 offline/recovery, and workspace lifecycle convergence. `AGENTS.md` and
 `TESTING.md` made automatic no-hard-refresh convergence mandatory.
+
+## 2026-07-11 — Admin traffic filtering (WAFv2)
+
+An admin traffic-filter console + backend was added to configure and APPLY
+allow/block rules to the live CLOUDFRONT-scope WAFv2 Web ACL. The pure policy
+model + `compileTrafficFilter` (policy → ordered WAFv2 rule specs) already existed
+in `@edd/core`; this branch built only the imperative shell around them. A
+versioned single-row `trafficFilterPolicy` DynamoDB entity (`@edd/db`,
+schemaVersion §6.5a) persists the policy + last apply outcome. A new
+`TrafficFilterService` (`@edd/control-plane`) loads/compiles the policy, persists a
+new one, applies its compiled rules through an injected `WafApplier` port, records
+`appliedAt`/`appliedError`, and audits the change; an invalid policy fails loud
+(compile throws before any write) and a WAF apply failure is recorded and re-thrown
+as `WafApplyError`. The real applier (`apps/web/lib/waf-applier.ts`) materializes
+the IPSet (GetIPSet→UpdateIPSet with LockToken) and the Web ACL (GetWebACL→
+UpdateWebACL with LockToken) over `@aws-sdk/client-wafv2@3.1084.0`, emitting
+GeoMatch/AsnMatch/IPSetReference/ManagedRuleGroup (AWSManagedRulesAnonymousIpList)
+statements; that SDK version DOES expose `AsnMatchStatement`, so ASN rules are
+native (no IPSet fallback needed). Coordinates come from env only
+(`EDD_WAF_WEB_ACL_ID`/`_NAME`, `EDD_WAF_IP_SET_ID`/`_NAME`; scope fixed CLOUDFRONT →
+us-east-1 / `AWS_ENDPOINT_URL` for the sim) — a missing coordinate fails loud at
+apply, while `getState` works without them (§6.9, endpoint-only). Admin-gated
+`GET/PUT /api/admin/traffic` return/replace the state. The admin page
+(`/admin/traffic` + `TrafficFilterConsole`) edits mode/CIDRs/countries/ASNs/presets/
+block-anonymous with a LIVE compiled preview computed by the SAME core
+`compileTrafficFilter` (imported via a new `@edd/core/system/traffic-filter`
+subpath export so the barrel's server-only `FakeStorageProvider`→node:fs never
+reaches the client bundle) and surfaces load/apply errors loudly. A "Traffic" nav
+entry sits by Snapshots/Users. Tests: control-plane unit (happy path + invalid
+rejected + apply-failure recorded) + sim store round-trip integ, waf-applier unit
+(fake WAFv2 client asserting the IPSet/WebACL update shapes), admin-authz integ for
+both routes, and two Playwright specs (admin previews a compiled geo rule; non-admin
+denied). Verified: db/control-plane/core build, web tsc, web+control-plane+db+core
+lint, control-plane 70 unit + traffic integ, admin-authz 39, waf-applier 4,
+Playwright 26/26. OPERATOR/Terraform: provision the CLOUDFRONT Web ACL + an
+associated IPSet and inject the four `EDD_WAF_*` coordinates into the control-plane
+task env before apply works in prod.

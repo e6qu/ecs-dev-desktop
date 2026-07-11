@@ -34,13 +34,25 @@ remote_state {
   }
 }
 
-# Generate the AWS provider (Terragrunt owns provider config; the module does not).
+# Generate the AWS providers (Terragrunt owns provider config; the module does not).
+# The module requires an `aws.us_east_1` aliased provider for the global CloudFront /
+# viewer-cert / CLOUDFRONT-WAF resources (the scale-to-zero entry), so we generate BOTH
+# the regional provider and the pinned us-east-1 one. This is required even with
+# enable_cloudfront off — configuration_aliases is a static module requirement.
 generate "provider" {
   path      = "provider.tf"
   if_exists = "overwrite_terragrunt"
   contents  = <<-EOF
     provider "aws" {
       region = "${local.region}"
+      default_tags {
+        tags = { "edd:env" = "${local.environment}" }
+      }
+    }
+
+    provider "aws" {
+      alias  = "us_east_1"
+      region = "us-east-1"
       default_tags {
         tags = { "edd:env" = "${local.environment}" }
       }
