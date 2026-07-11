@@ -534,6 +534,16 @@ export function buildOpencodeBasePathShim(base: string): string {
     "if(OW){var NW=function(u,p){return p===undefined?new OW(rebase(u)):new OW(rebase(u),p);};NW.prototype=OW.prototype;NW.CONNECTING=OW.CONNECTING;NW.OPEN=OW.OPEN;NW.CLOSING=OW.CLOSING;NW.CLOSED=OW.CLOSED;window.WebSocket=NW;}",
     "if(window.EventSource){var OE=window.EventSource;var NE=function(u,c){return new OE(rebase(u),c);};NE.prototype=OE.prototype;NE.CONNECTING=OE.CONNECTING;NE.OPEN=OE.OPEN;NE.CLOSED=OE.CLOSED;window.EventSource=NE;}",
     "if(window.Worker){var OWk=window.Worker;var NWk=function(u,o){return new OWk(rebase(u),o);};NWk.prototype=OWk.prototype;window.Worker=NWk;}",
+    // Force the injected EDD home link to escape opencode's SPA router. opencode
+    // (SolidJS) installs a document click handler that preventDefaults same-origin anchor
+    // clicks for client-side routing, which swallows a plain `<a href="/workspaces">`
+    // navigation. A capture-phase listener registered here (before opencode's) intercepts
+    // the click first and performs a real top-level navigation. Inline onclick can't be
+    // used — opencode's hash-based CSP blocks inline event handlers.
+    "document.addEventListener('click',function(e){",
+    "var t=e.target;var a=t&&t.closest?t.closest('#edd-workspaces-home,#edd-home'):null;",
+    "if(a){e.preventDefault();e.stopImmediatePropagation();window.location.assign(a.getAttribute('href')||'/workspaces');}",
+    "},true);",
     "})();",
   ].join("");
 }

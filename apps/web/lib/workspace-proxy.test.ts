@@ -550,6 +550,18 @@ describe("opencode base-path shim", () => {
     }
   });
 
+  it("wires a capture-phase handler so the EDD home link escapes opencode's SPA router", () => {
+    const shim = buildOpencodeBasePathShim(`/w/${WS}`);
+    // Capture-phase document click listener that targets the injected home link and forces
+    // a real navigation (opencode preventDefaults same-origin anchor clicks otherwise).
+    expect(shim).toContain("addEventListener('click'");
+    expect(shim).toContain("#edd-workspaces-home");
+    expect(shim).toContain("stopImmediatePropagation");
+    expect(shim).toContain("window.location.assign");
+    expect(shim).toMatch(/},\s*true\);/); // registered with useCapture=true
+    expect(() => new vm.Script(shim)).not.toThrow();
+  });
+
   it("rebases same-origin root-absolute URLs but leaves prefixed/external/protocol-relative ones", () => {
     // Execute the real shim in an isolated VM context with a faked window/location, then
     // drive the patched fetch to observe how each URL is rebased.
@@ -565,6 +577,7 @@ describe("opencode base-path shim", () => {
       location,
       URL,
       Request,
+      document: { addEventListener: () => undefined },
       XMLHttpRequest: class {
         open(): void {
           /* noop */
