@@ -1227,18 +1227,16 @@ old STATIC-gate "tokenless behind the gate" framing (see _Resolved (repo)_).
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
-- **bleephub: `POST /orgs/{org}/repos` 403s a GitHub App installation token — filed
-  `e6qu/sockerless#789`, BLOCKING the github-app e2e (2026-07-12).** After scoping the App
-  git-credential to a single repo (security fix — org-wide token → repo-scoped), the
-  `github-app.e2e.ts` test must create the coordinate repo before minting the scoped token.
-  bleephub's `handleCreateOrgRepo` (`gh_orgs_rest.go:270`) authorizes org repo creation by
-  org MEMBERSHIP only, so an App installation token with `administration: write` gets 403
-  "Must be a member of the organization." Real GitHub lets an App create org repos via its
-  `administration` permission; the app-seed schema (`gh_apps_seed.go`) also can't pre-create
-  repos. The production security fix is complete and unit-tested; only the e2e's repo setup
-  is blocked. Per policy: filed upstream (#789), STOP-AND-WAIT for the sim fix + a submodule
-  bump — not worked around. The scoped-token mint endpoint itself is faithful (correctly
-  422s a non-existent repo). PR #228's other 13 CI checks are green.
+- **bleephub: `POST /orgs/{org}/repos` 403'd a GitHub App installation token — FIXED upstream
+  (`e6qu/sockerless#788`, closing #789) + submodule bumped to `5704917f` (2026-07-12).** After
+  scoping the App git-credential to a single repo (security fix — org-wide token → repo-scoped),
+  the `github-app.e2e.ts` test creates the coordinate repo before minting the scoped token, but
+  bleephub's `handleCreateOrgRepo` authorized org repo creation by org MEMBERSHIP only, so an App
+  installation token with `administration: write` got 403 "Must be a member of the organization"
+  (real GitHub honors the App's `administration` permission). Filed `e6qu/sockerless#789` and
+  stopped-and-waited per policy; #788 fixed the handler to authorize installation tokens whose
+  installation targets the org with `administration: write`. The `third_party/sockerless`
+  submodule is bumped to pick it up, unblocking the e2e.
 
 - **AWS sim: Lambda `GetFunctionCodeSigningConfig` returns 404 for a function with no
   code-signing config, blocking the Terraform `aws_lambda_function` resource — OPEN,
