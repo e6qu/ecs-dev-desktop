@@ -46,4 +46,13 @@ resource "aws_scheduler_schedule" "reconciler" {
       arn = aws_sqs_queue.reconciler_dlq.arn
     }
   }
+
+  lifecycle {
+    # The reconciler image/task-definition is owned by the RELEASE PIPELINE, not Terraform:
+    # deploy-release-images.sh registers a fresh reconciler task-def and repoints this schedule at
+    # it out-of-band on each deploy. Without this, a later `terraform apply` would revert the
+    # schedule to the Terraform-managed (stale) revision. Terraform creates the initial schedule +
+    # task-def; the pipeline owns the image rolls thereafter. (Same rationale as the ECS services.)
+    ignore_changes = [target[0].ecs_parameters[0].task_definition_arn]
+  }
 }

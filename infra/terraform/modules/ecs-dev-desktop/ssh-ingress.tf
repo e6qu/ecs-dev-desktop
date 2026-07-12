@@ -191,6 +191,14 @@ resource "aws_ecs_service" "ssh_gateway" {
     rollback = true
   }
 
+  lifecycle {
+    # The image/task-definition is owned by the RELEASE PIPELINE (deploy-release-images.sh rolls
+    # the ssh-gateway service to fresh revisions out-of-band), not Terraform — so a later
+    # `terraform apply` must not revert it to the Terraform-managed (stale) revision. See the
+    # matching note on aws_ecs_service.control_plane.
+    ignore_changes = [task_definition]
+  }
+
   depends_on = [aws_lb_listener.ssh]
 
   tags = local.tags
