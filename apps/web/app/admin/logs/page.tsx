@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { taskId as toTaskId, workspaceId, type LogReadFilter, type LogStream } from "@edd/core";
 
+import { isAdminViewer } from "../../../lib/principal";
 import { getAuditSource, getControlPlane, getLogSource } from "../../../lib/control-plane";
 import { TESTID } from "../../../lib/testids";
 
@@ -16,6 +17,7 @@ export default async function AdminLogsPage({
 }: {
   searchParams: Promise<{ workspaceId?: string }>;
 }) {
+  if (!(await isAdminViewer())) return null;
   const { workspaceId: wsId } = await searchParams;
   const logSource = getLogSource();
 

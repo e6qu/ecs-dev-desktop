@@ -667,6 +667,75 @@ export function aggregateFleetCost(
   };
 }
 
+/** The control plane's own always-on Fargate footprint, for the run-rate projection.
+ * The control plane uses ephemeral task storage (no persistent EBS), so only compute. */
+export interface ControlPlaneSizing {
+  /** vCPUs per control-plane task (e.g. 0.5 for 512 CPU units). */
+  readonly vcpu: number;
+  /** Memory per control-plane task, in GiB. */
+  readonly memoryGib: number;
+  /** Active replica count when the control plane is up (scale-to-zero wakes to this). */
+  readonly replicas: number;
+}
+
+/** A forward-looking hourly/daily run-rate: what it WOULD cost per hour/day if everything
+ * were running at once, split by control plane vs workspaces. On-demand rates, no discounts. */
+export interface RunRateProjection {
+  /** Every non-terminated workspace running simultaneously (compute + live EBS volume). */
+  readonly workspacesUsdPerHour: number;
+  /** The control plane at its active replica count (compute only). */
+  readonly controlPlaneUsdPerHour: number;
+  readonly totalUsdPerHour: number;
+  readonly workspacesUsdPerDay: number;
+  readonly controlPlaneUsdPerDay: number;
+  readonly totalUsdPerDay: number;
+}
+
+/** One workspace's hourly cost while RUNNING: Fargate compute + the live EBS volume (the
+ * snapshot only bills while stopped, so it's not part of a running-rate). */
+function workspaceHourlyUsd(sizing: WorkspaceSizing, pricing: Pricing): number {
+  const compute =
+    sizing.vcpu * pricing.fargateVcpuHourUsd + sizing.memoryGib * pricing.fargateGbHourUsd;
+  const volumePerHour = (sizing.volumeGib * pricing.ebsGbMonthUsd) / HOURS_PER_MONTH;
+  return compute + volumePerHour;
+}
+
+/**
+ * Pure: project the hourly/daily run-rate if EVERYTHING were running at once — every listed
+ * workspace plus the control plane at its active replica count — split control-plane vs
+ * workspaces. On-demand rates, no discounts (matches the account-bill basis). Callers pass the
+ * CURRENT (non-terminated) workspace sizings; a stopped workspace is included because it would
+ * cost this if resumed. Daily = hourly × 24.
+ */
+export function projectRunRate(
+  workspaces: readonly WorkspaceSizing[],
+  controlPlane: ControlPlaneSizing,
+  pricing: Pricing,
+): RunRateProjection {
+  assertPricing(pricing);
+  assertFinitePositive("controlPlane.vcpu", controlPlane.vcpu);
+  assertFinitePositive("controlPlane.memoryGib", controlPlane.memoryGib);
+  assertFiniteNonNegative("controlPlane.replicas", controlPlane.replicas);
+  const workspacesUsdPerHour = workspaces.reduce((sum, s) => {
+    assertSizing(s);
+    return sum + workspaceHourlyUsd(s, pricing);
+  }, 0);
+  const controlPlaneUsdPerHour =
+    controlPlane.replicas *
+    (controlPlane.vcpu * pricing.fargateVcpuHourUsd +
+      controlPlane.memoryGib * pricing.fargateGbHourUsd);
+  const totalUsdPerHour = workspacesUsdPerHour + controlPlaneUsdPerHour;
+  const HOURS_PER_DAY = 24;
+  return {
+    workspacesUsdPerHour,
+    controlPlaneUsdPerHour,
+    totalUsdPerHour,
+    workspacesUsdPerDay: workspacesUsdPerHour * HOURS_PER_DAY,
+    controlPlaneUsdPerDay: controlPlaneUsdPerHour * HOURS_PER_DAY,
+    totalUsdPerDay: totalUsdPerHour * HOURS_PER_DAY,
+  };
+}
+
 /** The earliest audit-event timestamp across all workspaces (the ledger start),
  * or `now` when there are no events. */
 function earliestEventAt(inputs: readonly WorkspaceCostInput[], now: IsoTimestamp): IsoTimestamp {

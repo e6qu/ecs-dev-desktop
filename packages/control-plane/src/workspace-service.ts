@@ -1138,10 +1138,11 @@ export class WorkspaceService {
 
   /** All workspaces mid manual-stop (the reconciler's finishStopping keep-set). */
   async listStopping(): Promise<readonly { id: WorkspaceId }[]> {
-    const { data } = await this.deps.workspaces.scan.go({ pages: "all" });
-    return (data as readonly WorkspaceRecord[])
-      .filter((r) => r.state === "stopping")
-      .map((r) => ({ id: workspaceId(r.id) }));
+    // Query the byState GSI, NOT a full-table scan: this runs every STOPPING_SWEEP_MS (3s)
+    // on every replica, and the `stopping` set is almost always empty — a scan read the
+    // entire fleet (200+ items, multiple pages) 20×/min/replica for nothing. The GSI reads
+    // ~0 items in the common case.
+    return (await this.recordsByStates(["stopping"])).map((r) => ({ id: workspaceId(r.id) }));
   }
 
   /**
@@ -1758,11 +1759,13 @@ export class WorkspaceService {
    * `session.purged` in the same transaction. Returns the number purged.
    */
   async purgeExpiredTombstones(retentionMs: number): Promise<number> {
-    const { data: records } = await this.deps.workspaces.scan.go({ pages: "all" });
+    // Query the byState GSI for `terminated` tombstones, NOT a full-table scan — same
+    // scan-then-filter-one-indexed-state anti-pattern as listStopping, run every reconciler
+    // sweep. Tombstones are a small minority of the fleet, so the GSI reads far less.
+    const records = await this.recordsByStates(["terminated"]);
     const nowMs = Date.parse(this.deps.clock.now());
     let purged = 0;
-    for (const r of records as readonly WorkspaceRecord[]) {
-      if (r.state !== "terminated") continue;
+    for (const r of records) {
       const terminatedAtMs = Date.parse(r.terminatedAt ?? r.lastActivity);
       if (!Number.isFinite(terminatedAtMs) || nowMs - terminatedAtMs < retentionMs) continue;
       if (await this.purgeTombstoneRecord(r, "retention window elapsed")) purged += 1;

@@ -19,13 +19,32 @@ const githubRoot = (path: string, init: RequestInit): Promise<Response> =>
 export const githubApi = (path: string, init: RequestInit): Promise<Response> =>
   fetch(`${github.apiUrl}${path}`, init);
 
-/** Establish a web session for `user` (real GitHub: the interactive login). */
-export async function githubSession(user: string): Promise<string> {
+/** The credential the interactive `/login` bootstrap authenticates with. GitHub's browser
+ * login takes a username + a secret; bleephub verifies a personal-access token bound to the
+ * user (`browserLoginUser` → `LookupToken`). This is the §6.9 interactive-login carve-out:
+ * the harness supplies the coordinate. Fails loud rather than posting an empty credential. */
+function loginCredential(): string {
+  const token = process.env.EDD_GITHUB_ADMIN_TOKEN;
+  if (token === undefined || token === "") {
+    throw new Error(
+      "EDD_GITHUB_ADMIN_TOKEN is required for the interactive GitHub login bootstrap",
+    );
+  }
+  return token;
+}
+
+/** Establish a web session for `user` (real GitHub: the interactive login — username +
+ * credential). `credential` defaults to the harness's admin login token; every current caller
+ * signs in as the admin user, whose token that is. */
+export async function githubSession(
+  user: string,
+  credential: string = loginCredential(),
+): Promise<string> {
   const session = await githubRoot("/login", {
     method: "POST",
     redirect: "manual",
     headers: FORM_HEADERS,
-    body: new URLSearchParams({ login: user }).toString(),
+    body: new URLSearchParams({ login: user, password: credential }).toString(),
   });
   const cookie = session.headers
     .getSetCookie()

@@ -22,6 +22,13 @@ resource "aws_scheduler_schedule" "reconciler" {
       launch_type         = "FARGATE"
       task_count          = 1
 
+      # Tag the launched reconciler tasks (incl. edd:cost-scope) so their Fargate usage is
+      # cost-attributable, same as the control-plane service. Short-lived, so a small cost,
+      # but otherwise invisible to a tag-scoped Cost Explorer query.
+      enable_ecs_managed_tags = true
+      propagate_tags          = "TASK_DEFINITION"
+      tags                    = local.tags
+
       network_configuration {
         subnets          = aws_subnet.private[*].id
         security_groups  = [aws_security_group.tasks.id]

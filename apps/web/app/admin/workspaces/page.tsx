@@ -1,20 +1,29 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import Link from "next/link";
 
+import { LiveRefresh } from "../../../components/LiveRefresh";
 import { StateBlock } from "../../../components/StateBlock";
 import { StatusBadge } from "../../../components/StatusBadge";
 import { getCatalog, getControlPlane } from "../../../lib/control-plane";
+import { isAdminViewer } from "../../../lib/principal";
 import { TESTID } from "../../../lib/testids";
 import { catalogByImage, enrichWorkspace } from "../../../lib/workspace-enrich";
 
 export const dynamic = "force-dynamic";
 
+// Converge without a manual refresh (rule 13): the fleet's states change out-of-band
+// (reconciler, other admins, users). 6s keeps this admin all-view current without hammering
+// the full-fleet scan; LiveRefresh pauses on hidden tabs.
+const ADMIN_LIST_REFRESH_MS = 6000;
+
 function snapshotText(at: string | undefined): string {
   return at === undefined ? "never" : new Date(at).toLocaleString();
 }
 
-// Admin-only (the /admin layout gates it). Every workspace, newest first.
+// Admin-only. Gate ON THE PAGE (not just the layout) so this full-fleet scan never runs
+// for a non-admin. Every workspace, newest first.
 export default async function AdminWorkspacesPage() {
+  if (!(await isAdminViewer())) return null;
   const cp = await getControlPlane();
   const [raw, catalog] = await Promise.all([cp.list(), getCatalog().list()]);
   const byImage = catalogByImage(catalog);
@@ -24,6 +33,7 @@ export default async function AdminWorkspacesPage() {
 
   return (
     <>
+      <LiveRefresh intervalMs={ADMIN_LIST_REFRESH_MS} />
       <div className="page-head">
         <div>
           <div className="kicker">admin</div>

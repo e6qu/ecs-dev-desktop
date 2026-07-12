@@ -18,7 +18,11 @@ export const dynamic = "force-dynamic";
 // reconciler, another browser tab, or an admin action can stop/delete a workspace
 // without this page initiating it. Polling the dynamic server render keeps cards
 // from showing stale "running" state after a real shutdown.
-const WORKSPACE_LIST_REFRESH_MS = 2000;
+// 4s (was 2s): each tick re-runs the dynamic server render — a byOwner query per user, and a
+// full-fleet list for the admin all-view — so 2s/tab was needlessly aggressive at 200+ scale.
+// Workspace lifecycle changes are minutes-scale, so 4s still converges promptly (rule 13) at
+// half the load. LiveRefresh already pauses on hidden tabs.
+const WORKSPACE_LIST_REFRESH_MS = 4000;
 
 export default async function WorkspacesPage({
   searchParams,

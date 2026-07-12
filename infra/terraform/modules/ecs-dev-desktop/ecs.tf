@@ -164,6 +164,13 @@ resource "aws_ecs_service" "control_plane" {
 
   depends_on = [aws_lb_listener.http]
   tags       = local.tags
+
+  # Propagate the service tags (incl. edd:cost-scope) to the RUNNING TASKS. On Fargate,
+  # only task-level tags land on the billing usage record — service/task-def tags do not.
+  # Without this the always-on control-plane compute (a top steady cost) is invisible to
+  # a cost-allocation-tag-scoped Cost Explorer query. Requires ecs:TagResource (granted).
+  enable_ecs_managed_tags = true
+  propagate_tags          = "SERVICE"
 }
 
 # ---- Autoscaling scalable target for the control plane ----

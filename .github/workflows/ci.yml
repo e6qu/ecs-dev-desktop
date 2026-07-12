@@ -167,6 +167,9 @@ jobs:
           RECONCILER_IMAGE: edd-reconciler:e2e
           PROXY_IMAGE: edd-ssh-proxy:e2e
           NODE_IMAGE: edd-workspace-node:e2e
+          # The interactive GitHub login bootstrap authenticates with a PAT bound to the
+          # user (bleephub's browser login). Must match docker-compose.e2e.yml BLEEPHUB_ADMIN_TOKEN.
+          EDD_GITHUB_ADMIN_TOKEN: edd-e2e-admin-token
       # LIVE portal browser e2e: the UI tier on the same container-mode path
       # (COMPUTE_PROVIDER=ecs; cloud state provisioned by its webServer command —
       # see apps/web/e2e/start-live-app.sh).
@@ -225,6 +228,9 @@ jobs:
         env:
           EDD_SIM_SCHEME: https
           NODE_EXTRA_CA_CERTS: ${{ github.workspace }}/temp/sim-tls/ca.pem
+          # bleephub's interactive login authenticates with a PAT bound to the user.
+          # Must match docker-compose.https.yml BLEEPHUB_ADMIN_TOKEN.
+          EDD_GITHUB_ADMIN_TOKEN: edd-e2e-admin-token
         run: pnpm --filter @edd/web exec vitest run --config vitest.e2e.config.ts lib/entra-auth.e2e.ts lib/nextauth-callback.e2e.ts
       # The real EBS StorageProvider over the AWS SDK against the TLS aws-sim,
       # CA trusted (no --insecure) — the storage/compute SDK path the plain-HTTP

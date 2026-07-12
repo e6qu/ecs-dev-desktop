@@ -12,8 +12,9 @@ export default function AdminImagesPage() {
           <h1>Images &amp; builds</h1>
           <p>
             Container image sizes with per-layer breakdown, the golden-image source-sync state, and
-            recent build trigger decisions. Builds are launched by GitHub Actions on push to the
-            source repository — this console observes them; it cannot start one.
+            build history from <strong>both</strong> builders — GitHub Actions (webhook-driven on
+            push) and AWS CodeBuild (e.g. the terraform-apply bootstrap). This console observes
+            builds; it does not start them.
           </p>
         </div>
       </div>

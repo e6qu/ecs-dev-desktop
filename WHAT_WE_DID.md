@@ -3893,3 +3893,84 @@ Same branch, two more items from the deployment-verification sweep:
   a hard floor — user's call). Tests: core unit (per-editor validity + reserve/provision
   defaults + explicit-override) and a portal Playwright assertion that the hint + CPU/RAM
   pre-select and re-recommend as the editor changes.
+
+---
+
+## Milestone — cost-accuracy fix + boy-scout sweep (branch `fix/cost-accuracy-and-boyscout-sweep`, 2026-07-12)
+
+The user was right that "it costs just cents" was wrong. Measured live via Cost Explorer:
+real account usage is **~$49.51 over 30 days** (net ~$0 only because promotional credits
+offset it), dominated by services the derived per-workspace model NEVER prices — ECS $14
+(incl. the always-on control plane), Secrets Manager $8 (20 secrets × $0.40), ALB $7,
+CodeBuild $4.6, regional data-transfer $4, VPC/NAT $3.4, CloudWatch $2.7, DynamoDB $1.2,
+WAF $1.1, ECR/Route53/KMS. TWO structural bugs hid this:
+
+- **The "AWS account" panel filtered Cost Explorer by the `edd:cost-scope` tag, which is
+  NOT an activated cost-allocation tag** (confirmed: `list-cost-allocation-tags` empty;
+  `get-tags edd:cost-scope` → `['']`). A tag-filtered query returns **$0** regardless of
+  spend, so the "real bill" panel also read ~$0. FIX: the account summary now defaults to
+  **whole-account usage** (`RECORD_TYPE=Usage`, no tag filter) — the honest bill for a
+  dedicated EDD account — showing the real ~$50/mo. Tag scoping is now opt-in
+  (`EDD_COST_SCOPE_ENABLED=1`, shared-account mode); `AccountCostSummary.scope` records which.
+  A loud banner now fires when the account bill reads $0 while workspaces have run (§6.5).
+- **The derived per-workspace numbers were mis-framed as the platform total.** Reframed as
+  "attributable workspace direct cost (compute + storage per user/session)" with a heading +
+  copy making clear the authoritative bill is the Cost Explorer whole-account figure, which
+  excludes nothing.
+- Verified region pricing against the live Price List API: eu-west-1 Fargate + snapshot match
+  the us-east-1 config defaults exactly; only EBS gp3 differs ($0.088 vs $0.080/GB-mo), now set
+  via `EDD_PRICE_EBS_GB_MONTH` in `install.tfvars`. Control-plane + reconciler ECS tasks now
+  `propagate_tags` so their Fargate usage is cost-attributable in scoped mode.
+
+Boy-scout fixes across four parallel audits (cost/UI/security/perf), all evidence-based:
+
+- **Security — HIGH: GitHub App tokens were org-wide.** `gitCredential` minted an installation
+  token with the whole org's repo set + granted permissions from a user-chosen `repoUrl`, so a
+  developer could name any repo the App can reach and get an org-wide credential. Now the
+  workspace credential is scoped to EXACTLY that one repo with only `contents` (least privilege);
+  `mintInstallationToken` takes `repositories`/`permissions`. The org-wide token stays only for
+  session-authed listing.
+- **Security — admin read pages gated only in the layout** (privileged queries ran for
+  non-admins, one refactor from leaking). Added a page-level `isAdminViewer()` guard to every
+  async admin data-fetching page (workspaces, workspaces/[id], overview, quotas, logs, catalog,
+  costs) so the query is skipped for non-admins.
+- **Security — dev-auth backstop (deferred).** A `NODE_ENV=production` hard-disable of
+  `EDD_DEV_AUTH=1` was attempted but reverted: the Playwright harness legitimately runs a
+  production build WITH dev-auth, so `NODE_ENV` can't distinguish it from real prod. The
+  deployment never sets `EDD_DEV_AUTH` (the real control); a backstop keyed on an explicit
+  real-prod signal is tracked in DO_NEXT.
+- **Security — no security headers.** Added CSP `frame-ancestors 'none'`, `X-Frame-Options: DENY`,
+  `X-Content-Type-Options: nosniff`, HSTS, and a tight referrer policy on the Next surface (the
+  `/w/*` editor proxy is served by the custom server and keeps its own CSP).
+- **Perf — `listStopping()` and `purgeExpiredTombstones()` full-table-scanned every sweep** where
+  a `byState` GSI query fits (listStopping ran every 3s/replica on an almost-always-empty set).
+  Both now query the GSI.
+- **Perf/UX — cadence:** the workspaces list re-render dropped from 2s → 4s (still converges).
+- **UX — StartupOverlay** swallowed clicks for ~1.4s (incl. right after a reconnect reload); now
+  `pointer-events:none` (it's cosmetic/aria-hidden).
+- **UX — the create flow** showed a red "failed to load GitHub namespaces" banner even in
+  blank/public modes that don't use GitHub; scoped it to the GitHub-backed modes.
+- **UX — convergence (rule 13):** added `LiveRefresh` to the admin overview + all-workspaces
+  pages (were `force-dynamic` with no polling → stale until manual refresh).
+
+Same branch, further cost/observability features requested during the sweep:
+
+- **On-demand cost basis (no discounts).** Confirmed the account bill uses `UnblendedCost` +
+  `RECORD_TYPE=Usage`, which is pure on-demand: it excludes credits/refunds AND
+  reservation/Savings-Plan discounts AND tax (verified live — this account has zero RIs/SPs;
+  the $49.51 usage is fully offset by credits, which is why the net looked like $0). Added a
+  visible costs-page notice stating the figures are on-demand with no discounts (credits,
+  refunds, reservations, Savings Plans all excluded) — the true run-rate, which can exceed the
+  net invoice when credits cover it.
+- **Run-rate projection.** New pure `projectRunRate` in `@edd/core` computes "$/hr and $/day if
+  everything is running," split **control plane vs workspaces**: every non-terminated workspace's
+  compute + live EBS volume, plus the control plane at its active replica count (from
+  `controlPlaneSizing()` in `@edd/config`, defaults matching the Terraform module). Rendered as a
+  "Run-rate if everything is running" tile row on the admin Costs page. On-demand rates, no
+  discounts. Unit-tested (split, per-day = ×24, empty-fleet, fail-loud).
+- **Image builds trackable from BOTH builders.** The admin Images console tracked only GitHub
+  Actions webhook triggers; AWS CodeBuild builds (e.g. the terraform-apply bootstrap) were
+  fetchable via `GET /api/admin/builds` (`listRecentBuilds`) but never shown. Added a "CodeBuild
+  builds" section (status/phase, target, tag, ref, started, duration, id, triggered-by) polling
+  that route, renamed the triggers section to "GitHub Actions builds," and corrected the page
+  copy so both build paths are visible/trackable.

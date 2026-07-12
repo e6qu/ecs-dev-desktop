@@ -50,7 +50,11 @@ export function StartupOverlay() {
         background: "var(--bg, #0d0f0c)",
         opacity: leaving ? 0 : 1,
         transition: `opacity ${String(FADE_MS)}ms ease`,
-        pointerEvents: leaving ? "none" : "auto",
+        // Never capture input: the overlay is purely cosmetic (`aria-hidden`), yet a
+        // pointerEvents:auto cover swallowed every click for the full ~1.4s hold — including
+        // right after ConnectionStatus's reconnect reload, making recovery feel frozen. The
+        // app underneath is interactive from first paint.
+        pointerEvents: "none",
       }}
     >
       <div

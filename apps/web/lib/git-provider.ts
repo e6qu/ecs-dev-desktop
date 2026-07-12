@@ -33,14 +33,25 @@ import type { Namespace, RepoSummary } from "./github-types";
  * Both expose the same surface and yield a wire-identical git credential
  * (`x-access-token` + bearer), so the broker and UI are provider-agnostic.
  */
+/** The single repository a workspace credential is for (`owner/name`), so a GitHub App
+ * token can be scoped to exactly that repo rather than the installation's whole org.
+ * Callers pass a structural `{ owner, name }` (e.g. `repoRef(repoUrl)`), so this stays
+ * module-internal. */
+interface GitRepoRef {
+  readonly owner: string;
+  readonly name: string;
+}
+
 export interface GitProvider {
   /** One page of repos, 1-indexed. */
   listRepos(page?: number): Promise<RepoPage>;
   listNamespaces(): Promise<Namespace[]>;
   createRepo(params: CreateRepoParams): Promise<RepoSummary>;
-  /** HTTPS git credential for clone/push of `repoOwner`'s repos, or null when
-   * none is available (e.g. no stored user token). */
-  gitCredential(repoOwner?: string): Promise<{ username: string; token: string } | null>;
+  /** HTTPS git credential to clone/push the single repo `repo`, or null when none is
+   * available (no stored user token / no matching App installation). In GitHub App mode the
+   * returned token is scoped to exactly `repo` with least privilege, so a workspace can never
+   * obtain an installation-wide credential from a repo URL its owner chose. */
+  gitCredential(repo?: GitRepoRef): Promise<{ username: string; token: string } | null>;
 }
 
 const GIT_USERNAME = "x-access-token";
@@ -161,15 +172,25 @@ class InstallationGitProvider implements GitProvider {
     return toRepoSummary(repoSchema.parse(await res.json()));
   }
 
-  async gitCredential(repoOwner?: string): Promise<{ username: string; token: string } | null> {
+  async gitCredential(repo?: GitRepoRef): Promise<{ username: string; token: string } | null> {
     // No repo context (a blank session) → no credential is needed.
-    if (repoOwner === undefined) return null;
-    const matched = (await this.listInstallations()).find((i) => i.account?.login === repoOwner);
+    if (repo === undefined) return null;
+    const matched = (await this.listInstallations()).find((i) => i.account?.login === repo.owner);
     // Fail closed: a repo whose owner has no matching App installation gets NO token. Never
     // fall back to another installation — that would mint a token scoped to an UNRELATED org
     // (over-scoped credential issuance + a §6.5 silent fallback). The broker route → 404.
     if (matched === undefined) return null;
-    return { username: GIT_USERNAME, token: await this.token(matched.id) };
+    // Least privilege: scope the token to EXACTLY this one repository. Without this, the
+    // returned token carried the installation's WHOLE org repo set, so a workspace owner could
+    // name any repo the App can reach in their repoUrl and receive an org-wide credential
+    // (broken access control). We do NOT also request a `permissions` subset: the token inherits
+    // the installation's configured grants (which the App owner already scoped), and requesting
+    // more than the installation holds is a 422 escalation — repo scoping is the load-bearing
+    // limit. The scoped token is NOT cached: it's per-repo and short-lived, minted on demand.
+    const minted = await mintInstallationToken(this.cfg, matched.id, this.now(), fetch, {
+      repositories: [repo.name],
+    });
+    return { username: GIT_USERNAME, token: minted.token };
   }
 
   private async installationFor(owner: string): Promise<AppInstallation> {

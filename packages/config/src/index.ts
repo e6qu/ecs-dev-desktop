@@ -132,6 +132,21 @@ export const COST_SCOPE =
     ? DEFAULT_COST_SCOPE
     : z.string().min(1).parse(process.env.EDD_COST_SCOPE);
 
+/**
+ * Whether the AWS account-cost summary scopes Cost Explorer to the `edd:cost-scope`
+ * tag ({@link COST_SCOPE}). Default **false** — report the WHOLE account's usage.
+ *
+ * Load-bearing default: tag scoping only works when `edd:cost-scope` has been ACTIVATED
+ * as a cost-allocation tag in AWS Billing (a manual, non-retroactive step) AND every
+ * cost-driving resource carries the tag on its billing usage record (some — e.g. data
+ * transfer/egress, and Fargate tasks whose service doesn't propagate tags — never do).
+ * When either is missing, a tag-filtered query returns **$0** even though the account is
+ * spending real money, which silently under-reports the bill. So EDD defaults to the
+ * honest whole-account view (correct for a dedicated EDD account) and only scopes by tag
+ * when an operator opts in for a SHARED account via `EDD_COST_SCOPE_ENABLED=1` — having
+ * first activated the cost-allocation tag and confirmed tag coverage. */
+export const COST_SCOPE_ENABLED = process.env.EDD_COST_SCOPE_ENABLED === "1";
+
 /** Deploy provenance baked into the control-plane image at build time (see
  * apps/web/Dockerfile + publish-images.sh): the short git sha it was built from and
  * the UTC build timestamp (ISO-8601). Empty strings in a plain local/dev build. The
@@ -174,6 +189,12 @@ export const IMAGE_SOURCE_RECONCILE_SWEEP_MS = 60_000;
  * deployment can match its own region / account pricing without a code change.
  * Sources: AWS Fargate pricing (per-vCPU-hour, per-GB-hour) and AWS EBS pricing
  * (gp3 storage, snapshot storage), all us-east-1.
+ *
+ * Region note (verified against the AWS Price List API): eu-west-1 Fargate vCPU/GB-hour
+ * and EBS snapshot match these us-east-1 rates exactly; only **EBS gp3 storage** differs
+ * ($0.088 vs $0.080/GB-mo). The eu-west-1 prod deployment sets `EDD_PRICE_EBS_GB_MONTH`
+ * accordingly (see `examples/complete/install.tfvars`). These rates only drive the derived
+ * per-workspace attribution estimate; the authoritative bill is Cost Explorer (whole-account).
  */
 export const DEFAULT_FARGATE_VCPU_HOUR_USD = 0.04048;
 export const DEFAULT_FARGATE_GB_HOUR_USD = 0.004445;
@@ -190,6 +211,32 @@ function priceEnv(name: string, fallback: number): number {
     throw new Error(`${name} must be a non-negative USD rate: ${raw}`);
   }
   return value;
+}
+
+/** A positive number from `name`, or `fallback` when unset; fails loud on a
+ * non-numeric / non-positive value rather than silently mis-sizing. */
+function positiveNumEnv(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (raw === undefined || raw.length === 0) return fallback;
+  const value = Number(raw);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`${name} must be a positive number: ${raw}`);
+  }
+  return value;
+}
+
+/**
+ * The control plane's own Fargate task sizing, for the cost run-rate projection ("$/hr if all
+ * running"). Defaults match the Terraform module (`control_plane_cpu=512` CPU units → 0.5 vCPU,
+ * `control_plane_memory=1024` MiB → 1 GiB, `control_plane_desired_count=2`); override via env to
+ * match a customized deployment (e.g. set these in `extra_environment` alongside the tf vars).
+ */
+export function controlPlaneSizing(): { vcpu: number; memoryGib: number; replicas: number } {
+  return {
+    vcpu: positiveNumEnv("EDD_CONTROL_PLANE_CPU_UNITS", 512) / 1024,
+    memoryGib: positiveNumEnv("EDD_CONTROL_PLANE_MEMORY_MIB", 1024) / 1024,
+    replicas: positiveNumEnv("EDD_CONTROL_PLANE_ACTIVE_DESIRED", 2),
+  };
 }
 
 /** The cost-model rates in effect (defaults above, each `EDD_PRICE_*`-overridable). */
@@ -265,6 +312,9 @@ export const baseEnvSchema = z.object({
   AWS_REGION: z.string().min(1).default(DEFAULT_AWS_REGION),
   DYNAMODB_TABLE: z.string().min(1).default(DEFAULT_DYNAMODB_TABLE),
   EDD_COST_SCOPE: z.string().min(1).default(DEFAULT_COST_SCOPE),
+  // "1" scopes the AWS account-cost summary to the edd:cost-scope tag (shared-account
+  // mode); default (whole account) reports the real bill without a tag filter.
+  EDD_COST_SCOPE_ENABLED: z.string().optional(),
 });
 
 export type BaseEnv = z.infer<typeof baseEnvSchema>;

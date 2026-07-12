@@ -58,7 +58,32 @@ suite("GitHub App flow (app JWT → installation token → REST), coordinate-dri
     const page = await provider?.listRepos();
     expect(Array.isArray(page?.repos)).toBe(true);
 
-    const cred = await provider?.gitCredential(coords.org);
+    // A repo-scoped credential requires the repo to EXIST and be accessible — real GitHub
+    // (and bleephub, faithfully) return 422 for a scoped token naming a non-existent repo. The
+    // App seed installs an org-wide installation but no repos, so provide the coordinate repo as
+    // harness setup (§6.9): the org OWNER creates it via the standard API with the admin token
+    // (idempotent — skip if a prior run/retry already made it). The org-wide installation then
+    // has access to the new repo, so the App can mint a token scoped to EXACTLY that one repo.
+    const fullName = `${coords.org}/${coords.repo}`;
+    if (!(page?.repos ?? []).some((r) => r.fullName === fullName)) {
+      const adminToken = process.env.EDD_GITHUB_ADMIN_TOKEN;
+      if (adminToken === undefined || adminToken === "") {
+        throw new Error("EDD_GITHUB_ADMIN_TOKEN is required to create the coordinate repo");
+      }
+      const created = await fetch(`${coords.apiBase}/orgs/${coords.org}/repos`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${adminToken}`,
+          Accept: "application/vnd.github+json",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ name: coords.repo, private: true, auto_init: true }),
+      });
+      if (!created.ok) {
+        throw new Error(`admin create coordinate repo failed: ${String(created.status)}`);
+      }
+    }
+    const cred = await provider?.gitCredential({ owner: coords.org, name: coords.repo });
     expect(cred?.username).toBe("x-access-token");
     expect(cred?.token.startsWith("ghs_")).toBe(true);
   });

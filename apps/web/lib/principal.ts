@@ -15,7 +15,15 @@ import {
 } from "./constants";
 import { recordSystemActivity } from "./system-activity";
 
-/** Whether the dev-auth shim is active (`EDD_DEV_AUTH=1`) — never in production. */
+/**
+ * Whether the dev-auth shim is active (`EDD_DEV_AUTH=1`) — never in production. Dev-auth
+ * derives the whole principal (identity AND role, up to `admin`) from request
+ * headers/cookies with no IdP, so the deployment MUST NOT set `EDD_DEV_AUTH` in prod (it
+ * doesn't — see `extra_environment`). A `NODE_ENV=production` backstop can't be used here:
+ * the Playwright harness legitimately runs a PRODUCTION build with `EDD_DEV_AUTH=1`, so
+ * keying off `NODE_ENV` would break the test harness (and any prod-build-with-dev-auth
+ * staging). A backstop keyed on an explicit real-prod signal is tracked in DO_NEXT.
+ */
 export function devAuthEnabled(): boolean {
   return process.env[DEV_AUTH_ENV] === DEV_AUTH_ENABLED;
 }
@@ -147,4 +155,17 @@ export async function getPagePrincipal(): Promise<Principal | null> {
   // fire-and-forget + throttled contract as {@link getPrincipal}.
   void recordSystemActivity();
   return withPersona(principal, store.get(PERSONA_COOKIE)?.value);
+}
+
+/**
+ * Independent page-level admin gate for admin server components. The `/admin` layout
+ * denies non-admins by discarding `{children}`, but in the App Router the page RSC — and
+ * its privileged data-fetch (e.g. `cp.list()` across every user's workspaces) — STILL runs
+ * regardless of the layout's decision. Calling this at the TOP of each admin page, before any
+ * fetch, short-circuits so the privileged query never runs for a non-admin: authorization is
+ * on the page itself, not one refactor away in the layout. Returns true iff the viewer is an
+ * admin; a non-admin page should `return null` (the layout renders the "Admins only" block).
+ */
+export async function isAdminViewer(): Promise<boolean> {
+  return (await getPagePrincipal())?.role === "admin";
 }

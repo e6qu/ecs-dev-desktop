@@ -43,7 +43,12 @@ const repo = (fullName: string, priv = false) => {
 };
 
 /** Stub the github-shaped GitHub App endpoints the provider calls. */
+/** Captured request bodies for POST /app/installations/7/access_tokens, so tests can
+ * assert the minted credential is scoped to one repo with least privilege. */
+const tokenRequestBodies: string[] = [];
+
 function stubGitHubApp(): void {
+  tokenRequestBodies.length = 0;
   vi.stubGlobal("fetch", (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
     const u = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
     const method = init?.method ?? "GET";
@@ -60,6 +65,7 @@ function stubGitHubApp(): void {
       );
     }
     if (u.endsWith("/app/installations/7/access_tokens") && method === "POST") {
+      tokenRequestBodies.push(typeof init?.body === "string" ? init.body : "");
       return Promise.resolve(json({ token: "ghs_inst7", expires_at: "2999-01-01T00:00:00Z" }, 201));
     }
     if (u.endsWith("/installation/repositories?per_page=100")) {
@@ -133,12 +139,17 @@ describe("InstallationGitProvider (via getGitProvider in App mode)", () => {
     expect(created?.fullName).toBe("acme/new");
   });
 
-  it("yields a git credential scoped to the repo owner's installation", async () => {
+  it("yields a git credential scoped to EXACTLY the one repo with least privilege", async () => {
     enableApp();
     stubGitHubApp();
     const provider = await getGitProvider(ownerId("x"));
-    const cred = await provider?.gitCredential("acme");
+    const cred = await provider?.gitCredential({ owner: "acme", name: "web" });
     expect(cred).toEqual({ username: "x-access-token", token: "ghs_inst7" });
+    // The minted token is restricted to the single repo — never the installation's whole
+    // org repo set (broken-access-control fix). No `permissions` override is sent: the token
+    // inherits the installation's grants (requesting MORE than it holds is a 422 escalation).
+    expect(tokenRequestBodies).toHaveLength(1);
+    expect(JSON.parse(tokenRequestBodies[0] ?? "{}")).toEqual({ repositories: ["web"] });
   });
 
   it("fails closed: a repo owner with no matching installation gets NO token", async () => {
@@ -146,7 +157,8 @@ describe("InstallationGitProvider (via getGitProvider in App mode)", () => {
     enableApp();
     stubGitHubApp();
     const provider = await getGitProvider(ownerId("x"));
-    expect(await provider?.gitCredential("not-installed-org")).toBeNull();
+    expect(await provider?.gitCredential({ owner: "not-installed-org", name: "x" })).toBeNull();
+    expect(tokenRequestBodies).toHaveLength(0); // never even attempted a mint
   });
 
   it("returns no credential when there is no repo context (blank session)", async () => {

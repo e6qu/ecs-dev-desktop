@@ -98,6 +98,8 @@ export const TESTID = {
   costWindow: "cost-window",
   /** The AWS account section's cache-freshness line ("as of HH:MM UTC") on the admin Costs page. Attr: `data-generated-at` (ISO). */
   costAwsAsOf: "cost-aws-as-of",
+  costOnDemandNotice: "cost-on-demand-notice",
+  costRunRate: "cost-run-rate",
   /** A cluster-metric tile on the Infrastructure view. Attrs: `data-metric`, `data-value`. */
   clusterStat: "cluster-stat",
   /** A node in the Infrastructure topology graph. Attrs: `data-node`, `data-kind`, `data-h` (status). */

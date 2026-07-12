@@ -6,11 +6,20 @@ import {
   type Expression,
   type GetCostAndUsageCommandOutput,
 } from "@aws-sdk/client-cost-explorer";
-import { COST_SCOPE, COST_SCOPE_TAG_KEY } from "@edd/config";
+import { COST_SCOPE, COST_SCOPE_ENABLED, COST_SCOPE_TAG_KEY } from "@edd/config";
 
 import { ttlCache } from "./ttl-cache";
 
 const COST_EXPLORER_REGION = "us-east-1";
+/**
+ * `UnblendedCost` (NOT `NetUnblendedCost`/`NetAmortizedCost`) + a `RECORD_TYPE=Usage`
+ * filter is deliberately the pure **on-demand** cost: it excludes credits and refunds
+ * (separate record types — this is why the pre-fix tag-scoped view read $0 while the account
+ * really spent ~$50/mo, offset by credits), and it excludes reservation/Savings-Plan discounts
+ * (RI/SP-covered usage is `DiscountedUsage`/`SavingsPlanCoveredUsage`, not `Usage`) and tax.
+ * So the reported figure is what EDD costs at published on-demand rates with no discounts of
+ * any kind — the honest run-rate — matching the product requirement. The UI states this.
+ */
 const USD_METRIC = "UnblendedCost";
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -38,7 +47,8 @@ interface AccountServiceCost {
 
 export interface AccountCostSummary {
   readonly generatedAt: string;
-  readonly costScope: string;
+  /** How the summary was scoped: the whole account, or filtered to a cost-scope tag. */
+  readonly scope: { readonly kind: "account" } | { readonly kind: "tag"; readonly value: string };
   readonly windows: readonly AccountCostWindow[];
   readonly topServicesMonthToDate: readonly AccountServiceCost[];
 }
@@ -81,26 +91,33 @@ function requiredBoundary(label: string, value: string | undefined): string {
   return value;
 }
 
-function usageFilter(costScope: string): Expression {
-  return {
-    And: [
-      { Dimensions: { Key: "RECORD_TYPE", Values: ["Usage"] } },
-      { Tags: { Key: COST_SCOPE_TAG_KEY, Values: [costScope] } },
-    ],
-  };
+/** How the account-cost summary is scoped. `account` = the whole AWS account's usage
+ * (the real bill; correct for a dedicated EDD account). `tag` = filtered to the
+ * `edd:cost-scope` cost-allocation tag (shared-account mode — requires the tag activated). */
+export type AccountScope =
+  | { readonly kind: "account" }
+  | { readonly kind: "tag"; readonly value: string };
+
+/** The Cost Explorer filter for a scope. Always constrains to `RECORD_TYPE=Usage` (so
+ * credits/refunds don't net real usage to ~$0 and hide the true run-rate); adds the
+ * cost-scope tag only in `tag` mode. */
+function usageFilter(scope: AccountScope): Expression {
+  const usage: Expression = { Dimensions: { Key: "RECORD_TYPE", Values: ["Usage"] } };
+  if (scope.kind === "account") return usage;
+  return { And: [usage, { Tags: { Key: COST_SCOPE_TAG_KEY, Values: [scope.value] } }] };
 }
 
 async function costFor(
   client: CostExplorerReader,
   window: DateInterval,
-  costScope: string,
+  scope: AccountScope,
 ): Promise<number> {
   const out = await client.send(
     new GetCostAndUsageCommand({
       TimePeriod: window,
       Granularity: "DAILY",
       Metrics: [USD_METRIC],
-      Filter: usageFilter(costScope),
+      Filter: usageFilter(scope),
     }),
   );
   return (out.ResultsByTime ?? []).reduce(
@@ -113,14 +130,14 @@ async function costFor(
 async function serviceCostsFor(
   client: CostExplorerReader,
   window: DateInterval,
-  costScope: string,
+  scope: AccountScope,
 ): Promise<AccountServiceCost[]> {
   const out = await client.send(
     new GetCostAndUsageCommand({
       TimePeriod: window,
       Granularity: "MONTHLY",
       Metrics: [USD_METRIC],
-      Filter: usageFilter(costScope),
+      Filter: usageFilter(scope),
       GroupBy: [{ Type: "DIMENSION", Key: "SERVICE" }],
     }),
   );
@@ -142,10 +159,16 @@ async function serviceCostsFor(
     .slice(0, 10);
 }
 
+/** The configured scope: whole account by default; the cost-scope tag only when an
+ * operator opts in (shared-account mode). See {@link COST_SCOPE_ENABLED}. */
+function configuredScope(): AccountScope {
+  return COST_SCOPE_ENABLED ? { kind: "tag", value: COST_SCOPE } : { kind: "account" };
+}
+
 export async function getAwsAccountCostSummary(
   now: Date = new Date(),
   client: CostExplorerReader = new CostExplorerClient({ region: COST_EXPLORER_REGION }),
-  costScope = COST_SCOPE,
+  scope: AccountScope = configuredScope(),
 ): Promise<AccountCostSummary> {
   const end = endExclusiveFor(now);
   const monthStart = startOfUtcMonth(now);
@@ -165,14 +188,14 @@ export async function getAwsAccountCostSummary(
       label: window.label,
       start: requiredBoundary(`${window.label} start`, window.range.Start),
       end: requiredBoundary(`${window.label} end`, window.range.End),
-      usd: await costFor(client, window.range, costScope),
+      usd: await costFor(client, window.range, scope),
     })),
   );
   return {
     generatedAt: now.toISOString(),
-    costScope,
+    scope,
     windows: priced,
-    topServicesMonthToDate: await serviceCostsFor(client, interval(monthStart, end), costScope),
+    topServicesMonthToDate: await serviceCostsFor(client, interval(monthStart, end), scope),
   };
 }
 

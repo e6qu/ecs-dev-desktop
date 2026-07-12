@@ -1227,6 +1227,19 @@ old STATIC-gate "tokenless behind the gate" framing (see _Resolved (repo)_).
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
+- **bleephub: `POST /orgs/{org}/repos` 403'd a GitHub App installation token — fidelity
+  gap filed + fixed upstream (`e6qu/sockerless#789`/#788); e2e now uses the org-owner instead
+  (2026-07-12).** After scoping the App git-credential to a single repo (security fix — org-wide
+  token → repo-scoped), the `github-app.e2e.ts` test needs the coordinate repo to exist. bleephub's
+  `handleCreateOrgRepo` authorized org repo creation by org MEMBERSHIP only, so an App installation
+  token with `administration: write` got 403 (real GitHub honors the App's `administration`
+  permission — filed #789, fixed in #788). To keep this PR on the current pinned sim (`#778`) and
+  avoid an unrelated OAuth-harness migration that the full #788 bump would require, the e2e now
+  creates the coordinate repo as harness setup via the ORG OWNER (the seeded org's creator is the
+  admin user) using the admin token — a §6.9-legitimate out-of-band setup, valid on both the current
+  sim and real GitHub. The App-token org-repo-create path (#788) is available for a future submodule
+  bump but is not required here.
+
 - **AWS sim: Lambda `GetFunctionCodeSigningConfig` returns 404 for a function with no
   code-signing config, blocking the Terraform `aws_lambda_function` resource — OPEN,
   needs an upstream `e6qu/sockerless` issue (2026-07-11).** Found while sim-asserting
