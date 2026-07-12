@@ -575,6 +575,7 @@ describe("opencode base-path shim", () => {
     const sandbox: Record<string, unknown> = {
       window: windowObj,
       location,
+      history: { pushState: () => undefined, replaceState: () => undefined },
       URL,
       Request,
       document: { addEventListener: () => undefined },
@@ -636,6 +637,83 @@ describe("opencode base-path shim", () => {
   it("leaves a CSP without a script directive unchanged (nothing to satisfy)", () => {
     const csp = "default-src 'self'; img-src *";
     expect(cspAllowingInlineScript(csp, "x")).toBe(csp);
+  });
+
+  it("provides __eddStrip and wraps history for base-path routing", () => {
+    const shim = buildOpencodeBasePathShim(`/w/${WS}`);
+    expect(shim).toContain("window.__eddStrip=");
+    expect(shim).toContain("history.pushState=");
+    expect(shim).toContain("history.replaceState=");
+    expect(() => new vm.Script(shim)).not.toThrow();
+    // Execute in a VM with a fake history + location and verify strip removes the base while
+    // history writes re-add it.
+    const pushed: string[] = [];
+    const win: Record<string, unknown> = {};
+    // The shim reassigns `history.pushState` on this object to its base-adding wrapper.
+    const hist = {
+      pushState: (_d: unknown, _t: unknown, u: string): void => {
+        pushed.push(`push:${u}`);
+      },
+      replaceState: (_d: unknown, _t: unknown, u: string): void => {
+        pushed.push(`replace:${u}`);
+      },
+    };
+    const sandbox: Record<string, unknown> = {
+      window: win,
+      location: { host: "h", href: `https://h/w/${WS}/` },
+      history: hist,
+      URL,
+      Request,
+      document: { addEventListener: () => undefined },
+      XMLHttpRequest: class {
+        open(): void {
+          /* noop */
+        }
+      },
+      fetch: undefined,
+      WebSocket: undefined,
+      EventSource: undefined,
+      Worker: undefined,
+    };
+    vm.runInNewContext(shim, sandbox);
+    const strip = win.__eddStrip as (p: string) => string;
+    expect(strip(`/w/${WS}/session/x`)).toBe("/session/x");
+    expect(strip(`/w/${WS}`)).toBe("/");
+    expect(strip("/other")).toBe("/other"); // not under base — unchanged
+    // The wrapper (now installed on `hist`) re-adds the base on write.
+    hist.pushState(null, "", "/session/y");
+    expect(pushed).toEqual([`push:/w/${WS}/session/y`]);
+  });
+});
+
+// The ONLY JS the proxy touches: opencode's router path-integration `get`, redirected through
+// __eddStrip so the SPA router matches under the /w/<id>/ proxy prefix (paired with the shim).
+describe("opencode router base-path patch (rewriteOpencodeResponseBody, JS)", () => {
+  const routerBundle =
+    'function Z0e(e){const t=()=>{const r=window.location.pathname.replace(/^\\/+/,"/")+window.location.search;return{value:r}};' +
+    'return q0e({get:t,set({value:r,replace:i}){i?window.history.replaceState(w0e(o),"",r):window.history.pushState(o,"",r)}})}';
+
+  it("redirects the router's path read through __eddStrip (exact, unique anchor)", () => {
+    const out = rewriteOpencodeResponseBody(routerBundle, WS, "text/javascript");
+    expect(out).toContain('window.__eddStrip(window.location.pathname).replace(/^\\/+/,"/")');
+    // The unpatched anchor is gone (the read now routes through __eddStrip).
+    expect(out).not.toContain('window.location.pathname.replace(/^\\/+/,"/")');
+    // Still valid JavaScript (the whole point of a targeted edit over a blanket rewrite).
+    expect(() => new vm.Script(out)).not.toThrow();
+  });
+
+  it("leaves non-router JavaScript byte-for-byte untouched", () => {
+    const js = 'const x="/a/b";const re=/foo\\/bar/g;fetch("/api");';
+    expect(rewriteOpencodeResponseBody(js, WS, "text/javascript")).toBe(js);
+  });
+
+  it("fails loud if the router bundle no longer has the expected anchor (version drift)", () => {
+    // Has the `set` marker (so it IS the router bundle) but the `get` anchor changed.
+    const drifted =
+      'function Z(){return q({get:()=>readPathSomeNewWay(),set({value:r}){window.history.pushState(o,"",r)}})}';
+    expect(() => rewriteOpencodeResponseBody(drifted, WS, "text/javascript")).toThrow(
+      /anchor not found/,
+    );
   });
 });
 

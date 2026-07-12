@@ -91,23 +91,23 @@ async function assertWorkspaceHomeLink(editor: Editor, page: Page): Promise<void
 }
 
 /**
- * opencode is a SolidJS SPA mounted into `<div id="root">`; assert the app actually
- * MOUNTED (root gains children) rather than that some literal string is visible. The old
- * `innerText.includes("opencode")` check was doubly wrong: opencode renders its brand as
- * `<title>OpenCode</title>` (mixed case, and not part of body.innerText), so the check
- * only ever passed by accident — and it masked the real failure where the proxy corrupted
- * the JS bundle and `#root` stayed empty (blank page). `#root` gaining children is the true
- * "opencode rendered" signal; the document title is a robust secondary marker.
- *
- * KNOWN-INSUFFICIENT (see BUGS.md "opencode still renders BLANK … base-path ROUTING"): this
- * passes on a mounted-but-blank app, because opencode's path-router matches no route under the
- * `/w/<id>/` proxy prefix and paints only its out-of-router `dialog-stack` chrome. Strengthen to
- * require the routed UI once the base-path routing fix (proxy virtualization or upstream flag)
- * lands — doing so before then would make this gate permanently red.
+ * opencode is a SolidJS SPA mounted into `<div id="root">`. Assert the ROUTED MAIN UI actually
+ * renders — not merely that the app mounted. The mounted-but-blank failure mode (before the
+ * base-path routing fix) left `#root` containing ONLY `<div data-component="dialog-stack">` (the
+ * out-of-`<Routes>` overlay container) because opencode's path-router matched no route under the
+ * `/w/<id>/` proxy prefix. The proxy now patches the router's path read (see
+ * `patchOpencodeRouterBase` / the shim's `__eddStrip`) so it matches as if at `/`, which mounts
+ * the header + main layout. Requiring a real chrome element (header / an interactive control)
+ * catches a regression to the blank state — which the old `childElementCount > 0` check missed.
  */
 async function assertOpencodeMounted(page: Page): Promise<void> {
   await page.waitForFunction(
-    () => (document.querySelector("#root")?.childElementCount ?? 0) > 0,
+    () => {
+      const root = document.querySelector("#root");
+      if (root === null) return false;
+      // The blank state is ONLY the dialog-stack container; the real UI adds a header + controls.
+      return root.querySelector("header, [data-component='icon-button'], button") !== null;
+    },
     undefined,
     { timeout: 60_000 },
   );

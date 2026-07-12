@@ -6,21 +6,7 @@
 
 ## Open decisions (need the user)
 
-0. **opencode is BLOCKED — no clean fix exists; decide the path forward.** opencode renders
-   BLANK in prod (root-caused + fix-attempted 2026-07-12; full evidence in `BUGS.md`): the proxy
-   delivers everything (all APIs 200, SSE streams, app mounts), but opencode's SolidJS **path
-   router** matches no route under the `/w/<id>/` proxy prefix, so only its out-of-`<Routes>`
-   chrome paints. Base-path virtualization was ATTEMPTED and is **technically impossible** —
-   `location.pathname`/`href` are [Unforgeable] Web-IDL properties (non-configurable; `location`
-   can't be reassigned), so an inline shim cannot make the router perceive `/`. `opencode-ai@1.17.15`
-   has no `--base-path`/`BASE_PATH` option (open upstream feature request; a third-party fork adds
-   it). Options: **(a)** track upstream base-path support and adopt when released; **(b)** vendor
-   the `prokube/pk-opencode-webui` prefix-aware fork (supply-chain + maintenance cost); **(c)** drop
-   opencode as an offered editor kind (keep openvscode/monaco/terminal) so users aren't handed a
-   broken option; **(d)** per-workspace subdomain for opencode only (contradicts the §1
-   no-wildcard-DNS/TLS decision). Recommendation: (c) now + (a) to unblock later.
-
-1. **Heartbeat interval & idle threshold** — scale-to-zero tuning. The knobs
+0. **Heartbeat interval & idle threshold** — scale-to-zero tuning. The knobs
    now exist (`EDD_HEARTBEAT_INTERVAL_S` injected into workspace tasks;
    `EDD_IDLE_THRESHOLD_MS`/`EDD_SNAPSHOT_INTERVAL_MS`/`EDD_EARLY_SNAPSHOT_INTERVAL_MS`/
    `EDD_EARLY_SESSION_MS`/`EDD_GC_GRACE_MS` on the reconciler) — the open decision is

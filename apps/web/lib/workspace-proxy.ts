@@ -440,6 +440,12 @@ function responseIsHtml(contentType: string | undefined): boolean {
   return contentType?.toLowerCase().includes("text/html") === true;
 }
 
+/** True for a JavaScript response (`text/javascript` / `application/javascript`). Only opencode
+ * buffers JS, and only to apply the one targeted router base-path anchor (patchOpencodeRouterBase). */
+function responseIsJavaScript(contentType: string | undefined): boolean {
+  return contentType?.toLowerCase().includes("javascript") === true;
+}
+
 /**
  * A fixed home-link pill unavoidably intercepts pointer events over whatever chrome
  * it covers, so it must be anchored to each editor's DEAD zone:
@@ -469,6 +475,32 @@ export function injectWorkspaceHomeLink(html: string, editor: EditorKind): strin
   return `${html.slice(0, insertAt)}${link}${html.slice(insertAt)}`;
 }
 
+/**
+ * The single, UNIQUE anchor in opencode's client path-router integration `get` — it reads
+ * `window.location.pathname` (served under `/w/<id>/`) so the router matches no route and the app
+ * renders blank. We redirect that ONE read through `window.__eddStrip` (defined in the injected
+ * shim) so the router matches as if at "/". This is a targeted exact-string replacement at a
+ * verified-unique site — NOT the blanket regex that once corrupted the bundle. The `_SET` marker
+ * is the router integration's `set` (also unique); its presence means "this is the router bundle",
+ * so a missing `_GET` anchor is a version drift we FAIL LOUD on rather than silently serve blank.
+ */
+const OPENCODE_ROUTER_GET_ANCHOR = 'window.location.pathname.replace(/^\\/+/,"/")';
+const OPENCODE_ROUTER_GET_PATCH =
+  'window.__eddStrip(window.location.pathname).replace(/^\\/+/,"/")';
+const OPENCODE_ROUTER_SET_MARKER = 'window.history.pushState(o,"",r)';
+
+function patchOpencodeRouterBase(body: string): string {
+  if (!body.includes(OPENCODE_ROUTER_SET_MARKER)) return body; // not the router bundle — leave it
+  if (!body.includes(OPENCODE_ROUTER_GET_ANCHOR)) {
+    // The router bundle changed shape (opencode version bump) — serving it verbatim would blank
+    // the editor, so fail loud (the caller turns this into a 502 the smoke catches).
+    throw new Error(
+      "opencode router base-path anchor not found — the bundle changed; update patchOpencodeRouterBase",
+    );
+  }
+  return body.replace(OPENCODE_ROUTER_GET_ANCHOR, OPENCODE_ROUTER_GET_PATCH);
+}
+
 export function rewriteOpencodeResponseBody(
   body: string,
   wsId: WorkspaceId,
@@ -490,9 +522,12 @@ export function rewriteOpencodeResponseBody(
     // root-absolute path is rebased by the injected shim instead.
     return body.replace(/\b(src|href|content)=(["'])\/(?!\/|w\/)/g, `$1=$2${base}/`);
   }
-  // Any other content type — notably JavaScript — is returned VERBATIM. The proxy never
-  // buffers JS for rewrite (see responseCanBeRewritten); this pass-through is the
-  // defensive guarantee that a byte-level rewrite can never touch a JS bundle.
+  if (lower?.includes("javascript") === true) {
+    // JavaScript is NOT blanket-rewritten (that corrupted the bundle). The ONLY JS change is the
+    // single, exact-string, verified-unique router base-path anchor — see patchOpencodeRouterBase.
+    return patchOpencodeRouterBase(body);
+  }
+  // Any other content type is returned verbatim.
   return body;
 }
 
@@ -511,6 +546,18 @@ export function buildOpencodeBasePathShim(base: string): string {
   return [
     "(function(){",
     `var base=${JSON.stringify(base)};`,
+    // Base-path routing support (paired with the one-line JS patch in patchOpencodeRouterBase):
+    // opencode's client path-router reads `window.location.pathname` (which the proxy serves under
+    // `/w/<id>/`) and matches no route, so its main view never renders. `location.pathname` is an
+    // [Unforgeable] property we cannot override, so the router's READ is redirected through
+    // `window.__eddStrip` by a targeted bundle edit; here we (a) provide `__eddStrip` to remove the
+    // base so the router matches as if at "/", and (b) wrap history.pushState/replaceState to add
+    // the base back on WRITES so the real URL stays under the workspace prefix. Verified live: the
+    // main UI renders and in-app navigation keeps the `/w/<id>/` prefix.
+    "function __eddAddBase(u){var s=String(u);return (s.charAt(0)==='/'&&s!==base&&s.indexOf(base+'/')!==0)?base+s:s;}",
+    "window.__eddStrip=function(p){if(p==null)return p;return (p===base||p.indexOf(base+'/')===0)?(p.slice(base.length)||'/'):p;};",
+    "var __eddPS=history.pushState.bind(history);history.pushState=function(d,t,u){return __eddPS(d,t,u==null?u:__eddAddBase(u));};",
+    "var __eddRS=history.replaceState.bind(history);history.replaceState=function(d,t,u){return __eddRS(d,t,u==null?u:__eddAddBase(u));};",
     "function rebase(u){",
     "if(u==null)return u;",
     "try{",
@@ -647,7 +694,14 @@ export function proxyWorkspaceHttp(
       proxyRes.pipe(res);
       return;
     }
-    if (!responseCanBeRewritten(contentType)) {
+    // opencode additionally buffers its JS bundle so the single, exact-string router base-path
+    // anchor can be patched (see patchOpencodeRouterBase); every other editor still buffers only
+    // html/css. JS for any other editor is never buffered (streamed verbatim).
+    const canRewrite =
+      context.editor === "opencode"
+        ? responseCanBeRewritten(contentType) || responseIsJavaScript(contentType)
+        : responseCanBeRewritten(contentType);
+    if (!canRewrite) {
       res.writeHead(proxyRes.statusCode ?? 502, proxyRes.headers);
       proxyRes.pipe(res);
       return;

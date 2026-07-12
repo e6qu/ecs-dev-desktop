@@ -2,7 +2,18 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-12 (later). Active branch `feat/terminal-tabs-rename-reorder`
+**Last updated:** 2026-07-12 (opencode fix). Active branch `fix/opencode-base-path` (on top
+of #230 `0c7b4c2`) FIXES the opencode blank render. Root cause was base-path routing (opencode's
+SolidJS path-router reads `window.location.pathname` = `/w/<id>/` and matches no route). Since
+`location.pathname` is [Unforgeable] (can't be virtualized from a shim), the proxy now applies ONE
+targeted, verified-unique, fail-loud string patch to opencode's JS bundle (`patchOpencodeRouterBase`)
+redirecting that read through the shim's `__eddStrip`, and the shim re-adds the base on history
+writes. Verified live (blank → real UI, URL unchanged) + on the real 2.75 MB bundle (`node --check`
+valid, one replacement). Smoke `assertOpencodeMounted` strengthened to require the routed UI. Next:
+task #45 — keep the workspace pwd clean of editor/software details (all workspace types, baked at
+image-build time). See `DO_NEXT.md`.
+
+Prior branch `feat/terminal-tabs-rename-reorder`
 (on top of #229 `4b511a9`) verifies the deployed workspaces end-to-end and extends the
 first-party **terminal**: tabs are now renameable (double-click), nameable/no-name (empty
 reverts to the id-based default), and reorderable by drag AND `Alt+Shift+←/→`. The
