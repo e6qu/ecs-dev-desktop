@@ -20,14 +20,26 @@
 === "/"`, but it is proxied under `/w/<id>/`, so its router matches no route for `/w/<id>/`
   and paints only the out-of-`<Routes>` chrome (the dialog-stack). The earlier "revisit with an
   import-map" residual note is DISPROVEN — the bundle is a single file, no `/assets/*` chunk ever
-  404s. FIX (not attempted — larger/riskier than a quick proxy tweak, needs a decision): either
-  (a) base-path-virtualize opencode's router so it perceives `/` while the real URL stays under
-  `/w/<id>/` (History API + location perception shim over a minified upstream router — feasible
-  but delicate, and the security-sensitive proxy path), or (b) an upstream opencode `--base-path`
-  option (openvscode/monaco already take `--server-base-path`). NOTE: the smoke's
-  `assertOpencodeMounted` only checks `#root` gains a child + the title, so it PASSES on this
-  blank-but-mounted state — it must be strengthened to require the routed UI once (a) or (b)
-  lands (strengthening it now would just turn the post-deploy gate permanently red).
+  404s; SSE delivery is also confirmed (an EventSource to `/global/event` through CloudFront+proxy
+  received `server.connected` + `server.heartbeat`), so it is NOT SSE buffering either.
+  **ATTEMPTED FIX (2026-07-12) — base-path virtualization, and it is NOT cleanly possible.** Tried
+  the clean approach: a pre-bundle shim that strips `/w/<id>` from `location.pathname`/`href` reads
+  (so the router matches as if at `/`) and prefixes it back on `history.pushState/replaceState`
+  writes. Tested live via Playwright `addInitScript` (same pre-bundle timing as the production
+  shim). RESULT: `Object.getOwnPropertyDescriptor(Location.prototype,'pathname')` is `undefined` —
+  Location's path accessors are **[Unforgeable]** Web-IDL properties (own, non-configurable on each
+  instance) and `window.location` itself cannot be reassigned, so the getter CANNOT be overridden;
+  opencode still rendered only the dialog-stack. So there is no clean inline-shim fix. Remaining
+  options, ALL out-of-scope or hacky: (a) upstream opencode `--base-path`/`BASE_PATH` support —
+  does NOT exist in `opencode-ai@1.17.15` (only port/hostname flags; it is an open upstream feature
+  request, and a third-party `prokube/pk-opencode-webui` fork exists solely to add prefix-awareness),
+  (b) fragile per-request surgery of the minified bundle to inject a router base (a hack, breaks on
+  every opencode update — rejected), (c) per-workspace subdomain so opencode serves at origin-root
+  (the architecture explicitly rejected wildcard DNS/TLS — see §1). DECISION PENDING (see DO_NEXT):
+  track/adopt upstream base-path support, or drop opencode as an offered editor until it exists.
+  NOTE: the smoke's `assertOpencodeMounted` only checks `#root` gains a child + the title, so it
+  PASSES on this blank-but-mounted state; it must be strengthened to require the routed UI once a
+  real fix lands (strengthening it now would just turn the post-deploy gate permanently red).
 
 - **opencode rendered BLANK in prod — the proxy JS rewrite corrupted the bundle —
   FIXED in `harden/scale-to-zero-security` (2026-07-11).** `post-deploy-smoke` had

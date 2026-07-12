@@ -10,8 +10,9 @@ close→no-stale-session guarantee is now proven by unit tests (injectable PTY s
 terminal behaviors were verified in a real browser (built SPA + fake PTY, 11/11) and the
 deployed smoke covers rename+reorder. **opencode** was root-caused to a base-path ROUTING
 issue (its path-router matches no route under the `/w/<id>/` proxy prefix; the proxy itself
-delivers everything correctly) — recorded in `BUGS.md`, fix pending a decision. See
-`DO_NEXT.md`.
+delivers everything correctly); base-path virtualization was attempted and is technically
+impossible (Location's path accessors are [Unforgeable]), and opencode has no base-path flag —
+so opencode is BLOCKED with no clean in-repo fix. Options recorded in `BUGS.md` + `DO_NEXT.md`.
 
 The prior sweep branch `perf/deferred-efficiency-convergence-ux`
 (on top of #228 `f488cdc`) works through the deferred efficiency/convergence/UX items
