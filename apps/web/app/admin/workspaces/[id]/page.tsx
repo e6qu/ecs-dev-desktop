@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
 import { StatusBadge } from "../../../../components/StatusBadge";
 import { SnapshotIntervalControl } from "../../../../components/SnapshotIntervalControl";
 import { WorkspaceActions } from "../../../../components/WorkspaceActions";
-import { getCatalog, getControlPlane } from "../../../../lib/control-plane";
+import { getCatalogList, getControlPlane } from "../../../../lib/control-plane";
 import { isAdminViewer } from "../../../../lib/principal";
 import { TESTID } from "../../../../lib/testids";
 import { catalogByImage } from "../../../../lib/workspace-enrich";
@@ -31,10 +31,7 @@ export default async function InspectWorkspacePage({
   if (!(await isAdminViewer())) return null;
   const { id } = await params;
   const cp = await getControlPlane();
-  const [inspection, catalog] = await Promise.all([
-    cp.inspect(workspaceId(id)),
-    getCatalog().list(),
-  ]);
+  const [inspection, catalog] = await Promise.all([cp.inspect(workspaceId(id)), getCatalogList()]);
   if (inspection === null) notFound();
   const { workspace: ws, timeline } = inspection;
   const entry = catalogByImage(catalog).get(ws.baseImage);

@@ -53,6 +53,7 @@ import {
   type DomainError,
   type EditorKind,
   type Email,
+  type FleetReferences,
   type IsoTimestamp,
   type MetricSink,
   type OwnerId,
@@ -708,6 +709,31 @@ export class WorkspaceService {
       if (r.latestSnapshotId !== undefined) snapshotIds.push(snapshotId(r.latestSnapshotId));
     });
     return { volumeIds, snapshotIds };
+  }
+
+  /**
+   * Every maintenance keep-set (storage refs + task refs + secret-owning workspace ids) from
+   * ONE workspace-table scan. The reconciler's maintenance tick reaps orphan tasks, orphan
+   * secrets, and orphan storage back-to-back — each keyed off a full-table projection. Reading
+   * them in a single pass replaces three identical `scan.go` sweeps per tick with one. The
+   * individual `listReferenced*` methods remain for callers that need just one projection
+   * (e.g. the admin snapshot console); this is a superset for the tick that needs all three.
+   */
+  async listFleetReferences(): Promise<FleetReferences> {
+    const { data } = await this.deps.workspaces.scan.go({ pages: "all" });
+    const volumeIds: VolumeId[] = [];
+    const snapshotIds: SnapshotId[] = [];
+    const taskIds: TaskId[] = [];
+    const secretWorkspaceIds: WorkspaceId[] = [];
+    data.forEach((r: WorkspaceRecord) => {
+      if (r.volumeId !== undefined) volumeIds.push(volumeId(r.volumeId));
+      if (r.latestSnapshotId !== undefined) snapshotIds.push(snapshotId(r.latestSnapshotId));
+      if (r.taskId !== undefined) {
+        taskIds.push(taskId(r.taskId));
+        secretWorkspaceIds.push(workspaceId(r.id));
+      }
+    });
+    return { volumeIds, snapshotIds, taskIds, secretWorkspaceIds };
   }
 
   /**

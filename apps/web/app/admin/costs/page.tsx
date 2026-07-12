@@ -20,7 +20,7 @@ import {
   getCachedAwsAccountCostSummary,
   type AccountCostSummary,
 } from "../../../lib/aws-account-costs";
-import { getCostService } from "../../../lib/control-plane";
+import { getCostReport } from "../../../lib/control-plane";
 import { TESTID } from "../../../lib/testids";
 
 export const dynamic = "force-dynamic";
@@ -213,7 +213,7 @@ export default async function AdminCostsPage({
   let accountCosts: AccountCostSummary | Error;
   try {
     [report, accountCosts] = await Promise.all([
-      (await getCostService()).report(COST_WINDOW_DAYS[window]),
+      getCostReport(COST_WINDOW_DAYS[window]),
       getCachedAwsAccountCostSummary().catch((error: unknown) =>
         error instanceof Error ? error : new Error(String(error)),
       ),

@@ -6,7 +6,7 @@ import { defineAbilityFor } from "@edd/authz";
 import { baseImage } from "@edd/core";
 
 import { authenticate, badRequest, forbidden, isResponse } from "../../../lib/api";
-import { getCatalog } from "../../../lib/control-plane";
+import { getCatalog, getCatalogList } from "../../../lib/control-plane";
 import { withObservability } from "../../../lib/observability";
 
 // GET /api/base-images — list the catalog (any authenticated user can browse it).
@@ -14,7 +14,7 @@ async function handleGET(req: Request) {
   const principal = await authenticate(req);
   if (isResponse(principal)) return principal;
   if (!defineAbilityFor(principal).can("read", "BaseImage")) return forbidden();
-  return NextResponse.json({ baseImages: await getCatalog().list() });
+  return NextResponse.json({ baseImages: await getCatalogList() });
 }
 
 // POST /api/base-images — add a catalog entry (admins only).

@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 
 import { isResponse, requireAdmin } from "../../../../lib/api";
-import { getCatalog, getControlPlane } from "../../../../lib/control-plane";
+import { getCatalogList, getControlPlane } from "../../../../lib/control-plane";
 import { withObservability } from "../../../../lib/observability";
 import { catalogByImage, enrichWorkspace } from "../../../../lib/workspace-enrich";
 
@@ -13,7 +13,7 @@ async function handleGET(req: Request) {
   const cp = await getControlPlane();
   // Enrich identically to GET /api/workspaces (catalog image fields + sshCommand) so
   // the admin fleet view gets the same server-computed catalog join, not a bare list.
-  const byImage = catalogByImage(await getCatalog().list());
+  const byImage = catalogByImage(await getCatalogList());
   const workspaces = (await cp.list()).map((ws) => enrichWorkspace(ws, byImage));
   return NextResponse.json({ workspaces });
 }

@@ -224,7 +224,7 @@ export { FakeStorageProvider } from "./storage/fake-storage-provider";
 // consumer (e.g. the Next app). Tests import it directly by relative path.
 
 // Maintenance functional core (orphan GC + scheduled-snapshot decisions).
-export type { ReferencedStorage, SnapshotCandidate } from "./maintenance/select";
+export type { FleetReferences, ReferencedStorage, SnapshotCandidate } from "./maintenance/select";
 export {
   selectDueForSnapshot,
   selectOrphanSecrets,

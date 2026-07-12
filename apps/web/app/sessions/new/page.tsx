@@ -3,7 +3,7 @@ import { defineAbilityFor } from "@edd/authz";
 
 import { NewSession } from "../../../components/NewSession";
 import { StateBlock } from "../../../components/StateBlock";
-import { getCatalog } from "../../../lib/control-plane";
+import { getCatalogList } from "../../../lib/control-plane";
 import { getPagePrincipal } from "../../../lib/principal";
 
 export const dynamic = "force-dynamic";
@@ -39,7 +39,7 @@ export default async function NewSessionPage() {
     );
   }
 
-  const images = (await getCatalog().list())
+  const images = (await getCatalogList())
     .filter((entry) => entry.enabled)
     .map((entry) => ({
       name: entry.name,

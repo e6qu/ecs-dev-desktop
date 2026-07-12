@@ -8,7 +8,7 @@ import { DeployFooter } from "../../components/DeployFooter";
 import { LiveRefresh } from "../../components/LiveRefresh";
 import { StateBlock } from "../../components/StateBlock";
 import { WorkspaceCard } from "../../components/WorkspaceCard";
-import { getCatalog, getControlPlane } from "../../lib/control-plane";
+import { getCatalogList, getControlPlane } from "../../lib/control-plane";
 import { getPagePrincipal } from "../../lib/principal";
 import { catalogByImage, enrichWorkspace } from "../../lib/workspace-enrich";
 
@@ -51,7 +51,7 @@ export default async function WorkspacesPage({
   const canUpdateWorkspace = defineAbilityFor(principal).can("update", "Workspace");
   // Enrich each workspace with its catalog image + ssh command (the same join the
   // API route does), then sort — so the card is a pure renderer of the DTO.
-  const byImage = catalogByImage(await getCatalog().list());
+  const byImage = catalogByImage(await getCatalogList());
   const enriched = raw
     .map((ws) => enrichWorkspace(ws, byImage))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));

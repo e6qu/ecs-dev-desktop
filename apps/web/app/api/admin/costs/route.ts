@@ -3,7 +3,7 @@ import { COST_WINDOW_DAYS, costReportQuery } from "@edd/api-contracts";
 import { NextResponse } from "next/server";
 
 import { badRequest, isResponse, requireAdmin } from "../../../../lib/api";
-import { getCostService } from "../../../../lib/control-plane";
+import { getCostReport } from "../../../../lib/control-plane";
 import { withObservability } from "../../../../lib/observability";
 
 // GET /api/admin/costs — the fleet cost report (admin only): per session, rolled
@@ -19,7 +19,7 @@ async function handleGET(req: Request) {
     window: new URL(req.url).searchParams.get("window") ?? undefined,
   });
   if (!parsed.success) return badRequest(parsed.error.issues[0]?.message);
-  const report = await (await getCostService()).report(COST_WINDOW_DAYS[parsed.data.window]);
+  const report = await getCostReport(COST_WINDOW_DAYS[parsed.data.window]);
   return NextResponse.json(report);
 }
 

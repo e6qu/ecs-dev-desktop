@@ -12,8 +12,15 @@ import { StatusBadge } from "./StatusBadge";
 import { WorkspaceActions } from "./WorkspaceActions";
 
 const api = new ApiClient({ baseUrl: "" });
-const STATUS_POLL_MS = 1000;
-const LOGS_POLL_MS = 4000;
+/** Poll cadence while the workspace is in a transitional phase (provisioning / booting /
+ * stopping / deleting / resuming): tight, so the step tracker and log tail feel live. */
+const STATUS_POLL_ACTIVE_MS = 1000;
+const LOGS_POLL_ACTIVE_MS = 4000;
+/** Poll cadence once the workspace has SETTLED (ready, stopped, terminated, or errored):
+ * nothing is changing on its own, so back off to the shared convergence budget (matches the
+ * fleet/catalog TTLs and LiveRefresh) instead of hammering the API 1×/s per open tab forever. */
+const STATUS_POLL_SETTLED_MS = 10000;
+const LOGS_POLL_SETTLED_MS = 15000;
 /** Seconds the "opening editor" countdown runs before auto-navigating. */
 const AUTO_OPEN_COUNTDOWN_S = 3;
 /** The record is gone (deleted + purged, or never existed). */
@@ -86,12 +93,17 @@ function elapsedSince(iso: string): string {
 export function WorkspaceLive({ id }: { id: string }) {
   const loadWs = useCallback(() => api.getWorkspace(id), [id]);
   const loadLogs = useCallback(() => api.getWorkspaceLogs(id), [id]);
+  // Poll cadence is state-driven so it can back off once the workspace settles (see the
+  // effect below). usePoll re-arms whenever the interval changes, refetching immediately —
+  // so speeding back up (e.g. on a resume) is instant, never a full slow-interval late.
+  const [statusPollMs, setStatusPollMs] = useState(STATUS_POLL_ACTIVE_MS);
+  const [logsPollMs, setLogsPollMs] = useState(LOGS_POLL_ACTIVE_MS);
   const {
     data: ws,
     error,
     errorStatus,
-  } = usePoll<WorkspaceDto>(loadWs, STATUS_POLL_MS, "workspace not found");
-  const { data: logs } = usePoll<WorkspaceLogsDto>(loadLogs, LOGS_POLL_MS, "logs unavailable");
+  } = usePoll<WorkspaceDto>(loadWs, statusPollMs, "workspace not found");
+  const { data: logs } = usePoll<WorkspaceLogsDto>(loadLogs, logsPollMs, "logs unavailable");
 
   // Auto-open: only on the launch-initiated visit (?autoopen=1 from the session
   // launcher), never on later direct visits. Read from location in an effect so
@@ -144,6 +156,23 @@ export function WorkspaceLive({ id }: { id: string }) {
   useEffect(() => {
     if (autoOpen && !resuming && ws?.state === "stopped") resume();
   }, [autoOpen, resuming, ws?.state, resume]);
+
+  // Back the polls off once the workspace SETTLES — ready, stopped, terminated, or errored —
+  // none of which change without a user action this page already reacts to. While a resume is
+  // in flight, or the workspace is mid-transition (provisioning/booting/degraded/stopping/…),
+  // stay on the tight cadence so the step tracker and log tail feel live. A settled workspace
+  // still reflects out-of-band changes within the settled interval (§13 convergence budget).
+  const settled =
+    ws !== null &&
+    !resuming &&
+    ((ws.state === "running" && ws.functional === "ok") ||
+      ws.state === "stopped" ||
+      ws.state === "terminated" ||
+      ws.state === "error");
+  useEffect(() => {
+    setStatusPollMs(settled ? STATUS_POLL_SETTLED_MS : STATUS_POLL_ACTIVE_MS);
+    setLogsPollMs(settled ? LOGS_POLL_SETTLED_MS : LOGS_POLL_ACTIVE_MS);
+  }, [settled]);
 
   // Follow the log tail as new lines arrive — but only while the user is pinned
   // to the bottom. Scrolling up to read an earlier line must not be yanked back

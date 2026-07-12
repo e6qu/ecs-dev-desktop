@@ -7,7 +7,7 @@ import { taskDefinitionFamily } from "@edd/compute-ecs";
 import type { CloudWatchMetricReader } from "@edd/cloudwatch-metrics";
 
 import { isResponse, loadOwnedWorkspaceDetail } from "../../../../../lib/api";
-import { getCostService, getMetricReader } from "../../../../../lib/control-plane";
+import { getCostReport, getMetricReader } from "../../../../../lib/control-plane";
 import { withObservability } from "../../../../../lib/observability";
 
 interface Ctx {
@@ -59,7 +59,7 @@ async function handleGET(req: Request, { params }: Ctx) {
 
   // Cost + uptime from the audit-priced report (the same source /admin/costs uses),
   // narrowed to this session. Absent until the ledger has priced events.
-  const report = await (await getCostService()).report(null);
+  const report = await getCostReport(null);
   const session = report.bySession.find((s) => s.workspaceId === ctx.id);
 
   const reader = getMetricReader();

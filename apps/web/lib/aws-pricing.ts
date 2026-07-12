@@ -12,6 +12,8 @@ import {
 } from "@edd/config";
 import type { Pricing } from "@edd/core";
 
+import { ttlCache } from "./ttl-cache";
+
 /**
  * Region-accurate cost rates sourced LIVE from the AWS Price List API
  * (`pricing:GetProducts`) — so costing reflects AWS's own published on-demand
@@ -255,13 +257,29 @@ function defaultPricingClient(): PricingClient {
   return sharedPricingClient;
 }
 
-/**
- * The cost rates in effect: configured rates unless `EDD_AWS_PRICING=1`; when
- * live AWS pricing is enabled, every required live rate must resolve or the
- * caller receives a loud configuration/permission/product-shape error.
- */
-export async function resolveWorkspacePricing(): Promise<Pricing> {
+/** Resolve the rates once (uncached): configured rates unless `EDD_AWS_PRICING=1`, else the
+ * live Price List rates (all four required, or a loud error). Wrapped by the TTL cache below. */
+async function resolveWorkspacePricingUncached(): Promise<Pricing> {
   if (process.env[AWS_PRICING_ENV] !== "1") return workspacePricing();
   const region = process.env.AWS_REGION ?? DEFAULT_AWS_REGION;
   return requireLivePricing(region, await fetchAwsPricing(region, defaultPricingClient()));
+}
+
+/** How long a resolved pricing snapshot is served before re-resolving. AWS on-demand
+ * prices change at most monthly, but the admin Costs page live-refreshes every ~15s and
+ * the reconciler prices every sweep — so with `EDD_AWS_PRICING=1` the uncached path made
+ * ~4 paginated Price List `GetProducts` calls per refresh per viewer. A multi-hour TTL
+ * collapses that to a handful of calls/day while staying far fresher than prices change. */
+const PRICING_TTL_MS = 6 * 60 * 60 * 1000;
+const cachedPricing = ttlCache<Pricing>(resolveWorkspacePricingUncached, PRICING_TTL_MS);
+
+/**
+ * The cost rates in effect: configured rates unless `EDD_AWS_PRICING=1`; when live AWS
+ * pricing is enabled, every required live rate must resolve or the caller receives a loud
+ * configuration/permission/product-shape error. Process-shared TTL-cached (see
+ * {@link PRICING_TTL_MS}) so a burst of reports/refreshes shares one resolution; a failed
+ * live resolution is not cached (the next call retries).
+ */
+export function resolveWorkspacePricing(nowMs: number = Date.now()): Promise<Pricing> {
+  return cachedPricing(nowMs);
 }

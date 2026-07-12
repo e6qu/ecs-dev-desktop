@@ -261,6 +261,55 @@ test("a viewer persona sees a read-only workspace list (no lifecycle buttons)", 
   await expect(devCard.getByRole("button", { name: "stop" })).toBeVisible();
 });
 
+test("spectate surface: reads scroll above the shield and has a top-level back link", async ({
+  page,
+  context,
+  request,
+}) => {
+  // Owner creates a workspace and turns on sharing (owner-only), so the spectate page renders.
+  const res = await request.post("/api/workspaces", {
+    headers: { cookie: devCookieHeader("hank", "developer") },
+    data: { baseImage: NODE_IMAGE },
+  });
+  expect(res.ok(), `create: ${res.status().toString()}`).toBeTruthy();
+  const { id } = (await res.json()) as { id: string };
+  const share = await request.post(`/api/workspaces/${id}/share`, {
+    headers: { cookie: devCookieHeader("hank", "developer") },
+    data: { enabled: true },
+  });
+  expect(share.ok(), `share: ${share.status().toString()}`).toBeTruthy();
+
+  // A signed-in principal (the owner here) watches the read-only mirror.
+  await loginAs(context, "hank", "developer");
+  await page.goto(`/workspaces/${id}/spectate`);
+  const viewer = page.locator(sel(TESTID.spectateViewer));
+  await expect(viewer).toBeVisible();
+
+  // The mirrored file pane must be hit-testable (i.e. scrollable/selectable) — the fixed
+  // shield sits BENEATH it, so elementFromPoint over the pane returns the content, not the
+  // shield. Before the fix the full-viewport shield swallowed this, blocking scroll.
+  const topLayer = await page.evaluate(
+    (ids) => {
+      const pre = document.querySelector(`[data-testid="${ids.viewer}"] pre`);
+      if (pre === null) return "no-pre";
+      const r = pre.getBoundingClientRect();
+      const el = document.elementFromPoint(
+        r.left + r.width / 2,
+        r.top + Math.min(20, r.height / 2),
+      );
+      return el?.closest(`[data-testid="${ids.shield}"]`) === null ? "content" : "shield";
+    },
+    { viewer: TESTID.spectateViewer, shield: TESTID.spectateShield },
+  );
+  expect(topLayer).toBe("content");
+
+  // §9: a visible top-level route back to /workspaces from the editor surface.
+  const back = page.locator(sel(TESTID.spectateBackLink));
+  await expect(back).toBeVisible();
+  await back.click();
+  await expect(page).toHaveURL(new RegExp(`${BASE_URL}/workspaces$`));
+});
+
 test("admin sees the system health board with a live DynamoDB check", async ({ page, context }) => {
   await loginAs(context, "root", "admin");
   await page.goto("/admin/health");

@@ -78,6 +78,8 @@ export const TESTID = {
   spectateViewer: "spectate-viewer",
   /** The full-viewport interaction-blocking shield over the spectate render. */
   spectateShield: "spectate-shield",
+  /** Top-level "back to /workspaces" route on the spectate surface (§9 editor back-link). */
+  spectateBackLink: "spectate-back-link",
   /** The share (spectate) toggle on a workspace card. Attr: `data-enabled`. */
   workspaceShareToggle: "workspace-share-toggle",
   /** A repo row in the New-session repo browser. Attrs: `data-repo`, `data-private`. */

@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { LiveRefresh, ADMIN_LIST_REFRESH_MS } from "../../../components/LiveRefresh";
 import { getQuotaReport } from "../../../lib/quota-report";
 import { isAdminViewer } from "../../../lib/principal";
 import { TESTID } from "../../../lib/testids";
@@ -17,6 +18,7 @@ export default async function AdminQuotasPage() {
 
   return (
     <>
+      <LiveRefresh intervalMs={ADMIN_LIST_REFRESH_MS} />
       <div className="page-head">
         <div>
           <div className="kicker">admin</div>

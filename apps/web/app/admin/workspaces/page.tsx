@@ -4,7 +4,7 @@ import Link from "next/link";
 import { LiveRefresh } from "../../../components/LiveRefresh";
 import { StateBlock } from "../../../components/StateBlock";
 import { StatusBadge } from "../../../components/StatusBadge";
-import { getCatalog, getControlPlane } from "../../../lib/control-plane";
+import { getCatalogList, getControlPlane } from "../../../lib/control-plane";
 import { isAdminViewer } from "../../../lib/principal";
 import { TESTID } from "../../../lib/testids";
 import { catalogByImage, enrichWorkspace } from "../../../lib/workspace-enrich";
@@ -25,7 +25,7 @@ function snapshotText(at: string | undefined): string {
 export default async function AdminWorkspacesPage() {
   if (!(await isAdminViewer())) return null;
   const cp = await getControlPlane();
-  const [raw, catalog] = await Promise.all([cp.list(), getCatalog().list()]);
+  const [raw, catalog] = await Promise.all([cp.list(), getCatalogList()]);
   const byImage = catalogByImage(catalog);
   const workspaces = raw
     .map((ws) => enrichWorkspace(ws, byImage))
