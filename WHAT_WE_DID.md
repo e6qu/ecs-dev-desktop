@@ -3974,3 +3974,36 @@ Same branch, further cost/observability features requested during the sweep:
   builds" section (status/phase, target, tag, ref, started, duration, id, triggered-by) polling
   that route, renamed the triggers section to "GitHub Actions builds," and corrected the page
   copy so both build paths are visible/trackable.
+
+**2026-07-12 — Deferred efficiency / convergence / UX sweep (no new features).** Worked
+through the perf/UX backlog `DO_NEXT` accumulated during the cost-reporting sweep (#228),
+all boy-scout: **(P4)** wrapped live AWS Price List pricing in a 6h `ttlCache`
+(`resolveWorkspacePricing`) so opt-in `EDD_AWS_PRICING=1` no longer re-fetches per report;
+**(P8)** added `getCatalogList` — the base-image catalog `list()` TTL-cached (10s) on the
+hot read/render paths (workspaces render, workspace-list APIs, overview), leaving the admin
+catalog EDITOR page on the fresh query so an admin always sees their own just-made change;
+**(P10)** `getCostService` now memoizes its Dynamo-backed `StoredCostRollupStore` (was a
+fresh client per call) while still re-reading the (now-cached) pricing; **(P5)** added
+`getCostReport(days)` — the windowed cost report TTL-cached per window (10s) so the admin
+Costs render, its 15s `LiveRefresh`, and every workspace-monitoring read share one ledger
+pricing pass instead of each re-scanning; **(P11)** `WorkspaceLive` made its poll cadence
+state-driven — 1s while transitional (provisioning/booting/stopping/resuming), backing off
+to 10s status / 15s logs once SETTLED (ready/stopped/terminated/error), and staying fast
+while a resume is in flight (`usePoll` re-arms on interval change, so speed-ups are instant);
+**(P7)** the reconciler maintenance tick now takes ONE fleet scan (`listFleetReferences`,
+new port method + `WorkspaceService` impl returning storage + task + secret keep-sets from a
+single `scan.go`) AFTER the record-mutating sweeps and threads it into the orphan-task,
+orphan-secret, and storage-GC reapers — replacing three identical full-table scans per tick
+while preserving same-tick reaping (fetched post-mutation) and standalone testability (the
+reapers keep an optional-arg fallback to their per-projection scans); a new unit test proves
+`runMaintenance` scans once and the per-reaper scans zero times; **(U1)** `LiveRefresh`
+(new shared `ADMIN_LIST_REFRESH_MS = 10s`) added to the remaining server-rendered admin
+pages — users, quotas, logs, invitations, catalog (snapshots/images already poll via
+`usePoll`, health/infrastructure via their board components, and the traffic client editor
+fetches once so page-level refresh wouldn't help it); **(U5)** SpectateViewer's read-only
+file/terminal panes now sit above the interaction shield (zIndex 42 > 40) so a spectator can
+scroll/select to read while everything else stays inert — security is the absent write path
+(no stdin, no publish from the viewer), not the overlay — and the spectate page gained a
+visible top-level "← all workspaces" back link (§9), exercised by a new portal e2e that also
+asserts the file pane is hit-testable above the shield. Full monorepo build + lint + unit
+tests green.

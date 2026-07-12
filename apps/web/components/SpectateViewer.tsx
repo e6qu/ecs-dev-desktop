@@ -156,7 +156,13 @@ export function SpectateViewer({ id, owner }: { id: string; owner: string }) {
         </div>
       )}
 
-      <div style={{ display: "grid", gap: 12 }}>
+      {/* The mirrored file + terminal sit ABOVE the interaction shield (zIndex 42 > 40) so a
+          spectator can scroll and select-to-read them. This is safe: both panes are read-only by
+          construction — the terminal has `disableStdin` and there is no write path anywhere in the
+          viewer — so exposing them to wheel/selection events grants no ability to affect the
+          session. The shield still covers the surrounding chrome and provides the not-allowed
+          affordance off the panes. (Fixes the shield-blocks-scroll UX defect.) */}
+      <div style={{ display: "grid", gap: 12, position: "relative", zIndex: 42 }}>
         <section>
           <div className="mono" style={{ color: "var(--dim)", fontSize: 12, marginBottom: 4 }}>
             {filePath ?? "no file open"} · cursor {cursor.line}:{cursor.col}
@@ -207,15 +213,18 @@ export function SpectateViewer({ id, owner }: { id: string; owner: string }) {
             background: "var(--accent, #9fef00)",
             boxShadow: "0 0 6px var(--accent, #9fef00)",
             pointerEvents: "none",
-            zIndex: 41,
+            // Above the raised content panes (zIndex 42) so the owner's mouse dot stays visible.
+            zIndex: 43,
             transition: "left 60ms linear, top 60ms linear",
           }}
         />
       )}
 
-      {/* Full interaction-blocking shield (recorded decision): swallows every
-          pointer event over the mirrored render. Keyboard never reaches the
-          mirror since nothing under it is focusable through the shield. */}
+      {/* Interaction-blocking shield: covers the viewer at zIndex 40, beneath the read-only
+          scroll panes (42) so those stay scrollable but everything else is inert, with a
+          not-allowed affordance. Security is the absent write path (no stdin, no publish from
+          the viewer), not this overlay; the shield is defence-in-depth against stray interaction
+          with the surrounding chrome. */}
       <div
         aria-hidden="true"
         data-testid={TESTID.spectateShield}

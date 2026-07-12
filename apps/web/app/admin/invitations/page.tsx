@@ -3,6 +3,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 
 import { StateBlock } from "../../../components/StateBlock";
+import { LiveRefresh, ADMIN_LIST_REFRESH_MS } from "../../../components/LiveRefresh";
 import { createDeveloperInvitation, listInvitations } from "../../../lib/local-accounts";
 import {
   assertInvitationMailerConfigured,
@@ -76,6 +77,7 @@ export default async function AdminInvitationsPage({
 
   return (
     <>
+      <LiveRefresh intervalMs={ADMIN_LIST_REFRESH_MS} />
       <div className="page-head">
         <div>
           <div className="kicker">admin</div>

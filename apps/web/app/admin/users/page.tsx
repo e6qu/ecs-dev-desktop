@@ -12,6 +12,7 @@ import {
 import { field } from "../../../lib/forms";
 import { getPagePrincipal } from "../../../lib/principal";
 import { StateBlock } from "../../../components/StateBlock";
+import { LiveRefresh, ADMIN_LIST_REFRESH_MS } from "../../../components/LiveRefresh";
 
 export const dynamic = "force-dynamic";
 
@@ -97,6 +98,7 @@ export default async function AdminUsersPage({
 
   return (
     <>
+      <LiveRefresh intervalMs={ADMIN_LIST_REFRESH_MS} />
       {error !== undefined && <StateBlock title="Action failed" detail={error} />}
       <div className="page-head">
         <div>

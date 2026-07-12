@@ -2,20 +2,26 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-11 (night). Active branch `harden/scale-to-zero-security`
-(after #225 merged as `e6e84cf`) is a post-merge verification + adversarial
-DDoS/security hardening pass over the scale-to-zero + traffic-filter work. It fixes
-the wake-Lambda readiness reload storm (503 for the poll, not the 200 page),
-fail-soft wake on ECS errors, control-plane activity stamping on editor/page traffic
-(so the UI can't scale to zero mid editor session), a traffic-filter allow-mode
-lockout guard + strict IPv4 validation, WAF-apply baseline preservation (keep the
-Terraform managed CommonRuleSet + rate limit, replace only the EDD rule band, placed
-above the baseline), an editor-proxy response-buffer cap, and infra cost-DoS controls
-(wake Lambda reserved concurrency = 5, Function URL → AWS_IAM + CloudFront OAC, a
-CLOUDFRONT per-IP rate-based BLOCK at limit 2000, and removal of the conflicting CPU
-autoscaling policy). Open item: `post-deploy-smoke` is still RED on the `opencode`
-editor (see `BUGS.md`) — a live repro is in flight to root-cause before that path is
-called green.
+**Last updated:** 2026-07-12. Active branch `perf/deferred-efficiency-convergence-ux`
+(on top of #228 `f488cdc`) works through the deferred efficiency/convergence/UX items
+`DO_NEXT` accumulated during the cost-reporting sweep — no new features, all boy-scout:
+(P4) live AWS pricing TTL-cached (6h); (P8) catalog `list()` TTL-cached on read paths
+(`getCatalogList`, 10s; the admin catalog EDITOR still reads fresh); (P10) `getCostService`
+memoizes its Dynamo-backed rollup store; (P5) the windowed cost report is TTL-cached per
+window (`getCostReport`, 10s) so the Costs render + its 15s live refresh + every
+workspace-monitoring read share one scan instead of re-pricing the ledger each call;
+(P11) `WorkspaceLive` polls at 1s while transitional and backs off to 10s/15s once settled,
+staying fast while a resume is in flight; (P7) the reconciler maintenance tick takes ONE
+fleet scan (`listFleetReferences`) after its mutating sweeps and threads the keep-sets into
+the orphan-task/secret/storage reapers (was three identical `scan.go` sweeps); (U1)
+`LiveRefresh` added to the remaining server-rendered admin pages (users, quotas, logs,
+invitations, catalog); (U5) the spectate read-only panes now scroll above the interaction
+shield and the spectate page gained a visible "← all workspaces" back link (§9). Full
+build + lint + unit tests green; a portal e2e exercises the spectate back-link + scroll fix.
+
+The prior branch `harden/scale-to-zero-security` and the cost-reporting sweep both merged
+(#226, #228); the Terminal editor replaced the Claude/Codex modes in #217. See `BUGS.md`
+for the current live-smoke status.
 
 The section below describes the now-merged `feat/control-plane-scale-to-zero` work
 for context.

@@ -20,6 +20,7 @@ import {
   type Clock,
   type ComputeProvider,
   type DomainError,
+  type FleetReferences,
   type IsoTimestamp,
   type ReferencedStorage,
   type Result,
@@ -62,6 +63,9 @@ export interface ReconcilerService {
   snapshot(id: WorkspaceId): Promise<Result<unknown, DomainError>>;
   /** Storage ids still referenced by a workspace — never garbage-collected. */
   listReferencedStorage(): Promise<ReferencedStorage>;
+  /** All maintenance keep-sets (storage + task + secret-owning workspace ids) from one
+   * table scan — so a maintenance tick's three reapers share a single scan, not three. */
+  listFleetReferences(): Promise<FleetReferences>;
   /** Task ids still referenced by a workspace record — the orphan-task reaper's
    * keep-set (a RUNNING workspace task in none of these is an orphan). */
   listReferencedTasks(): Promise<readonly TaskId[]>;
@@ -572,8 +576,11 @@ export class Reconciler {
    * the storage provider for what exists. (Only the latest snapshot per
    * workspace is referenced, so superseded snapshots are reaped here.)
    */
-  async collectGarbage(): Promise<GcResult> {
-    const { volumeIds, snapshotIds } = await this.deps.service.listReferencedStorage();
+  async collectGarbage(references?: FleetReferences): Promise<GcResult> {
+    // Reuse the maintenance tick's shared reference scan when given; otherwise (standalone
+    // call / tests) do a focused storage-only scan.
+    const { volumeIds, snapshotIds } =
+      references ?? (await this.deps.service.listReferencedStorage());
     const now = this.now();
     const [volumes, snapshots] = await Promise.all([
       this.deps.storage.listVolumes(),
@@ -634,14 +641,14 @@ export class Reconciler {
    * same grace window so a just-launched-but-not-yet-recorded task is spared. No-op
    * when the compute backend can't enumerate tagged tasks (`listWorkspaceTasks` absent).
    */
-  async reapOrphanTasks(): Promise<ReapResult> {
+  async reapOrphanTasks(references?: FleetReferences): Promise<ReapResult> {
     const compute = this.deps.compute;
     const listTasks = compute?.listWorkspaceTasks?.bind(compute);
     if (compute === undefined || listTasks === undefined) {
       return { scanned: 0, reaped: 0, failed: 0 };
     }
     const [referenced, existing] = await Promise.all([
-      this.deps.service.listReferencedTasks(),
+      references?.taskIds ?? this.deps.service.listReferencedTasks(),
       listTasks(),
     ]);
     const orphans = selectOrphanTasks(existing, new Set(referenced), this.now(), this.gcGraceMs);
@@ -670,7 +677,7 @@ export class Reconciler {
    * rather than deleted synchronously, so there is no delete racing a concurrent wake.
    * Best-effort per secret: a delete that errors is counted + logged, never aborts.
    */
-  async reapOrphanSecrets(): Promise<ReapResult> {
+  async reapOrphanSecrets(references?: FleetReferences): Promise<ReapResult> {
     const compute = this.deps.compute;
     const listSecrets = compute?.listWorkspaceAgentSecrets?.bind(compute);
     const deleteSecret = compute?.deleteAgentSecret?.bind(compute);
@@ -679,7 +686,7 @@ export class Reconciler {
     }
     const [existing, liveIds] = await Promise.all([
       listSecrets(),
-      this.deps.service.listRuntimeSecretWorkspaceIds(),
+      references?.secretWorkspaceIds ?? this.deps.service.listRuntimeSecretWorkspaceIds(),
     ]);
     const orphans = selectOrphanSecrets(existing, new Set(liveIds), this.now(), this.gcGraceMs);
 
@@ -814,14 +821,20 @@ export class Reconciler {
     const purged = await this.purgeTombstones();
     const idle = await this.runOnce();
     const snapshots = await this.snapshotDue();
+    // Record mutations for this tick are now done (idle-stop, finish-delete/stop, purge,
+    // snapshot). Take ONE workspace-table scan for every keep-set the reapers + GC need — the
+    // orphan-task, orphan-secret, and orphan-storage sweeps all key off a full-table projection,
+    // so a single scan here replaces three identical ones. Fetched AFTER the mutating sweeps so a
+    // volume/task/record freed this tick is reapable this tick (not deferred to the next).
+    const references = await this.deps.service.listFleetReferences();
     // Reap orphaned tasks before GC: stopping an orphan releases its managed volume
     // (deleteOnTermination), which the next sweep's GC then reaps.
-    const tasks = await this.reapOrphanTasks();
+    const tasks = await this.reapOrphanTasks(references);
     // Reap agent secrets whose workspace record is gone (symmetric to orphan tasks).
-    const secrets = await this.reapOrphanSecrets();
+    const secrets = await this.reapOrphanSecrets(references);
     // Bound task-definition revision growth (per-launch secret injection accumulates them).
     const taskDefs = await this.pruneTaskDefinitions();
-    const gc = await this.collectGarbage();
+    const gc = await this.collectGarbage(references);
     // Self-heal per-owner quota counters against actual records (the unconditional
     // decrement on teardown can drift them); cheap full-table tally, last so it sees
     // this sweep's finished deletes.

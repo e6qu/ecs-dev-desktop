@@ -38,6 +38,8 @@ function fakeService(overrides: Partial<ReconcilerService> = {}): ReconcilerServ
     listSnapshotCandidates: () => Promise.resolve([]),
     snapshot: () => Promise.reject(new Error("snapshot not expected")),
     listReferencedStorage: () => Promise.resolve({ volumeIds: [], snapshotIds: [] }),
+    listFleetReferences: () =>
+      Promise.resolve({ volumeIds: [], snapshotIds: [], taskIds: [], secretWorkspaceIds: [] }),
     listReferencedTasks: () => Promise.resolve([]),
     listRuntimeSecretWorkspaceIds: () => Promise.resolve([]),
     listStuckProvisioning: () => Promise.resolve([]),
@@ -546,6 +548,62 @@ describe("Reconciler.reapOrphanSecrets", () => {
       clock: fixedClock("2026-06-01T02:00:00.000Z"),
     });
     expect(await reconciler.reapOrphanSecrets()).toEqual({ scanned: 0, reaped: 0, failed: 0 });
+  });
+});
+
+describe("Reconciler.runMaintenance shares one reference scan", () => {
+  it("scans the fleet once for all keep-sets, not once per reaper", async () => {
+    // Count each service read so we can prove the maintenance tick reaps orphan tasks,
+    // secrets, and storage from a SINGLE listFleetReferences scan — never the three
+    // separate full-table scans the individual listReferenced* methods would do.
+    const calls = { fleet: 0, storage: 0, tasks: 0, secrets: 0 };
+    const service = fakeService({
+      listFleetReferences: () => {
+        calls.fleet += 1;
+        return Promise.resolve({
+          volumeIds: [],
+          snapshotIds: [],
+          taskIds: [],
+          secretWorkspaceIds: [],
+        });
+      },
+      listReferencedStorage: () => {
+        calls.storage += 1;
+        return Promise.resolve({ volumeIds: [], snapshotIds: [] });
+      },
+      listReferencedTasks: () => {
+        calls.tasks += 1;
+        return Promise.resolve([]);
+      },
+      listRuntimeSecretWorkspaceIds: () => {
+        calls.secrets += 1;
+        return Promise.resolve([]);
+      },
+    });
+    // A compute backend that can enumerate tasks + secrets, so the reapers actually run
+    // (and thus would call the per-reaper scans if they still used them).
+    const compute: ComputeProvider = {
+      runTask: () => Promise.reject(new Error("runTask not expected")),
+      taskState: () => Promise.resolve("stopped"),
+      stopTask: () => Promise.resolve(),
+      listWorkspaceTasks: () => Promise.resolve([]),
+      listWorkspaceAgentSecrets: () => Promise.resolve([]),
+      deleteAgentSecret: () => Promise.resolve(),
+    };
+    const reconciler = new Reconciler({
+      service,
+      storage: await emptyStorage(),
+      compute,
+      clock: fixedClock("2026-06-01T02:00:00.000Z"),
+      gcGraceMs: ONE_HOUR,
+    });
+
+    await reconciler.runMaintenance();
+
+    expect(calls.fleet).toBe(1);
+    expect(calls.storage).toBe(0);
+    expect(calls.tasks).toBe(0);
+    expect(calls.secrets).toBe(0);
   });
 });
 

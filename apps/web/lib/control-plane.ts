@@ -16,6 +16,7 @@ import {
 import { iamPreflight } from "@edd/iam-preflight";
 
 import { resolveWorkspacePricing } from "./aws-pricing";
+import { ttlCache } from "./ttl-cache";
 import {
   CatalogService,
   ControlPlaneActivityService,
@@ -65,6 +66,7 @@ let auditEvents: ReturnType<typeof makeAuditEventEntity> | undefined;
 let ownerCounts: ReturnType<typeof makeOwnerWorkspaceCountEntity> | undefined;
 let controlPlaneActivity: ControlPlaneActivityService | undefined;
 let trafficFilter: TrafficFilterService | undefined;
+let costRollups: StoredCostRollupStore | undefined;
 
 /** The shared `auditEvent` entity over the single table. `WorkspaceService`
  * writes lifecycle events to it atomically with each transition; the audit log
@@ -126,17 +128,23 @@ export function getTrafficFilterService(): TrafficFilterService {
  * (us-east-1 on-demand default, env-overridable) rates and each workspace's
  * persisted CPU/RAM/disk sizing. */
 export async function getCostService(): Promise<CostService> {
+  // The rollup store wraps a Dynamo entity over a fresh client — memoize it so a burst of
+  // cost reads (admin Costs page + its live refresh) shares one client, not one per call.
+  costRollups ??= new StoredCostRollupStore(
+    makeCostRollupEntity(createDynamoClient(), tableName()),
+  );
   return new CostService({
     audit: getAuditLog(),
     workspaces: await getControlPlane(),
     clock: systemClock,
-    // Live AWS Price List rates for the region when EDD_AWS_PRICING=1, else the
-    // configured rates (us-east-1 default, EDD_PRICE_*-overridable).
+    // Live AWS Price List rates for the region when EDD_AWS_PRICING=1, else the configured
+    // rates (us-east-1 default, EDD_PRICE_*-overridable). Read per call, but itself TTL-cached
+    // (6h) — so the CostService always sees fresh-enough rates without a Price List call each read.
     pricing: await resolveWorkspacePricing(),
     // Price from persisted checkpoints + the tail since them (O(recent)); falls
     // back to the exact full-ledger scan until `rollup()` first runs. Same GSI1 the
     // audit feed already uses — no table change.
-    rollups: new StoredCostRollupStore(makeCostRollupEntity(createDynamoClient(), tableName())),
+    rollups: costRollups,
   });
 }
 
@@ -147,6 +155,59 @@ export function getCatalog(): CatalogService {
     clock: systemClock,
   });
   return catalog;
+}
+
+/** Short TTL for the cached catalog list. The base-image catalog is near-static (admin
+ * mutations are rare) but is read on every workspaces render (per user, per live refresh)
+ * and every workspace-list API call — so a `byCatalog` query per read is wasteful at scale. */
+const CATALOG_LIST_TTL_MS = 10_000;
+const cachedCatalogList = ttlCache<Awaited<ReturnType<CatalogService["list"]>>>(
+  () => getCatalog().list(),
+  CATALOG_LIST_TTL_MS,
+);
+
+/**
+ * The base-image catalog list, process-shared TTL-cached (10s) so a burst of renders/list
+ * calls shares one query. Use this on READ/render paths; the admin catalog EDITOR page reads
+ * `getCatalog().list()` directly so it always shows an admin their just-made change. A mutation
+ * becomes visible on read paths within the TTL (same convergence budget as the fleet aggregate).
+ */
+export function getCatalogList(
+  nowMs: number = Date.now(),
+): Promise<Awaited<ReturnType<CatalogService["list"]>>> {
+  return cachedCatalogList(nowMs);
+}
+
+type FleetCostReport = Awaited<ReturnType<CostService["report"]>>;
+
+/** Short TTL for the cached windowed cost report. Even with rollup checkpoints the report
+ * prices the tail of the ledger + every non-terminated session's sizing on each call, and it
+ * is read on the admin Costs render AND polled by that page's live refresh AND by every
+ * workspace-monitoring request — so without a cache a burst re-scans the ledger repeatedly. */
+const COST_REPORT_TTL_MS = 10_000;
+/** One TTL cache per distinct window (keyed by its day-count; `null` = full lifecycle). The
+ * `null`/"all" entry is shared by the admin Costs "all" window and every monitoring read. */
+const costReportCaches = new Map<string, (nowMs: number) => Promise<FleetCostReport>>();
+
+/**
+ * The fleet cost report for a window (`days` lookback, or `null` for the full lifecycle),
+ * process-shared TTL-cached (10s) per window. A new session's cost becomes visible within the
+ * TTL (same convergence budget as the fleet/catalog aggregates).
+ */
+export function getCostReport(
+  days: number | null,
+  nowMs: number = Date.now(),
+): Promise<FleetCostReport> {
+  const key = days === null ? "all" : String(days);
+  let cache = costReportCaches.get(key);
+  if (cache === undefined) {
+    cache = ttlCache<FleetCostReport>(
+      async () => (await getCostService()).report(days),
+      COST_REPORT_TTL_MS,
+    );
+    costReportCaches.set(key, cache);
+  }
+  return cache(nowMs);
 }
 
 /** Account-level SSH public keys over the same single table. Backs the

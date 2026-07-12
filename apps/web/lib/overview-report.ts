@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import type { OverviewReportDto, WorkspaceStateDto } from "@edd/api-contracts";
 
-import { getCatalog } from "./control-plane";
+import { getCatalogList } from "./control-plane";
 import { getFleetStatus } from "./fleet-status";
 
 /**
@@ -11,7 +11,7 @@ import { getFleetStatus } from "./fleet-status";
  * short-TTL cached (see `getFleetStatus`) so this is cheap at 200+ workspaces.
  */
 export async function getOverviewReport(): Promise<OverviewReportDto> {
-  const [{ stats, owners }, catalog] = await Promise.all([getFleetStatus(), getCatalog().list()]);
+  const [{ stats, owners }, catalog] = await Promise.all([getFleetStatus(), getCatalogList()]);
   return {
     workspaces: { total: stats.total, active: stats.active, stopped: stats.byState.stopped },
     activeUsers: owners,

@@ -811,23 +811,29 @@ evidence-backed from the four audits):
   decision for a short TTL keyed by (session-cookie hash + wsId); highest per-request cost on the
   proxy path. Deferred because it touches the security-critical auth path and wants a 200-user
   load test to confirm the gain and the fail-closed-at-exp behaviour.
-- **PERF (deferred): the WINDOWED cost report (1d/7d/30d) re-scans the entire audit ledger every
-  15s refresh** (`cost-service.ts` forces `fullScanReport` when `windowDays != null`; the rollup
-  `since()` fast path is used only for `window=all`). Bound the windowed read (windowed checkpoint,
-  or `byTime ≥ windowStart` + per-workspace create lookup) or TTL-cache the windowed report. Guard
-  with the existing figure-equivalence integ.
-- **PERF (smaller, deferred):** reconciler issues ~6-7 independent full-table scans of the same
-  table per sweep (read the fleet once, derive keep-sets); catalog `list()` uncached (short TTL,
-  invalidate on catalog mutation); image-source reconcile sweep runs on every web replica (make
-  single-owner via a DynamoDB lease or move to the reconciler); `getCostService()` not memoized;
-  `WorkspaceLive` polls at 1s with no backoff once running/ok; live AWS pricing (opt-in
-  `EDD_AWS_PRICING=1`) is uncached + re-fetched per report (wrap in a TTL cache before enabling).
-- **UX (deferred):** SpectateViewer's full-container interaction shield also blocks scrolling the
-  mirrored file/terminal, and the spectate page has no in-content back link (only TopNav) — let
-  wheel/scroll reach the scroll containers while still blocking clicks/keys, and add a visible
-  "back to workspaces" link. Add `LiveRefresh` to the remaining `force-dynamic` admin pages
-  (users, quotas, logs, catalog). Costs page's derived tiles: also consider a computed
-  "unattributed platform overhead" line = CE-total − attributed-workspace-total.
+- **PERF (DONE — windowed cost report TTL cache):** the windowed cost report (1d/7d/30d + all) is
+  now process-shared TTL-cached per window (`getCostReport(days)` in `control-plane.ts`, 10s TTL),
+  so the admin Costs render, its 15s live refresh, and every workspace-monitoring read share one
+  scan instead of re-pricing the ledger each call. (A tighter windowed checkpoint/`byTime` bound
+  is still possible later, but the cache removes the per-refresh full rescan cost.)
+- **PERF (DONE — reconciler scan dedup + caches):** the maintenance tick now takes ONE fleet scan
+  (`listFleetReferences`) after the mutating sweeps and threads its keep-sets into the orphan-task,
+  orphan-secret, and storage GC reapers (was three identical `scan.go` sweeps); catalog `list()` is
+  TTL-cached on read paths (`getCatalogList`, 10s; the editor page stays fresh); `getCostService()`
+  memoizes its rollup store; `WorkspaceLive` polls at 1s while transitional and backs off to 10s/15s
+  once settled (ready/stopped/terminated/error), staying fast while a resume is in flight; live AWS
+  pricing (`EDD_AWS_PRICING=1`) is TTL-cached (6h). Still open: the image-source reconcile sweep runs
+  on every web replica (make single-owner via a DynamoDB lease or move to the reconciler).
+- **UX (DONE — spectate + admin convergence):** SpectateViewer's read-only file/terminal panes now
+  sit above the interaction shield (zIndex 42 > 40) so they scroll/select while everything else
+  stays inert (security is the absent write path, not the overlay); the spectate page gained a
+  visible top-level "← all workspaces" back link (§9). `LiveRefresh` added to the remaining
+  server-rendered admin pages (users, quotas, logs, invitations, catalog); snapshots/images already
+  poll via `usePoll`, health/infrastructure via their board components, and the traffic client editor
+  fetches once (page-level refresh wouldn't re-trigger it). Still open: the Costs page's optional
+  computed "unattributed platform overhead" line = CE-total − attributed-workspace-total.
+- **PERF (deferred): editor-proxy re-authorizes every sub-resource request** — see the bullet above;
+  still deferred (security-critical auth path, wants a 200-user load test).
 - **SECURITY (low, deferred):** the per-workspace connection token is a non-rotating HMAC placed in
   the `?tkn=` URL (browser history / access logs) and reused as the container credential. Prefer
   handing it via `Set-Cookie` on the redirect (the `vscode-tkn` cookie path exists) or rotate per

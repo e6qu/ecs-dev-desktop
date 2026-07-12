@@ -26,6 +26,19 @@ export interface ReferencedStorage {
   readonly snapshotIds: readonly SnapshotId[];
 }
 
+/**
+ * Every keep-set the maintenance reapers/GC need, derived from ONE workspace-table scan
+ * (storage refs + task refs + secret-owning workspace ids). The reconciler's maintenance
+ * tick reaps orphan tasks, orphan secrets, and orphan storage back-to-back; computing all
+ * three keep-sets from a single scan avoids three full-table scans per tick.
+ */
+export interface FleetReferences extends ReferencedStorage {
+  /** Task ids a workspace record still names — the orphan-task reaper's keep-set. */
+  readonly taskIds: readonly TaskId[];
+  /** Ids of workspaces that still reference a runtime task — the secret reaper's keep-set. */
+  readonly secretWorkspaceIds: readonly WorkspaceId[];
+}
+
 function olderThan(createdAt: IsoTimestamp, now: IsoTimestamp, ms: number): boolean {
   return Date.parse(now) - Date.parse(createdAt) >= ms;
 }

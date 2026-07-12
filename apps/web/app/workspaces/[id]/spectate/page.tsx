@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { isWorkspaceLabel, workspaceId } from "@edd/core";
+import Link from "next/link";
 
 import { SpectateViewer } from "../../../../components/SpectateViewer";
 import { SignedOutBlock } from "../../../../components/SignedOutBlock";
 import { StateBlock } from "../../../../components/StateBlock";
 import { getControlPlane } from "../../../../lib/control-plane";
 import { getPagePrincipal } from "../../../../lib/principal";
+import { TESTID } from "../../../../lib/testids";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +42,11 @@ export default async function SpectatePage({ params }: { params: Promise<{ id: s
           <div className="kicker">spectate</div>
           <h1 className="mono">{id}</h1>
         </div>
+        {/* Visible top-level route back to the workspace list (§9): the spectate surface has no
+            editor chrome of its own, so it must expose its own way back beyond the global nav. */}
+        <Link href="/workspaces" className="btn" data-testid={TESTID.spectateBackLink}>
+          ← all workspaces
+        </Link>
       </div>
       <SpectateViewer id={id} owner={detail.workspace.ownerId} />
     </>

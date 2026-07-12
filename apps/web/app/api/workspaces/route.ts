@@ -14,7 +14,7 @@ import {
   forbidden,
   isResponse,
 } from "../../../lib/api";
-import { getCatalog, getControlPlane } from "../../../lib/control-plane";
+import { getCatalog, getCatalogList, getControlPlane } from "../../../lib/control-plane";
 import { log } from "../../../lib/logger";
 import { getMetrics } from "../../../lib/metrics";
 import { catalogByImage, enrichWorkspace } from "../../../lib/workspace-enrich";
@@ -34,7 +34,7 @@ async function handleGET(req: Request) {
     principal.role === "admin" ? await cp.list() : await cp.list({ ownerId: principal.id });
   // Return ready-to-render DTOs: resolve the catalog image + ssh command server-side so
   // the UI (and any reskinned/external client) renders without re-joining the catalog.
-  const byImage = catalogByImage(await getCatalog().list());
+  const byImage = catalogByImage(await getCatalogList());
   const workspaces = raw.map((ws) => enrichWorkspace(ws, byImage));
   return NextResponse.json({ workspaces });
 }
