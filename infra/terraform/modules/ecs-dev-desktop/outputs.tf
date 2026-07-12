@@ -177,3 +177,13 @@ output "nat_instance_eni_id" {
   description = "ENI id of the fck-nat NAT instance (null unless nat_mode = instance)."
   value       = var.nat_mode == "instance" ? module.fck_nat[0].eni_id : null
 }
+
+output "s3_vpc_endpoint_id" {
+  description = "ID of the S3 gateway VPC endpoint (private-subnet S3/ECR-layer traffic bypasses NAT)."
+  value       = aws_vpc_endpoint.s3.id
+}
+
+output "dynamodb_vpc_endpoint_id" {
+  description = "ID of the DynamoDB gateway VPC endpoint (private-subnet DynamoDB traffic bypasses NAT)."
+  value       = aws_vpc_endpoint.dynamodb.id
+}
