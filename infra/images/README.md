@@ -68,12 +68,17 @@ volume's extensions dir and persist across restarts.
 
 Cross-cutting notes:
 
-- **`$HOME` is the EBS mount** (`/home/workspace`). Anything baked there at build
-  time is shadowed by the volume at runtime, so home-resident defaults (editor
-  settings, the npm global prefix dir) are seeded **at first boot** or kept in a
-  system path. Variants that run their own system `npm install -g` at build must
-  override the npm prefix back to `/usr/local` for that step (the base sets a
-  home prefix via `NPM_CONFIG_PREFIX`, which is inherited).
+- **The EBS volume mounts at `/data`** (`@edd/config` `DEFAULT_WORKSPACE_MOUNT_PATH`) and is
+  split so editor/tool state never pollutes the user's working directory: `/data/project` is the
+  pwd / shell cwd / editor opened folder (clean, empty for a fresh workspace); `$HOME` is
+  `/data/home` (editor + tool config, state, caches, shell history — persisted but OUT of the
+  project); `/data/extensions` holds the user's writable OpenVSCode extensions (persisted, out of
+  the project). The editor software itself is read-only under `/opt` + `/usr/local` (baked). Anything
+  baked under `/data` at build is shadowed by the volume at runtime, so the directory layout +
+  home-resident defaults (editor settings, npm prefix dir, the first-party extension) are created
+  **at first boot** (mkdir/idempotent copy — never a build) or kept in a system path. Variants that
+  run their own system `npm install -g` at build must override the npm prefix back to `/usr/local`
+  for that step (the base sets a home prefix via `NPM_CONFIG_PREFIX`, which is inherited).
 - **PATH for user-installed CLIs** (`~/.npm-global/bin`, `~/.local/bin`) is set in
   three places so every shell sees it: image `ENV` (non-login `bash -c`),
   `/etc/profile.d/edd-path.sh` (login terminal), and an sshd `SetEnv` drop-in

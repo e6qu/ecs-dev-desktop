@@ -205,8 +205,8 @@ describe.skipIf(!HAVE_VARIANT_IMAGES)(
         const prefix = sh(
           'p="$(npm config get prefix)"; mkdir -p "$p/bin" && touch "$p/bin/.probe" && echo "$p"',
         ).trim();
-        expect(prefix).toContain("/home/workspace/.npm-global");
-        expect(sh('echo "$PATH"')).toContain("/home/workspace/.npm-global/bin");
+        expect(prefix).toContain("/data/home/.npm-global");
+        expect(sh('echo "$PATH"')).toContain("/data/home/.npm-global/bin");
         expect(sh("cat ~/.openvscode-server/data/User/settings.json")).toContain(
           "Default Dark Modern",
         );

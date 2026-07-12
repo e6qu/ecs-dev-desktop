@@ -7,8 +7,8 @@
 ARG BASE=edd-base:latest
 FROM ${BASE}
 
-ENV GOPATH="/home/workspace/go"
-ENV PATH="/usr/local/go/bin:/home/workspace/go/bin:${PATH}"
+ENV GOPATH="/data/home/go"
+ENV PATH="/usr/local/go/bin:/data/home/go/bin:${PATH}"
 
 # C toolchain for cgo.
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential \
@@ -47,11 +47,11 @@ RUN openvscode-server --install-extension golang.go --extensions-dir /opt/openvs
 # Go dirs aren't on the base PATH — overwrite the PATH drop-ins so login shells and
 # the ssh-exec channel both find `go` (the base only covers user-CLI + system dirs).
 RUN printf '%s\n' \
-      'export GOPATH="/home/workspace/go"' \
-      'export PATH="/home/workspace/.npm-global/bin:/home/workspace/.local/bin:/usr/local/go/bin:/home/workspace/go/bin:${PATH}"' \
+      'export GOPATH="/data/home/go"' \
+      'export PATH="/data/home/.npm-global/bin:/data/home/.local/bin:/usr/local/go/bin:/data/home/go/bin:${PATH}"' \
       > /etc/profile.d/edd-path.sh \
     && chmod 0644 /etc/profile.d/edd-path.sh
 RUN printf '%s\n' \
-      'SetEnv PATH=/home/workspace/.npm-global/bin:/home/workspace/.local/bin:/usr/local/go/bin:/home/workspace/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' \
+      'SetEnv PATH=/data/home/.npm-global/bin:/data/home/.local/bin:/usr/local/go/bin:/data/home/go/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' \
       > /etc/ssh/sshd_config.d/10-edd-path.conf \
     && chmod 0644 /etc/ssh/sshd_config.d/10-edd-path.conf

@@ -847,3 +847,11 @@ evidence-backed from the four audits):
   breaks the test harness. Add a backstop keyed on an EXPLICIT real-prod signal the harness
   never sets (e.g. `EDD_ENV=production` set only by the deploy, or "real IdP configured"),
   then fail closed if `EDD_DEV_AUTH=1` appears alongside it.
+
+- **WORKSPACE (DONE — `edd-workspace-ui` is now a true built-in).** The pwd-clean PR also removed the
+  last first-boot step: the first-party extension is packaged to a `.vsix` (`@vscode/vsce@3.9.2`,
+  `--allow-missing-repository --no-dependencies`) and `--install-extension`ed into
+  `/opt/openvscode-server/extensions` at IMAGE BUILD, so it registers as a real built-in (verified
+  in a linux container: `--list-extensions` shows `edd.edd-workspace-ui`, folder is root-owned
+  read-only). Loads with NO runtime copy and is non-user-modifiable; the runtime copy in
+  `entrypoint.sh` is gone. The user's own extensions still install into `/data/extensions`.

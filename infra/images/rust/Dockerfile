@@ -42,10 +42,10 @@ RUN openvscode-server --install-extension rust-lang.rust-analyzer --extensions-d
 RUN printf '%s\n' \
       'export RUSTUP_HOME="/opt/rust/rustup"' \
       'export CARGO_HOME="/opt/rust/cargo"' \
-      'export PATH="/home/workspace/.npm-global/bin:/home/workspace/.local/bin:/opt/rust/cargo/bin:${PATH}"' \
+      'export PATH="/data/home/.npm-global/bin:/data/home/.local/bin:/opt/rust/cargo/bin:${PATH}"' \
       > /etc/profile.d/edd-path.sh \
     && chmod 0644 /etc/profile.d/edd-path.sh
 RUN printf '%s\n' \
-      'SetEnv PATH=/home/workspace/.npm-global/bin:/home/workspace/.local/bin:/opt/rust/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' \
+      'SetEnv PATH=/data/home/.npm-global/bin:/data/home/.local/bin:/opt/rust/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' \
       > /etc/ssh/sshd_config.d/10-edd-path.conf \
     && chmod 0644 /etc/ssh/sshd_config.d/10-edd-path.conf

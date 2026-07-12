@@ -39,8 +39,25 @@ export const DEFAULT_WORKSPACE_CONTAINER = "workspace";
  * task's CloudWatch stream `<prefix>/<containerName>/<taskId>`; the admin Logs view
  * uses this to filter the shared workspaces log group to one workspace. */
 export const DEFAULT_WORKSPACE_LOG_STREAM_PREFIX = "workspace";
-/** EBS volume mount path inside the workspace container (= workspace user home). */
-export const DEFAULT_WORKSPACE_MOUNT_PATH = "/home/workspace";
+/**
+ * EBS volume mount path inside the workspace container — the persisted root. It is deliberately
+ * NOT the user's home/pwd: the user works in {@link DEFAULT_WORKSPACE_PROJECT_PATH} (a clean,
+ * empty-when-fresh subdir), while editor/tool state lives under {@link DEFAULT_WORKSPACE_HOME_PATH}
+ * (HOME) and OpenVSCode extensions under {@link DEFAULT_WORKSPACE_EXTENSIONS_PATH} — all persisted
+ * on this volume but OUT of the project dir, so an empty workspace's pwd stays empty. The editor
+ * software itself is read-only under /opt + /usr/local (baked at image build). These path literals
+ * are mirrored in the workspace image (Dockerfile/entrypoint.sh) — keep them in sync.
+ */
+export const DEFAULT_WORKSPACE_MOUNT_PATH = "/data";
+/** The user's project directory: pwd, shell cwd, and the editor's opened folder. Clean/empty for a
+ * fresh workspace (a cloned repo lands in a subdir); persisted under the mount. */
+export const DEFAULT_WORKSPACE_PROJECT_PATH = "/data/project";
+/** The workspace user's HOME — editor/tool config, state, caches, shell history — persisted but
+ * OUTSIDE the project pwd so it never pollutes the user's working directory. */
+export const DEFAULT_WORKSPACE_HOME_PATH = "/data/home";
+/** Writable, persisted OpenVSCode user-extensions directory — the one editor-state dir the user
+ * mutates (installs), kept out of the project pwd. */
+export const DEFAULT_WORKSPACE_EXTENSIONS_PATH = "/data/extensions";
 /** Port OpenVSCode Server listens on inside the workspace container. */
 export const DEFAULT_WORKSPACE_PORT = 3000;
 /** How often the idle-agent POSTs /heartbeat (seconds). 2 minutes: fires within
