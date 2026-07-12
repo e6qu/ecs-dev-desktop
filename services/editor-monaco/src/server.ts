@@ -12,7 +12,7 @@ import {
 import * as path from "node:path";
 
 import { buildTree, readTextFile, writeTextFile } from "./file-api";
-import { attachTerminal } from "./terminal";
+import { attachTerminal, type PtySpawner } from "./terminal";
 import { tokenCookie, tokenFromRequest, tokensMatch } from "./token";
 
 export interface EditorServerOptions {
@@ -29,6 +29,8 @@ export interface EditorServerOptions {
   readonly terminalCommand?: string;
   /** Hide the Monaco/file explorer surface and present the terminal as the workspace. */
   readonly terminalOnly?: boolean;
+  /** Override the PTY backend (tests inject a fake shell). Defaults to real node-pty. */
+  readonly spawnPty?: PtySpawner;
 }
 
 const MIME: Record<string, string> = {
@@ -100,6 +102,7 @@ export function createEditorServer(opts: EditorServerOptions): Server {
     basePath: base,
     ...(opts.token === undefined ? {} : { token: opts.token }),
     ...(opts.terminalCommand === undefined ? {} : { command: opts.terminalCommand }),
+    ...(opts.spawnPty === undefined ? {} : { spawnPty: opts.spawnPty }),
   });
   return server;
 

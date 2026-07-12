@@ -98,6 +98,12 @@ async function assertWorkspaceHomeLink(editor: Editor, page: Page): Promise<void
  * only ever passed by accident — and it masked the real failure where the proxy corrupted
  * the JS bundle and `#root` stayed empty (blank page). `#root` gaining children is the true
  * "opencode rendered" signal; the document title is a robust secondary marker.
+ *
+ * KNOWN-INSUFFICIENT (see BUGS.md "opencode still renders BLANK … base-path ROUTING"): this
+ * passes on a mounted-but-blank app, because opencode's path-router matches no route under the
+ * `/w/<id>/` proxy prefix and paints only its out-of-router `dialog-stack` chrome. Strengthen to
+ * require the routed UI once the base-path routing fix (proxy virtualization or upstream flag)
+ * lands — doing so before then would make this gate permanently red.
  */
 async function assertOpencodeMounted(page: Page): Promise<void> {
   await page.waitForFunction(
@@ -151,6 +157,11 @@ async function writeTerminalFile(page: Page, file: string, value: string): Promi
   );
 }
 
+/** The visible tab labels, in DOM (tab-strip) order. */
+async function terminalTabNames(page: Page): Promise<string[]> {
+  return page.locator(".terminal-tab-select").allInnerTexts();
+}
+
 async function assertTerminalWorkflow(page: Page): Promise<void> {
   await page.waitForFunction(() => document.body.innerText.includes("Terminal"));
   await page.locator("#terminal-panes .xterm").first().waitFor({ state: "visible" });
@@ -163,9 +174,26 @@ async function assertTerminalWorkflow(page: Page): Promise<void> {
   await page.getByRole("tab", { name: "Terminal 2" }).click();
   await writeTerminalFile(page, "edd-smoke-terminal-2.txt", "terminal-two");
 
+  // Rename a tab (double-click → inline input → Enter); an empty name reverts to the default.
+  await page.getByRole("tab", { name: "Terminal 2" }).dblclick();
+  await page.locator(".terminal-tab-rename").fill("build");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("tab", { name: "build" })).toHaveCount(1, { timeout: 10_000 });
+  await page.getByRole("tab", { name: "build" }).dblclick();
+  await page.locator(".terminal-tab-rename").fill("");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("tab", { name: "Terminal 2" })).toHaveCount(1, { timeout: 10_000 });
+
+  // Reorder via the accessible keyboard move (Alt+Shift+←): Terminal 2 moves ahead of Terminal 1.
+  await page.getByRole("tab", { name: "Terminal 2" }).focus();
+  await page.keyboard.press("Alt+Shift+ArrowLeft");
+  await expect
+    .poll(() => terminalTabNames(page), { timeout: 10_000 })
+    .toEqual(["Terminal 2", "Terminal 1"]);
+
+  // Close the active tab: back to one, and the closed tab's label is gone.
   await page.locator(".terminal-tab.active .terminal-tab-close").click();
   await expect(page.locator(".terminal-tab")).toHaveCount(1, { timeout: 15_000 });
-  await expect(page.getByRole("tab", { name: "Terminal 2" })).toHaveCount(0);
 }
 
 async function writeDiagnostic(

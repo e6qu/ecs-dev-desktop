@@ -2,7 +2,19 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-12. Active branch `perf/deferred-efficiency-convergence-ux`
+**Last updated:** 2026-07-12 (later). Active branch `feat/terminal-tabs-rename-reorder`
+(on top of #229 `4b511a9`) verifies the deployed workspaces end-to-end and extends the
+first-party **terminal**: tabs are now renameable (double-click), nameable/no-name (empty
+reverts to the id-based default), and reorderable by drag AND `Alt+Shift+←/→`. The
+close→no-stale-session guarantee is now proven by unit tests (injectable PTY spawner). All
+terminal behaviors were verified in a real browser (built SPA + fake PTY, 11/11) and the
+deployed smoke covers rename+reorder. **opencode** was root-caused to a base-path ROUTING
+issue (its path-router matches no route under the `/w/<id>/` proxy prefix; the proxy itself
+delivers everything correctly); base-path virtualization was attempted and is technically
+impossible (Location's path accessors are [Unforgeable]), and opencode has no base-path flag —
+so opencode is BLOCKED with no clean in-repo fix. Options recorded in `BUGS.md` + `DO_NEXT.md`.
+
+The prior sweep branch `perf/deferred-efficiency-convergence-ux`
 (on top of #228 `f488cdc`) works through the deferred efficiency/convergence/UX items
 `DO_NEXT` accumulated during the cost-reporting sweep — no new features, all boy-scout:
 (P4) live AWS pricing TTL-cached (6h); (P8) catalog `list()` TTL-cached on read paths

@@ -12,6 +12,7 @@ import {
   captureTermOutput,
   initSpectateCapture,
 } from "./spectate-capture";
+import { displayTabLabel, moveInArray, nextActiveAfterClose, normalizeTabName } from "./tab-order";
 import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
 import jsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
 import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
@@ -219,6 +220,8 @@ editor.onDidChangeModelContent(() => {
 // keybinding convention as VS Code, shown as a hint on the toggle button.
 interface TerminalTab {
   id: number;
+  /** Custom tab name, or `null` for the id-based default label (`Terminal <id>`). */
+  name: string | null;
   term: Terminal;
   fit: FitAddon;
   sock: WebSocket;
@@ -226,6 +229,8 @@ interface TerminalTab {
   tabShell: HTMLElement;
   tabButton: HTMLButtonElement;
   closeButton: HTMLElement;
+  /** True while the tab's shell/select carries the `error` state (failed PTY). */
+  failed: boolean;
 }
 
 const tabs: TerminalTab[] = [];
@@ -277,26 +282,116 @@ function activateTab(id: number): void {
 function closeTerminalTab(id: number): void {
   const index = tabs.findIndex((t) => t.id === id);
   if (index === -1) return;
+  // Decide the next-active BEFORE mutating, from the current order (pure).
+  const nextId = nextActiveAfterClose(
+    tabs.map((t) => t.id),
+    id,
+    activeTabId,
+  );
   const [tab] = tabs.splice(index, 1);
   if (tab === undefined) throw new Error(`terminal tab ${String(id)} disappeared during close`);
+  // Closing the socket makes the server kill this tab's PTY (see terminal.ts `ws.on("close")`),
+  // so no shell is left running after the tab is gone — closed tabs leave no stale session.
   tab.sock.close();
   tab.term.dispose();
   tab.pane.remove();
   tab.tabShell.remove();
-  if (activeTabId !== id) {
-    captureTabs(tabs.length, activeTabId);
-    return;
-  }
-  const next = tabs[index] ?? tabs[index - 1];
-  if (next === undefined) {
+  if (nextId === null) {
     activeTabId = null;
     captureTabs(0, null);
     setTerminalPanelVisible(false);
     return;
   }
-  activateTab(next.id);
-  captureTabs(tabs.length, next.id);
+  if (nextId !== activeTabId) activateTab(nextId);
+  captureTabs(tabs.length, nextId);
 }
+
+/** Paint a tab's visible label from its current name/id/failed state. Central so rename,
+ * reorder, and the PTY-failed branch all render through one place. */
+function renderTabLabel(tab: TerminalTab): void {
+  const label = displayTabLabel(tab.name, tab.id);
+  tab.tabButton.textContent = tab.failed ? `${label} — failed` : label;
+  tab.tabButton.title = `${label} — double-click to rename, Alt+Shift+←/→ to move`;
+  tab.closeButton.setAttribute("aria-label", `Close ${label}`);
+}
+
+/** Inline-rename a tab: swap the tab button for a text input seeded with the current name.
+ * Enter/blur commits (empty ⇒ back to the default `Terminal <id>`), Escape cancels. */
+function beginRename(tab: TerminalTab): void {
+  if (tab.tabShell.querySelector(".terminal-tab-rename") !== null) return; // already renaming
+  const input = document.createElement("input");
+  input.className = "terminal-tab-rename";
+  input.value = tab.name ?? "";
+  input.placeholder = displayTabLabel(null, tab.id);
+  input.setAttribute("aria-label", "Rename terminal tab");
+  tab.tabButton.hidden = true;
+  tab.tabShell.insertBefore(input, tab.tabButton);
+  let done = false;
+  const finish = (commit: boolean): void => {
+    if (done) return;
+    done = true;
+    if (commit) {
+      tab.name = normalizeTabName(input.value);
+      renderTabLabel(tab);
+    }
+    input.remove();
+    tab.tabButton.hidden = false;
+    if (tab.id === activeTabId) tab.term.focus();
+  };
+  input.addEventListener("keydown", (e: KeyboardEvent) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      finish(true);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      finish(false);
+    }
+    e.stopPropagation(); // don't let the global Ctrl+` handler see rename keystrokes
+  });
+  input.addEventListener("blur", () => {
+    finish(true);
+  });
+  input.focus();
+  input.select();
+}
+
+/** Reorder the `tabs` array and the DOM tab strip to match `order` (a permutation of the tab
+ * ids). Shells are re-inserted before the `+` button so they always precede it. */
+function applyTabOrder(order: readonly number[]): void {
+  const byId = new Map(tabs.map((t) => [t.id, t]));
+  const reordered = order
+    .map((id) => byId.get(id))
+    .filter((t): t is TerminalTab => t !== undefined);
+  if (reordered.length !== tabs.length) return; // guard against a stale/incomplete order
+  tabs.splice(0, tabs.length, ...reordered);
+  const anchor = el("new-terminal-tab");
+  for (const t of tabs) anchor.before(t.tabShell); // before() moves existing nodes into order
+}
+
+/** Move a tab one slot left (`-1`) or right (`+1`) — the keyboard/accessible counterpart of
+ * dragging. Keeps the active tab active and focused. */
+function moveTab(id: number, direction: -1 | 1): void {
+  const from = tabs.findIndex((t) => t.id === id);
+  if (from === -1) return;
+  const order = moveInArray(
+    tabs.map((t) => t.id),
+    from,
+    from + direction,
+  );
+  applyTabOrder(order);
+  tabs.find((t) => t.id === id)?.tabButton.focus();
+}
+
+/** Drop the dragged tab immediately before `targetId` (or at the end when `targetId` is null). */
+function reorderTabByDrag(draggedId: number, targetId: number | null): void {
+  if (draggedId === targetId) return;
+  const ids = tabs.map((t) => t.id).filter((tid) => tid !== draggedId);
+  const insertAt = targetId === null ? ids.length : ids.indexOf(targetId);
+  ids.splice(insertAt === -1 ? ids.length : insertAt, 0, draggedId);
+  applyTabOrder(ids);
+}
+
+let draggingTabId: number | null = null;
 
 function openNewTerminalTab(): void {
   const id = nextTabId++;
@@ -308,20 +403,61 @@ function openNewTerminalTab(): void {
   const tabShell = document.createElement("span");
   tabShell.className = "terminal-tab";
   tabShell.setAttribute("role", "presentation");
+  // Draggable so tabs can be reordered by dragging (keyboard: Alt+Shift+←/→ below).
+  tabShell.draggable = true;
+  tabShell.addEventListener("dragstart", (event) => {
+    draggingTabId = id;
+    tabShell.classList.add("dragging");
+    if (event.dataTransfer !== null) event.dataTransfer.effectAllowed = "move";
+  });
+  tabShell.addEventListener("dragend", () => {
+    draggingTabId = null;
+    tabShell.classList.remove("dragging");
+    for (const t of tabs) t.tabShell.classList.remove("drop-target");
+  });
+  tabShell.addEventListener("dragover", (event) => {
+    if (draggingTabId === null || draggingTabId === id) return;
+    event.preventDefault(); // mark as a valid drop target
+    if (event.dataTransfer !== null) event.dataTransfer.dropEffect = "move";
+    tabShell.classList.add("drop-target");
+  });
+  tabShell.addEventListener("dragleave", () => {
+    tabShell.classList.remove("drop-target");
+  });
+  tabShell.addEventListener("drop", (event) => {
+    event.preventDefault();
+    tabShell.classList.remove("drop-target");
+    if (draggingTabId !== null) reorderTabByDrag(draggingTabId, id);
+  });
 
   const tabButton = document.createElement("button");
   tabButton.type = "button";
   tabButton.className = "terminal-tab-select";
   tabButton.setAttribute("role", "tab");
-  tabButton.textContent = `Terminal ${String(tabs.length + 1)}`;
   tabButton.addEventListener("click", () => {
     activateTab(id);
+  });
+  // Double-click to rename (VS Code convention).
+  tabButton.addEventListener("dblclick", (event) => {
+    event.preventDefault();
+    const tab = tabs.find((t) => t.id === id);
+    if (tab !== undefined) beginRename(tab);
+  });
+  // Alt+Shift+←/→ moves this tab (accessible reorder that doesn't need a pointer).
+  tabButton.addEventListener("keydown", (event: KeyboardEvent) => {
+    if (!event.altKey || !event.shiftKey) return;
+    if (event.key === "ArrowLeft") {
+      event.preventDefault();
+      moveTab(id, -1);
+    } else if (event.key === "ArrowRight") {
+      event.preventDefault();
+      moveTab(id, 1);
+    }
   });
 
   const closeButton = document.createElement("button");
   closeButton.type = "button";
   closeButton.className = "terminal-tab-close";
-  closeButton.setAttribute("aria-label", `Close terminal ${String(tabs.length + 1)}`);
   closeButton.textContent = "×";
   closeButton.addEventListener("click", (event) => {
     event.stopPropagation();
@@ -354,7 +490,11 @@ function openNewTerminalTab(): void {
   sock.addEventListener("close", (event: CloseEvent) => {
     if (event.code === 1011) {
       tabShell.classList.add("error");
-      tabButton.textContent = `Terminal ${String(id)} failed`;
+      const failedTab = tabs.find((t) => t.id === id);
+      if (failedTab !== undefined) {
+        failedTab.failed = true;
+        renderTabLabel(failedTab);
+      }
       t.write("\r\n\x1b[31m[terminal session failed]\x1b[0m\r\n");
       return;
     }
@@ -368,7 +508,20 @@ function openNewTerminalTab(): void {
       sock.send(JSON.stringify({ type: "resize", cols, rows }));
   });
 
-  tabs.push({ id, term: t, fit, sock, pane, tabShell, tabButton, closeButton });
+  const tab: TerminalTab = {
+    id,
+    name: null,
+    term: t,
+    fit,
+    sock,
+    pane,
+    tabShell,
+    tabButton,
+    closeButton,
+    failed: false,
+  };
+  tabs.push(tab);
+  renderTabLabel(tab);
   activateTab(id);
   captureTabs(tabs.length, id);
 }

@@ -271,6 +271,27 @@ body.terminal-only #terminal-resizer {
   color: #fff;
   background: #ffffff1f;
 }
+.terminal-tab {
+  cursor: grab;
+}
+.terminal-tab.dragging {
+  opacity: 0.5;
+}
+.terminal-tab.drop-target {
+  border-color: var(--accent, #4a9eff);
+  box-shadow: inset 2px 0 0 var(--accent, #4a9eff);
+}
+.terminal-tab-rename {
+  background: #1e1e1e;
+  border: 1px solid var(--accent, #4a9eff);
+  border-radius: 3px;
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  padding: 1px 6px;
+  width: 9ch;
+  min-width: 6ch;
+}
 #new-terminal-tab {
   background: none;
   border: 1px solid var(--border-control);
