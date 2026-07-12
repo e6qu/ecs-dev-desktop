@@ -110,21 +110,9 @@ settings_dir=/data/home/.openvscode-server/data/User
 settings_file="${settings_dir}/settings.json"
 install -d -o workspace -g workspace -m 0755 "${settings_dir}"
 
-# Register the first-party extension through OpenVSCode's runtime extension scan path (the user
-# extensions dir /data/extensions, out of the project pwd). The release archive's built-in
-# extension registry is generated upstream, so copying an unpacked folder into
-# /opt/openvscode-server/extensions after that registry was built does not make the browser load
-# it — hence a copy into the scanned user dir. IDEMPOTENT: only (re)copy when absent or when the
-# image's version differs from the persisted one, so this is a one-time first-boot step (and a
-# re-copy after an image bump), never per-start work.
-edd_extension_src=/opt/openvscode-server/extensions/edd-workspace-ui
-edd_extension_dir=/data/extensions/edd-workspace-ui
-if [ ! -e "${edd_extension_dir}/package.json" ] ||
-  ! cmp -s "${edd_extension_src}/package.json" "${edd_extension_dir}/package.json"; then
-  rm -rf "${edd_extension_dir}"
-  cp -R "${edd_extension_src}" "${edd_extension_dir}"
-  chown -R workspace:workspace "${edd_extension_dir}"
-fi
+# (The first-party edd-workspace-ui extension is a real BUILT-IN, packaged to a .vsix and
+# `--install-extension`ed into /opt/openvscode-server/extensions at image build — so it loads
+# read-only with NO runtime copy. The user's own extensions still install into /data/extensions.)
 # Ensure server-side editor defaults are present. Browser-window defaults such as
 # the visible File/Edit/View menu bar come from the patched workbench bootstrap:
 # OpenVSCode stores those on the browser side, so writing them into this remote

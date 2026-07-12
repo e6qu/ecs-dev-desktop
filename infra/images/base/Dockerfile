@@ -91,14 +91,21 @@ RUN for ext in \
     done \
     && chmod -R a+rX /opt/openvscode-server/extensions
 
-# First-party EDD workspace extension (plain CommonJS, no build step): the
-# "EDD home" portal link (from EDD_CONTROL_PLANE_URL at runtime -- never a
-# hardcoded URL), a visible "Open terminal (Ctrl+`)" control, terminal-open on
-# startup, and the once-per-workspace CLI remote-OAuth tip. Copied as an
-# unpacked folder into the same built-in extensions dir -- the scanner loads
-# plain folders exactly like the stock built-ins (git, emmet, ...).
-COPY edd-ui-extension /opt/openvscode-server/extensions/edd-workspace-ui
-RUN chmod -R a+rX /opt/openvscode-server/extensions/edd-workspace-ui
+# First-party EDD workspace extension (plain CommonJS): the "EDD home" portal link (from
+# EDD_CONTROL_PLANE_URL at runtime -- never a hardcoded URL), a visible "Open terminal (Ctrl+`)"
+# control, terminal-open on startup, and the once-per-workspace CLI remote-OAuth tip. Packaged to a
+# .vsix and installed like the marketplace extensions above so it registers as a real BUILT-IN
+# (read-only, loads with NO runtime copy). A plain folder dropped into the extensions dir does NOT
+# load -- the release archive's built-in registry is generated upstream -- which is why the old
+# approach needed a first-boot copy into the user dir; `--install-extension` updates the registry.
+COPY edd-ui-extension /tmp/edd-ui-extension
+RUN cd /tmp/edd-ui-extension \
+    && npx -y @vscode/vsce@3.9.2 package --no-dependencies --allow-missing-repository \
+         -o /tmp/edd-workspace-ui.vsix \
+    && openvscode-server --install-extension /tmp/edd-workspace-ui.vsix \
+         --extensions-dir /opt/openvscode-server/extensions \
+    && chmod -R a+rX /opt/openvscode-server/extensions \
+    && rm -rf /tmp/edd-ui-extension /tmp/edd-workspace-ui.vsix /root/.npm
 
 # Cross-cutting CLIs (installed system-wide to /usr/local BEFORE the home npm prefix
 # is set below, so they land in /usr/local — on PATH for every shell): the JS/TS
