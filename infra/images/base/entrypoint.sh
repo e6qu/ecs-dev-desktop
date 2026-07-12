@@ -18,21 +18,25 @@ if ! printf '%s' "${EDD_WORKSPACE_ID}" | grep -Eq '^[a-z0-9][a-z0-9-]{0,38}$'; t
 fi
 
 install -d -o root -g root -m 0755 /run/sshd
-# Each path below is its own `install -d` argument, not a single nested path --
-# GNU coreutils' `install -d` only chowns/chmods the LEAF of a given path,
-# creating any missing intermediate components with the default mode (root-
-# owned, since this script still runs as root here). A single call for the
-# nested `.openvscode-server/data/User` (as the settings-seed step below used
-# to do alone) left `.openvscode-server` and `data` themselves root-owned —
-# found live: OpenVSCode Server (running as `workspace`) failed on its very
-# first `mkdir '/home/workspace/.openvscode-server/extensions'` with EACCES,
-# and every extension install/data-dir (`data/logs`, `data/Machine`, the user
-# extensions dir) failed the same way, so the editor never finished loading.
+# Create the persisted-volume layout on first attach. The EBS volume mounts empty at /data
+# (@edd/config DEFAULT_WORKSPACE_MOUNT_PATH), shadowing anything baked under it, so these dirs
+# must be made here — but this is `mkdir` only (no build/install; the software is baked read-only
+# under /opt + /usr/local). The layout keeps editor/tool state OUT of the user's project pwd:
+#   /data/project    — pwd / shell cwd / editor opened folder (clean; empty for a fresh workspace)
+#   /data/home       — HOME: editor/tool config, state, caches, shell history (out of pwd)
+#   /data/extensions — writable, persisted OpenVSCode user extensions (the one editor-state dir
+#                      the user mutates), out of pwd
+# Each path is its own `install -d` argument, not a single nested path -- GNU coreutils'
+# `install -d` only chowns/chmods the LEAF of a given path, creating any missing intermediate
+# components root-owned. A single nested call once left `.openvscode-server`/`data` root-owned and
+# OpenVSCode (running as `workspace`) failed its first extension-dir `mkdir` with EACCES, so the
+# editor never loaded. List every level explicitly.
 install -d -o workspace -g workspace -m 0755 \
-  /home/workspace \
-  /home/workspace/.openvscode-server \
-  /home/workspace/.openvscode-server/data \
-  /home/workspace/.openvscode-server/extensions
+  /data/project \
+  /data/home \
+  /data/extensions \
+  /data/home/.openvscode-server \
+  /data/home/.openvscode-server/data
 
 # Persist the coordinates the registered-key AuthorizedKeysCommand needs (sshd
 # strips its environment). Root-only (0600): the command runs as root, and the
@@ -63,16 +67,18 @@ gosu workspace edd-idle-agent &
 # the workspace so the user sees it in the IDE explorer.
 if [ -n "${EDD_REPO_URL:-}" ]; then
   _repo_name="$(basename "${EDD_REPO_URL%.git}")"
-  _repo_dest="/home/workspace/${_repo_name}"
-  _boot_status="/home/workspace/.edd-bootstrap-status"
+  # Clone INTO the user's project dir (the editor's opened folder), not HOME — so the repo shows
+  # up as the workspace content and the pwd is the project, not a dir full of dotfiles.
+  _repo_dest="/data/project/${_repo_name}"
+  _boot_status="/data/project/.edd-bootstrap-status"
   if [ ! -e "${_repo_dest}" ]; then
     echo "edd-bootstrap: cloning ${EDD_REPO_URL} into ${_repo_dest}" >&2
     if [ -n "${EDD_REPO_REF:-}" ]; then
-      _clone_err="$(gosu workspace env HOME=/home/workspace GIT_TERMINAL_PROMPT=0 \
+      _clone_err="$(gosu workspace env HOME=/data/home GIT_TERMINAL_PROMPT=0 \
         git clone --branch "${EDD_REPO_REF}" "${EDD_REPO_URL}" "${_repo_dest}" 2>&1)" &&
         _clone_ok=1 || _clone_ok=0
     else
-      _clone_err="$(gosu workspace env HOME=/home/workspace GIT_TERMINAL_PROMPT=0 \
+      _clone_err="$(gosu workspace env HOME=/data/home GIT_TERMINAL_PROMPT=0 \
         git clone "${EDD_REPO_URL}" "${_repo_dest}" 2>&1)" &&
         _clone_ok=1 || _clone_ok=0
     fi
@@ -100,20 +106,25 @@ fi
 # on the EBS home volume, so we seed at runtime (not build, where it'd be shadowed
 # by the volume mount) and only when absent — so user overrides persist across
 # restarts. It stays a *default* the user can change.
-settings_dir=/home/workspace/.openvscode-server/data/User
+settings_dir=/data/home/.openvscode-server/data/User
 settings_file="${settings_dir}/settings.json"
 install -d -o workspace -g workspace -m 0755 "${settings_dir}"
 
-# Register the first-party extension through OpenVSCode's runtime extension scan
-# path. The release archive's built-in extension registry is generated upstream;
-# copying an unpacked folder into /opt/openvscode-server/extensions after that
-# registry was built does not make the browser load it.
-user_extensions_dir=/home/workspace/.openvscode-server/extensions
-edd_extension_dir="${user_extensions_dir}/edd-workspace-ui"
-install -d -o workspace -g workspace -m 0755 "${user_extensions_dir}"
-rm -rf "${edd_extension_dir}"
-cp -R /opt/openvscode-server/extensions/edd-workspace-ui "${edd_extension_dir}"
-chown -R workspace:workspace "${edd_extension_dir}"
+# Register the first-party extension through OpenVSCode's runtime extension scan path (the user
+# extensions dir /data/extensions, out of the project pwd). The release archive's built-in
+# extension registry is generated upstream, so copying an unpacked folder into
+# /opt/openvscode-server/extensions after that registry was built does not make the browser load
+# it — hence a copy into the scanned user dir. IDEMPOTENT: only (re)copy when absent or when the
+# image's version differs from the persisted one, so this is a one-time first-boot step (and a
+# re-copy after an image bump), never per-start work.
+edd_extension_src=/opt/openvscode-server/extensions/edd-workspace-ui
+edd_extension_dir=/data/extensions/edd-workspace-ui
+if [ ! -e "${edd_extension_dir}/package.json" ] ||
+  ! cmp -s "${edd_extension_src}/package.json" "${edd_extension_dir}/package.json"; then
+  rm -rf "${edd_extension_dir}"
+  cp -R "${edd_extension_src}" "${edd_extension_dir}"
+  chown -R workspace:workspace "${edd_extension_dir}"
+fi
 # Ensure server-side editor defaults are present. Browser-window defaults such as
 # the visible File/Edit/View menu bar come from the patched workbench bootstrap:
 # OpenVSCode stores those on the browser side, so writing them into this remote
@@ -208,9 +219,9 @@ esac
 # (the proxy forwards paths unrewritten). Mirrors the in-app `WORKSPACE_PATH_PREFIX`.
 set -- --host 0.0.0.0 --port 3000 --disable-workspace-trust \
   --server-base-path "/w/${EDD_WORKSPACE_ID}/" \
-  --extensions-dir /home/workspace/.openvscode-server/extensions \
-  --user-data-dir /home/workspace/.openvscode-server/data \
-  --default-folder /home/workspace
+  --extensions-dir /data/extensions \
+  --user-data-dir /data/home/.openvscode-server/data \
+  --default-folder /data/project
 
 # Auth: behind the in-app workspace proxy (Auth.js session + per-workspace
 # ownership + network isolation) the OpenVSCode connection token is redundant, so a

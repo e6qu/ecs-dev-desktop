@@ -187,10 +187,10 @@ describe("editorTokenRedirect (editor connection-token handoff)", () => {
 
   it("preserves an existing query when appending the token", () => {
     const out = editorTokenRedirect(
-      { method: "GET", url: `/w/${WS}/?folder=/home/workspace`, headers: docHeaders() },
+      { method: "GET", url: `/w/${WS}/?folder=/data/project`, headers: docHeaders() },
       WS,
     );
-    expect(out).toBe(`/w/${WS}/?folder=%2Fhome%2Fworkspace&tkn=${expectedTkn}`);
+    expect(out).toBe(`/w/${WS}/?folder=%2Fdata%2Fproject&tkn=${expectedTkn}`);
   });
 
   it("treats an HTML Accept (no Sec-Fetch-Dest) as a document navigation", () => {

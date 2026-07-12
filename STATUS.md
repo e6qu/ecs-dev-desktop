@@ -2,8 +2,17 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-12 (opencode fix). Active branch `fix/opencode-base-path` (on top
-of #230 `0c7b4c2`) FIXES the opencode blank render. Root cause was base-path routing (opencode's
+**Last updated:** 2026-07-12 (pwd cleanup). Active branch `fix/workspace-pwd-clean` (on top of
+#231 `1bdfcfb`). Verified workspaces are genuinely useful (real multi-language dev, git, npm+network,
+make all work on a live Fargate terminal), then fixed the pwd leak: the EBS volume was mounted at
+`/home/workspace` (= HOME = pwd = editor folder), so editor dotfiles polluted the user's project.
+Now the volume mounts at `/data`, split into `/data/project` (clean pwd/editor folder), `/data/home`
+(HOME: editor/tool state, out of pwd), and `/data/extensions` (writable OpenVSCode extensions);
+software stays read-only under /opt. Touches `@edd/config`, `editor-monaco/run.ts`, base+variant
+Dockerfiles, `entrypoint.sh`, e2e assertions, and a new `assertProjectDirClean` smoke gate. Local
+build/lint/tests + shellcheck green; full validation via container-mode e2e + post-deploy smoke.
+
+Prior branch `fix/opencode-base-path` (merged #231) FIXED the opencode blank render. Root cause was base-path routing (opencode's
 SolidJS path-router reads `window.location.pathname` = `/w/<id>/` and matches no route). Since
 `location.pathname` is [Unforgeable] (can't be virtualized from a shim), the proxy now applies ONE
 targeted, verified-unique, fail-loud string patch to opencode's JS bundle (`patchOpencodeRouterBase`)

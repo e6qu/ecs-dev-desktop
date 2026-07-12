@@ -67,6 +67,42 @@ async function treeContainsSmokeFile(page: Page): Promise<boolean> {
   });
 }
 
+/** Editor/tool state that must NOT appear in the user's project dir (it lives in HOME/=/data/home,
+ * out of the pwd). A fresh workspace's project tree must contain none of these. */
+const EDITOR_STATE_LEAKS = [
+  ".openvscode-server",
+  ".vscode-server",
+  ".config",
+  ".local",
+  ".cache",
+  ".npm-global",
+  ".npm",
+  ".bash_history",
+  "go/pkg",
+];
+
+/**
+ * Assert the workspace project dir (the editor's opened folder / pwd) is CLEAN — no editor/software
+ * state leaked into it. Must run on a FRESH workspace BEFORE the smoke writes its own files. Reads
+ * the editor's confined file tree (rooted at the project dir); any entry whose top path component
+ * is an editor-state dotfile is a leak (task: keep the pwd clean; editor state lives in HOME).
+ */
+async function assertProjectDirClean(editor: Editor, page: Page): Promise<void> {
+  const entries = await page.evaluate(async () => {
+    const res = await fetch("api/tree");
+    if (!res.ok) throw new Error(`tree read failed: ${String(res.status)}`);
+    const raw = (await res.json()) as { entries?: { path: string }[] };
+    return (raw.entries ?? []).map((e) => e.path);
+  });
+  const tops = new Set(entries.map((p) => p.split("/")[0]));
+  const leaked = EDITOR_STATE_LEAKS.filter((leak) => tops.has(leak));
+  if (leaked.length > 0) {
+    throw new Error(
+      `${editor}: editor/software state leaked into the project pwd: ${leaked.join(", ")} (should live in HOME=/data/home, not the project). Tree: ${entries.slice(0, 40).join(", ")}`,
+    );
+  }
+}
+
 async function assertWorkspaceHomeLink(editor: Editor, page: Page): Promise<void> {
   const link = page.locator("#edd-workspaces-home, #edd-home").first();
   await expect(link, `${editor} did not expose a visible EDD workspaces link`).toBeVisible({
@@ -165,6 +201,8 @@ async function terminalTabNames(page: Page): Promise<string[]> {
 async function assertTerminalWorkflow(page: Page): Promise<void> {
   await page.waitForFunction(() => document.body.innerText.includes("Terminal"));
   await page.locator("#terminal-panes .xterm").first().waitFor({ state: "visible" });
+  // Fresh workspace: the project dir (pwd) must be clean — no editor/software state leaked in.
+  await assertProjectDirClean("terminal", page);
   await expect(page.locator(".terminal-tab")).toHaveCount(1, { timeout: 15_000 });
   await writeTerminalFile(page, "edd-smoke-terminal-1.txt", "terminal-one");
 
@@ -247,6 +285,8 @@ async function assertRenderedWorkspace(editor: Editor, page: Page): Promise<void
   }
   switch (editor) {
     case "monaco": {
+      // Fresh workspace: the project dir must be clean (editor state lives in HOME, not the pwd).
+      await assertProjectDirClean(editor, page);
       await page.evaluate(async () => {
         const res = await fetch("api/file?path=edd-smoke-monaco.txt", {
           method: "PUT",

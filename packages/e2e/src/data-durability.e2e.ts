@@ -35,7 +35,7 @@ import {
  * Data durability across a REAL scale-to-zero cycle, driven through
  * WorkspaceService (not raw storage primitives like workspace-data-fidelity).
  *
- *   create golden workspace → SSH in, write a marker+checksum to /home/workspace
+ *   create golden workspace → SSH in, write a marker+checksum to /data/project
  *   (the managed-EBS mount) → service.stop() (snapshot via the control plane) →
  *   service.connect() (wake: a NEW task hydrates a fresh volume from that
  *   snapshot) → SSH into the woken task → the file is present and byte-identical.
@@ -150,7 +150,7 @@ describe(
         family: `durability-writer-${RUN_ID}`,
         host: firstHost,
         privateKeyBase64,
-        remoteCmd: `printf %s '${marker}' > /home/workspace/persist.txt && sha256sum /home/workspace/persist.txt > /home/workspace/persist.sha && sync`,
+        remoteCmd: `printf %s '${marker}' > /data/project/persist.txt && sha256sum /data/project/persist.txt > /data/project/persist.sha && sync`,
       });
       expect(writeExit, "writing the marker over SSH should succeed").toBe(0);
 
@@ -178,7 +178,7 @@ describe(
         family: `durability-reader-${RUN_ID}`,
         host: secondHost,
         privateKeyBase64,
-        remoteCmd: `cd /home/workspace && sha256sum -c persist.sha && grep -q '${marker}' persist.txt`,
+        remoteCmd: `cd /data/project && sha256sum -c persist.sha && grep -q '${marker}' persist.txt`,
       });
       expect(verifyExit, "the marker must survive scale-to-zero byte-for-byte").toBe(0);
 

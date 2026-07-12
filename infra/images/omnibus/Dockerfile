@@ -15,14 +15,14 @@ FROM ${BASE}
 # (which already carries the user-CLI dirs + system). NPM_CONFIG_PREFIX is inherited
 # from base (a HOME dir) for the *runtime user* — so the system `npm install -g`
 # steps below override it back to /usr/local for build time.
-ENV GOPATH="/home/workspace/go" \
+ENV GOPATH="/data/home/go" \
     RUSTUP_HOME="/opt/rust/rustup" \
     CARGO_HOME="/opt/rust/cargo" \
     GRADLE_HOME="/opt/gradle" \
     BUN_INSTALL="/usr/local" \
     PLAYWRIGHT_BROWSERS_PATH="/ms-playwright" \
     JAVA_HOME="/usr/lib/jvm/default-java"
-ENV PATH="/usr/local/go/bin:/home/workspace/go/bin:/opt/rust/cargo/bin:/opt/gradle/bin:${PATH}"
+ENV PATH="/usr/local/go/bin:/data/home/go/bin:/opt/rust/cargo/bin:/opt/gradle/bin:${PATH}"
 
 # Compilers + Java (JDK + Maven), Python (+ pip/venv), and archive tools via apt.
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -78,7 +78,7 @@ RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/b
 # Playwright + the headless Chromium shell (browser + OS deps) preinstalled into a
 # shared path. Export the /usr/local prefix for the WHOLE step so BOTH `npm install
 # -g` and `npx` use it — otherwise npx would create the inherited home npm prefix
-# (/home/workspace/.npm-global) as root, leaving it unwritable by the workspace user.
+# (/data/home/.npm-global) as root, leaving it unwritable by the workspace user.
 RUN export NPM_CONFIG_PREFIX=/usr/local \
     && npm install -g playwright @playwright/test \
     && npx playwright install --with-deps chromium-headless-shell \
@@ -134,25 +134,25 @@ RUN for ext in \
 # Belt-and-suspenders: ensure no root-owned build cruft remains under the home dir
 # (it's shadowed by the EBS volume at runtime, but keep the image clean so the
 # workspace user can create its own ~/.npm-global etc.).
-RUN rm -rf /home/workspace/.npm /home/workspace/.cache /home/workspace/.npm-global \
-    && chown -R workspace:workspace /home/workspace
+RUN rm -rf /data/home/.npm /data/home/.cache /data/home/.npm-global \
+    && chown -R workspace:workspace /data/home
 
 # Re-export PATH + toolchain env for LOGIN/interactive shells (OpenVSCode terminal
 # + interactive SSH source /etc/profile, which resets PATH). Overwrites the base
 # drop-in with the toolchain-inclusive version (still carries the user-CLI dirs).
 RUN printf '%s\n' \
-      'export GOPATH="/home/workspace/go"' \
+      'export GOPATH="/data/home/go"' \
       'export RUSTUP_HOME="/opt/rust/rustup"' \
       'export CARGO_HOME="/opt/rust/cargo"' \
       'export GRADLE_HOME="/opt/gradle"' \
       'export JAVA_HOME="/usr/lib/jvm/default-java"' \
       'export PLAYWRIGHT_BROWSERS_PATH="/ms-playwright"' \
-      'export PATH="/home/workspace/.npm-global/bin:/home/workspace/.local/bin:/usr/local/go/bin:/home/workspace/go/bin:/opt/rust/cargo/bin:/opt/gradle/bin:${PATH}"' \
+      'export PATH="/data/home/.npm-global/bin:/data/home/.local/bin:/usr/local/go/bin:/data/home/go/bin:/opt/rust/cargo/bin:/opt/gradle/bin:${PATH}"' \
       > /etc/profile.d/edd-path.sh \
     && chmod 0644 /etc/profile.d/edd-path.sh
 
 # ssh-exec PATH incl. the toolchain (overwrites the base drop-in).
 RUN printf '%s\n' \
-      'SetEnv PATH=/home/workspace/.npm-global/bin:/home/workspace/.local/bin:/usr/local/go/bin:/home/workspace/go/bin:/opt/rust/cargo/bin:/opt/gradle/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' \
+      'SetEnv PATH=/data/home/.npm-global/bin:/data/home/.local/bin:/usr/local/go/bin:/data/home/go/bin:/opt/rust/cargo/bin:/opt/gradle/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' \
       > /etc/ssh/sshd_config.d/10-edd-path.conf \
     && chmod 0644 /etc/ssh/sshd_config.d/10-edd-path.conf

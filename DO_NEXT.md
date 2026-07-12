@@ -847,3 +847,13 @@ evidence-backed from the four audits):
   breaks the test harness. Add a backstop keyed on an EXPLICIT real-prod signal the harness
   never sets (e.g. `EDD_ENV=production` set only by the deploy, or "real IdP configured"),
   then fail closed if `EDD_DEV_AUTH=1` appears alongside it.
+
+- **WORKSPACE (follow-up, deferred): make `edd-workspace-ui` a true built-in (no first-boot copy).**
+  The pwd-clean work (2026-07-12, `/data` split — pwd `/data/project`, HOME `/data/home`, extensions
+  `/data/extensions`) left ONE first-boot step: `entrypoint.sh` idempotently copies the first-party
+  `edd-workspace-ui` extension into `/data/extensions` because the OpenVSCode release archive's
+  built-in registry is generated upstream (a folder dropped into `/opt/.../extensions` post-build
+  isn't loaded). Package it as a `.vsix` and `--install-extension` it into the built-in dir at image
+  build (like the AI-agent/dev extensions on Dockerfile:83-91) so it registers as a real built-in —
+  eliminating the runtime copy entirely and making it read-only/non-user-modifiable. Needs a
+  `.vsix` package step (@vscode/vsce or ovsx) in the image build.

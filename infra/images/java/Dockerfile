@@ -49,10 +49,10 @@ RUN openvscode-server --install-extension redhat.java --extensions-dir /opt/open
 RUN printf '%s\n' \
       'export JAVA_HOME="/usr/lib/jvm/default-java"' \
       'export GRADLE_HOME="/opt/gradle"' \
-      'export PATH="/home/workspace/.npm-global/bin:/home/workspace/.local/bin:/opt/gradle/bin:${PATH}"' \
+      'export PATH="/data/home/.npm-global/bin:/data/home/.local/bin:/opt/gradle/bin:${PATH}"' \
       > /etc/profile.d/edd-path.sh \
     && chmod 0644 /etc/profile.d/edd-path.sh
 RUN printf '%s\n' \
-      'SetEnv PATH=/home/workspace/.npm-global/bin:/home/workspace/.local/bin:/opt/gradle/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' \
+      'SetEnv PATH=/data/home/.npm-global/bin:/data/home/.local/bin:/opt/gradle/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' \
       > /etc/ssh/sshd_config.d/10-edd-path.conf \
     && chmod 0644 /etc/ssh/sshd_config.d/10-edd-path.conf

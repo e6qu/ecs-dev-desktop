@@ -8,7 +8,7 @@ import { describe, expect, it } from "vitest";
 
 import { resolveWithin } from "./file-api";
 
-const ROOTS = ["/tmp/ws", "/srv/a/b", "/home/workspace"] as const;
+const ROOTS = ["/tmp/ws", "/srv/a/b", "/data/project"] as const;
 
 // A hostile-ish client path: normal segments mixed with traversal / absolute / unicode / empties.
 const relArb = fc

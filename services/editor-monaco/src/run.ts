@@ -4,12 +4,14 @@
 import * as path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { DEFAULT_WORKSPACE_MOUNT_PATH, DEFAULT_WORKSPACE_PORT } from "@edd/config";
+import { DEFAULT_WORKSPACE_PROJECT_PATH, DEFAULT_WORKSPACE_PORT } from "@edd/config";
 
 import { createEditorServer } from "./server";
 
 const workspaceId = process.env.EDD_WORKSPACE_ID ?? "";
-const root = process.env.EDD_WORKSPACE_ROOT ?? DEFAULT_WORKSPACE_MOUNT_PATH;
+// The editor serves + opens the user's PROJECT dir (a clean subdir of the persisted volume), NOT
+// the mount root or HOME — so editor/tool dotfiles under HOME never appear in the user's tree.
+const root = process.env.EDD_WORKSPACE_ROOT ?? DEFAULT_WORKSPACE_PROJECT_PATH;
 const port = Number(process.env.PORT ?? String(DEFAULT_WORKSPACE_PORT));
 const basePath = workspaceId === "" ? "/" : `/w/${workspaceId}/`;
 // Behind the session-authorizing in-app proxy, the deployment disables the connection token for a

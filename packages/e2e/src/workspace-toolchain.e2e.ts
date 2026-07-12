@@ -127,19 +127,19 @@ describe("golden workspace user-CLI + defaults", { timeout: 60_000 }, () => {
       'p="$(npm config get prefix)"; echo "prefix=$p"; ' +
         'mkdir -p "$p/lib/node_modules" "$p/bin" && touch "$p/bin/.probe" && echo WRITABLE',
     );
-    expect(out).toContain("prefix=/home/workspace/.npm-global");
+    expect(out).toContain("prefix=/data/home/.npm-global");
     expect(out).toContain("WRITABLE");
   });
 
   it("puts user-CLI bin dirs on PATH for login AND non-login/non-interactive shells [#91]", () => {
     // Login shell (integrated terminal / interactive SSH) via /etc/profile.d:
     const login = sh('echo "$PATH"');
-    expect(login).toContain("/home/workspace/.npm-global/bin");
-    expect(login).toContain("/home/workspace/.local/bin");
+    expect(login).toContain("/data/home/.npm-global/bin");
+    expect(login).toContain("/data/home/.local/bin");
     // Non-login, non-interactive (`bash -c`: agent subprocesses, tasks) via image ENV:
     const nonlogin = shc('echo "$PATH"');
-    expect(nonlogin).toContain("/home/workspace/.npm-global/bin");
-    expect(nonlogin).toContain("/home/workspace/.local/bin");
+    expect(nonlogin).toContain("/data/home/.npm-global/bin");
+    expect(nonlogin).toContain("/data/home/.local/bin");
     // The SSH-exec channel (`ssh host '<cmd>'`) is covered by sshd `SetEnv PATH`
     // (verified in the ssh-gateway tier); assert sshd's EFFECTIVE config carries it
     // (it lives in a per-image drop-in under /etc/ssh/sshd_config.d/).
@@ -148,7 +148,7 @@ describe("golden workspace user-CLI + defaults", { timeout: 60_000 }, () => {
       ["exec", CONTAINER, "sh", "-c", "sshd -T 2>/dev/null | grep -i '^setenv '"],
       { encoding: "utf8" },
     );
-    expect(sshdCfg).toContain("/home/workspace/.npm-global/bin");
+    expect(sshdCfg).toContain("/data/home/.npm-global/bin");
   });
 
   it("defaults the editor to Dark mode, seeded write-if-absent on first boot [#94]", () => {

@@ -16,7 +16,7 @@ import { attachTerminal, type PtySpawner } from "./terminal";
 import { tokenCookie, tokenFromRequest, tokensMatch } from "./token";
 
 export interface EditorServerOptions {
-  /** The workspace filesystem root that is served + edited (e.g. /home/workspace). */
+  /** The workspace filesystem root that is served + edited (e.g. /data/project). */
   readonly root: string;
   /** The path the proxy serves this editor under, e.g. "/w/<id>/" (must end in "/"). */
   readonly basePath: string;
