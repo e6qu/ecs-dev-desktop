@@ -4,42 +4,33 @@
 
 ## Open
 
-- **opencode still renders BLANK in prod — root-caused to base-path ROUTING, NOT the
-  proxy (diagnosed 2026-07-12 against deployed `4b511a9`).** The old corruption bug (next
-  entry) is fixed; this is a distinct, deeper cause. Live browser probes of a fresh opencode
-  workspace show: the bundle loads, the SPA MOUNTS (`document.title === "OpenCode"`), and ALL
-  8 bootstrap requests return 200 through the proxy — `/global/config`, `/global/event` (SSE,
-  streamed not buffered), `/global/health`, `/project` (`[{id:"global",worktree:"/",…}]`),
-  `/provider` (a real provider is present: Requesty/Grok-4), `/path`. There are **zero** failed
-  requests, **zero** 4xx/5xx, and **zero** console/page errors. Yet `#root` contains only
-  `<div data-component="dialog-stack"></div>` — the app-root overlay container — and the routed
-  main view never renders (body text is just the injected "⌂ EDD home" pill). So the proxy
-  delivers everything correctly; the failure is opencode-side. opencode's web client is a
-  SolidJS SPA with a **client-side path router** (confirmed by #227, which had to defeat that
-  router's same-origin anchor interception). Served at origin-root it expects `location.pathname
-=== "/"`, but it is proxied under `/w/<id>/`, so its router matches no route for `/w/<id>/`
-  and paints only the out-of-`<Routes>` chrome (the dialog-stack). The earlier "revisit with an
-  import-map" residual note is DISPROVEN — the bundle is a single file, no `/assets/*` chunk ever
-  404s; SSE delivery is also confirmed (an EventSource to `/global/event` through CloudFront+proxy
-  received `server.connected` + `server.heartbeat`), so it is NOT SSE buffering either.
-  **ATTEMPTED FIX (2026-07-12) — base-path virtualization, and it is NOT cleanly possible.** Tried
-  the clean approach: a pre-bundle shim that strips `/w/<id>` from `location.pathname`/`href` reads
-  (so the router matches as if at `/`) and prefixes it back on `history.pushState/replaceState`
-  writes. Tested live via Playwright `addInitScript` (same pre-bundle timing as the production
-  shim). RESULT: `Object.getOwnPropertyDescriptor(Location.prototype,'pathname')` is `undefined` —
-  Location's path accessors are **[Unforgeable]** Web-IDL properties (own, non-configurable on each
-  instance) and `window.location` itself cannot be reassigned, so the getter CANNOT be overridden;
-  opencode still rendered only the dialog-stack. So there is no clean inline-shim fix. Remaining
-  options, ALL out-of-scope or hacky: (a) upstream opencode `--base-path`/`BASE_PATH` support —
-  does NOT exist in `opencode-ai@1.17.15` (only port/hostname flags; it is an open upstream feature
-  request, and a third-party `prokube/pk-opencode-webui` fork exists solely to add prefix-awareness),
-  (b) fragile per-request surgery of the minified bundle to inject a router base (a hack, breaks on
-  every opencode update — rejected), (c) per-workspace subdomain so opencode serves at origin-root
-  (the architecture explicitly rejected wildcard DNS/TLS — see §1). DECISION PENDING (see DO_NEXT):
-  track/adopt upstream base-path support, or drop opencode as an offered editor until it exists.
-  NOTE: the smoke's `assertOpencodeMounted` only checks `#root` gains a child + the title, so it
-  PASSES on this blank-but-mounted state; it must be strengthened to require the routed UI once a
-  real fix lands (strengthening it now would just turn the post-deploy gate permanently red).
+- **opencode rendered BLANK — base-path ROUTING — FIXED in `fix/opencode-base-path`
+  (2026-07-12).** Distinct from the older JS-corruption bug (next entry). Diagnosis (live probes
+  of a fresh workspace on `4b511a9`): the proxy delivered everything correctly — bundle loaded,
+  SPA mounted (`document.title === "OpenCode"`), all 8 bootstrap requests 200 (`/global/config`,
+  `/global/event` SSE, `/global/health`, `/project`, `/provider` [Requesty/Grok-4], `/path`),
+  SSE events flowed (`server.connected` + `server.heartbeat`), zero failed requests / 4xx / console
+  errors — yet `#root` held only `<div data-component="dialog-stack">` (the out-of-`<Routes>`
+  overlay). Root cause: opencode's SolidJS client **path router** reads `window.location.pathname`
+  (served under `/w/<id>/`) and matches no route, so only the out-of-router chrome painted. The
+  "import-map" residual note was disproven (single-file bundle, no `/assets/*` 404) and SSE buffering
+  was ruled out. A pure inline-shim virtualization is IMPOSSIBLE — `location.pathname`/`href` are
+  **[Unforgeable]** Web-IDL properties (non-configurable; `location` non-reassignable), so the
+  router's READ can't be intercepted from script. `opencode-ai@1.17.15` has no base-path option
+  (only port/hostname; it is an open upstream feature request). FIX: the router's path read is one
+  UNIQUE, minified anchor — `window.location.pathname.replace(/^\/+/,"/")` (its `set` counterpart
+  `window.history.pushState(o,"",r)` is also unique). The proxy now buffers opencode's JS bundle and
+  applies ONE exact-string replacement redirecting that read through `window.__eddStrip`
+  (`patchOpencodeRouterBase` in `workspace-proxy.ts`), so the router matches as if at `/`; the
+  injected shim provides `__eddStrip` (strip the base) and wraps `history.pushState/replaceState` to
+  re-add the base on WRITES, so the real URL stays under `/w/<id>/` (reload/bookmark keep working).
+  This is a TARGETED, verified-unique, FAIL-LOUD edit (throws → 502 if the anchor is ever missing on
+  a future opencode bump) — NOT the blanket JS regex that once corrupted the bundle. Verified live:
+  patching the read (via Playwright route interception) took `#root` from the blank dialog-stack to
+  the real header + main layout; the exact edit applied to the real 2.75 MB bundle yields valid JS
+  (`node --check`) with exactly one replacement. The smoke's `assertOpencodeMounted` was strengthened
+  to require the routed UI (a header/interactive control), not just a mounted `#root`. If opencode is
+  bumped in `infra/images/base/Dockerfile`, re-verify the two anchors against the new bundle.
 
 - **opencode rendered BLANK in prod — the proxy JS rewrite corrupted the bundle —
   FIXED in `harden/scale-to-zero-security` (2026-07-11).** `post-deploy-smoke` had
