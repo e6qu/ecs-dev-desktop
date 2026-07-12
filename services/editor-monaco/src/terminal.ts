@@ -9,6 +9,21 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { touchActivity } from "./activity";
 import { tokenFromRequest, tokensMatch } from "./token";
 
+/** The minimal PTY surface the bridge drives — satisfied by node-pty's `IPty`, and by the fake
+ * a unit test injects (so close→kill can be asserted without spawning a real TTY, which the
+ * sandbox forbids). */
+export interface PtyLike {
+  onData(listener: (data: string) => void): void;
+  onExit(listener: () => void): void;
+  write(data: string): void;
+  resize(cols: number, rows: number): void;
+  kill(): void;
+}
+
+/** Create a PTY for a connection, or `null` when a PTY backend is unavailable (native binding
+ * missing). Throws on a genuine spawn failure. Injectable for tests. */
+export type PtySpawner = (opts: { root: string; command?: string }) => Promise<PtyLike | null>;
+
 interface TerminalDeps {
   readonly root: string;
   readonly basePath: string;
@@ -18,6 +33,8 @@ interface TerminalDeps {
    * when it exits, the PTY (and tab) closes — a new tab starts it fresh. Trusted
    * operator config from the container entrypoint, never user input. */
   readonly command?: string;
+  /** Override the PTY backend (tests inject a fake). Defaults to the real node-pty spawner. */
+  readonly spawnPty?: PtySpawner;
 }
 
 /** Decode a ws frame (Buffer / ArrayBuffer / Buffer[]) to a UTF-8 string. */
@@ -77,27 +94,53 @@ async function loadPty(): Promise<typeof import("node-pty") | null> {
 const WELCOME_BANNER =
   "\x1b[2mTip: when 'claude' or 'codex' asks you to sign in, the browser redirect can't reach this remote workspace -- paste the code shown in the browser instead of waiting for it.\x1b[0m\r\n";
 
-async function startShell(ws: WebSocket, root: string, command?: string): Promise<void> {
+/** The real PTY backend: node-pty (loaded lazily). Returns `null` when the native binding is
+ * absent so the editor still serves; throws on a genuine spawn failure. */
+const defaultPtySpawner: PtySpawner = async ({ root, command }) => {
   const nodePty = await loadPty();
-  if (nodePty === null) {
-    ws.close(1011, "terminal unavailable");
-    return;
-  }
-  if (ws.readyState === ws.OPEN) ws.send(WELCOME_BANNER);
+  if (nodePty === null) return null;
   const shell = process.env.SHELL ?? "/bin/bash";
   // Agent-first modes boot the terminal straight into the configured program via a
   // login shell (full image PATH); `exec` replaces the shell so the program's exit
   // closes the PTY. A plain shell otherwise.
   const args = command === undefined ? [] : ["-lc", `exec ${command}`];
-  let pty: ReturnType<typeof nodePty.spawn>;
+  const pty = nodePty.spawn(shell, args, {
+    name: "xterm-color",
+    cwd: root,
+    env: process.env,
+    cols: 80,
+    rows: 24,
+  });
+  return {
+    onData: (listener) => {
+      pty.onData(listener);
+    },
+    onExit: (listener) => {
+      pty.onExit(() => {
+        listener();
+      });
+    },
+    write: (data) => {
+      pty.write(data);
+    },
+    resize: (cols, rows) => {
+      pty.resize(cols, rows);
+    },
+    kill: () => {
+      pty.kill();
+    },
+  };
+};
+
+async function startShell(
+  ws: WebSocket,
+  root: string,
+  command: string | undefined,
+  spawnPty: PtySpawner,
+): Promise<void> {
+  let pty: PtyLike | null;
   try {
-    pty = nodePty.spawn(shell, args, {
-      name: "xterm-color",
-      cwd: root,
-      env: process.env,
-      cols: 80,
-      rows: 24,
-    });
+    pty = await spawnPty({ root, command });
   } catch (e) {
     const message = e instanceof Error ? e.message : "unknown terminal spawn failure";
     if (ws.readyState === ws.OPEN) {
@@ -106,19 +149,25 @@ async function startShell(ws: WebSocket, root: string, command?: string): Promis
     }
     return;
   }
-  // The socket may have closed DURING the async `loadPty()`/spawn above (tab closed,
-  // navigated away, network drop) — before any close→kill handler was registered. Node
-  // does not replay that `close` event, so without this guard the freshly-spawned login
-  // shell (which never self-exits) would be orphaned inside the container and accumulate
-  // one leaked PTY per raced connection. If the socket is already gone, kill and bail.
+  if (pty === null) {
+    ws.close(1011, "terminal unavailable");
+    return;
+  }
+  // The socket may have closed DURING the async spawn above (tab closed, navigated away,
+  // network drop) — before any close→kill handler was registered. Node does not replay that
+  // `close` event, so without this guard the freshly-spawned login shell (which never
+  // self-exits) would be orphaned inside the container and accumulate one leaked PTY per raced
+  // connection. If the socket is already gone, kill and bail — a closed tab leaves no session.
   if (ws.readyState !== ws.OPEN) {
     pty.kill();
     return;
   }
-  pty.onData((data) => {
+  const livePty = pty;
+  ws.send(WELCOME_BANNER);
+  livePty.onData((data) => {
     if (ws.readyState === ws.OPEN) ws.send(data);
   });
-  pty.onExit(() => {
+  livePty.onExit(() => {
     ws.close();
   });
   ws.on("message", (raw: Buffer | ArrayBuffer | Buffer[]) => {
@@ -127,13 +176,15 @@ async function startShell(ws: WebSocket, root: string, command?: string): Promis
     if ("input" in msg) {
       // Keystrokes are the definition of "in use" (see ./activity.ts).
       touchActivity();
-      pty.write(msg.input);
+      livePty.write(msg.input);
     } else {
-      pty.resize(msg.cols, msg.rows);
+      livePty.resize(msg.cols, msg.rows);
     }
   });
+  // Closing the tab closes the socket, which fires this — killing the PTY so no shell keeps
+  // running after its tab is gone (the "no stale session on close" guarantee, unit-tested).
   ws.on("close", () => {
-    pty.kill();
+    livePty.kill();
   });
 }
 
@@ -141,6 +192,7 @@ async function startShell(ws: WebSocket, root: string, command?: string): Promis
 export function attachTerminal(server: Server, deps: TerminalDeps): void {
   const base = deps.basePath.endsWith("/") ? deps.basePath : `${deps.basePath}/`;
   const termPath = `${base}terminal`;
+  const spawnPty = deps.spawnPty ?? defaultPtySpawner;
   const wss = new WebSocketServer({ noServer: true });
 
   server.on("upgrade", (req, socket, head) => {
@@ -158,7 +210,7 @@ export function attachTerminal(server: Server, deps: TerminalDeps): void {
       }
     }
     wss.handleUpgrade(req, socket, head, (ws) => {
-      void startShell(ws, deps.root, deps.command);
+      void startShell(ws, deps.root, deps.command, spawnPty);
     });
   });
 }

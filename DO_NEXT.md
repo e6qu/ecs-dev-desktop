@@ -6,7 +6,16 @@
 
 ## Open decisions (need the user)
 
-0. **Heartbeat interval & idle threshold** — scale-to-zero tuning. The knobs
+0. **opencode base-path routing fix — pursue or defer?** opencode renders BLANK in prod
+   (root-caused 2026-07-12; see `BUGS.md`): the proxy delivers everything correctly, but
+   opencode's SolidJS **path router** matches no route under the `/w/<id>/` proxy prefix, so
+   only its out-of-`<Routes>` chrome paints. The fix is base-path virtualization of the router
+   (History API + location-perception shim over a minified upstream bundle — feasible but
+   delicate, and it touches the security-sensitive proxy) OR an upstream opencode `--base-path`
+   option. It is larger/riskier than typical work and the payoff (a secondary editor) is
+   uncertain, so it needs a priority call: attempt the virtualization now, or defer opencode.
+
+1. **Heartbeat interval & idle threshold** — scale-to-zero tuning. The knobs
    now exist (`EDD_HEARTBEAT_INTERVAL_S` injected into workspace tasks;
    `EDD_IDLE_THRESHOLD_MS`/`EDD_SNAPSHOT_INTERVAL_MS`/`EDD_EARLY_SNAPSHOT_INTERVAL_MS`/
    `EDD_EARLY_SESSION_MS`/`EDD_GC_GRACE_MS` on the reconciler) — the open decision is

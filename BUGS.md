@@ -4,6 +4,31 @@
 
 ## Open
 
+- **opencode still renders BLANK in prod — root-caused to base-path ROUTING, NOT the
+  proxy (diagnosed 2026-07-12 against deployed `4b511a9`).** The old corruption bug (next
+  entry) is fixed; this is a distinct, deeper cause. Live browser probes of a fresh opencode
+  workspace show: the bundle loads, the SPA MOUNTS (`document.title === "OpenCode"`), and ALL
+  8 bootstrap requests return 200 through the proxy — `/global/config`, `/global/event` (SSE,
+  streamed not buffered), `/global/health`, `/project` (`[{id:"global",worktree:"/",…}]`),
+  `/provider` (a real provider is present: Requesty/Grok-4), `/path`. There are **zero** failed
+  requests, **zero** 4xx/5xx, and **zero** console/page errors. Yet `#root` contains only
+  `<div data-component="dialog-stack"></div>` — the app-root overlay container — and the routed
+  main view never renders (body text is just the injected "⌂ EDD home" pill). So the proxy
+  delivers everything correctly; the failure is opencode-side. opencode's web client is a
+  SolidJS SPA with a **client-side path router** (confirmed by #227, which had to defeat that
+  router's same-origin anchor interception). Served at origin-root it expects `location.pathname
+=== "/"`, but it is proxied under `/w/<id>/`, so its router matches no route for `/w/<id>/`
+  and paints only the out-of-`<Routes>` chrome (the dialog-stack). The earlier "revisit with an
+  import-map" residual note is DISPROVEN — the bundle is a single file, no `/assets/*` chunk ever
+  404s. FIX (not attempted — larger/riskier than a quick proxy tweak, needs a decision): either
+  (a) base-path-virtualize opencode's router so it perceives `/` while the real URL stays under
+  `/w/<id>/` (History API + location perception shim over a minified upstream router — feasible
+  but delicate, and the security-sensitive proxy path), or (b) an upstream opencode `--base-path`
+  option (openvscode/monaco already take `--server-base-path`). NOTE: the smoke's
+  `assertOpencodeMounted` only checks `#root` gains a child + the title, so it PASSES on this
+  blank-but-mounted state — it must be strengthened to require the routed UI once (a) or (b)
+  lands (strengthening it now would just turn the post-deploy gate permanently red).
+
 - **opencode rendered BLANK in prod — the proxy JS rewrite corrupted the bundle —
   FIXED in `harden/scale-to-zero-security` (2026-07-11).** `post-deploy-smoke` had
   been RED for days on the opencode editor. Root-caused live (deployed `e6e84cf`):
