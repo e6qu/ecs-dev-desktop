@@ -6,17 +6,16 @@
 
 ## Open decisions (need the user)
 
-0. **Prod Terraform drift — mostly resolved 2026-07-13; CloudFront scale-to-zero DEFERRED.**
+0. **Prod Terraform drift — mostly resolved 2026-07-13; CloudFront scale-to-zero REDESIGNED.**
    After migrating prod state local→S3 (see `edd-prod-terraform-state` memory), the drift was
    worked through: the #233 S3/DynamoDB gateway endpoints and the `:3001` workspace SG rule were
-   **applied + verified**. The **CloudFront/WAF/wake control-plane scale-to-zero** feature was
-   attempted and found **not deployable as designed** — it is now disabled in prod
-   (`enable_cloudfront = false`) with the partial resources cleaned up (prod serves from the ALB,
-   healthy). Root cause + code fixes are in `BUGS.md` (origin-group ⊕ write-methods design conflict
-   with the app's server actions; the account's 10-Lambda-concurrency floor; a WAF description bug;
-   an AAAA-on-IPv4-ALB bug). A real control-plane wake needs a different mechanism (CloudFront
-   Function / Lambda@Edge / app-level) — a **future design task**, low priority (workspaces already
-   scale to zero; control-plane scale-to-zero is a marginal saving). **Residual benign drift left
+   **applied + verified**. The **CloudFront/WAF/wake control-plane scale-to-zero** feature's original
+   origin-group design was undeployable, so it was **redesigned** (single ALB origin + a 503
+   `custom_error_response` → wake Lambda at `/_edd_wake`, reload-loop page; see `BUGS.md`) along with
+   the WAF-description / Lambda-concurrency / AAAA fixes. Deploy sequence: build the wake zip
+   (`pnpm --filter @edd/wake-listener build`), set `enable_cloudfront = true` in the prod
+   install.tfvars, targeted-apply the CloudFront/WAF/wake/DNS resources (avoid the fck-nat instance),
+   then verify the app serves through CloudFront and wakes from zero. **Residual benign drift left
    unapplied:** `edd:cost-scope` tags on ~64 resources, the removed
    `aws_appautoscaling_policy.control_plane_cpu`, and task-def/ECR-policy replaces (services
    `ignore_changes[task_definition]`). Applying those means touching the fck-nat instance, which

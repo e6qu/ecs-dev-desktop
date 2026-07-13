@@ -1,23 +1,25 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Control-plane scale-to-zero entry. CloudFront fronts `app.<domain>` with an origin
-# GROUP: the primary origin is the existing ALB (the control plane, over HTTPS); the
-# failover origin is a wake Lambda (a Function URL). When the control-plane ECS
-# service is scaled to zero the ALB has no healthy targets and answers 503, so
-# CloudFront's origin-group failover (on 502/503/504) routes the request to the wake
-# Lambda, which flips the service's desired count back up and returns a "waking"
-# response. Steady-state traffic (service > 0) is served by the ALB with no caching
-# and full WebSocket pass-through, so the editor proxy (`/w/<id>/`) still works.
+# Control-plane scale-to-zero entry. CloudFront fronts `app.<domain>` with a SINGLE ALB origin, so
+# steady-state traffic (service > 0) — including the app's Next.js Server-Action POSTs to page paths
+# and the WebSocket editor proxy (`/w/<id>/`) — passes straight through with no caching. Scale-from-
+# zero is done WITHOUT an origin group (CloudFront forbids write methods on an origin-group
+# behaviour): when the control-plane ECS service is at zero the ALB has no healthy target and
+# answers 503, and a `custom_error_response` routes that 503 to the wake Lambda (served at
+# `/_edd_wake`), which lifts the service's desired count off zero and returns a page that reloads
+# until the app is back. See BUGS.md for why the origin-group failover design was abandoned.
 #
 # Everything here is gated on local.cloudfront_enabled (feature flag AND a domain).
 # All CloudFront/ACM(viewer)/WAF-CLOUDFRONT resources use the us-east-1 aliased
 # provider — AWS only accepts these global resources there.
 
 locals {
-  # Origin ids used across the distribution + origin group.
-  cloudfront_alb_origin_id   = "alb-control-plane"
-  cloudfront_wake_origin_id  = "wake-lambda"
-  cloudfront_origin_group_id = "cp-origin-group"
-  cloudfront_failover_status = [502, 503, 504]
+  # Origin ids used across the distribution.
+  cloudfront_alb_origin_id  = "alb-control-plane"
+  cloudfront_wake_origin_id = "wake-lambda"
+  # Dedicated path the wake Lambda serves. The 503 custom_error_response points here (so a browser
+  # request that hit the scaled-to-zero ALB is answered by the wake Lambda's reloading page), and it
+  # is directly reachable so the reload converges. Underscore-prefixed to never collide with the app.
+  cloudfront_wake_path       = "/_edd_wake"
   wake_lambda_name           = "${var.name}-wake"
   wake_lambda_log_group_name = "/aws/lambda/${var.name}-wake"
   # The Function URL is `https://<host>/`; a CloudFront custom origin takes only the
@@ -132,11 +134,10 @@ resource "aws_lambda_function" "wake" {
   timeout       = var.wake_lambda_timeout_seconds
   memory_size   = var.wake_lambda_memory_mb
 
-  # Cap concurrency: the wake path is public (the CloudFront failover origin), so an
-  # unbounded cold-start flood could otherwise spawn arbitrarily many concurrent
-  # invocations all hammering ECS DescribeServices/UpdateService (shared with
-  # workspace lifecycle + the reconciler). Waking is idempotent, so a small ceiling
-  # is safe and still always leaves the wake path capacity.
+  # Cap concurrency: the wake path is public (reached via CloudFront's 503 error handler + the
+  # `/_edd_wake` behaviour), so an unbounded cold-start flood could otherwise spawn arbitrarily many
+  # concurrent invocations all hammering ECS DescribeServices/UpdateService (shared with workspace
+  # lifecycle + the reconciler). Waking is idempotent, so a small ceiling is safe.
   # 0 = no reservation: pass -1 (the provider's "unset" sentinel) so no
   # reserved_concurrent_executions is applied. Required on accounts at AWS's default Lambda
   # concurrency limit of 10, where reserving any amount drops unreserved below its floor of 10.
@@ -150,7 +151,6 @@ resource "aws_lambda_function" "wake" {
       ECS_CLUSTER                      = aws_ecs_cluster.this.name
       EDD_CONTROL_PLANE_SERVICE        = "${var.name}-control-plane"
       EDD_CONTROL_PLANE_ACTIVE_DESIRED = tostring(local.control_plane_active_desired)
-      EDD_STATUS_URL                   = "https://${local.control_plane_fqdn}/api/readyz"
     }
   }
 
@@ -224,8 +224,10 @@ resource "aws_cloudfront_distribution" "control_plane" {
     }
   }
 
-  # Failover origin: the wake Lambda's Function URL, reached over HTTPS. The OAC makes
-  # CloudFront SigV4-sign requests to it so the AWS_IAM-protected URL accepts them.
+  # Wake origin: the wake Lambda's Function URL, reached over HTTPS. The OAC makes CloudFront
+  # SigV4-sign requests to it so the AWS_IAM-protected URL accepts them. Used by the wake-path
+  # behaviour below (NOT an origin-group failover member — CloudFront forbids write methods on an
+  # origin-group behaviour, and the app POSTs to page paths via Next.js Server Actions).
   origin {
     origin_id                = local.cloudfront_wake_origin_id
     domain_name              = local.wake_lambda_origin_hostname
@@ -239,30 +241,15 @@ resource "aws_cloudfront_distribution" "control_plane" {
     }
   }
 
-  # Fail over ALB -> wake Lambda on the ECS "no healthy targets" family (502/503/504),
-  # exactly the codes the ALB returns when the control-plane service is at zero.
-  origin_group {
-    origin_id = local.cloudfront_origin_group_id
-
-    failover_criteria {
-      status_codes = local.cloudfront_failover_status
-    }
-
-    member {
-      origin_id = local.cloudfront_alb_origin_id
-    }
-
-    member {
-      origin_id = local.cloudfront_wake_origin_id
-    }
-  }
-
+  # Default behaviour: SINGLE ALB origin (no origin group), so ALL methods + the WebSocket editor
+  # proxy + Next.js Server-Action POSTs to page paths pass straight through. Scale-from-zero is NOT
+  # an origin-group failover (incompatible with write methods) — it is the 503 custom_error_response
+  # below, which routes a scaled-to-zero 503 to the wake Lambda.
   default_cache_behavior {
-    target_origin_id       = local.cloudfront_origin_group_id
+    target_origin_id       = local.cloudfront_alb_origin_id
     viewer_protocol_policy = "redirect-to-https"
     compress               = true
 
-    # All methods so the app's mutations + the editor proxy pass through.
     allowed_methods = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
     cached_methods  = ["GET", "HEAD"]
 
@@ -272,23 +259,33 @@ resource "aws_cloudfront_distribution" "control_plane" {
     origin_request_policy_id = local.cloudfront_managed_all_viewer_orp_id
   }
 
-  # NOTE (cost): we deliberately do NOT add a cached `custom_error_response` to serve
-  # the cold-start placeholder from the edge and spare repeat wake-Lambda invokes.
-  # It is not feasible without breaking the wake or the readiness poll:
-  #   - The wake Lambda IS the scale-from-zero trigger (it calls ecs:UpdateService).
-  #     A cached CloudFront error page served instead of failing over to the Lambda
-  #     would mean the service never wakes.
-  #   - The Lambda answers a browser navigation with a 200 HTML placeholder (not an
-  #     error status), so a status-keyed `custom_error_response` never even matches it.
-  #   - It answers the startup page's `/api/readyz` poll with 503 ON PURPOSE so the
-  #     poll keeps waiting; caching that 503 (error_caching_min_ttl > 0) would serve a
-  #     stale "still down" to the browser after the service is actually back, breaking
-  #     recovery detection. Managed-CachingDisabled (required for the dynamic app +
-  #     WebSocket path) also forbids caching on this shared behavior.
-  # Wake-path cost is instead bounded upstream of the invoke: the CLOUDFRONT WAF
-  # rate-based rule blocks floods at the edge BEFORE failover (waf-cloudfront.tf), the
-  # wake Lambda has reserved_concurrent_executions + a small memory/timeout footprint,
-  # and the wake decision is idempotent (it "holds" cheaply once desired > 0).
+  # Wake path: served by the wake Lambda (triggers ecs:UpdateService + returns the reloading
+  # "Starting EDD…" page). This is what the 503 custom_error_response points at, and it is directly
+  # reachable so the browser's reload converges. GET/HEAD only (the error handler fetches it as GET).
+  ordered_cache_behavior {
+    path_pattern           = "${local.cloudfront_wake_path}*"
+    target_origin_id       = local.cloudfront_wake_origin_id
+    viewer_protocol_policy = "redirect-to-https"
+    compress               = true
+
+    allowed_methods = ["GET", "HEAD", "OPTIONS"]
+    cached_methods  = ["GET", "HEAD"]
+
+    cache_policy_id          = local.cloudfront_managed_caching_disabled_policy_id
+    origin_request_policy_id = local.cloudfront_managed_all_viewer_orp_id
+  }
+
+  # Scale-from-zero entry: when the control-plane service is at zero the ALB has no healthy target
+  # and returns 503; route that to the wake Lambda's page (which triggers the wake). response_code
+  # 200 so the browser renders the page; error_caching_min_ttl 0 so it is NEVER cached — every 503
+  # re-invokes the wake Lambda (idempotent) and, once the app is back, the ALB's real 200 is served
+  # immediately (no stale placeholder). Flood cost is bounded by the CLOUDFRONT WAF rate rule.
+  custom_error_response {
+    error_code            = 503
+    response_code         = 200
+    response_page_path    = local.cloudfront_wake_path
+    error_caching_min_ttl = 0
+  }
 
   restrictions {
     geo_restriction {

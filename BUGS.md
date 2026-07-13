@@ -4,23 +4,22 @@
 
 ## Open
 
-- **CloudFront control-plane scale-to-zero is NOT deployable as designed — DEFERRED
-  (2026-07-13).** Attempting to apply the CloudFront/WAF/wake drift to prod surfaced that the
-  feature never worked; it is disabled in prod (`enable_cloudfront = false`) and the partial
-  resources were cleaned up (prod serves directly from the ALB, healthy). Four issues, in order of
-  severity:
-  1. **Design conflict (blocker — needs a redesign):** the CloudFront default cache behaviour uses
-     an ORIGIN GROUP (ALB primary → wake-Lambda failover on 502/503/504) AND must allow all HTTP
+- **CloudFront control-plane scale-to-zero — REDESIGNED + FIXED (2026-07-13).** The first attempt to
+  apply the CloudFront/WAF/wake drift failed on four issues (below); all are now fixed and the wake
+  was **redesigned** to a working shape, so the feature is deployable. Original blocker + resolution:
+  1. **Design conflict — RESOLVED by redesign:** the original CloudFront default cache behaviour used
+     an ORIGIN GROUP (ALB primary → wake-Lambda failover on 502/503/504) AND had to allow all HTTP
      methods (the app's mutations + the `/w/<id>/` editor proxy). CloudFront **rejects POST/PUT/
-     PATCH/DELETE on any behaviour associated with an origin group** (`InvalidArgument`). You cannot
-     split reads/writes by PATH either, because the app uses **Next.js Server Actions** (`"use
-server"` in `app/actions.ts`, admin pages, and `resetCookiesAction`/`signOutAction` in
-     `layout.tsx`) which POST to the _page's own path_ (`/`, `/workspaces`, `/me`, `/admin/*`, …),
-     not `/api/*`. So the failover-via-origin-group approach is fundamentally incompatible with this
-     app. A real control-plane wake needs a different mechanism (CloudFront Function / Lambda@Edge on
-     the viewer request, or an app/ALB-level wake) — a separate design + implementation task. Note
-     control-plane scale-to-zero is a marginal saving (workspaces already scale to zero; the shared
-     control plane is rarely fully idle), so deferring it costs little.
+     PATCH/DELETE on any behaviour associated with an origin group** (`InvalidArgument`), and you
+     cannot split reads/writes by PATH either because the app uses **Next.js Server Actions** (`"use
+server"` in `app/actions.ts`, admin pages, `resetCookiesAction`/`signOutAction` in `layout.tsx`)
+     which POST to the _page's own path_, not `/api/*`. **Redesign:** drop the origin group — the
+     default behaviour is now a SINGLE ALB origin (all methods + WebSocket + server-action POSTs pass
+     straight through), and scale-from-zero is a **503 `custom_error_response`** that routes a
+     scaled-to-zero ALB 503 to the wake Lambda (served at `/_edd_wake`, response_code 200,
+     `error_caching_min_ttl` 0). The wake Lambda triggers `ecs:UpdateService` and returns a page that
+     **reloads on a timer** — the reload is the readiness check (no poll, since while down every
+     request returns that page). Keeps the wake Lambda regional (easy rollback), no Lambda@Edge.
   2. **Account Lambda concurrency floor (infra):** the edd-prod account is at AWS's default limit of
      **10** concurrent executions, so reserving ANY concurrency for the wake Lambda drops unreserved
      below its floor of 10 (rejected). Fixed in code by making `wake_lambda_reserved_concurrency = 0`
