@@ -124,7 +124,7 @@ else
     --zip-file "fileb://${work}/function.zip" \
     --query 'FunctionArn' --output text) || fail "CreateFunction rejected"
   fn_created=1
-  [ -n "$fn_arn" ] && [ "$fn_arn" != "None" ] || fail "CreateFunction did not return an ARN"
+  if [ -z "$fn_arn" ] || [ "$fn_arn" = "None" ]; then fail "CreateFunction did not return an ARN"; fi
   pass "Created wake Lambda ${fn_name}"
 
   # The wake front door is an HTTP API with an AWS_PROXY integration on payload format 2.0 — the SAME
@@ -145,7 +145,7 @@ else
     --integration-uri "$fn_arn" \
     --payload-format-version 2.0 \
     --query 'IntegrationId' --output text) || fail "CreateIntegration (AWS_PROXY) rejected"
-  [ -n "$int_id" ] && [ "$int_id" != "None" ] || fail "CreateIntegration did not return an IntegrationId"
+  if [ -z "$int_id" ] || [ "$int_id" = "None" ]; then fail "CreateIntegration did not return an IntegrationId"; fi
   # The payload format version must round-trip as 2.0 (Function-URL-identical event shape).
   got_pfv=$(aws apigatewayv2 get-integration --api-id "$api_id" --integration-id "$int_id" \
     --query 'PayloadFormatVersion' --output text)
