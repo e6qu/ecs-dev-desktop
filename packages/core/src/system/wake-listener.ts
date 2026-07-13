@@ -20,8 +20,8 @@ import type { ControlPlaneScaleDecision } from "./control-plane-scale";
  */
 export const DEFAULT_CONTROL_PLANE_ACTIVE_DESIRED = 2;
 
-/** Default cadence at which the startup page polls the readiness coordinate. */
-export const DEFAULT_WAKE_POLL_INTERVAL_MS = 3000;
+/** Default cadence at which the startup page RELOADS itself (the reload is the readiness check). */
+export const DEFAULT_WAKE_RELOAD_INTERVAL_MS = 3000;
 
 /** Default browser-tab / heading title for the startup page. */
 export const DEFAULT_WAKE_PAGE_TITLE = "Starting EDD…";
@@ -42,24 +42,14 @@ export const WAKE_RESPONSE_CACHE_CONTROL = "no-store, must-revalidate";
 /** Response header carrying the wake decision's action, for observability. */
 export const WAKE_RESPONSE_ACTION_HEADER = "x-edd-wake-action";
 
-/**
- * HTTP status the wake listener returns for a READINESS-PROBE request (the
- * startup page polling `/api/readyz` through CloudFront, which fails over to the
- * wake Lambda while the control plane is still at zero / cold-starting). It MUST
- * be non-2xx so the poll's `res.ok` stays false and the page keeps waiting — if
- * the wake Lambda answered readiness with 200 (like the navigation page), the
- * page would reload immediately, in a tight loop, long before the control plane
- * is actually healthy. Once the ALB has a healthy target, readyz is served by the
- * real control plane (200) and the poll reloads for real.
- */
-export const WAKE_READINESS_STATUS = 503;
-
 /** Inputs to {@link renderStartupPage}. */
 export interface StartupPageConfig {
-  /** The readiness coordinate the page polls (e.g. the control plane's `/api/readyz`). */
-  readonly statusUrl: string;
-  /** Poll cadence in milliseconds (positive, finite). */
-  readonly pollIntervalMs: number;
+  /** How often (ms, positive/finite) the page RELOADS itself. There is no readiness poll: the
+   * page is served BY the wake Lambda via CloudFront's 503 `custom_error_response`, so while the
+   * control plane is down every request (including a readiness poll) returns this same page. A
+   * blind reload is therefore the readiness check — a reload lands on the real app once the ALB
+   * has a healthy target, and on this page again (re-triggering the wake) while it is still down. */
+  readonly reloadIntervalMs: number;
   /** Page title / heading. */
   readonly title: string;
 }
@@ -75,44 +65,25 @@ function escapeHtml(value: string): string {
 }
 
 /**
- * Encode a string as a safe JavaScript string literal for embedding in an
- * inline `<script>`: JSON-encode (quotes/backslashes/control chars), then
- * neutralize the sequences that could break out of the script element or the
- * surrounding HTML (`<`, `>`, `&`) and the JS line separators U+2028/U+2029.
- */
-function jsStringLiteral(value: string): string {
-  return JSON.stringify(value)
-    .replace(/</g, "\\u003c")
-    .replace(/>/g, "\\u003e")
-    .replace(/&/g, "\\u0026")
-    .replace(/\u2028/g, "\\u2028")
-    .replace(/\u2029/g, "\\u2029");
-}
-
-/**
- * Render the self-refreshing "Starting EDD…" status page (pure). The page has
- * no external assets — inline CSS + a tiny inline script that polls
- * {@link StartupPageConfig.statusUrl} every `pollIntervalMs` and reloads the
- * current URL once the readiness coordinate returns a 2xx. A `<noscript>` meta
- * refresh keeps a no-JS client retrying too.
+ * Render the self-refreshing "Starting EDD…" status page (pure). The page has no external assets —
+ * inline CSS + a tiny inline script that RELOADS the current URL every `reloadIntervalMs`. There is
+ * no readiness poll: CloudFront serves this page (via the 503 `custom_error_response`) for every
+ * request while the control plane is down, so the reload itself is the readiness check — it lands on
+ * the real app once the ALB has a healthy target. A `<noscript>` meta refresh keeps a no-JS client
+ * retrying too.
  *
- * Fails loud (§6.5) on an empty status URL or a non-positive/non-finite poll
- * interval rather than emitting a broken page.
+ * Fails loud (§6.5) on a non-positive/non-finite reload interval rather than emitting a broken page.
  */
 export function renderStartupPage(config: StartupPageConfig): string {
-  const { statusUrl, pollIntervalMs, title } = config;
-  if (statusUrl.length === 0) {
-    throw new Error("renderStartupPage: statusUrl must be non-empty");
-  }
-  if (!Number.isFinite(pollIntervalMs) || pollIntervalMs <= 0) {
+  const { reloadIntervalMs, title } = config;
+  if (!Number.isFinite(reloadIntervalMs) || reloadIntervalMs <= 0) {
     throw new Error(
-      `renderStartupPage: pollIntervalMs must be a positive finite number, got ${String(pollIntervalMs)}`,
+      `renderStartupPage: reloadIntervalMs must be a positive finite number, got ${String(reloadIntervalMs)}`,
     );
   }
   const safeTitle = escapeHtml(title);
-  const statusUrlLiteral = jsStringLiteral(statusUrl);
-  const intervalLiteral = String(Math.floor(pollIntervalMs));
-  const noscriptRefreshSeconds = Math.max(1, Math.ceil(pollIntervalMs / 1000));
+  const intervalLiteral = String(Math.floor(reloadIntervalMs));
+  const noscriptRefreshSeconds = Math.max(1, Math.ceil(reloadIntervalMs / 1000));
 
   return `<!doctype html>
 <html lang="en">
@@ -156,22 +127,12 @@ export function renderStartupPage(config: StartupPageConfig): string {
 </main>
 <script>
 (function () {
-  var statusUrl = ${statusUrlLiteral};
-  var intervalMs = ${intervalLiteral};
-  var stopped = false;
-  function ready() {
-    if (stopped) return;
-    stopped = true;
-    window.location.reload();
-  }
-  function poll() {
-    if (stopped) return;
-    fetch(statusUrl, { cache: "no-store", credentials: "same-origin" })
-      .then(function (res) { if (res.ok) { ready(); } })
-      .catch(function () { /* control plane still down; keep polling */ });
-  }
-  setInterval(poll, intervalMs);
-  poll();
+  // No readiness poll: while the control plane is down, CloudFront's 503 custom_error_response
+  // serves THIS page for every request, so there is nothing to poll. Just reload on a timer — the
+  // reload is the readiness check: it lands on the real app once the ALB has a healthy target, and
+  // on this page again (re-triggering the wake) while still down. Reload the CURRENT url so a deep
+  // link is preserved.
+  setTimeout(function () { window.location.reload(); }, ${intervalLiteral});
 })();
 </script>
 </body>
@@ -192,46 +153,23 @@ export interface WakeResponseInput {
   readonly decision: ControlPlaneScaleDecision;
   /** The startup page to render into the body. */
   readonly page: StartupPageConfig;
-  /**
-   * Whether the request being answered is the startup page's READINESS PROBE
-   * (its path matches the polled status coordinate) rather than a browser
-   * navigation. A readiness probe reaching the wake listener means the control
-   * plane is NOT yet up (else the ALB would have served it), so it is answered
-   * `503` — keeping the poll waiting — instead of the 200 HTML page.
-   */
-  readonly isReadinessProbe: boolean;
 }
 
 /**
- * Decide the HTTP response the wake listener returns (pure). We serve the
- * self-refreshing startup page with **HTTP 200 + `Cache-Control: no-store`** in
- * every served case, rather than a `503 + Retry-After`:
+ * Decide the HTTP response the wake listener returns (pure). Always the self-refreshing startup
+ * page with **HTTP 200 + `Cache-Control: no-store`** — never a 5xx:
  *
- * - The page re-polls readiness via inline JS and reloads on its own, so
- *   HTTP-level retry semantics (`Retry-After`) are not needed for convergence.
- * - A 200 guarantees the browser renders the HTML body; a 5xx from a CloudFront
- *   failover origin risks being intercepted by a custom-error-page config and
- *   never reaching the user.
- * - `no-store` is the load-bearing header: it prevents the transient page from
- *   being cached over the real app once the control plane is back.
+ * - The wake Lambda is served BY CloudFront's 503 `custom_error_response` (response_code 200), so
+ *   returning a 5xx here would just re-trigger the error handler; a 200 is what actually reaches
+ *   the browser and renders the page.
+ * - The page reloads itself on a timer (the reload is the readiness check), so no HTTP retry
+ *   semantics are needed for convergence.
+ * - `no-store` is load-bearing: it keeps the transient page from being cached over the real app
+ *   once the control plane is back.
  *
  * The wake decision's action is echoed in a response header for observability.
  */
 export function decideWakeResponse(input: WakeResponseInput): WakeHttpResponse {
-  // A readiness probe that reached the wake listener means the control plane is
-  // still down: answer 503 (a tiny JSON body, NOT the HTML page) so the startup
-  // page's `res.ok` stays false and it keeps polling instead of reload-looping.
-  if (input.isReadinessProbe) {
-    return {
-      statusCode: WAKE_READINESS_STATUS,
-      headers: {
-        "content-type": "application/json; charset=utf-8",
-        "cache-control": WAKE_RESPONSE_CACHE_CONTROL,
-        [WAKE_RESPONSE_ACTION_HEADER]: input.decision.action,
-      },
-      body: '{"ready":false,"reason":"control-plane waking"}',
-    };
-  }
   const body = renderStartupPage(input.page);
   return {
     statusCode: WAKE_RESPONSE_STATUS,

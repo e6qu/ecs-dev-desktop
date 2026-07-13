@@ -8,7 +8,6 @@ import { handleWake, WAKE_ENV, type WakeDeps } from "./handler";
 const BASE_ENV = {
   [WAKE_ENV.cluster]: "edd-prod-workspaces",
   [WAKE_ENV.service]: "edd-prod-control-plane",
-  [WAKE_ENV.statusUrl]: "https://app.edd.example.dev/api/readyz",
   [WAKE_ENV.activeDesired]: "2",
 } as const;
 
@@ -52,7 +51,7 @@ function deps(ecs: EcsServicePort, env: Readonly<Record<string, string | undefin
 }
 
 describe("handleWake", () => {
-  it("scales a zeroed service up to the active desired count", async () => {
+  it("scales a zeroed service up to the active desired count and serves the reloading page", async () => {
     const calls: SetDesiredCall[] = [];
     const ecs = fakeEcs({ desiredCount: 0, runningCount: 0 }, calls);
     const res = await handleWake({}, deps(ecs, BASE_ENV));
@@ -62,10 +61,10 @@ describe("handleWake", () => {
     ]);
     expect(res.statusCode).toBe(200);
     expect(res.headers["x-edd-wake-action"]).toBe("wake");
-    expect(res.body).toContain('var statusUrl = "https://app.edd.example.dev/api/readyz";');
+    expect(res.body).toContain("window.location.reload()");
   });
 
-  it("does NOT call UpdateService when the service is already at desired", async () => {
+  it("does NOT call UpdateService when the service is already at desired (still serves the page)", async () => {
     const calls: SetDesiredCall[] = [];
     const ecs = fakeEcs({ desiredCount: 2, runningCount: 2 }, calls);
     const res = await handleWake({}, deps(ecs, BASE_ENV));
@@ -73,6 +72,7 @@ describe("handleWake", () => {
     expect(calls).toEqual([]);
     expect(res.statusCode).toBe(200);
     expect(res.headers["x-edd-wake-action"]).toBe("hold");
+    expect(res.body).toContain("<html");
   });
 
   it("uses the default active desired count when the env var is absent", async () => {
@@ -84,40 +84,20 @@ describe("handleWake", () => {
     expect(calls[0]?.desiredCount).toBe(2);
   });
 
-  it("answers a readiness probe (path === status path) with 503, not the 200 page", async () => {
-    const calls: SetDesiredCall[] = [];
-    const ecs = fakeEcs({ desiredCount: 0, runningCount: 0 }, calls);
-    const res = await handleWake({ rawPath: "/api/readyz" }, deps(ecs, BASE_ENV));
-    expect(res.statusCode).toBe(503);
-    expect(res.body).not.toContain("<html"); // poll must not reload on this
-    // still triggers the scale-up (idempotent) so the poll converges
-    expect(calls[0]?.desiredCount).toBe(2);
-  });
-
-  it("answers a navigation (other path) with the 200 startup page", async () => {
-    const calls: SetDesiredCall[] = [];
-    const ecs = fakeEcs({ desiredCount: 0, runningCount: 0 }, calls);
-    const res = await handleWake({ rawPath: "/" }, deps(ecs, BASE_ENV));
-    expect(res.statusCode).toBe(200);
-    expect(res.body).toContain("<html");
-  });
-
   it("does NOT return a raw 5xx when ECS is unreachable — keeps the browser retrying", async () => {
-    // A DescribeServices error is caught and the startup page (200) is served for a
-    // navigation, so a CloudFront error page can't swallow it and the browser keeps polling.
-    const res = await handleWake({ rawPath: "/" }, deps(failingEcs(), BASE_ENV));
+    // A DescribeServices error is caught and the reloading page (200) is served, so CloudFront's
+    // 503 error handler can't swallow it and the browser keeps reloading until the app is back.
+    const res = await handleWake({}, deps(failingEcs(), BASE_ENV));
     expect(res.statusCode).toBe(200);
     expect(res.headers["x-edd-wake-action"]).toBe("hold");
-    // and a readiness probe under an ECS outage still gets 503 (poll keeps waiting)
-    const probe = await handleWake({ rawPath: "/api/readyz" }, deps(failingEcs(), BASE_ENV));
-    expect(probe.statusCode).toBe(503);
+    expect(res.body).toContain("<html");
   });
 
   it("fails loud on a missing required env var", async () => {
     const calls: SetDesiredCall[] = [];
     const ecs = fakeEcs({ desiredCount: 0, runningCount: 0 }, calls);
-    const { [WAKE_ENV.statusUrl]: _omit, ...envNoStatus } = BASE_ENV;
-    await expect(handleWake({}, deps(ecs, envNoStatus))).rejects.toThrow(/missing required env/);
+    const { [WAKE_ENV.service]: _omit, ...envNoService } = BASE_ENV;
+    await expect(handleWake({}, deps(ecs, envNoService))).rejects.toThrow(/missing required env/);
     expect(calls).toEqual([]);
   });
 

@@ -18,16 +18,15 @@
  * Env contract:
  *   ECS_CLUSTER                       (required) control-plane cluster name/ARN
  *   EDD_CONTROL_PLANE_SERVICE         (required) control-plane ECS service name
- *   EDD_STATUS_URL                    (required) readiness coordinate the page polls
  *   EDD_CONTROL_PLANE_ACTIVE_DESIRED  (optional) wake target; default DEFAULT_CONTROL_PLANE_ACTIVE_DESIRED
- *   EDD_WAKE_POLL_INTERVAL_MS         (optional) page poll cadence; default DEFAULT_WAKE_POLL_INTERVAL_MS
+ *   EDD_WAKE_RELOAD_INTERVAL_MS       (optional) page reload cadence; default DEFAULT_WAKE_RELOAD_INTERVAL_MS
  *   EDD_WAKE_PAGE_TITLE               (optional) page title; default DEFAULT_WAKE_PAGE_TITLE
  *   AWS_REGION, AWS_ENDPOINT_URL      (optional) SDK coordinates (§6.9)
  */
 import {
   DEFAULT_CONTROL_PLANE_ACTIVE_DESIRED,
   DEFAULT_WAKE_PAGE_TITLE,
-  DEFAULT_WAKE_POLL_INTERVAL_MS,
+  DEFAULT_WAKE_RELOAD_INTERVAL_MS,
   createLogger,
   decideControlPlaneWake,
   decideWakeResponse,
@@ -44,9 +43,8 @@ type Env = Readonly<Record<string, string | undefined>>;
 export const WAKE_ENV = {
   cluster: "ECS_CLUSTER",
   service: "EDD_CONTROL_PLANE_SERVICE",
-  statusUrl: "EDD_STATUS_URL",
   activeDesired: "EDD_CONTROL_PLANE_ACTIVE_DESIRED",
-  pollIntervalMs: "EDD_WAKE_POLL_INTERVAL_MS",
+  reloadIntervalMs: "EDD_WAKE_RELOAD_INTERVAL_MS",
   pageTitle: "EDD_WAKE_PAGE_TITLE",
 } as const;
 
@@ -108,27 +106,24 @@ export async function handleWake(
   const { env, ecs, logger } = deps;
   const cluster = requiredEnv(env, WAKE_ENV.cluster);
   const service = requiredEnv(env, WAKE_ENV.service);
-  const statusUrl = requiredEnv(env, WAKE_ENV.statusUrl);
   const activeDesired = positiveIntEnv(
     env,
     WAKE_ENV.activeDesired,
     DEFAULT_CONTROL_PLANE_ACTIVE_DESIRED,
   );
-  const pollIntervalMs = positiveIntEnv(
+  const reloadIntervalMs = positiveIntEnv(
     env,
-    WAKE_ENV.pollIntervalMs,
-    DEFAULT_WAKE_POLL_INTERVAL_MS,
+    WAKE_ENV.reloadIntervalMs,
+    DEFAULT_WAKE_RELOAD_INTERVAL_MS,
   );
   const title = titleEnv(env);
-  const page = { statusUrl, pollIntervalMs, title };
+  const page = { reloadIntervalMs, title };
 
-  // Is this the startup page's readiness poll (CloudFront failed `/api/readyz`
-  // over to us because the control plane is still down), or a browser
-  // navigation? A readiness probe is answered 503 so the poll keeps waiting; a
-  // navigation is answered with the 200 HTML page.
-  const requestPath = event.rawPath ?? event.requestContext?.http?.path ?? "/";
-  const statusPath = safePathname(statusUrl);
-  const isReadinessProbe = statusPath !== undefined && requestPath === statusPath;
+  // Every request here is CloudFront serving this Lambda for a 503 from the ALB (via the 503
+  // custom_error_response) — i.e. the control plane is down. There is no readiness-probe vs
+  // navigation distinction: we always trigger the wake and return the reloading page. `event` is
+  // unused (the wake decision depends only on the current ECS scale), kept for the handler shape.
+  void event;
 
   try {
     const scale = await ecs.describe({ cluster, service });
@@ -150,31 +145,17 @@ export async function handleWake(
         reason: decision.reason,
       });
     }
-    return decideWakeResponse({ decision, page, isReadinessProbe });
+    return decideWakeResponse({ decision, page });
   } catch (e) {
-    // ECS unreachable/throttled: DON'T return a raw 5xx (a CloudFront error page
-    // could swallow it). Keep the browser retrying — serve the startup page (or a
-    // 503 for a readiness probe) and log loudly so the alarm fires. The reconciler
-    // is the backstop that never scales-to-zero on error.
+    // ECS unreachable/throttled: DON'T return a raw 5xx (CloudFront's error handler would swallow
+    // it). Keep the browser retrying by serving the reloading page, and log loudly so the alarm
+    // fires. The reconciler is the backstop that never scales-to-zero on error.
     logger.error("control-plane wake failed to reach ECS", {
       cluster,
       service,
       error: e instanceof Error ? e.message : String(e),
     });
-    return decideWakeResponse({
-      decision: { action: "hold", reason: "ecs unreachable" },
-      page,
-      isReadinessProbe,
-    });
-  }
-}
-
-/** The pathname of a URL, or undefined if it can't be parsed. */
-function safePathname(url: string): string | undefined {
-  try {
-    return new URL(url).pathname;
-  } catch {
-    return undefined;
+    return decideWakeResponse({ decision: { action: "hold", reason: "ecs unreachable" }, page });
   }
 }
 
