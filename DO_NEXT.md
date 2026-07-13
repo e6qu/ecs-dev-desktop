@@ -20,6 +20,25 @@
    `aws_appautoscaling_policy.control_plane_cpu`, and task-def/ECR-policy replaces (services
    `ignore_changes[task_definition]`). Applying those means touching the fck-nat instance, which
    hits the provider's gzip-`user_data` "inconsistent final plan" — leave them, or apply targeted.
+   **Wake path — FIXED + live (2026-07-13); one live test remains.** Lambda Function URLs are
+   non-functional in this account (403 at the front door, zero invocations, both auth modes; direct
+   SDK invoke works — see `BUGS.md` item 5), so the wake Lambda is now fronted by an **API Gateway
+   HTTP API**, still gated by the `x-edd-wake-token` shared-secret origin header CloudFront injects.
+   Applied to prod (targeted, user-approved) and verified: API direct 403 w/o token, 200 w/ token, and
+   `https://app.edd.e6qu.dev/_edd_wake` through CloudFront → 200 reload page. **Only remaining:** the
+   live **scale-from-zero** end-to-end test (scale CP→0, confirm the ALB-503 → CloudFront
+   `custom_error_response` → wake page → wake Lambda `ecs:UpdateService` → recovery loop) — deliberate
+   ~1–2 min prod downtime, so do it with the user's go-ahead. Also: land all these main-branch changes
+   (handler, cloudfront.tf/main.tf/versions.tf/outputs.tf, provider lock, continuity) as a PR.
+   **Two pre-existing prod drifts surfaced by the wake plan (do NOT bundle):**
+   (a) **fck-nat instance wants REPLACEMENT** — state records `launch_template.version = "2"` but the
+   module passes `"$Latest"`, a force-replacement path; a full apply would recreate the NAT instance
+   and briefly drop all workspace/task outbound internet. Investigate why the LT has a newer version
+   (out-of-band LT update?) and pin/reconcile before ever applying it — keep it out of routine applies.
+   (b) **control-plane IAM policy** wants `+ManageCloudFrontWaf` / `+IntrospectCloudFrontWaf`
+   statements (wafv2 read/update on the edd-prod-cloudfront web ACL + admin IP set) — this is
+   legitimate committed module config not yet applied; safe and non-disruptive to apply, just wasn't
+   in the last targeted apply.
 
 1. **Heartbeat interval & idle threshold** — scale-to-zero tuning. The knobs
    now exist (`EDD_HEARTBEAT_INTERVAL_S` injected into workspace tasks;

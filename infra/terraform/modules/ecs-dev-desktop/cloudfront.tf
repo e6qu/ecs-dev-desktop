@@ -8,6 +8,13 @@
 # `/_edd_wake`), which lifts the service's desired count off zero and returns a page that reloads
 # until the app is back. See BUGS.md for why the origin-group failover design was abandoned.
 #
+# CloudFront reaches the wake Lambda through a PUBLIC API Gateway HTTP API; access is gated by a
+# shared-secret custom origin header (x-edd-wake-token) that only CloudFront injects and the handler
+# verifies. A Lambda Function URL was tried first (both OAC/AWS_IAM and public/NONE) but every invoke
+# returned 403 AccessDeniedException at the URL front door with zero invocations — Function URLs are
+# non-functional in this account — while a direct SDK invoke of the same function succeeds, so the
+# origin was moved to an API Gateway HTTP API (standard AWS_PROXY invoke path). See BUGS.md.
+#
 # Everything here is gated on local.cloudfront_enabled (feature flag AND a domain).
 # All CloudFront/ACM(viewer)/WAF-CLOUDFRONT resources use the us-east-1 aliased
 # provider — AWS only accepts these global resources there.
@@ -22,9 +29,15 @@ locals {
   cloudfront_wake_path       = "/_edd_wake"
   wake_lambda_name           = "${var.name}-wake"
   wake_lambda_log_group_name = "/aws/lambda/${var.name}-wake"
-  # The Function URL is `https://<host>/`; a CloudFront custom origin takes only the
-  # bare host, so strip the scheme and trailing slash.
-  wake_lambda_origin_hostname = local.cloudfront_enabled ? replace(replace(aws_lambda_function_url.wake[0].function_url, "https://", ""), "/", "") : ""
+  # Custom origin header CloudFront injects carrying the wake shared secret; the handler requires it
+  # (WAKE_TOKEN_HEADER in packages/wake-listener). This is the wake path's whole access control.
+  wake_token_header = "x-edd-wake-token"
+  # CloudFront reaches the wake Lambda through an API Gateway HTTP API (see below), NOT a Lambda
+  # Function URL: Function URLs are non-functional in this account (every invoke — AuthType NONE with a
+  # valid public policy AND AWS_IAM with OAC — returns 403 AccessDeniedException at the URL front door
+  # with zero invocations, though a direct SDK invoke of the same function succeeds; see BUGS.md). The
+  # HTTP API's `$default` stage is served at the bare execute-api host with no stage path.
+  wake_api_origin_hostname = local.cloudfront_enabled ? "${aws_apigatewayv2_api.wake[0].id}.execute-api.${local.region}.amazonaws.com" : ""
 }
 
 # ---- us-east-1 viewer certificate for app.<domain> (CloudFront requires us-east-1) ----
@@ -151,6 +164,10 @@ resource "aws_lambda_function" "wake" {
       ECS_CLUSTER                      = aws_ecs_cluster.this.name
       EDD_CONTROL_PLANE_SERVICE        = "${var.name}-control-plane"
       EDD_CONTROL_PLANE_ACTIVE_DESIRED = tostring(local.control_plane_active_desired)
+      # Shared secret the handler requires on every request (§ wake gate). CloudFront injects the
+      # same value as the x-edd-wake-token origin header (see the wake origin below); a request that
+      # did not traverse CloudFront lacks it and is refused with 403 before any ECS call.
+      EDD_WAKE_TOKEN = random_password.wake_token[0].result
     }
   }
 
@@ -158,45 +175,70 @@ resource "aws_lambda_function" "wake" {
   depends_on = [aws_cloudwatch_log_group.wake]
 }
 
-# AWS_IAM auth: the Function URL must NOT be world-invokable, or a caller could hit it
-# directly and bypass CloudFront + the CLOUDFRONT-scope WAF entirely (rate limit,
-# managed rules). CloudFront signs each origin request to this URL with SigV4 via the
-# Origin Access Control below, and the aws_lambda_permission grants only the CloudFront
-# service principal (scoped to THIS distribution) `lambda:InvokeFunctionUrl`. So the
-# only path that can invoke the wake Lambda is a request that already traversed
-# CloudFront + WAF.
-resource "aws_lambda_function_url" "wake" {
-  count              = local.cloudfront_enabled ? 1 : 0
-  function_name      = aws_lambda_function.wake[0].function_name
-  authorization_type = "AWS_IAM"
+# Shared secret gating the wake path. The wake Lambda's front door (the API Gateway HTTP API below) is
+# publicly reachable, so access control is this token: CloudFront injects it as the x-edd-wake-token
+# custom origin header that only CloudFront knows, and the handler rejects (403) any request whose
+# header does not match before making any ECS call. A direct hit on the API therefore can't wake the
+# service — and even if it did, the only effect is an idempotent ecs:UpdateService. Rotated on taint.
+resource "random_password" "wake_token" {
+  count   = local.cloudfront_enabled ? 1 : 0
+  length  = 48
+  special = false
 }
 
-# Origin Access Control: makes CloudFront SigV4-sign every origin request to the wake
-# Lambda Function URL so the AWS_IAM-protected URL accepts it. `origin_type = "lambda"`
-# is the Lambda-URL signing mode; `signing_behavior = "always"` signs unconditionally.
-# Global CloudFront resource -> us-east-1 provider, like the distribution + web ACL.
-resource "aws_cloudfront_origin_access_control" "wake" {
-  count                             = local.cloudfront_enabled ? 1 : 0
-  provider                          = aws.us_east_1
-  name                              = "${var.name}-wake-oac"
-  description                       = "SigV4-signs CloudFront origin requests to the ${local.wake_lambda_name} Function URL"
-  origin_access_control_origin_type = "lambda"
-  signing_behavior                  = "always"
-  signing_protocol                  = "sigv4"
+# ---- API Gateway HTTP API in front of the wake Lambda ----
+# CloudFront reaches the wake Lambda through this HTTP API, NOT a Lambda Function URL: Function URLs
+# are non-functional in this account (see BUGS.md — every Function-URL invoke returns 403
+# AccessDeniedException at the URL front door with zero invocations, under BOTH AuthType NONE + a valid
+# public resource policy AND AuthType AWS_IAM + OAC, while a direct SDK invoke of the same function
+# returns 200). An HTTP API with an AWS_PROXY integration invokes the Lambda over the STANDARD invoke
+# path (the one that works), uses the SAME payload-format-2.0 event shape a Function URL does (so the
+# handler is unchanged), and is a first-class CloudFront origin. The API is public; the x-edd-wake-token
+# gate is its access control (same posture the public Function URL would have had).
+
+resource "aws_apigatewayv2_api" "wake" {
+  count         = local.cloudfront_enabled ? 1 : 0
+  name          = "${var.name}-wake"
+  protocol_type = "HTTP"
+  tags          = local.tags
 }
 
-# Allow ONLY the CloudFront service principal, scoped to THIS distribution's ARN, to
-# invoke the wake Function URL. Combined with AWS_IAM auth + the OAC signing above,
-# this is what forces all wake traffic through CloudFront + WAF. Depends on the
-# distribution for its ARN (no cycle: the distribution never references this grant).
-resource "aws_lambda_permission" "wake_cloudfront" {
+resource "aws_apigatewayv2_integration" "wake" {
   count                  = local.cloudfront_enabled ? 1 : 0
-  statement_id           = "AllowCloudFrontInvokeFunctionUrl"
-  action                 = "lambda:InvokeFunctionUrl"
-  function_name          = aws_lambda_function.wake[0].function_name
-  principal              = "cloudfront.amazonaws.com"
-  source_arn             = aws_cloudfront_distribution.control_plane[0].arn
-  function_url_auth_type = "AWS_IAM"
+  api_id                 = aws_apigatewayv2_api.wake[0].id
+  integration_type       = "AWS_PROXY"
+  integration_uri        = aws_lambda_function.wake[0].arn
+  payload_format_version = "2.0"
+}
+
+# Catch-all route: CloudFront only ever sends `/_edd_wake*` here (via the ordered behaviour), and the
+# handler ignores the path, so a single $default route covers every wake request.
+resource "aws_apigatewayv2_route" "wake" {
+  count     = local.cloudfront_enabled ? 1 : 0
+  api_id    = aws_apigatewayv2_api.wake[0].id
+  route_key = "$default"
+  target    = "integrations/${aws_apigatewayv2_integration.wake[0].id}"
+}
+
+# $default stage with auto-deploy: served at the bare execute-api host (no stage path segment), which
+# is what local.wake_api_origin_hostname points CloudFront at.
+resource "aws_apigatewayv2_stage" "wake" {
+  count       = local.cloudfront_enabled ? 1 : 0
+  api_id      = aws_apigatewayv2_api.wake[0].id
+  name        = "$default"
+  auto_deploy = true
+  tags        = local.tags
+}
+
+# Allow API Gateway to invoke the wake Lambda, scoped to THIS API's execution ARN. This is the
+# standard AWS_PROXY invoke grant (not a Function-URL permission).
+resource "aws_lambda_permission" "wake_apigw" {
+  count         = local.cloudfront_enabled ? 1 : 0
+  statement_id  = "AllowApiGatewayInvoke"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.wake[0].function_name
+  principal     = "apigateway.amazonaws.com"
+  source_arn    = "${aws_apigatewayv2_api.wake[0].execution_arn}/*/*"
 }
 
 # ---- CloudFront distribution ----
@@ -224,14 +266,21 @@ resource "aws_cloudfront_distribution" "control_plane" {
     }
   }
 
-  # Wake origin: the wake Lambda's Function URL, reached over HTTPS. The OAC makes CloudFront
-  # SigV4-sign requests to it so the AWS_IAM-protected URL accepts them. Used by the wake-path
-  # behaviour below (NOT an origin-group failover member — CloudFront forbids write methods on an
-  # origin-group behaviour, and the app POSTs to page paths via Next.js Server Actions).
+  # Wake origin: the wake Lambda's API Gateway HTTP API ($default stage), reached over HTTPS. Access
+  # control is the x-edd-wake-token custom origin header below (the handler rejects any request lacking
+  # it). Used by the wake-path behaviour below (NOT an origin-group failover member — CloudFront forbids
+  # write methods on an origin-group behaviour, and the app POSTs to page paths via Next.js Server
+  # Actions). Function URLs are non-functional in this account, hence API Gateway (see BUGS.md).
   origin {
-    origin_id                = local.cloudfront_wake_origin_id
-    domain_name              = local.wake_lambda_origin_hostname
-    origin_access_control_id = aws_cloudfront_origin_access_control.wake[0].id
+    origin_id   = local.cloudfront_wake_origin_id
+    domain_name = local.wake_api_origin_hostname
+
+    # Shared secret only CloudFront knows: the wake handler requires x-edd-wake-token to equal
+    # EDD_WAKE_TOKEN, so a request that did not traverse this distribution can't invoke the wake.
+    custom_header {
+      name  = local.wake_token_header
+      value = random_password.wake_token[0].result
+    }
 
     custom_origin_config {
       http_port              = 80
@@ -271,8 +320,12 @@ resource "aws_cloudfront_distribution" "control_plane" {
     allowed_methods = ["GET", "HEAD", "OPTIONS"]
     cached_methods  = ["GET", "HEAD"]
 
-    cache_policy_id          = local.cloudfront_managed_caching_disabled_policy_id
-    origin_request_policy_id = local.cloudfront_managed_all_viewer_orp_id
+    cache_policy_id = local.cloudfront_managed_caching_disabled_policy_id
+    # AllViewer-EXCEPT-Host: API Gateway routes on the execute-api Host, so CloudFront must send the
+    # API's OWN host — not the viewer Host (app.<domain>), which would fail to match the API. This ORP
+    # forwards everything (incl. the x-edd-wake-token origin header) EXCEPT Host, which CloudFront sets
+    # to the origin domain itself. The token gate — not Host — is what authorizes the request.
+    origin_request_policy_id = local.cloudfront_managed_all_viewer_except_host_orp_id
   }
 
   # Scale-from-zero entry: when the control-plane service is at zero the ALB has no healthy target

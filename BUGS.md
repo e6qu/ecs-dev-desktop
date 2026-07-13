@@ -32,6 +32,32 @@ server"` in `app/actions.ts`, admin pages, `resetCookiesAction`/`signOutAction` 
      (re-gated on `cloudfront_enabled`, since CloudFront is the only dual-stack target).
      Also seen (unrelated, in the broad apply only): the fck-nat instance's gzip `user_data` triggers
      the AWS provider's "inconsistent final plan" — avoid by not touching that instance (targeted apply).
+  5. **Lambda Function URLs are non-functional in this account — wake moved to API Gateway + a shared-
+     secret header; FIXED + live (2026-07-13).** After the redesign above, the wake Function URL was
+     tried two ways and BOTH returned **403 `AccessDeniedException` at the URL front door with ZERO
+     Lambda invocations**: (a) `AuthType = AWS_IAM` + a CloudFront **Origin Access Control**
+     (`origin_type = "lambda"`, sigv4) + an `aws_lambda_permission` for `cloudfront.amazonaws.com`
+     scoped to the distribution; and (b) `AuthType = NONE` (public) + a valid public resource policy
+     (`Principal:"*"`, `lambda:InvokeFunctionUrl`, condition `FunctionUrlAuthType=NONE`). All config
+     verified correct (OAC, permissions, `AllViewerExceptHostHeader` ORP); ruled out propagation
+     (>5 min, and a freshly deleted+recreated NONE URL failed identically). **Decisive diagnostic: a
+     direct SDK `aws lambda invoke` of the same function returns 200** with the reload page (the token
+     honored), so the function works and invocation is NOT blocked account-wide — only the **Lambda
+     Function URL front door** is (a known account-level restriction; this account is not in an AWS
+     Org, so it is not an SCP). **Fix:** front the same wake Lambda with an **API Gateway HTTP API**
+     (`aws_apigatewayv2_api/integration[AWS_PROXY, payload 2.0]/route[$default]/stage[$default,
+auto_deploy]` + an `apigateway.amazonaws.com` invoke permission) — the STANDARD invoke path (the
+     one that works) and a first-class CloudFront origin. HTTP API payload format 2.0 is byte-identical
+     to the Function URL event shape, so **the handler is unchanged**. Access control is unchanged: the
+     API's `$default` route is public but the handler rejects (403) anything missing the
+     `x-edd-wake-token` shared secret that only CloudFront injects (`random_password.wake_token`, 48
+     chars). **Applied to prod (targeted, user-approved) + verified:** API direct with no token → 403
+     "Forbidden"; with the token → 200 reload page; and **`https://app.edd.e6qu.dev/_edd_wake` through
+     CloudFront → 200 reload page** (CloudFront's header injection → API Gateway → token gate → handler
+     all confirmed live). Code: `packages/wake-listener` handler token gate + tests; `cloudfront.tf`
+     (API Gateway origin, custom_header, Function-URL/OAC/permissions removed); `random` provider in
+     `versions.tf` + provider lock regenerated (all platforms). Remaining: the live scale-from-zero
+     end-to-end check (scale CP→0, confirm the 503→wake→UpdateService→recovery loop).
 
 - **opencode rendered BLANK — base-path ROUTING — FIXED in `fix/opencode-base-path`
   (2026-07-12).** Distinct from the older JS-corruption bug (next entry). Diagnosis (live probes
