@@ -106,10 +106,12 @@ resource "aws_wafv2_web_acl" "cloudfront" {
 # allow-list or a block-list the WAF rules reference. Terraform creates it empty and
 # never touches its addresses again.
 resource "aws_wafv2_ip_set" "cloudfront_admin" {
-  count              = local.cloudfront_waf_enabled ? 1 : 0
-  provider           = aws.us_east_1
-  name               = "${var.name}-cloudfront-admin"
-  description        = "Admin-managed CIDR list for the CloudFront WAF (populated by the control plane)"
+  count    = local.cloudfront_waf_enabled ? 1 : 0
+  provider = aws.us_east_1
+  name     = "${var.name}-cloudfront-admin"
+  # WAFv2 rejects parentheses in a description (allowed: word chars + = : # @ / - , . and spaces),
+  # so this is punctuated with a dash, not "(...)".
+  description        = "Admin-managed CIDR list for the CloudFront WAF - populated by the control plane"
   scope              = "CLOUDFRONT"
   ip_address_version = "IPV4"
   addresses          = []

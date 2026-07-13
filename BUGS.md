@@ -4,6 +4,36 @@
 
 ## Open
 
+- **CloudFront control-plane scale-to-zero is NOT deployable as designed — DEFERRED
+  (2026-07-13).** Attempting to apply the CloudFront/WAF/wake drift to prod surfaced that the
+  feature never worked; it is disabled in prod (`enable_cloudfront = false`) and the partial
+  resources were cleaned up (prod serves directly from the ALB, healthy). Four issues, in order of
+  severity:
+  1. **Design conflict (blocker — needs a redesign):** the CloudFront default cache behaviour uses
+     an ORIGIN GROUP (ALB primary → wake-Lambda failover on 502/503/504) AND must allow all HTTP
+     methods (the app's mutations + the `/w/<id>/` editor proxy). CloudFront **rejects POST/PUT/
+     PATCH/DELETE on any behaviour associated with an origin group** (`InvalidArgument`). You cannot
+     split reads/writes by PATH either, because the app uses **Next.js Server Actions** (`"use
+server"` in `app/actions.ts`, admin pages, and `resetCookiesAction`/`signOutAction` in
+     `layout.tsx`) which POST to the _page's own path_ (`/`, `/workspaces`, `/me`, `/admin/*`, …),
+     not `/api/*`. So the failover-via-origin-group approach is fundamentally incompatible with this
+     app. A real control-plane wake needs a different mechanism (CloudFront Function / Lambda@Edge on
+     the viewer request, or an app/ALB-level wake) — a separate design + implementation task. Note
+     control-plane scale-to-zero is a marginal saving (workspaces already scale to zero; the shared
+     control plane is rarely fully idle), so deferring it costs little.
+  2. **Account Lambda concurrency floor (infra):** the edd-prod account is at AWS's default limit of
+     **10** concurrent executions, so reserving ANY concurrency for the wake Lambda drops unreserved
+     below its floor of 10 (rejected). Fixed in code by making `wake_lambda_reserved_concurrency = 0`
+     mean "no reservation" (module omits `reserved_concurrent_executions`); at the account limit the
+     wake path is already capped ≤10. To use a real reservation, request a concurrency-limit increase.
+  3. **WAFv2 IP-set description rejected parentheses** — the `(populated by the control plane)` text
+     violates WAFv2's description regex. FIXED (dash instead of parentheses).
+  4. **AAAA on an IPv4 ALB** — `aws_route53_record.control_plane_aaaa` was gated on `dns_enabled`, so
+     it published an IPv6 record aliasing the IPv4-only ALB (dead for IPv6-only clients). FIXED
+     (re-gated on `cloudfront_enabled`, since CloudFront is the only dual-stack target).
+     Also seen (unrelated, in the broad apply only): the fck-nat instance's gzip `user_data` triggers
+     the AWS provider's "inconsistent final plan" — avoid by not touching that instance (targeted apply).
+
 - **opencode rendered BLANK — base-path ROUTING — FIXED in `fix/opencode-base-path`
   (2026-07-12).** Distinct from the older JS-corruption bug (next entry). Diagnosis (live probes
   of a fresh workspace on `4b511a9`): the proxy delivered everything correctly — bundle loaded,
