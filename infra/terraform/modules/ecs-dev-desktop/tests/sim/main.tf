@@ -268,8 +268,8 @@ output "wake_lambda_name" {
   value = module.edd.wake_lambda_name
 }
 
-output "wake_lambda_function_url" {
-  value = module.edd.wake_lambda_function_url
+output "wake_api_endpoint" {
+  value = module.edd.wake_api_endpoint
 }
 
 output "cloudfront_web_acl_arn" {
