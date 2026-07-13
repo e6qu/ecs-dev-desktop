@@ -92,9 +92,9 @@ output "wake_lambda_name" {
   value       = local.cloudfront_enabled ? aws_lambda_function.wake[0].function_name : null
 }
 
-output "wake_lambda_function_url" {
-  description = "Wake Lambda Function URL used as the CloudFront failover origin (null when CloudFront is disabled)."
-  value       = local.cloudfront_enabled ? aws_lambda_function_url.wake[0].function_url : null
+output "wake_api_endpoint" {
+  description = "Wake Lambda's API Gateway HTTP API endpoint used as the CloudFront wake origin (null when CloudFront is disabled)."
+  value       = local.cloudfront_enabled ? aws_apigatewayv2_api.wake[0].api_endpoint : null
 }
 
 # ---- Admin-managed CLOUDFRONT WAF (coordinates the control plane needs) ----

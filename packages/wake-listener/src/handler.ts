@@ -31,6 +31,7 @@ import {
   decideControlPlaneWake,
   decideWakeResponse,
   systemClock,
+  WAKE_RESPONSE_CACHE_CONTROL,
   type StructuredLogger,
   type WakeHttpResponse,
 } from "@edd/core";
@@ -46,7 +47,16 @@ export const WAKE_ENV = {
   activeDesired: "EDD_CONTROL_PLANE_ACTIVE_DESIRED",
   reloadIntervalMs: "EDD_WAKE_RELOAD_INTERVAL_MS",
   pageTitle: "EDD_WAKE_PAGE_TITLE",
+  token: "EDD_WAKE_TOKEN",
 } as const;
+
+/**
+ * Shared-secret header CloudFront adds to origin requests (a custom origin header), which the
+ * handler requires to match {@link WAKE_ENV.token}. The Function URL is public (AuthType NONE —
+ * CloudFront OAC signing of Lambda Function URLs is unreliable), so this header is what gates it to
+ * CloudFront-only: a request that did not traverse the distribution lacks the secret and is rejected.
+ */
+export const WAKE_TOKEN_HEADER = "x-edd-wake-token";
 
 /**
  * Minimal AWS Lambda Function URL request (payload format 2.0) — only the fields
@@ -58,6 +68,8 @@ export interface FunctionUrlEvent {
   readonly requestContext?: {
     readonly http?: { readonly method?: string; readonly path?: string };
   };
+  /** Request headers (lower-cased keys in payload 2.0). Used only for the shared-secret gate. */
+  readonly headers?: Readonly<Record<string, string | undefined>>;
 }
 
 /** AWS Lambda Function URL response (payload format 2.0). Structurally the same
@@ -94,6 +106,25 @@ function titleEnv(env: Env): string {
   return raw !== undefined && raw.length > 0 ? raw : DEFAULT_WAKE_PAGE_TITLE;
 }
 
+/** HTTP status returned when the shared-secret gate rejects a request. */
+export const WAKE_FORBIDDEN_STATUS = 403;
+
+/**
+ * A minimal 403 for a request that failed the shared-secret gate (i.e. did not come through
+ * CloudFront). No reloading page — a direct hit on the Function URL gets a plain refusal, not the
+ * app's cold-start UI. `no-store` so the refusal is never cached.
+ */
+function forbiddenResponse(): FunctionUrlResult {
+  return {
+    statusCode: WAKE_FORBIDDEN_STATUS,
+    headers: {
+      "content-type": "text/plain; charset=utf-8",
+      "cache-control": WAKE_RESPONSE_CACHE_CONTROL,
+    },
+    body: "Forbidden",
+  };
+}
+
 /**
  * Orchestrate one wake invocation (testable; deps injected). Reads the service
  * scale, decides via the pure core, scales up on `wake`, and returns the startup
@@ -119,11 +150,23 @@ export async function handleWake(
   const title = titleEnv(env);
   const page = { reloadIntervalMs, title };
 
-  // Every request here is CloudFront serving this Lambda for a 503 from the ALB (via the 503
-  // custom_error_response) — i.e. the control plane is down. There is no readiness-probe vs
-  // navigation distinction: we always trigger the wake and return the reloading page. `event` is
-  // unused (the wake decision depends only on the current ECS scale), kept for the handler shape.
-  void event;
+  // Shared-secret gate: when EDD_WAKE_TOKEN is set the Function URL is public (AuthType NONE), so
+  // only a request that traversed CloudFront (which injects the x-edd-wake-token origin header)
+  // carries the secret. Anything else — a direct hit on the Function URL — is rejected. This is the
+  // whole access control for the wake path; without a matching token we never touch ECS.
+  const expectedToken = env[WAKE_ENV.token];
+  if (expectedToken !== undefined && expectedToken.length > 0) {
+    const presented = event.headers?.[WAKE_TOKEN_HEADER];
+    if (presented !== expectedToken) {
+      logger.error("wake token rejected", { cluster, service, presented: presented !== undefined });
+      return forbiddenResponse();
+    }
+  }
+
+  // Past the gate, every request is CloudFront serving this Lambda for a 503 from the ALB (via the
+  // 503 custom_error_response) — i.e. the control plane is down. There is no readiness-probe vs
+  // navigation distinction: we always trigger the wake and return the reloading page. The wake
+  // decision depends only on the current ECS scale, not on the request body/path.
 
   try {
     const scale = await ecs.describe({ cluster, service });

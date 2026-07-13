@@ -19,5 +19,11 @@ terraform {
       version               = "~> 6.0"
       configuration_aliases = [aws.us_east_1]
     }
+    # Generates the wake-path shared secret (random_password.wake_token). CloudFront injects it as a
+    # custom origin header the public wake Function URL verifies — see cloudfront.tf.
+    random = {
+      source  = "hashicorp/random"
+      version = "~> 3.6"
+    }
   }
 }

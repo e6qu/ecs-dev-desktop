@@ -3,7 +3,13 @@ import { createLogger, fixedClock, type StructuredLogger } from "@edd/core";
 import { describe, expect, it } from "vitest";
 
 import { type EcsServicePort, type EcsServiceScale } from "./ecs-service";
-import { handleWake, WAKE_ENV, type WakeDeps } from "./handler";
+import {
+  handleWake,
+  WAKE_ENV,
+  WAKE_FORBIDDEN_STATUS,
+  WAKE_TOKEN_HEADER,
+  type WakeDeps,
+} from "./handler";
 
 const BASE_ENV = {
   [WAKE_ENV.cluster]: "edd-prod-workspaces",
@@ -106,5 +112,50 @@ describe("handleWake", () => {
     const ecs = fakeEcs({ desiredCount: 0, runningCount: 0 }, calls);
     const env = { ...BASE_ENV, [WAKE_ENV.activeDesired]: "lots" };
     await expect(handleWake({}, deps(ecs, env))).rejects.toThrow(/must be a positive integer/);
+  });
+
+  describe("shared-secret gate", () => {
+    const TOKEN = "s3cr3t-wake-token";
+    const gatedEnv = { ...BASE_ENV, [WAKE_ENV.token]: TOKEN } as const;
+
+    it("wakes when the request carries the matching x-edd-wake-token header", async () => {
+      const calls: SetDesiredCall[] = [];
+      const ecs = fakeEcs({ desiredCount: 0, runningCount: 0 }, calls);
+      const res = await handleWake(
+        { headers: { [WAKE_TOKEN_HEADER]: TOKEN } },
+        deps(ecs, gatedEnv),
+      );
+      expect(res.statusCode).toBe(200);
+      expect(res.headers["x-edd-wake-action"]).toBe("wake");
+      expect(calls).toHaveLength(1);
+    });
+
+    it("returns 403 and never touches ECS when the token header is missing", async () => {
+      const calls: SetDesiredCall[] = [];
+      const ecs = fakeEcs({ desiredCount: 0, runningCount: 0 }, calls);
+      const res = await handleWake({ headers: {} }, deps(ecs, gatedEnv));
+      expect(res.statusCode).toBe(WAKE_FORBIDDEN_STATUS);
+      expect(res.body).not.toContain("window.location.reload()");
+      expect(calls).toEqual([]);
+    });
+
+    it("returns 403 when the token header does not match", async () => {
+      const calls: SetDesiredCall[] = [];
+      const ecs = fakeEcs({ desiredCount: 0, runningCount: 0 }, calls);
+      const res = await handleWake(
+        { headers: { [WAKE_TOKEN_HEADER]: "wrong" } },
+        deps(ecs, gatedEnv),
+      );
+      expect(res.statusCode).toBe(WAKE_FORBIDDEN_STATUS);
+      expect(calls).toEqual([]);
+    });
+
+    it("does not gate when EDD_WAKE_TOKEN is unset (open Function URL)", async () => {
+      const calls: SetDesiredCall[] = [];
+      const ecs = fakeEcs({ desiredCount: 0, runningCount: 0 }, calls);
+      const res = await handleWake({ headers: {} }, deps(ecs, BASE_ENV));
+      expect(res.statusCode).toBe(200);
+      expect(calls).toHaveLength(1);
+    });
   });
 });

@@ -47,10 +47,16 @@ locals {
   #     control plane is fully dynamic and proxies editor WebSockets).
   #   Managed-AllViewer        — forward ALL viewer headers, cookies, and query string
   #     to the origin (so auth cookies + the WebSocket Upgrade/Connection headers pass
-  #     through untouched).
+  #     through untouched). Used for the ALB origin.
+  #   Managed-AllViewerExceptHostHeader — same, but does NOT forward the viewer Host. Required for
+  #     the wake API Gateway origin: API Gateway routes on the execute-api Host, so CloudFront must send
+  #     the API's OWN host, not the viewer host (app.<domain>) which would not match the API. This ORP
+  #     forwards everything (incl. the x-edd-wake-token origin header) except Host, which CloudFront
+  #     sets to the origin domain. Access is gated by that token, not by Host or IAM.
   # https://docs.aws.amazon.com/AmazonCloudFront/latest/DeveloperGuide/using-managed-cache-policies.html
-  cloudfront_managed_caching_disabled_policy_id = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
-  cloudfront_managed_all_viewer_orp_id          = "216adef6-5c7f-47e4-b989-5492eafa07d3"
+  cloudfront_managed_caching_disabled_policy_id    = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+  cloudfront_managed_all_viewer_orp_id             = "216adef6-5c7f-47e4-b989-5492eafa07d3"
+  cloudfront_managed_all_viewer_except_host_orp_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac"
 
   # The wake Lambda flips the control-plane ECS service back to this desired count
   # on the first request that arrives while the service is scaled to zero.
