@@ -180,6 +180,18 @@ resource "aws_vpc_security_group_ingress_rule" "workspaces_editor_from_control_p
   referenced_security_group_id = aws_security_group.tasks.id
 }
 
+# opencode terminal-overlay sidecar port: the first-party terminal server runs alongside opencode
+# (which ships no terminal) and the control plane proxies `/w/<id>/__edd_term/` to it. Reachable
+# ONLY from the control plane (same as the editor port) — never workspace-to-workspace.
+resource "aws_vpc_security_group_ingress_rule" "workspaces_terminal_from_control_plane" {
+  security_group_id            = aws_security_group.workspaces.id
+  description                  = "opencode terminal-overlay sidecar port from the control plane (in-app proxy) only."
+  ip_protocol                  = "tcp"
+  from_port                    = var.workspace_terminal_port
+  to_port                      = var.workspace_terminal_port
+  referenced_security_group_id = aws_security_group.tasks.id
+}
+
 resource "aws_vpc_security_group_ingress_rule" "workspaces_ssh_from_control_plane" {
   security_group_id            = aws_security_group.workspaces.id
   description                  = "sshd from the control plane / SSH gateway only (registered-key auth)."

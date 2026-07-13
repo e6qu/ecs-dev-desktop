@@ -100,10 +100,14 @@ const defaultPtySpawner: PtySpawner = async ({ root, command }) => {
   const nodePty = await loadPty();
   if (nodePty === null) return null;
   const shell = process.env.SHELL ?? "/bin/bash";
-  // Agent-first modes boot the terminal straight into the configured program via a
-  // login shell (full image PATH); `exec` replaces the shell so the program's exit
-  // closes the PTY. A plain shell otherwise.
-  const args = command === undefined ? [] : ["-lc", `exec ${command}`];
+  // Both modes run a LOGIN shell so the terminal gets the SAME environment as an SSH login:
+  // `/etc/profile` + `/etc/profile.d/*` set the full PATH (including a language variant's
+  // toolchain, which a variant image adds ONLY via a profile.d drop-in) and cd into the project
+  // dir. A plain non-login shell skips those, so tools that a variant puts on the login PATH — or
+  // that depend on the profile environment — appeared "not runnable" in a terminal tab (reported
+  // for the opencode CLI). Interactive login shell for a plain tab; `-lc "exec <cmd>"` for an
+  // agent-first tab, where `exec` replaces the shell so the program's exit closes the PTY.
+  const args = command === undefined ? ["-l", "-i"] : ["-lc", `exec ${command}`];
   const pty = nodePty.spawn(shell, args, {
     name: "xterm-color",
     cwd: root,

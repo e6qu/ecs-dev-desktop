@@ -26,9 +26,11 @@ import {
   authorizeSpectate,
   authorizeWorkspace,
   editorTokenRedirect,
+  isTerminalOverlayRequest,
   isWorkspaceDocumentNavigation,
   proxyWorkspaceHttp,
   proxyWorkspaceUpgrade,
+  resolveWorkspaceTerminalUpstream,
   resolveWorkspaceUpstream,
   type SpectateRole,
 } from "./lib/workspace-proxy";
@@ -112,6 +114,21 @@ const server = createServer((req, res) => {
     if (!authz.ready && isWorkspaceDocumentNavigation(req, wsId)) {
       res.writeHead(302, { location: `/workspaces/${wsId}?autoopen=1` });
       res.end();
+      return;
+    }
+    // opencode terminal overlay: `/w/<id>/__edd_term/…` is the sidecar terminal server (a plain
+    // base-path editor on a second port), NOT opencode. Route it there directly — no opencode
+    // prefix-strip/Basic-auth/shim, no `?tkn` dance (the sidecar is tokenless behind this proxy).
+    if (isTerminalOverlayRequest(authz.editor, wsId, req.url)) {
+      try {
+        proxyWorkspaceHttp(await resolveWorkspaceTerminalUpstream(wsId), req, res, {
+          wsId,
+          editor: "terminal",
+        });
+      } catch {
+        res.writeHead(502, { "content-type": "application/json" });
+        res.end(JSON.stringify({ error: "workspace terminal unavailable" }));
+      }
       return;
     }
     // Defence-in-depth: hand the authorized browser the editor's connection token on
@@ -198,9 +215,14 @@ server.on("upgrade", (req, socket, head) => {
     const untrack = workspacePresence.track(wsId, authz.sessionExpiresAtMs);
     socket.once("close", untrack);
     try {
-      proxyWorkspaceUpgrade(await resolveWorkspaceUpstream(wsId), req, socket, head, {
+      // The opencode terminal-overlay PTY WebSocket (`/w/<id>/__edd_term/terminal`) tunnels to the
+      // sidecar terminal server on the second port, not to opencode.
+      const upstream = isTerminalOverlayRequest(authz.editor, wsId, req.url)
+        ? await resolveWorkspaceTerminalUpstream(wsId)
+        : await resolveWorkspaceUpstream(wsId);
+      proxyWorkspaceUpgrade(upstream, req, socket, head, {
         wsId,
-        editor: authz.editor,
+        editor: isTerminalOverlayRequest(authz.editor, wsId, req.url) ? "terminal" : authz.editor,
       });
     } catch {
       socket.write("HTTP/1.1 502 Bad Gateway\r\nconnection: close\r\n\r\n");

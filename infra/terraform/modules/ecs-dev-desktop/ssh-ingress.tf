@@ -123,6 +123,12 @@ resource "aws_ecs_task_definition" "ssh_gateway" {
   memory                   = tostring(var.ssh_gateway_memory)
   execution_role_arn       = aws_iam_role.execution.arn
 
+  # Fargate CPU architecture (default ARM64/Graviton). The ssh-gateway image must be multiarch.
+  runtime_platform {
+    cpu_architecture        = var.workspace_cpu_architecture
+    operating_system_family = "LINUX"
+  }
+
   lifecycle {
     precondition {
       condition     = local.ssh_gateway_image != ""

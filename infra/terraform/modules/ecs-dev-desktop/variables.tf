@@ -147,6 +147,22 @@ variable "workspace_port" {
   default     = 3000
 }
 
+variable "workspace_terminal_port" {
+  description = "Port the opencode terminal-overlay sidecar (first-party terminal server) listens on inside an opencode workspace. Mirrors @edd/config DEFAULT_WORKSPACE_TERMINAL_PORT. The control plane proxies /w/<id>/__edd_term/ to it; only the control-plane security group may reach it."
+  type        = number
+  default     = 3001
+}
+
+variable "workspace_cpu_architecture" {
+  description = "Fargate CPU architecture for the platform services (control-plane, ssh-gateway, reconciler). Defaults to ARM64 (Graviton) per the multiarch image convention; images must be published multiarch so Fargate pulls the matching per-arch variant."
+  type        = string
+  default     = "ARM64"
+  validation {
+    condition     = contains(["ARM64", "X86_64"], var.workspace_cpu_architecture)
+    error_message = "workspace_cpu_architecture must be ARM64 or X86_64."
+  }
+}
+
 variable "control_plane_min_count" {
   description = "Autoscaling floor for the control-plane service. Default 0 so the reconciler/wake Lambda can scale the control plane to zero (scale-to-zero entry, cloudfront.tf); raise it to keep a warm floor. The service's desired_count is lifecycle-ignored, so the reconciler/wake own it at runtime."
   type        = number

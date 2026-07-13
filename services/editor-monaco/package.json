@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json --noEmit && vite build && esbuild src/run.ts --bundle --platform=node --target=node22 --format=esm --external:node-pty --log-level=warning '--banner:js=import { createRequire } from \"module\"; const require = createRequire(import.meta.url);' --outfile=dist/server.js",
+    "build": "tsc -p tsconfig.json --noEmit && vite build && esbuild src/run.ts --bundle --minify --platform=node --target=node22 --format=esm --external:node-pty --log-level=warning '--banner:js=import { createRequire } from \"module\"; const require = createRequire(import.meta.url);' --outfile=dist/server.js",
     "lint": "eslint .",
     "test": "vitest run"
   },

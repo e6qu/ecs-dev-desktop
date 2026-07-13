@@ -9,6 +9,15 @@
 # for runtime wiring and changes only the container image references. Missing ECS
 # services, task definitions, Scheduler schedules, or IAM permissions are release
 # failures.
+#
+# Environment:
+#   EDD_DEPLOY_ARCH   Fargate CPU architecture to pin on the rolled task defs:
+#                     "arm64" (default; Graviton) or "amd64". The service has
+#                     lifecycle ignore_changes[task_definition], so it never adopts
+#                     Terraform's runtimePlatform — this is the ONLY thing that flips
+#                     the running services' arch, so it is set EXPLICITLY here (not
+#                     merely preserved from the current, possibly-amd64, task def).
+#                     The pushed image at <tag> must be a multiarch manifest.
 
 set -eu
 unset CDPATH
@@ -17,6 +26,16 @@ account="${1:?usage: deploy-release-images.sh <account-id> <region> <name-prefix
 region="${2:?usage: deploy-release-images.sh <account-id> <region> <name-prefix> <tag>}"
 prefix="${3:?usage: deploy-release-images.sh <account-id> <region> <name-prefix> <tag>}"
 tag="${4:?usage: deploy-release-images.sh <account-id> <region> <name-prefix> <tag>}"
+
+deploy_arch="${EDD_DEPLOY_ARCH:-arm64}"
+case "$deploy_arch" in
+  arm64) ecs_arch="ARM64" ;;
+  amd64) ecs_arch="X86_64" ;;
+  *)
+    echo "edd: EDD_DEPLOY_ARCH must be arm64 or amd64 (got '$deploy_arch')" >&2
+    exit 1
+    ;;
+esac
 
 for c in aws jq mktemp; do
   command -v "$c" >/dev/null 2>&1 || {
@@ -56,12 +75,16 @@ register_from_current() {
     exit 1
   fi
 
-  jq --arg container "$container" --arg image "$image" '
+  jq --arg container "$container" --arg image "$image" --arg arch "$ecs_arch" '
     .taskDefinition
     | .containerDefinitions = (
         .containerDefinitions
         | map(if .name == $container then .image = $image else . end)
       )
+    # Force the CPU architecture (default ARM64/Graviton) rather than preserving whatever the
+    # current task def has: the service ignore_changes[task_definition], so this roll is the only
+    # thing that flips the running arch. operatingSystemFamily is required alongside cpuArchitecture.
+    | .runtimePlatform = { cpuArchitecture: $arch, operatingSystemFamily: "LINUX" }
     | {
         family,
         taskRoleArn,
