@@ -248,7 +248,8 @@ sh "$here/bootstrap-secrets.sh" "$EDD_NAME" "$EDD_REGION"
 # `terraform apply` uploads. Build it here so a fresh install does not fail on the missing zip.
 banner "build wake Lambda artifact (@edd/wake-listener)"
 (
-  cd "$repo" && corepack enable >/dev/null 2>&1 || true
+  cd "$repo" || exit 1
+  corepack enable >/dev/null 2>&1 || true
   pnpm --filter @edd/wake-listener build
 )
 
