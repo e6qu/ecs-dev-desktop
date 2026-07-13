@@ -51,20 +51,39 @@ const baseUrl = requiredEnv("EDD_APP_URL").replace(/\/$/, "");
 const baseHost = new URL(baseUrl).hostname;
 
 /**
- * Ensure the catalog has an ENABLED entry for `image` (idempotent). Used only with the manual
+ * Ensure the catalog has an ENABLED entry for `image` (used only with the manual
  * `EDD_VERIFY_BASE_IMAGE` override, so a branch build the main-tracking image-source sweep hasn't
- * reconciled can still be created + verified. No-op when the entry already exists.
+ * reconciled can still be created + verified). Returns the id of a TEMP entry it created (to be
+ * removed in cleanup) or `null` when it reused an existing entry.
+ *
+ * Critically it registers a temporary entry ONLY when NO entry already points at the same image
+ * REPO — a second entry for a repo that already has one breaks the image-source rollout ("multiple
+ * catalog entries point at image repo"), so we never add one alongside the canonical entry; instead
+ * we reuse it if the exact tag matches, else fail loudly telling the operator to point at the repo's
+ * current tag. The created temp entry is deleted in cleanup so the single-entry-per-repo invariant
+ * is restored.
  */
-async function ensureCatalogImage(jar: readonly StoredCookie[], image: string): Promise<void> {
+async function ensureCatalogImage(
+  jar: readonly StoredCookie[],
+  image: string,
+): Promise<string | null> {
   const cookie = jar.map((c) => `${c.name}=${c.value}`).join("; ");
+  const repo = image.split(":")[0];
   const list = await fetch(`${baseUrl}/api/base-images`, { headers: { cookie } });
   if (list.ok) {
     const body: unknown = await list.json();
     const entries =
       typeof body === "object" && body !== null && "baseImages" in body
-        ? (body as { baseImages?: { image?: string }[] }).baseImages
-        : undefined;
-    if ((entries ?? []).some((e) => e.image === image)) return;
+        ? ((body as { baseImages?: { image?: string }[] }).baseImages ?? [])
+        : [];
+    if (entries.some((e) => e.image === image)) return null; // exact match already enabled — reuse
+    const sameRepo = entries.find((e) => (e.image ?? "").split(":")[0] === repo);
+    if (sameRepo !== undefined) {
+      throw new Error(
+        `catalog already has an entry for repo ${repo} (${sameRepo.image ?? ""}); adding a second ` +
+          `would break the image-source rollout. Point EDD_VERIFY_BASE_IMAGE at that tag, or remove it first.`,
+      );
+    }
   }
   const res = await fetch(`${baseUrl}/api/base-images`, {
     method: "POST",
@@ -77,7 +96,22 @@ async function ensureCatalogImage(jar: readonly StoredCookie[], image: string): 
     }),
   });
   if (!res.ok) throw new Error(`catalog ensure failed for ${image}: HTTP ${String(res.status)}`);
-  console.log(`edd: registered catalog entry for ${image}`);
+  const created = (await res.json()) as { id?: string };
+  console.log(`edd: registered TEMP catalog entry ${created.id ?? "(no id)"} for ${image}`);
+  return created.id ?? null;
+}
+
+/** Remove the temporary catalog entry {@link ensureCatalogImage} created, restoring the
+ * single-entry-per-repo invariant the image-source rollout relies on. Best-effort (logged). */
+async function removeCatalogImage(jar: readonly StoredCookie[], id: string): Promise<void> {
+  const cookie = jar.map((c) => `${c.name}=${c.value}`).join("; ");
+  const res = await fetch(`${baseUrl}/api/base-images/${id}`, {
+    method: "DELETE",
+    headers: { cookie },
+  });
+  if (!res.ok)
+    console.error(`edd: failed to remove temp catalog entry ${id}: HTTP ${String(res.status)}`);
+  else console.log(`edd: removed temp catalog entry ${id}`);
 }
 const region = requiredEnv("AWS_REGION");
 const table = requiredEnv("DYNAMODB_TABLE");
@@ -224,6 +258,11 @@ async function assertOpencodeTerminalOverlay(page: Page): Promise<void> {
       { timeout: 30_000, message: "overlay terminal command output was not observed" },
     )
     .toBe("overlay-ok");
+  // Capture the overlay OPEN (with the live terminal) for the CI artifact — the per-editor
+  // screenshot below is taken after we minimize, so it would otherwise never show the terminal.
+  await page
+    .screenshot({ path: join(OUT_DIR, "opencode-terminal-overlay-open.png"), fullPage: false })
+    .catch(() => undefined);
   // Minimize closes the overlay; the toggle stays available to reopen.
   await page.locator("#edd-term-min").click();
   await expect(overlay, "minimize did not hide the terminal overlay").toBeHidden({
@@ -429,6 +468,9 @@ await mkdir(OUT_DIR, { recursive: true });
 const secret = await authSecret(region, secretId);
 const { jar, sessionId } = await authJar(secret, "smoke-shot");
 const created: string[] = [];
+// Id of the temporary catalog entry the manual EDD_VERIFY_BASE_IMAGE path registered (removed in
+// cleanup so the image-source rollout's single-entry-per-repo invariant is restored). null otherwise.
+let tempCatalogId: string | null = null;
 
 /**
  * Failure record for the artifact upload: failures before the browser section
@@ -466,7 +508,7 @@ try {
   // the expected-SHA rollout wait. CI post-deploy-smoke leaves this unset and waits for the SHA.
   const overrideBaseImage = process.env.EDD_VERIFY_BASE_IMAGE;
   if (overrideBaseImage !== undefined && overrideBaseImage !== "") {
-    await ensureCatalogImage(jar, overrideBaseImage);
+    tempCatalogId = await ensureCatalogImage(jar, overrideBaseImage);
     baseImage = overrideBaseImage;
     console.log(
       `edd: using explicit EDD_VERIFY_BASE_IMAGE=${baseImage} (skipping SHA rollout wait)`,
@@ -558,6 +600,9 @@ try {
 } catch (e) {
   console.error("edd: browser close failed:", e);
 }
+// Remove the temp catalog entry BEFORE cleanupSmokeWorkspaces revokes the session (its cookie is
+// still valid here). Restores the single-entry-per-repo invariant the image-source rollout needs.
+if (tempCatalogId !== null) await removeCatalogImage(jar, tempCatalogId);
 const cleanupFailures = await cleanupSmokeWorkspaces(baseUrl, jar, created, () =>
   revokeAuthSession(sessionId),
 );
