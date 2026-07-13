@@ -137,7 +137,10 @@ resource "aws_lambda_function" "wake" {
   # invocations all hammering ECS DescribeServices/UpdateService (shared with
   # workspace lifecycle + the reconciler). Waking is idempotent, so a small ceiling
   # is safe and still always leaves the wake path capacity.
-  reserved_concurrent_executions = var.wake_lambda_reserved_concurrency
+  # 0 = no reservation: pass -1 (the provider's "unset" sentinel) so no
+  # reserved_concurrent_executions is applied. Required on accounts at AWS's default Lambda
+  # concurrency limit of 10, where reserving any amount drops unreserved below its floor of 10.
+  reserved_concurrent_executions = var.wake_lambda_reserved_concurrency > 0 ? var.wake_lambda_reserved_concurrency : -1
 
   filename         = var.wake_lambda_zip
   source_code_hash = fileexists(var.wake_lambda_zip) ? filebase64sha256(var.wake_lambda_zip) : null

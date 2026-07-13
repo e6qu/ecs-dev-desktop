@@ -85,9 +85,10 @@ module "ecs_dev_desktop" {
   # Control-plane scale-to-zero entry: CloudFront fronts app.<domain> and fails over to
   # a wake Lambda when the control-plane ECS service is at zero. Needs domain_name set.
   # Build the wake zip first: `pnpm --filter @edd/wake-listener build`.
-  enable_cloudfront     = var.enable_cloudfront
-  enable_cloudfront_waf = var.enable_cloudfront_waf
-  wake_lambda_zip       = var.wake_lambda_zip
+  enable_cloudfront                = var.enable_cloudfront
+  enable_cloudfront_waf            = var.enable_cloudfront_waf
+  wake_lambda_zip                  = var.wake_lambda_zip
+  wake_lambda_reserved_concurrency = var.wake_lambda_reserved_concurrency
 
   # Public SSH front door (NLB + `*.<ssh_base_domain>` wildcard). Independent of the editor
   # domain above; leave ssh_base_domain empty to skip SSH ingress. In "local" build mode the

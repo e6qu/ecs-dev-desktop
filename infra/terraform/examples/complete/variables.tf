@@ -76,6 +76,12 @@ variable "wake_lambda_zip" {
   default     = "../../../../packages/wake-listener/dist/wake-listener.zip"
 }
 
+variable "wake_lambda_reserved_concurrency" {
+  description = "Reserved concurrency for the wake Lambda; 0 = no reservation. Set 0 on accounts at AWS's default Lambda concurrency limit of 10 (any reservation drops unreserved below the floor of 10)."
+  type        = number
+  default     = 5
+}
+
 variable "auth_secret_arns" {
   description = "Map of env-var name → Secrets Manager ARN for ALL secret env vars (auth + crypto + webhooks), e.g. AUTH_SECRET, AUTH_GITHUB_*, EDD_TOKEN_ENC_KEY, EDD_GATEWAY_SECRET, EDD_AGENT_SECRET, EDD_CONNECTION_SECRET, EDD_IMAGE_SOURCE_WEBHOOK_SECRET."
   type        = map(string)

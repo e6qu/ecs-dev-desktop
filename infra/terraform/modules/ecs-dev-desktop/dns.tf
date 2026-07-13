@@ -62,8 +62,12 @@ resource "aws_route53_record" "control_plane" {
   }
 }
 
+# IPv6 (AAAA) only when CloudFront fronts the control plane: CloudFront is dual-stack, but the ALB
+# is IPv4-only, so publishing an AAAA that aliases the ALB would hand IPv6-only clients an address
+# that never answers. Gate on cloudfront_enabled (not just dns_enabled) so the AAAA exists exactly
+# when its target actually serves IPv6.
 resource "aws_route53_record" "control_plane_aaaa" {
-  count   = local.dns_enabled ? 1 : 0
+  count   = local.cloudfront_enabled ? 1 : 0
   zone_id = var.route53_zone_id
   name    = local.control_plane_fqdn
   type    = "AAAA"

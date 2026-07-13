@@ -291,13 +291,19 @@ variable "wake_lambda_reserved_concurrency" {
     both caps that blast radius and guarantees the wake path always has capacity.
     Waking is idempotent (each invocation just lifts desiredCount off zero), so a
     low ceiling is safe.
+
+    Set to 0 to make NO reservation (the module then omits reserved_concurrent_executions).
+    Required on accounts at AWS's default Lambda concurrency limit of 10: reserving ANY
+    amount there drops UnreservedConcurrentExecutions below its floor of 10, which the
+    Lambda API rejects. At the account limit the wake path is already capped (≤10), so no
+    reservation is needed; request a concurrency-limit increase to use a real reservation.
   EOT
   type        = number
   default     = 5
 
   validation {
-    condition     = var.wake_lambda_reserved_concurrency >= 1 && var.wake_lambda_reserved_concurrency <= 100
-    error_message = "wake_lambda_reserved_concurrency must be between 1 and 100 (0 would throttle the wake path entirely)."
+    condition     = var.wake_lambda_reserved_concurrency >= 0 && var.wake_lambda_reserved_concurrency <= 100
+    error_message = "wake_lambda_reserved_concurrency must be between 0 (no reservation) and 100."
   }
 }
 

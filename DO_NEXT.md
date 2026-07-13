@@ -6,18 +6,21 @@
 
 ## Open decisions (need the user)
 
-0. **Prod Terraform drift — apply the rest of `main`?** (found 2026-07-13) After
-   migrating prod state local→S3 (see `edd-prod-terraform-state` memory), a full
-   `terraform plan` shows `19 add / 69 change / 4 destroy` — i.e. much of merged
-   `main` was never applied to prod. Only the #233 S3/DynamoDB gateway endpoints were
-   applied (targeted, verified live). **Unapplied to prod:** the CloudFront + WAF edge
-   (distribution, ACM cert, WAF web ACL, admin IP-set), the **wake Lambda** (scale-from-
-   zero — its absence means prod cannot wake a scaled-to-zero control plane via the
-   documented path), `edd:cost-scope` tags on ~69 resources, 3 task-def/ECR-policy
-   replaces (harmless — services now `ignore_changes` task_definition), and 1 destroy
-   (`aws_appautoscaling_policy.control_plane_cpu`, removed in code). Decision: apply the
-   full plan (rolls out the CloudFront/WAF front door + wake Lambda — security + cost +
-   behavior impact), or keep prod as-is. Review the destroys/replaces before applying.
+0. **Prod Terraform drift — mostly resolved 2026-07-13; CloudFront scale-to-zero DEFERRED.**
+   After migrating prod state local→S3 (see `edd-prod-terraform-state` memory), the drift was
+   worked through: the #233 S3/DynamoDB gateway endpoints and the `:3001` workspace SG rule were
+   **applied + verified**. The **CloudFront/WAF/wake control-plane scale-to-zero** feature was
+   attempted and found **not deployable as designed** — it is now disabled in prod
+   (`enable_cloudfront = false`) with the partial resources cleaned up (prod serves from the ALB,
+   healthy). Root cause + code fixes are in `BUGS.md` (origin-group ⊕ write-methods design conflict
+   with the app's server actions; the account's 10-Lambda-concurrency floor; a WAF description bug;
+   an AAAA-on-IPv4-ALB bug). A real control-plane wake needs a different mechanism (CloudFront
+   Function / Lambda@Edge / app-level) — a **future design task**, low priority (workspaces already
+   scale to zero; control-plane scale-to-zero is a marginal saving). **Residual benign drift left
+   unapplied:** `edd:cost-scope` tags on ~64 resources, the removed
+   `aws_appautoscaling_policy.control_plane_cpu`, and task-def/ECR-policy replaces (services
+   `ignore_changes[task_definition]`). Applying those means touching the fck-nat instance, which
+   hits the provider's gzip-`user_data` "inconsistent final plan" — leave them, or apply targeted.
 
 1. **Heartbeat interval & idle threshold** — scale-to-zero tuning. The knobs
    now exist (`EDD_HEARTBEAT_INTERVAL_S` injected into workspace tasks;
