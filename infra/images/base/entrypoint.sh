@@ -200,11 +200,17 @@ case "${EDD_EDITOR_MODE:-openvscode}" in
       exit 64
     fi
     : "${CONNECTION_TOKEN:?EDD_EDITOR_MODE=opencode requires CONNECTION_TOKEN}"
-    # opencode picks its project directory from the process CWD (it has no --project flag). The
-    # build-time WORKDIR (/data/project) does not exist when the container starts — the EBS volume
-    # mounts empty over /data — so CWD is left at "/" and opencode would open the filesystem root.
-    # We create the project dir above, so cd into it now; opencode then opens the clean project dir.
-    cd "${EDD_WORKSPACE_ROOT:-/data/project}"
+    # opencode opens the git WORKTREE of its working directory as the project. It derives the
+    # directory from CWD (we cd into the project dir below), but for a NON-git directory it walks up
+    # to the filesystem root "/" and opens THAT (verified: /path reports worktree="/" for a bare
+    # /data/project, but "/data/project" once it is a git repo). So git-init the project dir on first
+    # boot — idempotent, skipped once it (or a cloned repo) already has a .git — so opencode opens
+    # the clean /data/project, not "/". A .git in the project root is legitimate project content
+    # (not editor/tool state), so this does not violate the clean-pwd rule.
+    _ws_root="${EDD_WORKSPACE_ROOT:-/data/project}"
+    gosu workspace git -C "${_ws_root}" rev-parse --git-dir >/dev/null 2>&1 ||
+      gosu workspace git -C "${_ws_root}" init -q
+    cd "${_ws_root}"
     # Give opencode (which ships no terminal) a full multi-tab terminal by running the first-party
     # terminal server as a SIDECAR on :3001 under `/w/<id>/__edd_term/` (mirrors @edd/config
     # DEFAULT_WORKSPACE_TERMINAL_PORT + WORKSPACE_TERMINAL_OVERLAY_SEGMENT). The control-plane proxy

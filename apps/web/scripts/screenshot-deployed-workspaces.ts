@@ -49,6 +49,36 @@ function playwrightCookie(baseHost: string, cookie: StoredCookie) {
 
 const baseUrl = requiredEnv("EDD_APP_URL").replace(/\/$/, "");
 const baseHost = new URL(baseUrl).hostname;
+
+/**
+ * Ensure the catalog has an ENABLED entry for `image` (idempotent). Used only with the manual
+ * `EDD_VERIFY_BASE_IMAGE` override, so a branch build the main-tracking image-source sweep hasn't
+ * reconciled can still be created + verified. No-op when the entry already exists.
+ */
+async function ensureCatalogImage(jar: readonly StoredCookie[], image: string): Promise<void> {
+  const cookie = jar.map((c) => `${c.name}=${c.value}`).join("; ");
+  const list = await fetch(`${baseUrl}/api/base-images`, { headers: { cookie } });
+  if (list.ok) {
+    const body: unknown = await list.json();
+    const entries =
+      typeof body === "object" && body !== null && "baseImages" in body
+        ? (body as { baseImages?: { image?: string }[] }).baseImages
+        : undefined;
+    if ((entries ?? []).some((e) => e.image === image)) return;
+  }
+  const res = await fetch(`${baseUrl}/api/base-images`, {
+    method: "POST",
+    headers: { cookie, "content-type": "application/json" },
+    body: JSON.stringify({
+      name: `verify ${image.split(":").pop() ?? image}`,
+      image,
+      enabled: true,
+      editor: "openvscode",
+    }),
+  });
+  if (!res.ok) throw new Error(`catalog ensure failed for ${image}: HTTP ${String(res.status)}`);
+  console.log(`edd: registered catalog entry for ${image}`);
+}
 const region = requiredEnv("AWS_REGION");
 const table = requiredEnv("DYNAMODB_TABLE");
 const secretId = requiredEnv("AUTH_SECRET_ID");
@@ -151,6 +181,55 @@ async function assertOpencodeMounted(page: Page): Promise<void> {
   if (!title.toLowerCase().includes("opencode")) {
     throw new Error(`opencode mounted but document.title was unexpectedly "${title}"`);
   }
+}
+
+/**
+ * opencode ships no terminal, so the proxy injects a persistent bottom-left toggle + an on-top,
+ * minimizable overlay whose iframe loads the first-party terminal sidecar at `/w/<id>/__edd_term/`.
+ * Assert the full user flow: the toggle is visible, opening it reveals the overlay ON TOP with a
+ * live terminal in the iframe, a typed command runs (its output lands in a file the sidecar's
+ * confined file API can read), and minimize hides the overlay while the toggle stays available.
+ */
+async function assertOpencodeTerminalOverlay(page: Page): Promise<void> {
+  const toggle = page.locator("#edd-term-toggle");
+  await expect(toggle, "opencode terminal toggle button was not visible").toBeVisible({
+    timeout: 20_000,
+  });
+  const overlay = page.locator("#edd-term-overlay");
+  await expect(overlay, "terminal overlay should start hidden").toBeHidden();
+  await toggle.click();
+  await expect(overlay, "terminal overlay did not open on top of opencode").toBeVisible({
+    timeout: 10_000,
+  });
+  // The terminal lives in the sidecar iframe; drive it through a Playwright frame locator.
+  const term = page.frameLocator("#edd-term-frame");
+  await term
+    .locator("#terminal-panes .xterm")
+    .first()
+    .waitFor({ state: "visible", timeout: 30_000 });
+  await term.locator(".terminal-pane:not([hidden]) .xterm-screen").first().click();
+  await page.keyboard.type("printf 'overlay-ok\\n' > edd-overlay-smoke.txt", { delay: 10 });
+  await page.keyboard.press("Enter");
+  // Confirm the command actually ran IN the workspace: read the file back through the sidecar's
+  // confined file API (relative to the iframe's `/w/<id>/__edd_term/` base) from inside the frame.
+  const frame = page.frames().find((f) => f.url().includes("__edd_term"));
+  if (frame === undefined) throw new Error("opencode terminal overlay iframe frame not found");
+  await expect
+    .poll(
+      async () =>
+        frame.evaluate(async () => {
+          const res = await fetch("api/file?path=edd-overlay-smoke.txt");
+          return res.ok ? (await res.text()).trim() : "";
+        }),
+      { timeout: 30_000, message: "overlay terminal command output was not observed" },
+    )
+    .toBe("overlay-ok");
+  // Minimize closes the overlay; the toggle stays available to reopen.
+  await page.locator("#edd-term-min").click();
+  await expect(overlay, "minimize did not hide the terminal overlay").toBeHidden({
+    timeout: 10_000,
+  });
+  await expect(toggle, "toggle button should remain after minimize").toBeVisible();
 }
 
 async function assertOpenVscodeFileMenu(page: Page): Promise<void> {
@@ -317,6 +396,10 @@ async function assertRenderedWorkspace(editor: Editor, page: Page): Promise<void
       break;
     case "opencode":
       await assertOpencodeMounted(page);
+      // opencode gets its terminal from the injected overlay (it ships none) — verify it end-to-end.
+      // Gated only so a deploy whose workspace SG has not yet opened the sidecar port can still run
+      // the rest of the smoke; leave it ON (default) so CI post-deploy-smoke always covers it.
+      if (process.env.EDD_VERIFY_OVERLAY !== "0") await assertOpencodeTerminalOverlay(page);
       break;
     case "openvscode":
       await expect(page.locator(".monaco-workbench")).toBeVisible({ timeout: 60_000 });
@@ -365,28 +448,40 @@ let bodyError: unknown;
 try {
   const catalogPolls: unknown[] = [];
   let baseImage: string;
-  try {
-    baseImage = await waitEnabledImage(baseUrl, jar, expectedSha, (snapshot) => {
-      catalogPolls.push({
-        at: new Date().toISOString(),
-        ...snapshot,
-      });
-      if (catalogPolls.length > 100) catalogPolls.shift();
-    });
-  } catch (e) {
-    await writeFile(
-      join(OUT_DIR, "catalog-rollout-failure.json"),
-      `${JSON.stringify(
-        {
-          expectedSha,
-          error: e instanceof Error ? (e.stack ?? e.message) : String(e),
-          polls: catalogPolls,
-        },
-        null,
-        2,
-      )}\n`,
+  // Manual/targeted verification (e.g. a branch build not yet reconciled into the catalog by the
+  // main-tracking image-source sweep): point at an explicit, already-enabled catalog image and skip
+  // the expected-SHA rollout wait. CI post-deploy-smoke leaves this unset and waits for the SHA.
+  const overrideBaseImage = process.env.EDD_VERIFY_BASE_IMAGE;
+  if (overrideBaseImage !== undefined && overrideBaseImage !== "") {
+    await ensureCatalogImage(jar, overrideBaseImage);
+    baseImage = overrideBaseImage;
+    console.log(
+      `edd: using explicit EDD_VERIFY_BASE_IMAGE=${baseImage} (skipping SHA rollout wait)`,
     );
-    throw e;
+  } else {
+    try {
+      baseImage = await waitEnabledImage(baseUrl, jar, expectedSha, (snapshot) => {
+        catalogPolls.push({
+          at: new Date().toISOString(),
+          ...snapshot,
+        });
+        if (catalogPolls.length > 100) catalogPolls.shift();
+      });
+    } catch (e) {
+      await writeFile(
+        join(OUT_DIR, "catalog-rollout-failure.json"),
+        `${JSON.stringify(
+          {
+            expectedSha,
+            error: e instanceof Error ? (e.stack ?? e.message) : String(e),
+            polls: catalogPolls,
+          },
+          null,
+          2,
+        )}\n`,
+      );
+      throw e;
+    }
   }
   const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
   await context.addCookies(jar.map((cookie) => playwrightCookie(baseHost, cookie)));
