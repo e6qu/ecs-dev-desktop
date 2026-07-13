@@ -48,9 +48,20 @@ permissions:
 concurrency: release
 
 jobs:
+  # Per-arch build matrix on native runners (amd64 on ubuntu-latest, arm64 on ubuntu-24.04-arm) so
+  # neither the control-plane nor ssh-gateway image is built under slow QEMU emulation. Each job
+  # pushes only the per-arch tags (EDD_SKIP_MANIFEST); the `deploy` job combines + rolls them.
   publish:
-    name: publish images to ECR
-    runs-on: ubuntu-latest
+    name: publish images (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     env:
       RELEASE_AWS_ACCOUNT: ${{ vars.RELEASE_AWS_ACCOUNT }}
@@ -59,7 +70,7 @@ jobs:
       RELEASE_NAME_PREFIX: ${{ vars.RELEASE_NAME_PREFIX }}
       TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.tag || github.sha }}
       EDD_BUILD_TARGET: web
-      EDD_BUILD_ARCHS: amd64
+      EDD_BUILD_ARCHS: ${{ matrix.arch }}
       EDD_BUILDX_CACHE: gha
     steps:
       - uses: actions/checkout@v6.0.2
@@ -98,14 +109,15 @@ jobs:
         with:
           role-to-assume: ${{ env.RELEASE_AWS_ROLE_ARN }}
           aws-region: ${{ env.RELEASE_AWS_REGION }}
-          role-session-name: release-${{ github.run_id }}
+          role-session-name: release-${{ matrix.arch }}-${{ github.run_id }}
 
       - name: Verify assumed identity
         run: aws sts get-caller-identity
 
-      - name: Build & push images
+      - name: Build & push per-arch images
         env:
           EDD_BUILDX_OUTPUT: push
+          EDD_SKIP_MANIFEST: "1"
         run: |
           sh scripts/publish-images.sh \
             "$RELEASE_AWS_ACCOUNT" \
@@ -113,7 +125,51 @@ jobs:
             "$RELEASE_NAME_PREFIX" \
             "${TAG:0:12}"
 
-      - name: Deploy ECS services
+  # Combine the per-arch images into multi-arch manifests, then roll the ECS services onto them
+  # (pinned to arm64 by deploy-release-images.sh). Single job so the manifest exists before deploy.
+  deploy:
+    name: publish manifests + deploy ECS
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RELEASE_AWS_ACCOUNT: ${{ vars.RELEASE_AWS_ACCOUNT }}
+      RELEASE_AWS_REGION: ${{ vars.RELEASE_AWS_REGION }}
+      RELEASE_AWS_ROLE_ARN: ${{ vars.RELEASE_AWS_ROLE_ARN }}
+      RELEASE_NAME_PREFIX: ${{ vars.RELEASE_NAME_PREFIX }}
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.tag || github.sha }}
+      EDD_BUILD_TARGET: web
+      EDD_BUILD_ARCHS: amd64 arm64
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.2.0
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6.2.1
+        with:
+          role-to-assume: ${{ env.RELEASE_AWS_ROLE_ARN }}
+          aws-region: ${{ env.RELEASE_AWS_REGION }}
+          role-session-name: release-deploy-${{ github.run_id }}
+
+      - name: Verify assumed identity
+        run: aws sts get-caller-identity
+
+      - name: Create & push multi-arch manifests
+        env:
+          EDD_BUILDX_OUTPUT: push
+          EDD_MANIFEST_ONLY: "1"
+        run: |
+          sh scripts/publish-images.sh \
+            "$RELEASE_AWS_ACCOUNT" \
+            "$RELEASE_AWS_REGION" \
+            "$RELEASE_NAME_PREFIX" \
+            "${TAG:0:12}"
+
+      - name: Deploy ECS services (arm64)
+        env:
+          EDD_DEPLOY_ARCH: arm64
         run: |
           sh scripts/deploy-release-images.sh \
             "$RELEASE_AWS_ACCOUNT" \

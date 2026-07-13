@@ -153,6 +153,22 @@ Per task: read them first → do the work → update them (past tense at PR clos
 - **Shell scripts**: pass `shellcheck`; run under bash **and** zsh, macOS **and**
   Linux. Portable only (`$0`-derived paths, `unset CDPATH`; no `BASH_SOURCE`,
   arrays, `pushd`, or GNU-only flags). The `shellcheck` CI job enforces it.
+- **Container images are multiarch (HARD RULE).** Every golden image — `base`,
+  `omnibus`, and every language variant — builds for **both `linux/arm64` and
+  `linux/amd64`**. Publish per this **manifest convention**: a multiarch manifest
+  list at `repo:tag` that references two per-arch images **also tagged explicitly**
+  as `repo:tag-arm64` and `repo:tag-amd64`. So every push yields three refs —
+  `repo:tag` (manifest list), `repo:tag-arm64`, `repo:tag-amd64` — never a
+  single-arch image at the bare tag. Build with `docker buildx build
+--platform linux/arm64,linux/amd64` (node-pty and any other native deps compile
+  per-arch inside the image, so a host of either arch produces correct images).
+- **Workspaces + services run `arm64` by default.** Fargate is Graviton (`arm64`)
+  unless a reason forces otherwise — cheaper and typically faster cold-start. ECS
+  task definitions **must** pin `runtimePlatform.cpuArchitecture` (Terraform for the
+  control-plane/ssh-gateway/reconciler; `compute-ecs` for the runtime workspace task
+  defs) and pull the matching per-arch image (`repo:tag-arm64`); the bare `repo:tag`
+  manifest is for arch-agnostic consumers. `amd64` images exist for local/CI/x86 use
+  but are not what prod workspaces load.
 
 ---
 

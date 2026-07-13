@@ -37,10 +37,13 @@ const {
   authorizeWorkspace,
   buildOpencodeBasePathShim,
   cspAllowingInlineScript,
+  cspAllowingSelfFrame,
   editorTokenRedirect,
   injectOpencodeBasePathShim,
+  injectOpencodeTerminalOverlay,
   injectWorkspaceHomeLink,
   isDocumentNavigation,
+  isTerminalOverlayRequest,
   isWorkspaceDocumentNavigation,
   opencodeProxyAuthorization,
   rewriteOpencodeResponseBody,
@@ -683,6 +686,135 @@ describe("opencode base-path shim", () => {
     // The wrapper (now installed on `hist`) re-adds the base on write.
     hist.pushState(null, "", "/session/y");
     expect(pushed).toEqual([`push:/w/${WS}/session/y`]);
+  });
+});
+
+describe("opencode terminal overlay", () => {
+  it("routes only opencode /w/<id>/__edd_term(/…) requests to the terminal sidecar", () => {
+    // opencode workspace: overlay prefix (and only it) is a terminal-sidecar request.
+    expect(isTerminalOverlayRequest("opencode", WS, `/w/${WS}/__edd_term`)).toBe(true);
+    expect(isTerminalOverlayRequest("opencode", WS, `/w/${WS}/__edd_term/`)).toBe(true);
+    expect(isTerminalOverlayRequest("opencode", WS, `/w/${WS}/__edd_term/terminal`)).toBe(true);
+    expect(isTerminalOverlayRequest("opencode", WS, `/w/${WS}/__edd_term/assets/x.js`)).toBe(true);
+    // Not the overlay: opencode's own paths, or a lookalike that is not the segment.
+    expect(isTerminalOverlayRequest("opencode", WS, `/w/${WS}/`)).toBe(false);
+    expect(isTerminalOverlayRequest("opencode", WS, `/w/${WS}/__edd_terminal`)).toBe(false);
+    // Only opencode runs the sidecar — never route it for other editors.
+    expect(isTerminalOverlayRequest("openvscode", WS, `/w/${WS}/__edd_term/`)).toBe(false);
+    expect(isTerminalOverlayRequest("terminal", WS, `/w/${WS}/__edd_term/`)).toBe(false);
+    // Fail-safe on an un-parseable target.
+    expect(isTerminalOverlayRequest("opencode", WS, undefined)).toBe(false);
+  });
+
+  it("injects a bottom-left toggle + on-top overlay whose iframe is lazy (data-src, no src)", () => {
+    const out = injectOpencodeTerminalOverlay("<html><body>opencode</body></html>", WS);
+    expect(out).toContain('id="edd-term-toggle"');
+    expect(out).toContain('id="edd-term-overlay"');
+    expect(out).toContain('id="edd-term-min"');
+    // The iframe points at the sidecar under /w/<id>/__edd_term/ but is NOT connected until opened.
+    expect(out).toContain(`data-src="/w/${WS}/__edd_term/"`);
+    expect(out).not.toMatch(/<iframe[^>]*\ssrc=/); // no eager src → no PTY until the user opens it
+    // Overlay starts hidden; toggle sits bottom-left (opencode's home pill is top-left).
+    expect(out).toMatch(/id="edd-term-overlay"[^>]*\shidden/);
+    expect(out).toContain("bottom:12px;left:12px");
+  });
+
+  it("is idempotent and fails loud without a <body>", () => {
+    const once = injectOpencodeTerminalOverlay("<html><body></body></html>", WS);
+    expect(injectOpencodeTerminalOverlay(once, WS)).toBe(once);
+    expect(() => injectOpencodeTerminalOverlay("<html><head></head></html>", WS)).toThrow(/body/);
+  });
+
+  it("the shim's click handler lazily loads the iframe and toggles/minimizes the overlay", () => {
+    const shim = buildOpencodeBasePathShim(`/w/${WS}`);
+    // Minimal fake DOM: the two buttons + the overlay/iframe the shim manipulates by id.
+    const overlay = {
+      hidden: true,
+      hasAttribute(n: string): boolean {
+        return n === "hidden" ? this.hidden : false;
+      },
+      removeAttribute(n: string): void {
+        if (n === "hidden") this.hidden = false;
+      },
+      setAttribute(n: string): void {
+        if (n === "hidden") this.hidden = true;
+      },
+    };
+    const frame: Record<string, string | null> = { src: null, "data-src": `/w/${WS}/__edd_term/` };
+    const frameEl = {
+      getAttribute: (n: string): string | null => frame[n] ?? null,
+      setAttribute: (n: string, v: string): void => {
+        frame[n] = v;
+      },
+    };
+    const toggleEl = { setAttribute: (): void => undefined };
+    const byId: Record<string, unknown> = {
+      "edd-term-overlay": overlay,
+      "edd-term-frame": frameEl,
+      "edd-term-toggle": toggleEl,
+    };
+    let clickListener: ((e: unknown) => void) | undefined;
+    const makeTarget = (id: string): unknown => ({
+      closest: (sel: string): unknown => (sel.includes(`#${id}`) ? { id } : null),
+    });
+    const sandbox: Record<string, unknown> = {
+      window: {},
+      location: { host: "h", href: `https://h/w/${WS}/`, assign: () => undefined },
+      history: { pushState: () => undefined, replaceState: () => undefined },
+      URL,
+      Request,
+      document: {
+        addEventListener: (type: string, cb: (e: unknown) => void, capture?: boolean): void => {
+          if (type === "click" && capture === true) clickListener = cb;
+        },
+        getElementById: (id: string): unknown => byId[id] ?? null,
+      },
+      XMLHttpRequest: class {
+        open(): void {
+          /* noop */
+        }
+      },
+      fetch: undefined,
+      WebSocket: undefined,
+      EventSource: undefined,
+      Worker: undefined,
+    };
+    vm.runInNewContext(shim, sandbox);
+    expect(clickListener).toBeDefined();
+    const click = (id: string): void =>
+      clickListener?.({
+        target: makeTarget(id),
+        preventDefault: () => undefined,
+        stopImmediatePropagation: () => undefined,
+      });
+    // First toggle: overlay opens AND the iframe src is set from data-src (lazy connect).
+    click("edd-term-toggle");
+    expect(overlay.hidden).toBe(false);
+    expect(frame.src).toBe(`/w/${WS}/__edd_term/`);
+    // Second toggle: closes.
+    click("edd-term-toggle");
+    expect(overlay.hidden).toBe(true);
+    // Reopen, then minimize closes it (src stays set — no re-fetch).
+    click("edd-term-toggle");
+    expect(overlay.hidden).toBe(false);
+    click("edd-term-min");
+    expect(overlay.hidden).toBe(true);
+    expect(frame.src).toBe(`/w/${WS}/__edd_term/`);
+  });
+});
+
+describe("cspAllowingSelfFrame (allow the same-origin terminal overlay iframe)", () => {
+  it("adds 'self' to an existing frame-src, idempotently", () => {
+    const csp = "default-src 'self'; frame-src 'none'; script-src 'self'";
+    const out = cspAllowingSelfFrame(csp);
+    expect(out).toContain("frame-src 'none' 'self'");
+    expect(out).toContain("default-src 'self'");
+    expect(cspAllowingSelfFrame(out)).toBe(out); // idempotent
+  });
+
+  it("leaves a CSP without a frame-src unchanged (frames fall back to child/default-src)", () => {
+    const csp = "default-src 'self'; script-src 'self'";
+    expect(cspAllowingSelfFrame(csp)).toBe(csp);
   });
 });
 

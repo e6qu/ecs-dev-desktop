@@ -40,6 +40,14 @@
 #                       required on small CI runners for large golden images).
 #   EDD_BUILDX_CACHE    set to "gha" on GitHub Actions to use BuildKit's
 #                       GitHub cache backend for repeat builds.
+#   EDD_SKIP_MANIFEST   "1" builds + pushes ONLY the per-arch images, skipping the
+#                       multi-arch manifest. Use in a per-arch build matrix (each
+#                       runner native to its arch) so no single runner needs to
+#                       emulate the other architecture; a later manifest pass
+#                       (EDD_MANIFEST_ONLY=1) combines them into the `:<tag>` manifest.
+#   EDD_MANIFEST_ONLY   "1" skips all builds and ONLY creates + pushes the multi-arch
+#                       manifests from per-arch tags already in ECR (the manifest step
+#                       of a build matrix). Requires all EDD_BUILD_ARCHS tags to exist.
 #
 # The control-plane image MUST be built from the repo root (monorepo context).
 # Portable: POSIX sh, passes shellcheck, runs under bash and zsh on macOS+Linux.
@@ -92,6 +100,24 @@ case "$buildx_output" in
     exit 1
     ;;
 esac
+
+# Multiarch matrix knobs (see header): build per-arch on native runners, then combine.
+skip_manifest="${EDD_SKIP_MANIFEST:-0}"
+manifest_only="${EDD_MANIFEST_ONLY:-0}"
+if [ "$manifest_only" = "1" ] && [ "$skip_manifest" = "1" ]; then
+  echo "edd: EDD_MANIFEST_ONLY and EDD_SKIP_MANIFEST are mutually exclusive" >&2
+  exit 1
+fi
+# The multi-arch manifest is what makes `:<tag>` resolve to the right per-arch image; refuse to
+# stamp a single-arch manifest at the bare tag (immutable ECR would then pin it forever).
+if [ "$manifest_only" = "1" ]; then
+  n_arch=0
+  for _a in $archs; do n_arch=$((n_arch + 1)); done
+  if [ "$n_arch" -lt 2 ]; then
+    echo "edd: EDD_MANIFEST_ONLY needs EDD_BUILD_ARCHS to list every arch (got '$archs')" >&2
+    exit 1
+  fi
+fi
 
 if ! command -v docker >/dev/null 2>&1; then
   echo "edd: docker (or podman aliased as docker) not found on PATH" >&2
@@ -233,7 +259,7 @@ push_manifest() { # <repo-short>
   docker manifest push "$manifest"
 }
 
-if [ "$do_web" = "1" ]; then
+if [ "$do_web" = "1" ] && [ "$manifest_only" != "1" ]; then
   # 1. Control-plane app (also the reconciler image — same image, command override).
   build_push_arch control-plane "$repo/apps/web/Dockerfile" "$repo" \
     --build-arg "EDD_BUILD_SHA=${build_sha}" --build-arg "EDD_BUILD_TIME=${build_time}"
@@ -248,22 +274,26 @@ if [ "$do_web" = "1" ]; then
 fi
 
 # 3. Golden variants, each FROM the per-arch base.
-if [ "$do_golden" = "1" ]; then
+if [ "$do_golden" = "1" ] && [ "$manifest_only" != "1" ]; then
   for arch in $archs; do
     build_golden_arch "$arch"
   done
 fi
 
-# 4. Multi-arch manifests. These are what ECS Fargate pulls; runners that cannot
-# consume manifests can pin the -amd64 / -arm64 tags directly.
-if [ "$do_web" = "1" ]; then
-  push_manifest control-plane
-  push_manifest ssh-gateway
-fi
-if [ "$do_golden" = "1" ]; then
-  for v in $variants; do
-    push_manifest "golden/${v}"
-  done
+# 4. Multi-arch manifests. These are what ECS Fargate pulls (per the runtimePlatform arch); runners
+# that cannot consume manifests can pin the -amd64 / -arm64 tags directly. Skipped when a per-arch
+# matrix job asked to only build (EDD_SKIP_MANIFEST=1) — the manifest job (EDD_MANIFEST_ONLY=1)
+# combines the per-arch tags afterward.
+if [ "$skip_manifest" != "1" ]; then
+  if [ "$do_web" = "1" ]; then
+    push_manifest control-plane
+    push_manifest ssh-gateway
+  fi
+  if [ "$do_golden" = "1" ]; then
+    for v in $variants; do
+      push_manifest "golden/${v}"
+    done
+  fi
 fi
 
 cat <<EOF

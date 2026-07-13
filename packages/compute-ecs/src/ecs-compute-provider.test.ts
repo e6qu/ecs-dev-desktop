@@ -346,6 +346,45 @@ describe("EcsComputeProvider.runTask request shape (workspace tag + managed EBS 
     expect(vol?.tagSpecifications?.[0]?.tags).toContainEqual(COST_SCOPE);
   });
 
+  it("pins the workspace task def to ARM64 by default and maps the terminal-overlay port", async () => {
+    const inputs = {
+      taskDefinitions: [] as RegisterTaskDefinitionCommandInput[],
+      tasks: [] as RunTaskCommandInput[],
+    };
+    const provider = new EcsComputeProvider({ client: capturingClient(inputs), config });
+    await provider.runTask({
+      workspaceId: workspaceId("ws-arch"),
+      baseImage: baseImage("edd-workspace:e2e"),
+      resources: RESOURCES,
+    });
+    const taskDef = inputs.taskDefinitions[0];
+    // Default architecture is ARM64/Graviton (Fargate pulls the arm64 variant of the multiarch image).
+    expect(taskDef?.runtimePlatform).toEqual({
+      cpuArchitecture: "ARM64",
+      operatingSystemFamily: "LINUX",
+    });
+    // Editor (3000), opencode terminal-overlay sidecar (3001), and sshd (22) are all mapped.
+    const ports = taskDef?.containerDefinitions?.[0]?.portMappings?.map((p) => p.containerPort);
+    expect(ports).toEqual([3000, 3001, 22]);
+  });
+
+  it("honors an explicit cpuArchitecture override (x86 for a legacy pull)", async () => {
+    const inputs = {
+      taskDefinitions: [] as RegisterTaskDefinitionCommandInput[],
+      tasks: [] as RunTaskCommandInput[],
+    };
+    const provider = new EcsComputeProvider({
+      client: capturingClient(inputs),
+      config: { ...config, cpuArchitecture: "X86_64" },
+    });
+    await provider.runTask({
+      workspaceId: workspaceId("ws-x86"),
+      baseImage: baseImage("edd-workspace:e2e"),
+      resources: RESOURCES,
+    });
+    expect(inputs.taskDefinitions[0]?.runtimePlatform?.cpuArchitecture).toBe("X86_64");
+  });
+
   it("hydrates the managed volume from a snapshot (snapshotId set, no sizeInGiB)", async () => {
     const inputs = {
       taskDefinitions: [] as RegisterTaskDefinitionCommandInput[],

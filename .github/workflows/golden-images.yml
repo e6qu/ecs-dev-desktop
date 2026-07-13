@@ -62,10 +62,22 @@ jobs:
       - name: Variant smoke tests
         run: pnpm --filter @edd/e2e exec vitest run --config vitest.e2e.config.ts src/image-variants.e2e.ts
 
+  # Per-arch build matrix: each architecture builds on its OWN native runner (amd64 on
+  # ubuntu-latest, arm64 on ubuntu-24.04-arm), so the ~3GB golden images never pay the cost of
+  # QEMU emulating the other arch. Each job pushes only the per-arch tags (EDD_SKIP_MANIFEST);
+  # the `manifest` job below combines them into the `:<tag>` multi-arch manifest.
   publish:
-    name: publish golden images to ECR
+    name: publish golden images (${{ matrix.arch }})
     if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
     env:
       RELEASE_AWS_ACCOUNT: ${{ vars.RELEASE_AWS_ACCOUNT }}
@@ -75,7 +87,7 @@ jobs:
       RELEASE_GOLDEN_VARIANTS: ${{ vars.RELEASE_GOLDEN_VARIANTS }}
       TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.tag || github.sha }}
       EDD_BUILD_TARGET: golden
-      EDD_BUILD_ARCHS: amd64
+      EDD_BUILD_ARCHS: ${{ matrix.arch }}
       EDD_BUILDX_CACHE: gha
     steps:
       - uses: actions/checkout@v6.0.2
@@ -115,14 +127,15 @@ jobs:
         with:
           role-to-assume: ${{ env.RELEASE_AWS_ROLE_ARN }}
           aws-region: ${{ env.RELEASE_AWS_REGION }}
-          role-session-name: golden-images-${{ github.run_id }}
+          role-session-name: golden-images-${{ matrix.arch }}-${{ github.run_id }}
 
       - name: Verify assumed identity
         run: aws sts get-caller-identity
 
-      - name: Build & push golden images
+      - name: Build & push golden per-arch images
         env:
           EDD_BUILDX_OUTPUT: push
+          EDD_SKIP_MANIFEST: "1"
         run: |
           read -r -a variants <<< "$RELEASE_GOLDEN_VARIANTS"
           sh scripts/publish-images.sh \
@@ -132,15 +145,60 @@ jobs:
             "${TAG:0:12}" \
             "${variants[@]}"
 
-      - name: Verify pushed golden images in ECR
+  # Combine the per-arch tags into the multi-arch `:<tag>` manifest ECS Fargate pulls. No build
+  # here, so it needs neither a native runner nor Node — just Docker + AWS creds.
+  manifest:
+    name: publish golden multi-arch manifests
+    if: github.event_name != 'pull_request'
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      RELEASE_AWS_ACCOUNT: ${{ vars.RELEASE_AWS_ACCOUNT }}
+      RELEASE_AWS_REGION: ${{ vars.RELEASE_AWS_REGION }}
+      RELEASE_AWS_ROLE_ARN: ${{ vars.RELEASE_AWS_ROLE_ARN }}
+      RELEASE_NAME_PREFIX: ${{ vars.RELEASE_NAME_PREFIX }}
+      RELEASE_GOLDEN_VARIANTS: ${{ vars.RELEASE_GOLDEN_VARIANTS }}
+      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.tag || github.sha }}
+      EDD_BUILD_TARGET: golden
+      EDD_BUILD_ARCHS: amd64 arm64
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.2.0
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6.2.1
+        with:
+          role-to-assume: ${{ env.RELEASE_AWS_ROLE_ARN }}
+          aws-region: ${{ env.RELEASE_AWS_REGION }}
+          role-session-name: golden-manifest-${{ github.run_id }}
+
+      - name: Create & push multi-arch manifests
+        env:
+          EDD_BUILDX_OUTPUT: push
+          EDD_MANIFEST_ONLY: "1"
+        run: |
+          read -r -a variants <<< "$RELEASE_GOLDEN_VARIANTS"
+          sh scripts/publish-images.sh \
+            "$RELEASE_AWS_ACCOUNT" \
+            "$RELEASE_AWS_REGION" \
+            "$RELEASE_NAME_PREFIX" \
+            "${TAG:0:12}" \
+            "${variants[@]}"
+
+      - name: Verify pushed golden images in ECR (manifest + both arch variants)
         run: |
           set -euo pipefail
           read -r -a variants <<< "$RELEASE_GOLDEN_VARIANTS"
           for variant in "${variants[@]}"; do
-            aws ecr describe-images \
-              --region "$RELEASE_AWS_REGION" \
-              --repository-name "${RELEASE_NAME_PREFIX}/golden/${variant}" \
-              --image-ids "imageTag=${TAG:0:12}" \
-              --query 'imageDetails[0].imageDigest' \
-              --output text
+            for ref in "${TAG:0:12}" "${TAG:0:12}-amd64" "${TAG:0:12}-arm64"; do
+              aws ecr describe-images \
+                --region "$RELEASE_AWS_REGION" \
+                --repository-name "${RELEASE_NAME_PREFIX}/golden/${variant}" \
+                --image-ids "imageTag=${ref}" \
+                --query 'imageDetails[0].imageDigest' \
+                --output text
+            done
           done

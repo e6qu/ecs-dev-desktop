@@ -48,7 +48,19 @@ install -d -o workspace -g workspace -m 0755 \
     >/run/edd-ssh-env
 )
 
+# Persist SSH host keys on the EBS volume so they stay STABLE across scale-to-zero wakes. A woken
+# workspace is a fresh container over the same volume; regenerating host keys every start (the old
+# bare `ssh-keygen -A`) changed the server identity on every wake, so SSH clients hit a
+# "REMOTE HOST IDENTIFICATION HAS CHANGED" warning each time. Restore persisted keys first, then
+# `ssh-keygen -A` (which only fills MISSING types — a no-op on wake, so it also skips the keygen
+# cost), then persist any newly generated keys. Root-only 0700 dir: host private keys are secrets.
+host_key_dir=/data/home/.edd/ssh
+install -d -o root -g root -m 0700 /data/home/.edd "${host_key_dir}"
+if ls "${host_key_dir}"/ssh_host_*_key >/dev/null 2>&1; then
+  cp -p "${host_key_dir}"/ssh_host_* /etc/ssh/
+fi
 ssh-keygen -A >/dev/null
+cp -p /etc/ssh/ssh_host_* "${host_key_dir}"/
 /usr/sbin/sshd -t -f /etc/ssh/sshd_config
 /usr/sbin/sshd -D -e &
 
@@ -119,8 +131,10 @@ install -d -o workspace -g workspace -m 0755 "${settings_dir}"
 # user-data directory has no effect on the workbench window.
 # node ships in the image (the base is node:22; the Monaco server runs bare `node`).
 # JavaScript template syntax must not expand in the shell.
+# Only seed on FIRST boot (no settings file yet): a woken workspace already has it, so skip the
+# ~200ms node spawn every wake. Existing files are the user's — never re-merged over.
 # shellcheck disable=SC2016
-gosu workspace node -e '
+[ -f "${settings_file}" ] || gosu workspace node -e '
   const fs = require("node:fs");
   const file = process.argv[1];
   const cur = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : {};
@@ -186,6 +200,23 @@ case "${EDD_EDITOR_MODE:-openvscode}" in
       exit 64
     fi
     : "${CONNECTION_TOKEN:?EDD_EDITOR_MODE=opencode requires CONNECTION_TOKEN}"
+    # opencode picks its project directory from the process CWD (it has no --project flag). The
+    # build-time WORKDIR (/data/project) does not exist when the container starts — the EBS volume
+    # mounts empty over /data — so CWD is left at "/" and opencode would open the filesystem root.
+    # We create the project dir above, so cd into it now; opencode then opens the clean project dir.
+    cd "${EDD_WORKSPACE_ROOT:-/data/project}"
+    # Give opencode (which ships no terminal) a full multi-tab terminal by running the first-party
+    # terminal server as a SIDECAR on :3001 under `/w/<id>/__edd_term/` (mirrors @edd/config
+    # DEFAULT_WORKSPACE_TERMINAL_PORT + WORKSPACE_TERMINAL_OVERLAY_SEGMENT). The control-plane proxy
+    # routes that sub-path here and injects a bottom-left toggle + on-top overlay into opencode's UI.
+    # Tokenless: it is reachable ONLY via the session-authorizing proxy (owner/admin) + the
+    # workspace SG (control plane only), so the connection token is redundant here.
+    gosu workspace env \
+      PORT=3001 \
+      EDD_TERMINAL_ONLY=1 \
+      EDD_DISABLE_CONNECTION_TOKEN=1 \
+      EDD_BASE_PATH="/w/${EDD_WORKSPACE_ID}/__edd_term/" \
+      node /opt/edd-editor-monaco/server.js &
     exec gosu workspace env \
       OPENCODE_SERVER_USERNAME=opencode \
       OPENCODE_SERVER_PASSWORD="${CONNECTION_TOKEN}" \

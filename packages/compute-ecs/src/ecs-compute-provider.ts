@@ -32,6 +32,7 @@ import {
   DEFAULT_WORKSPACE_CONTAINER,
   DEFAULT_WORKSPACE_MOUNT_PATH,
   DEFAULT_WORKSPACE_PORT,
+  DEFAULT_WORKSPACE_TERMINAL_PORT,
 } from "@edd/config";
 import {
   DEFAULT_HEARTBEAT_INTERVAL_S,
@@ -133,6 +134,13 @@ export interface EcsComputeConfig {
   logGroupName?: string;
   /** Value for the shared AWS cost-allocation tag key (`edd:cost-scope`). */
   costScope?: string;
+  /**
+   * Fargate CPU architecture for the workspace task definitions. Defaults to `"ARM64"` (Graviton —
+   * cheaper and typically faster cold-start; the default per the multiarch convention in
+   * AGENTS.md §4). The golden workspace image MUST be published as a multiarch manifest (arm64 +
+   * amd64) so Fargate pulls the matching per-arch variant for the chosen architecture.
+   */
+  cpuArchitecture?: "ARM64" | "X86_64";
 }
 
 export interface EcsComputeProviderDeps {
@@ -369,6 +377,12 @@ export class EcsComputeProvider implements ComputeProvider {
         networkMode: "awsvpc",
         cpu: String(input.resources.cpuUnits),
         memory: String(input.resources.memoryMiB),
+        // Pin the Fargate CPU architecture (default ARM64/Graviton — see EcsComputeConfig).
+        // Fargate pulls the matching per-arch variant from the golden image's multiarch manifest.
+        runtimePlatform: {
+          cpuArchitecture: this.config.cpuArchitecture ?? "ARM64",
+          operatingSystemFamily: "LINUX",
+        },
         // On real Fargate the execution role is required to pull a private-ECR
         // image and ship awslogs; the task role is the container's runtime
         // identity. Both optional config — omitted by the integ/sim harness.
@@ -385,6 +399,9 @@ export class EcsComputeProvider implements ComputeProvider {
             // task ENI, so this documents the contract the proxy/gateway use).
             portMappings: [
               { containerPort: DEFAULT_WORKSPACE_PORT, protocol: "tcp" },
+              // The opencode terminal-overlay sidecar (only listens in opencode mode, but the
+              // mapping is harmless documentation of the contract for every workspace).
+              { containerPort: DEFAULT_WORKSPACE_TERMINAL_PORT, protocol: "tcp" },
               { containerPort: WORKSPACE_SSH_PORT, protocol: "tcp" },
             ],
             mountPoints: [

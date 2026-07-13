@@ -88,6 +88,13 @@ resource "aws_ecs_task_definition" "control_plane" {
   execution_role_arn       = aws_iam_role.execution.arn
   task_role_arn            = aws_iam_role.control_plane.arn
 
+  # Fargate CPU architecture (default ARM64/Graviton — cheaper + faster cold-start). The pushed
+  # control-plane image must be multiarch so Fargate pulls the matching per-arch variant.
+  runtime_platform {
+    cpu_architecture        = var.workspace_cpu_architecture
+    operating_system_family = "LINUX"
+  }
+
   container_definitions = jsonencode([{
     name      = "control-plane"
     image     = local.effective_control_plane_image
@@ -221,6 +228,12 @@ resource "aws_ecs_task_definition" "reconciler" {
   memory             = tostring(var.reconciler_memory)
   execution_role_arn = aws_iam_role.execution.arn
   task_role_arn      = aws_iam_role.reconciler.arn
+
+  # Fargate CPU architecture (default ARM64/Graviton). Uses the same multiarch control-plane image.
+  runtime_platform {
+    cpu_architecture        = var.workspace_cpu_architecture
+    operating_system_family = "LINUX"
+  }
 
   container_definitions = jsonencode([{
     name        = "reconciler"

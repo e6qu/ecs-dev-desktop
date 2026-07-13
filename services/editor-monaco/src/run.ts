@@ -13,7 +13,21 @@ const workspaceId = process.env.EDD_WORKSPACE_ID ?? "";
 // the mount root or HOME — so editor/tool dotfiles under HOME never appear in the user's tree.
 const root = process.env.EDD_WORKSPACE_ROOT ?? DEFAULT_WORKSPACE_PROJECT_PATH;
 const port = Number(process.env.PORT ?? String(DEFAULT_WORKSPACE_PORT));
-const basePath = workspaceId === "" ? "/" : `/w/${workspaceId}/`;
+// The base path the server serves under. Normally `/w/<id>/` (matching the control-plane proxy),
+// but overridable via EDD_BASE_PATH so the SAME server can run as a SIDECAR under a sub-path — e.g.
+// the opencode terminal overlay serves at `/w/<id>/__edd_term/` on a second port. Always
+// slash-terminated so `<base>terminal`/`<base>api/...` resolve correctly.
+function normalizeBasePath(raw: string): string {
+  const withLead = raw.startsWith("/") ? raw : `/${raw}`;
+  return withLead.endsWith("/") ? withLead : `${withLead}/`;
+}
+const basePathOverride = process.env.EDD_BASE_PATH;
+const basePath =
+  basePathOverride !== undefined && basePathOverride !== ""
+    ? normalizeBasePath(basePathOverride)
+    : workspaceId === ""
+      ? "/"
+      : `/w/${workspaceId}/`;
 // Behind the session-authorizing in-app proxy, the deployment disables the connection token for a
 // tokenless browser URL; otherwise require the per-workspace CONNECTION_TOKEN the control plane
 // injects (the same value the proxy hands the authenticated browser).

@@ -6,7 +6,20 @@
 
 ## Open decisions (need the user)
 
-0. **Heartbeat interval & idle threshold** — scale-to-zero tuning. The knobs
+0. **Prod Terraform drift — apply the rest of `main`?** (found 2026-07-13) After
+   migrating prod state local→S3 (see `edd-prod-terraform-state` memory), a full
+   `terraform plan` shows `19 add / 69 change / 4 destroy` — i.e. much of merged
+   `main` was never applied to prod. Only the #233 S3/DynamoDB gateway endpoints were
+   applied (targeted, verified live). **Unapplied to prod:** the CloudFront + WAF edge
+   (distribution, ACM cert, WAF web ACL, admin IP-set), the **wake Lambda** (scale-from-
+   zero — its absence means prod cannot wake a scaled-to-zero control plane via the
+   documented path), `edd:cost-scope` tags on ~69 resources, 3 task-def/ECR-policy
+   replaces (harmless — services now `ignore_changes` task_definition), and 1 destroy
+   (`aws_appautoscaling_policy.control_plane_cpu`, removed in code). Decision: apply the
+   full plan (rolls out the CloudFront/WAF front door + wake Lambda — security + cost +
+   behavior impact), or keep prod as-is. Review the destroys/replaces before applying.
+
+1. **Heartbeat interval & idle threshold** — scale-to-zero tuning. The knobs
    now exist (`EDD_HEARTBEAT_INTERVAL_S` injected into workspace tasks;
    `EDD_IDLE_THRESHOLD_MS`/`EDD_SNAPSHOT_INTERVAL_MS`/`EDD_EARLY_SNAPSHOT_INTERVAL_MS`/
    `EDD_EARLY_SESSION_MS`/`EDD_GC_GRACE_MS` on the reconciler) — the open decision is

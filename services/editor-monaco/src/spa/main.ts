@@ -474,8 +474,16 @@ function openNewTerminalTab(): void {
   const wsUrl = new URL("terminal", document.baseURI);
   wsUrl.protocol = wsUrl.protocol === "https:" ? "wss:" : "ws:";
   const sock = new WebSocket(wsUrl);
+  // Keystrokes typed in the ~tens of ms before the socket finishes CONNECTING would otherwise be
+  // silently dropped (t.onData only sends when OPEN) — the "first typed command didn't land" bug.
+  // Buffer pre-open input and flush it once open so nothing is lost.
+  let pendingInput = "";
   sock.addEventListener("open", () => {
     sock.send(JSON.stringify({ type: "resize", cols: t.cols, rows: t.rows }));
+    if (pendingInput.length > 0) {
+      sock.send(JSON.stringify({ type: "input", data: pendingInput }));
+      pendingInput = "";
+    }
   });
   sock.addEventListener("message", (e: MessageEvent) => {
     if (typeof e.data === "string") {
@@ -502,6 +510,8 @@ function openNewTerminalTab(): void {
   });
   t.onData((data) => {
     if (sock.readyState === WebSocket.OPEN) sock.send(JSON.stringify({ type: "input", data }));
+    // Still connecting: hold the keystrokes so the open handler can flush them (no lost input).
+    else if (sock.readyState === WebSocket.CONNECTING) pendingInput += data;
   });
   t.onResize(({ cols, rows }) => {
     if (sock.readyState === WebSocket.OPEN)
@@ -537,13 +547,20 @@ function setTerminalPanelVisible(show: boolean): void {
 }
 
 window.addEventListener("resize", () => {
-  setTerminalHeight(savedTerminalHeight);
+  // A browser resize must re-fit the terminal, but must NOT collapse a MAXIMIZED panel back to the
+  // saved height (setTerminalHeight clears `maximized`). Preserve maximized; only re-apply the
+  // saved height when floating.
+  if (el("terminal-panel").classList.contains("maximized")) {
+    window.requestAnimationFrame(fitActiveTerminal);
+  } else {
+    setTerminalHeight(savedTerminalHeight);
+  }
 });
 
 el("toggle-terminal").addEventListener("click", () => {
-  const opening = el("terminal-panel").hidden === true;
-  setTerminalPanelVisible(opening);
-  if (opening && tabs.length === 0) openNewTerminalTab();
+  // setTerminalPanelVisible(true) already opens a first tab when none exist, so no extra
+  // openNewTerminalTab() here (it would have been dead code — tabs.length is 1 by then).
+  setTerminalPanelVisible(el("terminal-panel").hidden === true);
 });
 el("new-terminal-tab").addEventListener("click", () => {
   setTerminalPanelVisible(true);
@@ -603,6 +620,13 @@ async function loadConfig(): Promise<void> {
     el("current-file").textContent = "Terminal";
     setTerminalMaximized(true);
   }
+}
+
+// When this SPA runs EMBEDDED (the opencode terminal overlay loads it in an iframe), the host page
+// already shows the "EDD home" link, so hide our own to avoid a duplicate that would navigate the
+// little iframe to the portal.
+if (window.self !== window.top) {
+  document.getElementById("edd-home")?.style.setProperty("display", "none");
 }
 
 await loadConfig();

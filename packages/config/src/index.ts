@@ -60,6 +60,20 @@ export const DEFAULT_WORKSPACE_HOME_PATH = "/data/home";
 export const DEFAULT_WORKSPACE_EXTENSIONS_PATH = "/data/extensions";
 /** Port OpenVSCode Server listens on inside the workspace container. */
 export const DEFAULT_WORKSPACE_PORT = 3000;
+/**
+ * Port the first-party terminal server listens on as a SIDECAR inside an `opencode` workspace
+ * container (opencode owns {@link DEFAULT_WORKSPACE_PORT}). The control-plane proxy routes the
+ * terminal-overlay sub-path ({@link WORKSPACE_TERMINAL_OVERLAY_SEGMENT}) to this port so opencode
+ * gains a full multi-tab terminal it does not ship. Only reachable from the control plane (SG).
+ */
+export const DEFAULT_WORKSPACE_TERMINAL_PORT = 3001;
+/**
+ * Path segment (under `/w/<id>/`) the opencode terminal overlay is served at — an editor-monaco
+ * terminal-only server running on {@link DEFAULT_WORKSPACE_TERMINAL_PORT}. Kept distinct from any
+ * opencode route so the proxy can split the two upstreams by prefix. Underscore-prefixed to avoid
+ * ever colliding with an opencode path.
+ */
+export const WORKSPACE_TERMINAL_OVERLAY_SEGMENT = "__edd_term";
 /** How often the idle-agent POSTs /heartbeat (seconds). 2 minutes: fires within
  * every 5-minute reconciler window; 15× within the 30-minute idle threshold. */
 export const DEFAULT_HEARTBEAT_INTERVAL_S = 120;

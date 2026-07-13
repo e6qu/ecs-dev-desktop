@@ -10,8 +10,10 @@ import type { Duplex } from "node:stream";
 
 import {
   DEFAULT_WORKSPACE_PORT,
+  DEFAULT_WORKSPACE_TERMINAL_PORT,
   WORKSPACE_PROXY_MAX_REWRITE_BYTES,
   WORKSPACE_PROXY_UPSTREAM_TIMEOUT_MS,
+  WORKSPACE_TERMINAL_OVERLAY_SEGMENT,
 } from "@edd/config";
 import {
   decideWorkspaceAccessBySubject,
@@ -383,6 +385,19 @@ export async function authorizeSpectate(
  * Throws (caller fails closed → 502) if the wake fails or no host is bound yet.
  */
 export async function resolveWorkspaceUpstream(wsId: WorkspaceId): Promise<URL> {
+  return resolveWorkspaceUpstreamOnPort(wsId, DEFAULT_WORKSPACE_PORT);
+}
+
+/**
+ * The opencode terminal-overlay upstream: the first-party terminal server runs as a SIDECAR on
+ * {@link DEFAULT_WORKSPACE_TERMINAL_PORT} inside an opencode workspace, serving the terminal UI the
+ * overlay's iframe loads at `/w/<id>/__edd_term/`. Same host as the editor, different port.
+ */
+export async function resolveWorkspaceTerminalUpstream(wsId: WorkspaceId): Promise<URL> {
+  return resolveWorkspaceUpstreamOnPort(wsId, DEFAULT_WORKSPACE_TERMINAL_PORT);
+}
+
+async function resolveWorkspaceUpstreamOnPort(wsId: WorkspaceId, port: number): Promise<URL> {
   const cp = await getControlPlane();
   const woken = await cp.connect(wsId);
   if (!woken.ok) throw new Error(`wake failed: ${woken.error.kind}`);
@@ -390,7 +405,34 @@ export async function resolveWorkspaceUpstream(wsId: WorkspaceId): Promise<URL> 
   if (host === undefined || host.length === 0) {
     throw new Error("workspace host not yet assigned");
   }
-  return new URL(`http://${host}:${String(DEFAULT_WORKSPACE_PORT)}`);
+  return new URL(`http://${host}:${String(port)}`);
+}
+
+/** The `/w/<id>/__edd_term` path prefix the opencode terminal overlay (its iframe + assets + PTY
+ * WebSocket) is served under. */
+function terminalOverlayPrefix(wsId: WorkspaceId): string {
+  return `/w/${wsId}/${WORKSPACE_TERMINAL_OVERLAY_SEGMENT}`;
+}
+
+/**
+ * True when this request targets the opencode terminal overlay (only opencode workspaces run the
+ * sidecar). Such requests are proxied to the terminal port as a PLAIN base-path editor — NOT
+ * through opencode's prefix-strip/Basic-auth/shim path. Fail-safe `false` on an un-parseable URL.
+ */
+export function isTerminalOverlayRequest(
+  editor: EditorKind,
+  wsId: WorkspaceId,
+  reqUrl: string | undefined,
+): boolean {
+  if (editor !== "opencode" || reqUrl === undefined) return false;
+  let pathname: string;
+  try {
+    pathname = new URL(reqUrl, "http://internal").pathname;
+  } catch {
+    return false;
+  }
+  const prefix = terminalOverlayPrefix(wsId);
+  return pathname === prefix || pathname.startsWith(`${prefix}/`);
 }
 
 export function workspaceProxyRequestPath(
@@ -473,6 +515,52 @@ export function injectWorkspaceHomeLink(html: string, editor: EditorKind): strin
     ' title="Back to EDD workspaces">⌂ EDD home</a>',
   ].join("");
   return `${html.slice(0, insertAt)}${link}${html.slice(insertAt)}`;
+}
+
+const EDD_TERM_TOGGLE_ID = "edd-term-toggle";
+const EDD_TERM_OVERLAY_ID = "edd-term-overlay";
+const EDD_TERM_FRAME_ID = "edd-term-frame";
+const EDD_TERM_MIN_ID = "edd-term-min";
+
+/**
+ * Give opencode (which ships no terminal) a full multi-tab terminal: inject a persistent
+ * bottom-left toggle button plus an on-top overlay whose iframe loads the first-party terminal
+ * server running as a sidecar at `/w/<id>/__edd_term/`. The overlay is hidden until first opened
+ * (the iframe's `src` is set lazily by the shim, so no PTY connects until the user asks). The
+ * toggle/minimize CLICK handling lives in the injected base-path shim (a capture-phase listener,
+ * covered by the shim's whitelisted CSP hash) — inline `onclick` is blocked by opencode's CSP.
+ */
+export function injectOpencodeTerminalOverlay(html: string, wsId: WorkspaceId): string {
+  if (html.includes(`id="${EDD_TERM_TOGGLE_ID}"`)) return html;
+  const bodyMatch = /<body\b[^>]*>/i.exec(html);
+  if (bodyMatch === null) {
+    throw new Error("opencode HTML did not contain a <body> tag for the terminal overlay");
+  }
+  const src = `/w/${wsId}/${WORKSPACE_TERMINAL_OVERLAY_SEGMENT}/`;
+  const z = "2147483646"; // just below the home-link pill (2147483647) so it never covers it
+  const btn =
+    `<button id="${EDD_TERM_TOGGLE_ID}" type="button" title="Toggle terminal (on top of opencode)"` +
+    ` aria-label="Toggle terminal"` +
+    ` style="position:fixed;z-index:${z};bottom:12px;left:12px;display:inline-flex;align-items:center;gap:6px;` +
+    `padding:8px 12px;border:1px solid rgba(255,255,255,.22);border-radius:6px;background:rgba(11,15,13,.92);` +
+    `color:#4ec9b0;cursor:pointer;font:600 13px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;` +
+    `box-shadow:0 4px 16px rgba(0,0,0,.35)">⌨ Terminal</button>`;
+  const overlay =
+    `<div id="${EDD_TERM_OVERLAY_ID}" hidden` +
+    ` style="position:fixed;z-index:${z};left:12px;right:12px;bottom:56px;height:min(60vh,540px);` +
+    `display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.22);border-radius:8px;overflow:hidden;` +
+    `background:#1e1e1e;box-shadow:0 8px 32px rgba(0,0,0,.5)">` +
+    `<div style="display:flex;align-items:center;justify-content:space-between;padding:5px 10px;` +
+    `background:#0b0f0d;color:#4ec9b0;font:600 12px -apple-system,BlinkMacSystemFont,Segoe UI,sans-serif">` +
+    `<span>Terminal</span>` +
+    `<button id="${EDD_TERM_MIN_ID}" type="button" title="Minimize terminal" aria-label="Minimize terminal"` +
+    ` style="background:transparent;border:0;color:#4ec9b0;cursor:pointer;font-size:16px;line-height:1;padding:0 4px">×</button>` +
+    `</div>` +
+    `<iframe id="${EDD_TERM_FRAME_ID}" data-src="${src}" title="Terminal"` +
+    ` style="flex:1;width:100%;border:0;background:#1e1e1e"></iframe>` +
+    `</div>`;
+  const insertAt = bodyMatch.index + bodyMatch[0].length;
+  return `${html.slice(0, insertAt)}${btn}${overlay}${html.slice(insertAt)}`;
 }
 
 /**
@@ -587,9 +675,19 @@ export function buildOpencodeBasePathShim(base: string): string {
     // navigation. A capture-phase listener registered here (before opencode's) intercepts
     // the click first and performs a real top-level navigation. Inline onclick can't be
     // used — opencode's hash-based CSP blocks inline event handlers.
+    // Terminal overlay (injected by injectOpencodeTerminalOverlay): show/hide on top of opencode.
+    // The iframe's `src` is set from `data-src` on first open so no PTY connects until asked. CSP
+    // blocks inline handlers, so wiring happens here (this whole script's hash is CSP-whitelisted).
+    "function __eddTermSet(show){var o=document.getElementById('edd-term-overlay');if(!o)return;",
+    "if(show){var f=document.getElementById('edd-term-frame');if(f&&!f.getAttribute('src')){f.setAttribute('src',f.getAttribute('data-src'));}o.removeAttribute('hidden');}",
+    "else{o.setAttribute('hidden','');}",
+    "var b=document.getElementById('edd-term-toggle');if(b){b.setAttribute('aria-pressed',show?'true':'false');}}",
     "document.addEventListener('click',function(e){",
-    "var t=e.target;var a=t&&t.closest?t.closest('#edd-workspaces-home,#edd-home'):null;",
-    "if(a){e.preventDefault();e.stopImmediatePropagation();window.location.assign(a.getAttribute('href')||'/workspaces');}",
+    "var t=e.target;if(!t||!t.closest)return;",
+    "var a=t.closest('#edd-workspaces-home,#edd-home');",
+    "if(a){e.preventDefault();e.stopImmediatePropagation();window.location.assign(a.getAttribute('href')||'/workspaces');return;}",
+    "if(t.closest('#edd-term-toggle')){e.preventDefault();e.stopImmediatePropagation();var o=document.getElementById('edd-term-overlay');__eddTermSet(!!o&&o.hasAttribute('hidden'));return;}",
+    "if(t.closest('#edd-term-min')){e.preventDefault();e.stopImmediatePropagation();__eddTermSet(false);return;}",
     "},true);",
     "})();",
   ].join("");
@@ -635,6 +733,24 @@ export function cspAllowingInlineScript(csp: string, scriptSource: string): stri
   if (!directives.some(isScriptDirective)) return csp;
   return directives
     .map((d) => (isScriptDirective(d) && !d.includes(hash) ? `${d} ${hash}` : d))
+    .join("; ");
+}
+
+/**
+ * Ensure a same-origin `<iframe>` (the terminal overlay) is allowed under opencode's CSP: add
+ * `'self'` to `frame-src` when that directive exists (frames otherwise fall back to `child-src`
+ * then `default-src`, but an explicit restrictive `frame-src` would block the overlay). Only
+ * touches an existing `frame-src`; never adds the directive or widens anything else.
+ */
+export function cspAllowingSelfFrame(csp: string): string {
+  const isFrameDirective = (d: string): boolean => d.split(/\s+/)[0]?.toLowerCase() === "frame-src";
+  const directives = csp
+    .split(";")
+    .map((d) => d.trim())
+    .filter((d) => d.length > 0);
+  if (!directives.some(isFrameDirective)) return csp;
+  return directives
+    .map((d) => (isFrameDirective(d) && !/(^|\s)'self'(\s|$)/.test(d) ? `${d} 'self'` : d))
     .join("; ");
 }
 
@@ -743,6 +859,9 @@ export function proxyWorkspaceHttp(
         if (responseIsHtml(contentType)) {
           outBody = injectWorkspaceHomeLink(outBody, context.editor);
           if (context.editor === "opencode") {
+            // Add the terminal overlay (button + on-top iframe) BEFORE the shim, so the shim's
+            // capture-phase click handler can wire the toggle/minimize buttons it introduces.
+            outBody = injectOpencodeTerminalOverlay(outBody, context.wsId);
             // Inject the runtime base-path shim and whitelist its hash in the response CSP
             // (opencode ships a hash-based script-src, so an un-hashed inline script would
             // be blocked). Header mutation must happen BEFORE writeHead below.
@@ -754,7 +873,9 @@ export function proxyWorkspaceHttp(
             ]) {
               const value = headerValue(headers[cspHeader]);
               if (value !== undefined) {
-                headers[cspHeader] = cspAllowingInlineScript(value, shimmed.scriptSource);
+                headers[cspHeader] = cspAllowingSelfFrame(
+                  cspAllowingInlineScript(value, shimmed.scriptSource),
+                );
               }
             }
           }
