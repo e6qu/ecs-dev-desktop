@@ -56,8 +56,15 @@ auto_deploy]` + an `apigateway.amazonaws.com` invoke permission) — the STANDAR
      CloudFront → 200 reload page** (CloudFront's header injection → API Gateway → token gate → handler
      all confirmed live). Code: `packages/wake-listener` handler token gate + tests; `cloudfront.tf`
      (API Gateway origin, custom_header, Function-URL/OAC/permissions removed); `random` provider in
-     `versions.tf` + provider lock regenerated (all platforms). Remaining: the live scale-from-zero
-     end-to-end check (scale CP→0, confirm the 503→wake→UpdateService→recovery loop).
+     `versions.tf` + provider lock regenerated (all platforms). **Live scale-from-zero VERIFIED on prod
+     (2026-07-13):** scaled `edd-prod-control-plane` to 0 → at desired0/running0 `app.edd.e6qu.dev/`
+     served the 200 reload page (CloudFront 503→wake) → the wake Lambda logged `control-plane wake
+     from:0 to:2` (the `ecs:UpdateService`) → desired bounced to 2 → tasks started → app recovered
+     (`/`→307, `/login`→200); later requests logged idempotent `hold`. One transient ~1-cycle 502 during
+     target warm-up (running=2, not-yet-ready) is normal cold-start and cleared on the next reload; it is
+     NOT mapped to the wake page on purpose (502/504 are ambiguous vs a genuine app error — only 503 =
+     "no healthy targets = scaled to zero" is routed to the wake page). RESOLVED: the control-plane
+     scale-to-zero + wake feature is deployed and end-to-end verified.
 
 - **opencode rendered BLANK — base-path ROUTING — FIXED in `fix/opencode-base-path`
   (2026-07-12).** Distinct from the older JS-corruption bug (next entry). Diagnosis (live probes
