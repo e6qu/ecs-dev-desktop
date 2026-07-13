@@ -243,6 +243,16 @@ sh "$here/bootstrap-state.sh" "$state_bucket" "$EDD_REGION"
 banner "bootstrap secrets ($EDD_NAME/*)"
 sh "$here/bootstrap-secrets.sh" "$EDD_NAME" "$EDD_REGION"
 
+# Build the wake Lambda artifact the module deploys: the CloudFront scale-to-zero entry
+# (enable_cloudfront, default on) references packages/wake-listener/dist/wake-listener.zip, which
+# `terraform apply` uploads. Build it here so a fresh install does not fail on the missing zip.
+banner "build wake Lambda artifact (@edd/wake-listener)"
+(
+  cd "$repo" || exit 1
+  corepack enable >/dev/null 2>&1 || true
+  pnpm --filter @edd/wake-listener build
+)
+
 banner "terraform init + apply ($EDD_NAME in $EDD_REGION, mode=$EDD_IMAGE_BUILD_MODE)"
 (cd "$tfdir" && terraform init -backend-config "bucket=$state_bucket" \
   -backend-config "key=$state_key" \
