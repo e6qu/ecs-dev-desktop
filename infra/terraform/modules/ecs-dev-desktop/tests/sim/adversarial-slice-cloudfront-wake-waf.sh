@@ -1,27 +1,34 @@
 #!/usr/bin/env sh
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Adversarial spec-fidelity probe slice for the control-plane scale-to-zero entry:
-#   (A) a CloudFront distribution with an ORIGIN GROUP whose FailoverCriteria fails
-#       over on 502/503/504 (ALB primary -> wake-Lambda failover);
-#   (B) a Lambda function with a Function URL (the failover origin);
-#   (C) a CLOUDFRONT-scope WAFv2 web ACL + IP set, and attaching the ACL to the
-#       distribution via the distribution's WebACLId.
-# Plus the DoS/cost-amplification hardening (harden/scale-to-zero-security):
-#   - the Function URL is AWS_IAM (not publicly invokable), fronted by a lambda-type
-#     Origin Access Control that SigV4-signs CloudFront's origin requests, and a
-#     CloudFront-scoped lambda:InvokeFunctionUrl grant;
-#   - the wake Lambda carries a bounded reserved-concurrency ceiling;
-#   - the CLOUDFRONT WAF seeds a per-IP rate_based_statement BLOCK rule (limit 2000)
-#     alongside the managed common rule set — evaluated at the edge on the VIEWER
-#     request, BEFORE origin-group failover, so a blocked flood never invokes the wake
-#     Lambda (no per-invoke/GB-s cost, no ECS-API pressure).
-# These are the shapes cloudfront.tf / waf-cloudfront.tf create. Endpoint-only:
-# targets AWS_ENDPOINT_URL from the environment (sockerless sim or real AWS).
+# Adversarial spec-fidelity probe slice for the control-plane scale-to-zero entry, matching the
+# CURRENT design (single ALB origin + a 503 custom_error_response -> a wake Lambda fronted by API
+# Gateway, gated by a CloudFront shared-secret header). These are the shapes cloudfront.tf /
+# waf-cloudfront.tf create:
+#   (A) a wake Lambda fronted by an API Gateway HTTP API (AWS_PROXY integration, payload format 2.0,
+#       $default route + $default auto-deploy stage) — NOT a Lambda Function URL. Function URLs are
+#       non-functional in the edd-prod account (403 at the URL front door, zero invocations, both auth
+#       modes; direct SDK invoke works — see BUGS.md), so the wake origin is an API Gateway host.
+#   (B) a CLOUDFRONT-scope WAFv2 web ACL + IP set (common managed rule set + a per-IP rate-based BLOCK
+#       rule), attached to the distribution via WebACLId.
+#   (C) a CloudFront distribution with a SINGLE ALB origin (all methods — the app POSTs to page paths
+#       via Next.js Server Actions, and CloudFront forbids write methods on an origin-group behaviour,
+#       so there is NO origin group), a `/_edd_wake*` ordered behaviour targeting the API Gateway wake
+#       origin, a 503 `custom_error_response` (response_code 200) routing a scaled-to-zero ALB 503 to
+#       `/_edd_wake`, and the wake origin carrying an `x-edd-wake-token` custom origin header.
+# Scale-to-zero access control + DoS/cost hardening:
+#   - the wake path is gated by the `x-edd-wake-token` shared secret ONLY CloudFront injects (the
+#     handler rejects any request lacking it before any ECS call), so a direct hit on the public API
+#     can't wake the service — and even if it did, the only effect is an idempotent ecs:UpdateService;
+#   - the CLOUDFRONT WAF seeds a per-IP rate_based_statement BLOCK rule (limit 2000) alongside the
+#     managed common rule set — evaluated at the edge on the VIEWER request, so a blocked flood never
+#     reaches the wake origin (no per-invoke/GB-s cost, no ECS-API pressure).
+# Endpoint-only: targets AWS_ENDPOINT_URL from the environment (sockerless sim or real AWS).
 #
-# The sim (sockerless b5126463) supports CloudFront distributions/origin-groups,
-# Lambda + Function URL, and WAFv2 CLOUDFRONT scope. If a target lacks any of these,
-# the corresponding block records a SKIP and the slice stays green for what IS
-# supported (see BUGS.md -> External blockers for any recorded upstream gap).
+# The sim (sockerless) supports API Gateway v2 (HTTP APIs), CloudFront distributions with
+# custom-header origins + custom_error_responses, and WAFv2 CLOUDFRONT scope. If a target lacks any of
+# these, the corresponding block records a SKIP and the slice stays green for what IS supported (see
+# BUGS.md -> External blockers for any recorded upstream gap). If a supported shape behaves DIFFERENTLY
+# from real AWS, that is a simulator bug: file it on github.com/e6qu/sockerless and reference it here.
 set -eu
 unset CDPATH
 
@@ -33,11 +40,18 @@ export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-test}"
 # AWS-managed CloudFront policy ids (global/stable) — the same the module uses.
 CACHING_DISABLED_ID="4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
 ALL_VIEWER_ORP_ID="216adef6-5c7f-47e4-b989-5492eafa07d3"
+# AllViewerExceptHostHeader: the wake behaviour's ORP, so CloudFront sends the API Gateway's own Host
+# (not the viewer host, which would fail to match the API), while still forwarding x-edd-wake-token.
+ALL_VIEWER_EXCEPT_HOST_ORP_ID="b689b0a8-53d0-40ab-baf2-68738e2966ac"
+# The shared-secret header CloudFront injects on wake-origin requests (module local.wake_token_header).
+WAKE_TOKEN_HEADER="x-edd-wake-token"
+# The dedicated path the wake origin serves + the 503 custom_error_response points at.
+WAKE_PATH="/_edd_wake"
 
 aws() {
   command aws --endpoint-url "$endpoint" --region "$region" "$@"
 }
-# CloudFront/WAFv2/Lambda are global; CloudFront in particular is always us-east-1.
+# CloudFront/WAFv2 are global; CloudFront in particular is always us-east-1.
 aws_use1() {
   command aws --endpoint-url "$endpoint" --region "us-east-1" "$@"
 }
@@ -52,26 +66,26 @@ skip() { echo "SKIP: $*"; }
 suffix="$(date +%s)"
 role_name="edd-wake-probe-${suffix}"
 fn_name="edd-wake-probe-${suffix}"
+api_name="edd-wake-probe-${suffix}"
 acl_name="edd-cf-probe-${suffix}"
 ipset_name="edd-cf-ipset-${suffix}"
 work="$(mktemp -d)"
 
 role_arn=""
 fn_created=""
+api_id=""
 dist_id=""
 dist_etag=""
 acl_id=""
 ipset_id=""
-oac_id=""
 
 cleanup() {
   if [ -n "${dist_id:-}" ]; then
     # Disable then delete requires the ETag dance; best-effort teardown only.
     aws_use1 cloudfront delete-distribution --id "$dist_id" --if-match "${dist_etag:-}" >/dev/null 2>&1 || true
   fi
-  if [ -n "${oac_id:-}" ]; then
-    oac_etag=$(aws_use1 cloudfront get-origin-access-control --id "$oac_id" --query 'ETag' --output text 2>/dev/null || true)
-    aws_use1 cloudfront delete-origin-access-control --id "$oac_id" --if-match "${oac_etag:-}" >/dev/null 2>&1 || true
+  if [ -n "${api_id:-}" ]; then
+    aws apigatewayv2 delete-api --api-id "$api_id" >/dev/null 2>&1 || true
   fi
   if [ -n "${fn_created:-}" ]; then
     aws lambda delete-function --function-name "$fn_name" >/dev/null 2>&1 || true
@@ -84,12 +98,14 @@ cleanup() {
 trap cleanup EXIT
 
 # ---------------------------------------------------------------------------
-# (B) Lambda + Function URL (the CloudFront failover origin)
+# (A) Wake Lambda fronted by an API Gateway HTTP API (the CloudFront wake origin)
 # ---------------------------------------------------------------------------
-echo "=== Lambda: create the wake function + Function URL ==="
+echo "=== Lambda + API Gateway: create the wake function behind an HTTP API ==="
+wake_origin_domain="wake.example.invalid"
 if ! aws lambda list-functions >/dev/null 2>&1; then
   skip "Lambda API not available on this target"
-  wake_origin_domain="wake.example.invalid"
+elif ! aws apigatewayv2 get-apis >/dev/null 2>&1; then
+  skip "API Gateway v2 API not available on this target"
 else
   role_arn=$(aws iam create-role \
     --role-name "$role_name" \
@@ -100,64 +116,93 @@ else
   printf 'exports.handler = async () => ({ statusCode: 200, body: "waking" });\n' >"${work}/index.js"
   (cd "$work" && zip -q -X function.zip index.js)
 
-  aws lambda create-function \
+  fn_arn=$(aws lambda create-function \
     --function-name "$fn_name" \
     --runtime nodejs22.x \
     --handler index.handler \
     --role "$role_arn" \
-    --zip-file "fileb://${work}/function.zip" >/dev/null || fail "CreateFunction rejected"
+    --zip-file "fileb://${work}/function.zip" \
+    --query 'FunctionArn' --output text) || fail "CreateFunction rejected"
   fn_created=1
-  pass "Created Lambda ${fn_name}"
+  if [ -z "$fn_arn" ] || [ "$fn_arn" = "None" ]; then fail "CreateFunction did not return an ARN"; fi
+  pass "Created wake Lambda ${fn_name}"
 
-  # AWS_IAM (not NONE): the module locks the Function URL to IAM so only CloudFront —
-  # via OAC SigV4 signing + a scoped invoke permission — can reach it, keeping the
-  # wake path behind CloudFront + the CLOUDFRONT WAF.
-  fn_url=$(aws lambda create-function-url-config \
-    --function-name "$fn_name" \
-    --auth-type AWS_IAM \
-    --query 'FunctionUrl' --output text)
-  if [ -z "$fn_url" ] || [ "$fn_url" = "None" ]; then
-    fail "CreateFunctionUrlConfig did not return a URL"
-  fi
-  # (b) The Function URL must NOT be publicly invokable: AWS_IAM means every caller
-  # must present SigV4 creds. Combined with the scoped CloudFront InvokeFunctionUrl
-  # grant added after the distribution exists, only CloudFront (post-WAF) can invoke
-  # it — closing the direct-invoke cost hole that auth NONE would open.
-  got_auth=$(aws lambda get-function-url-config --function-name "$fn_name" \
-    --query 'AuthType' --output text)
-  [ "$got_auth" = "AWS_IAM" ] || fail "Function URL auth type is ${got_auth}, expected AWS_IAM (auth NONE is a direct-invoke cost hole)"
-  pass "Function URL is AWS_IAM (not publicly invokable): ${fn_url}"
+  # The wake front door is an HTTP API with an AWS_PROXY integration on payload format 2.0 — the SAME
+  # event shape a Function URL delivers, so the handler is identical. NOT a Function URL.
+  api_out=$(aws apigatewayv2 create-api \
+    --name "$api_name" --protocol-type HTTP --output json) || fail "CreateApi (HTTP) rejected"
+  api_id=$(printf '%s' "$api_out" | python3 -c 'import sys,json; print(json.load(sys.stdin)["ApiId"])')
+  api_endpoint=$(printf '%s' "$api_out" | python3 -c 'import sys,json; print(json.load(sys.stdin)["ApiEndpoint"])')
+  [ -n "$api_id" ] || fail "CreateApi did not return an ApiId"
+  case "$api_endpoint" in
+    https://*.execute-api.*.amazonaws.com) pass "Created HTTP API ${api_id} (${api_endpoint})" ;;
+    *) fail "Unexpected API endpoint shape: ${api_endpoint}" ;;
+  esac
 
-  # (a) Bound the wake Lambda's concurrency so a CloudFront-failover flood can't fan
-  # out into unbounded concurrent invocations (billed per-invoke + GB-s) or hammer the
-  # ECS DescribeServices/UpdateService APIs. Prove the reserved-concurrency ceiling
-  # sticks — the module sets var.wake_lambda_reserved_concurrency (default 5).
-  wake_reserved=5
-  aws lambda put-function-concurrency \
+  int_id=$(aws apigatewayv2 create-integration \
+    --api-id "$api_id" \
+    --integration-type AWS_PROXY \
+    --integration-uri "$fn_arn" \
+    --payload-format-version 2.0 \
+    --query 'IntegrationId' --output text) || fail "CreateIntegration (AWS_PROXY) rejected"
+  if [ -z "$int_id" ] || [ "$int_id" = "None" ]; then fail "CreateIntegration did not return an IntegrationId"; fi
+  # The payload format version must round-trip as 2.0 (Function-URL-identical event shape).
+  got_pfv=$(aws apigatewayv2 get-integration --api-id "$api_id" --integration-id "$int_id" \
+    --query 'PayloadFormatVersion' --output text)
+  [ "$got_pfv" = "2.0" ] || fail "Integration payload format is ${got_pfv}, expected 2.0"
+  pass "AWS_PROXY integration on payload format 2.0 (Function-URL-identical event)"
+
+  # A single $default route covers every wake request: CloudFront only ever sends /_edd_wake* here and
+  # the handler ignores the path.
+  aws apigatewayv2 create-route \
+    --api-id "$api_id" --route-key "\$default" --target "integrations/${int_id}" >/dev/null ||
+    fail "CreateRoute (\$default) rejected"
+  got_route=$(aws apigatewayv2 get-routes --api-id "$api_id" \
+    --query "Items[?RouteKey=='\$default'].RouteKey | [0]" --output text)
+  [ "$got_route" = "\$default" ] || fail "\$default route did not round-trip (got ${got_route})"
+  pass "\$default route targets the wake integration"
+
+  # $default stage with auto-deploy: served at the bare execute-api host (no stage path segment).
+  aws apigatewayv2 create-stage \
+    --api-id "$api_id" --stage-name "\$default" --auto-deploy >/dev/null ||
+    fail "CreateStage (\$default, auto-deploy) rejected"
+  got_stage=$(aws apigatewayv2 get-stage --api-id "$api_id" --stage-name "\$default" \
+    --query 'StageName' --output text)
+  [ "$got_stage" = "\$default" ] || fail "\$default stage did not round-trip (got ${got_stage})"
+  pass "\$default auto-deploy stage created"
+
+  # Standard AWS_PROXY invoke grant, scoped to THIS API's execution ARN (not a Function-URL grant).
+  api_exec_arn="arn:aws:execute-api:${region}:000000000000:${api_id}"
+  aws lambda add-permission \
     --function-name "$fn_name" \
-    --reserved-concurrent-executions "$wake_reserved" >/dev/null ||
-    fail "PutFunctionConcurrency rejected the reserved-concurrency ceiling"
-  got_reserved=$(aws lambda get-function-concurrency --function-name "$fn_name" \
-    --query 'ReservedConcurrentExecutions' --output text)
-  [ "$got_reserved" = "$wake_reserved" ] ||
-    fail "Reserved concurrency did not round-trip (got ${got_reserved}, expected ${wake_reserved})"
-  pass "Wake Lambda reserved concurrency bounded at ${wake_reserved} (cost + ECS-API ceiling)"
-  # Strip scheme + trailing slash to the bare host, exactly as the module does.
-  wake_origin_domain=$(printf '%s' "$fn_url" | sed -e 's#^https://##' -e 's#/$##')
+    --statement-id AllowApiGatewayInvoke \
+    --action lambda:InvokeFunction \
+    --principal apigateway.amazonaws.com \
+    --source-arn "${api_exec_arn}/*/*" >/dev/null || fail "AddPermission (API Gateway invoke) rejected"
+  got_policy=$(aws lambda get-policy --function-name "$fn_name" --query 'Policy' --output text)
+  case "$got_policy" in
+    *apigateway.amazonaws.com*InvokeFunction* | *InvokeFunction*apigateway.amazonaws.com*)
+      pass "Resource policy allows apigateway.amazonaws.com lambda:InvokeFunction scoped to the API"
+      ;;
+    *) fail "Function policy missing the scoped API Gateway invoke grant" ;;
+  esac
+
+  # The wake origin CloudFront reaches is the API's bare execute-api host (no scheme, no path).
+  wake_origin_domain=$(printf '%s' "$api_endpoint" | sed -e 's#^https://##' -e 's#/$##')
 fi
 
 # ---------------------------------------------------------------------------
-# (C) CLOUDFRONT-scope WAFv2 web ACL + IP set
+# (B) CLOUDFRONT-scope WAFv2 web ACL + IP set
 # ---------------------------------------------------------------------------
 echo "=== WAFv2: create a CLOUDFRONT-scope web ACL + IP set ==="
 waf_ok=0
 if ! aws_use1 wafv2 list-web-acls --scope CLOUDFRONT >/dev/null 2>&1; then
   skip "WAFv2 CLOUDFRONT scope not available on this target"
 else
-  # Seed the SAME baseline rule band the module creates: the AWS common managed rule
-  # set at priority 0 and a per-IP rate-based BLOCK rule at priority 1. The managed
-  # common rule set is signature filtering only — the rate-based rule is the dedicated
-  # volumetric guard that caps L7 floods + wake-amplification at the edge.
+  # Seed the SAME baseline rule band the module creates: the AWS common managed rule set at priority 0
+  # and a per-IP rate-based BLOCK rule at priority 1. The managed common rule set is signature
+  # filtering only — the rate-based rule is the dedicated volumetric guard that caps L7 floods +
+  # wake-amplification at the edge.
   cat >"${work}/waf-rules.json" <<'JSON'
 [
   {
@@ -226,27 +271,14 @@ JSON
 fi
 
 # ---------------------------------------------------------------------------
-# (A) CloudFront distribution with an origin GROUP + failover on 502/503/504
+# (C) CloudFront distribution: single ALB origin + a 503 custom_error_response -> the wake origin
 # ---------------------------------------------------------------------------
-echo "=== CloudFront: create a distribution with an origin group ==="
+echo "=== CloudFront: create a distribution with a single ALB origin + a wake behaviour ==="
 if ! aws_use1 cloudfront list-distributions >/dev/null 2>&1; then
   skip "CloudFront API not available on this target"
   echo "=== CLOUDFRONT/WAKE/WAF ADVERSARIAL SLICE: PARTIAL (see SKIP lines) ==="
   exit 0
 fi
-
-# Origin Access Control for the wake origin: CloudFront SigV4-signs origin requests to
-# the AWS_IAM Function URL so it accepts them (origin_type "lambda", signing always).
-oac_id=$(aws_use1 cloudfront create-origin-access-control \
-  --origin-access-control-config "Name=edd-wake-oac-${suffix},Description=edd wake OAC probe,SigningProtocol=sigv4,SigningBehavior=always,OriginAccessControlOriginType=lambda" \
-  --query 'OriginAccessControl.Id' --output text)
-if [ -z "$oac_id" ] || [ "$oac_id" = "None" ]; then
-  fail "CreateOriginAccessControl (lambda) did not return an Id"
-fi
-got_oac_type=$(aws_use1 cloudfront get-origin-access-control --id "$oac_id" \
-  --query 'OriginAccessControl.OriginAccessControlConfig.OriginAccessControlOriginType' --output text)
-[ "$got_oac_type" = "lambda" ] || fail "OAC origin type is ${got_oac_type}, expected lambda"
-pass "Created lambda-type OAC ${oac_id} (sigv4, signing always)"
 
 cat >"${work}/dist.json" <<JSON
 {
@@ -269,7 +301,10 @@ cat >"${work}/dist.json" <<JSON
       {
         "Id": "wake-lambda",
         "DomainName": "${wake_origin_domain}",
-        "OriginAccessControlId": "${oac_id}",
+        "CustomHeaders": {
+          "Quantity": 1,
+          "Items": [ { "HeaderName": "${WAKE_TOKEN_HEADER}", "HeaderValue": "probe-shared-secret-${suffix}" } ]
+        },
         "CustomOriginConfig": {
           "HTTPPort": 80, "HTTPSPort": 443,
           "OriginProtocolPolicy": "https-only",
@@ -278,18 +313,8 @@ cat >"${work}/dist.json" <<JSON
       }
     ]
   },
-  "OriginGroups": {
-    "Quantity": 1,
-    "Items": [
-      {
-        "Id": "cp-origin-group",
-        "FailoverCriteria": { "StatusCodes": { "Quantity": 3, "Items": [502, 503, 504] } },
-        "Members": { "Quantity": 2, "Items": [ { "OriginId": "alb-control-plane" }, { "OriginId": "wake-lambda" } ] }
-      }
-    ]
-  },
   "DefaultCacheBehavior": {
-    "TargetOriginId": "cp-origin-group",
+    "TargetOriginId": "alb-control-plane",
     "ViewerProtocolPolicy": "redirect-to-https",
     "Compress": true,
     "CachePolicyId": "${CACHING_DISABLED_ID}",
@@ -299,6 +324,30 @@ cat >"${work}/dist.json" <<JSON
       "Items": ["GET","HEAD","OPTIONS","PUT","POST","PATCH","DELETE"],
       "CachedMethods": { "Quantity": 2, "Items": ["GET","HEAD"] }
     }
+  },
+  "CacheBehaviors": {
+    "Quantity": 1,
+    "Items": [
+      {
+        "PathPattern": "${WAKE_PATH}*",
+        "TargetOriginId": "wake-lambda",
+        "ViewerProtocolPolicy": "redirect-to-https",
+        "Compress": true,
+        "CachePolicyId": "${CACHING_DISABLED_ID}",
+        "OriginRequestPolicyId": "${ALL_VIEWER_EXCEPT_HOST_ORP_ID}",
+        "AllowedMethods": {
+          "Quantity": 3,
+          "Items": ["GET","HEAD","OPTIONS"],
+          "CachedMethods": { "Quantity": 2, "Items": ["GET","HEAD"] }
+        }
+      }
+    ]
+  },
+  "CustomErrorResponses": {
+    "Quantity": 1,
+    "Items": [
+      { "ErrorCode": 503, "ResponsePagePath": "${WAKE_PATH}", "ResponseCode": "200", "ErrorCachingMinTTL": 0 }
+    ]
   },
   "ViewerCertificate": { "CloudFrontDefaultCertificate": true },
   "Restrictions": { "GeoRestriction": { "RestrictionType": "none", "Quantity": 0 } }
@@ -312,43 +361,43 @@ dist_arn=$(printf '%s' "$create_out" | python3 -c 'import sys,json; print(json.l
 [ -n "$dist_id" ] || fail "CreateDistribution did not return an Id"
 pass "Created distribution ${dist_id}"
 
-echo "=== CloudFront: read back the wake origin's OAC binding ==="
-got_origin_oac=$(aws_use1 cloudfront get-distribution --id "$dist_id" \
-  --query "Distribution.DistributionConfig.Origins.Items[?Id=='wake-lambda'].OriginAccessControlId | [0]" \
-  --output text)
-[ "$got_origin_oac" = "$oac_id" ] || fail "wake origin OAC id is ${got_origin_oac}, expected ${oac_id}"
-pass "Wake origin is bound to the lambda OAC ${oac_id} (CloudFront signs origin requests)"
-
-# The module grants ONLY the CloudFront service principal, scoped to THIS distribution,
-# lambda:InvokeFunctionUrl — so only CloudFront (after WAF) can invoke the AWS_IAM URL.
-if [ -n "${fn_created:-}" ] && [ -n "${dist_arn:-}" ]; then
-  echo "=== Lambda: grant CloudFront (scoped to this distribution) InvokeFunctionUrl ==="
-  aws lambda add-permission \
-    --function-name "$fn_name" \
-    --statement-id AllowCloudFrontInvokeFunctionUrl \
-    --action lambda:InvokeFunctionUrl \
-    --principal cloudfront.amazonaws.com \
-    --source-arn "$dist_arn" \
-    --function-url-auth-type AWS_IAM >/dev/null || fail "AddPermission (CloudFront InvokeFunctionUrl) rejected"
-  got_policy=$(aws lambda get-policy --function-name "$fn_name" --query 'Policy' --output text)
-  case "$got_policy" in
-    *cloudfront.amazonaws.com*InvokeFunctionUrl* | *InvokeFunctionUrl*cloudfront.amazonaws.com*)
-      pass "Resource policy allows cloudfront.amazonaws.com lambda:InvokeFunctionUrl scoped to the distribution"
-      ;;
-    *) fail "Function policy missing the scoped CloudFront InvokeFunctionUrl grant" ;;
-  esac
-fi
-
-echo "=== CloudFront: read back the origin group + failover criteria ==="
 get_out=$(aws_use1 cloudfront get-distribution --id "$dist_id" --output json)
 dist_etag=$(printf '%s' "$get_out" | python3 -c 'import sys,json; print(json.load(sys.stdin)["ETag"])')
+
+echo "=== CloudFront: prove there is NO origin group (single-origin design) ==="
 og_qty=$(printf '%s' "$get_out" | python3 -c 'import sys,json; print(json.load(sys.stdin)["Distribution"]["DistributionConfig"]["OriginGroups"]["Quantity"])')
-[ "$og_qty" = "1" ] || fail "Expected 1 origin group, got ${og_qty}"
-codes=$(printf '%s' "$get_out" | python3 -c 'import sys,json; print(",".join(str(c) for c in json.load(sys.stdin)["Distribution"]["DistributionConfig"]["OriginGroups"]["Items"][0]["FailoverCriteria"]["StatusCodes"]["Items"]))')
-case ",${codes}," in
-  *,503,*) pass "Origin group fails over on 503 (codes: ${codes})" ;;
-  *) fail "Expected failover status 503 in codes, got: ${codes}" ;;
-esac
+[ "$og_qty" = "0" ] || fail "Expected 0 origin groups (single ALB origin), got ${og_qty}"
+pass "No origin group — default behaviour is the single ALB origin (all methods pass through)"
+
+echo "=== CloudFront: prove the 503 custom_error_response routes to the wake path ==="
+cer=$(printf '%s' "$get_out" | python3 -c '
+import sys, json
+items = json.load(sys.stdin)["Distribution"]["DistributionConfig"]["CustomErrorResponses"]["Items"]
+m = [i for i in items if i["ErrorCode"] == 503]
+print((m[0]["ResponsePagePath"] + "," + str(m[0]["ResponseCode"])) if m else "none")
+')
+[ "$cer" = "${WAKE_PATH},200" ] || fail "503 custom_error_response is '${cer}', expected '${WAKE_PATH},200'"
+pass "503 custom_error_response -> ${WAKE_PATH} (response_code 200) — a scaled-to-zero ALB 503 serves the wake page"
+
+echo "=== CloudFront: prove the wake behaviour targets the wake origin ==="
+beh_target=$(printf '%s' "$get_out" | python3 -c '
+import sys, json
+items = json.load(sys.stdin)["Distribution"]["DistributionConfig"]["CacheBehaviors"]["Items"]
+m = [b for b in items if b["PathPattern"].startswith("/_edd_wake")]
+print(m[0]["TargetOriginId"] if m else "none")
+')
+[ "$beh_target" = "wake-lambda" ] || fail "wake behaviour targets '${beh_target}', expected 'wake-lambda'"
+pass "${WAKE_PATH}* behaviour targets the API Gateway wake origin"
+
+echo "=== CloudFront: prove the wake origin carries the shared-secret custom header ==="
+got_hdr=$(printf '%s' "$get_out" | python3 -c '
+import sys, json
+o = [o for o in json.load(sys.stdin)["Distribution"]["DistributionConfig"]["Origins"]["Items"] if o["Id"] == "wake-lambda"][0]
+hs = o.get("CustomHeaders", {}).get("Items", [])
+print(next((h["HeaderName"] for h in hs), "none"))
+')
+[ "$got_hdr" = "$WAKE_TOKEN_HEADER" ] || fail "wake origin custom header is '${got_hdr}', expected '${WAKE_TOKEN_HEADER}'"
+pass "Wake origin injects the ${WAKE_TOKEN_HEADER} shared-secret header (CloudFront-only access control)"
 
 if [ "$waf_ok" = 1 ]; then
   echo "=== CloudFront: attach the CLOUDFRONT web ACL via WebACLId ==="
@@ -370,4 +419,7 @@ PY
   pass "Distribution attached to CLOUDFRONT web ACL ${acl_arn}"
 fi
 
-echo "=== ALL CLOUDFRONT / WAKE-LAMBDA / CLOUDFRONT-WAF ADVERSARIAL SLICE PROBES PASSED ==="
+# Keep dist_arn referenced (teardown + parity with the module's distribution-scoped grants).
+[ -n "${dist_arn:-}" ] && : "${dist_arn}"
+
+echo "=== ALL CLOUDFRONT / WAKE-API-GATEWAY / CLOUDFRONT-WAF ADVERSARIAL SLICE PROBES PASSED ==="

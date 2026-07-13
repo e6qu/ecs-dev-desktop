@@ -34,10 +34,14 @@
      (still describes the dropped origin-group + Function-URL shapes — add apigatewayv2 coverage or
      SKIP-if-unsupported).
      **Two pre-existing prod drifts surfaced by the wake plan (do NOT bundle):**
-     (a) **fck-nat instance wants REPLACEMENT** — state records `launch_template.version = "2"` but the
-     module passes `"$Latest"`, a force-replacement path; a full apply would recreate the NAT instance
-     and briefly drop all workspace/task outbound internet. Investigate why the LT has a newer version
-     (out-of-band LT update?) and pin/reconcile before ever applying it — keep it out of routine applies.
+     (a) **fck-nat instance wants REPLACEMENT** — FULLY DIAGNOSED 2026-07-13 (see `BUGS.md` → Open, top
+     entry). LT version is `"$Latest"` (auto_rollout defaults false) but state pins concrete `"2"`, a
+     force-new attribute → replacement; and fck-nat's gzip cloudinit `user_data` is non-deterministic
+     so a new (byte-identical) LT version is minted almost every apply (v2 and v3 are identical). A
+     one-time replace won't stick — the churn returns. **Decision needed:** pin `ami_id` + vendor/wrap
+     fck-nat with `ignore_changes=[launch_template[0].version, user_data]` (rec.); or one-time
+     maintenance-window replace + keep targeting; or switch `nat_mode="gateway"`. Keep prod applies
+     targeted + fck-nat-excluded until decided.
      (b) **control-plane IAM policy** wants `+ManageCloudFrontWaf` / `+IntrospectCloudFrontWaf`
      statements (wafv2 read/update on the edd-prod-cloudfront web ACL + admin IP set) — this is
      legitimate committed module config not yet applied; safe and non-disruptive to apply, just wasn't
