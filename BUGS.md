@@ -4,6 +4,34 @@
 
 ## Open
 
+- **fck-nat NAT instance perpetually wants REPLACEMENT on any full `terraform apply` (prod hazard;
+  diagnosed 2026-07-13, needs a decision).** A non-targeted `terraform apply` against edd-prod plans
+  to **replace** `module.fck_nat[0].aws_instance.main[0]` (the `nat_mode = "instance"` NAT), which would
+  briefly drop ALL workspace/task outbound internet while the new instance boots. This is why every
+  wake/CloudFront apply this session was `-target`ed to exclude fck-nat. Root cause (fully traced):
+  - The instance's launch-template version is `var.auto_rollout ? latest_version : "$Latest"`
+    (RaJiska/fck-nat 1.6.0 `ec2.tf:135`); we don't set `auto_rollout`, so it defaults **false** →
+    config resolves to **`"$Latest"`**. Prod state, however, pins the instance to concrete version
+    **`"2"`**, and `launch_template.version` is a force-new attribute, so `"2" → "$Latest"` forces
+    replacement.
+  - New LT versions keep appearing: the live LT `edd-prod-nat` has v1 (default), v2 (2026-07-05), and
+    **v3 (2026-07-13)** — and **v2 and v3 are byte-identical** (same AMI `ami-09006d77011cd5711`, type
+    `t4g.micro`, SG). v3 is spurious: fck-nat's `user_data = data.cloudinit_config.this.rendered` is
+    **gzip-compressed cloudinit, which is non-deterministic** (gzip header/OS byte), so terraform sees
+    `user_data` "change" on essentially every apply → a new `aws_launch_template` version each time
+    (the "inconsistent final plan" symptom noted earlier). With the instance on an older concrete
+    version than `$Latest`, that means a standing replacement diff.
+  - Therefore a one-time replace does NOT permanently fix it: the next apply re-renders the gzip
+    user_data → another LT version → drift returns.
+    **Fix options (decision needed):** (a) **pin the AMI** via the module's `ami_id` var (stops
+    AMI-`most_recent` drift) AND stop the user_data churn — either **vendor/fork fck-nat** with
+    deterministic user_data or `ignore_changes = [launch_template[0].version, user_data]` on the
+    instance, or wrap it; (b) accept a **one-time maintenance-window replacement** and always
+    `-target`-exclude fck-nat thereafter (fragile — the churn persists); (c) switch `nat_mode =
+"gateway"` (managed NAT Gateway — no instance/LT, no churn, but ~$32/mo/AZ + per-GB, losing the
+    cost win of fck-nat). Recommendation: (a) with `ignore_changes` on a thin wrapper, or (c) if the NAT
+    cost is acceptable. Until decided, keep prod applies **targeted** and never include fck-nat.
+
 - **CloudFront control-plane scale-to-zero — REDESIGNED + FIXED (2026-07-13).** The first attempt to
   apply the CloudFront/WAF/wake drift failed on four issues (below); all are now fixed and the wake
   was **redesigned** to a working shape, so the feature is deployable. Original blocker + resolution:
