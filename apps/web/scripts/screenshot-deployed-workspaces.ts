@@ -394,13 +394,26 @@ async function assertRenderedWorkspace(editor: Editor, page: Page): Promise<void
     case "terminal":
       await assertTerminalWorkflow(page);
       break;
-    case "opencode":
+    case "opencode": {
       await assertOpencodeMounted(page);
+      // opencode must open the clean project dir, not the filesystem root. It opens the git
+      // WORKTREE of its cwd; the entrypoint git-inits /data/project so the worktree is the project.
+      // Read it back through the proxied opencode API (Basic-auth is injected by the proxy).
+      const worktree = await page.evaluate(async () => {
+        const res = await fetch("project");
+        if (!res.ok) return `HTTP ${String(res.status)}`;
+        const raw = (await res.json()) as { worktree?: string }[];
+        return raw[0]?.worktree ?? "(none)";
+      });
+      if (worktree !== "/data/project") {
+        throw new Error(`opencode opened worktree "${worktree}", expected /data/project`);
+      }
       // opencode gets its terminal from the injected overlay (it ships none) — verify it end-to-end.
       // Gated only so a deploy whose workspace SG has not yet opened the sidecar port can still run
       // the rest of the smoke; leave it ON (default) so CI post-deploy-smoke always covers it.
       if (process.env.EDD_VERIFY_OVERLAY !== "0") await assertOpencodeTerminalOverlay(page);
       break;
+    }
     case "openvscode":
       await expect(page.locator(".monaco-workbench")).toBeVisible({ timeout: 60_000 });
       await assertOpenVscodeFileMenu(page);
@@ -503,7 +516,13 @@ try {
     );
   });
 
-  for (const editor of EDITORS) {
+  // Optional subset filter (e.g. re-verify only opencode after a targeted fix), comma-separated.
+  const editorFilter = process.env.EDD_VERIFY_EDITORS;
+  const editors =
+    editorFilter === undefined || editorFilter === ""
+      ? EDITORS
+      : EDITORS.filter((e) => editorFilter.split(",").includes(e));
+  for (const editor of editors) {
     browserEvents.length = 0;
     const id = await createWorkspace(baseUrl, jar, baseImage, editor);
     created.push(id);
