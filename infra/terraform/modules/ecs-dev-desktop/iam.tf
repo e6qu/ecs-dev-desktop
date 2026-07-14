@@ -469,6 +469,23 @@ data "aws_iam_policy_document" "scheduler" {
       values   = [aws_ecs_cluster.this.arn]
     }
   }
+  # The schedule target propagates tags (enable_ecs_managed_tags + propagate_tags + tags, reconciler.tf),
+  # so the scheduler's RunTask ALSO tags the created TASK — which AWS authorizes against ecs:TagResource
+  # on the task resource, SEPARATELY from ecs:RunTask on the task-def. Without this, every invocation
+  # fails "not authorized to perform: ecs:TagResource on resource: .../task/<cluster>/*" and the
+  # reconciler never launches — silently, since failures land in the DLQ (this is exactly what took the
+  # reconciler down for ~14h: no scale-to-zero, no snapshots, no orphan-task reaping). Scoped to this
+  # cluster, mirroring the control-plane role's RunAndManageWorkspaceTasks grant.
+  statement {
+    sid       = "TagReconcilerTask"
+    actions   = ["ecs:TagResource"]
+    resources = ["*"]
+    condition {
+      test     = "ArnLike"
+      variable = "ecs:cluster"
+      values   = [aws_ecs_cluster.this.arn]
+    }
+  }
   statement {
     sid       = "PassReconcilerRoles"
     actions   = ["iam:PassRole"]
