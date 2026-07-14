@@ -6,6 +6,16 @@
 
 ## Open decisions (need the user)
 
+- **Reconciler follow-ups (after the 2026-07-14 outage fix; see `BUGS.md`).** The reconciler is
+  restored (scheduler `ecs:TagResource` grant + removed the malformed `ecs_parameters.tags`). Left to do:
+  (i) **tag the reconciler task-def in the release pipeline** (`deploy-release-images.sh`) so
+  `propagate_tags = "TASK_DEFINITION"` restores full `edd:cost-scope` attribution without the broken
+  scheduler `tags` map; (ii) **harden `listWorkspaceTasks`** (compute-ecs) — it throws the whole
+  orphan-reaper sweep if any single `DescribeTasks` returns a failure (all-or-nothing; latent wedge risk);
+  (iii) **verify the reconciler DLQ alarm** (`alarms.tf`) — a 14h outage should have alarmed; confirm it
+  fired / is wired to a real destination, else fix. (iv) optionally **purge the reconciler DLQ** (~177
+  stale failure messages) once recovery is confirmed.
+
 0. **Prod Terraform drift — mostly resolved 2026-07-13; CloudFront scale-to-zero REDESIGNED.**
    After migrating prod state local→S3 (see `edd-prod-terraform-state` memory), the drift was
    worked through: the #233 S3/DynamoDB gateway endpoints and the `:3001` workspace SG rule were

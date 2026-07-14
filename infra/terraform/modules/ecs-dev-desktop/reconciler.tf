@@ -22,12 +22,18 @@ resource "aws_scheduler_schedule" "reconciler" {
       launch_type         = "FARGATE"
       task_count          = 1
 
-      # Tag the launched reconciler tasks (incl. edd:cost-scope) so their Fargate usage is
-      # cost-attributable, same as the control-plane service. Short-lived, so a small cost,
-      # but otherwise invisible to a tag-scoped Cost Explorer query.
+      # Tag the launched reconciler tasks via ECS-managed tags + propagation from the task-def.
+      # DO NOT set an explicit `tags = local.tags` here: the EventBridge Scheduler universal-target
+      # `ecs_parameters.tags` serializes a map into the RunTask `tags` MALFORMED — each entry becomes
+      # two tags keyed literally "key"/"value", so many tags collide on the same key and RunTask fails
+      # `InvalidParameterException: Multiple tags contain the same key`. Combined with the missing
+      # `ecs:TagResource` grant (fixed in iam.tf), this took the reconciler down ~14h (every tick
+      # DLQ'd). Cost attribution instead rides `propagate_tags = "TASK_DEFINITION"` — the reconciler
+      # task-def carries edd:cost-scope when Terraform owns it; the release pipeline currently
+      # registers it untagged (see DO_NEXT: tag the pipeline task-def to restore full attribution).
+      # Reconciler tasks are short-lived, so any residual attribution gap is a small cost.
       enable_ecs_managed_tags = true
       propagate_tags          = "TASK_DEFINITION"
-      tags                    = local.tags
 
       network_configuration {
         subnets          = aws_subnet.private[*].id
