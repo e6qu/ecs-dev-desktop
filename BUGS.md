@@ -4,6 +4,41 @@
 
 ## Open
 
+- **Reconciler down ~14h — TWO bugs from the #228 cost-tagging change; both FIXED (2026-07-14).** Discovered
+  while thoroughly testing prod after the fck-nat NAT roll (unrelated to it). Symptoms found by real
+  probing (not terraform state): **27 orphaned RUNNING workspace ECS tasks** (all `desiredStatus=RUNNING`,
+  no DynamoDB workspace record, spanning 6 image-tag families from prior smoke runs, earliest
+  2026-07-13 14:41) — i.e. deleted workspaces whose Fargate tasks were never reaped. Root cause traced
+  to the **reconciler not running since 2026-07-13 11:33 UTC** (~14h): its EventBridge Scheduler
+  (`rate(5 minutes)`, ENABLED) RunTask invocations were ALL failing and landing in the DLQ
+  (`edd-prod-reconciler-dlq` held **176** messages), each with
+  `AccessDeniedException: assumed-role/edd-prod-scheduler ... not authorized to perform: ecs:TagResource
+on resource: .../task/edd-prod-workspaces/*`. Cause: `reconciler.tf`'s schedule target propagates tags
+  (`enable_ecs_managed_tags = true`, `propagate_tags = "TASK_DEFINITION"`, `tags = local.tags`), so the
+  scheduler's RunTask ALSO tags the created task — which AWS authorizes against `ecs:TagResource` on the
+  TASK resource, SEPARATELY from `ecs:RunTask` on the task-def — but the `edd-prod-scheduler` role's
+  policy (`RunReconciler`) granted only `ecs:RunTask`. So every tick failed silently (into the DLQ):
+  no orphan-task reaping, no idle scale-to-zero, no snapshot GC. iam.tf already documents this exact
+  `ecs:TagResource`-for-tag-propagation requirement for the CONTROL-PLANE role — the SCHEDULER role was
+  simply missed. Both bugs were introduced by #228 (cost reporting, 2026-07-12) — which added the
+  tag-propagation block to the schedule target — and surfaced when it was APPLIED to prod at 11:33 UTC
+  on 2026-07-13. **Fix 1 (IAM):** added a `TagReconcilerTask` statement (`ecs:TagResource`, cluster-
+  scoped via an `ecs:cluster` condition) to `data.aws_iam_policy_document.scheduler`. **Fix 2 (the
+  second bug, exposed once Fix 1 let the call reach parameter validation):** the very next tick failed
+  `InvalidParameterException: Multiple tags contain the same key`. The EventBridge Scheduler universal-
+  target `ecs_parameters.tags` serializes a MAP into the RunTask `tags` MALFORMED — each `local.tags`
+  entry becomes TWO tags keyed literally `"key"` and `"value"`, so every tag collides on those two keys.
+  (`propagate_tags = "TASK_DEFINITION"` can't substitute: the release pipeline registers the reconciler
+  task-def UNTAGGED, so `:67` has zero tags to propagate.) Fixed by REMOVING the explicit `tags =
+  local.tags` from `reconciler.tf`'s `ecs_parameters` (keeping `enable_ecs_managed_tags` + `propagate_
+  tags`); reconciler tasks are short-lived so the residual cost-attribution gap is small. Both fixes
+  applied to prod (targeted) + verified the reconciler resumes and reaps the 27 orphans.
+  **Follow-ups (DO_NEXT):** (i) tag the reconciler task-def in the release pipeline so `propagate_tags`
+  restores full cost attribution without the broken `ecs_parameters.tags`; (ii) `listWorkspaceTasks`
+  (compute-ecs) throws the WHOLE reaper sweep if any single `DescribeTasks` returns a failure — an all-
+  or-nothing design that can wedge the reaper under fleet churn (not the cause here, but a latent risk);
+  (iii) the reconciler DLQ alarm (alarms.tf) SHOULD have caught a 14h outage — verify it fired / is wired.
+
 - **fck-nat NAT instance wanted REPLACEMENT on any full `terraform apply` — RESOLVED via
   `auto_rollout = true` (2026-07-13).** A non-targeted `terraform apply` against edd-prod planned to
   **replace** `module.fck_nat[0].aws_instance.main[0]` (the `nat_mode = "instance"` NAT), a brief
