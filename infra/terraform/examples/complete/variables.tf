@@ -171,3 +171,9 @@ variable "alarm_sns_topic_arns" {
   type        = list(string)
   default     = []
 }
+
+variable "deletion_protection" {
+  description = "Guard DynamoDB/ALB/NLB against deletion + disable ECR force-delete. Set false to allow a full teardown (scripts/uninstall.sh passes false)."
+  type        = bool
+  default     = true
+}

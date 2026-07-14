@@ -53,9 +53,13 @@ resource "aws_iam_role_policy" "codebuild" {
           "ecr:CompleteLayerUpload",
           "ecr:PutImage",
         ]
+        # golden_base (edd-base) is pushed too: publish-images.sh builds it first, then the
+        # golden variants FROM it. Omitting it fails a build_target of "golden"/"all" on
+        # `ecr:InitiateLayerUpload` for `<name>/edd-base` (latent when build_target = "web").
         Resource = concat([
           aws_ecr_repository.control_plane.arn,
           aws_ecr_repository.ssh_gateway.arn,
+          aws_ecr_repository.golden_base.arn,
         ], [for repo in aws_ecr_repository.golden : repo.arn])
       },
       {

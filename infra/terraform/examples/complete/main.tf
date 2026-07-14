@@ -53,6 +53,11 @@ module "ecs_dev_desktop" {
   availability_zones = var.availability_zones
   cost_scope         = var.cost_scope
 
+  # Deletion protection on DynamoDB/ALB/NLB + ECR force-delete (default true). Set false to
+  # allow a full teardown — scripts/uninstall.sh passes `-var deletion_protection=false`, which
+  # requires this to be a declared root variable.
+  deletion_protection = var.deletion_protection
+
   # Private-subnet egress. Explicit var — do NOT derive from var.environment's name
   # (a stack happening to be named "...-prod" must not silently switch NAT modes).
   nat_mode           = var.nat_mode

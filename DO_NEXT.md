@@ -6,6 +6,21 @@
 
 ## Open decisions (need the user)
 
+- **Post-`edd`-rebuild follow-ups (2026-07-14; see `BUGS.md` → Open, top).** The platform was moved to
+  Terragrunt in `github.com/e6qu/infra` (`edd/`) and rebuilt fresh as env `edd` (was `edd-prod`); state is
+  now `edd-terraform-state-729079515331`. Remaining:
+  - **Reconcile `edd`'s module pin to `main`** — `e6qu/infra/edd/terragrunt.hcl` is temporarily pinned to
+    the PR #244 fix commit; once #244 merges, repoint it to the `main` merge commit (module content is
+    identical → no-op apply) and merge e6qu/infra#1.
+  - **Module CodeBuild/publish fixes (BUGS items 3–5):** CodeBuild IAM-propagation lag (add a pre-build
+    delay/retry); `publish-images.sh` per-arch immutable-tag idempotency; and the big one — `codebuild`
+    build mode is **amd64-only** so a fresh arm64 stack's services can't start without a native
+    release-pipeline run (either build multiarch in CodeBuild or document the two-step bootstrap).
+  - **Tag the reconciler task-def in the release pipeline** (carried over from #243) so `propagate_tags`
+    restores full cost attribution.
+  - Optional: delete the now-idle `edd-tfstate-locks` DynamoDB table (both `edd` + `bleephub` use
+    `use_lockfile`); classifier-gated when attempted.
+
 - **Reconciler follow-ups (after the 2026-07-14 outage fix; see `BUGS.md`).** The reconciler is
   restored (scheduler `ecs:TagResource` grant + removed the malformed `ecs_parameters.tags`). Left to do:
   (i) **tag the reconciler task-def in the release pipeline** (`deploy-release-images.sh`) so
