@@ -34,14 +34,14 @@
      (still describes the dropped origin-group + Function-URL shapes — add apigatewayv2 coverage or
      SKIP-if-unsupported).
      **Two pre-existing prod drifts surfaced by the wake plan (do NOT bundle):**
-     (a) **fck-nat instance wants REPLACEMENT** — FULLY DIAGNOSED 2026-07-13 (see `BUGS.md` → Open, top
-     entry). LT version is `"$Latest"` (auto_rollout defaults false) but state pins concrete `"2"`, a
-     force-new attribute → replacement; and fck-nat's gzip cloudinit `user_data` is non-deterministic
-     so a new (byte-identical) LT version is minted almost every apply (v2 and v3 are identical). A
-     one-time replace won't stick — the churn returns. **Decision needed:** pin `ami_id` + vendor/wrap
-     fck-nat with `ignore_changes=[launch_template[0].version, user_data]` (rec.); or one-time
-     maintenance-window replace + keep targeting; or switch `nat_mode="gateway"`. Keep prod applies
-     targeted + fck-nat-excluded until decided.
+     (a) **fck-nat instance REPLACEMENT drift — RESOLVED via `auto_rollout = true`** (2026-07-13; see
+     `BUGS.md`). The `"$Latest"`-vs-concrete-`"2"` force-new diff is fixed by setting `auto_rollout =
+true` on the `fck_nat` call (`nat_instance.tf`): version now resolves to a concrete
+     `latest_version`, so the NAT rolls ONLY when fck-nat ships a new AL2023 AMI (the OS family is
+     already pinned). Verified plan: `version "2"→"3"`, LT unchanged → one reconciliation roll, then
+     clean. **Remaining:** apply it to prod — the first apply carrying this change rolls the NAT once (a
+     brief workspace-egress blip; user has accepted auto-update-on-apply). After that, full applies no
+     longer need to `-target`-exclude fck-nat.
      (b) **control-plane IAM policy** wants `+ManageCloudFrontWaf` / `+IntrospectCloudFrontWaf`
      statements (wafv2 read/update on the edd-prod-cloudfront web ACL + admin IP set) — this is
      legitimate committed module config not yet applied; safe and non-disruptive to apply, just wasn't

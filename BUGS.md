@@ -4,33 +4,29 @@
 
 ## Open
 
-- **fck-nat NAT instance perpetually wants REPLACEMENT on any full `terraform apply` (prod hazard;
-  diagnosed 2026-07-13, needs a decision).** A non-targeted `terraform apply` against edd-prod plans
-  to **replace** `module.fck_nat[0].aws_instance.main[0]` (the `nat_mode = "instance"` NAT), which would
-  briefly drop ALL workspace/task outbound internet while the new instance boots. This is why every
-  wake/CloudFront apply this session was `-target`ed to exclude fck-nat. Root cause (fully traced):
-  - The instance's launch-template version is `var.auto_rollout ? latest_version : "$Latest"`
-    (RaJiska/fck-nat 1.6.0 `ec2.tf:135`); we don't set `auto_rollout`, so it defaults **false** →
-    config resolves to **`"$Latest"`**. Prod state, however, pins the instance to concrete version
-    **`"2"`**, and `launch_template.version` is a force-new attribute, so `"2" → "$Latest"` forces
-    replacement.
-  - New LT versions keep appearing: the live LT `edd-prod-nat` has v1 (default), v2 (2026-07-05), and
-    **v3 (2026-07-13)** — and **v2 and v3 are byte-identical** (same AMI `ami-09006d77011cd5711`, type
-    `t4g.micro`, SG). v3 is spurious: fck-nat's `user_data = data.cloudinit_config.this.rendered` is
-    **gzip-compressed cloudinit, which is non-deterministic** (gzip header/OS byte), so terraform sees
-    `user_data` "change" on essentially every apply → a new `aws_launch_template` version each time
-    (the "inconsistent final plan" symptom noted earlier). With the instance on an older concrete
-    version than `$Latest`, that means a standing replacement diff.
-  - Therefore a one-time replace does NOT permanently fix it: the next apply re-renders the gzip
-    user_data → another LT version → drift returns.
-    **Fix options (decision needed):** (a) **pin the AMI** via the module's `ami_id` var (stops
-    AMI-`most_recent` drift) AND stop the user_data churn — either **vendor/fork fck-nat** with
-    deterministic user_data or `ignore_changes = [launch_template[0].version, user_data]` on the
-    instance, or wrap it; (b) accept a **one-time maintenance-window replacement** and always
-    `-target`-exclude fck-nat thereafter (fragile — the churn persists); (c) switch `nat_mode =
-"gateway"` (managed NAT Gateway — no instance/LT, no churn, but ~$32/mo/AZ + per-GB, losing the
-    cost win of fck-nat). Recommendation: (a) with `ignore_changes` on a thin wrapper, or (c) if the NAT
-    cost is acceptable. Until decided, keep prod applies **targeted** and never include fck-nat.
+- **fck-nat NAT instance wanted REPLACEMENT on any full `terraform apply` — RESOLVED via
+  `auto_rollout = true` (2026-07-13).** A non-targeted `terraform apply` against edd-prod planned to
+  **replace** `module.fck_nat[0].aws_instance.main[0]` (the `nat_mode = "instance"` NAT), a brief
+  workspace-egress outage; every wake/CloudFront apply this session was `-target`ed to exclude it.
+  Root cause: fck-nat sets the instance's launch-template version to `var.auto_rollout ? latest_version
+: "$Latest"` (RaJiska/fck-nat 1.6.0 `ec2.tf:135`). We didn't set `auto_rollout`, so it defaulted
+  **false → `"$Latest"`**; the AWS provider records the CONCRETE launched version in state (**`"2"`**),
+  and `launch_template.version` is a force-new attribute, so once a newer LT version existed the
+  standing `"2" → "$Latest"` diff forced replacement on every plan. (Earlier note that fck-nat's gzip
+  cloudinit `user_data` was **non-deterministic** and churned a new LT version per apply was
+  **DISPROVEN** by evidence: LT v2 and v3 have byte-identical `user_data` — same md5 — same AMI/type/SG.
+  So v3 was a one-off from an earlier apply, not per-apply gzip churn; the drift was purely the
+  `"$Latest"`-vs-concrete force-new.)
+  **Fix (user decision: auto-update on apply is acceptable):** set **`auto_rollout = true`** on the
+  `fck_nat` module call (`nat_instance.tf`). The version now resolves to `latest_version` (a CONCRETE
+  number tracked in state), so terraform replaces the instance ONLY when the launch template genuinely
+  changes — i.e. when fck-nat publishes a new AMI. The OS is already pinned to the Amazon Linux 2023
+  family by fck-nat's AMI filter (`fck-nat-al2023-hvm-*`, owner 568608671756, `most_recent = true`), so
+  we track AL2023 and get its security/OS updates without floating across OS families. Verified by a
+  read-only prod plan: `launch_template.version "2" → "3"` (concrete), the LT resource itself unchanged
+  (`0 to change`) → a single reconciliation roll now, then clean plans until a new AMI ships. The first
+  apply carrying this change rolls the NAT once (a brief workspace-egress blip we accept in exchange for
+  staying patched); after that, full applies no longer need to `-target`-exclude fck-nat.
 
 - **CloudFront control-plane scale-to-zero — REDESIGNED + FIXED (2026-07-13).** The first attempt to
   apply the CloudFront/WAF/wake drift failed on four issues (below); all are now fixed and the wake
