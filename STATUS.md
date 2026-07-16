@@ -10,6 +10,11 @@ configuration hid the sign-in choice. Shauth's signed developer/admin claim
 was validated and used as the centrally-managed role. Focused provider tests,
 the complete web suite (290 tests), lint, and the production build passed.
 
+The Shauth OpenID Connect branch also refreshed all age-eligible JavaScript,
+AWS SDK, WebSocket, Turborepo, and Terraform provider dependencies. TypeScript
+remained at 6.0.3 because the current typescript-eslint peer range excludes
+TypeScript 7; the dependency gate explicitly verifies that compatibility rule.
+
 **Last updated:** 2026-07-12 (pwd cleanup). Active branch `fix/workspace-pwd-clean` (on top of
 #231 `1bdfcfb`). Verified workspaces are genuinely useful (real multi-language dev, git, npm+network,
 make all work on a live Fargate terminal), then fixed the pwd leak: the EBS volume was mounted at
