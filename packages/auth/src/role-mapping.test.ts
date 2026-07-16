@@ -10,6 +10,15 @@ const config: RoleMappingConfig = {
 };
 
 describe("mapClaimsToRole", () => {
+  it("honours the signed Shauth admin role over group mappings", () => {
+    expect(
+      mapClaimsToRole(
+        { idp: "shauth", subject: "user-123", groups: [], role: "admin" },
+        { adminGroups: [], developerGroups: [], defaultRole: "viewer" },
+      ),
+    ).toBe("admin");
+  });
+
   it("maps a GitHub admin team to admin", () => {
     expect(
       mapClaimsToRole({ idp: "github", subject: "u", groups: ["acme/platform-admins"] }, config),

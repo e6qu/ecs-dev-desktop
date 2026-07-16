@@ -8,6 +8,10 @@ const entraProfile = z.object({
   sub: z.string().optional(),
   groups: z.array(z.string()).optional(),
 });
+const shauthProfile = z.object({
+  sub: z.string().min(1),
+  role: z.enum(["developer", "admin"]),
+});
 
 /**
  * Normalise a provider's profile into typed {@link IdentityClaims}. The untyped
@@ -25,6 +29,10 @@ export function normalizeClaims(provider: string, profile: unknown): IdentityCla
       const subject = p.oid ?? p.sub;
       if (subject === undefined) throw new Error("entra profile missing oid/sub");
       return { idp: "entra", subject, groups: p.groups ?? [] };
+    }
+    case "shauth": {
+      const p = shauthProfile.parse(profile);
+      return { idp: "shauth", subject: p.sub, groups: [], role: p.role };
     }
     default:
       throw new Error(`unsupported auth provider: ${provider}`);

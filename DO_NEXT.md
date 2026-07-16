@@ -4,6 +4,15 @@
 
 ---
 
+## Shauth deployment follow-through
+
+- **Provision and deploy the ECS Dev Desktop Shauth client.** The application
+  accepted Shauth through `AUTH_SHAUTH_ISSUER`, `AUTH_SHAUTH_ID`, and
+  `AUTH_SHAUTH_SECRET`; the infrastructure must register its confidential OIDC
+  client with callback `https://app.edd.e6qu.dev/api/auth/callback/shauth`, put
+  the client secret in AWS Secrets Manager, inject all three coordinates, and
+  then verify the complete browser authorization-code flow against Shauth.
+
 ## Open decisions (need the user)
 
 - **Post-`edd`-rebuild follow-ups (2026-07-14; see `BUGS.md` → Open, top).** The platform was moved to

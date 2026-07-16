@@ -40,6 +40,11 @@ export const GITHUB_API_URL_ENV = "AUTH_GITHUB_API_URL";
  * `enterprise.baseUrl` option. Endpoint-only (§6.8); unset = github.com. */
 export const GITHUB_URL_ENV = "AUTH_GITHUB_URL";
 
+/** Shauth OpenID Connect issuer and confidential-client coordinates. */
+export const SHAUTH_ISSUER_ENV = "AUTH_SHAUTH_ISSUER";
+export const SHAUTH_CLIENT_ID_ENV = "AUTH_SHAUTH_ID";
+export const SHAUTH_CLIENT_SECRET_ENV = "AUTH_SHAUTH_SECRET";
+
 /** GitHub App credentials. When BOTH are set, GitHub operations + the clone/push
  * broker act as the App (installation tokens) instead of the user's OAuth token.
  * `EDD_GITHUB_APP_KEY` is the RSA private key PEM (or base64-encoded PEM). */
