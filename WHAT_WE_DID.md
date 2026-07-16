@@ -5,6 +5,8 @@
 
 ---
 
+**2026-07-16 — ECS Dev Desktop accepted Shauth as an additional OpenID Connect provider.** The control plane preserved direct GitHub, Microsoft Entra ID, and administrator-created local-account sign-in while adding a Shauth authorization-code route. Shauth's issuer, client id, and client secret were an all-or-nothing confidential-client configuration: an absent configuration hid the button, and a partial configuration failed at startup rather than exposing an unusable login. The signed Shauth subject and centrally-managed developer/admin role were validated before the existing server-side session record was created, so application authorization remained fail-closed. Focused provider tests, the full 290-test web suite, lint, and a production build passed.
+
 ## Key decisions & lessons (durable)
 
 - **Architecture (locked, `AGENTS.md` §1):** ECS Fargate; DynamoDB single-table +

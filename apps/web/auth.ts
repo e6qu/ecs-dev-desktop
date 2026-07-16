@@ -19,9 +19,11 @@ import { GITHUB_URL_ENV } from "./lib/constants";
 import { getGitCredentials, gitCredentialsEnabled } from "./lib/git-credentials";
 import { fetchGithubTeamGroups } from "./lib/github-teams";
 import { authenticateLocalAccount } from "./lib/local-accounts";
+import { shauthOidcConfig } from "./lib/shauth";
 
 /**
- * Auth.js (NextAuth v5) — GitHub OAuth + Azure Entra ID, with signed cookies
+ * Auth.js (NextAuth v5) — GitHub OAuth, Microsoft Entra ID, and Shauth OpenID
+ * Connect, with signed cookies
  * backed by an EDD server-side session record. Provider
  * credentials are read from env (AUTH_GITHUB_*, AUTH_MICROSOFT_ENTRA_ID_*,
  * AUTH_SECRET). The role is derived from IdP groups via `@edd/auth` at sign-in
@@ -33,6 +35,19 @@ import { authenticateLocalAccount } from "./lib/local-accounts";
  * means github.com. Endpoint-only, never a behavioural branch (§6.8).
  */
 const githubEnterpriseUrl = process.env[GITHUB_URL_ENV];
+const shauth = shauthOidcConfig();
+const shauthProvider =
+  shauth === null
+    ? null
+    : {
+        id: "shauth",
+        name: "Shauth",
+        type: "oidc" as const,
+        issuer: shauth.issuer,
+        clientId: shauth.clientId,
+        clientSecret: shauth.clientSecret,
+        authorization: { params: { scope: "openid profile email offline_access" } },
+      };
 
 /** Session lifetime: 4 hours, rolling (see the `session` block below). */
 const SESSION_MAX_AGE_S = 4 * 60 * 60;
@@ -80,6 +95,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // what AAD's discovery advertises), not Auth.js's Basic-header default.
       client: { token_endpoint_auth_method: "client_secret_post" },
     }),
+    ...(shauthProvider === null ? [] : [shauthProvider]),
   ],
   // 4-hour sessions with a rolling refresh plus a REQUIRED server-side session
   // record. The cookie alone never authorizes: every request must carry the

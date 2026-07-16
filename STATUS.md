@@ -2,6 +2,14 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
+**Last updated:** 2026-07-16. ECS Dev Desktop accepted Shauth as an additional
+confidential OpenID Connect provider while preserving direct GitHub, Microsoft
+Entra ID, and local-account sign-in. Shauth credentials were all-or-nothing:
+an incomplete deployment configuration failed during startup, while an absent
+configuration hid the sign-in choice. Shauth's signed developer/admin claim
+was validated and used as the centrally-managed role. Focused provider tests,
+the complete web suite (290 tests), lint, and the production build passed.
+
 **Last updated:** 2026-07-12 (pwd cleanup). Active branch `fix/workspace-pwd-clean` (on top of
 #231 `1bdfcfb`). Verified workspaces are genuinely useful (real multi-language dev, git, npm+network,
 make all work on a live Fargate terminal), then fixed the pwd leak: the EBS volume was mounted at

@@ -3,6 +3,7 @@ import { devUsers } from "@edd/config";
 
 import { signIn } from "../../auth";
 import { devAuthEnabled } from "../../lib/principal";
+import { shauthEnabled } from "../../lib/shauth";
 import { TESTID } from "../../lib/testids";
 import { devSignIn, localAccountSignIn } from "./actions";
 
@@ -29,7 +30,7 @@ function DevLogin({ error }: { error?: string }) {
       </div>
       <h1 style={{ fontSize: 26, marginTop: 10 }}>Sign in</h1>
       <p style={{ color: "var(--dim)", marginTop: 8 }}>
-        Local dev-auth — seeded accounts. (Production uses GitHub / Microsoft Entra.)
+        Local dev-auth — seeded accounts. (Production uses GitHub, Shauth, or Microsoft Entra.)
       </p>
       {error !== undefined && (
         <p
@@ -146,6 +147,18 @@ function OidcLogin({ error }: { error?: string }) {
             Continue with EDD account
           </button>
         </form>
+        {shauthEnabled() && (
+          <form
+            action={async () => {
+              "use server";
+              await signIn("shauth", { redirectTo: "/workspaces" });
+            }}
+          >
+            <button className="btn" type="submit" style={{ width: "100%" }}>
+              Continue with Shauth
+            </button>
+          </form>
+        )}
         <form
           action={async () => {
             "use server";
