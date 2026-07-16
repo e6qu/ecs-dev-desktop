@@ -4037,3 +4037,7 @@ The dependency gate was restored by refreshing age-eligible workspace packages
 and the HashiCorp AWS provider lock. TypeScript remained on the latest release
 supported by typescript-eslint, and the check recorded that peer constraint
 instead of accepting an unsupported TypeScript 7 installation.
+
+The provider lock now includes Terraform's Linux checksum as well as the
+existing platform checksums, so the same latest provider lock verifies on the
+GitHub Actions runner and on local development hosts.
