@@ -2,13 +2,23 @@
 
 > Where the project is right now. Update after every task; past tense at PR close.
 
-**Last updated:** 2026-07-16. ECS Dev Desktop accepted Shauth as an additional
-confidential OpenID Connect provider while preserving direct GitHub, Microsoft
-Entra ID, and local-account sign-in. Shauth credentials were all-or-nothing:
-an incomplete deployment configuration failed during startup, while an absent
-configuration hid the sign-in choice. Shauth's signed developer/admin claim
-was validated and used as the centrally-managed role. Focused provider tests,
-the complete web suite (290 tests), lint, and the production build passed.
+**Last updated:** 2026-07-17. The Terraform module supported an
+environment-owned Amazon Virtual Private Cloud (VPC) and Amazon Elastic
+Container Service (ECS) cluster through explicit, validated coordinates. In
+that mode it created ECS Dev Desktop's own security groups and application
+resources without creating or mutating a duplicate VPC, NAT, endpoints, or ECS
+cluster. The live Sockerless Amazon Web Services simulator fixture provisioned
+both standalone and shared-environment consumers, verified the shared service
+used the external cluster, produced a no-change idempotency plan, and destroyed
+both stacks cleanly.
+
+The preceding update added Shauth as an additional confidential OpenID Connect
+provider while preserving direct GitHub, Microsoft Entra ID, and local-account
+sign-in. Shauth credentials were all-or-nothing: an incomplete deployment
+configuration failed during startup, while an absent configuration hid the
+sign-in choice. Shauth's signed developer/admin claim was validated and used as
+the centrally-managed role. Focused provider tests, the complete web suite
+(290 tests), lint, and the production build passed.
 
 The Shauth OpenID Connect branch also refreshed all age-eligible JavaScript,
 AWS SDK, WebSocket, Turborepo, and Terraform provider dependencies. TypeScript

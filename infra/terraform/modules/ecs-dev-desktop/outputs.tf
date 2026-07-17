@@ -2,17 +2,17 @@
 
 output "vpc_id" {
   description = "ID of the platform VPC."
-  value       = aws_vpc.this.id
+  value       = local.vpc_id
 }
 
 output "private_subnet_ids" {
   description = "Private subnet IDs (ECS tasks run here)."
-  value       = aws_subnet.private[*].id
+  value       = local.private_subnet_ids
 }
 
 output "public_subnet_ids" {
   description = "Public subnet IDs (the ALB lives here)."
-  value       = aws_subnet.public[*].id
+  value       = local.public_subnet_ids
 }
 
 output "dynamodb_table_name" {
@@ -32,12 +32,12 @@ output "kms_key_arn" {
 
 output "ecs_cluster_name" {
   description = "ECS cluster name (set ECS_CLUSTER to this)."
-  value       = aws_ecs_cluster.this.name
+  value       = local.ecs_cluster_name
 }
 
 output "ecs_cluster_arn" {
   description = "ECS cluster ARN."
-  value       = aws_ecs_cluster.this.arn
+  value       = local.ecs_cluster_arn
 }
 
 output "control_plane_repository_url" {
@@ -175,15 +175,15 @@ output "nat_mode" {
 
 output "nat_instance_eni_id" {
   description = "ENI id of the fck-nat NAT instance (null unless nat_mode = instance)."
-  value       = var.nat_mode == "instance" ? module.fck_nat[0].eni_id : null
+  value       = local.managed_network && var.nat_mode == "instance" ? module.fck_nat[0].eni_id : null
 }
 
 output "s3_vpc_endpoint_id" {
   description = "ID of the S3 gateway VPC endpoint (private-subnet S3/ECR-layer traffic bypasses NAT)."
-  value       = aws_vpc_endpoint.s3.id
+  value       = local.managed_network ? aws_vpc_endpoint.s3[0].id : null
 }
 
 output "dynamodb_vpc_endpoint_id" {
   description = "ID of the DynamoDB gateway VPC endpoint (private-subnet DynamoDB traffic bypasses NAT)."
-  value       = aws_vpc_endpoint.dynamodb.id
+  value       = local.managed_network ? aws_vpc_endpoint.dynamodb[0].id : null
 }

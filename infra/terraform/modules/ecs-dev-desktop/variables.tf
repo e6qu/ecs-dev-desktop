@@ -38,6 +38,48 @@ variable "vpc_cidr" {
   default     = "10.42.0.0/16"
 }
 
+variable "existing_vpc_id" {
+  description = "Existing virtual private cloud ID. When set with the existing subnet inputs, the module reuses the shared network instead of creating a virtual private cloud, routes, or NAT infrastructure."
+  type        = string
+  default     = ""
+}
+
+variable "use_existing_vpc" {
+  description = "Reuse the supplied existing virtual private cloud and subnets. This explicit topology switch keeps Terraform's resource graph deterministic when the coordinates are created in the same plan."
+  type        = bool
+  default     = false
+}
+
+variable "existing_public_subnet_ids" {
+  description = "Existing public subnet IDs used only by the required EDD HTTP and SSH ingress load balancers when existing_vpc_id is set."
+  type        = list(string)
+  default     = []
+}
+
+variable "existing_private_subnet_ids" {
+  description = "Existing private subnet IDs used by the control plane, reconciler, SSH gateway, and workspace tasks when existing_vpc_id is set."
+  type        = list(string)
+  default     = []
+}
+
+variable "existing_ecs_cluster_arn" {
+  description = "Existing Amazon Elastic Container Service cluster ARN. When set with existing_ecs_cluster_name, the module deploys EDD into that shared cluster instead of creating another cluster."
+  type        = string
+  default     = ""
+}
+
+variable "use_existing_ecs_cluster" {
+  description = "Reuse the supplied existing Amazon Elastic Container Service cluster. This explicit topology switch keeps Terraform's resource graph deterministic when the cluster is created in the same plan."
+  type        = bool
+  default     = false
+}
+
+variable "existing_ecs_cluster_name" {
+  description = "Existing Amazon Elastic Container Service cluster name paired with existing_ecs_cluster_arn."
+  type        = string
+  default     = ""
+}
+
 variable "availability_zones" {
   description = "AZs to spread subnets across (2-3 recommended). Must exist in the provider region."
   type        = list(string)

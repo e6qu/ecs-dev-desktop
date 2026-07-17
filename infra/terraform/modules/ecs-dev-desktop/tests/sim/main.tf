@@ -204,6 +204,74 @@ module "edd" {
   monthly_budget_usd = var.enable_dns ? 100 : var.monthly_budget_usd
 }
 
+# The shared-development deployment must reuse a network and cluster owned by
+# its environment. This second real Terraform consumer proves that mode against
+# the same Amazon Web Services simulator API surface; only the coordinates
+# differ from the standalone module above.
+resource "aws_vpc" "shared" {
+  cidr_block           = "10.240.0.0/16"
+  enable_dns_support   = true
+  enable_dns_hostnames = true
+}
+
+resource "aws_subnet" "shared_public_a" {
+  vpc_id            = aws_vpc.shared.id
+  cidr_block        = "10.240.0.0/24"
+  availability_zone = "us-east-1a"
+}
+
+resource "aws_subnet" "shared_public_b" {
+  vpc_id            = aws_vpc.shared.id
+  cidr_block        = "10.240.1.0/24"
+  availability_zone = "us-east-1b"
+}
+
+resource "aws_subnet" "shared_private_a" {
+  vpc_id            = aws_vpc.shared.id
+  cidr_block        = "10.240.128.0/24"
+  availability_zone = "us-east-1a"
+}
+
+resource "aws_subnet" "shared_private_b" {
+  vpc_id            = aws_vpc.shared.id
+  cidr_block        = "10.240.129.0/24"
+  availability_zone = "us-east-1b"
+}
+
+resource "aws_ecs_cluster" "shared" {
+  name = "edd-shared-sim"
+}
+
+module "edd_shared" {
+  source = "../.."
+
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
+
+  name                            = "eddsharedsim"
+  dynamodb_table_name             = "ecs-dev-desktop-shared"
+  availability_zones              = ["us-east-1a", "us-east-1b"]
+  deletion_protection             = false
+  dynamodb_point_in_time_recovery = false
+  golden_image_repos              = ["typescript"]
+  image_build_mode                = "pre-published"
+  image_tag                       = "sim"
+  control_plane_image             = "eddsharedsim/control-plane:sim"
+  seed_default_catalog            = false
+  enable_metric_alarms            = false
+  enable_cloudwatch_dashboard     = false
+
+  existing_vpc_id             = aws_vpc.shared.id
+  use_existing_vpc            = true
+  existing_public_subnet_ids  = [aws_subnet.shared_public_a.id, aws_subnet.shared_public_b.id]
+  existing_private_subnet_ids = [aws_subnet.shared_private_a.id, aws_subnet.shared_private_b.id]
+  existing_ecs_cluster_arn    = aws_ecs_cluster.shared.arn
+  existing_ecs_cluster_name   = aws_ecs_cluster.shared.name
+  use_existing_ecs_cluster    = true
+}
+
 output "vpc_id" {
   value = module.edd.vpc_id
 }

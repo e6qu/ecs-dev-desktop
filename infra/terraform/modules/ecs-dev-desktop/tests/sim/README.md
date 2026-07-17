@@ -31,7 +31,9 @@ fixture against the **live** sim every PR, in three configurations:
 
 - **default** (DNS off) — the entire platform stack, resource assertions, IAM
   simulation, CloudTrail provisioning-event checks, DynamoDB/CloudWatch/ECS
-  functional probes, idempotency, and destroy.
+  functional probes, plus a second consumer that reuses an externally-owned VPC
+  and ECS cluster without creating network, NAT, endpoint, or cluster resources;
+  both configurations are checked for idempotency and destroyed.
 - **`nat_mode=instance`** — the fck-nat path, including Launch Template, ENI,
   IAM role, idempotency, and destroy.
 - **`enable_dns=true`** — the module's ACM cert + Route53 validation + HTTPS

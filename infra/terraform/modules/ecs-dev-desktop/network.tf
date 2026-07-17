@@ -11,7 +11,7 @@ locals {
 
   # Managed NAT Gateway(s) only in gateway mode; the fck-nat instance owns egress
   # routing in instance mode (see nat_instance.tf).
-  use_managed_nat = var.nat_mode == "gateway"
+  use_managed_nat = local.managed_network && var.nat_mode == "gateway"
   nat_count       = local.use_managed_nat ? (var.single_nat_gateway ? 1 : local.az_count) : 0
 
   # Workspace sshd port (OpenSSH, fixed) — the SG ingress from the control plane.
@@ -19,6 +19,7 @@ locals {
 }
 
 resource "aws_vpc" "this" {
+  count                = local.managed_network ? 1 : 0
   cidr_block           = var.vpc_cidr
   enable_dns_support   = true
   enable_dns_hostnames = true
@@ -26,13 +27,14 @@ resource "aws_vpc" "this" {
 }
 
 resource "aws_internet_gateway" "this" {
-  vpc_id = aws_vpc.this.id
+  count  = local.managed_network ? 1 : 0
+  vpc_id = aws_vpc.this[0].id
   tags   = merge(local.tags, { Name = "${var.name}-igw" })
 }
 
 resource "aws_subnet" "public" {
-  count             = local.az_count
-  vpc_id            = aws_vpc.this.id
+  count             = local.managed_network ? local.az_count : 0
+  vpc_id            = aws_vpc.this[0].id
   cidr_block        = local.public_subnet_cidrs[count.index]
   availability_zone = var.availability_zones[count.index]
   # Only the ALB and NAT gateways live here; both manage their own public IPs, so
@@ -42,8 +44,8 @@ resource "aws_subnet" "public" {
 }
 
 resource "aws_subnet" "private" {
-  count             = local.az_count
-  vpc_id            = aws_vpc.this.id
+  count             = local.managed_network ? local.az_count : 0
+  vpc_id            = aws_vpc.this[0].id
   cidr_block        = local.private_subnet_cidrs[count.index]
   availability_zone = var.availability_zones[count.index]
   tags              = merge(local.tags, { Name = "${var.name}-private-${var.availability_zones[count.index]}", Tier = "private" })
@@ -64,23 +66,24 @@ resource "aws_nat_gateway" "this" {
 }
 
 resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.this.id
+  count  = local.managed_network ? 1 : 0
+  vpc_id = aws_vpc.this[0].id
   route {
     cidr_block = "0.0.0.0/0"
-    gateway_id = aws_internet_gateway.this.id
+    gateway_id = aws_internet_gateway.this[0].id
   }
   tags = merge(local.tags, { Name = "${var.name}-public-rt" })
 }
 
 resource "aws_route_table_association" "public" {
-  count          = local.az_count
+  count          = local.managed_network ? local.az_count : 0
   subnet_id      = aws_subnet.public[count.index].id
-  route_table_id = aws_route_table.public.id
+  route_table_id = aws_route_table.public[0].id
 }
 
 resource "aws_route_table" "private" {
-  count  = local.az_count
-  vpc_id = aws_vpc.this.id
+  count  = local.managed_network ? local.az_count : 0
+  vpc_id = aws_vpc.this[0].id
   # The default route is a separate resource so it can be owned either by the
   # managed NAT gateway (below) or by the fck-nat module (nat_instance.tf).
   tags = merge(local.tags, { Name = "${var.name}-private-rt-${count.index}" })
@@ -95,7 +98,7 @@ resource "aws_route" "private_nat" {
 }
 
 resource "aws_route_table_association" "private" {
-  count          = local.az_count
+  count          = local.managed_network ? local.az_count : 0
   subnet_id      = aws_subnet.private[count.index].id
   route_table_id = aws_route_table.private[count.index].id
 }
@@ -105,7 +108,7 @@ resource "aws_route_table_association" "private" {
 resource "aws_security_group" "alb" {
   name        = "${var.name}-alb"
   description = "Public ingress to the control-plane load balancer."
-  vpc_id      = aws_vpc.this.id
+  vpc_id      = local.vpc_id
   tags        = merge(local.tags, { Name = "${var.name}-alb" })
 }
 
@@ -139,7 +142,7 @@ resource "aws_vpc_security_group_egress_rule" "alb_all" {
 resource "aws_security_group" "tasks" {
   name        = "${var.name}-tasks"
   description = "Control-plane + reconciler ECS tasks."
-  vpc_id      = aws_vpc.this.id
+  vpc_id      = local.vpc_id
   tags        = merge(local.tags, { Name = "${var.name}-tasks" })
 }
 
@@ -167,7 +170,7 @@ resource "aws_vpc_security_group_egress_rule" "tasks_all" {
 resource "aws_security_group" "workspaces" {
   name        = "${var.name}-workspaces"
   description = "Per-user workspace tasks (editor + sshd), reachable only from the control plane."
-  vpc_id      = aws_vpc.this.id
+  vpc_id      = local.vpc_id
   tags        = merge(local.tags, { Name = "${var.name}-workspaces" })
 }
 

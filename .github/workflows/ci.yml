@@ -1409,6 +1409,12 @@ jobs:
           assert_eq "ECS cluster accepts task definition registration" "ACTIVE" \
             "${PROBE_TD_STATUS}"
 
+          # -- Shared environment composition -------------------------------------
+          # A second real module consumer reuses an environment-created VPC and
+          # ECS cluster. Verify it created only application resources and attached
+          # the service to that existing cluster.
+          sh "${TF_DIR}/validate-shared-infrastructure.sh"
+
           # -- Idempotency: plan after apply must show 0 changes ------------------
           terraform -chdir="${TF_DIR}" plan -input=false \
             -var "sim_endpoint=${SIM_ENDPOINT}" -detailed-exitcode

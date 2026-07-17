@@ -6,7 +6,8 @@
 # managed-EBS infrastructure role they need.
 
 resource "aws_ecs_cluster" "this" {
-  name = "${var.name}-workspaces"
+  count = local.managed_cluster ? 1 : 0
+  name  = "${var.name}-workspaces"
 
   setting {
     name  = "containerInsights"
@@ -24,7 +25,8 @@ resource "aws_ecs_cluster" "this" {
 }
 
 resource "aws_ecs_cluster_capacity_providers" "this" {
-  cluster_name       = aws_ecs_cluster.this.name
+  count              = local.managed_cluster ? 1 : 0
+  cluster_name       = aws_ecs_cluster.this[0].name
   capacity_providers = ["FARGATE", "FARGATE_SPOT"]
 
   default_capacity_provider_strategy {
@@ -40,12 +42,12 @@ locals {
     PORT            = tostring(var.control_plane_port)
     AWS_REGION      = local.region
     DYNAMODB_TABLE  = var.dynamodb_table_name
-    ECS_CLUSTER     = aws_ecs_cluster.this.name
+    ECS_CLUSTER     = local.ecs_cluster_name
     EDD_KMS_KEY_ARN = aws_kms_key.this.arn
     # Real adapter selection: tells apps/web to use EcsComputeProvider + Ec2StorageProvider.
     COMPUTE_PROVIDER  = "ecs"
     CONTROL_PLANE_URL = local.dns_enabled ? "https://${local.control_plane_fqdn}" : "http://${aws_lb.this.dns_name}"
-    ECS_SUBNETS       = join(",", aws_subnet.private[*].id)
+    ECS_SUBNETS       = join(",", local.private_subnet_ids)
     # Workspace tasks the control plane launches get the dedicated workspaces SG
     # (editor/sshd reachable only from the control plane), NOT the control-plane SG.
     ECS_SECURITY_GROUPS = aws_security_group.workspaces.id
@@ -134,13 +136,13 @@ resource "aws_ecs_task_definition" "control_plane" {
 
 resource "aws_ecs_service" "control_plane" {
   name            = "${var.name}-control-plane"
-  cluster         = aws_ecs_cluster.this.id
+  cluster         = local.ecs_cluster_arn
   task_definition = aws_ecs_task_definition.control_plane.arn
   desired_count   = var.control_plane_desired_count
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = aws_subnet.private[*].id
+    subnets          = local.private_subnet_ids
     security_groups  = [aws_security_group.tasks.id]
     assign_public_ip = false
   }
@@ -205,7 +207,7 @@ resource "aws_ecs_service" "control_plane" {
 resource "aws_appautoscaling_target" "control_plane" {
   max_capacity       = var.control_plane_max_count
   min_capacity       = var.control_plane_min_count
-  resource_id        = "service/${aws_ecs_cluster.this.name}/${aws_ecs_service.control_plane.name}"
+  resource_id        = "service/${local.ecs_cluster_name}/${aws_ecs_service.control_plane.name}"
   scalable_dimension = "ecs:service:DesiredCount"
   service_namespace  = "ecs"
 }

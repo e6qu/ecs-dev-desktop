@@ -4,14 +4,16 @@
 
 ---
 
-## Shauth deployment follow-through
+## Shared `dev` deployment follow-through
 
-- **Provision and deploy the ECS Dev Desktop Shauth client.** The application
-  accepted Shauth through `AUTH_SHAUTH_ISSUER`, `AUTH_SHAUTH_ID`, and
-  `AUTH_SHAUTH_SECRET`; the infrastructure must register its confidential OIDC
-  client with callback `https://app.edd.e6qu.dev/api/auth/callback/shauth`, put
-  the client secret in AWS Secrets Manager, inject all three coordinates, and
-  then verify the complete browser authorization-code flow against Shauth.
+- **Deploy ECS Dev Desktop into the shared `dev` Amazon Virtual Private Cloud
+  (VPC) and Amazon Elastic Container Service (ECS) cluster.** The module now
+  accepted explicit existing-VPC and existing-cluster coordinates. The
+  environment configuration still needed to create the confidential Shauth
+  client, store its secret in AWS Secrets Manager, inject
+  `AUTH_SHAUTH_ISSUER`, `AUTH_SHAUTH_ID`, and `AUTH_SHAUTH_SECRET`, and verify
+  the browser authorization-code flow at
+  `https://edd.dev.e6qu.dev/api/auth/callback/shauth`.
 
 ## Open decisions (need the user)
 
