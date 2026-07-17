@@ -16,7 +16,8 @@ because TypeScript ESLint's current supported range ended before TypeScript 7.
 The simulator CI asserted each standalone and shared control-plane Application
 Auto Scaling target by its exact Amazon Elastic Container Service service
 resource identifier, so adding the second consumer could not mask either
-target's absence.
+target's absence. The DNS/TLS fidelity probe used the same exact standalone
+service selector instead of a global target count.
 
 The preceding update added Shauth as an additional confidential OpenID Connect
 provider while preserving direct GitHub, Microsoft Entra ID, and local-account
