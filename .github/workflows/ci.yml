@@ -847,10 +847,21 @@ jobs:
           # target-tracking policy (which can neither scale to/from 0 nor coexist with
           # them) was removed. Assert the target + its scale-to-zero bounds, and that
           # no scaling policy exists.
-          assert_eq "AppAutoScaling target registered" "1" \
+          # The fixture also deploys a second, shared-environment control plane.
+          # Verify both targets rather than allowing the standalone assertion to
+          # silently ignore the additional real consumer.
+          assert_eq "AppAutoScaling targets registered" "2" \
             "$(aws --endpoint-url "${ENDPT}" application-autoscaling describe-scalable-targets \
               --service-namespace ecs \
               --query 'length(ScalableTargets)' --output text)"
+          assert_eq "AppAutoScaling standalone target registered" "1" \
+            "$(aws --endpoint-url "${ENDPT}" application-autoscaling describe-scalable-targets \
+              --service-namespace ecs \
+              --query "length(ScalableTargets[?ResourceId=='service/${CLUSTER}/eddsim-control-plane'])" --output text)"
+          assert_eq "AppAutoScaling shared-environment target registered" "1" \
+            "$(aws --endpoint-url "${ENDPT}" application-autoscaling describe-scalable-targets \
+              --service-namespace ecs \
+              --query "length(ScalableTargets[?ResourceId=='service/edd-shared-sim/eddsharedsim-control-plane'])" --output text)"
           assert_eq "AppAutoScaling has no scaling policy (reconciler/wake own desiredCount)" "0" \
             "$(aws --endpoint-url "${ENDPT}" application-autoscaling describe-scaling-policies \
               --service-namespace ecs \
@@ -861,11 +872,11 @@ jobs:
           assert_eq "AppAutoScaling min capacity 0 (scale-to-zero)" "0" \
             "$(aws --endpoint-url "${ENDPT}" application-autoscaling describe-scalable-targets \
               --service-namespace ecs \
-              --query 'ScalableTargets[0].MinCapacity' --output text)"
+              --query "ScalableTargets[?ResourceId=='service/${CLUSTER}/eddsim-control-plane'].MinCapacity | [0]" --output text)"
           assert_eq "AppAutoScaling max capacity 10" "10" \
             "$(aws --endpoint-url "${ENDPT}" application-autoscaling describe-scalable-targets \
               --service-namespace ecs \
-              --query 'ScalableTargets[0].MaxCapacity' --output text)"
+              --query "ScalableTargets[?ResourceId=='service/${CLUSTER}/eddsim-control-plane'].MaxCapacity | [0]" --output text)"
 
           # -- EventBridge Scheduler ----------------------------------------------
           assert_eq "Scheduler reconciler ENABLED" "ENABLED" \

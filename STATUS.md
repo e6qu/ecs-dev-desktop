@@ -13,6 +13,10 @@ used the external cluster, produced a no-change idempotency plan, and destroyed
 both stacks cleanly. The dependency gate also refreshed the AWS SDK clients,
 Vite, and Knip to their age-eligible releases; TypeScript remained at 6.0.3
 because TypeScript ESLint's current supported range ended before TypeScript 7.
+The simulator CI asserted each standalone and shared control-plane Application
+Auto Scaling target by its exact Amazon Elastic Container Service service
+resource identifier, so adding the second consumer could not mask either
+target's absence.
 
 The preceding update added Shauth as an additional confidential OpenID Connect
 provider while preserving direct GitHub, Microsoft Entra ID, and local-account
