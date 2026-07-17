@@ -10,7 +10,9 @@ resources without creating or mutating a duplicate VPC, NAT, endpoints, or ECS
 cluster. The live Sockerless Amazon Web Services simulator fixture provisioned
 both standalone and shared-environment consumers, verified the shared service
 used the external cluster, produced a no-change idempotency plan, and destroyed
-both stacks cleanly.
+both stacks cleanly. The dependency gate also refreshed the AWS SDK clients,
+Vite, and Knip to their age-eligible releases; TypeScript remained at 6.0.3
+because TypeScript ESLint's current supported range ended before TypeScript 7.
 
 The preceding update added Shauth as an additional confidential OpenID Connect
 provider while preserving direct GitHub, Microsoft Entra ID, and local-account
