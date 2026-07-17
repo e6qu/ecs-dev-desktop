@@ -277,8 +277,9 @@ aws_cmd logs delete-log-group --log-group-name "${FILTER_LOG_GROUP}" >/dev/null
 # adversarial-slice-appautoscaling.sh, which registers + asserts its own policy.
 SCALABLE_TARGET=$(aws_cmd application-autoscaling describe-scalable-targets \
   --service-namespace ecs \
-  --query 'length(ScalableTargets)' --output text)
-assert_eq "AppAutoScaling scalable target registered (#707)" "1" "${SCALABLE_TARGET}"
+  --query "length(ScalableTargets[?ResourceId=='service/${CLUSTER}/eddsim-control-plane'])" \
+  --output text)
+assert_eq "AppAutoScaling standalone scalable target registered (#707)" "1" "${SCALABLE_TARGET}"
 POLICY_COUNT=$(aws_cmd application-autoscaling describe-scaling-policies \
   --service-namespace ecs \
   --query 'length(ScalingPolicies)' --output text)

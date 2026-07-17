@@ -41,7 +41,7 @@ resource "aws_cloudwatch_log_group" "ssh_gateway" {
 resource "aws_security_group" "ssh_gateway" {
   name        = "${var.name}-ssh-gateway"
   description = "SSH gateway tasks - public 22/tcp ingress, all egress (reach control-plane + workspaces)."
-  vpc_id      = aws_vpc.this.id
+  vpc_id      = local.vpc_id
   tags        = merge(local.tags, { Name = "${var.name}-ssh-gateway" })
 }
 
@@ -79,7 +79,7 @@ resource "aws_lb" "ssh" {
   count                      = local.ssh_enabled ? 1 : 0
   name                       = "${var.name}-ssh"
   load_balancer_type         = "network"
-  subnets                    = aws_subnet.public[*].id
+  subnets                    = local.public_subnet_ids
   enable_deletion_protection = var.deletion_protection
   tags                       = local.tags
 }
@@ -89,7 +89,7 @@ resource "aws_lb_target_group" "ssh_gateway" {
   name        = "${var.name}-ssh"
   port        = local.workspace_ssh_port
   protocol    = "TCP"
-  vpc_id      = aws_vpc.this.id
+  vpc_id      = local.vpc_id
   target_type = "ip"
 
   health_check {
@@ -172,13 +172,13 @@ resource "aws_ecs_task_definition" "ssh_gateway" {
 resource "aws_ecs_service" "ssh_gateway" {
   count           = local.ssh_enabled ? 1 : 0
   name            = "${var.name}-ssh-gateway"
-  cluster         = aws_ecs_cluster.this.id
+  cluster         = local.ecs_cluster_arn
   task_definition = aws_ecs_task_definition.ssh_gateway[0].arn
   desired_count   = var.ssh_gateway_desired_count
   launch_type     = "FARGATE"
 
   network_configuration {
-    subnets          = aws_subnet.private[*].id
+    subnets          = local.private_subnet_ids
     security_groups  = [aws_security_group.ssh_gateway.id]
     assign_public_ip = false
   }

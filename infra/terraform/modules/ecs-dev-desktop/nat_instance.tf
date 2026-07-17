@@ -6,13 +6,13 @@
 # The dev-desktop tasks remain private-only; only the egress path differs.
 
 module "fck_nat" {
-  count = var.nat_mode == "instance" ? 1 : 0
+  count = local.managed_network && var.nat_mode == "instance" ? 1 : 0
 
   source  = "RaJiska/fck-nat/aws"
   version = "~> 1.6"
 
   name               = "${var.name}-nat"
-  vpc_id             = aws_vpc.this.id
+  vpc_id             = local.vpc_id
   subnet_id          = aws_subnet.public[0].id
   ha_mode            = var.nat_instance_ha
   use_spot_instances = var.nat_instance_use_spot

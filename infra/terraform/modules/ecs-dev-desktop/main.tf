@@ -10,6 +10,15 @@ locals {
   region     = data.aws_region.current.region
   partition  = data.aws_partition.current.partition
 
+  managed_network    = !var.use_existing_vpc
+  vpc_id             = local.managed_network ? aws_vpc.this[0].id : var.existing_vpc_id
+  public_subnet_ids  = local.managed_network ? aws_subnet.public[*].id : var.existing_public_subnet_ids
+  private_subnet_ids = local.managed_network ? aws_subnet.private[*].id : var.existing_private_subnet_ids
+
+  managed_cluster  = !var.use_existing_ecs_cluster
+  ecs_cluster_arn  = local.managed_cluster ? aws_ecs_cluster.this[0].arn : var.existing_ecs_cluster_arn
+  ecs_cluster_name = local.managed_cluster ? aws_ecs_cluster.this[0].name : var.existing_ecs_cluster_name
+
   # Per-workspace agent-token secrets the control plane creates at runtime
   # (`edd/workspace/<id>/agent`; Secrets Manager appends a random suffix). The
   # control-plane role manages them and the task execution role reads them for
@@ -66,7 +75,7 @@ locals {
   # reconciler's scale-to-zero grant. aws_ecs_service.id is the service ARN in
   # provider v6, but the constructed form keeps the IAM policy readable and avoids a
   # cycle (the wake Lambda's role must not depend on the service that references it).
-  control_plane_service_arn = "arn:${local.partition}:ecs:${local.region}:${local.account_id}:service/${aws_ecs_cluster.this.name}/${var.name}-control-plane"
+  control_plane_service_arn = "arn:${local.partition}:ecs:${local.region}:${local.account_id}:service/${local.ecs_cluster_name}/${var.name}-control-plane"
 
   control_plane_fqdn        = local.dns_enabled ? "app.${var.domain_name}" : null
   github_image_webhook_path = "/api/integrations/github/image-webhook"
@@ -97,4 +106,27 @@ locals {
     length(var.golden_image_repos) > 0 ? var.golden_image_repos[0] : ""
   )
   seed_image_ref = local.seed_variant != "" ? "${local.account_id}.dkr.ecr.${local.region}.amazonaws.com/${var.name}/golden/${local.seed_variant}:${var.image_tag}" : ""
+}
+
+resource "terraform_data" "shared_infrastructure_contract" {
+  input = {
+    existing_vpc_id          = var.existing_vpc_id
+    use_existing_vpc         = var.use_existing_vpc
+    existing_public_subnets  = var.existing_public_subnet_ids
+    existing_private_subnets = var.existing_private_subnet_ids
+    existing_cluster_arn     = var.existing_ecs_cluster_arn
+    existing_cluster_name    = var.existing_ecs_cluster_name
+    use_existing_cluster     = var.use_existing_ecs_cluster
+  }
+
+  lifecycle {
+    precondition {
+      condition     = !var.use_existing_vpc || (var.existing_vpc_id != "" && length(var.existing_public_subnet_ids) >= 2 && length(var.existing_private_subnet_ids) >= 2)
+      error_message = "use_existing_vpc requires existing_vpc_id and at least two existing public and private subnet IDs."
+    }
+    precondition {
+      condition     = !var.use_existing_ecs_cluster || (var.existing_ecs_cluster_arn != "" && var.existing_ecs_cluster_name != "")
+      error_message = "use_existing_ecs_cluster requires existing_ecs_cluster_arn and existing_ecs_cluster_name."
+    }
+  }
 }

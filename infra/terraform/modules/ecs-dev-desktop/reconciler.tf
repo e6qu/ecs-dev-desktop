@@ -14,7 +14,7 @@ resource "aws_scheduler_schedule" "reconciler" {
   schedule_expression_timezone = "UTC"
 
   target {
-    arn      = aws_ecs_cluster.this.arn
+    arn      = local.ecs_cluster_arn
     role_arn = aws_iam_role.scheduler.arn
 
     ecs_parameters {
@@ -36,7 +36,7 @@ resource "aws_scheduler_schedule" "reconciler" {
       propagate_tags          = "TASK_DEFINITION"
 
       network_configuration {
-        subnets          = aws_subnet.private[*].id
+        subnets          = local.private_subnet_ids
         security_groups  = [aws_security_group.tasks.id]
         assign_public_ip = false
       }

@@ -114,7 +114,7 @@ data "aws_iam_policy_document" "wake" {
     condition {
       test     = "ArnEquals"
       variable = "ecs:cluster"
-      values   = [aws_ecs_cluster.this.arn]
+      values   = [local.ecs_cluster_arn]
     }
   }
   statement {
@@ -161,7 +161,7 @@ resource "aws_lambda_function" "wake" {
 
   environment {
     variables = {
-      ECS_CLUSTER                      = aws_ecs_cluster.this.name
+      ECS_CLUSTER                      = local.ecs_cluster_name
       EDD_CONTROL_PLANE_SERVICE        = "${var.name}-control-plane"
       EDD_CONTROL_PLANE_ACTIVE_DESIRED = tostring(local.control_plane_active_desired)
       # Shared secret the handler requires on every request (§ wake gate). CloudFront injects the

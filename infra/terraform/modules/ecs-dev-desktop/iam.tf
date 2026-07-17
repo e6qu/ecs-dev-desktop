@@ -110,7 +110,7 @@ data "aws_iam_policy_document" "control_plane" {
     condition {
       test     = "StringEquals"
       variable = "ecs:cluster"
-      values   = [aws_ecs_cluster.this.arn]
+      values   = [local.ecs_cluster_arn]
     }
   }
 
@@ -290,7 +290,7 @@ data "aws_iam_policy_document" "control_plane" {
   statement {
     sid       = "DescribeWorkspacesCluster"
     actions   = ["ecs:DescribeClusters"]
-    resources = [aws_ecs_cluster.this.arn]
+    resources = [local.ecs_cluster_arn]
   }
 
   statement {
@@ -369,7 +369,7 @@ data "aws_iam_policy_document" "reconciler" {
     condition {
       test     = "StringEquals"
       variable = "ecs:cluster"
-      values   = [aws_ecs_cluster.this.arn]
+      values   = [local.ecs_cluster_arn]
     }
   }
   # Scale-to-zero for the control plane itself: the idle-shutdown sweep flips the
@@ -384,7 +384,7 @@ data "aws_iam_policy_document" "reconciler" {
     condition {
       test     = "ArnEquals"
       variable = "ecs:cluster"
-      values   = [aws_ecs_cluster.this.arn]
+      values   = [local.ecs_cluster_arn]
     }
   }
   statement {
@@ -466,7 +466,7 @@ data "aws_iam_policy_document" "scheduler" {
     condition {
       test     = "ArnLike"
       variable = "ecs:cluster"
-      values   = [aws_ecs_cluster.this.arn]
+      values   = [local.ecs_cluster_arn]
     }
   }
   # The schedule target propagates tags (enable_ecs_managed_tags + propagate_tags + tags, reconciler.tf),
@@ -483,7 +483,7 @@ data "aws_iam_policy_document" "scheduler" {
     condition {
       test     = "ArnLike"
       variable = "ecs:cluster"
-      values   = [aws_ecs_cluster.this.arn]
+      values   = [local.ecs_cluster_arn]
     }
   }
   statement {

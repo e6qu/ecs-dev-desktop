@@ -69,6 +69,29 @@ but a live byte-stream loop is exercised at deploy/`e2e-aws`; the sim proves the
 ingress resources are created correctly and idempotently. See
 [`docs/architecture.md`](../../../../docs/architecture.md).
 
+## Existing VPC and ECS cluster
+
+By default the module owns its VPC, private and public subnets, NAT, VPC
+endpoints, and ECS cluster. For a shared environment, set both explicit reuse
+switches and pass every existing-network coordinate. The module then creates its
+own security groups and application resources only; it does not create or alter
+the environment's VPC, NAT, endpoints, or ECS cluster.
+
+```hcl
+use_existing_vpc            = true
+existing_vpc_id             = module.dev_vpc.vpc_id
+existing_public_subnet_ids  = module.dev_vpc.public_subnet_ids
+existing_private_subnet_ids = module.dev_vpc.private_subnet_ids
+
+use_existing_ecs_cluster  = true
+existing_ecs_cluster_arn   = module.dev_ecs.cluster_arn
+existing_ecs_cluster_name  = module.dev_ecs.cluster_name
+```
+
+Both flags fail validation unless all of their corresponding coordinates are
+supplied. This makes an environment-owned topology deliberate rather than
+depending on implicit resource discovery.
+
 ## Private networking & NAT
 
 All ECS tasks (control plane, per-user workspaces, reconciler) run in **private

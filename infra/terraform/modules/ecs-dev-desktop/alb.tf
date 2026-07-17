@@ -8,7 +8,7 @@
 resource "aws_lb" "this" {
   name                       = "${var.name}-cp"
   load_balancer_type         = "application"
-  subnets                    = aws_subnet.public[*].id
+  subnets                    = local.public_subnet_ids
   security_groups            = [aws_security_group.alb.id]
   drop_invalid_header_fields = true
   enable_deletion_protection = var.deletion_protection
@@ -19,7 +19,7 @@ resource "aws_lb_target_group" "control_plane" {
   name        = "${var.name}-cp"
   port        = var.control_plane_port
   protocol    = "HTTP"
-  vpc_id      = aws_vpc.this.id
+  vpc_id      = local.vpc_id
   target_type = "ip"
 
   # Readiness (not liveness): a task whose DynamoDB is unreachable is pulled from
