@@ -315,5 +315,5 @@ fi
 cat <<EOF
 
 edd: images published to ${registry}. To roll the running services:
-     sh scripts/deploy-release-images.sh ${account} ${region} ${prefix} ${tag}
+     sh scripts/deploy-release-images.sh ${account} ${region} ${prefix} <ecs-cluster> ${tag} <ssh-gateway-enabled>
 EOF

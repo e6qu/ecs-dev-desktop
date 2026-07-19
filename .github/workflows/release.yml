@@ -12,6 +12,9 @@
 #   - repo/environment variable `RELEASE_AWS_ACCOUNT`  — 12-digit account id
 #   - repo/environment variable `RELEASE_AWS_REGION`   — AWS region for ECR
 #   - repo/environment variable `RELEASE_NAME_PREFIX`  — the module `name` (e.g. edd-dev)
+#   - repo/environment variable `RELEASE_ECS_CLUSTER` — the deployed Amazon ECS cluster name
+#   - repo/environment variable `RELEASE_SSH_GATEWAY_ENABLED` — explicit `true` or `false`
+#   - repo/environment variable `RELEASE_DEPLOYMENT_ENABLED` — set by bootstrap after topology discovery
 # Do not store static secrets in GitHub variables or secrets for this workflow.
 # Authentication is OIDC -> STS short-lived credentials.
 #
@@ -25,9 +28,10 @@
 # is a manifest over the architectures built by this workflow; the suffixed tags
 # are the per-arch images for runners (e.g. Lambda) that cannot consume manifests.
 # After publish, scripts/deploy-release-images.sh registers fresh task-definition
-# revisions for the control plane, reconciler, and SSH gateway, updates the ECS
-# services and reconciler Scheduler target, then exits. ECS convergence is async;
-# post-deploy-smoke verifies the public app after the release workflow succeeds.
+# revisions for the control plane, reconciler, and the explicitly enabled optional
+# SSH gateway, updates the ECS services and reconciler Scheduler target, then exits.
+# ECS convergence is async; post-deploy-smoke verifies the public app after the
+# release workflow succeeds.
 name: release
 
 on:
@@ -137,6 +141,9 @@ jobs:
       RELEASE_AWS_REGION: ${{ vars.RELEASE_AWS_REGION }}
       RELEASE_AWS_ROLE_ARN: ${{ vars.RELEASE_AWS_ROLE_ARN }}
       RELEASE_NAME_PREFIX: ${{ vars.RELEASE_NAME_PREFIX }}
+      RELEASE_ECS_CLUSTER: ${{ vars.RELEASE_ECS_CLUSTER }}
+      RELEASE_SSH_GATEWAY_ENABLED: ${{ vars.RELEASE_SSH_GATEWAY_ENABLED }}
+      RELEASE_DEPLOYMENT_ENABLED: ${{ vars.RELEASE_DEPLOYMENT_ENABLED }}
       TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.tag || github.sha }}
       EDD_BUILD_TARGET: web
       EDD_BUILD_ARCHS: amd64 arm64
@@ -156,6 +163,27 @@ jobs:
       - name: Verify assumed identity
         run: aws sts get-caller-identity
 
+      - name: Validate deployment topology
+        run: |
+          if [ -z "$RELEASE_ECS_CLUSTER" ]; then
+            echo "::error::RELEASE_ECS_CLUSTER is required"
+            exit 1
+          fi
+          case "$RELEASE_DEPLOYMENT_ENABLED" in
+            true | false) ;;
+            *)
+              echo "::error::RELEASE_DEPLOYMENT_ENABLED must be true or false"
+              exit 1
+              ;;
+          esac
+          case "$RELEASE_SSH_GATEWAY_ENABLED" in
+            true | false) ;;
+            *)
+              echo "::error::RELEASE_SSH_GATEWAY_ENABLED must be true or false"
+              exit 1
+              ;;
+          esac
+
       - name: Create & push multi-arch manifests
         env:
           EDD_BUILDX_OUTPUT: push
@@ -168,6 +196,7 @@ jobs:
             "${TAG:0:12}"
 
       - name: Deploy ECS services (arm64)
+        if: env.RELEASE_DEPLOYMENT_ENABLED == 'true'
         env:
           EDD_DEPLOY_ARCH: arm64
         run: |
@@ -175,18 +204,23 @@ jobs:
             "$RELEASE_AWS_ACCOUNT" \
             "$RELEASE_AWS_REGION" \
             "$RELEASE_NAME_PREFIX" \
-            "${TAG:0:12}"
+            "$RELEASE_ECS_CLUSTER" \
+            "${TAG:0:12}" \
+            "$RELEASE_SSH_GATEWAY_ENABLED"
 
       - name: Write release metadata
         run: |
           set -euo pipefail
           mkdir -p temp/release
-          printf '%s\n' "${TAG:0:12}" > temp/release/deployed-tag
+          printf '%s\n' "$RELEASE_DEPLOYMENT_ENABLED" > temp/release/deployment-status
+          if [ "$RELEASE_DEPLOYMENT_ENABLED" = true ]; then
+            printf '%s\n' "${TAG:0:12}" > temp/release/deployed-tag
+          fi
 
       - name: Upload release metadata
         uses: actions/upload-artifact@v7.0.1
         with:
           name: release-deploy
-          path: temp/release/deployed-tag
+          path: temp/release
           if-no-files-found: error
           retention-days: 7

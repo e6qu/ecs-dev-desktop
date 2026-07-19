@@ -583,6 +583,14 @@ jobs:
             fi
           }
 
+          ACCOUNT_ID=$(aws --endpoint-url "${ENDPT}" sts get-caller-identity --query Account --output text)
+          AWS_ENDPOINT_URL="${ENDPT}" sh scripts/deploy-release-images.sh \
+            "${ACCOUNT_ID}" "${AWS_DEFAULT_REGION}" eddsim "${CLUSTER}" 0123456789ab false
+          assert_eq "release topology omitted disabled SSH gateway family" "0" \
+            "$(aws --endpoint-url "${ENDPT}" ecs list-task-definition-families \
+              --family-prefix eddsim-ssh-gateway \
+              --query 'length(families)' --output text)"
+
           # -- DynamoDB -----------------------------------------------------------
           assert_eq "DynamoDB table ACTIVE" "ACTIVE" \
             "$(aws --endpoint-url "${ENDPT}" dynamodb describe-table \
@@ -1496,6 +1504,10 @@ jobs:
               exit 1
             fi
           }
+
+          ACCOUNT_ID=$(aws --endpoint-url "${ENDPT}" sts get-caller-identity --query Account --output text)
+          AWS_ENDPOINT_URL="${ENDPT}" sh scripts/deploy-release-images.sh \
+            "${ACCOUNT_ID}" "${AWS_DEFAULT_REGION}" eddsim "${CLUSTER}" 0123456789ab true
 
           # -- DNS/TLS-specific assertions ----------------------------------------
           LB_ARN=$(aws --endpoint-url "${ENDPT}" elbv2 describe-load-balancers \
