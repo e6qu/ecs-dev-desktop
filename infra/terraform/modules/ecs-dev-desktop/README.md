@@ -46,7 +46,8 @@ Terraform **or Terragrunt**, one instantiation per environment.
 ```
 
 What this module **does** create: VPC + subnets + NAT + security groups,
-DynamoDB single-table (matching `@edd/db`), KMS key, ECR repos, IAM roles
+DynamoDB single-table (matching `@edd/db`, including TTL-backed OpenID Connect logout-token replay
+protection), KMS key, ECR repos, IAM roles
 (execution, control-plane, reconciler, the ECS managed-EBS infrastructure role,
 the scheduler role), the ECS cluster + control-plane service + autoscaling, the
 ALB + listeners + (optional) ACM/Route53, the reconciler schedule, CloudWatch

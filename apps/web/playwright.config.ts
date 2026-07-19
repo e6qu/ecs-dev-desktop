@@ -19,6 +19,8 @@ if (process.env.NO_COLOR !== undefined && process.env.FORCE_COLOR !== undefined)
 const appEnv = {
   EDD_DEV_AUTH: "1",
   AUTH_SECRET: "playwright-dev-secret",
+  AWS_REGION: "us-east-1",
+  AWS_ENDPOINT_URL: process.env.AWS_ENDPOINT_URL ?? "http://127.0.0.1:4566",
   DYNAMODB_ENDPOINT: process.env.DYNAMODB_ENDPOINT ?? "http://127.0.0.1:4566",
   DYNAMODB_TABLE: process.env.DYNAMODB_TABLE ?? "ecs-dev-desktop-pw",
   EDD_APP_NAME: "edd-playwright",

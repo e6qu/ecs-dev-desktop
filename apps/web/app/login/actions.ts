@@ -7,7 +7,8 @@ import { DEV_ROLE_COOKIE, DEV_USER_COOKIE } from "../../lib/constants";
 import { findDevUser } from "../../lib/dev-users";
 import { field } from "../../lib/forms";
 import { devAuthEnabled } from "../../lib/principal";
-import { shauthOidcConfig } from "../../lib/shauth";
+import { shauthEndSessionURL, shauthOidcConfig } from "../../lib/shauth";
+import { getAuthSessionLogoutContext } from "../../lib/auth-sessions";
 
 // Host-only (no Domain), so the dev cookies are scoped to the exact host the app
 // is served from (e.g. edd.localhost) and never leak to other localhost apps.
@@ -45,8 +46,12 @@ export async function signOutAction(): Promise<void> {
     store.delete(DEV_ROLE_COOKIE);
     redirect("/login");
   }
-  const postLogoutUrl = shauthOidcConfig()?.postLogoutUrl ?? "/login";
-  const { signOut } = await import("../../auth");
+  const shauth = shauthOidcConfig();
+  const { auth, signOut } = await import("../../auth");
+  const currentSession = await auth();
+  const authSessionId = currentSession?.user.authSessionId;
+  const logoutContext =
+    typeof authSessionId === "string" ? await getAuthSessionLogoutContext(authSessionId) : null;
   await signOut({ redirect: false });
   for (const cookie of store.getAll()) {
     if (
@@ -55,7 +60,10 @@ export async function signOutAction(): Promise<void> {
       store.delete(cookie.name);
     }
   }
-  redirect(postLogoutUrl);
+  if (shauth !== null && logoutContext?.provider === "shauth") {
+    redirect(shauthEndSessionURL(shauth, logoutContext.providerIdToken));
+  }
+  redirect("/login");
 }
 
 export async function localAccountSignIn(formData: FormData): Promise<void> {

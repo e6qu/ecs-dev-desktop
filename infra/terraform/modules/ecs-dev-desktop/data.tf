@@ -157,6 +157,14 @@ resource "aws_dynamodb_table" "this" {
     enabled = var.dynamodb_point_in_time_recovery
   }
 
+  # Consumed OpenID Connect Back-Channel Logout token identifiers use this
+  # epoch-second field for replay protection. Other single-table entities omit
+  # it and are unaffected by DynamoDB TTL expiry.
+  ttl {
+    attribute_name = "expiresAtEpochSeconds"
+    enabled        = true
+  }
+
   server_side_encryption {
     enabled     = true
     kms_key_arn = aws_kms_key.this.arn

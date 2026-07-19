@@ -23,9 +23,11 @@ import {
   type RepoSummary,
 } from "../lib/github-types";
 import { TESTID } from "../lib/testids";
+import { usePoll } from "../lib/usePoll";
 import { StateBlock } from "./StateBlock";
 
 const api = new ApiClient({ baseUrl: "" });
+const CATALOG_POLL_MS = 2_000;
 const DEFAULT_SNAPSHOT_INTERVAL_MINUTES = 5;
 const MIN_SNAPSHOT_INTERVAL_MINUTES = MIN_SNAPSHOT_INTERVAL_MS / (60 * 1000);
 const MAX_SNAPSHOT_INTERVAL_MINUTES = MAX_SNAPSHOT_INTERVAL_MS / (60 * 1000);
@@ -64,6 +66,19 @@ interface CatalogOption {
   description: string;
   tags: readonly string[];
   tools: readonly string[];
+}
+
+async function loadCatalogOptions(): Promise<CatalogOption[]> {
+  const { baseImages } = await api.listBaseImages();
+  return baseImages
+    .filter((entry) => entry.enabled)
+    .map((entry) => ({
+      name: entry.name,
+      image: entry.image,
+      description: entry.description,
+      tags: entry.tags,
+      tools: entry.tools,
+    }));
 }
 
 /** The ways to start a session — selected by radio, launched by ONE button. */
@@ -124,6 +139,12 @@ function snapshotIntervalMsFromInput(input: string): number | null {
  */
 export function NewSession({ images }: { images: readonly CatalogOption[] }) {
   const router = useRouter();
+  const { data: refreshedImages, error: catalogError } = usePoll(
+    loadCatalogOptions,
+    CATALOG_POLL_MS,
+    "catalog refresh failed",
+  );
+  const availableImages = refreshedImages ?? images;
   const [image, setImage] = useState(images[0]?.image ?? "");
   const [mode, setMode] = useState<StartMode>("blank");
   // Per-session interface; defaults to OpenVSCode (every curated image's default).
@@ -176,6 +197,11 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
     setCpuUnits(rec.cpuUnits);
     setMemoryMiB(rec.memoryMiB);
   }, [editor, resourcesTouched]);
+
+  useEffect(() => {
+    if (availableImages.some((entry) => entry.image === image)) return;
+    setImage(availableImages[0]?.image ?? "");
+  }, [availableImages, image]);
 
   useEffect(() => {
     void (async () => {
@@ -321,11 +347,15 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
     }
   }
 
-  if (images.length === 0) {
+  if (availableImages.length === 0) {
     return (
       <StateBlock
         title="No base images in the catalog"
-        detail="Ask an administrator to add one before starting a session."
+        detail={
+          catalogError === null
+            ? "Waiting for an administrator to add one. This page refreshes automatically."
+            : `The catalog could not be refreshed: ${catalogError}`
+        }
       />
     );
   }
@@ -337,7 +367,7 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
           environment
         </div>
         <div className="picker-grid">
-          {images.map((opt) => {
+          {availableImages.map((opt) => {
             const selected = opt.image === image;
             return (
               <button

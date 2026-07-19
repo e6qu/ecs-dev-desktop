@@ -45,6 +45,7 @@ export const SHAUTH_ISSUER_ENV = "AUTH_SHAUTH_ISSUER";
 export const SHAUTH_CLIENT_ID_ENV = "AUTH_SHAUTH_ID";
 export const SHAUTH_CLIENT_SECRET_ENV = "AUTH_SHAUTH_SECRET";
 export const SHAUTH_POST_LOGOUT_URL_ENV = "AUTH_SHAUTH_POST_LOGOUT_URL";
+export const AUTH_URL_ENV = "AUTH_URL";
 
 /** GitHub App credentials. When BOTH are set, GitHub operations + the clone/push
  * broker act as the App (installation tokens) instead of the user's OAuth token.

@@ -4,7 +4,8 @@ import { redirect } from "next/navigation";
 import { signIn } from "../../../auth";
 import { shauthEnabled } from "../../../lib/shauth";
 
-export default async function ShauthLoginPage(): Promise<never> {
+/** Start Shauth from a route handler so Auth.js may set its OAuth cookies. */
+export async function GET(): Promise<never> {
   if (!shauthEnabled()) redirect("/login?error=Configuration");
   await signIn("shauth", { redirectTo: "/workspaces" });
   throw new Error("Shauth sign-in did not redirect");

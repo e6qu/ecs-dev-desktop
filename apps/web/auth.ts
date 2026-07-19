@@ -6,6 +6,7 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import GitHub from "next-auth/providers/github";
 import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
+import { decodeJwt } from "jose";
 
 import { roleMappingConfig } from "./lib/auth-config";
 import {
@@ -111,7 +112,27 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const role = mapClaimsToRole({ ...claims, groups }, roleMappingConfig());
         token.uid = claims.subject;
         token.role = role;
-        const authSession = await createAuthSession({ ownerId: claims.subject, role });
+        let providerSessionId: string | undefined;
+        let providerIdToken: string | undefined;
+        if (account.provider === "shauth") {
+          if (typeof account.id_token !== "string" || account.id_token.length === 0) {
+            throw new Error("Shauth did not return an ID token");
+          }
+          const sid = decodeJwt(account.id_token).sid;
+          if (typeof sid !== "string" || sid.length === 0) {
+            throw new Error("Shauth ID token did not identify its provider session");
+          }
+          providerSessionId = sid;
+          providerIdToken = account.id_token;
+        }
+        const authSession = await createAuthSession({
+          ownerId: claims.subject,
+          role,
+          provider: account.provider,
+          providerSubject: claims.subject,
+          ...(providerSessionId === undefined ? {} : { providerSessionId }),
+          ...(providerIdToken === undefined ? {} : { providerIdToken }),
+        });
         token.authSessionId = authSession.id;
         token.authSessionVersion = AUTH_SESSION_SCHEMA_VERSION;
         // Capture the GitHub token (encrypted at rest) so a session can later

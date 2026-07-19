@@ -2,24 +2,26 @@
 
 > Current project snapshot. Durable history lives in git and [WHAT_WE_DID.md](WHAT_WE_DID.md).
 
-**Last updated:** 2026-07-19
+**Last updated:** 2026-07-20
 
 ## Current branch
 
-The `fix/explicit-release-topology` branch made the release pipeline safe for both first publication and established deployments. Release bootstrap used the configured Amazon ECS cluster rather than deriving a private cluster name, discovered the real Amazon ECS and Amazon EventBridge Scheduler topology, and wrote explicit deployment and optional SSH-gateway booleans. Image publication still produced both per-architecture images and the multi-architecture manifests when the application stack did not exist, while deployment and post-deployment smoke ran only after bootstrap had proved the required runtime resources existed.
-
-The release artifact always recorded whether a deployment occurred. The post-deployment workflow resolved that artifact before allocating its long-running browser-smoke runner, so a publication-only release neither claimed a deployment nor launched a false smoke failure. An explicitly disabled SSH gateway was distinct from missing enabled infrastructure; enabled components still failed loudly when their service, task definition, schedule, or permission was absent.
+The `fix/shauth-launch-route` branch completed the Shauth browser-session lifecycle. The catalog launch coordinate moved from a React Server Component into a Next.js Route Handler, so Auth.js created the authorization request inside a request context that was permitted to write callback, state, PKCE, and nonce cookies. The confidential client used Hydra's registered `client_secret_post` token-endpoint method. Shauth sessions also retained their verified provider `sid`, `sub`, and ID token in the durable application-session record. Signing out used standard RP-Initiated Logout and returned to the EDD-origin `/signed-out` landing accepted by Ory Hydra. Signed OIDC Back-Channel Logout tokens revoked every local session correlated through `sid`, `sub`, or both, and a durable one-use `jti` record rejected replays. Non-Shauth sessions returned to the ordinary login page without claiming a global Shauth logout. Every durable session carried complete provider-session facets, preserving GitHub, Microsoft Entra ID, and local-account sign-in alongside Shauth global logout.
 
 ## Verified state
 
-- The complete pre-commit gate passed: formatting, workflow lint, Terraform validation, ESLint, the complete TypeScript build and unit suite, lockfile consistency, dead-code analysis, and copy/paste analysis.
-- ShellCheck and Bash/zsh parsing passed for the changed release scripts.
-- The release deployer rejected invalid topology values before any AWS operation.
-- The Terraform simulator CI contract exercised both the SSH-disabled and SSH-enabled release paths through the real Sockerless AWS simulator APIs.
+- The Shauth launch regression tests covered configured and unconfigured provider states.
+- The production Next.js bundle built successfully and emitted `/login/shauth` as a dynamic route.
+- A running production bundle returned a 307 to Shauth and set Auth.js callback, state, PKCE, and nonce cookies instead of returning HTTP 500.
+- Real DynamoDB integration coverage proved atomic primary-index `sid`/`sub` correlation, replay rejection, and multi-session revocation without relying on eventually-consistent global secondary indexes.
+- Real asymmetric JWT coverage proved issuer, audience, age, event, `sid`/`sub`, `jti`, expiry, and prohibited-`nonce` enforcement for Back-Channel Logout.
+- Configuration coverage rejected the former cross-origin Shauth-portal post-logout URL and required the exact EDD `/signed-out` coordinate on the stable Auth.js origin.
+- The complete 314-test web unit suite passed, the complete web integration suite passed 156 tests against the real Sockerless AWS simulator, and the production bundle emitted the direct launch, callback, back-channel, and signed-out routes.
+- All 29 production Chromium tests passed. They proved that `/signed-out` stayed on ECS Dev Desktop with explicit fresh-sign-in choices, an unconfigured catalog launch failed closed on the local login page, and a catalog created after an initially cached empty read converged without a hard refresh.
 
 ## Deployment boundary
 
-The private `e6qu/infra` repository owned the shared `dev.e6qu.dev` environment. Its matching change supplied `EDD_IMAGE_SOURCE_REPO` and `EDD_IMAGE_SOURCE_BRANCH`, exported the configured SSH topology, and passed that topology into release bootstrap. The live control plane remained incomplete until those infrastructure and application changes merged, exact-main Terragrunt applied them, release bootstrap was rerun, and the deployed browser acceptance suite passed.
+The private `e6qu/infra` repository owned the shared `dev.e6qu.dev` environment. The live control plane still required the merged immutable ARM64 image plus the callback `https://app.edd.dev.e6qu.dev/api/auth/callback/shauth`, post-logout `https://app.edd.dev.e6qu.dev/signed-out`, and back-channel `https://app.edd.dev.e6qu.dev/api/auth/shauth/backchannel-logout` coordinates to be registered, pinned, and applied before the complete deployed login/logout matrix could prove the repair.
 
 ## Durable invariants
 

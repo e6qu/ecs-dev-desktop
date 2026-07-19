@@ -2,12 +2,18 @@
 import { randomUUID } from "node:crypto";
 
 import type { Role } from "@edd/authz";
-import { createDynamoClient, makeAuthSessionEntity } from "@edd/db";
+import {
+  createDynamoClient,
+  makeAuthSessionCorrelationEntity,
+  makeAuthSessionEntity,
+  makeOidcLogoutTokenEntity,
+  writeTransaction,
+} from "@edd/db";
 import type { JWT } from "next-auth/jwt";
 
 import { tableName } from "./control-plane";
 
-export const AUTH_SESSION_SCHEMA_VERSION = 1;
+export const AUTH_SESSION_SCHEMA_VERSION = 3;
 const SESSION_MAX_AGE_MS = 4 * 60 * 60 * 1000;
 
 export interface ValidAuthSession {
@@ -17,11 +23,35 @@ export interface ValidAuthSession {
   readonly expiresAtMs: number;
 }
 
+export interface AuthSessionLogoutContext {
+  readonly provider: string;
+  readonly providerIdToken: string;
+}
+
+export interface ProviderLogoutToken {
+  readonly tokenId: string;
+  readonly expiresAtEpochSeconds: number;
+  readonly providerSessionId?: string;
+  readonly providerSubject?: string;
+}
+
 let entity: ReturnType<typeof makeAuthSessionEntity> | undefined;
+let correlationEntity: ReturnType<typeof makeAuthSessionCorrelationEntity> | undefined;
+let logoutTokenEntity: ReturnType<typeof makeOidcLogoutTokenEntity> | undefined;
 
 function sessions(): ReturnType<typeof makeAuthSessionEntity> {
   entity ??= makeAuthSessionEntity(createDynamoClient(), tableName());
   return entity;
+}
+
+function logoutTokens(): ReturnType<typeof makeOidcLogoutTokenEntity> {
+  logoutTokenEntity ??= makeOidcLogoutTokenEntity(createDynamoClient(), tableName());
+  return logoutTokenEntity;
+}
+
+function correlations(): ReturnType<typeof makeAuthSessionCorrelationEntity> {
+  correlationEntity ??= makeAuthSessionCorrelationEntity(createDynamoClient(), tableName());
+  return correlationEntity;
 }
 
 function expiresAt(nowMs: number): string {
@@ -37,24 +67,154 @@ function parseExpiry(value: string): number {
 export async function createAuthSession(input: {
   readonly ownerId: string;
   readonly role: Role;
+  readonly provider?: string;
+  readonly providerSubject?: string;
+  readonly providerSessionId?: string;
+  readonly providerIdToken?: string;
   readonly nowMs?: number;
 }): Promise<ValidAuthSession> {
   const nowMs = input.nowMs ?? Date.now();
   const id = randomUUID();
+  const provider = input.provider ?? "credentials";
+  const providerSessionId = input.providerSessionId ?? id;
+  const providerSubject = input.providerSubject ?? input.ownerId;
   const nowIso = new Date(nowMs).toISOString();
   const expiry = expiresAt(nowMs);
-  await sessions()
-    .put({
-      id,
-      schemaVersion: AUTH_SESSION_SCHEMA_VERSION,
-      ownerId: input.ownerId,
-      role: input.role,
-      createdAt: nowIso,
-      refreshedAt: nowIso,
-      expiresAt: expiry,
+  const session = {
+    id,
+    schemaVersion: AUTH_SESSION_SCHEMA_VERSION,
+    ownerId: input.ownerId,
+    role: input.role,
+    provider,
+    providerSubject,
+    providerSessionId,
+    ...(input.providerIdToken === undefined ? {} : { providerIdToken: input.providerIdToken }),
+    createdAt: nowIso,
+    refreshedAt: nowIso,
+    expiresAt: expiry,
+  };
+  if (provider === "shauth") {
+    const expiresAtEpochSeconds = Math.floor(parseExpiry(expiry) / 1000);
+    const result = await writeTransaction(
+      { session: sessions(), correlation: correlations() },
+      ({ session: sessionEntity, correlation }) => [
+        sessionEntity.create(session).commit(),
+        correlation
+          .create({
+            provider,
+            kind: "session",
+            value: providerSessionId,
+            authSessionId: id,
+            expiresAtEpochSeconds,
+          })
+          .commit(),
+        correlation
+          .create({
+            provider,
+            kind: "subject",
+            value: providerSubject,
+            authSessionId: id,
+            expiresAtEpochSeconds,
+          })
+          .commit(),
+      ],
+    ).go();
+    if (result.canceled) throw new Error("create Shauth session correlation transaction failed");
+  } else {
+    await sessions().create(session).go();
+  }
+  return { id, ownerId: input.ownerId, role: input.role, expiresAtMs: parseExpiry(expiry) };
+}
+
+export async function getAuthSessionLogoutContext(
+  id: string,
+): Promise<AuthSessionLogoutContext | null> {
+  const { data } = await sessions().get({ id }).go();
+  if (
+    data === null ||
+    data.revokedAt !== undefined ||
+    typeof data.provider !== "string" ||
+    typeof data.providerIdToken !== "string"
+  ) {
+    return null;
+  }
+  return { provider: data.provider, providerIdToken: data.providerIdToken };
+}
+
+export async function revokeAuthSessionsByProviderSession(
+  provider: string,
+  providerSessionId: string,
+): Promise<number> {
+  return revokeAuthSessionsByCorrelation(provider, "session", providerSessionId);
+}
+
+async function revokeAuthSessionsByProviderSubject(
+  provider: string,
+  providerSubject: string,
+): Promise<number> {
+  return revokeAuthSessionsByCorrelation(provider, "subject", providerSubject);
+}
+
+async function revokeAuthSessionsByCorrelation(
+  provider: string,
+  kind: "session" | "subject",
+  value: string,
+): Promise<number> {
+  const { data: pointers } = await correlations()
+    .query.primary({ provider, kind, value })
+    .go({ pages: "all", consistent: true });
+  const loaded = await Promise.all(
+    pointers.map(({ authSessionId }) =>
+      sessions().get({ id: authSessionId }).go({ consistent: true }),
+    ),
+  );
+  const active = loaded.flatMap(({ data }) =>
+    data !== null && data.provider === provider && data.revokedAt === undefined ? [data] : [],
+  );
+  const revokedAt = new Date().toISOString();
+  await Promise.all(
+    active.map((session) => sessions().patch({ id: session.id }).set({ revokedAt }).go()),
+  );
+  return active.length;
+}
+
+/**
+ * Consumes a verified provider logout token exactly once, then revokes every
+ * matching application session. Back-channel logout identifies the provider
+ * session by `sid`, the provider account by `sub`, or both; either standard
+ * correlation key therefore invalidates every matching EDD browser session.
+ */
+export async function consumeProviderLogoutToken(
+  provider: string,
+  token: ProviderLogoutToken,
+  nowMs = Date.now(),
+): Promise<number> {
+  if (token.providerSessionId === undefined && token.providerSubject === undefined) {
+    throw new Error("provider logout token did not contain sid or sub");
+  }
+  if (
+    !Number.isSafeInteger(token.expiresAtEpochSeconds) ||
+    token.expiresAtEpochSeconds <= Math.floor(nowMs / 1000)
+  ) {
+    throw new Error("provider logout token expiry is invalid");
+  }
+  await logoutTokens()
+    .create({
+      provider,
+      tokenId: token.tokenId,
+      consumedAt: new Date(nowMs).toISOString(),
+      expiresAtEpochSeconds: token.expiresAtEpochSeconds,
     })
     .go();
-  return { id, ownerId: input.ownerId, role: input.role, expiresAtMs: parseExpiry(expiry) };
+
+  let revoked = 0;
+  if (token.providerSessionId !== undefined) {
+    revoked += await revokeAuthSessionsByProviderSession(provider, token.providerSessionId);
+  }
+  if (token.providerSubject !== undefined) {
+    revoked += await revokeAuthSessionsByProviderSubject(provider, token.providerSubject);
+  }
+  return revoked;
 }
 
 export async function validateAuthSessionToken(
@@ -76,6 +236,22 @@ export async function validateAuthSessionToken(
     .patch({ id: data.id })
     .set({ refreshedAt: new Date(nowMs).toISOString(), expiresAt: refreshedExpiry })
     .go();
+  if (data.provider === "shauth") {
+    const expiresAtEpochSeconds = Math.floor(parseExpiry(refreshedExpiry) / 1000);
+    await Promise.all(
+      (
+        [
+          ["session", data.providerSessionId],
+          ["subject", data.providerSubject],
+        ] as const
+      ).map(([kind, value]) =>
+        correlations()
+          .patch({ provider: data.provider, kind, value, authSessionId: data.id })
+          .set({ expiresAtEpochSeconds })
+          .go(),
+      ),
+    );
+  }
   return {
     id: data.id,
     ownerId: data.ownerId,

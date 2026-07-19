@@ -66,3 +66,28 @@ test("sign-out clears the session and returns to the login form", async ({ page 
   await expect(page.locator(sel(TESTID.loginSubmit))).toBeVisible();
   await expect(page.getByRole("button", { name: "sign out" })).toHaveCount(0);
 });
+
+test("the relying-party signed-out landing stays on ECS Dev Desktop", async ({ page }) => {
+  await page.goto("/signed-out");
+
+  await expect(page).toHaveURL(/\/signed-out$/);
+  await expect(page.getByRole("heading", { name: "You are signed out" })).toBeVisible();
+  await expect(page.getByText("Shauth ended the shared sign-in session")).toBeVisible();
+  await expect(page.getByRole("link", { name: "Sign in again" })).toHaveAttribute(
+    "href",
+    "/login/shauth",
+  );
+  await expect(page.getByRole("link", { name: "Other sign-in options" })).toHaveAttribute(
+    "href",
+    "/login",
+  );
+});
+
+test("an unconfigured Shauth catalog launch fails closed on the local login page", async ({
+  page,
+}) => {
+  await page.goto("/login/shauth");
+
+  await expect(page).toHaveURL(/\/login\?error=Configuration$/);
+  await expect(page.locator(sel(TESTID.loginSubmit))).toBeVisible();
+});
