@@ -130,6 +130,7 @@ export function shauthProvider(): OIDCConfig<ShauthProfile> | null {
     issuer: config.issuer,
     clientId: config.clientId,
     clientSecret: config.clientSecret,
+    client: { token_endpoint_auth_method: "client_secret_post" },
     checks: ["pkce", "state", "nonce"],
     authorization: { params: { scope: "openid profile email offline_access" } },
     profile(rawProfile) {

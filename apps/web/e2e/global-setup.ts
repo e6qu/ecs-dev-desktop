@@ -6,6 +6,11 @@ import {
   ResourceInUseException,
   ResourceNotFoundException,
 } from "@aws-sdk/client-dynamodb";
+import {
+  CreateRepositoryCommand,
+  ECRClient,
+  RepositoryAlreadyExistsException,
+} from "@aws-sdk/client-ecr";
 
 /**
  * Playwright global setup: stand up a fresh single-table DynamoDB table for
@@ -16,12 +21,15 @@ import {
  */
 const TABLE = process.env.DYNAMODB_TABLE ?? "ecs-dev-desktop-pw";
 const ENDPOINT = process.env.DYNAMODB_ENDPOINT ?? "http://127.0.0.1:4566";
+const REGION = process.env.AWS_REGION ?? "us-east-1";
+const credentials = { accessKeyId: "local", secretAccessKey: "local" };
 
 const client = new DynamoDBClient({
-  region: process.env.AWS_REGION ?? "us-east-1",
+  region: REGION,
   endpoint: ENDPOINT,
-  credentials: { accessKeyId: "local", secretAccessKey: "local" },
+  credentials,
 });
+const ecr = new ECRClient({ region: REGION, endpoint: ENDPOINT, credentials });
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
@@ -71,13 +79,25 @@ export default async function globalSetup(): Promise<void> {
   for (let attempt = 0; ; attempt++) {
     try {
       await client.send(create);
-      return;
+      break;
     } catch (err) {
       if (err instanceof ResourceInUseException && attempt < 10) {
         await sleep(500);
         continue;
       }
       throw err;
+    }
+  }
+
+  for (const repositoryName of [
+    "edd-playwright/control-plane",
+    "edd-playwright/ssh-gateway",
+    "edd-playwright/golden/omnibus",
+  ]) {
+    try {
+      await ecr.send(new CreateRepositoryCommand({ repositoryName }));
+    } catch (err) {
+      if (!(err instanceof RepositoryAlreadyExistsException)) throw err;
     }
   }
 }

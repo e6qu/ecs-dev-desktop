@@ -108,6 +108,7 @@ describe("shauthProvider", () => {
       id: "shauth",
       type: "oidc",
       issuer: "https://auth.dev.e6qu.dev",
+      client: { token_endpoint_auth_method: "client_secret_post" },
       checks: ["pkce", "state", "nonce"],
       authorization: { params: { scope: "openid profile email offline_access" } },
     });

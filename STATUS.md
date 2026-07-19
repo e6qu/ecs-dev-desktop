@@ -2,11 +2,11 @@
 
 > Current project snapshot. Durable history lives in git and [WHAT_WE_DID.md](WHAT_WE_DID.md).
 
-**Last updated:** 2026-07-19
+**Last updated:** 2026-07-20
 
 ## Current branch
 
-The `fix/shauth-launch-route` branch completed the Shauth browser-session lifecycle. The catalog launch coordinate moved from a React Server Component into a Next.js Route Handler, so Auth.js created the authorization request inside a request context that was permitted to write callback, state, PKCE, and nonce cookies. Shauth sessions also retained their verified provider `sid`, `sub`, and ID token in the durable application-session record. Signing out used standard RP-Initiated Logout and returned to the EDD-origin `/signed-out` landing accepted by Ory Hydra. Signed OIDC Back-Channel Logout tokens revoked every local session correlated through `sid`, `sub`, or both, and a durable one-use `jti` record rejected replays. Non-Shauth sessions returned to the ordinary login page without claiming a global Shauth logout. Every durable session carried complete provider-session facets, preserving GitHub, Microsoft Entra ID, and local-account sign-in alongside Shauth global logout.
+The `fix/shauth-launch-route` branch completed the Shauth browser-session lifecycle. The catalog launch coordinate moved from a React Server Component into a Next.js Route Handler, so Auth.js created the authorization request inside a request context that was permitted to write callback, state, PKCE, and nonce cookies. The confidential client used Hydra's registered `client_secret_post` token-endpoint method. Shauth sessions also retained their verified provider `sid`, `sub`, and ID token in the durable application-session record. Signing out used standard RP-Initiated Logout and returned to the EDD-origin `/signed-out` landing accepted by Ory Hydra. Signed OIDC Back-Channel Logout tokens revoked every local session correlated through `sid`, `sub`, or both, and a durable one-use `jti` record rejected replays. Non-Shauth sessions returned to the ordinary login page without claiming a global Shauth logout. Every durable session carried complete provider-session facets, preserving GitHub, Microsoft Entra ID, and local-account sign-in alongside Shauth global logout.
 
 ## Verified state
 
@@ -16,8 +16,8 @@ The `fix/shauth-launch-route` branch completed the Shauth browser-session lifecy
 - Real DynamoDB integration coverage proved atomic primary-index `sid`/`sub` correlation, replay rejection, and multi-session revocation without relying on eventually-consistent global secondary indexes.
 - Real asymmetric JWT coverage proved issuer, audience, age, event, `sid`/`sub`, `jti`, expiry, and prohibited-`nonce` enforcement for Back-Channel Logout.
 - Configuration coverage rejected the former cross-origin Shauth-portal post-logout URL and required the exact EDD `/signed-out` coordinate on the stable Auth.js origin.
-- The complete web unit suite passed, the complete web integration suite passed 156 tests against the real Sockerless AWS simulator, and the production bundle emitted the direct launch, callback, back-channel, and signed-out routes.
-- Chromium rendered the hydrated `/signed-out` page with the shared-session outcome and explicit fresh-sign-in choices.
+- The complete 314-test web unit suite passed, the complete web integration suite passed 156 tests against the real Sockerless AWS simulator, and the production bundle emitted the direct launch, callback, back-channel, and signed-out routes.
+- All 29 production Chromium tests passed. They proved that `/signed-out` stayed on ECS Dev Desktop with explicit fresh-sign-in choices, an unconfigured catalog launch failed closed on the local login page, and a catalog created after an initially cached empty read converged without a hard refresh.
 
 ## Deployment boundary
 
