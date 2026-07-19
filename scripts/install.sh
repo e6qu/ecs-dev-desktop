@@ -32,7 +32,7 @@
 #   EDD_NAT_INSTANCE_TYPE optional fck-nat EC2 type (default: t4g.nano; bump to a
 #                         free-tier-eligible type, e.g. t4g.micro, if the account is
 #                         still Free-Tier-restricted — RunInstances then rejects t4g.nano)
-#   EDD_IMAGE_TAG       optional  image tag (default: main)
+#   EDD_IMAGE_TAG       REQUIRED  7-40 character lowercase source commit prefix
 #   EDD_IMAGE_BUILD_MODE optional image build mode: local | codebuild | pre-published
 #   EDD_CODEBUILD_SOURCE_REPO  optional  git URL for codebuild mode (e.g. https://github.com/...)
 #   EDD_CODEBUILD_SOURCE_REF   optional  git ref for codebuild mode (default: main)
@@ -64,6 +64,8 @@ unset CDPATH
 
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/.." && pwd)
+# shellcheck source=scripts/lib/validate-image-tag.sh
+. "$here/lib/validate-image-tag.sh"
 
 mode="install"
 [ "${1:-}" = "--verify" ] && mode="verify"
@@ -78,7 +80,7 @@ EDD_SSH_DOMAIN="${EDD_SSH_DOMAIN:-}"
 EDD_SSH_ZONE="${EDD_SSH_ZONE:-}"
 EDD_NAT_MODE="${EDD_NAT_MODE:-instance}"
 EDD_NAT_INSTANCE_TYPE="${EDD_NAT_INSTANCE_TYPE:-t4g.nano}"
-EDD_TAG="${EDD_IMAGE_TAG:-main}"
+EDD_TAG="${EDD_IMAGE_TAG:-}"
 EDD_IMAGE_BUILD_MODE="${EDD_IMAGE_BUILD_MODE:-local}"
 EDD_CODEBUILD_SOURCE_REPO="${EDD_CODEBUILD_SOURCE_REPO:-}"
 EDD_CODEBUILD_SOURCE_REF="${EDD_CODEBUILD_SOURCE_REF:-main}"
@@ -114,6 +116,8 @@ if [ "$mode" = "install" ]; then
   missing EDD_AZS "$EDD_AZS" || exit 1
   missing EDD_ADMIN_GROUPS "$EDD_ADMIN_GROUPS" || exit 1
   missing EDD_IMAGE_SOURCE_REPO "$EDD_IMAGE_SOURCE_REPO" || exit 1
+  missing EDD_IMAGE_TAG "$EDD_TAG" || exit 1
+  validate_image_tag "$EDD_TAG" "EDD_IMAGE_TAG" || exit 1
   if [ "$EDD_IMAGE_BUILD_MODE" != "local" ] && [ "$EDD_IMAGE_BUILD_MODE" != "codebuild" ] && [ "$EDD_IMAGE_BUILD_MODE" != "pre-published" ]; then
     echo "edd: EDD_IMAGE_BUILD_MODE must be local, codebuild, or pre-published" >&2
     exit 1

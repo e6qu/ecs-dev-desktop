@@ -18,8 +18,9 @@ import { normalizeClaims } from "./lib/claims";
 import { GITHUB_URL_ENV } from "./lib/constants";
 import { getGitCredentials, gitCredentialsEnabled } from "./lib/git-credentials";
 import { fetchGithubTeamGroups } from "./lib/github-teams";
+import { entraOAuthClient, githubOAuthClient } from "./lib/identity-providers";
 import { authenticateLocalAccount } from "./lib/local-accounts";
-import { shauthOidcConfig } from "./lib/shauth";
+import { shauthProvider } from "./lib/shauth";
 
 /**
  * Auth.js (NextAuth v5) — GitHub OAuth, Microsoft Entra ID, and Shauth OpenID
@@ -35,19 +36,9 @@ import { shauthOidcConfig } from "./lib/shauth";
  * means github.com. Endpoint-only, never a behavioural branch (§6.8).
  */
 const githubEnterpriseUrl = process.env[GITHUB_URL_ENV];
-const shauth = shauthOidcConfig();
-const shauthProvider =
-  shauth === null
-    ? null
-    : {
-        id: "shauth",
-        name: "Shauth",
-        type: "oidc" as const,
-        issuer: shauth.issuer,
-        clientId: shauth.clientId,
-        clientSecret: shauth.clientSecret,
-        authorization: { params: { scope: "openid profile email offline_access" } },
-      };
+const configuredShauthProvider = shauthProvider();
+const configuredGitHubClient = githubOAuthClient();
+const configuredEntraClient = entraOAuthClient();
 
 /** Session lifetime: 4 hours, rolling (see the `session` block below). */
 const SESSION_MAX_AGE_S = 4 * 60 * 60;
@@ -74,28 +65,34 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         };
       },
     }),
-    GitHub({
-      ...(githubEnterpriseUrl !== undefined && githubEnterpriseUrl.length > 0
-        ? { enterprise: { baseUrl: githubEnterpriseUrl } }
-        : {}),
-      authorization: { params: { scope: "read:user user:email read:org repo" } },
-    }),
-    MicrosoftEntraID({
-      // The stock profile() fetches the user's photo from a hardcoded
-      // graph.microsoft.com URL on every sign-in. We never consume it (uid and
-      // role come from the id_token claims in jwt() below), so skip the call —
-      // it would also be the one non-endpoint-configurable cloud request.
-      profile: (profile) => ({
-        id: profile.sub,
-        name: profile.name,
-        email: profile.email,
-        image: null,
-      }),
-      // Send client credentials in the token-request body (what MSAL does and
-      // what AAD's discovery advertises), not Auth.js's Basic-header default.
-      client: { token_endpoint_auth_method: "client_secret_post" },
-    }),
-    ...(shauthProvider === null ? [] : [shauthProvider]),
+    ...(configuredGitHubClient === null
+      ? []
+      : [
+          GitHub({
+            ...configuredGitHubClient,
+            ...(githubEnterpriseUrl !== undefined && githubEnterpriseUrl.length > 0
+              ? { enterprise: { baseUrl: githubEnterpriseUrl } }
+              : {}),
+            authorization: { params: { scope: "read:user user:email read:org repo" } },
+          }),
+        ]),
+    ...(configuredEntraClient === null
+      ? []
+      : [
+          MicrosoftEntraID({
+            ...configuredEntraClient,
+            // The stock profile() fetches a photo from Microsoft Graph. EDD
+            // does not consume it, so identity stays entirely in ID-token claims.
+            profile: (profile) => ({
+              id: profile.sub,
+              name: profile.name,
+              email: profile.email,
+              image: null,
+            }),
+            client: { token_endpoint_auth_method: "client_secret_post" },
+          }),
+        ]),
+    ...(configuredShauthProvider === null ? [] : [configuredShauthProvider]),
   ],
   // 4-hour sessions with a rolling refresh plus a REQUIRED server-side session
   // record. The cookie alone never authorizes: every request must carry the

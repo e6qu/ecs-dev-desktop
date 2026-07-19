@@ -12,7 +12,7 @@
 #   account-id   12-digit AWS account id (ECR domain)
 #   region       AWS region
 #   name-prefix  the module `name` (e.g. edd-dev)
-#   tag          image tag (a git sha, version, or 'main')
+#   tag          7-40 character lowercase hexadecimal source-commit prefix
 #   variant...   golden variants to build FROM base (default: omnibus; e.g.
 #                omnibus typescript python go java rust)
 #
@@ -65,6 +65,22 @@ variants="${*:-omnibus}" # default to the omnibus golden image
 
 here=$(cd "$(dirname "$0")" && pwd)
 repo=$(cd "$here/.." && pwd)
+# shellcheck source=scripts/lib/validate-image-tag.sh
+. "$here/lib/validate-image-tag.sh"
+
+validate_image_tag "$tag" "tag" || exit 1
+if [ -n "$(git -C "$repo" status --porcelain)" ]; then
+  echo "edd: refusing to publish images from a dirty source checkout" >&2
+  exit 1
+fi
+source_sha=$(git -C "$repo" rev-parse HEAD)
+case "$source_sha" in
+  "$tag"*) ;;
+  *)
+    echo "edd: image tag '$tag' does not identify checked-out source commit '$source_sha'" >&2
+    exit 1
+    ;;
+esac
 
 registry="${account}.dkr.ecr.${region}.amazonaws.com"
 archs="${EDD_BUILD_ARCHS:-amd64 arm64}"

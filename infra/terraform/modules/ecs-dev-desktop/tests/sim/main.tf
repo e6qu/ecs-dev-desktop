@@ -159,8 +159,14 @@ module "edd" {
   # The sim fixture does not pre-publish real ECR images; pin explicit dummy image
   # refs so pre-published mode does not try to resolve a non-existent digest.
   image_build_mode    = "pre-published"
-  image_tag           = "sim"
-  control_plane_image = "eddsim/control-plane:sim"
+  image_tag           = "0123456789ab"
+  control_plane_image = "eddsim/control-plane:0123456789ab"
+
+  # This fixture intentionally runs the simulator in API-only process mode.
+  # Keep services at zero here; real task execution belongs to the dedicated
+  # container-runtime probes, while this fixture verifies the Terraform and
+  # AWS API contracts without requesting workloads it cannot execute.
+  control_plane_desired_count = 0
 
   # Do not seed the catalog in the sim fixture — keep the table empty for tests.
   seed_default_catalog = false
@@ -257,8 +263,9 @@ module "edd_shared" {
   dynamodb_point_in_time_recovery = false
   golden_image_repos              = ["typescript"]
   image_build_mode                = "pre-published"
-  image_tag                       = "sim"
-  control_plane_image             = "eddsharedsim/control-plane:sim"
+  image_tag                       = "0123456789ab"
+  control_plane_image             = "eddsharedsim/control-plane:0123456789ab"
+  control_plane_desired_count     = 0
   seed_default_catalog            = false
   enable_metric_alarms            = false
   enable_cloudwatch_dashboard     = false

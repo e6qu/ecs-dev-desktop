@@ -62,10 +62,27 @@ describe("normalizeClaims (fuzz)", () => {
     );
   });
 
+  it("shauth: preserves every non-empty subject and authorized role", () => {
+    fc.assert(
+      fc.property(
+        fc.string({ minLength: 1 }),
+        fc.constantFrom("developer" as const, "admin" as const),
+        (subject, role) => {
+          expect(normalizeClaims("shauth", { sub: subject, role })).toEqual({
+            idp: "shauth",
+            subject,
+            groups: [],
+            role,
+          });
+        },
+      ),
+    );
+  });
+
   it("an unknown provider always throws (never silently maps)", () => {
     fc.assert(
       fc.property(
-        fc.string().filter((s) => s !== "github" && s !== "microsoft-entra-id"),
+        fc.string().filter((s) => s !== "github" && s !== "microsoft-entra-id" && s !== "shauth"),
         (provider) => {
           expect(() => normalizeClaims(provider, { id: 1 })).toThrow();
         },

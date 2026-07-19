@@ -50,7 +50,7 @@ UI, and an admin control plane. Think self-hosted Coder / GitHub Codespaces.
 | ----------- | -------------------------------------------------------------------------------------------------------------- |
 | Compute     | AWS ECS Fargate (200+ workspaces)                                                                              |
 | Persistence | EBS snapshot as the unit of state (stateful + snapshot + scale-to-zero)                                        |
-| Auth        | GitHub OAuth + Azure Entra ID, groups → roles                                                                  |
+| Auth        | GitHub OAuth + Microsoft Entra ID, plus optional Shauth OpenID Connect SSO; identity claims → roles            |
 | RBAC        | CASL (shared by API and UI)                                                                                    |
 | SSH         | OpenSSH (`sshd`); registered-key auth via the control plane (dual-trust ssh-authorize)                         |
 | Web + API   | Next.js, API-first (UI consumes the same API); custom server also proxies the editor at `app.<domain>/w/<id>/` |

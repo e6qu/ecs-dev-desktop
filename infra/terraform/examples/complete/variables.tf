@@ -109,9 +109,13 @@ variable "route53_ssh_zone_id" {
 }
 
 variable "image_tag" {
-  description = "Image tag for the control-plane, gateway, and golden images (used in local/codebuild modes, and resolved by pre-published mode)."
+  description = "7-40 character lowercase hexadecimal source-commit prefix used for the control-plane, gateway, and golden images."
   type        = string
-  default     = "main"
+
+  validation {
+    condition     = can(regex("^[0-9a-f]{7,40}$", var.image_tag))
+    error_message = "image_tag must be a 7-40 character lowercase hexadecimal Git commit prefix."
+  }
 }
 
 variable "ssh_gateway_image" {

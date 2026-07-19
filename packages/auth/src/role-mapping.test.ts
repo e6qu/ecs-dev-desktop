@@ -60,4 +60,13 @@ describe("mapClaimsToRole", () => {
   it("falls back to the default role when no group matches", () => {
     expect(mapClaimsToRole({ idp: "github", subject: "u", groups: [] }, config)).toBe("viewer");
   });
+
+  it("uses the role asserted by the trusted Shauth provider", () => {
+    expect(
+      mapClaimsToRole({ idp: "shauth", subject: "u", groups: [], role: "developer" }, config),
+    ).toBe("developer");
+    expect(
+      mapClaimsToRole({ idp: "shauth", subject: "u", groups: [], role: "admin" }, config),
+    ).toBe("admin");
+  });
 });

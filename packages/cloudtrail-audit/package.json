@@ -13,12 +13,12 @@
     "test:integ": "vitest run --config vitest.integ.config.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-cloudtrail": "^3.1089.0",
+    "@aws-sdk/client-cloudtrail": "^3.1090.0",
     "@edd/config": "workspace:*",
     "@edd/core": "workspace:*"
   },
   "devDependencies": {
-    "@aws-sdk/client-ecs": "^3.1089.0",
+    "@aws-sdk/client-ecs": "^3.1090.0",
     "@types/node": "^26.1.1"
   }
 }

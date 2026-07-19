@@ -32,7 +32,7 @@ availability_zones = ["us-east-1a", "us-east-1b"]
 # output and pass it here (the module forbids a mutable :latest for the gateway):
 # ssh_base_domain     = "ssh.dev.example.com"
 # route53_ssh_zone_id = "Z0123456789ABCDEFGHIJ"
-# ssh_gateway_image   = "111122223333.dkr.ecr.us-east-1.amazonaws.com/edd-dev/ssh-gateway:v1.0.0"
+# ssh_gateway_image   = "111122223333.dkr.ecr.us-east-1.amazonaws.com/edd-dev/ssh-gateway:0123456789ab"
 
 # All secret env vars → their Secrets Manager ARNs (create the secrets first).
 # auth_secret_arns = {

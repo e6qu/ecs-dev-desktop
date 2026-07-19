@@ -134,6 +134,7 @@ module "ecs_dev_desktop" {
   secret_environment = {
     AUTH_SECRET        = "arn:aws:secretsmanager:us-east-1:111122223333:secret:edd/auth-secret-AbCdEf"
     AUTH_GITHUB_SECRET = "arn:aws:secretsmanager:us-east-1:111122223333:secret:edd/github-secret-AbCdEf"
+    AUTH_SHAUTH_SECRET = "arn:aws:secretsmanager:us-east-1:111122223333:secret:edd/shauth-secret-AbCdEf"
   }
 }
 ```
@@ -178,7 +179,8 @@ inputs = {
      project and starts a build during apply; set `codebuild_source_repo`.
    - `image_build_mode = "pre-published"` (module default) — images already exist
      in ECR (e.g. from the `release` workflow); Terraform resolves the digest of
-     `:<image_tag>` for auto-roll.
+     `:<image_tag>` by digest. `image_tag` is required and must be the 7-40
+     character lowercase hexadecimal prefix of the source commit.
 
    Images are published as multi-arch manifests (`:<tag>`) plus per-arch tags
    (`:<tag>-amd64` and `:<tag>-arm64`). See
@@ -193,7 +195,7 @@ scripts/bootstrap-secrets.sh <name> <region>           # once: crypto + IdP secr
 terraform apply                                        # stand up the infra
 # With image_build_mode = "local" or "codebuild", images are built during apply.
 # With "pre-published", run separately:
-scripts/publish-images.sh <acct> <region> <name> <tag> # push manifests + per-arch images
+scripts/publish-images.sh <acct> <region> <name> <short-sha> # push manifests + per-arch images
 aws ecs update-service --force-new-deployment …        # roll the control-plane service
 ```
 
@@ -274,71 +276,84 @@ once that lands.
 
 ## Inputs
 
-| Name                                                    | Type         | Default                        | Description                                                                                       |
-| ------------------------------------------------------- | ------------ | ------------------------------ | ------------------------------------------------------------------------------------------------- |
-| `name`                                                  | string       | —                              | Resource name prefix (lowercase, hyphenated).                                                     |
-| `availability_zones`                                    | list(string) | —                              | AZs (≥2) to spread subnets across.                                                                |
-| `tags`                                                  | map(string)  | `{}`                           | Extra tags on every resource.                                                                     |
-| `cost_scope`                                            | string       | `"edd-alpha"`                  | Value for `edd:cost-scope`; activate that tag key in AWS Billing for cost reports.                |
-| `vpc_cidr`                                              | string       | `10.42.0.0/16`                 | VPC CIDR.                                                                                         |
-| `nat_mode`                                              | string       | `gateway`                      | Private egress: `gateway` (managed) or `instance` (fck-nat).                                      |
-| `single_nat_gateway`                                    | bool         | `true`                         | (gateway) One shared NAT vs one per AZ.                                                           |
-| `nat_instance_type`                                     | string       | `t4g.nano`                     | (instance) fck-nat EC2 type.                                                                      |
-| `nat_instance_ha`                                       | bool         | `false`                        | (instance) fck-nat HA (ASG + floating ENI).                                                       |
-| `nat_instance_use_spot`                                 | bool         | `false`                        | (instance) Use a spot instance.                                                                   |
-| `dynamodb_table_name`                                   | string       | `ecs-dev-desktop`              | Single-table name (match `@edd/config`).                                                          |
-| `dynamodb_point_in_time_recovery`                       | bool         | `true`                         | Enable PITR.                                                                                      |
-| `deletion_protection`                                   | bool         | `true`                         | Protect DynamoDB + ALB from destroy.                                                              |
-| `control_plane_image`                                   | string       | `""`                           | App image ref; defaults to this stack's ECR at `:<image_tag>`.                                    |
-| `control_plane_cpu` / `control_plane_memory`            | number       | `512` / `1024`                 | Fargate sizing.                                                                                   |
-| `control_plane_desired_count`                           | number       | `2`                            | Task count (before autoscaling).                                                                  |
-| `control_plane_port`                                    | number       | `3000`                         | App listen port.                                                                                  |
-| `workspace_port`                                        | number       | `3000`                         | Per-user editor port (reachable from the control plane only).                                     |
-| `control_plane_min_count` / `control_plane_max_count`   | number       | `0` / `10`                     | Autoscaling bounds (min 0 lets the reconciler/wake scale the control plane to zero).              |
-| `extra_environment`                                     | map(string)  | `{}`                           | Extra plain env vars.                                                                             |
-| `secret_environment`                                    | map(string)  | `{}`                           | Env var → Secrets Manager ARN.                                                                    |
-| `domain_name`                                           | string       | `""`                           | Base domain (empty = HTTP-only dev).                                                              |
-| `route53_zone_id`                                       | string       | `""`                           | Zone id (required with `domain_name`).                                                            |
-| `enable_cloudfront`                                     | bool         | `true`                         | CloudFront scale-to-zero entry for `app.<domain>` (no effect without `domain_name`).              |
-| `enable_cloudfront_waf`                                 | bool         | `true`                         | Create + attach the admin-managed CLOUDFRONT-scope WAF (only when CloudFront is on).              |
-| `cloudfront_price_class`                                | string       | `PriceClass_100`               | CloudFront price class (`PriceClass_100`/`200`/`All`).                                            |
-| `cloudfront_rate_limit`                                 | number       | `2000`                         | Per-source-IP request ceiling (5-min window) for the seeded CLOUDFRONT WAF rate-based BLOCK rule. |
-| `wake_lambda_zip`                                       | string       | `.../wake-listener.zip`        | Path to the built `@edd/wake-listener` zip (build it before a real apply).                        |
-| `wake_lambda_runtime` / `wake_lambda_handler`           | string       | `nodejs22.x` / `index.handler` | Wake Lambda runtime + handler.                                                                    |
-| `wake_lambda_timeout_seconds` / `wake_lambda_memory_mb` | number       | `10` / `128`                   | Wake Lambda timeout + memory.                                                                     |
-| `wake_lambda_reserved_concurrency`                      | number       | `5`                            | Reserved concurrency ceiling for the wake Lambda (caps cold-start floods on ECS APIs).            |
-| `ssh_base_domain`                                       | string       | `""`                           | Base domain for per-workspace SSH (empty = no SSH ingress).                                       |
-| `route53_ssh_zone_id`                                   | string       | `""`                           | SSH zone id (required with `ssh_base_domain`).                                                    |
-| `ssh_gateway_image`                                     | string       | `""`                           | Pinned SSH-gateway image; defaults to ECR `:<image_tag>` in build modes.                          |
-| `ssh_gateway_cpu` / `ssh_gateway_memory`                | number       | `256` / `512`                  | SSH-gateway Fargate sizing.                                                                       |
-| `ssh_gateway_desired_count`                             | number       | `1`                            | SSH-gateway task count.                                                                           |
-| `image_build_mode`                                      | string       | `"pre-published"`              | How images are produced: `local`, `codebuild`, or `pre-published`.                                |
-| `image_tag`                                             | string       | `"main"`                       | Tag used for ECR images and manifest resolution.                                                  |
-| `local_build_context_path`                              | string       | `"../../../../"`               | Path from module to repo root for local build mode.                                               |
-| `codebuild_source_repo`                                 | string       | `""`                           | Git URL for CodeBuild mode.                                                                       |
-| `codebuild_source_ref`                                  | string       | `"main"`                       | Git ref for CodeBuild mode.                                                                       |
-| `codebuild_compute_type`                                | string       | `BUILD_GENERAL1_MEDIUM`        | CodeBuild compute type.                                                                           |
-| `seed_default_catalog`                                  | bool         | `true`                         | Create a default catalog entry during apply.                                                      |
-| `seed_catalog_variant`                                  | string       | `"omnibus"`                    | Golden variant to seed as the default catalog entry.                                              |
-| `seed_catalog_name`                                     | string       | `"Omnibus"`                    | Display name for the seeded catalog entry.                                                        |
-| `seed_catalog_description`                              | string       | `...`                          | Description for the seeded catalog entry.                                                         |
-| `seed_catalog_tags`                                     | list(string) | `["omnibus"]`                  | Tags for the seeded catalog entry.                                                                |
-| `seed_catalog_tools`                                    | list(string) | `[...]`                        | Tooling highlights for the seeded catalog entry.                                                  |
-| `golden_image_repos`                                    | list(string) | `[]`                           | Golden base-image ECR repos to create.                                                            |
-| `image_retention_count`                                 | number       | `20`                           | Images kept per ECR repo.                                                                         |
-| `reconciler_schedule`                                   | string       | `rate(5 minutes)`              | Reconciler cadence.                                                                               |
-| `reconciler_command`                                    | list(string) | `["node", …]`                  | Reconciler container command.                                                                     |
-| `log_retention_days`                                    | number       | `30`                           | CloudWatch Logs retention.                                                                        |
-| `enable_metric_alarms`                                  | bool         | `true`                         | Create CloudWatch alarms on the EMF metrics.                                                      |
-| `enable_cloudwatch_dashboard`                           | bool         | `true`                         | Create the `<name>-ops` CloudWatch dashboard.                                                     |
-| `alarm_sns_topic_arns`                                  | list(string) | `[]`                           | SNS topics notified on alarm/OK (empty = alarms still evaluate, just don't notify).               |
-| `wake_latency_alarm_ms`                                 | number       | `120000`                       | Threshold (ms) for the wake-on-connect p99 latency alarm.                                         |
-| `control_plane_5xx_threshold`                           | number       | `10`                           | Target 5xx/period for the control-plane-erroring alarm.                                           |
-| `reconciler_liveness_period`                            | number       | `900`                          | Window (s) with no sweep before the not-running alarm fires.                                      |
-| `privilege_attempt_alarm_threshold`                     | number       | `5`                            | Blocked privileged-tool attempts/period for the security alarm.                                   |
-| `stuck_error_alarm_threshold`                           | number       | `0`                            | Workspaces in `error`/15-min for the stuck-error alarm.                                           |
-| `dynamodb_throttle_threshold`                           | number       | `0`                            | Throttle events/period for the DynamoDB-throttling alarm.                                         |
-| `monthly_budget_usd`                                    | number       | `0`                            | Monthly cost-budget guardrail (0 disables; notifies at 80%/100%).                                 |
+By default the module owns its VPC, subnets, NAT, free gateway endpoints, and
+Amazon ECS cluster. A shared environment can instead supply
+`existing_vpc_id`, both existing subnet lists, and the existing cluster ARN and
+name. In that mode the module creates only EDD security groups and workloads;
+the environment remains the sole owner of networking, egress, endpoints, and
+cluster capacity providers.
+
+Terraform state moves preserve the formerly singleton VPC, internet gateway,
+public route table, gateway endpoints, and Amazon ECS cluster resources when an
+existing standalone deployment upgrades to the conditional resource addresses.
+
+| Name                                                           | Type           | Default                        | Description                                                                                                        |
+| -------------------------------------------------------------- | -------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `name`                                                         | string         | —                              | Resource name prefix (lowercase, hyphenated).                                                                      |
+| `availability_zones`                                           | list(string)   | —                              | AZs (≥2) to spread subnets across.                                                                                 |
+| `tags`                                                         | map(string)    | `{}`                           | Extra tags on every resource.                                                                                      |
+| `cost_scope`                                                   | string         | `"edd-alpha"`                  | Value for `edd:cost-scope`; activate that tag key in AWS Billing for cost reports.                                 |
+| `vpc_cidr`                                                     | string         | `10.42.0.0/16`                 | VPC CIDR.                                                                                                          |
+| `use_existing_vpc` / `existing_vpc_id` / existing subnet lists | bool / strings | `false` / empty                | Reuse a shared VPC and at least two public/private subnets instead of creating networking.                         |
+| `use_existing_ecs_cluster` / existing cluster ARN and name     | bool / strings | `false` / empty                | Reuse a shared Amazon ECS cluster instead of creating one.                                                         |
+| `nat_mode`                                                     | string         | `gateway`                      | Private egress: `gateway` (managed) or `instance` (fck-nat).                                                       |
+| `single_nat_gateway`                                           | bool           | `true`                         | (gateway) One shared NAT vs one per AZ.                                                                            |
+| `nat_instance_type`                                            | string         | `t4g.nano`                     | (instance) fck-nat EC2 type.                                                                                       |
+| `nat_instance_ha`                                              | bool           | `false`                        | (instance) fck-nat HA (ASG + floating ENI).                                                                        |
+| `nat_instance_use_spot`                                        | bool           | `false`                        | (instance) Use a spot instance.                                                                                    |
+| `dynamodb_table_name`                                          | string         | `ecs-dev-desktop`              | Single-table name (match `@edd/config`).                                                                           |
+| `dynamodb_point_in_time_recovery`                              | bool           | `true`                         | Enable PITR.                                                                                                       |
+| `deletion_protection`                                          | bool           | `true`                         | Protect DynamoDB + ALB from destroy.                                                                               |
+| `control_plane_image`                                          | string         | `""`                           | App image ref; defaults to this stack's ECR at `:<image_tag>`.                                                     |
+| `control_plane_cpu` / `control_plane_memory`                   | number         | `512` / `1024`                 | Fargate sizing.                                                                                                    |
+| `control_plane_desired_count`                                  | number         | `2`                            | Task count (before autoscaling).                                                                                   |
+| `control_plane_port`                                           | number         | `3000`                         | App listen port.                                                                                                   |
+| `workspace_port`                                               | number         | `3000`                         | Per-user editor port (reachable from the control plane only).                                                      |
+| `control_plane_min_count` / `control_plane_max_count`          | number         | `0` / `10`                     | Autoscaling bounds (min 0 lets the reconciler/wake scale the control plane to zero).                               |
+| `extra_environment`                                            | map(string)    | `{}`                           | Extra plain env vars.                                                                                              |
+| `secret_environment`                                           | map(string)    | `{}`                           | Env var → Secrets Manager ARN.                                                                                     |
+| `domain_name`                                                  | string         | `""`                           | Base domain (empty = HTTP-only dev).                                                                               |
+| `route53_zone_id`                                              | string         | `""`                           | Zone id (required with `domain_name`).                                                                             |
+| `enable_cloudfront`                                            | bool           | `true`                         | CloudFront scale-to-zero entry for `app.<domain>` (no effect without `domain_name`).                               |
+| `enable_cloudfront_waf`                                        | bool           | `true`                         | Create + attach the admin-managed CLOUDFRONT-scope WAF (only when CloudFront is on).                               |
+| `cloudfront_price_class`                                       | string         | `PriceClass_100`               | CloudFront price class (`PriceClass_100`/`200`/`All`).                                                             |
+| `cloudfront_rate_limit`                                        | number         | `2000`                         | Per-source-IP request ceiling (5-min window) for the seeded CLOUDFRONT WAF rate-based BLOCK rule.                  |
+| `wake_lambda_zip`                                              | string         | `.../wake-listener.zip`        | Path to the built `@edd/wake-listener` zip (build it before a real apply).                                         |
+| `wake_lambda_runtime` / `wake_lambda_handler`                  | string         | `nodejs22.x` / `index.handler` | Wake Lambda runtime + handler.                                                                                     |
+| `wake_lambda_timeout_seconds` / `wake_lambda_memory_mb`        | number         | `10` / `128`                   | Wake Lambda timeout + memory.                                                                                      |
+| `wake_lambda_reserved_concurrency`                             | number         | `5`                            | Reserved concurrency ceiling for the wake Lambda (caps cold-start floods on ECS APIs).                             |
+| `ssh_base_domain`                                              | string         | `""`                           | Base domain for per-workspace SSH (empty = no SSH ingress).                                                        |
+| `route53_ssh_zone_id`                                          | string         | `""`                           | SSH zone id (required with `ssh_base_domain`).                                                                     |
+| `ssh_gateway_image`                                            | string         | `""`                           | Pinned SSH-gateway image; defaults to ECR `:<image_tag>` in build modes.                                           |
+| `ssh_gateway_cpu` / `ssh_gateway_memory`                       | number         | `256` / `512`                  | SSH-gateway Fargate sizing.                                                                                        |
+| `ssh_gateway_desired_count`                                    | number         | `1`                            | SSH-gateway task count.                                                                                            |
+| `image_build_mode`                                             | string         | `"pre-published"`              | How images are produced: `local`, `codebuild`, or `pre-published`.                                                 |
+| `image_tag`                                                    | string         | —                              | Required 7-40 character lowercase hexadecimal source-commit prefix used for manifests and per-architecture images. |
+| `local_build_context_path`                                     | string         | `"../../../../"`               | Path from module to repo root for local build mode.                                                                |
+| `codebuild_source_repo`                                        | string         | `""`                           | Git URL for CodeBuild mode.                                                                                        |
+| `codebuild_source_ref`                                         | string         | `"main"`                       | Git ref for CodeBuild mode.                                                                                        |
+| `codebuild_compute_type`                                       | string         | `BUILD_GENERAL1_MEDIUM`        | CodeBuild compute type.                                                                                            |
+| `seed_default_catalog`                                         | bool           | `true`                         | Create a default catalog entry during apply.                                                                       |
+| `seed_catalog_variant`                                         | string         | `"omnibus"`                    | Golden variant to seed as the default catalog entry.                                                               |
+| `seed_catalog_name`                                            | string         | `"Omnibus"`                    | Display name for the seeded catalog entry.                                                                         |
+| `seed_catalog_description`                                     | string         | `...`                          | Description for the seeded catalog entry.                                                                          |
+| `seed_catalog_tags`                                            | list(string)   | `["omnibus"]`                  | Tags for the seeded catalog entry.                                                                                 |
+| `seed_catalog_tools`                                           | list(string)   | `[...]`                        | Tooling highlights for the seeded catalog entry.                                                                   |
+| `golden_image_repos`                                           | list(string)   | `[]`                           | Golden base-image ECR repos to create.                                                                             |
+| `image_retention_count`                                        | number         | `20`                           | Images kept per ECR repo.                                                                                          |
+| `reconciler_schedule`                                          | string         | `rate(5 minutes)`              | Reconciler cadence.                                                                                                |
+| `reconciler_command`                                           | list(string)   | `["node", …]`                  | Reconciler container command.                                                                                      |
+| `log_retention_days`                                           | number         | `30`                           | CloudWatch Logs retention.                                                                                         |
+| `enable_metric_alarms`                                         | bool           | `true`                         | Create CloudWatch alarms on the EMF metrics.                                                                       |
+| `enable_cloudwatch_dashboard`                                  | bool           | `true`                         | Create the `<name>-ops` CloudWatch dashboard.                                                                      |
+| `alarm_sns_topic_arns`                                         | list(string)   | `[]`                           | SNS topics notified on alarm/OK (empty = alarms still evaluate, just don't notify).                                |
+| `wake_latency_alarm_ms`                                        | number         | `120000`                       | Threshold (ms) for the wake-on-connect p99 latency alarm.                                                          |
+| `control_plane_5xx_threshold`                                  | number         | `10`                           | Target 5xx/period for the control-plane-erroring alarm.                                                            |
+| `reconciler_liveness_period`                                   | number         | `900`                          | Window (s) with no sweep before the not-running alarm fires.                                                       |
+| `privilege_attempt_alarm_threshold`                            | number         | `5`                            | Blocked privileged-tool attempts/period for the security alarm.                                                    |
+| `stuck_error_alarm_threshold`                                  | number         | `0`                            | Workspaces in `error`/15-min for the stuck-error alarm.                                                            |
+| `dynamodb_throttle_threshold`                                  | number         | `0`                            | Throttle events/period for the DynamoDB-throttling alarm.                                                          |
+| `monthly_budget_usd`                                           | number         | `0`                            | Monthly cost-budget guardrail (0 disables; notifies at 80%/100%).                                                  |
 
 ## Outputs
 
