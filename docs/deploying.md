@@ -286,19 +286,33 @@ Secrets (`secret_environment`):
 
 Non-secret config (`extra_environment`):
 
-| Group       | Variable                                                              | Purpose                                                 |
-| ----------- | --------------------------------------------------------------------- | ------------------------------------------------------- |
-| Auth.js     | `AUTH_URL` or `AUTH_TRUST_HOST=true`                                  | correct callback/redirect behind the ALB                |
-| Shauth      | `AUTH_SHAUTH_ISSUER`, `AUTH_SHAUTH_ID`, `AUTH_SHAUTH_POST_LOGOUT_URL` | shared SSO issuer, client ID, and app-portal return URL |
-| IdP (Entra) | `AUTH_MICROSOFT_ENTRA_ID_ISSUER`                                      | Entra OIDC issuer URL                                   |
-| RBAC        | `EDD_ADMIN_GROUPS`, `EDD_DEVELOPER_GROUPS`                            | IdP group → role mapping (**see admin bootstrap**)      |
-| Email       | `EDD_EMAIL_FROM`, `EDD_PUBLIC_APP_URL`                                | SES sender identity + invitation-link base URL          |
-| Costs       | `EDD_AWS_PRICING=1` or explicit `EDD_PRICE_*` rates                   | live AWS Price List rates, or declared static rates     |
+| Group       | Variable                                                              | Purpose                                                                                                     |
+| ----------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Auth.js     | `AUTH_URL` or `AUTH_TRUST_HOST=true`                                  | correct callback/redirect behind the ALB                                                                    |
+| Shauth      | `AUTH_SHAUTH_ISSUER`, `AUTH_SHAUTH_ID`, `AUTH_SHAUTH_POST_LOGOUT_URL` | shared SSO issuer, client ID, and the exact EDD-origin `/signed-out` URL registered for RP-Initiated Logout |
+| IdP (Entra) | `AUTH_MICROSOFT_ENTRA_ID_ISSUER`                                      | Entra OIDC issuer URL                                                                                       |
+| RBAC        | `EDD_ADMIN_GROUPS`, `EDD_DEVELOPER_GROUPS`                            | IdP group → role mapping (**see admin bootstrap**)                                                          |
+| Email       | `EDD_EMAIL_FROM`, `EDD_PUBLIC_APP_URL`                                | SES sender identity + invitation-link base URL                                                              |
+| Costs       | `EDD_AWS_PRICING=1` or explicit `EDD_PRICE_*` rates                   | live AWS Price List rates, or declared static rates                                                         |
 
 > **Admin bootstrap (important).** RBAC is purely IdP-group-driven: the default
 > role is `viewer`, and an account is an admin **only** if its IdP groups intersect
 > `EDD_ADMIN_GROUPS`. If you leave `EDD_ADMIN_GROUPS` unset, **no one can administer
 > the platform.** Set it to your admin IdP group before first sign-in.
+
+Register the ECS Dev Desktop Shauth client with these standard OpenID Connect coordinates,
+replacing `<EDD origin>` with the stable `AUTH_URL` origin:
+
+| Coordinate             | URL                                               |
+| ---------------------- | ------------------------------------------------- |
+| Catalog launch         | `<EDD origin>/login/shauth`                       |
+| Authorization callback | `<EDD origin>/api/auth/callback/shauth`           |
+| Post-logout redirect   | `<EDD origin>/signed-out`                         |
+| Back-Channel Logout    | `<EDD origin>/api/auth/shauth/backchannel-logout` |
+
+The post-logout redirect deliberately remains on the EDD origin. Ory Hydra validates it against
+the client's registered redirect origins; a Shauth-portal URL such as
+`https://auth.example.com/apps` is not a valid EDD post-logout redirect.
 
 ## Step 4 — SSH access (registered keys)
 

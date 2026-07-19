@@ -7,7 +7,7 @@ import type { JWT } from "next-auth/jwt";
 
 import { tableName } from "./control-plane";
 
-export const AUTH_SESSION_SCHEMA_VERSION = 1;
+export const AUTH_SESSION_SCHEMA_VERSION = 2;
 const SESSION_MAX_AGE_MS = 4 * 60 * 60 * 1000;
 
 export interface ValidAuthSession {
@@ -15,6 +15,11 @@ export interface ValidAuthSession {
   readonly ownerId: string;
   readonly role: Role;
   readonly expiresAtMs: number;
+}
+
+export interface AuthSessionLogoutContext {
+  readonly provider: string;
+  readonly providerIdToken: string;
 }
 
 let entity: ReturnType<typeof makeAuthSessionEntity> | undefined;
@@ -37,10 +42,15 @@ function parseExpiry(value: string): number {
 export async function createAuthSession(input: {
   readonly ownerId: string;
   readonly role: Role;
+  readonly provider?: string;
+  readonly providerSessionId?: string;
+  readonly providerIdToken?: string;
   readonly nowMs?: number;
 }): Promise<ValidAuthSession> {
   const nowMs = input.nowMs ?? Date.now();
   const id = randomUUID();
+  const provider = input.provider ?? "credentials";
+  const providerSessionId = input.providerSessionId ?? id;
   const nowIso = new Date(nowMs).toISOString();
   const expiry = expiresAt(nowMs);
   await sessions()
@@ -49,12 +59,43 @@ export async function createAuthSession(input: {
       schemaVersion: AUTH_SESSION_SCHEMA_VERSION,
       ownerId: input.ownerId,
       role: input.role,
+      provider,
+      providerSessionId,
+      ...(input.providerIdToken === undefined ? {} : { providerIdToken: input.providerIdToken }),
       createdAt: nowIso,
       refreshedAt: nowIso,
       expiresAt: expiry,
     })
     .go();
   return { id, ownerId: input.ownerId, role: input.role, expiresAtMs: parseExpiry(expiry) };
+}
+
+export async function getAuthSessionLogoutContext(
+  id: string,
+): Promise<AuthSessionLogoutContext | null> {
+  const { data } = await sessions().get({ id }).go();
+  if (
+    data === null ||
+    data.revokedAt !== undefined ||
+    typeof data.provider !== "string" ||
+    typeof data.providerIdToken !== "string"
+  ) {
+    return null;
+  }
+  return { provider: data.provider, providerIdToken: data.providerIdToken };
+}
+
+export async function revokeAuthSessionsByProviderSession(
+  provider: string,
+  providerSessionId: string,
+): Promise<number> {
+  const { data } = await sessions().query.byProviderSession({ provider, providerSessionId }).go();
+  const active = data.filter((session) => session.revokedAt === undefined);
+  const revokedAt = new Date().toISOString();
+  await Promise.all(
+    active.map((session) => sessions().patch({ id: session.id }).set({ revokedAt }).go()),
+  );
+  return active.length;
 }
 
 export async function validateAuthSessionToken(
