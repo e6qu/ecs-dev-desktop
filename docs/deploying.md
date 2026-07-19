@@ -193,8 +193,10 @@ EDD_RELEASE_GITHUB_REPO=e6qu/ecs-dev-desktop \
 EDD_RELEASE_AWS_ACCOUNT=111122223333 \
 EDD_RELEASE_AWS_REGION=eu-west-1 \
 EDD_RELEASE_NAME_PREFIX=edd-prod \
+EDD_RELEASE_ECS_CLUSTER=edd-prod-workspaces \
 EDD_RELEASE_GOLDEN_VARIANTS="omnibus" \
 EDD_RELEASE_APP_URL=https://app.edd.e6qu.dev \
+EDD_RELEASE_SSH_GATEWAY_ENABLED=false \
 sh scripts/bootstrap-release-oidc.sh
 ```
 
@@ -202,7 +204,16 @@ The script fails if any coordinate is missing or if the AWS caller account does
 not match `EDD_RELEASE_AWS_ACCOUNT`. It updates the OIDC provider thumbprint, the
 release role trust/permission policy, and the GitHub `RELEASE_*` repo variables.
 It also writes the non-secret `EDD_APP_URL` repo variable used by
-`post-deploy-smoke`. It never stores static secrets in GitHub.
+`post-deploy-smoke`. `EDD_RELEASE_SSH_GATEWAY_ENABLED` explicitly tells the
+release workflow whether this deployment includes the optional SSH gateway, so
+a disabled gateway is not confused with missing infrastructure. The bootstrap
+also discovers whether the required task definitions, Amazon ECS services, and
+Amazon EventBridge Scheduler schedule exist and writes
+`RELEASE_DEPLOYMENT_ENABLED`. A first release can therefore publish immutable
+multi-architecture images before the complete Terraform apply without claiming
+that it deployed them or launching a post-deployment smoke test. Rerun the
+bootstrap after the full apply to enable deployment. It never stores static
+secrets in GitHub.
 
 CI owns both the control-plane image build/publish path and post-merge
 **workspace/golden image** publishing. This is not a fallback release path: EDD

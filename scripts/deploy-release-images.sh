@@ -3,12 +3,12 @@
 #
 # Roll already-published release images into the running ECS deployment.
 #
-#   scripts/deploy-release-images.sh <account-id> <region> <name-prefix> <tag>
+#   scripts/deploy-release-images.sh <account-id> <region> <name-prefix> <ecs-cluster> <tag> <ssh-gateway-enabled>
 #
 # This intentionally uses the current AWS task definitions as the source of truth
 # for runtime wiring and changes only the container image references. Missing ECS
-# services, task definitions, Scheduler schedules, or IAM permissions are release
-# failures.
+# services, task definitions, Scheduler schedules, or IAM permissions for an
+# explicitly enabled component are release failures.
 #
 # Environment:
 #   EDD_DEPLOY_ARCH   Fargate CPU architecture to pin on the rolled task defs:
@@ -26,11 +26,22 @@ here=$(cd "$(dirname "$0")" && pwd)
 # shellcheck source=scripts/lib/validate-image-tag.sh
 . "$here/lib/validate-image-tag.sh"
 
-account="${1:?usage: deploy-release-images.sh <account-id> <region> <name-prefix> <tag>}"
-region="${2:?usage: deploy-release-images.sh <account-id> <region> <name-prefix> <tag>}"
-prefix="${3:?usage: deploy-release-images.sh <account-id> <region> <name-prefix> <tag>}"
-tag="${4:?usage: deploy-release-images.sh <account-id> <region> <name-prefix> <tag>}"
+usage='usage: deploy-release-images.sh <account-id> <region> <name-prefix> <ecs-cluster> <tag> <ssh-gateway-enabled>'
+account="${1:?$usage}"
+region="${2:?$usage}"
+prefix="${3:?$usage}"
+cluster="${4:?$usage}"
+tag="${5:?$usage}"
+ssh_gateway_enabled="${6:?$usage}"
 validate_image_tag "$tag" "tag" || exit 1
+
+case "$ssh_gateway_enabled" in
+  true | false) ;;
+  *)
+    echo "edd: ssh-gateway-enabled must be true or false (got '$ssh_gateway_enabled')" >&2
+    exit 1
+    ;;
+esac
 
 deploy_arch="${EDD_DEPLOY_ARCH:-arm64}"
 case "$deploy_arch" in
@@ -50,7 +61,6 @@ for c in aws jq mktemp; do
 done
 
 registry="${account}.dkr.ecr.${region}.amazonaws.com"
-cluster="${prefix}-workspaces"
 control_service="${prefix}-control-plane"
 ssh_service="${prefix}-ssh-gateway"
 schedule="${prefix}-reconciler"
@@ -193,11 +203,16 @@ update_reconciler_schedule() {
 
 control_task_definition=$(register_from_current "${prefix}-control-plane" "control-plane" "$control_image")
 reconciler_task_definition=$(register_from_current "${prefix}-reconciler" "reconciler" "$control_image")
-ssh_task_definition=$(register_from_current "${prefix}-ssh-gateway" "ssh-gateway" "$ssh_image")
-
 update_service "$control_service" "$control_task_definition"
-update_service "$ssh_service" "$ssh_task_definition"
 update_reconciler_schedule "$reconciler_task_definition"
+
+ssh_task_definition=disabled
+if [ "$ssh_gateway_enabled" = true ]; then
+  ssh_task_definition=$(register_from_current "${prefix}-ssh-gateway" "ssh-gateway" "$ssh_image")
+  update_service "$ssh_service" "$ssh_task_definition"
+else
+  echo "edd: SSH gateway deployment is disabled by the explicit release topology"
+fi
 
 cat <<EOF
 edd: release images submitted
