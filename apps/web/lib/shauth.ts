@@ -31,7 +31,15 @@ const profileSchema = z.object({
 
 type ShauthProfile = z.infer<typeof profileSchema>;
 
+export interface ShauthBackchannelLogoutToken {
+  readonly tokenId: string;
+  readonly expiresAtEpochSeconds: number;
+  readonly providerSessionId?: string;
+  readonly providerSubject?: string;
+}
+
 const logoutEvent = "http://schemas.openid.net/event/backchannel-logout";
+const logoutEventsSchema = z.record(z.string(), z.unknown());
 const discoverySchema = z.object({
   issuer: z.url(),
   jwks_uri: z.url(),
@@ -168,7 +176,7 @@ export async function verifyShauthBackchannelLogoutToken(
   logoutToken: string,
   config: ShauthOidcConfig,
   getKey?: JWTVerifyGetKey,
-): Promise<string> {
+): Promise<ShauthBackchannelLogoutToken> {
   const key = getKey ?? (await discoverShauthKeys(config));
   const options: JWTVerifyOptions = {
     issuer: config.issuer,
@@ -195,15 +203,31 @@ export async function verifyShauthBackchannelLogoutToken(
   if (payload.nonce !== undefined) {
     throw new Error("Shauth logout token contained a prohibited nonce claim");
   }
-  if (
-    typeof payload.events !== "object" ||
-    payload.events === null ||
-    !(logoutEvent in payload.events)
-  ) {
+  const parsedEvents = logoutEventsSchema.safeParse(payload.events);
+  if (!parsedEvents.success) {
     throw new Error("Shauth logout token did not contain the back-channel logout event");
   }
-  if (typeof payload.sid !== "string" || payload.sid.length === 0) {
-    throw new Error("Shauth logout token did not identify a provider session");
+  const event = parsedEvents.data[logoutEvent];
+  if (typeof event !== "object" || event === null || Array.isArray(event)) {
+    throw new Error("Shauth logout token did not contain the back-channel logout event");
   }
-  return payload.sid;
+  const providerSessionId =
+    typeof payload.sid === "string" && payload.sid.length > 0 ? payload.sid : undefined;
+  const providerSubject =
+    typeof payload.sub === "string" && payload.sub.length > 0 ? payload.sub : undefined;
+  if (providerSessionId === undefined && providerSubject === undefined) {
+    throw new Error("Shauth logout token did not contain sid or sub");
+  }
+  if (typeof payload.iat !== "number" || !Number.isSafeInteger(payload.iat)) {
+    throw new Error("Shauth logout token did not contain a valid iat claim");
+  }
+  if (typeof payload.exp !== "number" || !Number.isSafeInteger(payload.exp)) {
+    throw new Error("Shauth logout token did not contain a valid exp claim");
+  }
+  return {
+    tokenId: payload.jti,
+    expiresAtEpochSeconds: payload.exp,
+    ...(providerSessionId === undefined ? {} : { providerSessionId }),
+    ...(providerSubject === undefined ? {} : { providerSubject }),
+  };
 }

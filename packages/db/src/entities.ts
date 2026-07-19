@@ -205,6 +205,7 @@ export function makeAuthSessionEntity(client: DynamoDBClient, table = TABLE) {
         ownerId: { type: "string", required: true },
         role: { type: ["viewer", "developer", "admin"] as const, required: true },
         provider: { type: "string", required: true },
+        providerSubject: { type: "string", required: true },
         providerSessionId: { type: "string", required: true },
         providerIdToken: { type: "string", required: false },
         createdAt: { type: "string", required: true },
@@ -234,6 +235,67 @@ export function makeAuthSessionEntity(client: DynamoDBClient, table = TABLE) {
 }
 
 export type AuthSessionEntity = ReturnType<typeof makeAuthSessionEntity>;
+
+/**
+ * Strongly-consistent primary-index pointer from a provider `sid` or `sub` to
+ * an EDD auth session. DynamoDB global secondary indexes are eventually
+ * consistent, which is not sufficient for a logout notification arriving
+ * immediately after sign-in. These pointers are committed atomically with the
+ * auth session and expire with its rolling lifetime.
+ */
+export function makeAuthSessionCorrelationEntity(client: DynamoDBClient, table = TABLE) {
+  return new Entity(
+    {
+      model: { entity: "authSessionCorrelation", version: "1", service: "edd" },
+      attributes: {
+        provider: { type: "string", required: true },
+        kind: { type: ["session", "subject"] as const, required: true },
+        value: { type: "string", required: true },
+        authSessionId: { type: "string", required: true },
+        expiresAtEpochSeconds: { type: "number", required: true },
+      },
+      indexes: {
+        primary: {
+          pk: { field: "PK", composite: ["provider", "kind", "value"] },
+          sk: { field: "SK", composite: ["authSessionId"] },
+        },
+      },
+    },
+    { client, table },
+  );
+}
+
+export type AuthSessionCorrelationEntity = ReturnType<typeof makeAuthSessionCorrelationEntity>;
+
+/**
+ * Consumed OpenID Connect Back-Channel Logout token identifier. The provider's
+ * signed `jti` is persisted before session revocation, so the same logout token
+ * cannot be replayed against this relying party. DynamoDB expires these
+ * short-lived records through `expiresAtEpochSeconds` after the token can no
+ * longer be accepted.
+ */
+export function makeOidcLogoutTokenEntity(client: DynamoDBClient, table = TABLE) {
+  return new Entity(
+    {
+      model: { entity: "oidcLogoutToken", version: "1", service: "edd" },
+      attributes: {
+        provider: { type: "string", required: true },
+        tokenId: { type: "string", required: true },
+        consumedAt: { type: "string", required: true },
+        expiresAtEpochSeconds: { type: "number", required: true },
+      },
+      indexes: {
+        primary: {
+          pk: { field: "PK", composite: ["provider", "tokenId"] },
+          sk: { field: "SK", composite: [] },
+        },
+      },
+    },
+    { client, table },
+  );
+}
+
+export type OidcLogoutTokenEntity = ReturnType<typeof makeOidcLogoutTokenEntity>;
 
 /**
  * EDD-managed local account. OAuth identities still come from their providers,

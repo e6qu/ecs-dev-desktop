@@ -65,9 +65,7 @@ describe("signOutAction", () => {
     expect(deleteCookie).toHaveBeenCalledWith("authjs.csrf-token");
     expect(deleteCookie).not.toHaveBeenCalledWith("unrelated");
     expect(shauthEndSessionURL).toHaveBeenCalledWith(config, "provider-id-token");
-    expect(redirect).toHaveBeenCalledWith(
-      "https://auth.dev.e6qu.dev/oauth2/sessions/logout",
-    );
+    expect(redirect).toHaveBeenCalledWith("https://auth.dev.e6qu.dev/oauth2/sessions/logout");
   });
 
   it("does not claim global Shauth logout for another identity provider", async () => {

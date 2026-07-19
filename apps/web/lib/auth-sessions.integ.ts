@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
   AUTH_SESSION_SCHEMA_VERSION,
+  consumeProviderLogoutToken,
   createAuthSession,
   getAuthSessionLogoutContext,
   revokeAuthSessionsByProviderSession,
@@ -97,5 +98,61 @@ describe("durable Shauth session correlation (DynamoDB Local)", () => {
     ).resolves.toMatchObject({ id: local.id });
     await expect(getAuthSessionLogoutContext(github.id)).resolves.toBeNull();
     await expect(getAuthSessionLogoutContext(local.id)).resolves.toBeNull();
+  });
+
+  it("consumes each signed-token identifier once and revokes by sid and sub", async () => {
+    const sameSession = await createAuthSession({
+      ownerId: "user-correlated",
+      role: "developer",
+      provider: "shauth",
+      providerSubject: "user-correlated",
+      providerSessionId: "provider-session-correlated",
+      providerIdToken: "header.payload.signature",
+    });
+    const sameSubject = await createAuthSession({
+      ownerId: "user-correlated",
+      role: "developer",
+      provider: "shauth",
+      providerSubject: "user-correlated",
+      providerSessionId: "provider-session-other-device",
+      providerIdToken: "another.header.payload",
+    });
+    const unrelated = await createAuthSession({
+      ownerId: "user-unrelated",
+      role: "admin",
+      provider: "shauth",
+      providerSubject: "user-unrelated",
+      providerSessionId: "provider-session-unrelated",
+      providerIdToken: "unrelated.header.payload",
+    });
+    const nowMs = Date.parse("2026-07-19T19:00:00.000Z");
+    const token = {
+      tokenId: "logout-token-correlated",
+      expiresAtEpochSeconds: Math.floor(nowMs / 1000) + 300,
+      providerSessionId: "provider-session-correlated",
+      providerSubject: "user-correlated",
+    };
+
+    await expect(consumeProviderLogoutToken("shauth", token, nowMs)).resolves.toBe(2);
+    await expect(consumeProviderLogoutToken("shauth", token, nowMs)).rejects.toThrow();
+
+    for (const session of [sameSession, sameSubject]) {
+      await expect(
+        validateAuthSessionToken({
+          authSessionId: session.id,
+          authSessionVersion: AUTH_SESSION_SCHEMA_VERSION,
+          uid: "user-correlated",
+          role: "developer",
+        }),
+      ).resolves.toBeNull();
+    }
+    await expect(
+      validateAuthSessionToken({
+        authSessionId: unrelated.id,
+        authSessionVersion: AUTH_SESSION_SCHEMA_VERSION,
+        uid: "user-unrelated",
+        role: "admin",
+      }),
+    ).resolves.toMatchObject({ id: unrelated.id });
   });
 });

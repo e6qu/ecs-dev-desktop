@@ -17,8 +17,10 @@ async function fixture(claims: Record<string, unknown> = {}, audience = config.c
   const jwk = await exportJWK(publicKey);
   jwk.kid = "test-key";
   const now = Math.floor(Date.now() / 1000);
+  const expiresAtEpochSeconds = now + 60;
   const token = await new SignJWT({
     sid: "provider-session-1",
+    sub: "user-1",
     events: { "http://schemas.openid.net/event/backchannel-logout": {} },
     ...claims,
   })
@@ -27,16 +29,33 @@ async function fixture(claims: Record<string, unknown> = {}, audience = config.c
     .setAudience(audience)
     .setIssuedAt(now)
     .setJti("logout-1")
-    .setExpirationTime(now + 60)
+    .setExpirationTime(expiresAtEpochSeconds)
     .sign(privateKey);
-  return { token, keys: createLocalJWKSet({ keys: [jwk] }) };
+  return { token, keys: createLocalJWKSet({ keys: [jwk] }), expiresAtEpochSeconds };
 }
 
 describe("verifyShauthBackchannelLogoutToken", () => {
-  it("verifies a signed OIDC Back-Channel Logout token and returns its sid", async () => {
-    const { token, keys } = await fixture();
-    await expect(verifyShauthBackchannelLogoutToken(token, config, keys)).resolves.toBe(
-      "provider-session-1",
+  it("verifies and returns every signed OIDC Back-Channel Logout correlation claim", async () => {
+    const { token, keys, expiresAtEpochSeconds } = await fixture();
+    await expect(verifyShauthBackchannelLogoutToken(token, config, keys)).resolves.toEqual({
+      tokenId: "logout-1",
+      expiresAtEpochSeconds,
+      providerSessionId: "provider-session-1",
+      providerSubject: "user-1",
+    });
+  });
+
+  it("accepts the standard subject-only correlation form", async () => {
+    const { token, keys } = await fixture({ sid: undefined });
+    await expect(verifyShauthBackchannelLogoutToken(token, config, keys)).resolves.toMatchObject({
+      providerSubject: "user-1",
+    });
+  });
+
+  it("rejects a token with neither standard correlation claim", async () => {
+    const { token, keys } = await fixture({ sid: undefined, sub: undefined });
+    await expect(verifyShauthBackchannelLogoutToken(token, config, keys)).rejects.toThrow(
+      "sid or sub",
     );
   });
 
@@ -50,6 +69,15 @@ describe("verifyShauthBackchannelLogoutToken", () => {
   it("rejects a token for another relying party", async () => {
     const { token, keys } = await fixture({}, "another-client");
     await expect(verifyShauthBackchannelLogoutToken(token, config, keys)).rejects.toThrow();
+  });
+
+  it("rejects a malformed logout event value", async () => {
+    const { token, keys } = await fixture({
+      events: { "http://schemas.openid.net/event/backchannel-logout": "not-an-object" },
+    });
+    await expect(verifyShauthBackchannelLogoutToken(token, config, keys)).rejects.toThrow(
+      "back-channel logout event",
+    );
   });
 
   it("rejects a token signed by an untrusted key", async () => {

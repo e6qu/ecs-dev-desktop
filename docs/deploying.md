@@ -314,6 +314,19 @@ The post-logout redirect deliberately remains on the EDD origin. Ory Hydra valid
 the client's registered redirect origins; a Shauth-portal URL such as
 `https://auth.example.com/apps` is not a valid EDD post-logout redirect.
 
+Register the Back-Channel Logout URI with session correlation required. The receiver accepts only
+an `application/x-www-form-urlencoded` POST containing one provider-signed `logout_token` for the
+configured issuer and EDD client audience. It correlates sessions through the standard `sid`,
+`sub`, or both, rejects malformed/stale/nonce-bearing tokens, and records each `jti` in DynamoDB
+before revocation so a token cannot be replayed. The single-table DynamoDB TTL removes consumed
+token identifiers after their signed expiry.
+
+EDD's **sign out** action performs OpenID Connect RP-Initiated Logout whenever the current session
+came from Shauth. It clears and revokes the local Auth.js session, sends the retained ID token to
+Shauth's end-session endpoint, and returns through the registered EDD-origin `/signed-out` route.
+Shauth then notifies the other registered relying parties through their logout receivers, making
+sign out from EDD a coordinated SSO logout rather than an application-only cookie deletion.
+
 ## Step 4 — SSH access (registered keys)
 
 Workspace SSH is **registered-key only** — no CA, no certificates, no deploy-time

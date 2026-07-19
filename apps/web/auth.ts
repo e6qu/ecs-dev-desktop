@@ -129,6 +129,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           ownerId: claims.subject,
           role,
           provider: account.provider,
+          providerSubject: claims.subject,
           ...(providerSessionId === undefined ? {} : { providerSessionId }),
           ...(providerIdToken === undefined ? {} : { providerIdToken }),
         });
