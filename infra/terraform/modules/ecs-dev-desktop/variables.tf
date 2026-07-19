@@ -154,7 +154,7 @@ variable "deletion_protection" {
 # ---- Control-plane service (the Next.js app) ----
 
 variable "control_plane_image" {
-  description = "Full image ref for the control-plane app. Defaults to the module's ECR repo at :latest."
+  description = "Full immutable image reference for the control-plane app. When omitted, the module resolves image_tag from its ECR repository."
   type        = string
   default     = ""
 }
@@ -229,7 +229,7 @@ variable "secret_environment" {
     Secrets Manager / SSM ARNs that hold them. The module grants the execution role
     read access to every referenced ARN. Provide the auth + crypto secrets here
     (never as plain env vars): AUTH_SECRET, AUTH_GITHUB_ID/SECRET,
-    AUTH_MICROSOFT_ENTRA_ID_ID/SECRET, EDD_TOKEN_ENC_KEY, EDD_GATEWAY_SECRET,
+    AUTH_MICROSOFT_ENTRA_ID_ID/SECRET, AUTH_SHAUTH_SECRET, EDD_TOKEN_ENC_KEY, EDD_GATEWAY_SECRET,
     EDD_AGENT_SECRET, EDD_CONNECTION_SECRET (the editor connection-token secret),
     and EDD_IMAGE_SOURCE_WEBHOOK_SECRET. Non-secret config (RBAC groups,
     AUTH_TRUST_HOST/AUTH_URL, EDD_PUBLIC_APP_URL, EDD_EMAIL_FROM, image-source repo/branch, pricing)
@@ -426,10 +426,16 @@ variable "image_tag" {
     Image tag used when `control_plane_image` / `ssh_gateway_image` are not
     explicitly set. In "local"/"codebuild" modes the images are pushed with this
     tag during apply. In "pre-published" mode terraform resolves the digest of
-    `<repo>:<image_tag>` for auto-roll. Default: "main".
+    `<repo>:<image_tag>` for auto-roll. The tag must be the 7-40 character,
+    lowercase hexadecimal prefix of the source commit so every manifest and
+    per-architecture image is immutable and traceable.
   EOT
   type        = string
-  default     = "main"
+
+  validation {
+    condition     = can(regex("^[0-9a-f]{7,40}$", var.image_tag))
+    error_message = "image_tag must be a 7-40 character lowercase hexadecimal Git commit prefix; mutable tags such as main and latest are forbidden."
+  }
 }
 
 variable "local_build_context_path" {

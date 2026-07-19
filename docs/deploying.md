@@ -25,8 +25,10 @@ conceptual picture (block diagram, component roles, connection sequences), see
   path-based on the single control-plane domain.
 - Terraform (`>=` the pin in [`infra/terraform/versions.tf`](../infra/terraform/versions.tf)),
   Docker/podman (to build & push images), and the AWS CLI.
-- IdP app registrations: a **GitHub OAuth app** (and/or **GitHub App**) and/or an
-  **Azure Entra** app registration. Callback URL: `https://app.<domain>/api/auth/callback/<provider>`.
+- Identity-provider app registrations: a **GitHub OAuth app** (and/or **GitHub App**),
+  a **Microsoft Entra ID** app registration, and/or a Shauth OpenID Connect client.
+  Callback URL: `https://app.<domain>/api/auth/callback/<provider>`; Shauth uses
+  provider ID `shauth`.
 
 ## Step 1 — Terraform backend + module
 
@@ -64,11 +66,10 @@ runnable compositions are in [`infra/terraform/examples/complete`](../infra/terr
    `pre-published` (images already exist in ECR; Terraform resolves the digest).
    See the module README for the exact variables.
 
-> **Two-phase apply.** With `image_build_mode = "pre-published"`, the image tag
-> defaults to `:main`, which does not exist until Step 2. Either push images first,
-> or expect the first `apply` to create the service with a not-yet-pullable image
-> and roll it after Step 2. `local` and `codebuild` modes avoid this because images
-> are produced during apply.
+> **Two-phase apply.** With `image_build_mode = "pre-published"`, set `image_tag`
+> to the source commit's 7-40 character lowercase hexadecimal prefix and publish
+> that immutable image before the full apply. `local` and `codebuild` modes produce
+> the explicitly tagged image during apply.
 
 Module **outputs** feed the rest: `control_plane_repository_url`,
 `golden_repository_urls`, `ssh_gateway_repository_url`, the cluster/subnet/role
@@ -81,8 +82,8 @@ three image kinds to the ECR repos Step 1 created (it also logs into ECR and
 builds the golden base via `infra/images/base/build.sh`):
 
 ```sh
-scripts/publish-images.sh <account-id> <region> <name> <tag> [variant...]
-# e.g. scripts/publish-images.sh 111122223333 us-east-1 edd-dev v1.0.0 omnibus typescript
+scripts/publish-images.sh <account-id> <region> <name> <short-sha> [variant...]
+# e.g. scripts/publish-images.sh 111122223333 us-east-1 edd-dev 6d37b95b49c omnibus typescript
 ```
 
 It publishes a **multi-arch manifest** for each image (`:<tag>`) plus per-arch
@@ -266,6 +267,7 @@ Secrets (`secret_environment`):
 | Auth.js      | `AUTH_SECRET`                                                  | session/JWT signing                                                    |
 | IdP (GitHub) | `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`                         | GitHub OAuth/App                                                       |
 | IdP (Entra)  | `AUTH_MICROSOFT_ENTRA_ID_ID`, `AUTH_MICROSOFT_ENTRA_ID_SECRET` | Azure Entra OIDC client                                                |
+| IdP (Shauth) | `AUTH_SHAUTH_SECRET`                                           | Shauth OpenID Connect client secret                                    |
 | Crypto       | `EDD_TOKEN_ENC_KEY`                                            | 32-byte hex AES key — gates git-credential storage                     |
 | Crypto       | `EDD_GATEWAY_SECRET`                                           | gateway↔control-plane machine-auth HMAC (connect/wake + ssh-authorize) |
 | Crypto       | `EDD_AGENT_SECRET`                                             | idle-agent heartbeat + workspace ssh-authorize HMAC                    |
@@ -273,13 +275,14 @@ Secrets (`secret_environment`):
 
 Non-secret config (`extra_environment`):
 
-| Group       | Variable                                            | Purpose                                             |
-| ----------- | --------------------------------------------------- | --------------------------------------------------- |
-| Auth.js     | `AUTH_URL` or `AUTH_TRUST_HOST=true`                | correct callback/redirect behind the ALB            |
-| IdP (Entra) | `AUTH_MICROSOFT_ENTRA_ID_ISSUER`                    | Entra OIDC issuer URL                               |
-| RBAC        | `EDD_ADMIN_GROUPS`, `EDD_DEVELOPER_GROUPS`          | IdP group → role mapping (**see admin bootstrap**)  |
-| Email       | `EDD_EMAIL_FROM`, `EDD_PUBLIC_APP_URL`              | SES sender identity + invitation-link base URL      |
-| Costs       | `EDD_AWS_PRICING=1` or explicit `EDD_PRICE_*` rates | live AWS Price List rates, or declared static rates |
+| Group       | Variable                                                              | Purpose                                                 |
+| ----------- | --------------------------------------------------------------------- | ------------------------------------------------------- |
+| Auth.js     | `AUTH_URL` or `AUTH_TRUST_HOST=true`                                  | correct callback/redirect behind the ALB                |
+| Shauth      | `AUTH_SHAUTH_ISSUER`, `AUTH_SHAUTH_ID`, `AUTH_SHAUTH_POST_LOGOUT_URL` | shared SSO issuer, client ID, and app-portal return URL |
+| IdP (Entra) | `AUTH_MICROSOFT_ENTRA_ID_ISSUER`                                      | Entra OIDC issuer URL                                   |
+| RBAC        | `EDD_ADMIN_GROUPS`, `EDD_DEVELOPER_GROUPS`                            | IdP group → role mapping (**see admin bootstrap**)      |
+| Email       | `EDD_EMAIL_FROM`, `EDD_PUBLIC_APP_URL`                                | SES sender identity + invitation-link base URL          |
+| Costs       | `EDD_AWS_PRICING=1` or explicit `EDD_PRICE_*` rates                   | live AWS Price List rates, or declared static rates     |
 
 > **Admin bootstrap (important).** RBAC is purely IdP-group-driven: the default
 > role is `viewer`, and an account is an admin **only** if its IdP groups intersect

@@ -654,7 +654,7 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
               --repository-names "eddsim/control-plane" \
               --query 'repositories[0].encryptionConfiguration.encryptionType' --output text)"
-          assert_eq "ECR control-plane imageTagMutability MUTABLE" "MUTABLE" \
+          assert_eq "ECR control-plane imageTagMutability IMMUTABLE" "IMMUTABLE" \
             "$(aws --endpoint-url "${ENDPT}" ecr describe-repositories \
               --repository-names "eddsim/control-plane" \
               --query 'repositories[0].imageTagMutability' --output text)"
@@ -740,7 +740,7 @@ jobs:
             "$(aws --endpoint-url "${ENDPT}" ecs describe-task-definition \
               --task-definition "eddsim-control-plane" \
               --query 'taskDefinition.networkMode' --output text)"
-          assert_eq "ECS service desired count 2" "2" \
+          assert_eq "ECS API-only fixture service desired count 0" "0" \
             "$(aws --endpoint-url "${ENDPT}" ecs describe-services \
               --cluster "${CLUSTER}" --services "eddsim-control-plane" \
               --query 'services[0].desiredCount' --output text)"
@@ -1651,6 +1651,9 @@ jobs:
         shell: bash
         run: |
           if [ "$RUNNER_OS" = "macOS" ]; then
+            if brew tap | grep -qx 'aws/tap'; then
+              brew untap aws/tap
+            fi
             brew install shellcheck
           else
             sudo apt-get update && sudo apt-get install -y shellcheck zsh
@@ -1659,11 +1662,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          files=$(git ls-files '*.sh')
-          if [ -z "$files" ]; then echo "no shell scripts"; exit 0; fi
-          for f in $files; do
+          git ls-files '*.sh' | while IFS= read -r f; do
             echo "== $f =="
-            shellcheck "$f"
+            # Follow the repository's checked-in source directives so shared
+            # shell libraries are analyzed in the same context as their callers.
+            shellcheck -x "$f"
             bash -n "$f"
             zsh --emulate sh -n "$f"
           done

@@ -22,10 +22,15 @@
 set -eu
 unset CDPATH
 
+here=$(cd "$(dirname "$0")" && pwd)
+# shellcheck source=scripts/lib/validate-image-tag.sh
+. "$here/lib/validate-image-tag.sh"
+
 account="${1:?usage: deploy-release-images.sh <account-id> <region> <name-prefix> <tag>}"
 region="${2:?usage: deploy-release-images.sh <account-id> <region> <name-prefix> <tag>}"
 prefix="${3:?usage: deploy-release-images.sh <account-id> <region> <name-prefix> <tag>}"
 tag="${4:?usage: deploy-release-images.sh <account-id> <region> <name-prefix> <tag>}"
+validate_image_tag "$tag" "tag" || exit 1
 
 deploy_arch="${EDD_DEPLOY_ARCH:-arm64}"
 case "$deploy_arch" in

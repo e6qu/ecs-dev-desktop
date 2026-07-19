@@ -2,6 +2,7 @@
 import { devUsers } from "@edd/config";
 
 import { signIn } from "../../auth";
+import { entraOAuthClient, githubOAuthClient } from "../../lib/identity-providers";
 import { devAuthEnabled } from "../../lib/principal";
 import { shauthEnabled } from "../../lib/shauth";
 import { TESTID } from "../../lib/testids";
@@ -95,6 +96,8 @@ function DevLogin({ error }: { error?: string }) {
 
 /** Production sign-in: identity providers plus admin-created local accounts. */
 function OidcLogin({ error }: { error?: string }) {
+  const githubEnabled = githubOAuthClient() !== null;
+  const entraEnabled = entraOAuthClient() !== null;
   const errorMessages: Record<string, string> = {
     OAuthCallback: "Sign-in failed — the identity provider rejected the request. Please try again.",
     AccessDenied: "Access denied — your account does not have permission to sign in.",
@@ -159,26 +162,30 @@ function OidcLogin({ error }: { error?: string }) {
             </button>
           </form>
         )}
-        <form
-          action={async () => {
-            "use server";
-            await signIn("github", { redirectTo: "/workspaces" });
-          }}
-        >
-          <button className="btn" type="submit" style={{ width: "100%" }}>
-            Continue with GitHub
-          </button>
-        </form>
-        <form
-          action={async () => {
-            "use server";
-            await signIn("microsoft-entra-id", { redirectTo: "/workspaces" });
-          }}
-        >
-          <button className="btn" type="submit" style={{ width: "100%" }}>
-            Continue with Microsoft Entra
-          </button>
-        </form>
+        {githubEnabled && (
+          <form
+            action={async () => {
+              "use server";
+              await signIn("github", { redirectTo: "/workspaces" });
+            }}
+          >
+            <button className="btn" type="submit" style={{ width: "100%" }}>
+              Continue with GitHub
+            </button>
+          </form>
+        )}
+        {entraEnabled && (
+          <form
+            action={async () => {
+              "use server";
+              await signIn("microsoft-entra-id", { redirectTo: "/workspaces" });
+            }}
+          >
+            <button className="btn" type="submit" style={{ width: "100%" }}>
+              Continue with Microsoft Entra
+            </button>
+          </form>
+        )}
       </div>
     </div>
   );

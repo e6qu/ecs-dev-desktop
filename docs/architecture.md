@@ -93,20 +93,20 @@ Supporting services (created by the [Terraform module](../infra/terraform/module
 
 ## Components
 
-| Component              | What it is                                                                                                       | Source                                                                                                    |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
-| Control plane          | Next.js (custom server): portal + admin UI + control-plane API + the in-app `/w/<id>/` editor proxy              | [`apps/web`](../apps/web/)                                                                                |
-| Reconciler             | Scale-to-zero, snapshots, GC, self-heal — runs the control-plane image with a command override                   | [`services/reconciler`](../services/reconciler/)                                                          |
-| SSH gateway            | OpenSSH proxy: registered-key auth, then wake-and-forward to the workspace sshd                                  | [`services/ssh-gateway`](../services/ssh-gateway/)                                                        |
-| Core                   | Functional core: branded domain types, the workspace lifecycle state machine, pure ports (Storage/Compute/Clock) | [`packages/core`](../packages/core/)                                                                      |
-| Control-plane service  | Imperative shell over core + db + ports (`WorkspaceService`, `SshKeyService`, …)                                 | [`packages/control-plane`](../packages/control-plane/)                                                    |
-| DB                     | DynamoDB single-table + ElectroDB entities                                                                       | [`packages/db`](../packages/db/)                                                                          |
-| Storage adapter        | Real EBS `StorageProvider` over the EC2 API                                                                      | [`packages/storage-ec2`](../packages/storage-ec2/)                                                        |
-| Compute adapter        | Real Fargate `ComputeProvider` (managed EBS, awsvpc)                                                             | [`packages/compute-ecs`](../packages/compute-ecs/)                                                        |
-| Authz / Auth           | CASL abilities; IdP claim → role mapping (GitHub OAuth/App + Azure Entra)                                        | [`packages/authz`](../packages/authz/) · [`packages/auth`](../packages/auth/)                             |
-| API contracts / client | Zod contracts (single source of API truth) + typed HTTP client                                                   | [`packages/api-contracts`](../packages/api-contracts/) · [`packages/api-client`](../packages/api-client/) |
-| Golden images          | OpenVSCode + sshd + toolchains, `FROM` a shared `base`                                                           | [`infra/images`](../infra/images/)                                                                        |
-| Terraform              | All AWS infra, parametric, provider-agnostic (Terraform **or** Terragrunt)                                       | [`infra/terraform`](../infra/terraform/)                                                                  |
+| Component              | What it is                                                                                                              | Source                                                                                                    |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Control plane          | Next.js (custom server): portal + admin UI + control-plane API + the in-app `/w/<id>/` editor proxy                     | [`apps/web`](../apps/web/)                                                                                |
+| Reconciler             | Scale-to-zero, snapshots, GC, self-heal — runs the control-plane image with a command override                          | [`services/reconciler`](../services/reconciler/)                                                          |
+| SSH gateway            | OpenSSH proxy: registered-key auth, then wake-and-forward to the workspace sshd                                         | [`services/ssh-gateway`](../services/ssh-gateway/)                                                        |
+| Core                   | Functional core: branded domain types, the workspace lifecycle state machine, pure ports (Storage/Compute/Clock)        | [`packages/core`](../packages/core/)                                                                      |
+| Control-plane service  | Imperative shell over core + db + ports (`WorkspaceService`, `SshKeyService`, …)                                        | [`packages/control-plane`](../packages/control-plane/)                                                    |
+| DB                     | DynamoDB single-table + ElectroDB entities                                                                              | [`packages/db`](../packages/db/)                                                                          |
+| Storage adapter        | Real EBS `StorageProvider` over the EC2 API                                                                             | [`packages/storage-ec2`](../packages/storage-ec2/)                                                        |
+| Compute adapter        | Real Fargate `ComputeProvider` (managed EBS, awsvpc)                                                                    | [`packages/compute-ecs`](../packages/compute-ecs/)                                                        |
+| Authz / Auth           | CASL abilities; identity-provider claim → role mapping (GitHub OAuth/App, Microsoft Entra ID, or Shauth OpenID Connect) | [`packages/authz`](../packages/authz/) · [`packages/auth`](../packages/auth/)                             |
+| API contracts / client | Zod contracts (single source of API truth) + typed HTTP client                                                          | [`packages/api-contracts`](../packages/api-contracts/) · [`packages/api-client`](../packages/api-client/) |
+| Golden images          | OpenVSCode + sshd + toolchains, `FROM` a shared `base`                                                                  | [`infra/images`](../infra/images/)                                                                        |
+| Terraform              | All AWS infra, parametric, provider-agnostic (Terraform **or** Terragrunt)                                              | [`infra/terraform`](../infra/terraform/)                                                                  |
 
 ### Functional core, imperative shell
 
@@ -140,7 +140,9 @@ a branch to add.
 
 ## Auth model
 
-- **Auth.js** (NextAuth): GitHub OAuth (and/or GitHub App) + Azure Entra ID.
+- **Auth.js** (NextAuth): GitHub OAuth (and/or GitHub App), Microsoft Entra ID,
+  and optional Shauth OpenID Connect SSO. Shauth's signed `developer` or `admin`
+  role is authoritative for a Shauth identity.
 - **RBAC is group-driven**: an account's role (`admin`/`developer`/`viewer`) comes
   from the intersection of its IdP groups with `EDD_ADMIN_GROUPS`/`EDD_DEVELOPER_GROUPS`.
   Default is `viewer`. **If `EDD_ADMIN_GROUPS` is unset, no one is an admin.**

@@ -72,7 +72,7 @@ inputs = {
   # Use "pre-published" if your CI already pushes images, or "codebuild" to build
   # in AWS (set codebuild_source_repo). See the module README.
   image_build_mode = "local"
-  image_tag        = "main"
+  image_tag        = get_env("EDD_IMAGE_TAG")
 
   # Curated golden base images. Must match the variant folder names under infra/images/.
   golden_image_repos = ["omnibus"]
@@ -88,7 +88,7 @@ inputs = {
   # ssh_gateway_image to a pinned tag.
   # ssh_base_domain     = "ssh.dev.example.com"
   # route53_ssh_zone_id = "Z0123456789ABCDEFGHIJ"
-  # ssh_gateway_image   = "<account>.dkr.ecr.${local.region}.amazonaws.com/edd-dev/ssh-gateway:v1.0.0"
+  # ssh_gateway_image   = "<account>.dkr.ecr.${local.region}.amazonaws.com/edd-dev/ssh-gateway:0123456789ab"
 
   # secret_environment = { AUTH_SECRET = "arn:aws:secretsmanager:...:secret:edd/auth-secret-AbCdEf" }
   # extra_environment  = { EDD_ADMIN_GROUPS = "platform-admins", AUTH_TRUST_HOST = "true" }

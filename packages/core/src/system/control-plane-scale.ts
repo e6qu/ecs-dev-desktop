@@ -37,9 +37,7 @@ export interface ControlPlaneIdleInput {
  * `undefined` means "just started, no request yet" — killing it then would fight a
  * wake in progress. A future-dated activity (writer clock skew) also holds.
  */
-export function decideControlPlaneIdle(
-  input: ControlPlaneIdleInput,
-): ControlPlaneScaleDecision {
+export function decideControlPlaneIdle(input: ControlPlaneIdleInput): ControlPlaneScaleDecision {
   if (input.currentDesired <= 0) {
     return { action: "hold", reason: "already scaled to zero" };
   }

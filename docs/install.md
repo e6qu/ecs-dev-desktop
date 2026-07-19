@@ -60,7 +60,7 @@ export EDD_BOOTSTRAP_GITHUB_SECRET="yyyyyy"     # GitHub OAuth client secret
 # --- optional knobs ---
 # export EDD_NAT_MODE="instance"                # instance (fck-nat, default) | gateway
 # export EDD_IMAGE_BUILD_MODE="local"           # local | codebuild | pre-published
-# export EDD_IMAGE_TAG="v1.0.0"                 # image tag (default: main)
+export EDD_IMAGE_TAG="6d37b95b49c"             # required source-commit prefix
 # export EDD_CODEBUILD_SOURCE_REPO="https://github.com/..." # required for codebuild mode
 # export EDD_GOLDEN="omnibus typescript"        # golden variants to build (default: omnibus)
 # export EDD_DEVELOPER_GROUPS="engineering"        # IdP group(s) granting developer (CSV)

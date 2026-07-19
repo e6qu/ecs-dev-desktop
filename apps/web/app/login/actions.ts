@@ -7,6 +7,7 @@ import { DEV_ROLE_COOKIE, DEV_USER_COOKIE } from "../../lib/constants";
 import { findDevUser } from "../../lib/dev-users";
 import { field } from "../../lib/forms";
 import { devAuthEnabled } from "../../lib/principal";
+import { shauthOidcConfig } from "../../lib/shauth";
 
 // Host-only (no Domain), so the dev cookies are scoped to the exact host the app
 // is served from (e.g. edd.localhost) and never leak to other localhost apps.
@@ -44,6 +45,9 @@ export async function signOutAction(): Promise<void> {
     store.delete(DEV_ROLE_COOKIE);
     redirect("/login");
   }
+  const postLogoutUrl = shauthOidcConfig()?.postLogoutUrl ?? "/login";
+  const { signOut } = await import("../../auth");
+  await signOut({ redirect: false });
   for (const cookie of store.getAll()) {
     if (
       AUTH_COOKIE_STEMS.some((stem) => cookie.name === stem || cookie.name.startsWith(`${stem}.`))
@@ -51,8 +55,7 @@ export async function signOutAction(): Promise<void> {
       store.delete(cookie.name);
     }
   }
-  const { signOut } = await import("../../auth");
-  await signOut({ redirectTo: "/login" });
+  redirect(postLogoutUrl);
 }
 
 export async function localAccountSignIn(formData: FormData): Promise<void> {
