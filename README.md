@@ -129,11 +129,13 @@ In short, the install flow is:
    expected deploy SHA and renders real routes (`/api/healthz`, `/api/readyz`,
    `/workspaces`). ECS steady state alone is not considered proof that EDD is up.
    The separate `golden-images`
-   workflow publishes workspace/golden images asynchronously on `main` and by
-   manual dispatch; the deployed EDD app tracks signed source webhooks and rolls
+   workflow publishes workspace/golden images asynchronously on `main`; the
+   deployed EDD app tracks signed source webhooks and rolls
    the catalog after the expected ECR tags exist. Images are published as
-   multi-arch manifests (`:<tag>`) plus per-arch tags (`:<tag>-amd64` and
-   `:<tag>-arm64`) so runners that cannot consume manifests can pin an exact arch.
+   multi-architecture manifests (`:<short-sha>`) plus direct per-architecture
+   images (`:<short-sha>-amd64` and `:<short-sha>-arm64`) so consumers that
+   cannot consume manifests can pin an exact architecture. Publication never
+   emits `latest`, `main`, manually chosen, or version tags.
 5. **Configure secrets** the module does not inject — Auth.js (`AUTH_SECRET`,
    `AUTH_URL`/`AUTH_TRUST_HOST`) + IdP creds, RBAC groups (`EDD_ADMIN_GROUPS` — set
    this or no one is an admin), and crypto (`EDD_TOKEN_ENC_KEY`, `EDD_GATEWAY_SECRET`,

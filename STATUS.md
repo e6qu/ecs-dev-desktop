@@ -10,6 +10,14 @@ The `fix/shauth-direct-entry` branch completed ECS Dev Desktop's browser-level S
 
 The CI contract exercised the real Shauth and Ory Hydra services, a production Next.js bundle, real DynamoDB and Amazon ECS coordinates provisioned through the pinned Sockerless AWS simulator, and a real headless Chromium browser. It used no mock identity provider, fake cloud provider, synthetic HTTP response, or `oauth2-proxy` dependency.
 
+The release contract published only the immutable 12-character source-commit
+prefix from `main`. Native AMD64 and ARM64 runners produced direct
+per-architecture OCI images, and a separate job assembled and verified the bare
+multi-architecture manifest. The control-plane, SSH-gateway, shared `edd-base`,
+and every configured golden variant followed the same three-reference shape.
+The AWS release role trusted only the repository's `main` ref, and Amazon ECR
+retained at most 20 images per repository.
+
 ## Verified state
 
 - Direct root and `/workspaces` entry redirected through Shauth and returned to the authenticated workspace list.
@@ -18,6 +26,10 @@ The CI contract exercised the real Shauth and Ory Hydra services, a production N
 - ECS Dev Desktop sign-out ended the provider session and returned to `/signed-out` on the ECS Dev Desktop origin.
 - Shauth global sign-out delivered a signed Back-Channel Logout token, revoked the durable ECS Dev Desktop session, and made the next direct entry require Shauth authentication.
 - Invalid or absent Shauth configuration continued to fail closed.
+- Release and golden publication rejected mutable, version, manually selected,
+  and non-source image tags.
+- Direct `-amd64` and `-arm64` references resolved to single-platform OCI image
+  manifests; the unsuffixed reference resolved to an AMD64+ARM64 OCI index.
 - The complete monorepo lint, unit/integration test, production build, ShellCheck, and real Chromium Shauth SSO suites passed.
 
 ## Deployment boundary

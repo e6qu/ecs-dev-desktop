@@ -19,7 +19,7 @@
 #
 # Effects:
 #   - creates/updates the IAM OIDC provider for token.actions.githubusercontent.com
-#   - creates/updates <prefix>-github-release with a main/tags-only trust policy
+#   - creates/updates <prefix>-github-release with a main-only trust policy
 #   - attaches the least ECR/ECS/Scheduler policy needed by the release workflow
 #   - writes the non-secret RELEASE_* GitHub repo variables consumed by
 #     .github/workflows/release.yml and .github/workflows/golden-images.yml
@@ -213,13 +213,8 @@ cat >"$trust_policy" <<EOF
       "Action": "sts:AssumeRoleWithWebIdentity",
       "Condition": {
         "StringEquals": {
-          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-        },
-        "StringLike": {
-          "token.actions.githubusercontent.com:sub": [
-            "repo:${GITHUB_REPO}:ref:refs/heads/main",
-            "repo:${GITHUB_REPO}:ref:refs/tags/v*"
-          ]
+          "token.actions.githubusercontent.com:aud": "sts.amazonaws.com",
+          "token.actions.githubusercontent.com:sub": "repo:${GITHUB_REPO}:ref:refs/heads/main"
         }
       }
     }

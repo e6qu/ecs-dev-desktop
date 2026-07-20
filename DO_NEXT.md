@@ -4,7 +4,9 @@
 
 ## Release and shared-development deployment
 
-1. The direct-entry Shauth SSO repair needed to merge and publish its immutable ARM64 image.
+1. The completed direct-entry and publication repair needed to merge so the
+   main-only workflow could publish its immutable 12-character source tag and
+   verified ARM64, AMD64, and multi-architecture references.
 2. The private `e6qu/infra` development environment needed to pin that exact image and apply it from synchronized `main`. Its Shauth client coordinates remained callback `https://app.edd.dev.e6qu.dev/api/auth/callback/shauth`, post-logout `https://app.edd.dev.e6qu.dev/signed-out`, and Back-Channel Logout `https://app.edd.dev.e6qu.dev/api/auth/shauth/backchannel-logout` with session correlation required.
 3. Deployed acceptance needed to repeat the real-browser contract against `https://app.edd.dev.e6qu.dev`: direct root and `/workspaces` entry, Shauth catalog launch at `/`, silent SSO reuse, `/me`, ECS Dev Desktop logout returning locally, Shauth global logout, Back-Channel Logout revocation, fail-closed re-entry, and all workspace/editor flows without 4xx/5xx or browser-console failures.
 

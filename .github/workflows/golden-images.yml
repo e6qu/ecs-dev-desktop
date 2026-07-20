@@ -2,10 +2,10 @@
 # Golden image collection.
 #
 # Pull requests validate the shared base + language variants without publishing.
-# Main-branch pushes and manual dispatches publish the configured golden variants to
+# Main-branch pushes publish the configured golden variants to
 # ECR via GitHub OIDC. This workflow is intentionally separate from `release`: a
 # control-plane deploy must not wait for the expensive workspace image build, and a
-# golden rebuild must be manually retriggerable without rolling ECS services.
+# failed golden build can be rerun without rolling ECS services.
 name: golden-images
 
 on:
@@ -17,12 +17,6 @@ on:
       - "infra/images/**"
       - "packages/e2e/src/image-variants.e2e.ts"
       - ".github/workflows/golden-images.yml"
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: "Image tag (defaults to the git short sha)"
-        required: false
-        default: ""
 
 concurrency:
   group: golden-images-${{ github.ref }}
@@ -68,7 +62,7 @@ jobs:
   # the `manifest` job below combines them into the `:<tag>` multi-arch manifest.
   publish:
     name: publish golden images (${{ matrix.arch }})
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'push'
     strategy:
       fail-fast: false
       matrix:
@@ -85,7 +79,7 @@ jobs:
       RELEASE_AWS_ROLE_ARN: ${{ vars.RELEASE_AWS_ROLE_ARN }}
       RELEASE_NAME_PREFIX: ${{ vars.RELEASE_NAME_PREFIX }}
       RELEASE_GOLDEN_VARIANTS: ${{ vars.RELEASE_GOLDEN_VARIANTS }}
-      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.tag || github.sha }}
+      TAG: ${{ github.sha }}
       EDD_BUILD_TARGET: golden
       EDD_BUILD_ARCHS: ${{ matrix.arch }}
       EDD_BUILDX_CACHE: gha
@@ -149,7 +143,7 @@ jobs:
   # here, so it needs neither a native runner nor Node — just Docker + AWS creds.
   manifest:
     name: publish golden multi-arch manifests
-    if: github.event_name != 'pull_request'
+    if: github.event_name == 'push'
     needs: publish
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -159,7 +153,7 @@ jobs:
       RELEASE_AWS_ROLE_ARN: ${{ vars.RELEASE_AWS_ROLE_ARN }}
       RELEASE_NAME_PREFIX: ${{ vars.RELEASE_NAME_PREFIX }}
       RELEASE_GOLDEN_VARIANTS: ${{ vars.RELEASE_GOLDEN_VARIANTS }}
-      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.tag || github.sha }}
+      TAG: ${{ github.sha }}
       EDD_BUILD_TARGET: golden
       EDD_BUILD_ARCHS: amd64 arm64
     steps:
@@ -188,17 +182,19 @@ jobs:
             "${TAG:0:12}" \
             "${variants[@]}"
 
-      - name: Verify pushed golden images in ECR (manifest + both arch variants)
+      - name: Verify pushed golden OCI image shape
         run: |
           set -euo pipefail
           read -r -a variants <<< "$RELEASE_GOLDEN_VARIANTS"
+          repositories="edd-base"
           for variant in "${variants[@]}"; do
-            for ref in "${TAG:0:12}" "${TAG:0:12}-amd64" "${TAG:0:12}-arm64"; do
-              aws ecr describe-images \
-                --region "$RELEASE_AWS_REGION" \
-                --repository-name "${RELEASE_NAME_PREFIX}/golden/${variant}" \
-                --image-ids "imageTag=${ref}" \
-                --query 'imageDetails[0].imageDigest' \
-                --output text
-            done
+            repositories="$repositories golden/$variant"
           done
+          # Repository coordinates are whitespace-delimited by contract.
+          # shellcheck disable=SC2086
+          sh scripts/verify-published-images.sh \
+            "$RELEASE_AWS_ACCOUNT" \
+            "$RELEASE_AWS_REGION" \
+            "$RELEASE_NAME_PREFIX" \
+            "${TAG:0:12}" \
+            $repositories

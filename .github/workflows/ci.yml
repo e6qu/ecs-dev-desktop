@@ -1699,6 +1699,8 @@ jobs:
             bash -n "$f"
             zsh --emulate sh -n "$f"
           done
+      - name: Container publication contract
+        run: sh scripts/check-container-publication.sh
 
   sast:
     name: sast

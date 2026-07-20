@@ -176,6 +176,8 @@ buildx_build() { # <arch> <full-tag> <dockerfile> <context> [extras...]
 
   docker buildx build \
     --platform "linux/${arch}" \
+    --provenance=false \
+    --sbom=false \
     -t "$full" \
     -f "$dockerfile" \
     "$@" \
@@ -221,7 +223,7 @@ build_golden_arch() { # <arch>
     echo "edd: ${base_full} already published, skipping"
   else
     echo "edd: building golden base ${base_full}"
-    set -- --platform "linux/${arch}" "--${buildx_output}"
+    set -- --platform "linux/${arch}" --provenance=false --sbom=false "--${buildx_output}"
     if [ "${EDD_BUILDX_CACHE:-}" = "gha" ]; then
       scope=$(printf '%s' "$base_full" | tr '/:' '--')
       set -- "$@" \
@@ -306,6 +308,7 @@ if [ "$skip_manifest" != "1" ]; then
     push_manifest ssh-gateway
   fi
   if [ "$do_golden" = "1" ]; then
+    push_manifest edd-base
     for v in $variants; do
       push_manifest "golden/${v}"
     done
