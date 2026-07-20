@@ -435,8 +435,25 @@ jobs:
       # test:pw builds + starts the app (its webServer) and creates the table in
       # global-setup, then drives the browser through the RBAC-gated portal flows.
       - run: pnpm --filter web test:pw
+      - name: Stop the portal test simulator
+        run: docker compose -f docker-compose.tier2.yml down -v
+      # Shauth is EDD's OpenID Connect provider. This immutable source checkout
+      # starts the real provider and its Ory Hydra build; the EDD harness
+      # then proves direct entry, catalog entry, silent SSO reuse, RP-Initiated
+      # Logout, Back-Channel Logout, and the app-local signed-out return in Chromium.
+      - uses: actions/checkout@v6.0.2
+        with:
+          repository: e6qu/shauth
+          ref: a08115a6917a63ae97d7f0d4ef14be511916a686
+          path: temp/shauth
+      - name: Shauth single sign-on browser contract
+        env:
+          SHAUTH_SOURCE_DIR: ${{ github.workspace }}/temp/shauth
+        run: ./scripts/test-shauth-sso.sh
       - if: always()
-        run: docker compose -f docker-compose.tier2.yml down
+        run: |
+          docker compose -f docker-compose.tier2.yml down -v || true
+          docker compose --project-name edd-shauth-provider --project-directory temp/shauth -f temp/shauth/compose.yaml down -v || true
 
   check-deps:
     name: check-deps

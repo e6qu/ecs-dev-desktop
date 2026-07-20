@@ -26,6 +26,23 @@ describe("shauthOidcConfig", () => {
     expect(shauthEnabled(env)).toBe(true);
   });
 
+  it("accepts plain HTTP only for a real loopback integration environment", () => {
+    expect(
+      shauthOidcConfig({
+        AUTH_SHAUTH_ISSUER: "http://localhost:8080",
+        AUTH_SHAUTH_ID: "edd",
+        AUTH_SHAUTH_SECRET: "secret",
+        AUTH_SHAUTH_POST_LOGOUT_URL: "http://127.0.0.1:3211/signed-out",
+        AUTH_URL: "http://127.0.0.1:3211",
+      }),
+    ).toEqual({
+      issuer: "http://localhost:8080",
+      clientId: "edd",
+      clientSecret: "secret",
+      postLogoutUrl: "http://127.0.0.1:3211/signed-out",
+    });
+  });
+
   it("rejects incomplete coordinates instead of exposing a broken login", () => {
     expect(() => shauthOidcConfig({ AUTH_SHAUTH_ISSUER: "https://auth.dev.e6qu.dev" })).toThrow(
       /must be configured together/,
@@ -81,6 +98,9 @@ describe("shauthOidcConfig", () => {
     };
     expect(() =>
       shauthOidcConfig({ ...base, AUTH_SHAUTH_ISSUER: "http://auth.example.com" }),
+    ).toThrow(/absolute HTTPS URL/);
+    expect(() =>
+      shauthOidcConfig({ ...base, AUTH_SHAUTH_ISSUER: "http://127.0.0.1.example.com" }),
     ).toThrow(/absolute HTTPS URL/);
     expect(() =>
       shauthOidcConfig({

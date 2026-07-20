@@ -6,10 +6,12 @@ import Link from "next/link";
 
 import { DeployFooter } from "../../components/DeployFooter";
 import { LiveRefresh } from "../../components/LiveRefresh";
+import { ShauthSignInRedirect } from "../../components/ShauthSignInRedirect";
 import { StateBlock } from "../../components/StateBlock";
 import { WorkspaceCard } from "../../components/WorkspaceCard";
 import { getCatalogList, getControlPlane } from "../../lib/control-plane";
 import { getPagePrincipal } from "../../lib/principal";
+import { shauthEnabled } from "../../lib/shauth";
 import { catalogByImage, enrichWorkspace } from "../../lib/workspace-enrich";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +33,10 @@ export default async function WorkspacesPage({
 }) {
   const principal = await getPagePrincipal();
   if (principal === null) {
+    // The application root is the Shauth catalog coordinate. A signed-out
+    // browser entering the real workspace UI starts the provider immediately;
+    // it never lands on a fail-open shell or needs a private shortcut URL.
+    if (shauthEnabled()) return <ShauthSignInRedirect />;
     return (
       <StateBlock
         title="Not signed in"

@@ -4,9 +4,9 @@
 
 ## Release and shared-development deployment
 
-1. The Shauth launch and global-session repair needed to merge and publish its immutable ARM64 image.
-2. The private `e6qu/infra` development environment needed to pin that image; set `AUTH_URL=https://app.edd.dev.e6qu.dev` and `AUTH_SHAUTH_POST_LOGOUT_URL=https://app.edd.dev.e6qu.dev/signed-out`; register the confidential client with `client_secret_post`, callback `https://app.edd.dev.e6qu.dev/api/auth/callback/shauth`, post-logout `https://app.edd.dev.e6qu.dev/signed-out`, and Back-Channel Logout with session correlation required at `https://app.edd.dev.e6qu.dev/api/auth/shauth/backchannel-logout`; enable the DynamoDB TTL change; and apply it from exact synchronized `main`.
-3. Deployed acceptance needed to prove direct and Shauth-catalog entry, silent SSO reuse, `/me`, provider-coordinated global logout, and all four workspace/editor flows without 4xx/5xx, browser-console, lifecycle, persistence, or cleanup failures.
+1. The direct-entry Shauth SSO repair needed to merge and publish its immutable ARM64 image.
+2. The private `e6qu/infra` development environment needed to pin that exact image and apply it from synchronized `main`. Its Shauth client coordinates remained callback `https://app.edd.dev.e6qu.dev/api/auth/callback/shauth`, post-logout `https://app.edd.dev.e6qu.dev/signed-out`, and Back-Channel Logout `https://app.edd.dev.e6qu.dev/api/auth/shauth/backchannel-logout` with session correlation required.
+3. Deployed acceptance needed to repeat the real-browser contract against `https://app.edd.dev.e6qu.dev`: direct root and `/workspaces` entry, Shauth catalog launch at `/`, silent SSO reuse, `/me`, ECS Dev Desktop logout returning locally, Shauth global logout, Back-Channel Logout revocation, fail-closed re-entry, and all workspace/editor flows without 4xx/5xx or browser-console failures.
 
 ## Existing product follow-ups
 

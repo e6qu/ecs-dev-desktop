@@ -41,6 +41,8 @@
         "playwright.live.config.ts",
         "playwright.vscode.config.ts",
         "scripts/dev-bootstrap.ts",
+        "scripts/setup-shauth-sso.ts",
+        "scripts/shauth-sso-browser.mjs",
         "scripts/check-deployed-workspace-open.ts",
         "scripts/screenshot-deployed-workspaces.ts",
         "scripts/run-playwright.mjs",
