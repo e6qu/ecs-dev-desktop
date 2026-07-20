@@ -29,9 +29,7 @@ resource "aws_scheduler_schedule" "reconciler" {
       # `InvalidParameterException: Multiple tags contain the same key`. Combined with the missing
       # `ecs:TagResource` grant (fixed in iam.tf), this took the reconciler down ~14h (every tick
       # DLQ'd). Cost attribution instead rides `propagate_tags = "TASK_DEFINITION"` — the reconciler
-      # task-def carries edd:cost-scope when Terraform owns it; the release pipeline currently
-      # registers it untagged (see DO_NEXT: tag the pipeline task-def to restore full attribution).
-      # Reconciler tasks are short-lived, so any residual attribution gap is a small cost.
+      # task-def carries edd:cost-scope because Terraform owns every revision.
       enable_ecs_managed_tags = true
       propagate_tags          = "TASK_DEFINITION"
 
@@ -51,14 +49,5 @@ resource "aws_scheduler_schedule" "reconciler" {
     dead_letter_config {
       arn = aws_sqs_queue.reconciler_dlq.arn
     }
-  }
-
-  lifecycle {
-    # The reconciler image/task-definition is owned by the RELEASE PIPELINE, not Terraform:
-    # deploy-release-images.sh registers a fresh reconciler task-def and repoints this schedule at
-    # it out-of-band on each deploy. Without this, a later `terraform apply` would revert the
-    # schedule to the Terraform-managed (stale) revision. Terraform creates the initial schedule +
-    # task-def; the pipeline owns the image rolls thereafter. (Same rationale as the ECS services.)
-    ignore_changes = [target[0].ecs_parameters[0].task_definition_arn]
   }
 }

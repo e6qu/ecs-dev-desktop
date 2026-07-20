@@ -33,7 +33,11 @@ fixture against the **live** sim every PR, in three configurations:
   simulation, CloudTrail provisioning-event checks, DynamoDB/CloudWatch/ECS
   functional probes, plus a second consumer that reuses an externally-owned VPC
   and ECS cluster without creating network, NAT, endpoint, or cluster resources;
-  both configurations are checked for idempotency and destroyed.
+  both configurations are checked for idempotency and destroyed. The default
+  and DNS/TLS configurations also change the immutable image tag, inspect the
+  saved Terraform plan, apply it, and prove the control-plane service,
+  reconciler Scheduler target, and optional SSH-gateway service attach to the
+  replacement task definitions.
 - **`nat_mode=instance`** — the fck-nat path, including Launch Template, ENI,
   IAM role, idempotency, and destroy.
 - **`enable_dns=true`** — the module's ACM cert + Route53 validation + HTTPS

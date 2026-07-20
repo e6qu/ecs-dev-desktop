@@ -196,11 +196,10 @@ repo variables are non-secret coordinates only; do not store static secrets in
 GitHub variables or secrets for this path. The
 bootstrap is not part of the Terraform module because EDD must be releasable
 before EDD is deployed. The role trust is constrained to this repository's `main`
-branch, and the permissions are scoped to the release path: ECR
-pushes for the control-plane, SSH-gateway, and golden-image repositories, ECS
-task-definition registration and service updates for the control-plane/SSH/reconciler
-families, Scheduler updates for the reconciler schedule, and `iam:PassRole` for
-the exact runtime roles those resources already use. `RELEASE_GOLDEN_VARIANTS`
+branch, and the permissions are limited to Amazon ECR pushes for the control-plane,
+SSH-gateway, base, and golden-image repositories. It cannot mutate Amazon ECS,
+Amazon EventBridge Scheduler, IAM runtime roles, application data, or secrets.
+`RELEASE_GOLDEN_VARIANTS`
 drives the separate `golden-images` workflow; it is a non-secret coordinate, not a
 static credential.
 
@@ -213,10 +212,11 @@ static credential.
 | [`scripts/bootstrap-state.sh`](../scripts/bootstrap-state.sh)               | S3 bucket + DynamoDB lock (idempotent)                          |
 | [`scripts/bootstrap-secrets.sh`](../scripts/bootstrap-secrets.sh)           | crypto (generated) + IdP secrets in Secrets Manager             |
 | [`scripts/bootstrap-release-oidc.sh`](../scripts/bootstrap-release-oidc.sh) | GitHub OIDC release role + release workflow repo variables      |
+| [`scripts/bootstrap-smoke-oidc.sh`](../scripts/bootstrap-smoke-oidc.sh)     | separate least-privilege role + deployed-smoke coordinates      |
 | [`scripts/publish-images.sh`](../scripts/publish-images.sh)                 | build + push control-plane / golden / gateway images to ECR     |
-| [`scripts/deploy-release-images.sh`](../scripts/deploy-release-images.sh)   | roll published release images into ECS services + Scheduler     |
-| [`release`](../.github/workflows/release.yml) workflow                      | CI-driven immutable image publish + deploy on `main`            |
+| [`release`](../.github/workflows/release.yml) workflow                      | CI-driven immutable image publication on `main`                 |
 | [`golden-images`](../.github/workflows/golden-images.yml) workflow          | CI-driven immutable golden image publish on `main`              |
+| [`post-deploy-smoke`](../.github/workflows/post-deploy-smoke.yml) workflow  | operator-dispatched verification after an Infra apply           |
 
 ## See also
 

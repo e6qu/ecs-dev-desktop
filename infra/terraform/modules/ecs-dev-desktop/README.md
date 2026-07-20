@@ -10,6 +10,12 @@ that fails over to a wake Lambda when the control-plane service is at zero) and 
 admin-managed **CLOUDFRONT-scope WAF**. Parametric, so it composes from plain
 Terraform **or Terragrunt**, one instantiation per environment.
 
+The single control-plane Application Load Balancer is intentional: the same-origin
+`/w/<id>/` editor and terminal routes require transparent, long-lived WebSocket
+upgrades. API Gateway HTTP APIs do not provide that raw upgrade proxy, and API
+Gateway WebSocket APIs cannot share the HTTP API custom domain. The separately
+gated SSH ingress keeps its Network Load Balancer only when SSH is enabled.
+
 > **Providers.** The module declares no default `provider` block, but it DOES require
 > an `aws.us_east_1` aliased provider (`configuration_aliases`) for the global
 > CloudFront / viewer-cert / CLOUDFRONT-WAF resources — AWS only accepts those in
@@ -193,12 +199,15 @@ inputs = {
 ```
 scripts/bootstrap-state.sh <bucket> <region>           # once: S3 + DynamoDB lock
 scripts/bootstrap-secrets.sh <name> <region>           # once: crypto + IdP secrets
-terraform apply                                        # stand up the infra
-# With image_build_mode = "local" or "codebuild", images are built during apply.
-# With "pre-published", run separately:
 scripts/publish-images.sh <acct> <region> <name> <short-sha> # push manifests + per-arch images
-aws ecs update-service --force-new-deployment …        # roll the control-plane service
+terraform apply                                        # create or roll every declared task attachment
 ```
+
+With `image_build_mode = "local"` or `"codebuild"`, Terraform builds images
+during apply. With `"pre-published"`, publish first and set the immutable image
+tag or reference before applying. Terraform owns the control-plane service, the
+reconciler Scheduler target, and the optional SSH-gateway service; publication
+never mutates those resources out of band.
 
 The control-plane and reconciler **share one image** (the reconciler runs it with a
 command override), so the control-plane Dockerfile builds both bundles. See

@@ -4,6 +4,8 @@ Phased roadmap. Each phase: **Status** (✅ done · 🟡 partial · ⬜ pending)
 **Deliverables**, **Gate**. See `AGENTS.md` for architecture, `STATUS.md`/`DO_NEXT.md`
 for live state. **Guiding principles:** API-first · independently buildable · snapshot
 = persistence · prefer libraries for security · RBAC everywhere · sim endpoint-only.
+OCI workflows publish immutable artifacts; Terraform alone registers task definitions
+and attaches their revisions to runtime services and schedules.
 
 The build is **test-first against the sockerless sim**, so most phases are proven
 mock-free _before_ AWS. The recurring gate is the **AWS account/region** decision
