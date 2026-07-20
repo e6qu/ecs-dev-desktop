@@ -167,17 +167,10 @@ resource "aws_ecs_service" "control_plane" {
   }
 
   lifecycle {
-    ignore_changes = [
-      # Desired count is owned by autoscaling once it attaches.
-      desired_count,
-      # The image/task-definition is owned by the RELEASE PIPELINE, not Terraform:
-      # `scripts/deploy-release-images.sh` registers fresh task-definition revisions and points
-      # the service at them out-of-band on every deploy. Without this, ANY later `terraform apply`
-      # (e.g. an infra-only change like adding VPC endpoints) would revert the service to the
-      # Terraform-managed revision — rolling the running app back to a stale image. Terraform still
-      # creates the initial task-def + service; the pipeline owns image rolls thereafter.
-      task_definition,
-    ]
+    # Desired count is owned by the scale-to-zero controllers once they attach.
+    # Terraform owns the task-definition attachment and rolls it whenever the
+    # declared image, environment, resources, or role coordinates change.
+    ignore_changes = [desired_count]
   }
 
   depends_on = [aws_lb_listener.http]

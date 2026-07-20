@@ -140,6 +140,12 @@ variable "enable_cloudfront" {
   default     = false
 }
 
+variable "deployment_image_tag" {
+  description = "Immutable image tag used to prove Terraform-owned task-definition rollouts."
+  type        = string
+  default     = "0123456789ab"
+}
+
 module "edd" {
   source = "../.."
 
@@ -159,8 +165,8 @@ module "edd" {
   # The sim fixture does not pre-publish real ECR images; pin explicit dummy image
   # refs so pre-published mode does not try to resolve a non-existent digest.
   image_build_mode    = "pre-published"
-  image_tag           = "0123456789ab"
-  control_plane_image = "eddsim/control-plane:0123456789ab"
+  image_tag           = var.deployment_image_tag
+  control_plane_image = "eddsim/control-plane:${var.deployment_image_tag}"
 
   # This fixture intentionally runs the simulator in API-only process mode.
   # Keep services at zero here; real task execution belongs to the dedicated
@@ -202,7 +208,7 @@ module "edd" {
   # The gateway image is a PINNED tag; the sim only creates the task def, never pulls it.
   ssh_base_domain     = var.enable_dns ? "ssh.edd-sim.example.com" : ""
   route53_ssh_zone_id = var.enable_dns ? aws_route53_zone.test[0].zone_id : ""
-  ssh_gateway_image   = var.enable_dns ? "eddsim/ssh-gateway:sim" : ""
+  ssh_gateway_image   = var.enable_dns ? "eddsim/ssh-gateway:${var.deployment_image_tag}" : ""
 
   # Exercise AWS Budgets when DNS/TLS is enabled, so the #713 probe suite can
   # validate Budgets service behavior end-to-end through Terraform once
@@ -263,8 +269,8 @@ module "edd_shared" {
   dynamodb_point_in_time_recovery = false
   golden_image_repos              = ["typescript"]
   image_build_mode                = "pre-published"
-  image_tag                       = "0123456789ab"
-  control_plane_image             = "eddsharedsim/control-plane:0123456789ab"
+  image_tag                       = var.deployment_image_tag
+  control_plane_image             = "eddsharedsim/control-plane:${var.deployment_image_tag}"
   control_plane_desired_count     = 0
   seed_default_catalog            = false
   enable_metric_alarms            = false

@@ -177,18 +177,17 @@ account bootstrap step:
 1. Create the AWS IAM OIDC provider for `https://token.actions.githubusercontent.com`.
 2. Create a narrowly scoped IAM role whose trust policy accepts GitHub OIDC tokens
    only from this repository's `main` branch.
-3. Grant that role only the ECR, ECS, Scheduler, and `iam:PassRole` permissions
-   needed to publish the release and golden images, register the matching task
-   definitions, roll the control-plane/SSH services, and retarget the reconciler
-   schedule.
+3. Grant that role only the Amazon ECR permissions needed to publish the release
+   and golden images. It cannot register task definitions, update services, pass
+   roles, or retarget the reconciler schedule.
 4. Store only the non-secret role/account/region/name coordinates as GitHub repo
    variables. Do not put static secrets in GitHub variables or secrets.
 
 This is intentionally outside the EDD Terraform stack. The release workflow must
 be able to publish deployable control-plane images before EDD exists, and the
-bootstrap cannot depend on the deployed EDD app. The deploy step itself requires
-the Terraform-managed ECS services and Scheduler schedule to exist; a missing
-resource fails the release loudly. Run the bootstrap once per AWS
+bootstrap cannot depend on the deployed EDD app. Terraform consumes the immutable
+published image coordinates and remains the sole deployment owner. Run the
+bootstrap once per AWS
 account/name-prefix pair:
 
 ```sh
@@ -196,27 +195,42 @@ EDD_RELEASE_GITHUB_REPO=e6qu/ecs-dev-desktop \
 EDD_RELEASE_AWS_ACCOUNT=111122223333 \
 EDD_RELEASE_AWS_REGION=eu-west-1 \
 EDD_RELEASE_NAME_PREFIX=edd-prod \
-EDD_RELEASE_ECS_CLUSTER=edd-prod-workspaces \
 EDD_RELEASE_GOLDEN_VARIANTS="omnibus" \
-EDD_RELEASE_APP_URL=https://app.edd.e6qu.dev \
-EDD_RELEASE_SSH_GATEWAY_ENABLED=false \
 sh scripts/bootstrap-release-oidc.sh
 ```
 
 The script fails if any coordinate is missing or if the AWS caller account does
 not match `EDD_RELEASE_AWS_ACCOUNT`. It updates the OIDC provider thumbprint, the
 release role trust/permission policy, and the GitHub `RELEASE_*` repo variables.
-It also writes the non-secret `EDD_APP_URL` repo variable used by
-`post-deploy-smoke`. `EDD_RELEASE_SSH_GATEWAY_ENABLED` explicitly tells the
-release workflow whether this deployment includes the optional SSH gateway, so
-a disabled gateway is not confused with missing infrastructure. The bootstrap
-also discovers whether the required task definitions, Amazon ECS services, and
-Amazon EventBridge Scheduler schedule exist and writes
-`RELEASE_DEPLOYMENT_ENABLED`. A first release can therefore publish immutable
-multi-architecture images before the complete Terraform apply without claiming
-that it deployed them or launching a post-deployment smoke test. Rerun the
-bootstrap after the full apply to enable deployment. It never stores static
-secrets in GitHub.
+It never inspects or mutates the deployment and never stores static secrets in
+GitHub. After publication, pin the immutable 12-character source tag (or digest)
+in the Infra Terraform configuration, apply it from synchronized `main`, and
+manually dispatch `post-deploy-smoke` with that exact deployed source prefix.
+The smoke uses its separately scoped `EDD_SMOKE_AWS_ROLE_ARN`; the image publisher
+role has no access to application secrets or data.
+
+Bootstrap that distinct smoke identity after Terraform has created the runtime
+table, encryption key, and auth secret:
+
+```sh
+EDD_SMOKE_GITHUB_REPO=e6qu/ecs-dev-desktop \
+EDD_SMOKE_AWS_ACCOUNT=111122223333 \
+EDD_SMOKE_AWS_REGION=eu-west-1 \
+EDD_SMOKE_NAME_PREFIX=edd-prod \
+EDD_SMOKE_APP_URL=https://app.edd.e6qu.dev \
+EDD_SMOKE_DYNAMODB_TABLE=ecs-dev-desktop \
+EDD_SMOKE_DYNAMODB_KMS_KEY_ARN=arn:aws:kms:eu-west-1:111122223333:key/example \
+EDD_SMOKE_AUTH_SECRET_ID=replace-with-exact-secret-id \
+sh scripts/bootstrap-smoke-oidc.sh
+```
+
+This creates `<name>-github-smoke`, trusts only this repository's `main` ref,
+resolves the supplied secret through Secrets Manager and grants `GetSecretValue`
+only for that exact ARN, grants auth-session item access on the named DynamoDB
+table and DynamoDB-scoped KMS use, then writes
+`EDD_SMOKE_AWS_ROLE_ARN`, `EDD_SMOKE_AWS_REGION`, `EDD_APP_URL`,
+`EDD_DYNAMODB_TABLE`, and `EDD_AUTH_SECRET_ID`. It grants no Amazon ECR,
+Amazon ECS, Scheduler, or `iam:PassRole` action.
 
 CI owns both the control-plane image build/publish path and post-merge
 **workspace/golden image** publishing. This is not a fallback release path: EDD

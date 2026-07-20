@@ -5,7 +5,7 @@
 # Terraform module creates. Run AFTER the first `terraform apply` (the repos must
 # exist); feed it the repository URLs from the module outputs. Closes the
 # two-phase-apply friction: the module stands up infra, this pushes the images,
-# then Terraform or scripts/deploy-release-images.sh rolls them.
+# then Terraform rolls the declared services and schedule to those images.
 #
 #   scripts/publish-images.sh <account-id> <region> <name-prefix> <tag> [variant...]
 #
@@ -315,8 +315,5 @@ if [ "$skip_manifest" != "1" ]; then
   fi
 fi
 
-cat <<EOF
-
-edd: images published to ${registry}. To roll the running services:
-     sh scripts/deploy-release-images.sh ${account} ${region} ${prefix} <ecs-cluster> ${tag} <ssh-gateway-enabled>
-EOF
+printf '\nedd: images published to %s; pin tag %s in Terraform and apply from Infra.\n' \
+  "$registry" "$tag"

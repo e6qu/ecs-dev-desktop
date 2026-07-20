@@ -1725,6 +1725,22 @@ no downstream impact (we consume bleephub for OAuth).
 
 ## Resolved (repo)
 
+- **Release publication and Terraform both owned live task-definition attachments,
+  allowing later applies to roll deployments backward — fixed 2026-07-20.** The
+  release workflow registered new control-plane, reconciler, and SSH-gateway task
+  definitions and updated ECS services and Scheduler, while Terraform ignored those
+  same attachment fields. That split authority required broad ECS, Scheduler,
+  `iam:PassRole`, DynamoDB, Secrets Manager, and KMS permissions in the publication
+  role and made state convergence impossible. Publication now stops after building
+  and verifying immutable OCI images; its main-only OIDC role has Amazon ECR push
+  access only. Terraform owns every task definition and runtime attachment without
+  lifecycle ignores. The real post-deployment browser suite became an explicitly
+  dispatched operation with a separate least-privilege OIDC role. Saved-plan checks
+  and two complete Sockerless AWS simulator rollouts proved the control-plane ECS
+  service, reconciler Scheduler target, and optional SSH-gateway ECS service all
+  adopted a changed immutable image tag, and the resulting topology replanned with
+  zero changes.
+
 - **Per-architecture Amazon ECR tags could resolve to nested OCI indexes, the golden base lacked its generic manifest, and release authority exceeded the main-only publication policy — fixed 2026-07-20.** Docker Buildx provenance and SBOM attestations made nominal `-amd64` and `-arm64` references OCI indexes instead of direct single-platform images, while the shared `edd-base` repository published only suffixed references. Version-tag and manual workflow entry points also allowed caller-selected release tags, and the AWS OIDC role continued to trust version-tag refs. Native per-architecture builds now disable provenance and SBOM index generation, every image family publishes a bare AMD64+ARM64 manifest, and both workflows verify the resulting OCI media types and platforms before deployment. Publication runs only for `main`, derives the immutable 12-character tag from `github.sha`, emits no `latest`, `main`, version, or manually selected tag, uses the native GitHub ARM64 runner, and keeps the AWS release-role trust main-only. The repository contract and pre-commit/CI gate enforced those invariants together with the 20-image Amazon ECR lifecycle.
 
 - **Direct ECS Dev Desktop entry could fail at the browser's cross-origin boundary, and no real-browser contract proved the complete Shauth SSO lifecycle — fixed 2026-07-20.** The unauthenticated workspace page entered the local Auth.js route through React Server Component navigation, so the final cross-origin OpenID Connect redirect could remain a data fetch and fail CORS instead of navigating the document. Direct and signed-out provider entry now used full-document navigation. A real Chromium suite ran a production ECS Dev Desktop bundle against real Shauth and Ory Hydra services plus real DynamoDB and Amazon ECS resources provisioned through the pinned Sockerless AWS simulator. It proved direct root and `/workspaces` entry, canonical catalog launch at `/`, silent reuse of an existing Shauth session, authenticated `/me`, relying-party logout returning to the EDD-origin `/signed-out` page, Shauth global logout, signed Back-Channel Logout revocation, and fail-closed re-entry. Stable separate loopback hostnames kept provider and relying-party cookies scoped like production, strict URL validation allowed only literal loopback HTTP coordinates in local integration while retaining HTTPS everywhere else, and the harness used no mock identity provider, fake cloud provider, synthetic response, or `oauth2-proxy`.

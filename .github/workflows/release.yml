@@ -1,10 +1,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Release pipeline: build, publish, and deploy the platform's app images.
+# Release pipeline: build and publish the platform's app images.
 # Triggered by every main merge. Uses GitHub OIDC -> an
-# AWS role with ECR/ECS/Scheduler permissions (no static keys), exactly like the e2e-aws
-# tier. The Terraform module must have been applied first (it creates the ECR
-# repositories); this closes the two-phase-apply friction documented in
-# docs/deploying.md.
+# AWS role with Amazon ECR push permissions only (no static keys). The Terraform
+# module must have been applied first because it creates the repositories.
 #
 # Prerequisites (non-secret coordinates, supplied by scripts/bootstrap-release-oidc.sh):
 #   - repo/environment variable `RELEASE_AWS_ROLE_ARN` — OIDC-assumable role ARN
@@ -12,9 +10,6 @@
 #   - repo/environment variable `RELEASE_AWS_ACCOUNT`  — 12-digit account id
 #   - repo/environment variable `RELEASE_AWS_REGION`   — AWS region for ECR
 #   - repo/environment variable `RELEASE_NAME_PREFIX`  — the module `name` (e.g. edd-dev)
-#   - repo/environment variable `RELEASE_ECS_CLUSTER` — the deployed Amazon ECS cluster name
-#   - repo/environment variable `RELEASE_SSH_GATEWAY_ENABLED` — explicit `true` or `false`
-#   - repo/environment variable `RELEASE_DEPLOYMENT_ENABLED` — set by bootstrap after topology discovery
 # Do not store static secrets in GitHub variables or secrets for this workflow.
 # Authentication is OIDC -> STS short-lived credentials.
 #
@@ -29,11 +24,9 @@
 # golden-images workflow, not by this release workflow. The tag without the suffix
 # is a manifest over the architectures built by this workflow; the suffixed tags
 # are the per-arch images for runners (e.g. Lambda) that cannot consume manifests.
-# After publish, scripts/deploy-release-images.sh registers fresh task-definition
-# revisions for the control plane, reconciler, and the explicitly enabled optional
-# SSH gateway, updates the ECS services and reconciler Scheduler target, then exits.
-# ECS convergence is async; post-deploy-smoke verifies the public app after the
-# release workflow succeeds.
+# Terraform remains the sole deployment owner. An operator pins the published
+# immutable image coordinate in Infra, applies it, then explicitly dispatches the
+# post-deployment smoke with that deployed source prefix.
 name: release
 
 on:
@@ -49,7 +42,7 @@ concurrency: release
 jobs:
   # Per-arch build matrix on native runners (amd64 on ubuntu-latest, arm64 on ubuntu-24.04-arm) so
   # neither the control-plane nor ssh-gateway image is built under slow QEMU emulation. Each job
-  # pushes only the per-arch tags (EDD_SKIP_MANIFEST); the `deploy` job combines + rolls them.
+  # pushes only the per-arch tags (EDD_SKIP_MANIFEST); the `manifest` job combines them.
   publish:
     name: publish images (${{ matrix.arch }})
     strategy:
@@ -124,10 +117,9 @@ jobs:
             "$RELEASE_NAME_PREFIX" \
             "${TAG:0:12}"
 
-  # Combine the per-arch images into multi-arch manifests, then roll the ECS services onto them
-  # (pinned to arm64 by deploy-release-images.sh). Single job so the manifest exists before deploy.
-  deploy:
-    name: publish manifests + deploy ECS
+  # Combine the native per-architecture images into verified multi-architecture manifests.
+  manifest:
+    name: publish manifests
     needs: publish
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -136,9 +128,6 @@ jobs:
       RELEASE_AWS_REGION: ${{ vars.RELEASE_AWS_REGION }}
       RELEASE_AWS_ROLE_ARN: ${{ vars.RELEASE_AWS_ROLE_ARN }}
       RELEASE_NAME_PREFIX: ${{ vars.RELEASE_NAME_PREFIX }}
-      RELEASE_ECS_CLUSTER: ${{ vars.RELEASE_ECS_CLUSTER }}
-      RELEASE_SSH_GATEWAY_ENABLED: ${{ vars.RELEASE_SSH_GATEWAY_ENABLED }}
-      RELEASE_DEPLOYMENT_ENABLED: ${{ vars.RELEASE_DEPLOYMENT_ENABLED }}
       TAG: ${{ github.sha }}
       EDD_BUILD_TARGET: web
       EDD_BUILD_ARCHS: amd64 arm64
@@ -153,31 +142,10 @@ jobs:
         with:
           role-to-assume: ${{ env.RELEASE_AWS_ROLE_ARN }}
           aws-region: ${{ env.RELEASE_AWS_REGION }}
-          role-session-name: release-deploy-${{ github.run_id }}
+          role-session-name: release-manifest-${{ github.run_id }}
 
       - name: Verify assumed identity
         run: aws sts get-caller-identity
-
-      - name: Validate deployment topology
-        run: |
-          if [ -z "$RELEASE_ECS_CLUSTER" ]; then
-            echo "::error::RELEASE_ECS_CLUSTER is required"
-            exit 1
-          fi
-          case "$RELEASE_DEPLOYMENT_ENABLED" in
-            true | false) ;;
-            *)
-              echo "::error::RELEASE_DEPLOYMENT_ENABLED must be true or false"
-              exit 1
-              ;;
-          esac
-          case "$RELEASE_SSH_GATEWAY_ENABLED" in
-            true | false) ;;
-            *)
-              echo "::error::RELEASE_SSH_GATEWAY_ENABLED must be true or false"
-              exit 1
-              ;;
-          esac
 
       - name: Create & push multi-arch manifests
         env:
@@ -198,33 +166,3 @@ jobs:
             "$RELEASE_NAME_PREFIX" \
             "${TAG:0:12}" \
             control-plane ssh-gateway
-
-      - name: Deploy ECS services (arm64)
-        if: env.RELEASE_DEPLOYMENT_ENABLED == 'true'
-        env:
-          EDD_DEPLOY_ARCH: arm64
-        run: |
-          sh scripts/deploy-release-images.sh \
-            "$RELEASE_AWS_ACCOUNT" \
-            "$RELEASE_AWS_REGION" \
-            "$RELEASE_NAME_PREFIX" \
-            "$RELEASE_ECS_CLUSTER" \
-            "${TAG:0:12}" \
-            "$RELEASE_SSH_GATEWAY_ENABLED"
-
-      - name: Write release metadata
-        run: |
-          set -euo pipefail
-          mkdir -p temp/release
-          printf '%s\n' "$RELEASE_DEPLOYMENT_ENABLED" > temp/release/deployment-status
-          if [ "$RELEASE_DEPLOYMENT_ENABLED" = true ]; then
-            printf '%s\n' "${TAG:0:12}" > temp/release/deployed-tag
-          fi
-
-      - name: Upload release metadata
-        uses: actions/upload-artifact@v7.0.1
-        with:
-          name: release-deploy
-          path: temp/release
-          if-no-files-found: error
-          retention-days: 7
