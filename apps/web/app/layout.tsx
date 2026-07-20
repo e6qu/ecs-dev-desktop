@@ -68,7 +68,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               </Link>
               <form action={signOutAction}>
                 <button className="btn" type="submit">
-                  sign out
+                  Sign out
                 </button>
               </form>
             </span>

@@ -32,7 +32,7 @@ import {
   required,
   sleep,
 } from "./aws-sim";
-import { hostReachableTarget } from "./docker-host";
+import { simulatorWorkloadHost } from "./docker-host";
 import { generateUserKey, startSshAuthorizeStub, taskExitCode } from "./golden-ssh-helpers";
 
 configureAwsSimEnv();
@@ -294,7 +294,7 @@ describe(
       // from inside the sim task) authorizes it via the golden image's
       // AuthorizedKeysCommand → ssh-authorize.
       const { privateKeyBase64, publicKey } = generateUserKey(USER_KEY, "edd-golden-workspace-e2e");
-      const hostAlias = hostReachableTarget(WORKSPACE_IMAGE).host;
+      const hostAlias = simulatorWorkloadHost;
       const stub = await startSshAuthorizeStub(publicKey, hostAlias, AGENT_SECRET);
       const { taskArn: workspaceTaskArn, sshHost } = await runWorkspaceTask(stub.controlPlaneUrl);
       try {

@@ -15,7 +15,7 @@ import { closeServer, listenOnLoopback } from "./test-server";
 import { attachTerminal, parseMessage, type PtyLike } from "./terminal";
 
 describe("parseMessage", () => {
-  it("accepts input + resize frames and rejects anything else", () => {
+  it("accepts input, resize, and explicit close frames and rejects anything else", () => {
     expect(parseMessage(JSON.stringify({ type: "input", data: "ls\r" }))).toEqual({
       input: "ls\r",
     });
@@ -23,6 +23,7 @@ describe("parseMessage", () => {
       cols: 120,
       rows: 40,
     });
+    expect(parseMessage(JSON.stringify({ type: "close" }))).toEqual({ close: true });
     expect(parseMessage("not json")).toBeNull();
     expect(parseMessage(JSON.stringify({ type: "input" }))).toBeNull(); // no data
     expect(parseMessage(JSON.stringify({ type: "resize", cols: "x", rows: 1 }))).toBeNull();
@@ -133,6 +134,21 @@ describe("terminal PTY lifecycle (no stale session)", () => {
     const ws = await openWiredTerminal(server, "/w/ws-close/terminal");
     expect(fake.rec.killed).toBe(0);
     ws.close();
+    await vi.waitFor(() => {
+      expect(fake.rec.killed).toBe(1);
+    });
+  });
+
+  it("kills the PTY when the browser explicitly closes a terminal tab", async () => {
+    const fake = fakePty();
+    server = createServer();
+    attachTerminal(server, {
+      root,
+      basePath: "/w/ws-explicit-close/",
+      spawnPty: () => Promise.resolve(fake.pty),
+    });
+    const ws = await openWiredTerminal(server, "/w/ws-explicit-close/terminal");
+    ws.send(JSON.stringify({ type: "close" }));
     await vi.waitFor(() => {
       expect(fake.rec.killed).toBe(1);
     });

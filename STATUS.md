@@ -6,67 +6,60 @@
 
 ## Current branch
 
-The `fix/terraform-owned-deployments` branch made Terraform the sole owner of
-deployed task-definition attachments. The main-only release workflow published
-and verified immutable native AMD64, native ARM64, and multi-architecture images,
-but no longer registered task definitions, updated Amazon ECS services, or
-retargeted Amazon EventBridge Scheduler. The release AWS OIDC role was reduced to
-Amazon ECR push access, while a separately bootstrapped, manually dispatched smoke
-role held only the Secrets Manager, DynamoDB, and KMS access required by the real
-post-deployment browser suite. Its bootstrap resolved the operator-supplied auth
-secret ID to the exact deployed secret ARN instead of deriving a name.
+The `fix/shauth-sso-terminal-contract` branch completed the ECS Dev Desktop
+relying-party contract for Shauth and the real browser terminal. Direct entry and
+catalog launch used standard OpenID Connect, application logout ended the Shauth
+session, and the browser returned to the persistent ECS Dev Desktop `/signed-out`
+page with an explicit `Sign in with Shauth` control. Invalid local credentials
+returned to the login page instead of surfacing a production HTTP 500.
 
-The module attached the control-plane, reconciler, and optional SSH-gateway task
-definitions without lifecycle ignores. A Sockerless AWS simulator contract changed
-the immutable image tag, inspected the saved Terraform plan, applied it, queried the
-real ECS and Scheduler API surfaces, and proved that every runtime attachment moved
-to the latest registered revision before an idempotent zero-change plan.
+The Shauth release-validator boundary stayed deployment-neutral. ECS Dev Desktop
+exposed its immutable source revision and build time through `/api/healthz`, used
+`/workspaces` as its authenticated validation page, and used `/signed-out` as its
+stable signed-out page. Shauth validator credentials were absent from the
+application runtime and were rejected through Basic auth, bearer/API-key auth,
+development identity headers and cookies, and the local-account form. Only a
+real exact-issuer Shauth OpenID Connect exchange established an application
+session. The real provider bootstrap password was injected only into Shauth and
+the isolated browser validator, while Terraform rejected every Shauth bootstrap
+or validator variable from both the plain and secret control-plane environments.
 
-The release contract published only the immutable 12-character source-commit
-prefix from `main`. Native AMD64 and ARM64 runners produced direct
-per-architecture OCI images, and a separate job assembled and verified the bare
-multi-architecture manifest. The control-plane, SSH-gateway, shared `edd-base`,
-and every configured golden variant followed the same three-reference shape.
-The AWS release role trusted only the repository's `main` ref, and Amazon ECR
-retained at most 20 images per repository.
+The first-party Monaco terminal gained explicit tab-close signaling and terminated
+the complete PTY process group. The browser test typed commands into two real PTYs,
+observed both shells, closed one tab, verified that its shell exited, and then
+proved stop/wake storage persistence. The general end-to-end job installed its
+pinned Chromium runtime before that browser lifecycle and preserved the primary
+startup error during cleanup. The live simulator harness selected
+`host.containers.internal` on Podman and `host.docker.internal` on Docker, fixing
+idle-agent heartbeat and SSH authorization reachability in nested awsvpc tasks.
 
 ## Verified state
 
-- Direct root and `/workspaces` entry redirected through Shauth and returned to the authenticated workspace list.
-- Shauth catalog entry used `/` as the canonical launch URL and reused the existing Shauth session without requesting credentials again.
-- `/me` rendered the authenticated email and administrator role.
-- ECS Dev Desktop sign-out ended the provider session and returned to `/signed-out` on the ECS Dev Desktop origin.
-- Shauth global sign-out delivered a signed Back-Channel Logout token, revoked the durable ECS Dev Desktop session, and made the next direct entry require Shauth authentication.
-- Invalid or absent Shauth configuration continued to fail closed.
-- Release and golden publication rejected mutable, version, manually selected,
-  and non-source image tags.
-- Direct `-amd64` and `-arm64` references resolved to single-platform OCI image
-  manifests; the unsuffixed reference resolved to an AMD64+ARM64 OCI index.
-- The complete monorepo lint, unit/integration test, production build, ShellCheck, and real Chromium Shauth SSO suites passed.
-- Changing the Terraform image tag replaced the control-plane and reconciler task
-  definitions and updated the control-plane ECS service plus reconciler Scheduler
-  target to their newest revisions.
-- The DNS/TLS simulator topology additionally replaced the SSH-gateway task
-  definition and updated its ECS service; the subsequent plan had zero changes.
-- Publication contained no deployment API calls or permissions, and the separate
-  post-deployment smoke remained an explicit operator action.
+- The real Shauth, Ory Hydra, PostgreSQL, DynamoDB, production Next.js, and Chromium contract passed against Shauth `main` at `6d06480`.
+- Direct entry, catalog launch, silent SSO reuse, `/me`, relying-party logout, provider global logout, Back-Channel Logout revocation, and fail-closed re-entry passed in one browser lifecycle.
+- The sentinel Shauth validator credential failed every ECS Dev Desktop local credential shape; exact-issuer OpenID Connect succeeded.
+- The 13-file container-mode Sockerless AWS simulator suite passed 37/37 tests, including browser terminal input, PTY teardown, IDE bridges, SSH, heartbeats, snapshots, wake, and ECS lifecycle.
+- The complete Chromium portal suite passed 31/31 tests, including stable sign-out plus WCAG contrast in light and dark mode.
+- Language-variant image tests and GitHub App tests no longer reported skipped success when their required images or coordinates were absent.
+- Repository lint, unit/integration tests, production build, formatting, ShellCheck, and pre-commit checks passed.
 
 ## Deployment boundary
 
-The private `e6qu/infra` repository owned the shared `dev.e6qu.dev` environment and
-was the only deployment actor. After this branch merged, it still needed to pin a
-published immutable image tag and apply synchronized `main`; publication itself no
-longer changed live Amazon ECS or Scheduler resources.
+The private `e6qu/infra` repository remained the sole deployment owner. Shauth's
+new application-registration schema had not yet merged while this branch was
+prepared, so Infra retained responsibility for adding the opaque release revision,
+`https://app.edd.dev.e6qu.dev/workspaces` validation URL, and
+`https://app.edd.dev.e6qu.dev/signed-out` signed-out URL after both application
+contracts merged.
 
 ## Durable invariants
 
 - ECS Dev Desktop used standard OpenID Connect coordinates and had no Shauth deployment-platform knowledge.
+- Validator credentials authenticated only to Shauth and never appeared in ECS Dev Desktop configuration, environment, cookies, or application auth paths.
 - Cross-origin authorization and logout transitions used full-document navigation, never React Server Component or client data fetching.
-- Shauth catalog launch, direct entry, relying-party logout, provider logout, Back-Channel Logout, and fail-closed behavior remained one real-browser acceptance contract.
+- Sign-out from ECS Dev Desktop ended the shared Shauth session and returned to ECS Dev Desktop, not to the provider portal.
+- Browser terminal acceptance required real keystrokes, real PTYs, observable process teardown, and persistent storage across stop/wake.
 - Cloud resources remained the source of truth; simulators differed only by endpoint coordinates.
-- ARM64 remained the production default, published images remained multi-architecture, and deployable image coordinates remained immutable source-commit prefixes.
-- Image workflows only published OCI artifacts; Terraform exclusively registered
-  task definitions and attached their revisions to ECS services and Scheduler.
-- Optional deployment components were controlled by explicit topology, never by silent missing-resource fallbacks.
+- Missing tools, images, or credentials failed required tests instead of producing skipped green results.
 - One branch and one pull request remained active at a time; the user merged pull requests.
 - Every noticed defect was fixed or recorded in [BUGS.md](BUGS.md).

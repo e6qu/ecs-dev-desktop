@@ -14,7 +14,7 @@ import { CloudWatchLogsClient, CreateLogGroupCommand } from "@aws-sdk/client-clo
 import { CreateClusterCommand, ECSClient } from "@aws-sdk/client-ecs";
 import { EC2Client } from "@aws-sdk/client-ec2";
 import { awsSimClientConfig, createVpcWithEgress } from "@edd/e2e/aws-sim";
-import { hostReachableTarget } from "@edd/e2e/docker-host";
+import { simulatorWorkloadHost } from "@edd/e2e/docker-host";
 import { CatalogService } from "@edd/control-plane";
 import { baseImage, systemClock } from "@edd/core";
 import { createDynamoClient, dropTable, ensureTable, makeBaseImageEntity } from "@edd/db";
@@ -66,7 +66,7 @@ await new CloudWatchLogsClient(SIM).send(new CreateLogGroupCommand({ logGroupNam
 
 // Workspace tasks must reach this app for idle-agent heartbeats (entrypoint
 // env validation requires the URL either way) — probe the working host alias.
-const hostAlias = hostReachableTarget(WORKSPACE_IMAGE).host;
+const hostAlias = simulatorWorkloadHost;
 
 const lines = [
   exportLine("EDD_DEV_AUTH", "1"),

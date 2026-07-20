@@ -23,7 +23,7 @@ import {
   required,
   sleep,
 } from "./aws-sim";
-import { hostReachableTarget } from "./docker-host";
+import { simulatorWorkloadHost } from "./docker-host";
 import { devHeaders, imageSourceEnv, startWebApp, type WebApp } from "./web-app";
 
 /**
@@ -166,10 +166,9 @@ describe(
 
       // The workspace task's idle-agent must reach the control plane from inside
       // the sim task container. On dockerd (CI) the sim rewrites
-      // host.docker.internal in task env (sockerless #521, reconciler-container
-      // pattern); on runtimes without host-gateway the containers resolve
-      // host.containers.internal natively — probe which applies here.
-      const hostAlias = hostReachableTarget(WORKSPACE_IMAGE).host;
+      // Sockerless resolves the standard container-host coordinate to the
+      // awsvpc task network's actual gateway on every supported runtime.
+      const hostAlias = simulatorWorkloadHost;
       web = await startWebApp((port) => ({
         DYNAMODB_ENDPOINT: process.env.DYNAMODB_ENDPOINT ?? dynamodb.endpoint,
         DYNAMODB_TABLE: TABLE,

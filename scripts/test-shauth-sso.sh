@@ -3,6 +3,7 @@
 set -eu
 
 unset CDPATH
+unset EDD_VALIDATOR_PROBE_PASSWORD SHAUTH_BOOTSTRAP_ADMIN_PASSWORD SHAUTH_BOOTSTRAP_APPS_JSON
 root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 shauth_root=${SHAUTH_SOURCE_DIR:?SHAUTH_SOURCE_DIR must point to a Shauth checkout}
 
@@ -30,11 +31,23 @@ hydra_secret=$(openssl rand -base64 48 | tr -d '\n')
 admin_password=$(openssl rand -base64 48 | tr -d '\n')
 client_secret=$(openssl rand -hex 32)
 auth_secret=$(openssl rand -base64 48 | tr -d '\n')
+validator_probe_password=$(openssl rand -hex 48)
 application_origin=http://localhost:3211
 provider_origin=http://127.0.0.1:8080
 
 provider_compose() {
-  docker compose --project-name "$provider_project" --project-directory "$shauth_root" \
+  env \
+    POSTGRES_PASSWORD="$postgres_password" \
+    HYDRA_SYSTEM_SECRET="$hydra_secret" \
+    HYDRA_DSN="postgres://shauth:${postgres_password}@postgres:5432/hydra?sslmode=disable" \
+    HYDRA_PUBLIC_URL="$provider_origin" \
+    SHAUTH_PUBLIC_URL="$provider_origin" \
+    SHAUTH_DATABASE_URL="postgres://shauth:${postgres_password}@postgres:5432/shauth?sslmode=disable" \
+    GITHUB_CLIENT_ID=edd-integration \
+    GITHUB_CLIENT_SECRET=edd-integration-secret \
+    SHAUTH_BOOTSTRAP_ADMIN_PASSWORD="$admin_password" \
+    SHAUTH_BOOTSTRAP_APPS_JSON="$bootstrap_apps" \
+    docker compose --project-name "$provider_project" --project-directory "$shauth_root" \
     -f "$shauth_root/compose.yaml" "$@"
 }
 
@@ -78,17 +91,6 @@ bootstrap_apps=$(jq -cn \
     health_url:($origin + "/api/healthz"),
     monitoring_url:""
   }]')
-
-export POSTGRES_PASSWORD="$postgres_password"
-export HYDRA_SYSTEM_SECRET="$hydra_secret"
-export HYDRA_DSN="postgres://shauth:${postgres_password}@postgres:5432/hydra?sslmode=disable"
-export HYDRA_PUBLIC_URL=$provider_origin
-export SHAUTH_PUBLIC_URL=$provider_origin
-export SHAUTH_DATABASE_URL="postgres://shauth:${postgres_password}@postgres:5432/shauth?sslmode=disable"
-export GITHUB_CLIENT_ID=edd-integration
-export GITHUB_CLIENT_SECRET=edd-integration-secret
-export SHAUTH_BOOTSTRAP_ADMIN_PASSWORD="$admin_password"
-export SHAUTH_BOOTSTRAP_APPS_JSON="$bootstrap_apps"
 
 provider_compose down --volumes --remove-orphans >/dev/null 2>&1 || true
 aws_compose down --volumes --remove-orphans >/dev/null 2>&1 || true
@@ -139,6 +141,9 @@ export EDD_IMAGE_SOURCE_REPO=e6qu/ecs-dev-desktop
 export EDD_IMAGE_SOURCE_BRANCH=main
 export EDD_IMAGE_SOURCE_WEBHOOK_SECRET=edd-shauth-sso-webhook-secret
 export EDD_SHAUTH_ENV_FILE="$work_dir/provider.env"
+EDD_BUILD_SHA=$(git -C "$root" rev-parse --short=12 HEAD)
+EDD_BUILD_TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+export EDD_BUILD_SHA EDD_BUILD_TIME
 
 cd "$root"
 pnpm --filter web exec tsx scripts/setup-shauth-sso.ts
@@ -148,6 +153,11 @@ pnpm --filter web build
 (cd "$root/apps/web" && exec env PORT=3211 NODE_ENV=production node --import tsx server.ts) >"$work_dir/app.log" 2>&1 &
 app_pid=$!
 wait_for_url "$application_origin/api/healthz" "ECS Dev Desktop"
+curl --fail --silent --show-error "$application_origin/api/healthz" | jq --exit-status \
+  --arg sha "$EDD_BUILD_SHA" --arg time "$EDD_BUILD_TIME" \
+  '.status == "ok" and .service == "web" and .deploy.sha == $sha and .deploy.time == $time' \
+  >/dev/null
 
-SHAUTH_BOOTSTRAP_ADMIN_PASSWORD=$admin_password \
+EDD_VALIDATOR_PROBE_PASSWORD=$validator_probe_password \
+  SHAUTH_BOOTSTRAP_ADMIN_PASSWORD=$admin_password \
   pnpm --filter web exec node scripts/shauth-sso-browser.mjs

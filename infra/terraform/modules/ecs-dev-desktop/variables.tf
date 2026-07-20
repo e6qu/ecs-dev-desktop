@@ -221,6 +221,15 @@ variable "extra_environment" {
   description = "Additional plain (non-secret) environment variables for the control-plane task."
   type        = map(string)
   default     = {}
+
+  validation {
+    condition = alltrue([
+      for name in keys(var.extra_environment) :
+      !startswith(upper(name), "SHAUTH_BOOTSTRAP_") &&
+      length(regexall("(^|_)VALIDATOR(_|$)", upper(name))) == 0
+    ])
+    error_message = "Shauth bootstrap and validator credentials belong only to Shauth or its isolated validator and must not enter the ECS Dev Desktop task environment."
+  }
 }
 
 variable "secret_environment" {
@@ -237,6 +246,15 @@ variable "secret_environment" {
   EOT
   type        = map(string)
   default     = {}
+
+  validation {
+    condition = alltrue([
+      for name in keys(var.secret_environment) :
+      !startswith(upper(name), "SHAUTH_BOOTSTRAP_") &&
+      length(regexall("(^|_)VALIDATOR(_|$)", upper(name))) == 0
+    ])
+    error_message = "Shauth bootstrap and validator credentials belong only to Shauth or its isolated validator and must not enter the ECS Dev Desktop task environment."
+  }
 }
 
 # ---- DNS / TLS (optional; gated on domain_name) ----

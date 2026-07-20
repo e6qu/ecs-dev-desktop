@@ -9,6 +9,7 @@ const IS_CI = process.env.CI === "true" || process.env.CI === "1";
 export default defineConfig({
   test: {
     include: ["src/**/*.e2e.ts"],
+    exclude: ["src/image-variants.e2e.ts"],
     fileParallelism: false,
     hookTimeout: 180_000,
     testTimeout: 180_000,

@@ -17,6 +17,27 @@ async function formLogin(page: Page, username: string, password: string): Promis
   await page.locator(sel(TESTID.loginSubmit)).click();
 }
 
+function relativeLuminance(color: string): number {
+  const channels = color
+    .match(/[\d.]+/g)
+    ?.slice(0, 3)
+    .map(Number);
+  if (channels?.length !== 3) throw new Error(`could not parse browser color ${color}`);
+  const [red, green, blue] = channels.map((channel) => {
+    const normalized = channel / 255;
+    return normalized <= 0.04045 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+  });
+  return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+}
+
+function contrastRatio(foreground: string, background: string): number {
+  const foregroundLuminance = relativeLuminance(foreground);
+  const backgroundLuminance = relativeLuminance(background);
+  const light = Math.max(foregroundLuminance, backgroundLuminance);
+  const dark = Math.min(foregroundLuminance, backgroundLuminance);
+  return (light + 0.05) / (dark + 0.05);
+}
+
 test("admin signs in and reaches the admin console", async ({ page }) => {
   await formLogin(page, "admin", "dev");
   await page.waitForURL("**/admin/overview");
@@ -60,11 +81,11 @@ test("sign-out clears the session and returns to the login form", async ({ page 
   await formLogin(page, "admin", "dev");
   await page.waitForURL("**/admin/overview");
 
-  await page.getByRole("button", { name: "sign out" }).click();
+  await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await page.waitForURL("**/login");
   // Back to the dev login form; the top-bar no longer shows a signed-in user.
   await expect(page.locator(sel(TESTID.loginSubmit))).toBeVisible();
-  await expect(page.getByRole("button", { name: "sign out" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Sign out", exact: true })).toHaveCount(0);
 });
 
 test("the relying-party signed-out landing stays on ECS Dev Desktop", async ({ page }) => {
@@ -73,7 +94,7 @@ test("the relying-party signed-out landing stays on ECS Dev Desktop", async ({ p
   await expect(page).toHaveURL(/\/signed-out$/);
   await expect(page.getByRole("heading", { name: "You are signed out" })).toBeVisible();
   await expect(page.getByText("Shauth ended the shared sign-in session")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Sign in again" })).toHaveAttribute(
+  await expect(page.getByRole("link", { name: "Sign in with Shauth" })).toHaveAttribute(
     "href",
     "/login/shauth",
   );
@@ -81,7 +102,31 @@ test("the relying-party signed-out landing stays on ECS Dev Desktop", async ({ p
     "href",
     "/login",
   );
+
+  // The relying-party return is a stable, app-owned state. Reloading must not
+  // silently re-enter OpenID Connect or depend on transient client state.
+  await page.reload();
+  await expect(page).toHaveURL(/\/signed-out$/);
+  await expect(page.getByRole("heading", { name: "You are signed out" })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Sign in with Shauth" })).toBeVisible();
 });
+
+for (const colorScheme of ["light", "dark"] as const) {
+  test(`the Shauth signed-out control is readable in ${colorScheme} mode`, async ({ page }) => {
+    await page.emulateMedia({ colorScheme });
+    await page.goto("/signed-out");
+
+    const styles = await page
+      .getByRole("link", { name: "Sign in with Shauth" })
+      .evaluate((node) => {
+        const computed = getComputedStyle(node);
+        return { background: computed.backgroundColor, color: computed.color };
+      });
+    expect(styles.background).not.toBe("rgba(0, 0, 0, 0)");
+    expect(contrastRatio(styles.color, styles.background)).toBeGreaterThanOrEqual(4.5);
+    await expect(page.getByRole("link", { name: "Sign in with Shauth" })).toBeVisible();
+  });
+}
 
 test("an unconfigured Shauth catalog launch fails closed on the local login page", async ({
   page,

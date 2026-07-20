@@ -10,6 +10,7 @@ import {
   ECSClient,
   ListTasksCommand,
   StopTaskCommand,
+  waitUntilTasksStopped,
 } from "@aws-sdk/client-ecs";
 import { EC2Client } from "@aws-sdk/client-ec2";
 import { aws, dynamodb } from "@edd/config";
@@ -18,7 +19,7 @@ import { baseImage, systemClock, type EditorKind } from "@edd/core";
 import { createDynamoClient, dropTable, ensureTable, makeBaseImageEntity } from "@edd/db";
 
 import { awsSimClientConfig, createVpcWithEgress, e2eEbsRoleArn } from "./aws-sim";
-import { hostReachableTarget } from "./docker-host";
+import { simulatorWorkloadHost } from "./docker-host";
 import { imageSourceEnv, startWebApp, type WebApp } from "./web-app";
 
 const EBS_ROLE = e2eEbsRoleArn();
@@ -86,7 +87,7 @@ export async function startLiveEcsApp(opts: LiveEcsAppOptions): Promise<LiveEcsA
   await ecs.send(new CreateClusterCommand({ clusterName: cluster }));
   await new CloudWatchLogsClient(sim).send(new CreateLogGroupCommand({ logGroupName: logGroup }));
 
-  const hostAlias = hostReachableTarget(opts.workspaceImage).host;
+  const hostAlias = simulatorWorkloadHost;
   const web = await startWebApp((port) => ({
     DYNAMODB_ENDPOINT: dynamoEndpoint,
     DYNAMODB_TABLE: table,
@@ -120,13 +121,17 @@ export async function startLiveEcsApp(opts: LiveEcsAppOptions): Promise<LiveEcsA
       // Drain the cluster's still-running tasks so this suite doesn't leak
       // golden-image containers into the shared sim for later suites (cumulative
       // load was a source of "task stopped before RUNNING" flakes downstream).
-      try {
-        const listed = await ecs.send(new ListTasksCommand({ cluster, desiredStatus: "RUNNING" }));
-        await Promise.all(
-          (listed.taskArns ?? []).map((task) => ecs.send(new StopTaskCommand({ cluster, task }))),
+      // StopTask is asynchronous: wait for the cloud state to reach STOPPED
+      // before the next suite starts, and surface cleanup failures rather than
+      // reporting a false green while real compute remains alive.
+      const listed = await ecs.send(new ListTasksCommand({ cluster, desiredStatus: "RUNNING" }));
+      const tasks = listed.taskArns ?? [];
+      await Promise.all(tasks.map((task) => ecs.send(new StopTaskCommand({ cluster, task }))));
+      if (tasks.length > 0) {
+        await waitUntilTasksStopped(
+          { client: ecs, maxWaitTime: 60, minDelay: 1, maxDelay: 3 },
+          { cluster, tasks },
         );
-      } catch {
-        // Best-effort cleanup — never fail teardown over it.
       }
       await dropTable(createDynamoClient(), table);
     },

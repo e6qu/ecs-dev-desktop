@@ -159,9 +159,13 @@ jobs:
             sleep "$((attempt * 20))"
           done
           exit 1
+      # The general end-to-end suite contains the real terminal browser lifecycle,
+      # so Chromium is a prerequisite of this suite as well as the portal suites.
+      - name: Install Playwright browser
+        uses: ./.github/actions/playwright-cache
       # Source the generated GitHub App coordinates so the coordinate-only App e2e
       # (github-app.e2e.ts) targets the seeded bleephub; turbo passes them through
-      # (declared in turbo.json test:e2e env). Absent, that test simply skips.
+      # (declared in turbo.json test:e2e env). Missing coordinates fail the suite.
       - run: . ./temp/github-app/coords.env && pnpm test:e2e
         env:
           RECONCILER_IMAGE: edd-reconciler:e2e
@@ -173,8 +177,6 @@ jobs:
       # LIVE portal browser e2e: the UI tier on the same container-mode path
       # (COMPUTE_PROVIDER=ecs; cloud state provisioned by its webServer command —
       # see apps/web/e2e/start-live-app.sh).
-      - name: Install Playwright browser
-        uses: ./.github/actions/playwright-cache
       - name: Portal browser lifecycle on real ECS compute
         run: pnpm --filter web test:pw:live
       # Real VS Code in the golden image: load the workbench, compile from the

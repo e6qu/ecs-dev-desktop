@@ -78,7 +78,7 @@ function presentedKey(body: string): string {
  * it (and harmlessly 200s the idle-agent heartbeat). The SSH itself runs inside a
  * sim task, so the host event loop stays free to serve (no worker thread needed,
  * unlike the spawnSync-based proxy e2e). `hostAlias` is the host as seen from a sim
- * container (from `hostReachableTarget`).
+ * container (the simulator workload-host coordinate).
  */
 export function startSshAuthorizeStub(
   publicKey: string,

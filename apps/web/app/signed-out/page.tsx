@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import Link from "next/link";
 
+import { ShauthSignInLink } from "../../components/ShauthSignInLink";
+
 const panelStyle = { maxWidth: 560, margin: "56px auto", textAlign: "center" as const };
 const kicker = { color: "var(--accent)", letterSpacing: "0.2em", fontSize: 11 } as const;
 
@@ -26,9 +28,7 @@ export default function SignedOutPage() {
           marginTop: 24,
         }}
       >
-        <a className="btn primary" href="/login/shauth">
-          Sign in again
-        </a>
+        <ShauthSignInLink />
         <Link className="btn" href="/login">
           Other sign-in options
         </Link>

@@ -22,7 +22,7 @@ import {
   e2eWorkspaceImage,
   required,
 } from "./aws-sim";
-import { hostReachableTarget } from "./docker-host";
+import { simulatorWorkloadHost } from "./docker-host";
 import {
   generateUserKey,
   runSshClientTask,
@@ -94,11 +94,7 @@ describe(
       // authorizes it via the golden image's AuthorizedKeysCommand → ssh-authorize.
       const key = generateUserKey(USER_KEY, `durable-${RUN_ID}`);
       privateKeyBase64 = key.privateKeyBase64;
-      stub = await startSshAuthorizeStub(
-        key.publicKey,
-        hostReachableTarget(WORKSPACE_IMAGE).host,
-        AGENT_SECRET,
-      );
+      stub = await startSshAuthorizeStub(key.publicKey, simulatorWorkloadHost, AGENT_SECRET);
 
       dynamo = createDynamoClient();
       await dropTable(dynamo, TABLE);

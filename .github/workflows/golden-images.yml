@@ -54,7 +54,7 @@ jobs:
           docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' | grep -E 'edd-base|edd-ws-'
       # Each variant: its toolchain present, the shared base behaviour intact, and slim.
       - name: Variant smoke tests
-        run: pnpm --filter @edd/e2e exec vitest run --config vitest.e2e.config.ts src/image-variants.e2e.ts
+        run: pnpm --filter @edd/e2e test:images
 
   # Per-arch build matrix: each architecture builds on its OWN native runner (amd64 on
   # ubuntu-latest, arm64 on ubuntu-24.04-arm), so the ~3GB golden images never pay the cost of
