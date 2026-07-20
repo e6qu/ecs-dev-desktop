@@ -46,17 +46,27 @@ const discoverySchema = z.object({
 });
 const remoteKeys = new Map<string, Promise<JWTVerifyGetKey>>();
 
-function absoluteHTTPSURL(name: string, value: string): string {
+function isLoopbackHostname(hostname: string): boolean {
+  return hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
+}
+
+/**
+ * Validate a public browser coordinate. Production coordinates are HTTPS-only;
+ * plain HTTP is accepted solely for a literal loopback host so the exact OpenID
+ * Connect flow can be exercised locally against a real Shauth instance.
+ */
+function absoluteBrowserURL(name: string, value: string): string {
   const parsed = new URL(value);
   if (
-    parsed.protocol !== "https:" ||
+    (parsed.protocol !== "https:" &&
+      !(parsed.protocol === "http:" && isLoopbackHostname(parsed.hostname))) ||
     parsed.username !== "" ||
     parsed.password !== "" ||
     parsed.search !== "" ||
     parsed.hash !== ""
   ) {
     throw new Error(
-      `${name} must be an absolute HTTPS URL without credentials, query, or fragment`,
+      `${name} must be an absolute HTTPS URL, or an HTTP loopback URL, without credentials, query, or fragment`,
     );
   }
   return value.replace(/\/+$/, "");
@@ -85,11 +95,11 @@ export function shauthOidcConfig(env: NodeJS.ProcessEnv = process.env): ShauthOi
   if (authUrlValue === "") {
     throw new Error(`${AUTH_URL_ENV} is required when Shauth is configured`);
   }
-  const authUrl = new URL(absoluteHTTPSURL(AUTH_URL_ENV, authUrlValue));
+  const authUrl = new URL(absoluteBrowserURL(AUTH_URL_ENV, authUrlValue));
   if (authUrl.pathname !== "/") {
     throw new Error(`${AUTH_URL_ENV} must identify the ECS Dev Desktop origin`);
   }
-  const normalizedPostLogoutUrl = absoluteHTTPSURL(SHAUTH_POST_LOGOUT_URL_ENV, postLogoutUrl);
+  const normalizedPostLogoutUrl = absoluteBrowserURL(SHAUTH_POST_LOGOUT_URL_ENV, postLogoutUrl);
   const parsedPostLogoutUrl = new URL(normalizedPostLogoutUrl);
   if (
     parsedPostLogoutUrl.origin !== authUrl.origin ||
@@ -101,7 +111,7 @@ export function shauthOidcConfig(env: NodeJS.ProcessEnv = process.env): ShauthOi
     );
   }
   return {
-    issuer: absoluteHTTPSURL(SHAUTH_ISSUER_ENV, issuer),
+    issuer: absoluteBrowserURL(SHAUTH_ISSUER_ENV, issuer),
     clientId,
     clientSecret,
     postLogoutUrl: normalizedPostLogoutUrl,
@@ -161,10 +171,7 @@ async function discoverShauthKeys(config: ShauthOidcConfig): Promise<JWTVerifyGe
       if (discovery.issuer.replace(/\/+$/, "") !== config.issuer) {
         throw new Error("Shauth discovery issuer did not match the configured issuer");
       }
-      const jwksUrl = new URL(discovery.jwks_uri);
-      if (jwksUrl.protocol !== "https:" || jwksUrl.username !== "" || jwksUrl.password !== "") {
-        throw new Error("Shauth discovery returned an insecure JWKS URL");
-      }
+      const jwksUrl = new URL(absoluteBrowserURL("Shauth discovery jwks_uri", discovery.jwks_uri));
       return createRemoteJWKSet(jwksUrl);
     })();
     remoteKeys.set(config.issuer, pending);

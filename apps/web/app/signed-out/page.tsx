@@ -26,9 +26,9 @@ export default function SignedOutPage() {
           marginTop: 24,
         }}
       >
-        <Link className="btn primary" href="/login/shauth">
+        <a className="btn primary" href="/login/shauth">
           Sign in again
-        </Link>
+        </a>
         <Link className="btn" href="/login">
           Other sign-in options
         </Link>

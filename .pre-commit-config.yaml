@@ -114,6 +114,13 @@ repos:
         pass_filenames: false
         always_run: true
 
+      - id: container-publication
+        name: immutable multi-architecture container publication contract
+        language: system
+        entry: sh scripts/check-container-publication.sh
+        pass_filenames: false
+        always_run: true
+
       # Strip AI attribution trailers from commit messages (commit-msg stage).
       - id: strip-ai-attribution
         name: strip AI attribution from commit messages

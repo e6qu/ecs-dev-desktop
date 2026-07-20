@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Release pipeline: build, publish, and deploy the platform's app images.
-# Triggered by every main merge, by a version tag (`v*`), or manually. Uses GitHub OIDC -> an
+# Triggered by every main merge. Uses GitHub OIDC -> an
 # AWS role with ECR/ECS/Scheduler permissions (no static keys), exactly like the e2e-aws
 # tier. The Terraform module must have been applied first (it creates the ECR
 # repositories); this closes the two-phase-apply friction documented in
@@ -21,8 +21,10 @@
 # What it publishes and rolls (see scripts/publish-images.sh with EDD_BUILD_TARGET=web):
 #   <prefix>/control-plane:<tag>         Next.js app (also the reconciler image)
 #   <prefix>/control-plane:<tag>-amd64   amd64 image
+#   <prefix>/control-plane:<tag>-arm64   arm64 image
 #   <prefix>/ssh-gateway:<tag>           SSH gateway (IMMUTABLE repo — each tag once)
 #   <prefix>/ssh-gateway:<tag>-amd64     amd64 image
+#   <prefix>/ssh-gateway:<tag>-arm64     arm64 image
 # Workspace/golden image rebuilds are handled by the separate non-blocking
 # golden-images workflow, not by this release workflow. The tag without the suffix
 # is a manifest over the architectures built by this workflow; the suffixed tags
@@ -37,13 +39,6 @@ name: release
 on:
   push:
     branches: [main]
-    tags: ["v*"]
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: "Image tag (defaults to the git short sha)"
-        required: false
-        default: ""
 
 permissions:
   id-token: write
@@ -72,7 +67,7 @@ jobs:
       RELEASE_AWS_REGION: ${{ vars.RELEASE_AWS_REGION }}
       RELEASE_AWS_ROLE_ARN: ${{ vars.RELEASE_AWS_ROLE_ARN }}
       RELEASE_NAME_PREFIX: ${{ vars.RELEASE_NAME_PREFIX }}
-      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.tag || github.sha }}
+      TAG: ${{ github.sha }}
       EDD_BUILD_TARGET: web
       EDD_BUILD_ARCHS: ${{ matrix.arch }}
       EDD_BUILDX_CACHE: gha
@@ -144,7 +139,7 @@ jobs:
       RELEASE_ECS_CLUSTER: ${{ vars.RELEASE_ECS_CLUSTER }}
       RELEASE_SSH_GATEWAY_ENABLED: ${{ vars.RELEASE_SSH_GATEWAY_ENABLED }}
       RELEASE_DEPLOYMENT_ENABLED: ${{ vars.RELEASE_DEPLOYMENT_ENABLED }}
-      TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag != '' && inputs.tag || github.sha }}
+      TAG: ${{ github.sha }}
       EDD_BUILD_TARGET: web
       EDD_BUILD_ARCHS: amd64 arm64
     steps:
@@ -194,6 +189,15 @@ jobs:
             "$RELEASE_AWS_REGION" \
             "$RELEASE_NAME_PREFIX" \
             "${TAG:0:12}"
+
+      - name: Verify published OCI image shape
+        run: |
+          sh scripts/verify-published-images.sh \
+            "$RELEASE_AWS_ACCOUNT" \
+            "$RELEASE_AWS_REGION" \
+            "$RELEASE_NAME_PREFIX" \
+            "${TAG:0:12}" \
+            control-plane ssh-gateway
 
       - name: Deploy ECS services (arm64)
         if: env.RELEASE_DEPLOYMENT_ENABLED == 'true'

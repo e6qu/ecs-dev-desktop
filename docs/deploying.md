@@ -95,10 +95,12 @@ images with an architecture suffix (`:<tag>-amd64` and `:<tag>-arm64`):
 <name>/control-plane:<tag>-arm64   arm64 image
 ```
 
-ECS Fargate pulls the manifest and selects the correct architecture automatically.
-Runners that cannot consume manifests (e.g. AWS Lambda) can pin the suffixed tag
-directly. The architecture list defaults to `amd64 arm64`; limit it with
-`EDD_BUILD_ARCHS=amd64` if your build host cannot emulate the other architecture.
+Amazon ECS Fargate pulls the manifest and selects the correct architecture
+automatically. Consumers that cannot consume manifests (for example, AWS Lambda)
+can pin the suffixed tag directly. Each suffixed tag resolves to a direct OCI
+image manifest, not a nested index. The architecture list defaults to
+`amd64 arm64`; an operator publishing outside CI must build every architecture
+before creating the bare multi-architecture manifest.
 
 It publishes:
 
@@ -120,11 +122,12 @@ It publishes:
 
 For CI-driven publishes, the [`release`](../.github/workflows/release.yml) workflow
 builds, pushes, and deploys the control-plane, reconciler, and SSH-gateway images
-on every `main` merge, on a `v*` tag, or by manual dispatch via GitHub OIDC → an
-AWS role with ECR/ECS/Scheduler permissions (no static secrets). It builds the
-currently deployed `amd64` architecture with Docker Buildx + GitHub Actions cache,
-then registers fresh task-definition revisions from the currently deployed
-definitions, changing only the image references. It updates the control-plane and
+on every `main` merge via GitHub OIDC → an AWS role with ECR/ECS/Scheduler
+permissions (no static secrets). Native AMD64 and ARM64 GitHub-hosted runners
+build the two direct per-architecture images from the same source commit. A
+separate job assembles their bare multi-architecture manifest, verifies the
+published OCI shape, and then registers fresh task-definition revisions from the
+currently deployed definitions, changing only the image references. It updates the control-plane and
 SSH-gateway ECS services and updates the reconciler Scheduler target. It does
 not wait for ECS service stability in the release job: ECS convergence is
 asynchronous, guarded by the deployment circuit breaker and CloudWatch alarms,
@@ -154,12 +157,12 @@ appears or when any app surface returns an error. There is no alternate success
 path.
 
 The separate [`golden-images`](../.github/workflows/golden-images.yml) workflow
-publishes workspace/golden images on `main` when image inputs change and by manual
-dispatch. It does not deploy ECS services and does not block the `release`
-workflow. The workflow uses the same GitHub OIDC role and pushes
-`EDD_BUILD_TARGET=golden` images to the configured golden ECR repos with
-`EDD_BUILD_ARCHS=amd64`, matching the current Fargate workspace architecture and
-avoiding CodeBuild cost. The `RELEASE_AWS_ACCOUNT`, `RELEASE_AWS_REGION`,
+publishes workspace/golden images on `main`. It does not deploy ECS services and
+does not block the `release` workflow. The workflow uses the same GitHub OIDC role and pushes
+`EDD_BUILD_TARGET=golden` images to the configured golden ECR repositories on
+native AMD64 and ARM64 runners. It publishes and verifies a bare
+multi-architecture manifest for the shared `edd-base` image and every configured
+golden variant. The `RELEASE_AWS_ACCOUNT`, `RELEASE_AWS_REGION`,
 `RELEASE_AWS_ROLE_ARN`, `RELEASE_NAME_PREFIX`, and `RELEASE_GOLDEN_VARIANTS` repo
 variables are required non-secret coordinates. Do not store static secrets in
 GitHub variables or secrets for this path. When any coordinate is absent, the
@@ -173,7 +176,7 @@ account bootstrap step:
 
 1. Create the AWS IAM OIDC provider for `https://token.actions.githubusercontent.com`.
 2. Create a narrowly scoped IAM role whose trust policy accepts GitHub OIDC tokens
-   only from this repository's `main` branch and `v*` tags.
+   only from this repository's `main` branch.
 3. Grant that role only the ECR, ECS, Scheduler, and `iam:PassRole` permissions
    needed to publish the release and golden images, register the matching task
    definitions, roll the control-plane/SSH services, and retarget the reconciler

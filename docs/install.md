@@ -196,7 +196,7 @@ repo variables are non-secret coordinates only; do not store static secrets in
 GitHub variables or secrets for this path. The
 bootstrap is not part of the Terraform module because EDD must be releasable
 before EDD is deployed. The role trust is constrained to this repository's `main`
-branch and `v*` tags, and the permissions are scoped to the release path: ECR
+branch, and the permissions are scoped to the release path: ECR
 pushes for the control-plane, SSH-gateway, and golden-image repositories, ECS
 task-definition registration and service updates for the control-plane/SSH/reconciler
 families, Scheduler updates for the reconciler schedule, and `iam:PassRole` for
@@ -215,8 +215,8 @@ static credential.
 | [`scripts/bootstrap-release-oidc.sh`](../scripts/bootstrap-release-oidc.sh) | GitHub OIDC release role + release workflow repo variables      |
 | [`scripts/publish-images.sh`](../scripts/publish-images.sh)                 | build + push control-plane / golden / gateway images to ECR     |
 | [`scripts/deploy-release-images.sh`](../scripts/deploy-release-images.sh)   | roll published release images into ECS services + Scheduler     |
-| [`release`](../.github/workflows/release.yml) workflow                      | CI-driven image publish + deploy on `main`/`v*`/manual          |
-| [`golden-images`](../.github/workflows/golden-images.yml) workflow          | CI-driven golden image publish on `main`/manual                 |
+| [`release`](../.github/workflows/release.yml) workflow                      | CI-driven immutable image publish + deploy on `main`            |
+| [`golden-images`](../.github/workflows/golden-images.yml) workflow          | CI-driven immutable golden image publish on `main`              |
 
 ## See also
 

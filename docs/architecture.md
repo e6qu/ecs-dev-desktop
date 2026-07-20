@@ -182,7 +182,7 @@ shape is:
    public app is serving the expected build by checking `/api/healthz`,
    `/api/readyz`, and `/workspaces`.
    The separate `golden-images` workflow publishes workspace/golden images
-   asynchronously on `main` and manual dispatch. The deployed EDD image-source
+   asynchronously on `main`. The deployed EDD image-source
    flow records signed source webhooks, verifies expected golden tags in ECR, and
    rolls the catalog after those tags exist.
 6. **Seed the base-image catalog** — production starts with an empty catalog; add

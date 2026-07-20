@@ -22,6 +22,7 @@ import {
 const TABLE = process.env.DYNAMODB_TABLE ?? "ecs-dev-desktop-pw";
 const ENDPOINT = process.env.DYNAMODB_ENDPOINT ?? "http://127.0.0.1:4566";
 const REGION = process.env.AWS_REGION ?? "us-east-1";
+const APP_NAME = process.env.EDD_APP_NAME ?? "edd-playwright";
 const credentials = { accessKeyId: "local", secretAccessKey: "local" };
 
 const client = new DynamoDBClient({
@@ -90,9 +91,9 @@ export default async function globalSetup(): Promise<void> {
   }
 
   for (const repositoryName of [
-    "edd-playwright/control-plane",
-    "edd-playwright/ssh-gateway",
-    "edd-playwright/golden/omnibus",
+    `${APP_NAME}/control-plane`,
+    `${APP_NAME}/ssh-gateway`,
+    `${APP_NAME}/golden/omnibus`,
   ]) {
     try {
       await ecr.send(new CreateRepositoryCommand({ repositoryName }));
