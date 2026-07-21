@@ -57,6 +57,32 @@ describe("principalFromSession", () => {
     } as unknown as Session;
     expect(() => principalFromSession(session)).toThrow("role is invalid");
   });
+
+  // Shauth's `sub` is a UUID; its `preferred_username` arrives as the session user
+  // name and is what the header shows, so the two must stay distinguishable here.
+  it("keeps the display identity distinct from the subject", () => {
+    const session: Session = {
+      user: {
+        id: "3f1b9c2e-4a7d-4f61-9c3a-8d2e5b7a1c04",
+        role: "developer",
+        name: "ada",
+      },
+      expires: "2026-12-31T00:00:00.000Z",
+    };
+    expect(principalFromSession(session)).toEqual({
+      id: "3f1b9c2e-4a7d-4f61-9c3a-8d2e5b7a1c04",
+      role: "developer",
+      displayName: "ada",
+    });
+  });
+
+  it("omits the display identity when the identity source provides none", () => {
+    const session: Session = {
+      user: { id: "u1", role: "developer", name: "" },
+      expires: "2026-12-31T00:00:00.000Z",
+    };
+    expect(principalFromSession(session)).toEqual({ id: "u1", role: "developer" });
+  });
 });
 
 describe("persona cookie schema (encode/decode)", () => {

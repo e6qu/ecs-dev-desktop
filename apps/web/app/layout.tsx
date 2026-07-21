@@ -41,7 +41,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           <span className="spacer" />
           <HelpToggle />
           {principal ? (
-            <span className="who">
+            <span className="who" data-shauth-user={principal.displayName ?? principal.id}>
               {/* The display identity doubles as the /me link; its accessible name is
                   distinct ("account: <name>") so it can never collide with a nav
                   link whose label equals a username (e.g. the admin user vs the
@@ -78,7 +78,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
                 ssh keys
               </Link>
               <form action={signOutAction}>
-                <button className="btn" type="submit">
+                <button className="btn" type="submit" data-shauth-sign-out>
                   Sign out
                 </button>
               </form>
