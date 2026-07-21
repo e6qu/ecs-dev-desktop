@@ -2,6 +2,7 @@
 /* ecs-dev-desktop control plane — "infra control room" aesthetic. */
 
 :root {
+  color-scheme: dark light;
   --font-display: "Chakra Petch", "Avenir Next", "Segoe UI", sans-serif;
   --font-body: "IBM Plex Sans", "Avenir Next", "Segoe UI", sans-serif;
   --font-mono: "IBM Plex Mono", "SFMono-Regular", "Cascadia Mono", "Consolas", monospace;
@@ -36,6 +37,35 @@
 
   --r: 10px;
   --maxw: 1140px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f4f8ef;
+    --panel: #ffffff;
+    --panel-2: #eaf3df;
+    --panel-3: #e1ebd7;
+    --line: rgba(53, 111, 0, 0.1);
+    --border: rgba(24, 49, 27, 0.16);
+    --border-strong: rgba(24, 49, 27, 0.28);
+    --border-control: rgba(24, 49, 27, 0.55);
+    --text: #121b13;
+    --dim: #435446;
+    --dimmer: #526354;
+    --accent: #4f9f00;
+    --accent-ink: #ffffff;
+    --accent-glow: rgba(79, 159, 0, 0.28);
+    --st-running: #397d00;
+    --st-provisioning: #006db8;
+    --st-idle: #9a5200;
+    --st-stopped: #536257;
+    --st-error: #c52136;
+    --st-terminated: #5d685f;
+  }
+
+  .topbar {
+    background: rgba(244, 248, 239, 0.88);
+  }
 }
 
 * {
@@ -96,6 +126,36 @@ h3 {
 a {
   color: inherit;
   text-decoration: none;
+}
+
+.btn.shauth-button {
+  width: 100%;
+  justify-content: center;
+  gap: 10px;
+  border-color: #a85cff;
+  background: #7118c9;
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.btn.shauth-button:hover {
+  background: #8724e8;
+  border-color: #bb7cff;
+  box-shadow: 0 0 18px color-mix(in srgb, #9a35ee 28%, transparent);
+}
+
+.shauth-mark {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 7px;
+  background: linear-gradient(135deg, #7620dd, #c32bed);
+  color: #ffffff;
+  box-shadow: 0 4px 12px rgba(127, 34, 221, 0.3);
+  font-family: var(--font-display), sans-serif;
+  font-size: 13px;
+  font-weight: 800;
 }
 
 /* ---- layout ---- */
@@ -209,10 +269,27 @@ a {
   color: var(--dim);
 }
 
-/* The account id can be a long uuid — let it wrap rather than widen the row. */
-.who > .mono {
+/* A fallback account id can be a long UUID — let it wrap rather than widen the row. */
+.account-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.account-link > .mono {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.account-avatar {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background-position: center;
+  background-size: cover;
 }
 
 /* The persona switcher must be free to shrink below its 220px control default

@@ -43,7 +43,7 @@ jobs:
     # Manual, main-only, and gated on the explicit RUN confirmation.
     if: github.ref == 'refs/heads/main' && github.event.inputs.confirm == 'RUN'
     runs-on: ubuntu-latest
-    timeout-minutes: 30 # cost/time guardrail — the job is force-killed past this
+    timeout-minutes: 15 # cost/time guardrail — the job is force-killed past this
     env:
       EDD_E2E_AWS_PREFIX: edd-e2eaws-${{ github.run_id }}
       AWS_REGION: ${{ github.event.inputs.region != '' && github.event.inputs.region || vars.E2E_AWS_REGION }}

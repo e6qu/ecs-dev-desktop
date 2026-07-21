@@ -52,7 +52,7 @@ function isPositiveInt(v: unknown): v is number {
 /** Narrow a client message to the input/resize protocol without unsafe casts. */
 export function parseMessage(
   raw: string,
-): { input: string } | { cols: number; rows: number } | null {
+): { input: string } | { cols: number; rows: number } | { close: true } | null {
   let value: unknown;
   try {
     value = JSON.parse(raw);
@@ -63,6 +63,7 @@ export function parseMessage(
   if (value.type === "input" && "data" in value && typeof value.data === "string") {
     return { input: value.data };
   }
+  if (value.type === "close") return { close: true };
   if (
     value.type === "resize" &&
     "cols" in value &&
@@ -115,12 +116,17 @@ const defaultPtySpawner: PtySpawner = async ({ root, command }) => {
     cols: 80,
     rows: 24,
   });
+  let forceKillTimer: ReturnType<typeof setTimeout> | undefined;
   return {
     onData: (listener) => {
       pty.onData(listener);
     },
     onExit: (listener) => {
       pty.onExit(() => {
+        if (forceKillTimer !== undefined) {
+          clearTimeout(forceKillTimer);
+          forceKillTimer = undefined;
+        }
         listener();
       });
     },
@@ -131,7 +137,22 @@ const defaultPtySpawner: PtySpawner = async ({ root, command }) => {
       pty.resize(cols, rows);
     },
     kill: () => {
-      pty.kill();
+      // forkpty makes the terminal child its process-group leader. Closing a tab
+      // terminates the whole terminal session, including child commands, rather
+      // than leaving invisible work behind after killing only the shell leader.
+      try {
+        process.kill(-pty.pid, "SIGHUP");
+      } catch {
+        pty.kill("SIGHUP");
+      }
+      forceKillTimer = setTimeout(() => {
+        try {
+          process.kill(-pty.pid, "SIGKILL");
+        } catch {
+          // The process group already exited after SIGHUP.
+        }
+      }, 1_000);
+      forceKillTimer.unref();
     },
   };
 };
@@ -167,6 +188,12 @@ async function startShell(
     return;
   }
   const livePty = pty;
+  let terminated = false;
+  const terminate = (): void => {
+    if (terminated) return;
+    terminated = true;
+    livePty.kill();
+  };
   ws.send(WELCOME_BANNER);
   livePty.onData((data) => {
     if (ws.readyState === ws.OPEN) ws.send(data);
@@ -181,14 +208,17 @@ async function startShell(
       // Keystrokes are the definition of "in use" (see ./activity.ts).
       touchActivity();
       livePty.write(msg.input);
-    } else {
+    } else if ("cols" in msg) {
       livePty.resize(msg.cols, msg.rows);
+    } else {
+      terminate();
+      ws.close();
     }
   });
   // Closing the tab closes the socket, which fires this — killing the PTY so no shell keeps
   // running after its tab is gone (the "no stale session on close" guarantee, unit-tested).
   ws.on("close", () => {
-    livePty.kill();
+    terminate();
   });
 }
 

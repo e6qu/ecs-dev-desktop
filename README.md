@@ -122,12 +122,12 @@ In short, the install flow is:
    service _and_ the reconciler run it, via a command override), a **golden
    workspace image** (the [`infra/images`](infra/images/README.md) collection),
    and the **SSH-gateway image** (a pinned tag — the repo is immutable). For
-   ongoing releases, the `release` workflow uses GitHub OIDC to build, publish,
-   register new ECS task definitions, roll the control-plane and SSH-gateway
-   services, and update the reconciler schedule. Rollout convergence is
-   asynchronous: `post-deploy-smoke` then verifies the public app reports the
-   expected deploy SHA and renders real routes (`/api/healthz`, `/api/readyz`,
-   `/workspaces`). ECS steady state alone is not considered proof that EDD is up.
+   ongoing releases, the `release` workflow uses GitHub OIDC only to build and
+   publish immutable images. The private Infra repository pins those images and
+   Terraform owns every task-definition and service attachment. After that apply,
+   an operator dispatches `post-deploy-smoke` to verify the public app reports the
+   expected deploy SHA, authenticates through Shauth, and opens every real editor.
+   Amazon ECS steady state alone is not considered proof that EDD is up.
    The separate `golden-images`
    workflow publishes workspace/golden images asynchronously on `main`; the
    deployed EDD app tracks signed source webhooks and rolls

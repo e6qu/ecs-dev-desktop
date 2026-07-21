@@ -17,13 +17,10 @@ import {
  * Pure coordinate-driven (AGENTS.md §6.9): the test reads only its coordinates
  * (api base, app id, private key, org, repo) from env and is identical against any
  * target — it has no notion of "sim" vs. "real". Supply the coordinates to run it
- * (a real GitHub/GHES App, or any target that can present a pre-registered App);
- * with none, it skips.
+ * (a real GitHub/GHES App, or any target that can present a pre-registered App).
+ * Missing coordinates are a harness failure, never a skipped green test.
  */
-const coordinates = gitHubAppCoordinatesFromEnv();
-const suite = coordinates === null ? describe.skip : describe;
-
-suite("GitHub App flow (app JWT → installation token → REST), coordinate-driven", () => {
+describe("GitHub App flow (app JWT → installation token → REST), coordinate-driven", () => {
   let coords: GitHubAppCoordinates;
   let cfg: GitHubAppConfig;
   // Real now: the app JWT must be currently valid against the target's clock

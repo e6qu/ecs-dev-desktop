@@ -42,12 +42,23 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
           <HelpToggle />
           {principal ? (
             <span className="who">
-              {/* The username doubles as the /me link; its ACCESSIBLE name is
-                  distinct ("account: <id>") so it can never collide with a nav
+              {/* The display identity doubles as the /me link; its accessible name is
+                  distinct ("account: <name>") so it can never collide with a nav
                   link whose label equals a username (e.g. the admin user vs the
                   /admin nav — a locator/screen-reader ambiguity found in CI). */}
-              <Link href="/me" className="mono" aria-label={`account: ${principal.id}`}>
-                {principal.id}
+              <Link
+                href="/me"
+                className="account-link"
+                aria-label={`account: ${principal.displayName ?? principal.id}`}
+              >
+                {principal.image !== undefined && (
+                  <span
+                    className="account-avatar"
+                    aria-hidden="true"
+                    style={{ backgroundImage: `url(${JSON.stringify(principal.image)})` }}
+                  />
+                )}
+                <span className="mono">{principal.displayName ?? principal.id}</span>
               </Link>
               <span className="badge accent">{principal.role}</span>
               <PersonaSwitcher
@@ -68,7 +79,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               </Link>
               <form action={signOutAction}>
                 <button className="btn" type="submit">
-                  sign out
+                  Sign out
                 </button>
               </form>
             </span>

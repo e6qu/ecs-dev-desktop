@@ -54,7 +54,7 @@ jobs:
           - arch: arm64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 60
+    timeout-minutes: 15
     env:
       RELEASE_AWS_ACCOUNT: ${{ vars.RELEASE_AWS_ACCOUNT }}
       RELEASE_AWS_REGION: ${{ vars.RELEASE_AWS_REGION }}
@@ -122,7 +122,7 @@ jobs:
     name: publish manifests
     needs: publish
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     env:
       RELEASE_AWS_ACCOUNT: ${{ vars.RELEASE_AWS_ACCOUNT }}
       RELEASE_AWS_REGION: ${{ vars.RELEASE_AWS_REGION }}

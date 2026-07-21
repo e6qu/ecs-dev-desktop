@@ -4,7 +4,7 @@
 // attached to any host-reachable Docker network (peer tasks reach it in-network;
 // the host cannot route to its ENI). The one reliable channel into that netns is
 // `docker exec`, so this opens a local TCP listener and, per connection, pipes
-// the stream through `docker exec -i <task> python3` to the workbench on
+// the stream through `docker exec -i <task> node` to the workbench on
 // 127.0.0.1:3000 inside the task.
 //
 // This is the LOCAL/dev + sim-CI realisation of the per-workspace proxy handoff
@@ -16,23 +16,15 @@ import { createServer, type AddressInfo, type Socket } from "node:net";
 /** OpenVSCode's in-container HTTP port (the golden image's `--port 3000`). */
 const WORKBENCH_PORT = 3000;
 
-/** A stdio<->TCP relay, run inside the task via python3 (the golden image has no
- * nc/socat but does have python3): copy stdin→socket and socket→stdout. */
+/** A stdio<->TCP relay, run inside the task via Node.js (the golden image has no
+ * nc/socat or Python): copy stdin→socket and socket→stdout. */
 const INNER_RELAY = [
-  "import sys,socket,threading",
-  `s=socket.create_connection(('127.0.0.1',${String(WORKBENCH_PORT)}))`,
-  "def up():",
-  " while True:",
-  "  d=sys.stdin.buffer.read1(65536)",
-  "  if not d: break",
-  "  s.sendall(d)",
-  "def dn():",
-  " while True:",
-  "  d=s.recv(65536)",
-  "  if not d: break",
-  "  sys.stdout.buffer.write(d); sys.stdout.buffer.flush()",
-  "t=threading.Thread(target=up,daemon=True); t.start(); dn()",
-].join("\n");
+  "const net=require('node:net')",
+  `const socket=net.createConnection({host:'127.0.0.1',port:${String(WORKBENCH_PORT)}})`,
+  "process.stdin.pipe(socket)",
+  "socket.pipe(process.stdout)",
+  "socket.on('error',()=>process.exit(1))",
+].join(";");
 
 export interface IdeBridge {
   /** Browser URL for the workbench (includes `?tkn=` when the task uses a token). */
@@ -122,6 +114,38 @@ function findTaskContainer(workspaceId: string, image: string): string {
   );
 }
 
+/** Wait until the editor is accepting connections inside the task. ECS RUNNING
+ * means the container process has started; it does not mean the editor's HTTP
+ * listener is ready yet. Opening the host bridge before this point turns the
+ * normal startup window into a misleading empty HTTP response. */
+function waitForWorkbench(container: string): void {
+  const probe = [
+    "const net=require('node:net')",
+    `const socket=net.createConnection({host:'127.0.0.1',port:${String(WORKBENCH_PORT)}})`,
+    "socket.setTimeout(1000)",
+    "socket.once('connect',()=>socket.end())",
+    "socket.once('timeout',()=>process.exit(1))",
+    "socket.once('error',()=>process.exit(1))",
+  ].join(";");
+  for (let attempt = 0; attempt < 60; attempt++) {
+    try {
+      execFileSync("docker", ["exec", container, "node", "-e", probe], {
+        stdio: "ignore",
+      });
+      return;
+    } catch {
+      execFileSync("sleep", ["1"]);
+    }
+  }
+  const logs = execFileSync("docker", ["logs", "--tail", "60", container], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  throw new Error(
+    `editor in task ${container} did not listen on port ${String(WORKBENCH_PORT)} within 60s.\n--- container logs ---\n${logs}`,
+  );
+}
+
 /** Extract the OpenVSCode `--connection-token` from the task's process args, or
  * undefined if the server runs `--without-connection-token`. The task reaches ECS
  * RUNNING (and the bridge is opened) before the entrypoint execs OpenVSCode, so
@@ -155,9 +179,10 @@ export async function startIdeBridge(opts: IdeBridgeOptions): Promise<IdeBridge>
   const image = opts.image ?? "edd-workspace:e2e";
   const container = findTaskContainer(opts.workspaceId, image);
   const token = opts.extractConnectionToken === false ? undefined : extractToken(container);
+  waitForWorkbench(container);
 
   const server = createServer((sock: Socket) => {
-    const child = spawn("docker", ["exec", "-i", container, "python3", "-c", INNER_RELAY], {
+    const child = spawn("docker", ["exec", "-i", container, "node", "-e", INNER_RELAY], {
       stdio: ["pipe", "pipe", "ignore"],
     });
     sock.pipe(child.stdin);

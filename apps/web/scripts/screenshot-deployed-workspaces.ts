@@ -5,20 +5,17 @@ import { join } from "node:path";
 
 import { chromium, expect, type Page } from "@playwright/test";
 
-import { revokeAuthSession } from "../lib/auth-sessions";
-
 import {
   EDITORS,
   type Editor,
   type StoredCookie,
-  authJar,
-  authSecret,
   cleanupSmokeWorkspaces,
   createWorkspace,
   requiredEnv,
   waitEnabledImage,
   waitReady,
 } from "./deployed-workspace-smoke-lib";
+import { signInToDeployedApp, signOutOfDeployedApp } from "./deployed-shauth-session";
 
 const OUT_DIR = process.env.EDD_SHOT_OUT ?? join(tmpdir(), "edd-workspace-screenshots");
 const BAD_RENDER_TEXT = [
@@ -113,10 +110,10 @@ async function removeCatalogImage(jar: readonly StoredCookie[], id: string): Pro
     console.error(`edd: failed to remove temp catalog entry ${id}: HTTP ${String(res.status)}`);
   else console.log(`edd: removed temp catalog entry ${id}`);
 }
-const region = requiredEnv("AWS_REGION");
-const table = requiredEnv("DYNAMODB_TABLE");
-const secretId = requiredEnv("AUTH_SECRET_ID");
 const expectedSha = requiredEnv("EXPECTED_SHA");
+const shauthIssuer = requiredEnv("SHAUTH_ISSUER");
+const shauthUsername = requiredEnv("SHAUTH_USERNAME");
+const shauthPassword = requiredEnv("SHAUTH_PASSWORD");
 
 function bodySnippet(text: string): string {
   return text.replace(/\s+/g, " ").trim().slice(0, 1_000);
@@ -461,12 +458,14 @@ async function assertRenderedWorkspace(editor: Editor, page: Page): Promise<void
   await assertWorkspaceHomeLink(editor, page);
 }
 
-process.env.DYNAMODB_TABLE = table;
-process.env.AWS_REGION = region;
-
 await mkdir(OUT_DIR, { recursive: true });
-const secret = await authSecret(region, secretId);
-const { jar, sessionId } = await authJar(secret, "smoke-shot");
+const shauthSession = await signInToDeployedApp(
+  baseUrl,
+  shauthIssuer,
+  shauthUsername,
+  shauthPassword,
+);
+const jar = shauthSession.applicationCookies;
 const created: string[] = [];
 // Id of the temporary catalog entry the manual EDD_VERIFY_BASE_IMAGE path registered (removed in
 // cleanup so the image-source rollout's single-entry-per-repo invariant is restored). null otherwise.
@@ -604,7 +603,7 @@ try {
 // still valid here). Restores the single-entry-per-repo invariant the image-source rollout needs.
 if (tempCatalogId !== null) await removeCatalogImage(jar, tempCatalogId);
 const cleanupFailures = await cleanupSmokeWorkspaces(baseUrl, jar, created, () =>
-  revokeAuthSession(sessionId),
+  signOutOfDeployedApp(baseUrl, shauthSession),
 );
 for (const failure of cleanupFailures) {
   console.error("edd: cleanup failure:", failure);

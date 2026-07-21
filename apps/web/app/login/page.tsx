@@ -2,6 +2,7 @@
 import { devUsers } from "@edd/config";
 
 import { signIn } from "../../auth";
+import { ShauthSignInLink } from "../../components/ShauthSignInLink";
 import { entraOAuthClient, githubOAuthClient } from "../../lib/identity-providers";
 import { devAuthEnabled } from "../../lib/principal";
 import { shauthEnabled } from "../../lib/shauth";
@@ -102,6 +103,7 @@ function OidcLogin({ error }: { error?: string }) {
     OAuthCallback: "Sign-in failed — the identity provider rejected the request. Please try again.",
     AccessDenied: "Access denied — your account does not have permission to sign in.",
     Configuration: "Sign-in is not configured correctly. Contact your administrator.",
+    CredentialsSignin: "Invalid email or password.",
   };
   return (
     <div className="panel" style={panelStyle}>
@@ -150,18 +152,7 @@ function OidcLogin({ error }: { error?: string }) {
             Continue with EDD account
           </button>
         </form>
-        {shauthEnabled() && (
-          <form
-            action={async () => {
-              "use server";
-              await signIn("shauth", { redirectTo: "/workspaces" });
-            }}
-          >
-            <button className="btn" type="submit" style={{ width: "100%" }}>
-              Continue with Shauth
-            </button>
-          </form>
-        )}
+        {shauthEnabled() && <ShauthSignInLink />}
         {githubEnabled && (
           <form
             action={async () => {

@@ -15,6 +15,7 @@ const BUILD_TIMEOUT_MS = 300_000;
 const E2E_IMAGE_SOURCE_REPO = "e6qu/ecs-dev-desktop";
 const E2E_IMAGE_SOURCE_BRANCH = "main";
 const E2E_IMAGE_SOURCE_SECRET = "e2e-image-source-webhook-secret";
+const SOURCE_REVISION_PATTERN = /^[0-9a-f]{40,64}$/;
 
 export interface WebApp {
   baseUrl: string;
@@ -54,6 +55,30 @@ function ensureWebBuilt(): void {
   }
 }
 
+/** Resolve the immutable source revision of the production app under test. */
+function checkedOutSourceRevision(): string {
+  const result = spawnSync("git", ["rev-parse", "HEAD"], {
+    cwd: REPO_ROOT,
+    encoding: "utf8",
+  });
+  const revision = result.stdout.trim();
+  if (result.status !== 0 || !SOURCE_REVISION_PATTERN.test(revision)) {
+    throw new Error(`could not resolve checked-out source revision:\n${result.stderr}`);
+  }
+  return revision;
+}
+
+/** Add real checkout provenance when the caller did not provide a deployment revision. */
+export function withE2EReleaseRevision(configuredEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  if (
+    (configuredEnv.APPLICATION_RELEASE_REVISION?.trim() ?? "") !== "" ||
+    (configuredEnv.EDD_BUILD_SHA?.trim() ?? "") !== ""
+  ) {
+    return { ...configuredEnv };
+  }
+  return { ...configuredEnv, EDD_BUILD_SHA: checkedOutSourceRevision() };
+}
+
 /**
  * Start the production web app on a free port with the given env (dev-auth on,
  * DynamoDB Local table of the caller's choosing). Resolves once /api/healthz
@@ -68,21 +93,22 @@ export async function startWebApp(
   ensureWebBuilt();
   const port = await freePort();
   const env = makeEnv(port);
+  const childEnv = withE2EReleaseRevision({
+    ...process.env,
+    NODE_ENV: "production",
+    PORT: String(port),
+    // Bind all interfaces (as `next start` did): the workspace containers reach
+    // this control plane over the host network, so loopback-only would be
+    // unreachable from them (idle-agent heartbeats + SSH wake-on-connect).
+    HOSTNAME: "0.0.0.0",
+    EDD_DEV_AUTH: "1",
+    AUTH_SECRET: "e2e-secret",
+    ...env,
+  });
   // The custom server (server.ts) serves the app AND the /w/<id>/ workspace proxy.
   const child: ChildProcess = spawn(join(WEB_DIR, "node_modules", ".bin", "tsx"), ["server.ts"], {
     cwd: WEB_DIR,
-    env: {
-      ...process.env,
-      NODE_ENV: "production",
-      PORT: String(port),
-      // Bind all interfaces (as `next start` did): the workspace containers reach
-      // this control plane over the host network, so loopback-only would be
-      // unreachable from them (idle-agent heartbeats + SSH wake-on-connect).
-      HOSTNAME: "0.0.0.0",
-      EDD_DEV_AUTH: "1",
-      AUTH_SECRET: "e2e-secret",
-      ...env,
-    },
+    env: childEnv,
     stdio: ["ignore", "pipe", "pipe"],
   });
   let output = "";

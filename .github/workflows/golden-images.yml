@@ -34,6 +34,7 @@ jobs:
     name: validate golden images
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6.0.2
       - uses: actions/setup-node@v6.4.0
@@ -54,15 +55,55 @@ jobs:
           docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' | grep -E 'edd-base|edd-ws-'
       # Each variant: its toolchain present, the shared base behaviour intact, and slim.
       - name: Variant smoke tests
-        run: pnpm --filter @edd/e2e exec vitest run --config vitest.e2e.config.ts src/image-variants.e2e.ts
+        run: pnpm --filter @edd/e2e test:images
 
-  # Per-arch build matrix: each architecture builds on its OWN native runner (amd64 on
-  # ubuntu-latest, arm64 on ubuntu-24.04-arm), so the ~3GB golden images never pay the cost of
-  # QEMU emulating the other arch. Each job pushes only the per-arch tags (EDD_SKIP_MANIFEST);
-  # the `manifest` job below combines them into the `:<tag>` multi-arch manifest.
-  publish:
-    name: publish golden images (${{ matrix.arch }})
+  prepare:
+    name: prepare golden publication
     if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      RELEASE_AWS_ACCOUNT: ${{ vars.RELEASE_AWS_ACCOUNT }}
+      RELEASE_AWS_REGION: ${{ vars.RELEASE_AWS_REGION }}
+      RELEASE_AWS_ROLE_ARN: ${{ vars.RELEASE_AWS_ROLE_ARN }}
+      RELEASE_NAME_PREFIX: ${{ vars.RELEASE_NAME_PREFIX }}
+      RELEASE_GOLDEN_VARIANTS: ${{ vars.RELEASE_GOLDEN_VARIANTS }}
+    outputs:
+      variants: ${{ steps.variants.outputs.json }}
+    steps:
+      - name: Validate release coordinates and variants
+        id: variants
+        run: |
+          set -euo pipefail
+          for name in RELEASE_AWS_ACCOUNT RELEASE_AWS_REGION RELEASE_AWS_ROLE_ARN RELEASE_NAME_PREFIX RELEASE_GOLDEN_VARIANTS; do
+            if [ -z "${!name}" ]; then
+              echo "::error::${name} is required for the golden-images workflow"
+              exit 1
+            fi
+          done
+          if [[ ! "$RELEASE_AWS_ACCOUNT" =~ ^[0-9]{12}$ ]]; then
+            echo "::error::RELEASE_AWS_ACCOUNT must be a 12-digit AWS account id"
+            exit 1
+          fi
+          for variant in $RELEASE_GOLDEN_VARIANTS; do
+            if [[ ! "$variant" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+              echo "::error::invalid golden image variant: $variant"
+              exit 1
+            fi
+          done
+          json=$(tr ' ' '\n' <<< "$RELEASE_GOLDEN_VARIANTS" | sed '/^$/d' | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          if [ "$json" = "[]" ]; then
+            echo "::error::RELEASE_GOLDEN_VARIANTS must contain at least one variant"
+            exit 1
+          fi
+          echo "json=$json" >> "$GITHUB_OUTPUT"
+
+  # Build the large shared base once per native architecture. Keeping base and
+  # variants in separate jobs gives every publication unit a hard 15-minute cap.
+  publish-base:
+    name: publish golden base (${{ matrix.arch }})
+    if: github.event_name == 'push'
+    needs: prepare
     strategy:
       fail-fast: false
       matrix:
@@ -72,13 +113,12 @@ jobs:
           - arch: arm64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
+    timeout-minutes: 15
     env:
       RELEASE_AWS_ACCOUNT: ${{ vars.RELEASE_AWS_ACCOUNT }}
       RELEASE_AWS_REGION: ${{ vars.RELEASE_AWS_REGION }}
       RELEASE_AWS_ROLE_ARN: ${{ vars.RELEASE_AWS_ROLE_ARN }}
       RELEASE_NAME_PREFIX: ${{ vars.RELEASE_NAME_PREFIX }}
-      RELEASE_GOLDEN_VARIANTS: ${{ vars.RELEASE_GOLDEN_VARIANTS }}
       TAG: ${{ github.sha }}
       EDD_BUILD_TARGET: golden
       EDD_BUILD_ARCHS: ${{ matrix.arch }}
@@ -98,55 +138,84 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Validate release coordinates
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6.2.1
+        with:
+          role-to-assume: ${{ env.RELEASE_AWS_ROLE_ARN }}
+          aws-region: ${{ env.RELEASE_AWS_REGION }}
+          role-session-name: golden-base-${{ matrix.arch }}-${{ github.run_id }}
+
+      - name: Verify assumed identity
+        run: aws sts get-caller-identity
+
+      - name: Build and push golden base image
+        env:
+          EDD_BUILDX_OUTPUT: push
+          EDD_GOLDEN_MODE: base-only
+          EDD_SKIP_MANIFEST: "1"
         run: |
-          set -euo pipefail
-          missing=0
-          for name in RELEASE_AWS_ACCOUNT RELEASE_AWS_REGION RELEASE_AWS_ROLE_ARN RELEASE_NAME_PREFIX RELEASE_GOLDEN_VARIANTS; do
-            if [ -z "${!name}" ]; then
-              echo "::error::${name} is required for the golden-images workflow"
-              missing=1
-            fi
-          done
-          if [ "$missing" -ne 0 ]; then
-            exit 1
-          fi
-          if [[ ! "$RELEASE_AWS_ACCOUNT" =~ ^[0-9]{12}$ ]]; then
-            echo "::error::RELEASE_AWS_ACCOUNT must be a 12-digit AWS account id"
-            exit 1
-          fi
+          sh scripts/publish-images.sh \
+            "$RELEASE_AWS_ACCOUNT" \
+            "$RELEASE_AWS_REGION" \
+            "$RELEASE_NAME_PREFIX" \
+            "${TAG:0:12}"
+
+  # Every variant consumes the immutable base tag and publishes independently.
+  # A slow language toolchain cannot hold another architecture or variant hostage.
+  publish:
+    name: publish golden image (${{ matrix.variant }}, ${{ matrix.arch }})
+    if: github.event_name == 'push'
+    needs: [prepare, publish-base]
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+        variant: ${{ fromJSON(needs.prepare.outputs.variants) }}
+    runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
+    timeout-minutes: 15
+    env:
+      RELEASE_AWS_ACCOUNT: ${{ vars.RELEASE_AWS_ACCOUNT }}
+      RELEASE_AWS_REGION: ${{ vars.RELEASE_AWS_REGION }}
+      RELEASE_AWS_ROLE_ARN: ${{ vars.RELEASE_AWS_ROLE_ARN }}
+      RELEASE_NAME_PREFIX: ${{ vars.RELEASE_NAME_PREFIX }}
+      TAG: ${{ github.sha }}
+      EDD_BUILD_TARGET: golden
+      EDD_BUILD_ARCHS: ${{ matrix.arch }}
+      EDD_BUILDX_CACHE: gha
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4.2.0
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v6.2.1
         with:
           role-to-assume: ${{ env.RELEASE_AWS_ROLE_ARN }}
           aws-region: ${{ env.RELEASE_AWS_REGION }}
-          role-session-name: golden-images-${{ matrix.arch }}-${{ github.run_id }}
+          role-session-name: golden-${{ matrix.arch }}-${{ matrix.variant }}-${{ github.run_id }}
 
-      - name: Verify assumed identity
-        run: aws sts get-caller-identity
-
-      - name: Build & push golden per-arch images
+      - name: Build and push golden variant image
         env:
           EDD_BUILDX_OUTPUT: push
+          EDD_GOLDEN_MODE: variants-only
           EDD_SKIP_MANIFEST: "1"
         run: |
-          read -r -a variants <<< "$RELEASE_GOLDEN_VARIANTS"
           sh scripts/publish-images.sh \
             "$RELEASE_AWS_ACCOUNT" \
             "$RELEASE_AWS_REGION" \
             "$RELEASE_NAME_PREFIX" \
             "${TAG:0:12}" \
-            "${variants[@]}"
+            "${{ matrix.variant }}"
 
   # Combine the per-arch tags into the multi-arch `:<tag>` manifest ECS Fargate pulls. No build
   # here, so it needs neither a native runner nor Node — just Docker + AWS creds.
   manifest:
     name: publish golden multi-arch manifests
     if: github.event_name == 'push'
-    needs: publish
+    needs: [prepare, publish-base, publish]
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     env:
       RELEASE_AWS_ACCOUNT: ${{ vars.RELEASE_AWS_ACCOUNT }}
       RELEASE_AWS_REGION: ${{ vars.RELEASE_AWS_REGION }}

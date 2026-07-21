@@ -205,18 +205,18 @@ static credential.
 
 ## What the scripts are
 
-| Script                                                                      | Purpose                                                         |
-| --------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| [`scripts/install.sh`](../scripts/install.sh)                               | one-command install (`--verify` re-checks a stack)              |
-| [`scripts/uninstall.sh`](../scripts/uninstall.sh)                           | full teardown, partial-safe (`EDD_PURGE_STATE=1` for state too) |
-| [`scripts/bootstrap-state.sh`](../scripts/bootstrap-state.sh)               | S3 bucket + DynamoDB lock (idempotent)                          |
-| [`scripts/bootstrap-secrets.sh`](../scripts/bootstrap-secrets.sh)           | crypto (generated) + IdP secrets in Secrets Manager             |
-| [`scripts/bootstrap-release-oidc.sh`](../scripts/bootstrap-release-oidc.sh) | GitHub OIDC release role + release workflow repo variables      |
-| [`scripts/bootstrap-smoke-oidc.sh`](../scripts/bootstrap-smoke-oidc.sh)     | separate least-privilege role + deployed-smoke coordinates      |
-| [`scripts/publish-images.sh`](../scripts/publish-images.sh)                 | build + push control-plane / golden / gateway images to ECR     |
-| [`release`](../.github/workflows/release.yml) workflow                      | CI-driven immutable image publication on `main`                 |
-| [`golden-images`](../.github/workflows/golden-images.yml) workflow          | CI-driven immutable golden image publish on `main`              |
-| [`post-deploy-smoke`](../.github/workflows/post-deploy-smoke.yml) workflow  | operator-dispatched verification after an Infra apply           |
+| Script                                                                                | Purpose                                                         |
+| ------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
+| [`scripts/install.sh`](../scripts/install.sh)                                         | one-command install (`--verify` re-checks a stack)              |
+| [`scripts/uninstall.sh`](../scripts/uninstall.sh)                                     | full teardown, partial-safe (`EDD_PURGE_STATE=1` for state too) |
+| [`scripts/bootstrap-state.sh`](../scripts/bootstrap-state.sh)                         | S3 bucket + DynamoDB lock (idempotent)                          |
+| [`scripts/bootstrap-secrets.sh`](../scripts/bootstrap-secrets.sh)                     | crypto (generated) + IdP secrets in Secrets Manager             |
+| [`scripts/bootstrap-release-oidc.sh`](../scripts/bootstrap-release-oidc.sh)           | GitHub OIDC release role + release workflow repo variables      |
+| [`scripts/bootstrap-post-deploy-smoke.sh`](../scripts/bootstrap-post-deploy-smoke.sh) | Shauth-only deployed-smoke coordinates and credential           |
+| [`scripts/publish-images.sh`](../scripts/publish-images.sh)                           | build + push control-plane / golden / gateway images to ECR     |
+| [`release`](../.github/workflows/release.yml) workflow                                | CI-driven immutable image publication on `main`                 |
+| [`golden-images`](../.github/workflows/golden-images.yml) workflow                    | CI-driven immutable golden image publish on `main`              |
+| [`post-deploy-smoke`](../.github/workflows/post-deploy-smoke.yml) workflow            | operator-dispatched verification after an Infra apply           |
 
 ## See also
 

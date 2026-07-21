@@ -53,7 +53,6 @@
     "@aws-sdk/client-dynamodb": "^3.1090.0",
     "@aws-sdk/client-ec2": "^3.1090.0",
     "@aws-sdk/client-ecs": "^3.1090.0",
-    "@aws-sdk/client-secrets-manager": "^3.1090.0",
     "@edd/e2e": "workspace:*",
     "@edd/editor-monaco": "workspace:*",
     "@playwright/test": "^1.61.1",

@@ -30,12 +30,24 @@ describe("principalFromSession", () => {
     expect(principalFromSession(null)).toBeNull();
   });
 
-  it("extracts the id and role from a session", () => {
+  it("extracts the stable id, display identity, and role from a session", () => {
     const session: Session = {
-      user: { id: "u1", role: "admin" },
+      user: {
+        id: "u1",
+        role: "admin",
+        name: "Ada",
+        email: "ada@example.test",
+        image: "https://example.test/ada.png",
+      },
       expires: "2026-12-31T00:00:00.000Z",
     };
-    expect(principalFromSession(session)).toEqual({ id: "u1", role: "admin" });
+    expect(principalFromSession(session)).toEqual({
+      id: "u1",
+      role: "admin",
+      displayName: "Ada",
+      email: "ada@example.test",
+      image: "https://example.test/ada.png",
+    });
   });
 
   it("throws on an unknown role instead of falling back", () => {

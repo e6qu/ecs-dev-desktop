@@ -76,141 +76,112 @@ const VARIANTS: readonly Variant[] = [
   },
 ];
 
-/** Whether a local Docker image exists. */
-function imageExists(image: string): boolean {
-  try {
-    execFileSync("docker", ["image", "inspect", image], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-}
+describe("golden workspace language variants (slim, FROM base)", { timeout: 120_000 }, () => {
+  let container = "";
 
-// Self-gating: the variant images are built only by the path-gated `golden-images`
-// CI workflow (and locally). The default `pnpm test:e2e` (main `e2e` job) runs the
-// whole *.e2e.ts glob but does NOT build these images, so skip there instead of
-// failing on a missing image. Present (golden-images / local build) → run.
-const HAVE_VARIANT_IMAGES = VARIANTS.every((v) => imageExists(v.image));
-if (!HAVE_VARIANT_IMAGES) {
-  console.info(
-    "image-variants.e2e: variant images not built — skipping (run via the golden-images workflow or build infra/images/<variant>)",
-  );
-}
+  afterEach(() => {
+    if (container) execFileSync("docker", ["rm", "-f", container], { stdio: "ignore" });
+    container = "";
+  });
 
-describe.skipIf(!HAVE_VARIANT_IMAGES)(
-  "golden workspace language variants (slim, FROM base)",
-  { timeout: 120_000 },
-  () => {
-    let container = "";
-
-    afterEach(() => {
-      if (container) execFileSync("docker", ["rm", "-f", container], { stdio: "ignore" });
-      container = "";
+  /** Run a login-shell command as the `workspace` user in the running container. */
+  const sh = (cmd: string): string =>
+    execFileSync("docker", ["exec", "-u", "workspace", container, "bash", "-lc", cmd], {
+      encoding: "utf8",
     });
 
-    /** Run a login-shell command as the `workspace` user in the running container. */
-    const sh = (cmd: string): string =>
-      execFileSync("docker", ["exec", "-u", "workspace", container, "bash", "-lc", cmd], {
-        encoding: "utf8",
-      });
+  describe.each(VARIANTS)("$name variant", (v) => {
+    function start(): void {
+      container = `edd-variant-${v.name}`;
+      execFileSync("docker", ["rm", "-f", container], { stdio: "ignore" });
+      execFileSync("docker", [
+        "run",
+        "-d",
+        "--name",
+        container,
+        "-e",
+        `EDD_WORKSPACE_ID=ws-${v.name}`,
+        "-e",
+        "EDD_CONTROL_PLANE_URL=http://127.0.0.1:9",
+        "-e",
+        "EDD_AGENT_TOKEN=t",
+        "-e",
+        "CONNECTION_TOKEN=t",
+        v.image,
+      ]);
+      execFileSync("docker", ["exec", container, "bash", "-c", "sleep 2"]);
+    }
 
-    describe.each(VARIANTS)("$name variant", (v) => {
-      function start(): void {
-        container = `edd-variant-${v.name}`;
-        execFileSync("docker", ["rm", "-f", container], { stdio: "ignore" });
-        execFileSync("docker", [
-          "run",
-          "-d",
-          "--name",
-          container,
-          "-e",
-          `EDD_WORKSPACE_ID=ws-${v.name}`,
-          "-e",
-          "EDD_CONTROL_PLANE_URL=http://127.0.0.1:9",
-          "-e",
-          "EDD_AGENT_TOKEN=t",
-          "-e",
-          "CONNECTION_TOKEN=t",
-          v.image,
-        ]);
-        execFileSync("docker", ["exec", container, "bash", "-c", "sleep 2"]);
+    it("ships its toolchain, keeps the shared base behaviour, and stays slim", () => {
+      start();
+
+      // The variant's own toolchain is present (each command exits 0 with output).
+      for (const cmd of v.present) {
+        const out = sh(`${cmd} 2>&1`);
+        expect(out.trim().length, `${v.name}: \`${cmd}\` produced no output`).toBeGreaterThan(0);
       }
 
-      it("ships its toolchain, keeps the shared base behaviour, and stays slim", () => {
-        start();
+      // Slim: the other languages are NOT installed.
+      for (const bin of v.absent) {
+        const probe = sh(`command -v ${bin} >/dev/null 2>&1 && echo PRESENT || echo ABSENT`).trim();
+        expect(probe, `${v.name}: expected \`${bin}\` to be absent`).toBe("ABSENT");
+      }
 
-        // The variant's own toolchain is present (each command exits 0 with output).
-        for (const cmd of v.present) {
-          const out = sh(`${cmd} 2>&1`);
-          expect(out.trim().length, `${v.name}: \`${cmd}\` produced no output`).toBeGreaterThan(0);
-        }
+      // Extensions: the cross-cutting dev extensions from base (e.g. prettier) plus
+      // this variant's own language extensions (#95), in OpenVSCode's built-in dir.
+      const builtin = sh("ls /opt/openvscode-server/extensions 2>&1");
+      expect(builtin).toContain("esbenp.prettier-vscode");
+      for (const ext of v.extensions) {
+        expect(builtin, `${v.name}: extension ${ext} not baked in`).toContain(ext);
+      }
 
-        // Slim: the other languages are NOT installed.
-        for (const bin of v.absent) {
-          const probe = sh(
-            `command -v ${bin} >/dev/null 2>&1 && echo PRESENT || echo ABSENT`,
-          ).trim();
-          expect(probe, `${v.name}: expected \`${bin}\` to be absent`).toBe("ABSENT");
-        }
+      // AI coding agents (Claude Code + Codex) live in base, so every variant --
+      // slim or omnibus -- carries both CLIs and their VS Code extensions.
+      const claude = sh("command -v claude >/dev/null 2>&1 && echo PRESENT || echo ABSENT").trim();
+      expect(claude, `${v.name}: agent CLI should be in every variant`).toBe("PRESENT");
+      const codex = sh("command -v codex >/dev/null 2>&1 && echo PRESENT || echo ABSENT").trim();
+      expect(codex, `${v.name}: agent CLI should be in every variant`).toBe("PRESENT");
+      const opencode = sh(
+        "command -v opencode >/dev/null 2>&1 && echo PRESENT || echo ABSENT",
+      ).trim();
+      expect(opencode, `${v.name}: agent CLI should be in every variant`).toBe("PRESENT");
+      expect(builtin, `${v.name}: agent extension should be in every variant`).toContain(
+        "anthropic.claude-code",
+      );
+      expect(builtin, `${v.name}: agent extension should be in every variant`).toContain(
+        "openai.chatgpt",
+      );
+      // First-party EDD workspace extension (portal link, terminal control,
+      // remote-OAuth tip) is baked into base, so every variant carries it.
+      expect(builtin, `${v.name}: edd-workspace-ui should be in every variant`).toContain(
+        "edd-workspace-ui",
+      );
 
-        // Extensions: the cross-cutting dev extensions from base (e.g. prettier) plus
-        // this variant's own language extensions (#95), in OpenVSCode's built-in dir.
-        const builtin = sh("ls /opt/openvscode-server/extensions 2>&1");
-        expect(builtin).toContain("esbenp.prettier-vscode");
-        for (const ext of v.extensions) {
-          expect(builtin, `${v.name}: extension ${ext} not baked in`).toContain(ext);
-        }
+      // Privilege guard (base): a tool needing privileges the sandbox doesn't grant
+      // (docker, sudo, …) is BLOCKED + warned + recorded, not silently run. The
+      // wrapper sits ahead of any real binary on PATH and exits 126.
+      const guarded = sh("docker ps 2>&1; echo EXIT=$?").trim();
+      expect(guarded, `${v.name}: docker should be privilege-guarded`).toContain(
+        "not available in this workspace",
+      );
+      expect(guarded, `${v.name}: guard should emit a structured security line`).toContain(
+        "privilege_attempt",
+      );
+      expect(guarded, `${v.name}: guard should block (exit 126)`).toContain("EXIT=126");
 
-        // AI coding agents (Claude Code + Codex) live in base, so every variant --
-        // slim or omnibus -- carries both CLIs and their VS Code extensions.
-        const claude = sh(
-          "command -v claude >/dev/null 2>&1 && echo PRESENT || echo ABSENT",
-        ).trim();
-        expect(claude, `${v.name}: agent CLI should be in every variant`).toBe("PRESENT");
-        const codex = sh("command -v codex >/dev/null 2>&1 && echo PRESENT || echo ABSENT").trim();
-        expect(codex, `${v.name}: agent CLI should be in every variant`).toBe("PRESENT");
-        const opencode = sh(
-          "command -v opencode >/dev/null 2>&1 && echo PRESENT || echo ABSENT",
-        ).trim();
-        expect(opencode, `${v.name}: agent CLI should be in every variant`).toBe("PRESENT");
-        expect(builtin, `${v.name}: agent extension should be in every variant`).toContain(
-          "anthropic.claude-code",
-        );
-        expect(builtin, `${v.name}: agent extension should be in every variant`).toContain(
-          "openai.chatgpt",
-        );
-        // First-party EDD workspace extension (portal link, terminal control,
-        // remote-OAuth tip) is baked into base, so every variant carries it.
-        expect(builtin, `${v.name}: edd-workspace-ui should be in every variant`).toContain(
-          "edd-workspace-ui",
-        );
-
-        // Privilege guard (base): a tool needing privileges the sandbox doesn't grant
-        // (docker, sudo, …) is BLOCKED + warned + recorded, not silently run. The
-        // wrapper sits ahead of any real binary on PATH and exits 126.
-        const guarded = sh("docker ps 2>&1; echo EXIT=$?").trim();
-        expect(guarded, `${v.name}: docker should be privilege-guarded`).toContain(
-          "not available in this workspace",
-        );
-        expect(guarded, `${v.name}: guard should emit a structured security line`).toContain(
-          "privilege_attempt",
-        );
-        expect(guarded, `${v.name}: guard should block (exit 126)`).toContain("EXIT=126");
-
-        // Shared base behaviour: Node (base), the cross-cutting Trivy security
-        // scanner (#95, from base — every variant inherits it), a user-writable npm
-        // global prefix (#90), user-CLI dirs on PATH (#91), and Dark mode (#94).
-        expect(sh("node --version 2>&1")).toMatch(/v\d+\./);
-        expect(sh("trivy --version 2>&1")).toMatch(/Version: \d+\./);
-        const prefix = sh(
-          'p="$(npm config get prefix)"; mkdir -p "$p/bin" && touch "$p/bin/.probe" && echo "$p"',
-        ).trim();
-        expect(prefix).toContain("/data/home/.npm-global");
-        expect(sh('echo "$PATH"')).toContain("/data/home/.npm-global/bin");
-        expect(sh("cat ~/.openvscode-server/data/User/settings.json")).toContain(
-          "Default Dark Modern",
-        );
-      });
+      // Shared base behaviour: Node (base), the cross-cutting Trivy security
+      // scanner (#95, from base — every variant inherits it), a user-writable npm
+      // global prefix (#90), user-CLI dirs on PATH (#91), and Dark mode (#94).
+      expect(sh("node --version 2>&1")).toMatch(/v\d+\./);
+      expect(sh("trivy --version 2>&1")).toMatch(/Version: \d+\./);
+      const prefix = sh(
+        'p="$(npm config get prefix)"; mkdir -p "$p/bin" && touch "$p/bin/.probe" && echo "$p"',
+      ).trim();
+      expect(prefix).toContain("/data/home/.npm-global");
+      expect(sh('echo "$PATH"')).toContain("/data/home/.npm-global/bin");
+      expect(sh("cat ~/.openvscode-server/data/User/settings.json")).toContain(
+        "Default Dark Modern",
+      );
     });
-  },
-);
+  });
+});

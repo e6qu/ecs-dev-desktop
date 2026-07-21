@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { defineConfig, devices } from "@playwright/test";
+import { immutableReleaseEnvironment } from "./scripts/release-env";
 
 /**
  * LIVE portal browser e2e: the same production-built app, but with REAL sim
@@ -16,6 +17,7 @@ import { defineConfig, devices } from "@playwright/test";
 const PORT = 3220;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 const IS_CI = process.env.CI === "true" || process.env.CI === "1";
+const RELEASE_ENVIRONMENT = immutableReleaseEnvironment(process.env);
 
 export default defineConfig({
   testDir: "./e2e",
@@ -35,5 +37,6 @@ export default defineConfig({
     url: `${BASE_URL}/login`,
     timeout: 300_000,
     reuseExistingServer: !IS_CI,
+    env: RELEASE_ENVIRONMENT,
   },
 });

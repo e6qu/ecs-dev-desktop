@@ -121,19 +121,18 @@ It publishes:
    authorizer.
 
 For CI-driven publishes, the [`release`](../.github/workflows/release.yml) workflow
-builds, pushes, and deploys the control-plane, reconciler, and SSH-gateway images
-on every `main` merge via GitHub OIDC → an AWS role with ECR/ECS/Scheduler
-permissions (no static secrets). Native AMD64 and ARM64 GitHub-hosted runners
+builds and pushes the control-plane and SSH-gateway images on every `main` merge
+through GitHub OIDC to an Amazon ECR-only role (no static secrets). Native AMD64
+and ARM64 GitHub-hosted runners
 build the two direct per-architecture images from the same source commit. A
 separate job assembles their bare multi-architecture manifest, verifies the
-published OCI shape, and then registers fresh task-definition revisions from the
-currently deployed definitions, changing only the image references. It updates the control-plane and
-SSH-gateway ECS services and updates the reconciler Scheduler target. It does
-not wait for ECS service stability in the release job: ECS convergence is
-asynchronous, guarded by the deployment circuit breaker and CloudWatch alarms,
-and verified by the separate `post-deploy-smoke` workflow against the real public
-application. Treat "ECS accepted the update" as only the start of the rollout,
-not proof that EDD is usable. The control-plane service is configured for rolling
+published OCI shape. The private Infra repository pins those immutable images;
+Terraform alone registers task definitions and updates the control-plane,
+SSH-gateway, and reconciler attachments. ECS convergence remains guarded by the
+deployment circuit breaker and CloudWatch alarms and is verified by the separate
+`post-deploy-smoke` workflow against the real public application. Treat
+"Terraform applied" as only the start of verification, not proof that EDD is
+usable. The control-plane service is configured for rolling
 deployments with a two-task desired count, `minimumHealthyPercent = 100`, and
 `maximumPercent = 200`, so a healthy old task remains serving while a replacement
 task comes up.
@@ -150,11 +149,15 @@ server-component crash is caught. This is intentionally skeptical: ECS steady
 state, target health, and container liveness are useful signals, but they do not
 prove authenticated or user-facing pages can render.
 
-The `post-deploy-smoke` workflow runs this check asynchronously after `release`
-succeeds and can also be dispatched manually. It requires the non-secret
-`EDD_APP_URL` repository variable and fails loudly when the expected build never
-appears or when any app surface returns an error. There is no alternate success
-path.
+The `post-deploy-smoke` workflow is dispatched after synchronized Infra `main`
+applies the published image. It requires `EDD_APP_URL`, the exact Shauth issuer,
+and a dedicated `smoke-*` Shauth account. Each job is capped at 15 minutes. One
+job bounds release convergence to ten minutes; four serialized jobs each log in
+through Shauth and exercise one real editor; a final job signs in through the
+same public path and removes interrupted smoke workspaces. The password is sent
+only to the exact configured Shauth origin. The workflow never reads
+`AUTH_SECRET`, forges an Auth.js cookie, accesses DynamoDB directly, or assumes
+an AWS role.
 
 The separate [`golden-images`](../.github/workflows/golden-images.yml) workflow
 publishes workspace/golden images on `main`. It does not deploy ECS services and
@@ -206,31 +209,22 @@ It never inspects or mutates the deployment and never stores static secrets in
 GitHub. After publication, pin the immutable 12-character source tag (or digest)
 in the Infra Terraform configuration, apply it from synchronized `main`, and
 manually dispatch `post-deploy-smoke` with that exact deployed source prefix.
-The smoke uses its separately scoped `EDD_SMOKE_AWS_ROLE_ARN`; the image publisher
-role has no access to application secrets or data.
-
-Bootstrap that distinct smoke identity after Terraform has created the runtime
-table, encryption key, and auth secret:
+The image publisher role has no access to application secrets or data. Configure
+the dedicated Shauth smoke identity after an administrator creates that account:
 
 ```sh
-EDD_SMOKE_GITHUB_REPO=e6qu/ecs-dev-desktop \
-EDD_SMOKE_AWS_ACCOUNT=111122223333 \
-EDD_SMOKE_AWS_REGION=eu-west-1 \
-EDD_SMOKE_NAME_PREFIX=edd-prod \
-EDD_SMOKE_APP_URL=https://app.edd.e6qu.dev \
-EDD_SMOKE_DYNAMODB_TABLE=ecs-dev-desktop \
-EDD_SMOKE_DYNAMODB_KMS_KEY_ARN=arn:aws:kms:eu-west-1:111122223333:key/example \
-EDD_SMOKE_AUTH_SECRET_ID=replace-with-exact-secret-id \
-sh scripts/bootstrap-smoke-oidc.sh
+GITHUB_REPO=e6qu/ecs-dev-desktop \
+EDD_APP_URL=https://app.edd.dev.e6qu.dev \
+EDD_SHAUTH_ISSUER=https://auth.dev.e6qu.dev \
+EDD_SHAUTH_SMOKE_USERNAME=smoke-edd-validator \
+EDD_SHAUTH_SMOKE_PASSWORD='replace-with-the-random-Shauth-password' \
+sh scripts/bootstrap-post-deploy-smoke.sh
 ```
 
-This creates `<name>-github-smoke`, trusts only this repository's `main` ref,
-resolves the supplied secret through Secrets Manager and grants `GetSecretValue`
-only for that exact ARN, grants auth-session item access on the named DynamoDB
-table and DynamoDB-scoped KMS use, then writes
-`EDD_SMOKE_AWS_ROLE_ARN`, `EDD_SMOKE_AWS_REGION`, `EDD_APP_URL`,
-`EDD_DYNAMODB_TABLE`, and `EDD_AUTH_SECRET_ID`. It grants no Amazon ECR,
-Amazon ECS, Scheduler, or `iam:PassRole` action.
+This writes the three non-secret coordinates as GitHub repository variables and
+the random password as `EDD_SHAUTH_SMOKE_PASSWORD`, a GitHub Actions secret. The
+account is accepted only by Shauth; ECS Dev Desktop receives the resulting
+standard OpenID Connect session and never receives the password.
 
 CI owns both the control-plane image build/publish path and post-merge
 **workspace/golden image** publishing. This is not a fallback release path: EDD
@@ -303,14 +297,14 @@ Secrets (`secret_environment`):
 
 Non-secret config (`extra_environment`):
 
-| Group       | Variable                                                              | Purpose                                                                                                     |
-| ----------- | --------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Auth.js     | `AUTH_URL` or `AUTH_TRUST_HOST=true`                                  | correct callback/redirect behind the ALB                                                                    |
-| Shauth      | `AUTH_SHAUTH_ISSUER`, `AUTH_SHAUTH_ID`, `AUTH_SHAUTH_POST_LOGOUT_URL` | shared SSO issuer, client ID, and the exact EDD-origin `/signed-out` URL registered for RP-Initiated Logout |
-| IdP (Entra) | `AUTH_MICROSOFT_ENTRA_ID_ISSUER`                                      | Entra OIDC issuer URL                                                                                       |
-| RBAC        | `EDD_ADMIN_GROUPS`, `EDD_DEVELOPER_GROUPS`                            | IdP group → role mapping (**see admin bootstrap**)                                                          |
-| Email       | `EDD_EMAIL_FROM`, `EDD_PUBLIC_APP_URL`                                | SES sender identity + invitation-link base URL                                                              |
-| Costs       | `EDD_AWS_PRICING=1` or explicit `EDD_PRICE_*` rates                   | live AWS Price List rates, or declared static rates                                                         |
+| Group       | Variable                                                              | Purpose                                                                                                                         |
+| ----------- | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Auth.js     | `AUTH_URL` or `AUTH_TRUST_HOST=true`                                  | correct callback/redirect behind the ALB                                                                                        |
+| Shauth      | `AUTH_SHAUTH_ISSUER`, `AUTH_SHAUTH_ID`, `AUTH_SHAUTH_POST_LOGOUT_URL` | shared SSO issuer, client ID, and the exact EDD-origin `/auth/shauth/logout/complete` bridge registered for RP-Initiated Logout |
+| IdP (Entra) | `AUTH_MICROSOFT_ENTRA_ID_ISSUER`                                      | Entra OIDC issuer URL                                                                                                           |
+| RBAC        | `EDD_ADMIN_GROUPS`, `EDD_DEVELOPER_GROUPS`                            | IdP group → role mapping (**see admin bootstrap**)                                                                              |
+| Email       | `EDD_EMAIL_FROM`, `EDD_PUBLIC_APP_URL`                                | SES sender identity + invitation-link base URL                                                                                  |
+| Costs       | `EDD_AWS_PRICING=1` or explicit `EDD_PRICE_*` rates                   | live AWS Price List rates, or declared static rates                                                                             |
 
 > **Admin bootstrap (important).** RBAC is purely IdP-group-driven: the default
 > role is `viewer`, and an account is an admin **only** if its IdP groups intersect
@@ -320,16 +314,20 @@ Non-secret config (`extra_environment`):
 Register the ECS Dev Desktop Shauth client with these standard OpenID Connect coordinates,
 replacing `<EDD origin>` with the stable `AUTH_URL` origin:
 
-| Coordinate             | URL                                               |
-| ---------------------- | ------------------------------------------------- |
-| Catalog launch         | `<EDD origin>/login/shauth`                       |
-| Authorization callback | `<EDD origin>/api/auth/callback/shauth`           |
-| Post-logout redirect   | `<EDD origin>/signed-out`                         |
-| Back-Channel Logout    | `<EDD origin>/api/auth/shauth/backchannel-logout` |
+| Coordinate                 | URL                                               |
+| -------------------------- | ------------------------------------------------- |
+| Catalog launch             | `<EDD origin>/login/shauth`                       |
+| Authorization callback     | `<EDD origin>/api/auth/callback/shauth`           |
+| RP-Initiated Logout bridge | `<EDD origin>/auth/shauth/logout/complete`        |
+| Application signed-out URL | `<EDD origin>/signed-out`                         |
+| Back-Channel Logout        | `<EDD origin>/api/auth/shauth/backchannel-logout` |
 
-The post-logout redirect deliberately remains on the EDD origin. Ory Hydra validates it against
-the client's registered redirect origins; a Shauth-portal URL such as
-`https://auth.example.com/apps` is not a valid EDD post-logout redirect.
+The registered post-logout redirect is the EDD-origin bridge. Ory Hydra returns there after
+logout; the bridge ignores all query input and sends an HTTP 303 to the issuer-derived Shauth
+`/oauth/logout/complete` endpoint. Shauth correlates that request with a host-only, one-time
+cookie and returns successful app-initiated logout to the registered EDD `/signed-out` page. A
+missing, invalid, or replayed completion cookie finishes safely on Shauth's own signed-out page;
+caller-provided redirect fields can never select either destination.
 
 Register the Back-Channel Logout URI with session correlation required. The receiver accepts only
 an `application/x-www-form-urlencoded` POST containing one provider-signed `logout_token` for the
@@ -340,9 +338,11 @@ token identifiers after their signed expiry.
 
 EDD's **sign out** action performs OpenID Connect RP-Initiated Logout whenever the current session
 came from Shauth. It clears and revokes the local Auth.js session, sends the retained ID token to
-Shauth's end-session endpoint, and returns through the registered EDD-origin `/signed-out` route.
-Shauth then notifies the other registered relying parties through their logout receivers, making
-sign out from EDD a coordinated SSO logout rather than an application-only cookie deletion.
+Shauth's end-session endpoint, traverses the fixed EDD bridge, and finishes on EDD's local
+`/signed-out` page. Shauth also notifies the other registered relying parties through their logout
+receivers, making sign out from EDD a coordinated SSO logout rather than an application-only
+cookie deletion. Logout initiated directly in Shauth has no relying-party context and therefore
+finishes on Shauth's own signed-out page.
 
 ## Step 4 — SSH access (registered keys)
 

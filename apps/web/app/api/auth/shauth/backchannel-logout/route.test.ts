@@ -10,7 +10,10 @@ describe("POST /api/auth/shauth/backchannel-logout", () => {
     vi.stubEnv("AUTH_SHAUTH_ISSUER", "https://auth.dev.e6qu.dev");
     vi.stubEnv("AUTH_SHAUTH_ID", "edd");
     vi.stubEnv("AUTH_SHAUTH_SECRET", "secret");
-    vi.stubEnv("AUTH_SHAUTH_POST_LOGOUT_URL", "https://app.edd.dev.e6qu.dev/signed-out");
+    vi.stubEnv(
+      "AUTH_SHAUTH_POST_LOGOUT_URL",
+      "https://app.edd.dev.e6qu.dev/auth/shauth/logout/complete",
+    );
     vi.stubEnv("AUTH_URL", "https://app.edd.dev.e6qu.dev");
   });
 

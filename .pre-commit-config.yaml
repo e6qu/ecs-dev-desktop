@@ -121,6 +121,13 @@ repos:
         pass_filenames: false
         always_run: true
 
+      - id: workflow-timeouts
+        name: GitHub Actions jobs are bounded to fifteen minutes
+        language: system
+        entry: sh scripts/check-workflow-timeouts.sh
+        pass_filenames: false
+        always_run: true
+
       # Strip AI attribution trailers from commit messages (commit-msg stage).
       - id: strip-ai-attribution
         name: strip AI attribution from commit messages

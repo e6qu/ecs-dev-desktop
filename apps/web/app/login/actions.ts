@@ -69,9 +69,16 @@ export async function signOutAction(): Promise<void> {
 export async function localAccountSignIn(formData: FormData): Promise<void> {
   if (devAuthEnabled()) redirect("/login");
   const { signIn } = await import("../../auth");
-  await signIn("credentials", {
-    email: field(formData, "email"),
-    password: field(formData, "password"),
-    redirectTo: "/workspaces",
-  });
+  try {
+    await signIn("credentials", {
+      email: field(formData, "email"),
+      password: field(formData, "password"),
+      redirectTo: "/workspaces",
+    });
+  } catch (error) {
+    if (error instanceof Error && "type" in error && error.type === "CredentialsSignin") {
+      redirect("/login?error=CredentialsSignin");
+    }
+    throw error;
+  }
 }

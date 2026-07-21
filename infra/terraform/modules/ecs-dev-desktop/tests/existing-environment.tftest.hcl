@@ -79,3 +79,33 @@ run "shared_environment_does_not_duplicate_network_or_cluster" {
     error_message = "control plane did not target the shared private subnets"
   }
 }
+
+run "rejects_shauth_validator_secret_in_control_plane" {
+  command = plan
+
+  variables {
+    name               = "edd-dev"
+    availability_zones = ["eu-west-1a", "eu-west-1b"]
+    image_tag          = "0123456789ab"
+    secret_environment = {
+      SHAUTH_RELEASE_VALIDATOR_PASSWORD = "arn:aws:secretsmanager:eu-west-1:123456789012:secret:shauth-validator"
+    }
+  }
+
+  expect_failures = [var.secret_environment]
+}
+
+run "rejects_shauth_bootstrap_secret_in_plain_environment" {
+  command = plan
+
+  variables {
+    name               = "edd-dev"
+    availability_zones = ["eu-west-1a", "eu-west-1b"]
+    image_tag          = "0123456789ab"
+    extra_environment = {
+      SHAUTH_BOOTSTRAP_ADMIN_PASSWORD = "not-an-application-coordinate"
+    }
+  }
+
+  expect_failures = [var.extra_environment]
+}

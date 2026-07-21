@@ -13,9 +13,9 @@ import {
   initSpectateCapture,
 } from "./spectate-capture";
 import { displayTabLabel, moveInArray, nextActiveAfterClose, normalizeTabName } from "./tab-order";
-import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
-import jsonWorker from "monaco-editor/esm/vs/language/json/json.worker?worker";
-import tsWorker from "monaco-editor/esm/vs/language/typescript/ts.worker?worker";
+import editorWorker from "monaco-editor/editor/editor.worker.js?worker";
+import jsonWorker from "monaco-editor/language/json/json.worker.js?worker";
+import tsWorker from "monaco-editor/language/typescript/ts.worker.js?worker";
 
 import "@xterm/xterm/css/xterm.css";
 import "./editor.css";
@@ -290,8 +290,11 @@ function closeTerminalTab(id: number): void {
   );
   const [tab] = tabs.splice(index, 1);
   if (tab === undefined) throw new Error(`terminal tab ${String(id)} disappeared during close`);
-  // Closing the socket makes the server kill this tab's PTY (see terminal.ts `ws.on("close")`),
-  // so no shell is left running after the tab is gone — closed tabs leave no stale session.
+  // Request PTY termination before closing the socket; the server also treats socket close as the
+  // disconnect fallback, so no shell is left running after the tab is gone.
+  if (tab.sock.readyState === WebSocket.OPEN) {
+    tab.sock.send(JSON.stringify({ type: "close" }));
+  }
   tab.sock.close();
   tab.term.dispose();
   tab.pane.remove();

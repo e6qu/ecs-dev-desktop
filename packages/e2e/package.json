@@ -10,7 +10,8 @@
   "scripts": {
     "lint": "eslint .",
     "test:integ": "vitest run --config vitest.integ.config.ts",
-    "test:e2e": "vitest run --config vitest.e2e.config.ts"
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
+    "test:images": "vitest run --config vitest.images.config.ts"
   },
   "dependencies": {
     "@aws-sdk/client-cloudtrail": "^3.1090.0",
@@ -30,6 +31,7 @@
     "@edd/storage-ec2": "workspace:*"
   },
   "devDependencies": {
+    "@playwright/test": "^1.61.1",
     "@types/node": "^26.1.1"
   }
 }

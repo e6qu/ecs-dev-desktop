@@ -15,11 +15,12 @@ export interface ShauthOidcConfig {
   issuer: string;
   clientId: string;
   clientSecret: string;
-  postLogoutUrl: string;
+  logoutBridgeUrl: string;
 }
 
 const SHAUTH_CALLBACK_PATH = "/api/auth/callback/shauth";
-const SHAUTH_SIGNED_OUT_PATH = "/signed-out";
+const SHAUTH_LOGOUT_BRIDGE_PATH = "/auth/shauth/logout/complete";
+const SHAUTH_LOGOUT_COMPLETION_PATH = "/oauth/logout/complete";
 
 const profileSchema = z.object({
   sub: z.string().min(1),
@@ -103,18 +104,18 @@ export function shauthOidcConfig(env: NodeJS.ProcessEnv = process.env): ShauthOi
   const parsedPostLogoutUrl = new URL(normalizedPostLogoutUrl);
   if (
     parsedPostLogoutUrl.origin !== authUrl.origin ||
-    parsedPostLogoutUrl.pathname !== SHAUTH_SIGNED_OUT_PATH
+    parsedPostLogoutUrl.pathname !== SHAUTH_LOGOUT_BRIDGE_PATH
   ) {
     const callbackUrl = new URL(SHAUTH_CALLBACK_PATH, authUrl).toString();
     throw new Error(
-      `${SHAUTH_POST_LOGOUT_URL_ENV} must be ${authUrl.origin}${SHAUTH_SIGNED_OUT_PATH}, on the same origin as ${callbackUrl}`,
+      `${SHAUTH_POST_LOGOUT_URL_ENV} must be ${authUrl.origin}${SHAUTH_LOGOUT_BRIDGE_PATH}, on the same origin as ${callbackUrl}`,
     );
   }
   return {
     issuer: absoluteBrowserURL(SHAUTH_ISSUER_ENV, issuer),
     clientId,
     clientSecret,
-    postLogoutUrl: normalizedPostLogoutUrl,
+    logoutBridgeUrl: normalizedPostLogoutUrl,
   };
 }
 
@@ -126,8 +127,17 @@ export function shauthEndSessionURL(config: ShauthOidcConfig, idToken: string): 
   if (idToken.length === 0) throw new Error("Shauth ID token must not be empty");
   const endSession = new URL("/oauth2/sessions/logout", config.issuer);
   endSession.searchParams.set("id_token_hint", idToken);
-  endSession.searchParams.set("post_logout_redirect_uri", config.postLogoutUrl);
+  endSession.searchParams.set("post_logout_redirect_uri", config.logoutBridgeUrl);
   return endSession.toString();
+}
+
+/**
+ * The application-side RP-Initiated Logout bridge always returns control to
+ * Shauth's fixed completion endpoint. Correlation and the final application
+ * landing are held in Shauth's host-only one-time cookie, never in caller input.
+ */
+export function shauthLogoutCompletionURL(config: ShauthOidcConfig): string {
+  return new URL(SHAUTH_LOGOUT_COMPLETION_PATH, config.issuer).toString();
 }
 
 export function shauthProvider(): OIDCConfig<ShauthProfile> | null {
