@@ -269,10 +269,27 @@ a {
   color: var(--dim);
 }
 
-/* The account id can be a long uuid — let it wrap rather than widen the row. */
-.who > .mono {
+/* A fallback account id can be a long UUID — let it wrap rather than widen the row. */
+.account-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.account-link > .mono {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.account-avatar {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background-position: center;
+  background-size: cover;
 }
 
 /* The persona switcher must be free to shrink below its 220px control default

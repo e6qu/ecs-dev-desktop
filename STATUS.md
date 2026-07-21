@@ -2,7 +2,7 @@
 
 > Current project snapshot. Durable history lives in git and [WHAT_WE_DID.md](WHAT_WE_DID.md).
 
-**Last updated:** 2026-07-20
+**Last updated:** 2026-07-21
 
 ## Current branch
 
@@ -10,12 +10,14 @@ The `fix/shauth-sso-terminal-contract` branch completed the ECS Dev Desktop
 relying-party contract for Shauth and the real browser terminal. Direct entry and
 catalog launch used standard OpenID Connect, application logout ended the Shauth
 session, and the browser returned to the persistent ECS Dev Desktop `/signed-out`
-page with an explicit `Sign in with Shauth` control. Invalid local credentials
-returned to the login page instead of surfacing a production HTTP 500.
+page through the app-owned `/auth/shauth/logout/complete` bridge with an explicit
+`Sign in with Shauth` control. The bridge ignored request query parameters and
+could not select a destination. Invalid local credentials returned to the login
+page instead of surfacing a production HTTP 500.
 
 The Shauth release-validator boundary stayed deployment-neutral. ECS Dev Desktop
 exposed its immutable source revision and build time through `/api/healthz`, used
-`/workspaces` as its authenticated validation page, and used `/signed-out` as its
+`/auth/validation` as its authenticated validation page, and used `/signed-out` as its
 stable signed-out page. Shauth validator credentials were absent from the
 application runtime and were rejected through Basic auth, bearer/API-key auth,
 development identity headers and cookies, and the local-account form. Only a
@@ -33,10 +35,17 @@ startup error during cleanup. The live simulator harness selected
 `host.containers.internal` on Podman and `host.docker.internal` on Docker, fixing
 idle-agent heartbeat and SSH authorization reachability in nested awsvpc tasks.
 
+Every GitHub Actions job had an explicit timeout of at most 15 minutes. Long
+end-to-end, Terraform-simulator, and golden-image work was split into bounded
+matrix jobs without weakening the real acceptance surfaces. Fixture-package
+retention streamed paginated GitHub API rows through the current GitHub CLI
+instead of combining its mutually exclusive `--slurp` and `--jq` options.
+
 ## Verified state
 
-- The real Shauth, Ory Hydra, PostgreSQL, DynamoDB, production Next.js, and Chromium contract passed against Shauth `main` at `6d06480`.
+- The real Shauth, Ory Hydra, PostgreSQL, DynamoDB, production Next.js, Sockerless AWS simulator, and Chromium contract passed against exact Shauth commit `74735a1710fa69d472e7eb27ae95ce317c7c1a3d`.
 - Direct entry, catalog launch, silent SSO reuse, `/me`, relying-party logout, provider global logout, Back-Channel Logout revocation, and fail-closed re-entry passed in one browser lifecycle.
+- The app-owned completion bridge returned only to Shauth's issuer-origin completion endpoint; hostile query parameters and a consumed-correlation replay remained on Shauth's safe signed-out page.
 - The sentinel Shauth validator credential failed every ECS Dev Desktop local credential shape; exact-issuer OpenID Connect succeeded.
 - The 13-file container-mode Sockerless AWS simulator suite passed 37/37 tests, including browser terminal input, PTY teardown, IDE bridges, SSH, heartbeats, snapshots, wake, and ECS lifecycle.
 - The complete Chromium portal suite passed 31/31 tests, including stable sign-out plus WCAG contrast in light and dark mode.
@@ -48,9 +57,10 @@ idle-agent heartbeat and SSH authorization reachability in nested awsvpc tasks.
 The private `e6qu/infra` repository remained the sole deployment owner. Shauth's
 new application-registration schema had not yet merged while this branch was
 prepared, so Infra retained responsibility for adding the opaque release revision,
-`https://app.edd.dev.e6qu.dev/workspaces` validation URL, and
-`https://app.edd.dev.e6qu.dev/signed-out` signed-out URL after both application
-contracts merged.
+`https://app.edd.dev.e6qu.dev/auth/validation` validation URL, and
+`https://app.edd.dev.e6qu.dev/signed-out` signed-out URL, and registering
+`https://app.edd.dev.e6qu.dev/auth/shauth/logout/complete` as the sole
+post-logout redirect after both application contracts merged.
 
 ## Durable invariants
 

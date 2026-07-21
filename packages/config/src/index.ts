@@ -185,6 +185,25 @@ export const COST_SCOPE_ENABLED = process.env.EDD_COST_SCOPE_ENABLED === "1";
 export const DEPLOY_SHA = process.env.EDD_BUILD_SHA ?? "";
 export const DEPLOY_TIME = process.env.EDD_BUILD_TIME ?? "";
 
+const immutableReleaseRevision = /^(?:[0-9a-f]{12,64}|sha256:[0-9a-f]{64})$/;
+
+/** Deployment-neutral immutable revision reported by app-owned acceptance
+ * surfaces. Infrastructure may supply a manifest digest; release images fall
+ * back to the source revision already baked into the image. */
+export function applicationReleaseRevision(): string {
+  const configuredRevision = process.env.APPLICATION_RELEASE_REVISION?.trim();
+  const revision =
+    configuredRevision === undefined || configuredRevision === ""
+      ? (process.env.EDD_BUILD_SHA?.trim() ?? "")
+      : configuredRevision;
+  if (!immutableReleaseRevision.test(revision)) {
+    throw new Error(
+      "APPLICATION_RELEASE_REVISION or EDD_BUILD_SHA must identify an immutable deployed release",
+    );
+  }
+  return revision;
+}
+
 /** How stale the cost-rollup checkpoints may get before the reconciler regenerates them.
  * Bounds the report's replay tail (so a cost read stays O(recent) instead of full-scanning
  * the whole append-only ledger) without pricing the entire ledger every single sweep. */

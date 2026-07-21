@@ -35,7 +35,7 @@ export default async function MePage() {
       <div className="page-head">
         <div>
           <div className="kicker">account</div>
-          <h1>{principal.id}</h1>
+          <h1>{principal.displayName ?? principal.id}</h1>
           <p>
             Signed in as <span className="badge accent">{realRole}</span>
             {viewingAs && (
@@ -46,6 +46,11 @@ export default async function MePage() {
             )}
             {principal.email !== undefined && <> · {principal.email}</>}
           </p>
+          {principal.displayName !== undefined && (
+            <p className="mono" style={{ color: "var(--dim)", fontSize: 12 }}>
+              Identity: {principal.id}
+            </p>
+          )}
         </div>
       </div>
       {personasFor(realRole).length > 1 && (

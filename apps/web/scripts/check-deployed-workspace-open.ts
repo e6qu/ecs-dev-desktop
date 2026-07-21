@@ -1,10 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { revokeAuthSession } from "../lib/auth-sessions";
-
 import {
   EDITORS,
-  authJar,
-  authSecret,
   cleanupSmokeWorkspaces,
   createWorkspace,
   openEditor,
@@ -12,18 +8,17 @@ import {
   waitEnabledImage,
   waitReady,
 } from "./deployed-workspace-smoke-lib";
+import { signInToDeployedApp, signOutOfDeployedApp } from "./deployed-shauth-session";
 
 const baseUrl = requiredEnv("EDD_APP_URL").replace(/\/$/, "");
-const region = requiredEnv("AWS_REGION");
-const table = requiredEnv("DYNAMODB_TABLE");
-const secretId = requiredEnv("AUTH_SECRET_ID");
 const expectedSha = requiredEnv("EXPECTED_SHA");
-
-process.env.DYNAMODB_TABLE = table;
-process.env.AWS_REGION = region;
-
-const secret = await authSecret(region, secretId);
-const { jar, sessionId } = await authJar(secret, "smoke");
+const session = await signInToDeployedApp(
+  baseUrl,
+  requiredEnv("SHAUTH_ISSUER"),
+  requiredEnv("SHAUTH_USERNAME"),
+  requiredEnv("SHAUTH_PASSWORD"),
+);
+const jar = session.applicationCookies;
 const created: string[] = [];
 
 let bodyFailed = false;
@@ -43,7 +38,7 @@ try {
 }
 
 const cleanupFailures = await cleanupSmokeWorkspaces(baseUrl, jar, created, () =>
-  revokeAuthSession(sessionId),
+  signOutOfDeployedApp(baseUrl, session),
 );
 for (const failure of cleanupFailures) {
   console.error("edd: cleanup failure:", failure);

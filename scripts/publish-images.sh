@@ -48,6 +48,9 @@
 #   EDD_MANIFEST_ONLY   "1" skips all builds and ONLY creates + pushes the multi-arch
 #                       manifests from per-arch tags already in ECR (the manifest step
 #                       of a build matrix). Requires all EDD_BUILD_ARCHS tags to exist.
+#   EDD_GOLDEN_MODE     "all" (default), "base-only", or "variants-only". Publication
+#                       workflows split the expensive base from independent variant jobs;
+#                       variants-only requires the immutable per-architecture base tag.
 #
 # The control-plane image MUST be built from the repo root (monorepo context).
 # Portable: POSIX sh, passes shellcheck, runs under bash and zsh on macOS+Linux.
@@ -120,6 +123,14 @@ esac
 # Multiarch matrix knobs (see header): build per-arch on native runners, then combine.
 skip_manifest="${EDD_SKIP_MANIFEST:-0}"
 manifest_only="${EDD_MANIFEST_ONLY:-0}"
+golden_mode="${EDD_GOLDEN_MODE:-all}"
+case "$golden_mode" in
+  all | base-only | variants-only) ;;
+  *)
+    echo "edd: EDD_GOLDEN_MODE must be one of: all | base-only | variants-only" >&2
+    exit 1
+    ;;
+esac
 if [ "$manifest_only" = "1" ] && [ "$skip_manifest" = "1" ]; then
   echo "edd: EDD_MANIFEST_ONLY and EDD_SKIP_MANIFEST are mutually exclusive" >&2
   exit 1
@@ -221,6 +232,9 @@ build_golden_arch() { # <arch>
 
   if ecr_tag_exists edd-base "${tag}-${arch}"; then
     echo "edd: ${base_full} already published, skipping"
+  elif [ "$golden_mode" = "variants-only" ]; then
+    echo "edd: required golden base ${base_full} was not published" >&2
+    exit 1
   else
     echo "edd: building golden base ${base_full}"
     set -- --platform "linux/${arch}" --provenance=false --sbom=false "--${buildx_output}"
@@ -232,6 +246,10 @@ build_golden_arch() { # <arch>
     fi
     sh "$repo/infra/images/base/build.sh" "$base_full" "$@"
     push_loaded_image "$base_full"
+  fi
+
+  if [ "$golden_mode" = "base-only" ]; then
+    return 0
   fi
 
   for v in $variants; do

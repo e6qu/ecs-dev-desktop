@@ -38,7 +38,7 @@ jobs:
   build-test:
     name: build-test
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6.0.2
       - uses: actions/setup-node@v6.4.0
@@ -106,8 +106,15 @@ jobs:
 
   e2e:
     name: e2e
+    needs: e2e-images
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: read
+    env:
+      GOLDEN: ghcr.io/${{ github.repository_owner }}/edd-ci-workspace
+      SIM: ghcr.io/${{ github.repository_owner }}/edd-ci-sim-aws-exec
     steps:
       - uses: actions/checkout@v6.0.2
         with:
@@ -128,12 +135,21 @@ jobs:
       # key must exist before compose mounts ./temp/github-app into bleephub.
       - name: Generate the GitHub App seed (bleephub)
         run: sh scripts/gen-sim-github-app.sh
-      # Retry harness bring-up: image pulls can transiently hit registry rate
-      # limits (public.ecr.aws / Docker Hub) on shared runner IPs.
-      - name: Build & start the e2e harness (container-mode sim)
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      - name: Pull run-scoped e2e fixtures
+        run: |
+          docker pull "${GOLDEN}:ci-${{ github.run_id }}"
+          docker tag "${GOLDEN}:ci-${{ github.run_id }}" edd-workspace:e2e
+          docker pull "${SIM}:ci-${{ github.run_id }}"
+          docker tag "${SIM}:ci-${{ github.run_id }}" edd-sim-aws-exec:e2e
+      # The two remaining harness services are small and source-specific. The
+      # heavy workspace and simulator images came from the bounded fixture jobs.
+      - name: Build & start the e2e harness
         run: |
           for attempt in 1 2 3; do
-            if docker compose -f docker-compose.e2e.yml up -d --build --wait; then
+            if docker compose -f docker-compose.e2e.yml build bleephub azure-sim \
+              && docker compose -f docker-compose.e2e.yml up -d --no-build --wait; then
               exit 0
             fi
             echo "::warning::e2e harness bring-up failed (attempt ${attempt}); retrying"
@@ -145,20 +161,6 @@ jobs:
       # self-contained: each docker-runs its own workspace node + gateway proxy.
       - name: Build SSH workspace-node Docker image
         run: docker build -f services/ssh-gateway/Dockerfile.node -t edd-workspace-node:e2e .
-      - name: Build golden workspace image for e2e
-        run: |
-          # Golden image collection: build the shared base (build.sh stages the first-party
-          # Monaco editor into it), then the omnibus variant FROM it (tagged edd-workspace:e2e —
-          # the default the e2e suites launch).
-          for attempt in 1 2 3; do
-            if infra/images/base/build.sh edd-base:e2e \
-              && docker build --build-arg BASE=edd-base:e2e -t edd-workspace:e2e infra/images/omnibus; then
-              exit 0
-            fi
-            echo "::warning::golden image build failed (attempt ${attempt}); retrying"
-            sleep "$((attempt * 20))"
-          done
-          exit 1
       # The general end-to-end suite contains the real terminal browser lifecycle,
       # so Chromium is a prerequisite of this suite as well as the portal suites.
       - name: Install Playwright browser
@@ -245,8 +247,9 @@ jobs:
       - if: always()
         run: docker compose -f docker-compose.https.yml down
 
-  # Build BOTH images the macOS job needs ONCE on Linux (native BuildKit, fast) and
-  # publish them to GHCR, so the macOS job pulls instead of building under colima —
+  # Build both heavy end-to-end fixtures once on Linux (native BuildKit, fast) and
+  # publish them to GHCR, so the Linux and macOS jobs consume identical images and
+  # macOS does not build under colima —
   # which is very slow over the VM's disk I/O (the sim build alone took ~55 min) and,
   # for the golden image, fails outright (colima's legacy builder can't do the
   # Dockerfile's `COPY --chmod`, which needs BuildKit). Gated like the macOS job.
@@ -258,13 +261,14 @@ jobs:
   #     rebuilt from the PR's code every run (no cross-run reuse → never stale);
   #   * each carries an OCI "NOT a release — do not deploy" description label.
   # There is no release pipeline in this repo; nothing consumes these after the run.
-  macos-images:
-    name: macos-images
+  e2e-images:
+    name: e2e fixture (${{ matrix.fixture }})
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      contains(github.event.pull_request.labels.*.name, 'ci:macos')
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        fixture: [workspace, simulator]
     permissions:
       contents: read
       packages: write
@@ -286,6 +290,7 @@ jobs:
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
       - name: Build & push the golden workspace image (CI fixture)
+        if: matrix.fixture == 'workspace'
         run: |
           # Build the shared base (build.sh stages the Monaco editor into it), then the omnibus
           # variant FROM it; push omnibus (base is an intermediate the macOS job doesn't need).
@@ -296,12 +301,32 @@ jobs:
             -t "${GOLDEN}:ci-${{ github.run_id }}" infra/images/omnibus
           docker push "${GOLDEN}:ci-${{ github.run_id }}"
       - name: Build & push the container-mode AWS sim image (CI fixture)
+        if: matrix.fixture == 'simulator'
         run: |
           docker build -f infra/sim/sockerless-aws-exec.Dockerfile \
             --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
             --label "org.opencontainers.image.description=${NOT_A_RELEASE}" \
             -t "${SIM}:ci-${{ github.run_id }}" third_party/sockerless/simulators
           docker push "${SIM}:ci-${{ github.run_id }}"
+      - name: Retain only the newest 20 fixture versions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          PACKAGE_NAME: ${{ matrix.fixture == 'workspace' && 'edd-ci-workspace' || 'edd-ci-sim-aws-exec' }}
+        run: |
+          set -euo pipefail
+          owner_type=$(gh api "/users/${OWNER}" --jq .type)
+          case "$owner_type" in
+            Organization) scope=orgs ;;
+            User) scope=users ;;
+            *) echo "::error::unsupported package owner type: ${owner_type}"; exit 1 ;;
+          esac
+          endpoint="/${scope}/${OWNER}/packages/container/${PACKAGE_NAME}/versions"
+          stale=$(gh api --paginate "${endpoint}?per_page=100" \
+            --jq '.[] | [.created_at, .id] | @tsv' | sort -r | tail -n +21 | cut -f2)
+          for version in $stale; do
+            gh api --method DELETE "${endpoint}/${version}"
+          done
 
   # The SAME full live IDE flow (create a workspace → real ECS task on the
   # container-mode sim → reach the actual OpenVSCode workbench through the bridge),
@@ -315,12 +340,12 @@ jobs:
   # (macos-14/15) do NOT support the nested virtualization colima needs — its `vz`
   # VM driver fails to boot there ("error starting vm"). The Intel runner uses
   # QEMU+HVF and runs an x86_64 Linux VM natively (no emulation). Both container
-  # images are pulled from GHCR (built by `macos-images`), never built here.
+  # images are pulled from GHCR (built by `e2e-images`), never built here.
   e2e-flow-macos:
     name: e2e-flow-macos
     runs-on: macos-15-intel
-    timeout-minutes: 25
-    needs: macos-images
+    timeout-minutes: 15
+    needs: e2e-images
     if: >-
       github.event_name == 'workflow_dispatch' ||
       contains(github.event.pull_request.labels.*.name, 'ci:macos')
@@ -408,7 +433,7 @@ jobs:
   playwright:
     name: playwright
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6.0.2
         with:
@@ -446,7 +471,7 @@ jobs:
       - uses: actions/checkout@v6.0.2
         with:
           repository: e6qu/shauth
-          ref: a08115a6917a63ae97d7f0d4ef14be511916a686
+          ref: 74735a1710fa69d472e7eb27ae95ce317c7c1a3d
           path: temp/shauth
       - name: Shauth single sign-on browser contract
         env:
@@ -499,11 +524,14 @@ jobs:
           terraform -chdir=infra/terraform/examples/complete validate
       # The sim-backed test (tests/sim) runs in its own `terraform-sim` job below.
 
-  terraform-sim:
-    name: terraform-sim
+  terraform-sim-slice:
+    name: terraform-sim (${{ matrix.scenario }})
     runs-on: ubuntu-latest
-    # Defensive cap (sim build + full apply+destroy against the sim).
-    timeout-minutes: 25
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        scenario: [default, fck-nat, dns-tls, sockerless-713, adversarial]
     env:
       # tests/sim defaults sim_endpoint to this; kept explicit for the apply step.
       SIM_ENDPOINT: http://127.0.0.1:4566
@@ -562,6 +590,7 @@ jobs:
       # Four active configurations: default (100+ assertions), fck-nat, DNS/TLS.
       # All assertions active (no open upstream blockers).
       - name: terraform apply + resource verification + IAM simulation + idempotency + destroy (default stack)
+        if: matrix.scenario == 'default'
         run: |
           terraform -chdir="${TF_DIR}" apply -auto-approve -input=false -var "sim_endpoint=${SIM_ENDPOINT}"
 
@@ -1488,6 +1517,7 @@ jobs:
       # fck-nat NAT-instance path: Launch Template (#439/#433), ENI (#430),
       # IAM ListPolicyVersions (#449/#441) — all fixed upstream.
       - name: terraform apply + resource verification + idempotency + destroy (fck-nat NAT instance)
+        if: matrix.scenario == 'fck-nat'
         run: |
           terraform -chdir="${TF_DIR}" apply -auto-approve -input=false \
             -var "sim_endpoint=${SIM_ENDPOINT}" -var nat_mode=instance
@@ -1531,6 +1561,7 @@ jobs:
       # against the sim. (Historical: the ACM gaps #421 wildcard-SAN validation + #420
       # cert-never-ISSUED were fixed upstream by #424; the cert is single-name now, no wildcard.)
       - name: terraform apply + resource verification + idempotency + destroy (DNS/TLS)
+        if: matrix.scenario == 'dns-tls'
         run: |
           terraform -chdir="${TF_DIR}" apply -auto-approve -input=false \
             -var "sim_endpoint=${SIM_ENDPOINT}" -var enable_dns=true
@@ -1692,11 +1723,13 @@ jobs:
             -var "sim_endpoint=${SIM_ENDPOINT}" -var enable_dns=true \
             -var "deployment_image_tag=${ROLL_TAG}"
       - name: sockerless #713 behavioral probe suite (DNS/TLS module apply + probes + destroy)
+        if: matrix.scenario == 'sockerless-713'
         run: |
           # Expose the sim's Route53 DNS port to the host so the probe can resolve records.
           export DNS_PORT=15353
           sh "infra/terraform/modules/ecs-dev-desktop/tests/sim/validate-sockerless-713.sh"
       - name: Adversarial spec-fidelity probe slices
+        if: matrix.scenario == 'adversarial'
         env:
           AWS_ENDPOINT_URL: http://127.0.0.1:4566
           # Expose the sim's Route53 DNS port to the host so DNS-resolution slices can query records.
@@ -1709,6 +1742,18 @@ jobs:
           docker compose -f docker-compose.tier2.yml -f docker-compose.tier2.host.yml logs --tail 300 sockerless-aws || true
       - if: always()
         run: docker compose -f docker-compose.tier2.yml -f docker-compose.tier2.host.yml down
+
+  terraform-sim:
+    name: terraform-sim
+    if: always()
+    needs: terraform-sim-slice
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require every real Terraform simulator slice
+        env:
+          SLICE_RESULT: ${{ needs.terraform-sim-slice.result }}
+        run: test "$SLICE_RESULT" = success
 
   shellcheck:
     name: shellcheck
@@ -1745,6 +1790,10 @@ jobs:
           done
       - name: Container publication contract
         run: sh scripts/check-container-publication.sh
+      - name: GitHub Actions timeout contract
+        run: |
+          sh scripts/test-workflow-timeouts.sh
+          sh scripts/check-workflow-timeouts.sh
 
   sast:
     name: sast

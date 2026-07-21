@@ -76,9 +76,15 @@ export function principalFromSession(session: Session | null): Principal | null 
     throw new Error("Auth.js session user role is invalid");
   }
   const sessionEmail = session.user.email;
+  const sessionName = session.user.name;
+  const sessionImage = session.user.image;
   return {
     id: ownerId(id),
     role,
+    ...(typeof sessionName === "string" && sessionName.length > 0
+      ? { displayName: sessionName }
+      : {}),
+    ...(typeof sessionImage === "string" && sessionImage.length > 0 ? { image: sessionImage } : {}),
     ...(typeof sessionEmail === "string" && sessionEmail.length > 0 ? { email: sessionEmail } : {}),
   };
 }

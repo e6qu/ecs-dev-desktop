@@ -3,8 +3,8 @@ import assert from "node:assert/strict";
 
 import { chromium } from "@playwright/test";
 
-const applicationOrigin = "http://localhost:3211";
-const providerOrigin = "http://127.0.0.1:8080";
+const applicationOrigin = requiredOrigin("AUTH_URL");
+const providerOrigin = requiredOrigin("AUTH_SHAUTH_ISSUER");
 const password = process.env.SHAUTH_BOOTSTRAP_ADMIN_PASSWORD;
 const validatorProbePassword = process.env.EDD_VALIDATOR_PROBE_PASSWORD;
 const expectedBuildSha = process.env.EDD_BUILD_SHA;
@@ -14,6 +14,12 @@ assert.ok(password, "SHAUTH_BOOTSTRAP_ADMIN_PASSWORD is required");
 assert.ok(validatorProbePassword, "EDD_VALIDATOR_PROBE_PASSWORD is required");
 assert.ok(expectedBuildSha, "EDD_BUILD_SHA is required");
 assert.ok(expectedBuildTime, "EDD_BUILD_TIME is required");
+
+function requiredOrigin(name) {
+  const value = process.env[name];
+  assert.ok(value, `${name} is required`);
+  return new URL(value).origin;
+}
 
 const browser = await chromium.launch({ headless: true });
 try {
@@ -86,6 +92,14 @@ try {
     /\/login\/shauth/,
     "validator credentials did not leave the signed-out page on the Shauth OpenID Connect path",
   );
+  const anonymousValidation = await context.request.get(`${applicationOrigin}/auth/validation`, {
+    maxRedirects: 0,
+  });
+  assert.equal(anonymousValidation.status(), 307);
+  assert.equal(
+    new URL(anonymousValidation.headers().location, applicationOrigin).pathname,
+    "/signed-out",
+  );
 
   await page.goto(`${applicationOrigin}/login`);
   await page.locator('input[name="email"]').fill("validator@shauth.invalid");
@@ -107,8 +121,16 @@ try {
   await page.goto(`${applicationOrigin}/me`);
   await page.locator("h1").waitFor();
   await page.getByText("admin@localhost.test").waitFor();
-  await page.locator("#main").getByText("admin", { exact: true }).waitFor();
+  await page.getByRole("heading", { level: 1, name: "admin", exact: true }).waitFor();
   await page.getByRole("button", { name: "Sign out", exact: true }).waitFor();
+
+  await page.goto(`${applicationOrigin}/auth/validation`);
+  await page.getByRole("heading", { name: "ECS Dev Desktop is authenticated" }).waitFor();
+  assert.equal(await page.getByTestId("validation-username").textContent(), "admin");
+  assert.equal(await page.getByTestId("validation-email").textContent(), "admin@localhost.test");
+  assert.equal(await page.getByTestId("validation-role").textContent(), "admin");
+  assert.equal(await page.getByTestId("validation-release").textContent(), expectedBuildSha);
+  await page.locator("#main").getByRole("button", { name: "Sign out", exact: true }).waitFor();
 
   // Shauth's deployment-neutral validator can distinguish immutable releases
   // from the app-owned health contract without knowing where EDD is deployed.
@@ -117,6 +139,32 @@ try {
   const health = await healthResponse.json();
   assert.equal(health.deploy?.sha, expectedBuildSha);
   assert.equal(health.deploy?.time, expectedBuildTime);
+
+  // Logout from a direct application entry revokes the shared Shauth session
+  // and finishes on EDD's own signed-out UI.
+  await assertApplicationLogout(page, navigationTrace, browserErrors);
+
+  // The application bridge accepts no caller-controlled completion state. A
+  // replay after the one-time cookie was consumed, with or without redirect
+  // injection fields, finishes safely on Shauth's own signed-out page.
+  const bridge = `${applicationOrigin}/auth/shauth/logout/complete`;
+  await page.goto(
+    `${bridge}?post_logout_redirect_uri=https%3A%2F%2Fattacker.invalid%2F&return_to=%2Fadmin#ignored`,
+  );
+  await page.waitForURL((url) => url.origin === providerOrigin && url.pathname === "/signed-out");
+  assert.equal(new URL(page.url()).search, "");
+  await page.goto(`${bridge}?destination=https%3A%2F%2Fattacker.invalid%2F`);
+  await waitForURL(page, `${providerOrigin}/signed-out`, navigationTrace, browserErrors);
+
+  // Re-authenticate through EDD before checking silent SSO for both direct and
+  // catalog entry. The credential form belongs only to Shauth.
+  await page.goto(`${applicationOrigin}/signed-out`);
+  await page.getByRole("link", { name: "Sign in with Shauth", exact: true }).click();
+  await page.waitForURL((url) => url.origin === providerOrigin && url.pathname === "/login");
+  await page.locator("#username").fill("admin");
+  await page.locator("#password").fill(password);
+  await page.getByRole("button", { name: "Sign in with password" }).click();
+  await waitForApplication(page, navigationTrace, browserErrors);
 
   // Keep the real Shauth browser session while removing only the relying
   // party's host-scoped cookies. Direct entry must silently establish a fresh
@@ -144,16 +192,9 @@ try {
     "catalog SSO requested credentials again",
   );
 
-  // Relying-party initiated logout terminates the central Shauth session and
-  // returns to the relying party's stable signed-out page.
-  await page.getByRole("button", { name: "Sign out", exact: true }).click();
-  await waitForURL(page, `${applicationOrigin}/signed-out`, navigationTrace, browserErrors);
-  await page.getByRole("heading", { name: "You are signed out" }).waitFor();
-  const shauthSignIn = page.getByRole("link", { name: "Sign in with Shauth", exact: true });
-  assert.equal(await shauthSignIn.getAttribute("href"), "/login/shauth");
-  await page.reload();
-  await waitForURL(page, `${applicationOrigin}/signed-out`, navigationTrace, browserErrors);
-  await page.getByRole("heading", { name: "You are signed out" }).waitFor();
+  // Logout after a catalog launch has the same app-local landing and global
+  // session revocation contract as logout after direct entry.
+  await assertApplicationLogout(page, navigationTrace, browserErrors);
   await page.getByRole("link", { name: "Sign in with Shauth", exact: true }).click();
   await page.waitForURL((url) => url.origin === providerOrigin && url.pathname === "/login");
   await page.locator("#password").waitFor();
@@ -166,12 +207,8 @@ try {
   await page.getByRole("button", { name: "Sign in with password" }).click();
   await waitForApplication(page, navigationTrace, browserErrors);
   await page.goto(`${providerOrigin}/logout`);
-  await Promise.all([
-    page.waitForNavigation(),
-    page.getByRole("button", { name: "Sign out everywhere" }).click(),
-  ]);
-  await page.goto(`${providerOrigin}/login`);
-  await page.locator("#password").waitFor();
+  await page.getByRole("button", { name: "Sign out of all apps", exact: true }).click();
+  await waitForURL(page, `${providerOrigin}/signed-out`, navigationTrace, browserErrors);
   const revokedApi = await context.request.get(`${applicationOrigin}/api/workspaces`);
   assert.equal(
     revokedApi.status(),
@@ -194,6 +231,22 @@ function sanitizeURL(value) {
 
 async function waitForApplication(page, trace, errors) {
   await waitForURL(page, `${applicationOrigin}/workspaces`, trace, errors);
+}
+
+async function assertApplicationLogout(page, trace, errors) {
+  const pagePath = new URL(page.url()).pathname;
+  const signOut =
+    pagePath === "/auth/validation"
+      ? page.getByRole("main").getByRole("button", { name: "Sign out", exact: true })
+      : page.getByRole("banner").getByRole("button", { name: "Sign out", exact: true });
+  await signOut.click();
+  await waitForURL(page, `${applicationOrigin}/signed-out`, trace, errors);
+  await page.getByRole("heading", { name: "You are signed out" }).waitFor();
+  const signIn = page.getByRole("link", { name: "Sign in with Shauth", exact: true });
+  assert.equal(await signIn.getAttribute("href"), "/login/shauth");
+  await page.reload();
+  await waitForURL(page, `${applicationOrigin}/signed-out`, trace, errors);
+  await page.getByRole("heading", { name: "You are signed out" }).waitFor();
 }
 
 async function waitForURL(page, expected, trace, errors) {

@@ -1,17 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { randomUUID } from "node:crypto";
-
-import { SecretsManagerClient, GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
-import { encode } from "next-auth/jwt";
-
-import { AUTH_SESSION_SCHEMA_VERSION, createAuthSession } from "../lib/auth-sessions";
-
 export type Editor = "openvscode" | "monaco" | "terminal" | "opencode";
 
 export const EDITORS: readonly Editor[] = ["openvscode", "monaco", "terminal", "opencode"];
-const SESSION_MAX_AGE_S = 4 * 60 * 60;
-const AUTH_COOKIE_NAME = "__Secure-authjs.session-token";
-
 export interface StoredCookie {
   readonly name: string;
   readonly value: string;
@@ -81,40 +71,6 @@ async function fetchWithCookies(
   const headers = new Headers(init.headers);
   headers.set("cookie", cookieHeader(jar, url));
   return fetch(url, { ...init, headers, redirect: "manual" });
-}
-
-export async function authSecret(region: string, secretId: string): Promise<string> {
-  const out = await new SecretsManagerClient({ region }).send(
-    new GetSecretValueCommand({ SecretId: secretId }),
-  );
-  if (out.SecretString === undefined || out.SecretString.length === 0) {
-    throw new Error(`${secretId} returned no SecretString`);
-  }
-  return out.SecretString;
-}
-
-export async function authJar(
-  secret: string,
-  ownerPrefix: string,
-): Promise<{
-  readonly jar: StoredCookie[];
-  readonly sessionId: string;
-}> {
-  const owner = `${ownerPrefix}-${randomUUID()}`;
-  const session = await createAuthSession({ ownerId: owner, role: "admin" });
-  const token = await encode({
-    secret,
-    salt: AUTH_COOKIE_NAME,
-    maxAge: SESSION_MAX_AGE_S,
-    token: {
-      uid: owner,
-      email: `${owner}@smoke.edd.local`,
-      role: "admin",
-      authSessionId: session.id,
-      authSessionVersion: AUTH_SESSION_SCHEMA_VERSION,
-    },
-  });
-  return { jar: [{ name: AUTH_COOKIE_NAME, value: token, path: "/" }], sessionId: session.id };
 }
 
 export function chooseEnabledImage(images: readonly string[], expectedTag?: string): string {
@@ -362,6 +318,31 @@ export async function createWorkspace(
   return body.id;
 }
 
+/** Returns the exact application owner established by the real OIDC session. */
+export async function authenticatedOwnerId(
+  baseUrl: string,
+  jar: readonly StoredCookie[],
+): Promise<string> {
+  const response = await fetchWithCookies(`${baseUrl}/api/auth/session`, jar);
+  if (!response.ok) {
+    throw new Error(`reading authenticated session failed: ${String(response.status)}`);
+  }
+  const raw: unknown = await response.json();
+  if (
+    typeof raw !== "object" ||
+    raw === null ||
+    !("user" in raw) ||
+    typeof raw.user !== "object" ||
+    raw.user === null ||
+    !("id" in raw.user) ||
+    typeof raw.user.id !== "string" ||
+    raw.user.id.length === 0
+  ) {
+    throw new Error(`/api/auth/session did not identify its owner: ${JSON.stringify(raw)}`);
+  }
+  return raw.user.id;
+}
+
 export async function waitReady(
   baseUrl: string,
   jar: readonly StoredCookie[],
@@ -580,18 +561,16 @@ export async function cleanupSmokeWorkspaces(
   try {
     await revoke();
   } catch (e) {
-    failures.push(new Error("revokeAuthSession failed", { cause: e }));
+    failures.push(new Error("Shauth sign-out failed", { cause: e }));
   }
   return failures;
 }
 
 /**
- * Owner-id prefixes the deployed smoke flows create workspaces under
- * (`authJar(secret, prefix)` appends `-<uuid>`): `smoke-shot-` for the
- * screenshot script and `smoke-` for check-deployed-workspace-open. The
- * post-deploy sweep deletes any leftover workspace whose owner matches.
+ * Legacy smoke sessions used these owner prefixes. New deployed validation
+ * passes the exact subject returned by the real Shauth application session.
  */
-const SMOKE_OWNER_PREFIXES: readonly string[] = ["smoke-shot-", "smoke-"];
+const SMOKE_OWNER_PREFIXES: readonly string[] = ["smoke-"];
 
 const LIST_DEADLINE_MS = 2 * 60 * 1000;
 const LIST_POLL_INTERVAL_MS = 5_000;

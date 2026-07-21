@@ -10,7 +10,7 @@
  */
 import { createServer } from "node:http";
 
-import { STOPPING_SWEEP_MS } from "@edd/config";
+import { STOPPING_SWEEP_MS, applicationReleaseRevision } from "@edd/config";
 
 import { workspaceId, workspaceIdFromPath, type WorkspaceId } from "@edd/core";
 import next from "next";
@@ -47,6 +47,7 @@ function spectatePathParts(url: string): { wsId: WorkspaceId; role: SpectateRole
 const spectateWss = new WebSocketServer({ noServer: true });
 
 const dev = process.env.NODE_ENV !== "production";
+if (!dev) applicationReleaseRevision();
 const port = Number(process.env.PORT ?? "3700");
 // Bind ALL interfaces (0.0.0.0), NOT process.env.HOSTNAME. ECS/Docker injects the
 // container's own hostname into HOSTNAME, so reading it here bound the server to a

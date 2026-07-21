@@ -52,6 +52,11 @@ export interface Principal {
   /** The role every ability/gate check sees — the caller's real role, or a
    * downgraded "view as" persona when one is active (see `effectiveRole`). */
   role: Role;
+  /** Human-readable identity supplied by the authentication source. Authorization
+   * and ownership always use `id`; this value is presentation-only. */
+  displayName?: string;
+  /** User avatar supplied by the authentication source, when present. */
+  image?: string;
   /** Caller's email, when the identity source provides it. Carried so a created
    * workspace records its owner's email for per-workspace proxy authorization. It
    * stays a bare string here — validation into a branded `Email` happens at the create

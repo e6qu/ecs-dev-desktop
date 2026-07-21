@@ -1,7 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { shauthEnabled, shauthEndSessionURL, shauthOidcConfig, shauthProvider } from "./shauth";
+import {
+  shauthEnabled,
+  shauthEndSessionURL,
+  shauthLogoutCompletionURL,
+  shauthOidcConfig,
+  shauthProvider,
+} from "./shauth";
 
 describe("shauthOidcConfig", () => {
   it("leaves Shauth disabled when it has no coordinates", () => {
@@ -14,14 +20,14 @@ describe("shauthOidcConfig", () => {
       AUTH_SHAUTH_ISSUER: "https://auth.dev.e6qu.dev",
       AUTH_SHAUTH_ID: "edd",
       AUTH_SHAUTH_SECRET: "secret",
-      AUTH_SHAUTH_POST_LOGOUT_URL: "https://app.edd.dev.e6qu.dev/signed-out",
+      AUTH_SHAUTH_POST_LOGOUT_URL: "https://app.edd.dev.e6qu.dev/auth/shauth/logout/complete",
       AUTH_URL: "https://app.edd.dev.e6qu.dev",
     };
     expect(shauthOidcConfig(env)).toEqual({
       issuer: "https://auth.dev.e6qu.dev",
       clientId: "edd",
       clientSecret: "secret",
-      postLogoutUrl: "https://app.edd.dev.e6qu.dev/signed-out",
+      logoutBridgeUrl: "https://app.edd.dev.e6qu.dev/auth/shauth/logout/complete",
     });
     expect(shauthEnabled(env)).toBe(true);
   });
@@ -32,14 +38,14 @@ describe("shauthOidcConfig", () => {
         AUTH_SHAUTH_ISSUER: "http://localhost:8080",
         AUTH_SHAUTH_ID: "edd",
         AUTH_SHAUTH_SECRET: "secret",
-        AUTH_SHAUTH_POST_LOGOUT_URL: "http://127.0.0.1:3211/signed-out",
+        AUTH_SHAUTH_POST_LOGOUT_URL: "http://127.0.0.1:3211/auth/shauth/logout/complete",
         AUTH_URL: "http://127.0.0.1:3211",
       }),
     ).toEqual({
       issuer: "http://localhost:8080",
       clientId: "edd",
       clientSecret: "secret",
-      postLogoutUrl: "http://127.0.0.1:3211/signed-out",
+      logoutBridgeUrl: "http://127.0.0.1:3211/auth/shauth/logout/complete",
     });
   });
 
@@ -55,14 +61,14 @@ describe("shauthOidcConfig", () => {
         AUTH_SHAUTH_ISSUER: " https://auth.dev.e6qu.dev/ ",
         AUTH_SHAUTH_ID: " edd ",
         AUTH_SHAUTH_SECRET: "secret",
-        AUTH_SHAUTH_POST_LOGOUT_URL: " https://app.edd.dev.e6qu.dev/signed-out ",
+        AUTH_SHAUTH_POST_LOGOUT_URL: " https://app.edd.dev.e6qu.dev/auth/shauth/logout/complete ",
         AUTH_URL: " https://app.edd.dev.e6qu.dev/ ",
       }),
     ).toEqual({
       issuer: "https://auth.dev.e6qu.dev",
       clientId: "edd",
       clientSecret: "secret",
-      postLogoutUrl: "https://app.edd.dev.e6qu.dev/signed-out",
+      logoutBridgeUrl: "https://app.edd.dev.e6qu.dev/auth/shauth/logout/complete",
     });
   });
 
@@ -84,7 +90,7 @@ describe("shauthOidcConfig", () => {
         AUTH_SHAUTH_ISSUER: "https://auth.dev.e6qu.dev",
         AUTH_SHAUTH_ID: "edd",
         AUTH_SHAUTH_SECRET: "secret",
-        AUTH_SHAUTH_POST_LOGOUT_URL: "https://app.edd.dev.e6qu.dev/signed-out",
+        AUTH_SHAUTH_POST_LOGOUT_URL: "https://app.edd.dev.e6qu.dev/auth/shauth/logout/complete",
       }),
     ).toThrow(/AUTH_URL is required/);
   });
@@ -93,7 +99,7 @@ describe("shauthOidcConfig", () => {
     const base = {
       AUTH_SHAUTH_ID: "edd",
       AUTH_SHAUTH_SECRET: "secret",
-      AUTH_SHAUTH_POST_LOGOUT_URL: "https://app.example.com/signed-out",
+      AUTH_SHAUTH_POST_LOGOUT_URL: "https://app.example.com/auth/shauth/logout/complete",
       AUTH_URL: "https://app.example.com",
     };
     expect(() =>
@@ -121,7 +127,10 @@ describe("shauthProvider", () => {
     vi.stubEnv("AUTH_SHAUTH_ISSUER", "https://auth.dev.e6qu.dev");
     vi.stubEnv("AUTH_SHAUTH_ID", "edd");
     vi.stubEnv("AUTH_SHAUTH_SECRET", "secret");
-    vi.stubEnv("AUTH_SHAUTH_POST_LOGOUT_URL", "https://edd.example.com/signed-out");
+    vi.stubEnv(
+      "AUTH_SHAUTH_POST_LOGOUT_URL",
+      "https://edd.example.com/auth/shauth/logout/complete",
+    );
     vi.stubEnv("AUTH_URL", "https://edd.example.com");
     const provider = shauthProvider();
     expect(provider).toMatchObject({
@@ -159,7 +168,7 @@ describe("shauthEndSessionURL", () => {
           issuer: "https://auth.dev.e6qu.dev",
           clientId: "edd",
           clientSecret: "secret",
-          postLogoutUrl: "https://app.edd.dev.e6qu.dev/signed-out",
+          logoutBridgeUrl: "https://app.edd.dev.e6qu.dev/auth/shauth/logout/complete",
         },
         "header.payload.signature",
       ),
@@ -169,7 +178,20 @@ describe("shauthEndSessionURL", () => {
     );
     expect(result.searchParams.get("id_token_hint")).toBe("header.payload.signature");
     expect(result.searchParams.get("post_logout_redirect_uri")).toBe(
-      "https://app.edd.dev.e6qu.dev/signed-out",
+      "https://app.edd.dev.e6qu.dev/auth/shauth/logout/complete",
     );
+  });
+});
+
+describe("shauthLogoutCompletionURL", () => {
+  it("derives the fixed completion path solely from the configured issuer", () => {
+    expect(
+      shauthLogoutCompletionURL({
+        issuer: "https://auth.dev.e6qu.dev",
+        clientId: "edd",
+        clientSecret: "secret",
+        logoutBridgeUrl: "https://app.edd.dev.e6qu.dev/auth/shauth/logout/complete",
+      }),
+    ).toBe("https://auth.dev.e6qu.dev/oauth/logout/complete");
   });
 });

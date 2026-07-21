@@ -48,7 +48,7 @@ describe("signOutAction", () => {
       issuer: "https://auth.dev.e6qu.dev",
       clientId: "edd",
       clientSecret: "secret",
-      postLogoutUrl: "https://app.edd.dev.e6qu.dev/signed-out",
+      logoutBridgeUrl: "https://app.edd.dev.e6qu.dev/auth/shauth/logout/complete",
     };
     shauthOidcConfig.mockReturnValue(config);
     auth.mockResolvedValue({ user: { authSessionId: "app-session" } });
@@ -75,7 +75,7 @@ describe("signOutAction", () => {
       issuer: "https://auth.dev.e6qu.dev",
       clientId: "edd",
       clientSecret: "secret",
-      postLogoutUrl: "https://app.edd.dev.e6qu.dev/signed-out",
+      logoutBridgeUrl: "https://app.edd.dev.e6qu.dev/auth/shauth/logout/complete",
     });
     auth.mockResolvedValue({ user: { authSessionId: "github-session" } });
     getAuthSessionLogoutContext.mockResolvedValue(null);

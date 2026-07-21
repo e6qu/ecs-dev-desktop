@@ -9,7 +9,7 @@ const config: ShauthOidcConfig = {
   issuer: "https://auth.example.com",
   clientId: "edd",
   clientSecret: "secret",
-  postLogoutUrl: "https://edd.example.com/signed-out",
+  logoutBridgeUrl: "https://edd.example.com/auth/shauth/logout/complete",
 };
 
 async function fixture(claims: Record<string, unknown> = {}, audience = config.clientId) {
