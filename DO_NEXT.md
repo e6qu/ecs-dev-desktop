@@ -4,10 +4,12 @@
 
 ## Release and shared-development deployment
 
+The branch left no unresolved local CI acceptance work; release and deployment
+remained the next shared-environment steps.
+
 1. The main-only publication workflow needed to publish the merged commit's exact 12-character ARM64, AMD64, and multi-architecture image references.
-2. Shauth commit `74735a1710fa69d472e7eb27ae95ce317c7c1a3d` needed to merge before Infra registered ECS Dev Desktop's opaque release revision, `/auth/validation` validation URL, `/signed-out` signed-out URL, and exact `/auth/shauth/logout/complete` post-logout bridge.
-3. The private `e6qu/infra` development environment needed to pin the published immutable image and apply synchronized `main`.
-4. The deployed acceptance matrix needed to repeat direct entry, Shauth catalog launch, silent SSO, local and global logout, validator checks, browser terminal typing, PTY close, SSH, and stop/wake persistence against the live endpoint.
+2. The private `e6qu/infra` development environment needed to pin the published immutable image, register ECS Dev Desktop's opaque release revision, `/auth/validation` validation URL, `/signed-out` signed-out URL, and exact `/auth/shauth/logout/complete` post-logout bridge, and apply synchronized `main`.
+3. The deployed acceptance matrix needed to repeat direct entry, Shauth catalog launch, silent SSO, local and global logout, validator checks, browser terminal typing, PTY close, SSH, and stop/wake persistence against the live endpoint.
 
 ## Existing product follow-ups
 

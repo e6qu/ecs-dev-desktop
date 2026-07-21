@@ -11,6 +11,7 @@ registry="$root/infra/terraform/modules/ecs-dev-desktop/registry.tf"
 variables="$root/infra/terraform/modules/ecs-dev-desktop/variables.tf"
 bootstrap="$root/scripts/bootstrap-release-oidc.sh"
 smoke_workflow="$root/.github/workflows/post-deploy-smoke.yml"
+fixture_retention="$root/scripts/retain-ghcr-package-versions.sh"
 deploy="$root/scripts/deploy-release-images.sh"
 ecs="$root/infra/terraform/modules/ecs-dev-desktop/ecs.tf"
 reconciler="$root/infra/terraform/modules/ecs-dev-desktop/reconciler.tf"
@@ -144,13 +145,41 @@ if ! grep -Fq 'countNumber = var.image_retention_count' "$registry" ||
   exit 1
 fi
 
-if ! grep -Fq 'Retain only the newest 20 fixture versions' .github/workflows/ci.yml ||
-  ! grep -Fq 'tail -n +21' .github/workflows/ci.yml; then
+if [ "$(grep -Fc "sh scripts/retain-ghcr-package-versions.sh \"\$OWNER\" \"\$PACKAGE_NAME\" 20" .github/workflows/ci.yml)" -ne 3 ] ||
+  ! grep -Fq "tail -n \"+\$((keep + 1))\"" "$fixture_retention"; then
   echo "edd: GitHub Container Registry test fixtures must retain only the newest 20 versions" >&2
   exit 1
 fi
 
-if grep -Eq -- 'gh api .*--paginate .*--slurp|gh api .*--slurp .*--paginate' .github/workflows/ci.yml; then
+if ! grep -Fq 'max_attempts=4' "$fixture_retention" ||
+  ! grep -Fq 'HTTP (408|429|500|502|503|504)' "$fixture_retention" ||
+  ! grep -Fq 'already absent after an ambiguous delete' "$fixture_retention"; then
+  echo "edd: fixture retention must retry only transient idempotent GitHub API operations within a fixed bound" >&2
+  exit 1
+fi
+
+if ! grep -Fq 'e2e-workspace-base:' .github/workflows/ci.yml ||
+  ! grep -Fq 'name: e2e fixture (workspace base)' .github/workflows/ci.yml ||
+  ! grep -Fq 'e2e-simulator-image:' .github/workflows/ci.yml ||
+  ! grep -Fq 'name: e2e fixture (simulator)' .github/workflows/ci.yml ||
+  ! grep -Fq 'name: e2e fixture (workspace)' .github/workflows/ci.yml ||
+  ! grep -Fq "WORKSPACE_BASE: ghcr.io/\${{ github.repository_owner }}/edd-ci-workspace-base" .github/workflows/ci.yml ||
+  ! grep -Fq 'needs: e2e-workspace-base' .github/workflows/ci.yml ||
+  ! grep -Fq 'needs: [e2e-images, e2e-simulator-image]' .github/workflows/ci.yml ||
+  ! grep -Fq 'PACKAGE_NAME: edd-ci-workspace-base' .github/workflows/ci.yml; then
+  echo "edd: the workspace fixture must consume a separately bounded, run-scoped base fixture with independent retention" >&2
+  exit 1
+fi
+
+if grep -Fq 'infra/images/base/build.sh edd-base:ci' .github/workflows/ci.yml ||
+  grep -Fq 'matrix.fixture' .github/workflows/ci.yml ||
+  ! grep -Fq "BASE: ghcr.io/\${{ github.repository_owner }}/edd-ci-workspace-base" .github/workflows/ci.yml ||
+  [ "$(grep -Fc -- '--push' .github/workflows/ci.yml)" -lt 2 ]; then
+  echo "edd: workspace and simulator fixtures must publish independently instead of serializing unrelated work or local builds and pushes" >&2
+  exit 1
+fi
+
+if grep -Eq -- 'gh api .*--paginate .*--slurp|gh api .*--slurp .*--paginate' .github/workflows/ci.yml "$fixture_retention"; then
   echo "edd: GitHub CLI rejects --slurp with --jq; fixture retention must stream paginated rows" >&2
   exit 1
 fi

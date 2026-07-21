@@ -14,7 +14,7 @@ for command in curl docker git jq node openssl pnpm; do
     exit 1
   }
 done
-expected_shauth_commit=${SHAUTH_EXPECTED_COMMIT:-74735a1710fa69d472e7eb27ae95ce317c7c1a3d}
+expected_shauth_commit=${SHAUTH_EXPECTED_COMMIT:-08f5a78fb8b159fcbfe8317f24f430dbdfd3ed56}
 actual_shauth_commit=$(git -C "$shauth_root" rev-parse HEAD)
 if [ "$actual_shauth_commit" != "$expected_shauth_commit" ]; then
   printf 'Shauth checkout is %s; expected %s\n' "$actual_shauth_commit" "$expected_shauth_commit" >&2

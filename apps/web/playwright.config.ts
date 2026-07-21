@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { defineConfig, devices } from "@playwright/test";
-import { execFileSync } from "node:child_process";
+import { immutableReleaseEnvironment } from "./scripts/release-env";
 
 /**
  * Browser-level e2e for the portal. The app runs under `EDD_DEV_AUTH=1` so the
@@ -12,9 +12,7 @@ import { execFileSync } from "node:child_process";
 const PORT = 3210;
 const BASE_URL = `http://127.0.0.1:${PORT}`;
 const IS_CI = process.env.CI === "true" || process.env.CI === "1";
-const SOURCE_REVISION = execFileSync("git", ["rev-parse", "HEAD"], {
-  encoding: "utf8",
-}).trim();
+const RELEASE_ENVIRONMENT = immutableReleaseEnvironment(process.env);
 
 if (process.env.NO_COLOR !== undefined && process.env.FORCE_COLOR !== undefined) {
   delete process.env.NO_COLOR;
@@ -32,7 +30,7 @@ const appEnv = {
   EDD_IMAGE_SOURCE_REPO: "e6qu/ecs-dev-desktop",
   EDD_IMAGE_SOURCE_BRANCH: "main",
   EDD_IMAGE_SOURCE_WEBHOOK_SECRET: "playwright-image-source-webhook-secret",
-  EDD_BUILD_SHA: SOURCE_REVISION,
+  ...RELEASE_ENVIRONMENT,
 };
 // global-setup runs in this process and reads these.
 Object.assign(process.env, appEnv);

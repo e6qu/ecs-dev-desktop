@@ -39,24 +39,30 @@ Every GitHub Actions job had an explicit timeout of at most 15 minutes. Long
 end-to-end, Terraform-simulator, and golden-image work was split into bounded
 matrix jobs without weakening the real acceptance surfaces. Fixture-package
 retention streamed paginated GitHub API rows through the current GitHub CLI
-instead of combining its mutually exclusive `--slurp` and `--jq` options.
+instead of combining its mutually exclusive `--slurp` and `--jq` options. The
+workspace base and omnibus fixtures ran as separate exact run-scoped GitHub
+Container Registry publications while the simulator fixture remained independent;
+the measured jobs completed in 5m17s and 12m12s. One shared POSIX-shell retention
+helper kept the newest 20 versions of each package and retried only bounded,
+idempotent transient GitHub API failures.
 
 ## Verified state
 
-- The real Shauth, Ory Hydra, PostgreSQL, DynamoDB, production Next.js, Sockerless AWS simulator, and Chromium contract passed against exact Shauth commit `74735a1710fa69d472e7eb27ae95ce317c7c1a3d`.
+- The real Shauth, Ory Hydra, PostgreSQL, DynamoDB, production Next.js, Sockerless AWS simulator, and Chromium contract passed against merged Shauth commit `08f5a78fb8b159fcbfe8317f24f430dbdfd3ed56`.
 - Direct entry, catalog launch, silent SSO reuse, `/me`, relying-party logout, provider global logout, Back-Channel Logout revocation, and fail-closed re-entry passed in one browser lifecycle.
 - The app-owned completion bridge returned only to Shauth's issuer-origin completion endpoint; hostile query parameters and a consumed-correlation replay remained on Shauth's safe signed-out page.
 - The sentinel Shauth validator credential failed every ECS Dev Desktop local credential shape; exact-issuer OpenID Connect succeeded.
 - The 13-file container-mode Sockerless AWS simulator suite passed 37/37 tests, including browser terminal input, PTY teardown, IDE bridges, SSH, heartbeats, snapshots, wake, and ECS lifecycle.
+- Every production-web process started by the container-mode and portal Playwright suites received the exact checked-out Git revision when no deployment revision was supplied, while explicit deployment revisions remained authoritative. Config-level regression coverage kept both Playwright production-server launchers on the shared release-environment contract.
 - The complete Chromium portal suite passed 31/31 tests, including stable sign-out plus WCAG contrast in light and dark mode.
 - Language-variant image tests and GitHub App tests no longer reported skipped success when their required images or coordinates were absent.
 - Repository lint, unit/integration tests, production build, formatting, ShellCheck, and pre-commit checks passed.
+- Monaco Editor `0.56.0` was current in both consumers; the first-party editor and demo used its canonical export paths and production bundles contained their real editor, JSON, and TypeScript worker assets.
 
 ## Deployment boundary
 
 The private `e6qu/infra` repository remained the sole deployment owner. Shauth's
-new application-registration schema had not yet merged while this branch was
-prepared, so Infra retained responsibility for adding the opaque release revision,
+application-registration schema had merged, and Infra retained responsibility for adding the opaque release revision,
 `https://app.edd.dev.e6qu.dev/auth/validation` validation URL, and
 `https://app.edd.dev.e6qu.dev/signed-out` signed-out URL, and registering
 `https://app.edd.dev.e6qu.dev/auth/shauth/logout/complete` as the sole
