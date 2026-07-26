@@ -2,10 +2,11 @@
 # Golden image collection.
 #
 # Pull requests validate the shared base + language variants without publishing.
-# Main-branch pushes publish the configured golden variants to
-# ECR via GitHub OIDC. This workflow is intentionally separate from `release`: a
-# control-plane deploy must not wait for the expensive workspace image build, and a
-# failed golden build can be rerun without rolling ECS services.
+# Main-branch pushes publish the configured golden variants to GitHub Container
+# Registry (ghcr.io) with the workflow's GITHUB_TOKEN (packages: write) — no AWS,
+# no ECR. This workflow is intentionally separate from `release`: a control-plane
+# deploy must not wait for the expensive workspace image build, and a failed
+# golden build can be rerun without rolling ECS services.
 name: golden-images
 
 on:
@@ -21,13 +22,13 @@ on:
 concurrency:
   group: golden-images-${{ github.ref }}
   # Queue main-branch builds instead of cancelling them: a cancelled publish
-  # leaves the catalog waiting on a tag that never reaches ECR. PR refs still
-  # cancel superseded validation runs.
+  # leaves the catalog waiting on a tag that never reaches the registry. PR refs
+  # still cancel superseded validation runs.
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 permissions:
-  id-token: write
   contents: read
+  packages: write
 
 jobs:
   validate:
@@ -63,26 +64,16 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     env:
-      RELEASE_AWS_ACCOUNT: ${{ vars.RELEASE_AWS_ACCOUNT }}
-      RELEASE_AWS_REGION: ${{ vars.RELEASE_AWS_REGION }}
-      RELEASE_AWS_ROLE_ARN: ${{ vars.RELEASE_AWS_ROLE_ARN }}
-      RELEASE_NAME_PREFIX: ${{ vars.RELEASE_NAME_PREFIX }}
       RELEASE_GOLDEN_VARIANTS: ${{ vars.RELEASE_GOLDEN_VARIANTS }}
     outputs:
       variants: ${{ steps.variants.outputs.json }}
     steps:
-      - name: Validate release coordinates and variants
+      - name: Validate golden variants
         id: variants
         run: |
           set -euo pipefail
-          for name in RELEASE_AWS_ACCOUNT RELEASE_AWS_REGION RELEASE_AWS_ROLE_ARN RELEASE_NAME_PREFIX RELEASE_GOLDEN_VARIANTS; do
-            if [ -z "${!name}" ]; then
-              echo "::error::${name} is required for the golden-images workflow"
-              exit 1
-            fi
-          done
-          if [[ ! "$RELEASE_AWS_ACCOUNT" =~ ^[0-9]{12}$ ]]; then
-            echo "::error::RELEASE_AWS_ACCOUNT must be a 12-digit AWS account id"
+          if [ -z "$RELEASE_GOLDEN_VARIANTS" ]; then
+            echo "::error::RELEASE_GOLDEN_VARIANTS is required for the golden-images workflow"
             exit 1
           fi
           for variant in $RELEASE_GOLDEN_VARIANTS; do
@@ -115,10 +106,6 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     env:
-      RELEASE_AWS_ACCOUNT: ${{ vars.RELEASE_AWS_ACCOUNT }}
-      RELEASE_AWS_REGION: ${{ vars.RELEASE_AWS_REGION }}
-      RELEASE_AWS_ROLE_ARN: ${{ vars.RELEASE_AWS_ROLE_ARN }}
-      RELEASE_NAME_PREFIX: ${{ vars.RELEASE_NAME_PREFIX }}
       TAG: ${{ github.sha }}
       EDD_BUILD_TARGET: golden
       EDD_BUILD_ARCHS: ${{ matrix.arch }}
@@ -138,15 +125,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6.2.1
-        with:
-          role-to-assume: ${{ env.RELEASE_AWS_ROLE_ARN }}
-          aws-region: ${{ env.RELEASE_AWS_REGION }}
-          role-session-name: golden-base-${{ matrix.arch }}-${{ github.run_id }}
-
-      - name: Verify assumed identity
-        run: aws sts get-caller-identity
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Build and push golden base image
         env:
@@ -155,9 +135,7 @@ jobs:
           EDD_SKIP_MANIFEST: "1"
         run: |
           sh scripts/publish-images.sh \
-            "$RELEASE_AWS_ACCOUNT" \
-            "$RELEASE_AWS_REGION" \
-            "$RELEASE_NAME_PREFIX" \
+            "${{ github.repository_owner }}" \
             "${TAG:0:12}"
 
   # Every variant consumes the immutable base tag and publishes independently.
@@ -174,10 +152,6 @@ jobs:
     runs-on: ${{ matrix.arch == 'arm64' && 'ubuntu-24.04-arm' || 'ubuntu-latest' }}
     timeout-minutes: 15
     env:
-      RELEASE_AWS_ACCOUNT: ${{ vars.RELEASE_AWS_ACCOUNT }}
-      RELEASE_AWS_REGION: ${{ vars.RELEASE_AWS_REGION }}
-      RELEASE_AWS_ROLE_ARN: ${{ vars.RELEASE_AWS_ROLE_ARN }}
-      RELEASE_NAME_PREFIX: ${{ vars.RELEASE_NAME_PREFIX }}
       TAG: ${{ github.sha }}
       EDD_BUILD_TARGET: golden
       EDD_BUILD_ARCHS: ${{ matrix.arch }}
@@ -188,12 +162,8 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4.2.0
 
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6.2.1
-        with:
-          role-to-assume: ${{ env.RELEASE_AWS_ROLE_ARN }}
-          aws-region: ${{ env.RELEASE_AWS_REGION }}
-          role-session-name: golden-${{ matrix.arch }}-${{ matrix.variant }}-${{ github.run_id }}
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Build and push golden variant image
         env:
@@ -202,14 +172,12 @@ jobs:
           EDD_SKIP_MANIFEST: "1"
         run: |
           sh scripts/publish-images.sh \
-            "$RELEASE_AWS_ACCOUNT" \
-            "$RELEASE_AWS_REGION" \
-            "$RELEASE_NAME_PREFIX" \
+            "${{ github.repository_owner }}" \
             "${TAG:0:12}" \
             "${{ matrix.variant }}"
 
   # Combine the per-arch tags into the multi-arch `:<tag>` manifest ECS Fargate pulls. No build
-  # here, so it needs neither a native runner nor Node — just Docker + AWS creds.
+  # here, so it needs neither a native runner nor Node — just Docker + registry login.
   manifest:
     name: publish golden multi-arch manifests
     if: github.event_name == 'push'
@@ -217,10 +185,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      RELEASE_AWS_ACCOUNT: ${{ vars.RELEASE_AWS_ACCOUNT }}
-      RELEASE_AWS_REGION: ${{ vars.RELEASE_AWS_REGION }}
-      RELEASE_AWS_ROLE_ARN: ${{ vars.RELEASE_AWS_ROLE_ARN }}
-      RELEASE_NAME_PREFIX: ${{ vars.RELEASE_NAME_PREFIX }}
       RELEASE_GOLDEN_VARIANTS: ${{ vars.RELEASE_GOLDEN_VARIANTS }}
       TAG: ${{ github.sha }}
       EDD_BUILD_TARGET: golden
@@ -231,12 +195,8 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4.2.0
 
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6.2.1
-        with:
-          role-to-assume: ${{ env.RELEASE_AWS_ROLE_ARN }}
-          aws-region: ${{ env.RELEASE_AWS_REGION }}
-          role-session-name: golden-manifest-${{ github.run_id }}
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Create & push multi-arch manifests
         env:
@@ -245,9 +205,7 @@ jobs:
         run: |
           read -r -a variants <<< "$RELEASE_GOLDEN_VARIANTS"
           sh scripts/publish-images.sh \
-            "$RELEASE_AWS_ACCOUNT" \
-            "$RELEASE_AWS_REGION" \
-            "$RELEASE_NAME_PREFIX" \
+            "${{ github.repository_owner }}" \
             "${TAG:0:12}" \
             "${variants[@]}"
 
@@ -262,8 +220,6 @@ jobs:
           # Repository coordinates are whitespace-delimited by contract.
           # shellcheck disable=SC2086
           sh scripts/verify-published-images.sh \
-            "$RELEASE_AWS_ACCOUNT" \
-            "$RELEASE_AWS_REGION" \
-            "$RELEASE_NAME_PREFIX" \
+            "${{ github.repository_owner }}" \
             "${TAG:0:12}" \
             $repositories
