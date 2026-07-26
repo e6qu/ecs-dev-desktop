@@ -1,25 +1,16 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Release pipeline: build and publish the platform's app images.
-# Triggered by every main merge. Uses GitHub OIDC -> an
-# AWS role with Amazon ECR push permissions only (no static keys). The Terraform
-# module must have been applied first because it creates the repositories.
+# Release pipeline: build and publish the platform's app images to GitHub
+# Container Registry (ghcr.io). Triggered by every main merge. Authenticates with
+# the workflow's GITHUB_TOKEN (packages: write) — no AWS, no ECR, no static keys.
 #
-# Prerequisites (non-secret coordinates, supplied by scripts/bootstrap-release-oidc.sh):
-#   - repo/environment variable `RELEASE_AWS_ROLE_ARN` — OIDC-assumable role ARN
-#     (needs only push/read actions on the module's Terraform-created repos)
-#   - repo/environment variable `RELEASE_AWS_ACCOUNT`  — 12-digit account id
-#   - repo/environment variable `RELEASE_AWS_REGION`   — AWS region for ECR
-#   - repo/environment variable `RELEASE_NAME_PREFIX`  — the module `name` (e.g. edd-dev)
-# Do not store static secrets in GitHub variables or secrets for this workflow.
-# Authentication is OIDC -> STS short-lived credentials.
-#
-# What it publishes and rolls (see scripts/publish-images.sh with EDD_BUILD_TARGET=web):
-#   <prefix>/control-plane:<tag>         Next.js app (also the reconciler image)
-#   <prefix>/control-plane:<tag>-amd64   amd64 image
-#   <prefix>/control-plane:<tag>-arm64   arm64 image
-#   <prefix>/ssh-gateway:<tag>           SSH gateway (IMMUTABLE repo — each tag once)
-#   <prefix>/ssh-gateway:<tag>-amd64     amd64 image
-#   <prefix>/ssh-gateway:<tag>-arm64     arm64 image
+# What it publishes (see scripts/publish-images.sh with EDD_BUILD_TARGET=web),
+# grouped under ghcr.io/<owner>/edd/:
+#   edd/control-plane:<tag>         Next.js app (also the reconciler image)
+#   edd/control-plane:<tag>-amd64   amd64 image
+#   edd/control-plane:<tag>-arm64   arm64 image
+#   edd/ssh-gateway:<tag>           SSH gateway
+#   edd/ssh-gateway:<tag>-amd64     amd64 image
+#   edd/ssh-gateway:<tag>-arm64     arm64 image
 # Workspace/golden image rebuilds are handled by the separate non-blocking
 # golden-images workflow, not by this release workflow. The tag without the suffix
 # is a manifest over the architectures built by this workflow; the suffixed tags
@@ -34,8 +25,8 @@ on:
     branches: [main]
 
 permissions:
-  id-token: write
   contents: read
+  packages: write
 
 concurrency: release
 
@@ -56,10 +47,6 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 15
     env:
-      RELEASE_AWS_ACCOUNT: ${{ vars.RELEASE_AWS_ACCOUNT }}
-      RELEASE_AWS_REGION: ${{ vars.RELEASE_AWS_REGION }}
-      RELEASE_AWS_ROLE_ARN: ${{ vars.RELEASE_AWS_ROLE_ARN }}
-      RELEASE_NAME_PREFIX: ${{ vars.RELEASE_NAME_PREFIX }}
       TAG: ${{ github.sha }}
       EDD_BUILD_TARGET: web
       EDD_BUILD_ARCHS: ${{ matrix.arch }}
@@ -78,33 +65,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Validate release coordinates
-        run: |
-          set -euo pipefail
-          missing=0
-          for name in RELEASE_AWS_ACCOUNT RELEASE_AWS_REGION RELEASE_AWS_ROLE_ARN RELEASE_NAME_PREFIX; do
-            if [ -z "${!name}" ]; then
-              echo "::error::${name} is required for the release workflow"
-              missing=1
-            fi
-          done
-          if [ "$missing" -ne 0 ]; then
-            exit 1
-          fi
-          if [[ ! "$RELEASE_AWS_ACCOUNT" =~ ^[0-9]{12}$ ]]; then
-            echo "::error::RELEASE_AWS_ACCOUNT must be a 12-digit AWS account id"
-            exit 1
-          fi
-
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6.2.1
-        with:
-          role-to-assume: ${{ env.RELEASE_AWS_ROLE_ARN }}
-          aws-region: ${{ env.RELEASE_AWS_REGION }}
-          role-session-name: release-${{ matrix.arch }}-${{ github.run_id }}
-
-      - name: Verify assumed identity
-        run: aws sts get-caller-identity
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Build & push per-arch images
         env:
@@ -112,9 +74,7 @@ jobs:
           EDD_SKIP_MANIFEST: "1"
         run: |
           sh scripts/publish-images.sh \
-            "$RELEASE_AWS_ACCOUNT" \
-            "$RELEASE_AWS_REGION" \
-            "$RELEASE_NAME_PREFIX" \
+            "${{ github.repository_owner }}" \
             "${TAG:0:12}"
 
   # Combine the native per-architecture images into verified multi-architecture manifests.
@@ -124,10 +84,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      RELEASE_AWS_ACCOUNT: ${{ vars.RELEASE_AWS_ACCOUNT }}
-      RELEASE_AWS_REGION: ${{ vars.RELEASE_AWS_REGION }}
-      RELEASE_AWS_ROLE_ARN: ${{ vars.RELEASE_AWS_ROLE_ARN }}
-      RELEASE_NAME_PREFIX: ${{ vars.RELEASE_NAME_PREFIX }}
       TAG: ${{ github.sha }}
       EDD_BUILD_TARGET: web
       EDD_BUILD_ARCHS: amd64 arm64
@@ -137,15 +93,8 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4.2.0
 
-      - name: Configure AWS credentials (OIDC)
-        uses: aws-actions/configure-aws-credentials@v6.2.1
-        with:
-          role-to-assume: ${{ env.RELEASE_AWS_ROLE_ARN }}
-          aws-region: ${{ env.RELEASE_AWS_REGION }}
-          role-session-name: release-manifest-${{ github.run_id }}
-
-      - name: Verify assumed identity
-        run: aws sts get-caller-identity
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Create & push multi-arch manifests
         env:
@@ -153,16 +102,12 @@ jobs:
           EDD_MANIFEST_ONLY: "1"
         run: |
           sh scripts/publish-images.sh \
-            "$RELEASE_AWS_ACCOUNT" \
-            "$RELEASE_AWS_REGION" \
-            "$RELEASE_NAME_PREFIX" \
+            "${{ github.repository_owner }}" \
             "${TAG:0:12}"
 
       - name: Verify published OCI image shape
         run: |
           sh scripts/verify-published-images.sh \
-            "$RELEASE_AWS_ACCOUNT" \
-            "$RELEASE_AWS_REGION" \
-            "$RELEASE_NAME_PREFIX" \
+            "${{ github.repository_owner }}" \
             "${TAG:0:12}" \
             control-plane ssh-gateway

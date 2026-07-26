@@ -3,11 +3,9 @@
 set -eu
 unset CDPATH
 
-account="${1:?usage: verify-published-images.sh <account-id> <region> <name-prefix> <tag> <repository...>}"
-region="${2:?usage: verify-published-images.sh <account-id> <region> <name-prefix> <tag> <repository...>}"
-prefix="${3:?usage: verify-published-images.sh <account-id> <region> <name-prefix> <tag> <repository...>}"
-tag="${4:?usage: verify-published-images.sh <account-id> <region> <name-prefix> <tag> <repository...>}"
-shift 4
+owner="${1:?usage: verify-published-images.sh <ghcr-owner> <tag> <repository...>}"
+tag="${2:?usage: verify-published-images.sh <ghcr-owner> <tag> <repository...>}"
+shift 2
 
 if [ "$#" -eq 0 ]; then
   echo "edd: at least one repository is required" >&2
@@ -19,7 +17,8 @@ here=$(cd "$(dirname "$0")" && pwd)
 . "$here/lib/validate-image-tag.sh"
 validate_image_tag "$tag" "tag" || exit 1
 
-registry="${account}.dkr.ecr.${region}.amazonaws.com"
+registry="ghcr.io/${owner}"
+prefix="edd"
 expected_platforms=$(printf 'linux/amd64\nlinux/arm64')
 
 for repository in "$@"; do

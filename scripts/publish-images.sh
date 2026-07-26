@@ -1,31 +1,28 @@
 #!/usr/bin/env sh
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# Build and publish the platform's container images to the ECR repositories the
-# Terraform module creates. Run AFTER the first `terraform apply` (the repos must
-# exist); feed it the repository URLs from the module outputs. Closes the
-# two-phase-apply friction: the module stands up infra, this pushes the images,
-# then Terraform rolls the declared services and schedule to those images.
+# Build and publish the platform's container images to GitHub Container Registry
+# (ghcr.io). Deployments (this platform's Infra repository) pin an immutable
+# <tag> and pull from GHCR; there is no AWS ECR dependency for image storage.
+# The caller must have already run `docker login ghcr.io`.
 #
-#   scripts/publish-images.sh <account-id> <region> <name-prefix> <tag> [variant...]
+#   scripts/publish-images.sh <ghcr-owner> <tag> [variant...]
 #
-#   account-id   12-digit AWS account id (ECR domain)
-#   region       AWS region
-#   name-prefix  the module `name` (e.g. edd-dev)
+#   ghcr-owner   GitHub org/user that owns the packages (e.g. e6qu)
 #   tag          7-40 character lowercase hexadecimal source-commit prefix
 #   variant...   golden variants to build FROM base (default: omnibus; e.g.
 #                omnibus typescript python go java rust)
 #
 # Produces a multi-arch manifest for each image plus per-arch images with an
 # architecture suffix, so runners that cannot consume manifests (e.g. Lambda)
-# can pin an exact arch:
+# can pin an exact arch (images grouped under ghcr.io/<owner>/edd/):
 #
-#   <name-prefix>/control-plane:<tag>              manifest (amd64 + arm64)
-#   <name-prefix>/control-plane:<tag>-amd64        amd64 image
-#   <name-prefix>/control-plane:<tag>-arm64        arm64 image
-#   <name-prefix>/golden/<variant>:<tag>           manifest (amd64 + arm64)
-#   <name-prefix>/golden/<variant>:<tag>-amd64     amd64 image
-#   <name-prefix>/golden/<variant>:<tag>-arm64     arm64 image
+#   edd/control-plane:<tag>              manifest (amd64 + arm64)
+#   edd/control-plane:<tag>-amd64        amd64 image
+#   edd/control-plane:<tag>-arm64        arm64 image
+#   edd/golden/<variant>:<tag>           manifest (amd64 + arm64)
+#   edd/golden/<variant>:<tag>-amd64     amd64 image
+#   edd/golden/<variant>:<tag>-arm64     arm64 image
 #   (same pattern for ssh-gateway)
 #
 # Environment:
@@ -46,7 +43,7 @@
 #                       emulate the other architecture; a later manifest pass
 #                       (EDD_MANIFEST_ONLY=1) combines them into the `:<tag>` manifest.
 #   EDD_MANIFEST_ONLY   "1" skips all builds and ONLY creates + pushes the multi-arch
-#                       manifests from per-arch tags already in ECR (the manifest step
+#                       manifests from per-arch tags already in the registry (the manifest step
 #                       of a build matrix). Requires all EDD_BUILD_ARCHS tags to exist.
 #   EDD_GOLDEN_MODE     "all" (default), "base-only", or "variants-only". Publication
 #                       workflows split the expensive base from independent variant jobs;
@@ -54,16 +51,14 @@
 #
 # The control-plane image MUST be built from the repo root (monorepo context).
 # Portable: POSIX sh, passes shellcheck, runs under bash and zsh on macOS+Linux.
-# Requires Docker with buildx and the AWS CLI v2.
+# Requires Docker with buildx.
 
 set -eu
 unset CDPATH
 
-account="${1:?usage: publish-images.sh <account-id> <region> <name-prefix> <tag> [variant...]}"
-region="${2:?usage: publish-images.sh <account-id> <region> <name-prefix> <tag> [variant...]}"
-prefix="${3:?usage: publish-images.sh <account-id> <region> <name-prefix> <tag> [variant...]}"
-tag="${4:?usage: publish-images.sh <account-id> <region> <name-prefix> <tag> [variant...]}"
-shift 4
+owner="${1:?usage: publish-images.sh <ghcr-owner> <tag> [variant...]}"
+tag="${2:?usage: publish-images.sh <ghcr-owner> <tag> [variant...]}"
+shift 2
 variants="${*:-omnibus}" # default to the omnibus golden image
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -85,7 +80,12 @@ case "$source_sha" in
     ;;
 esac
 
-registry="${account}.dkr.ecr.${region}.amazonaws.com"
+# GitHub Container Registry. Images are grouped under an `edd/` path so the
+# platform's packages sit together (ghcr.io/<owner>/edd/control-plane, .../edd/
+# ssh-gateway, .../edd/golden/<variant>). The owner is the GitHub org/user; the
+# caller (the release workflow) has already run `docker login ghcr.io`.
+registry="ghcr.io/${owner}"
+prefix="edd"
 archs="${EDD_BUILD_ARCHS:-amd64 arm64}"
 
 # Which images to build this run — the deploy-decoupling knob (task: fast web deploy):
@@ -136,7 +136,7 @@ if [ "$manifest_only" = "1" ] && [ "$skip_manifest" = "1" ]; then
   exit 1
 fi
 # The multi-arch manifest is what makes `:<tag>` resolve to the right per-arch image; refuse to
-# stamp a single-arch manifest at the bare tag (immutable ECR would then pin it forever).
+# stamp a single-arch manifest at the bare tag (it would pin the wrong shape at the release tag).
 if [ "$manifest_only" = "1" ]; then
   n_arch=0
   for _a in $archs; do n_arch=$((n_arch + 1)); done
@@ -151,19 +151,11 @@ if ! command -v docker >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "edd: authenticating to ECR $registry"
-aws ecr get-login-password --region "$region" |
-  docker login --username AWS --password-stdin "$registry"
-
-# The ECR repos are IMMUTABLE: pushing an already-published tag fails the whole
-# run. Return 0 when <repo-short>:<tag> already exists so callers can skip the
-# build/push for that tag (idempotent re-runs after partial failures).
-ecr_tag_exists() { # <repo-short> <tag>
-  aws ecr describe-images \
-    --region "$region" \
-    --repository-name "${prefix}/$1" \
-    --image-ids "imageTag=$2" \
-    >/dev/null 2>&1
+# Return 0 when <repo-short>:<tag> already exists in the registry so callers can
+# skip the build/push for that tag (idempotent re-runs after partial failures).
+# GHCR is queried the same way for every tag, no per-repo API differences.
+image_published() { # <repo-short> <tag>
+  docker buildx imagetools inspect "${registry}/${prefix}/$1:$2" >/dev/null 2>&1
 }
 
 # Run `docker buildx build` for a single architecture. In load mode the image is
@@ -213,7 +205,7 @@ build_push_arch() { # <repo-short> <dockerfile> <context> [extras...]
   shift 3
   for arch in $archs; do
     full="${registry}/${prefix}/${target}:${tag}-${arch}"
-    if ecr_tag_exists "$target" "${tag}-${arch}"; then
+    if image_published "$target" "${tag}-${arch}"; then
       echo "edd: ${full} already published, skipping"
       continue
     fi
@@ -224,13 +216,12 @@ build_push_arch() { # <repo-short> <dockerfile> <context> [extras...]
 }
 
 # Build the golden base for one architecture and then every variant FROM it.
-# Variants live in ECR under <prefix>/golden/<variant> (the module creates
-# repos named "<prefix>/golden/<variant>").
+# Variants are published under ghcr.io/<owner>/edd/golden/<variant>.
 build_golden_arch() { # <arch>
   arch="$1"
   base_full="${registry}/${prefix}/edd-base:${tag}-${arch}"
 
-  if ecr_tag_exists edd-base "${tag}-${arch}"; then
+  if image_published edd-base "${tag}-${arch}"; then
     echo "edd: ${base_full} already published, skipping"
   elif [ "$golden_mode" = "variants-only" ]; then
     echo "edd: required golden base ${base_full} was not published" >&2
@@ -254,7 +245,7 @@ build_golden_arch() { # <arch>
 
   for v in $variants; do
     variant_full="${registry}/${prefix}/golden/${v}:${tag}-${arch}"
-    if ecr_tag_exists "golden/${v}" "${tag}-${arch}"; then
+    if image_published "golden/${v}" "${tag}-${arch}"; then
       echo "edd: ${variant_full} already published, skipping"
       continue
     fi
@@ -270,7 +261,7 @@ build_golden_arch() { # <arch>
 push_manifest() { # <repo-short>
   target="$1"
   manifest="${registry}/${prefix}/${target}:${tag}"
-  if ecr_tag_exists "$target" "$tag"; then
+  if image_published "$target" "$tag"; then
     echo "edd: ${manifest} already published, skipping"
     return 0
   fi
@@ -300,7 +291,7 @@ if [ "$do_web" = "1" ] && [ "$manifest_only" != "1" ]; then
   build_push_arch control-plane "$repo/apps/web/Dockerfile" "$repo" \
     --build-arg "EDD_BUILD_SHA=${build_sha}" --build-arg "EDD_BUILD_TIME=${build_time}"
 
-  # 2. SSH gateway (IMMUTABLE ECR repo: each tag is pushed ONCE; never overwrite).
+  # 2. SSH gateway.
   # Context is the repo root, matching Dockerfile.proxy's repo-root-relative COPY paths
   # (the same convention as the control-plane build above) -- passing the ssh-gateway
   # subdirectory itself as context here made every COPY fail with "not found" (never
@@ -333,5 +324,5 @@ if [ "$skip_manifest" != "1" ]; then
   fi
 fi
 
-printf '\nedd: images published to %s; pin tag %s in Terraform and apply from Infra.\n' \
-  "$registry" "$tag"
+printf '\nedd: images published to %s/%s; pin tag %s in Infra and apply.\n' \
+  "$registry" "$prefix" "$tag"
