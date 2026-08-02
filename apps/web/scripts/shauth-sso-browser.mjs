@@ -101,11 +101,26 @@ try {
     "/signed-out",
   );
 
+  // Where Shauth is the identity provider it is the only way in: the person has
+  // already authenticated to it, so offering this application's own password
+  // form as well would ask them to authenticate twice and would leave a second
+  // credential path Shauth never sees. The form must therefore not exist, which
+  // is a stronger guarantee than a form that rejects the validator's password.
   await page.goto(`${applicationOrigin}/login`);
-  await page.locator('input[name="email"]').fill("validator@shauth.invalid");
-  await page.locator('input[name="password"]').fill(validatorProbePassword);
-  await page.getByRole("button", { name: "Continue with EDD account", exact: true }).click();
-  await page.waitForURL((url) => url.origin === applicationOrigin && url.pathname === "/login");
+  assert.equal(await page.locator('input[name="email"]').count(), 0);
+  assert.equal(await page.locator('input[name="password"]').count(), 0);
+  assert.equal(
+    await page.getByRole("button", { name: "Continue with EDD account", exact: true }).count(),
+    0,
+  );
+  const advertisedProviders = await (
+    await context.request.get(`${applicationOrigin}/api/auth/providers`)
+  ).json();
+  assert.ok(
+    advertisedProviders.credentials === undefined,
+    "EDD advertised a local credential provider while Shauth is configured",
+  );
+  assert.ok(advertisedProviders.shauth !== undefined, "EDD did not advertise the Shauth provider");
   assert.equal(await page.getByRole("button", { name: "Sign out", exact: true }).count(), 0);
 
   // The catalog coordinate is the canonical application root. A browser with
