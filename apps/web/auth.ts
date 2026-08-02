@@ -15,6 +15,7 @@ import {
   revokeAuthSession,
   validateAuthSessionToken,
 } from "./lib/auth-sessions";
+import type { ValidAuthSession } from "./lib/auth-sessions";
 import { normalizeClaims } from "./lib/claims";
 import { GITHUB_URL_ENV } from "./lib/constants";
 import { getGitCredentials, gitCredentialsEnabled } from "./lib/git-credentials";
@@ -40,6 +41,25 @@ const githubEnterpriseUrl = process.env[GITHUB_URL_ENV];
 const configuredShauthProvider = shauthProvider();
 const configuredGitHubClient = githubOAuthClient();
 const configuredEntraClient = entraOAuthClient();
+
+/**
+ * Look up the server-side session record, keeping store FAILURE distinct from
+ * NO SESSION. `null` means the store answered and the session is genuinely
+ * absent/expired/revoked — the caller strips the principal. A store failure
+ * (DynamoDB unreachable, IAM, throttle) rethrows so it surfaces as a
+ * JWTSessionError instead of being laundered into a silent sign-out.
+ */
+async function requireAuthSessionStore(
+  token: Parameters<typeof validateAuthSessionToken>[0],
+): Promise<ValidAuthSession | null> {
+  try {
+    return await validateAuthSessionToken(token);
+  } catch (cause) {
+    throw new Error("auth session store lookup failed; refusing to treat as signed out", {
+      cause,
+    });
+  }
+}
 
 /** Session lifetime: 4 hours, rolling (see the `session` block below). */
 const SESSION_MAX_AGE_S = 4 * 60 * 60;
@@ -101,6 +121,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   // DynamoDB. This gives logout/revocation server-side control over unexpired
   // signed cookies. Old-format cookies fail closed and force a fresh login.
   session: { strategy: "jwt", maxAge: SESSION_MAX_AGE_S, updateAge: SESSION_UPDATE_AGE_S },
+  // @auth/core catches every callback throw (JWTSessionError) and answers the
+  // request as signed out; without a logger that evidence never reaches the
+  // task's console output. Log the full error chain so a session-store outage
+  // is diagnosable from the deployed logs.
+  logger: {
+    error(error) {
+      console.error("[auth]", error);
+    },
+  },
   callbacks: {
     async jwt({ token, account, profile, user }) {
       if (account && profile) {
@@ -165,7 +194,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.authSessionId = authSession.id;
         token.authSessionVersion = AUTH_SESSION_SCHEMA_VERSION;
       } else {
-        const authSession = await validateAuthSessionToken(token);
+        const authSession = await requireAuthSessionStore(token);
         if (authSession === null) {
           delete token.uid;
           delete token.role;
@@ -176,7 +205,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       return token;
     },
     async session({ session, token }) {
-      const authSession = await validateAuthSessionToken(token);
+      const authSession = await requireAuthSessionStore(token);
       if (authSession === null) {
         const user = session.user as { id?: string; role?: Role; authSessionId?: string };
         delete user.id;

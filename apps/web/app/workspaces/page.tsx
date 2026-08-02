@@ -6,7 +6,7 @@ import Link from "next/link";
 
 import { DeployFooter } from "../../components/DeployFooter";
 import { LiveRefresh } from "../../components/LiveRefresh";
-import { ShauthSignInRedirect } from "../../components/ShauthSignInRedirect";
+import { ShauthAutoSignInReset, ShauthSignInRedirect } from "../../components/ShauthSignInRedirect";
 import { StateBlock } from "../../components/StateBlock";
 import { WorkspaceCard } from "../../components/WorkspaceCard";
 import { getCatalogList, getControlPlane } from "../../lib/control-plane";
@@ -36,6 +36,8 @@ export default async function WorkspacesPage({
     // The application root is the Shauth catalog coordinate. A signed-out
     // browser entering the real workspace UI starts the provider immediately;
     // it never lands on a fail-open shell or needs a private shortcut URL.
+    // Auto-entry is one-shot per tab (see ShauthSignInRedirect): if the
+    // round-trip lands back here without a session, the browser must not loop.
     if (shauthEnabled()) return <ShauthSignInRedirect />;
     return (
       <StateBlock
@@ -72,6 +74,9 @@ export default async function WorkspacesPage({
           out-of-band (API, another tab, an admin) has to appear here without a
           hard refresh (AGENTS.md rule 13). */}
       <LiveRefresh intervalMs={WORKSPACE_LIST_REFRESH_MS} />
+      {/* A signed-in render proves the last Shauth entry produced a session, so
+          re-arm the one-shot automatic sign-in for this tab. */}
+      <ShauthAutoSignInReset />
       <div className="page-head">
         <div>
           <div className="kicker">workspaces</div>

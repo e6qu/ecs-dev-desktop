@@ -223,7 +223,12 @@ export async function validateAuthSessionToken(
 ): Promise<ValidAuthSession | null> {
   if (token.authSessionVersion !== AUTH_SESSION_SCHEMA_VERSION) return null;
   if (typeof token.authSessionId !== "string" || token.authSessionId.length === 0) return null;
-  const { data } = await sessions().get({ id: token.authSessionId }).go();
+  // Strongly consistent: the Shauth callback commits the session row via
+  // TransactWriteItems, and the very next request validates it. An
+  // eventually-consistent read can miss that row and sign the browser out of a
+  // session created milliseconds earlier (see entities.ts on the same
+  // requirement for the logout path).
+  const { data } = await sessions().get({ id: token.authSessionId }).go({ consistent: true });
   if (data === null) return null;
   if (data.schemaVersion !== AUTH_SESSION_SCHEMA_VERSION) return null;
   if (data.revokedAt !== undefined) return null;
@@ -231,32 +236,41 @@ export async function validateAuthSessionToken(
   if (expiresAtMs <= nowMs) return null;
   if (data.ownerId !== token.uid) return null;
   if (data.role !== token.role) return null;
+  // The rolling-lifetime refresh writes are best-effort and stay OFF the
+  // validation path: a throttled or failed UpdateItem must never invalidate a
+  // session the consistent read above just proved is active. Each write catches
+  // its own failure so nothing rejects into the validation result.
   const refreshedExpiry = expiresAt(nowMs);
-  await sessions()
+  void sessions()
     .patch({ id: data.id })
     .set({ refreshedAt: new Date(nowMs).toISOString(), expiresAt: refreshedExpiry })
-    .go();
+    .go()
+    .catch((error: unknown) => {
+      console.error(`auth session ${data.id} refresh write failed`, error);
+    });
   if (data.provider === "shauth") {
     const expiresAtEpochSeconds = Math.floor(parseExpiry(refreshedExpiry) / 1000);
-    await Promise.all(
-      (
-        [
-          ["session", data.providerSessionId],
-          ["subject", data.providerSubject],
-        ] as const
-      ).map(([kind, value]) =>
-        correlations()
-          .patch({ provider: data.provider, kind, value, authSessionId: data.id })
-          .set({ expiresAtEpochSeconds })
-          .go(),
-      ),
-    );
+    for (const [kind, value] of [
+      ["session", data.providerSessionId],
+      ["subject", data.providerSubject],
+    ] as const) {
+      void correlations()
+        .patch({ provider: data.provider, kind, value, authSessionId: data.id })
+        .set({ expiresAtEpochSeconds })
+        .go()
+        .catch((error: unknown) => {
+          console.error(`auth session ${data.id} ${kind} correlation refresh failed`, error);
+        });
+    }
   }
+  // Report the expiry the consistent read proved, not the refreshed one the
+  // best-effort write may never persist; consumers (e.g. presence grants) must
+  // not outlive what the store actually holds.
   return {
     id: data.id,
     ownerId: data.ownerId,
     role: data.role,
-    expiresAtMs: parseExpiry(refreshedExpiry),
+    expiresAtMs,
   };
 }
 
