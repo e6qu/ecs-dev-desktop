@@ -124,34 +124,38 @@ function OidcLogin({ error }: { error?: string }) {
         </p>
       )}
       <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 24 }}>
-        <form
-          action={localAccountSignIn}
-          style={{ display: "flex", flexDirection: "column", gap: 10, textAlign: "left" }}
-        >
-          <label className="mono" style={{ fontSize: 12 }}>
-            email
-            <input
-              name="email"
-              type="email"
-              autoComplete="username"
-              className="input"
-              style={{ width: "100%" }}
-            />
-          </label>
-          <label className="mono" style={{ fontSize: 12 }}>
-            password
-            <input
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              className="input"
-              style={{ width: "100%" }}
-            />
-          </label>
-          <button className="btn primary" type="submit" style={{ width: "100%" }}>
-            Continue with EDD account
-          </button>
-        </form>
+        {!shauthEnabled() && (
+          <>
+            <form
+              action={localAccountSignIn}
+              style={{ display: "flex", flexDirection: "column", gap: 10, textAlign: "left" }}
+            >
+              <label className="mono" style={{ fontSize: 12 }}>
+                email
+                <input
+                  name="email"
+                  type="email"
+                  autoComplete="username"
+                  className="input"
+                  style={{ width: "100%" }}
+                />
+              </label>
+              <label className="mono" style={{ fontSize: 12 }}>
+                password
+                <input
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  className="input"
+                  style={{ width: "100%" }}
+                />
+              </label>
+              <button className="btn primary" type="submit" style={{ width: "100%" }}>
+                Continue with EDD account
+              </button>
+            </form>
+          </>
+        )}
         {shauthEnabled() && <ShauthSignInLink />}
         {githubEnabled && (
           <form
