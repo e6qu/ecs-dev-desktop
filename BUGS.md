@@ -4,6 +4,16 @@
 
 ## Open
 
+- **Golden images still resolve most of their toolchain from "latest" at build time — same defect class that broke CI on 2026-08-02.** The `e2e fixture (workspace)` job failed because `infra/images/{omnibus,java}/Dockerfile` resolved google-java-format via the GitHub `releases/latest` redirect: upstream 1.36.0 moved to a Java 21 target (class file 65) while the images' JDK is Debian bookworm `default-jdk-headless` (Java 17 / class file 61), so the install step died with `UnsupportedClassVersionError`. **FIXED for google-java-format** (pinned `ARG GJF_VERSION=1.35.0`, the newest Java 17 target). The identical pattern remains everywhere else in `infra/images/*/Dockerfile`, so any of them can break the build the day upstream ships an incompatible release, and none of the images is byte-reproducible:
+  - `omnibus`, `java`: Gradle from `services.gradle.org/versions/current` — **the same JDK-17 coupling**, so a future Gradle that requires Java 21 reproduces this failure exactly.
+  - `omnibus`, `go`: Go from `go.dev/VERSION?m=text`, plus four `go install …@latest` tools (golangci-lint, staticcheck, deadcode, dupl).
+  - `omnibus`, `rust`: `sh.rustup.rs` installer; `cargo install cargo-audit` unversioned.
+  - `omnibus`, `typescript`: `bun.sh/install`; `npm install -g yarn pnpm` / `playwright @playwright/test` unversioned.
+  - `omnibus`, `python`: `astral.sh/uv/install.sh`; `uv tool install ruff|ty|vulture|bandit|semgrep` unversioned.
+  - `base`: Trivy via `raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh`; Open VSX extensions unversioned.
+
+  Repair: give each an `ARG <TOOL>_VERSION` pin (the convention `base` already uses for `OPENVSCODE_VERSION`, and `omnibus` now uses for `GJF_VERSION`), and extend the `check-deps` gate to cover image toolchain pins so they are refreshed deliberately instead of drifting. Not done in the google-java-format fix because pinning ~15 toolchains cannot be validated without a full ~5.9 GB omnibus build, and a bad pin would break CI worse than the drift it prevents.
+
 - **Fresh full-rebuild via `image_build_mode=codebuild` can't bootstrap arm64 services — module gaps found 2026-07-14.** Destroying + recreating the platform from scratch (env `edd`, `build_target="all"`) surfaced a chain of latent bugs in the CodeBuild/`publish-images.sh` path, only masked before because the live stack used `build_target="web"` + was built incrementally by the release pipeline:
   1. **CodeBuild role missing `edd-base` ECR push** — FIXED (PR #244): `data.aws_iam_policy_document` for `${name}-codebuild` listed control-plane/ssh-gateway/golden but not `golden_base`. `publish-images.sh` builds+pushes `edd-base` first (golden variants are FROM it), so `build_target` "golden"/"all" failed on `ecr:InitiateLayerUpload` for `<name>/edd-base`.
   2. **`examples/complete` didn't declare `deletion_protection`** — FIXED (PR #244): `scripts/uninstall.sh`'s `terraform destroy -var deletion_protection=false` errored on the undeclared variable and silently SKIPPED the destroy (only secrets/sweep ran). Also `terraform destroy` doesn't first-apply `deletion_protection=false`, so DynamoDB/ALB/NLB (created protected) + non-empty ECR (force_delete=false) must be disabled/emptied out-of-band before a destroy succeeds.
