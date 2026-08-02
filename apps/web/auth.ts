@@ -22,7 +22,7 @@ import { getGitCredentials, gitCredentialsEnabled } from "./lib/git-credentials"
 import { fetchGithubTeamGroups } from "./lib/github-teams";
 import { entraOAuthClient, githubOAuthClient } from "./lib/identity-providers";
 import { authenticateLocalAccount } from "./lib/local-accounts";
-import { shauthProvider } from "./lib/shauth";
+import { shauthEnabled, shauthProvider } from "./lib/shauth";
 
 /**
  * Auth.js (NextAuth v5) — GitHub OAuth, Microsoft Entra ID, and Shauth OpenID
@@ -66,26 +66,37 @@ const SESSION_MAX_AGE_S = 4 * 60 * 60;
 /** Re-issue (roll) the session cookie when used more than 30 min after its last issue. */
 const SESSION_UPDATE_AGE_S = 30 * 60;
 
+// Shauth is the deployment's identity provider when it is configured: it has
+// already authenticated the person against GitHub, Entra, or a local Shauth
+// account. Offering this application's own password form as well would ask the
+// same person to authenticate twice, and would leave a second credential path
+// into an application that is supposed to have exactly one.
+const localAccountsEnabled = !shauthEnabled();
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: [
-    Credentials({
-      credentials: {
-        email: { label: "Email", type: "email" },
-        password: { label: "Password", type: "password" },
-      },
-      async authorize(credentials) {
-        const email = typeof credentials.email === "string" ? credentials.email : "";
-        const password = typeof credentials.password === "string" ? credentials.password : "";
-        const account = await authenticateLocalAccount(email, password);
-        if (account === null) return null;
-        return {
-          id: account.ownerId,
-          email: account.email,
-          name: account.email,
-          role: account.role,
-        };
-      },
-    }),
+    ...(!localAccountsEnabled
+      ? []
+      : [
+          Credentials({
+            credentials: {
+              email: { label: "Email", type: "email" },
+              password: { label: "Password", type: "password" },
+            },
+            async authorize(credentials) {
+              const email = typeof credentials.email === "string" ? credentials.email : "";
+              const password = typeof credentials.password === "string" ? credentials.password : "";
+              const account = await authenticateLocalAccount(email, password);
+              if (account === null) return null;
+              return {
+                id: account.ownerId,
+                email: account.email,
+                name: account.email,
+                role: account.role,
+              };
+            },
+          }),
+        ]),
     ...(configuredGitHubClient === null
       ? []
       : [
@@ -121,6 +132,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   // DynamoDB. This gives logout/revocation server-side control over unexpired
   // signed cookies. Old-format cookies fail closed and force a fresh login.
   session: { strategy: "jwt", maxAge: SESSION_MAX_AGE_S, updateAge: SESSION_UPDATE_AGE_S },
+  // A sign-in that fails server-side otherwise ends on Auth.js's built-in page,
+  // which in this deployment rendered as an unexplained 200 carrying no reason
+  // at all -- the whole diagnosis of #257 was blocked on that. Route failures to
+  // a page that names the error Auth.js reports.
+  pages: { error: "/auth/error" },
   // @auth/core catches every callback throw (JWTSessionError) and answers the
   // request as signed out; without a logger that evidence never reaches the
   // task's console output. Log the full error chain so a session-store outage
