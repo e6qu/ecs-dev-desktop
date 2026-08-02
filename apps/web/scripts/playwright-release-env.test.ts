@@ -6,7 +6,12 @@ import { immutableReleaseEnvironment } from "./release-env";
 
 function webServerEnvironment(config: { webServer?: unknown }): Record<string, unknown> {
   const webServer = config.webServer;
-  if (webServer === undefined || Array.isArray(webServer) || typeof webServer !== "object") {
+  if (
+    webServer === undefined ||
+    webServer === null ||
+    Array.isArray(webServer) ||
+    typeof webServer !== "object"
+  ) {
     throw new Error("expected one Playwright web server");
   }
   if (!("env" in webServer)) {

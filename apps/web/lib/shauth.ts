@@ -78,7 +78,9 @@ function absoluteBrowserURL(name: string, value: string): string {
  * disabled only when every coordinate is absent; a partial configuration fails
  * during startup instead of presenting a login route that cannot complete.
  */
-export function shauthOidcConfig(env: NodeJS.ProcessEnv = process.env): ShauthOidcConfig | null {
+export function shauthOidcConfig(
+  env: Partial<NodeJS.ProcessEnv> = process.env,
+): ShauthOidcConfig | null {
   const issuer = env[SHAUTH_ISSUER_ENV]?.trim() ?? "";
   const clientId = env[SHAUTH_CLIENT_ID_ENV]?.trim() ?? "";
   const clientSecret = env[SHAUTH_CLIENT_SECRET_ENV] ?? "";
@@ -119,7 +121,7 @@ export function shauthOidcConfig(env: NodeJS.ProcessEnv = process.env): ShauthOi
   };
 }
 
-export function shauthEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+export function shauthEnabled(env: Partial<NodeJS.ProcessEnv> = process.env): boolean {
   return shauthOidcConfig(env) !== null;
 }
 

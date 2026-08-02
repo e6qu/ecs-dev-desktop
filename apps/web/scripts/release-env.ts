@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process";
 const fullGitRevision = /^[0-9a-f]{40,64}$/;
 
 export function immutableReleaseEnvironment(
-  configuredEnv: NodeJS.ProcessEnv,
+  configuredEnv: Partial<NodeJS.ProcessEnv>,
 ): Record<string, string> {
   const applicationRevision = configuredEnv.APPLICATION_RELEASE_REVISION?.trim() ?? "";
   const buildRevision = configuredEnv.EDD_BUILD_SHA?.trim() ?? "";
