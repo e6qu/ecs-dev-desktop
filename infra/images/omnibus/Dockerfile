@@ -110,13 +110,17 @@ RUN /opt/rust/cargo/bin/rustup component add clippy rustfmt \
 # Java formatter: google-java-format (the de-facto Java formatter — parity with
 # prettier/ruff/rustfmt; Java's only standalone format/lint CLI). Distributed as an
 # all-deps JAR; install it under /opt with a wrapper on PATH (the JDK from apt above
-# provides `java`). Resolve the latest version via the github.com `releases/latest`
-# redirect (the release-page URL carries the tag) — NOT the api.github.com JSON API,
-# which has a low unauthenticated rate limit that flakes in CI.
-RUN gjf_ver="$(curl -fsS -o /dev/null -w '%{url_effective}' -L \
-      https://github.com/google/google-java-format/releases/latest | sed -E 's#.*/tag/v?##')" \
-    && test -n "${gjf_ver}" \
-    && curl -fsSL "https://github.com/google/google-java-format/releases/download/v${gjf_ver}/google-java-format-${gjf_ver}-all-deps.jar" \
+# provides `java`).
+#
+# PINNED — do NOT resolve `releases/latest` at build time. The JDK above is Debian
+# bookworm's `default-jdk-headless`, i.e. Java 17 (class file 61). google-java-format
+# 1.36.0 switched to a Java 21 target (class file 65), so a build that tracked
+# `latest` started failing with `UnsupportedClassVersionError` the day it shipped —
+# an unpinned upstream release breaking CI, and a non-reproducible image besides.
+# 1.35.0 is the newest release that still targets Java 17. Bump this only in lockstep
+# with the image's JDK (1.36+ needs a Java 21 JDK here).
+ARG GJF_VERSION=1.35.0
+RUN curl -fsSL "https://github.com/google/google-java-format/releases/download/v${GJF_VERSION}/google-java-format-${GJF_VERSION}-all-deps.jar" \
       -o /opt/google-java-format.jar \
     && printf '#!/bin/sh\nexec java -jar /opt/google-java-format.jar "$@"\n' > /usr/local/bin/google-java-format \
     && chmod 0755 /usr/local/bin/google-java-format \
