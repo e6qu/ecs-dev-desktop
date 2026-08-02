@@ -69,7 +69,9 @@ function checkedOutSourceRevision(): string {
 }
 
 /** Add real checkout provenance when the caller did not provide a deployment revision. */
-export function withE2EReleaseRevision(configuredEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+export function withE2EReleaseRevision(
+  configuredEnv: Partial<NodeJS.ProcessEnv>,
+): Partial<NodeJS.ProcessEnv> {
   if (
     (configuredEnv.APPLICATION_RELEASE_REVISION?.trim() ?? "") !== "" ||
     (configuredEnv.EDD_BUILD_SHA?.trim() ?? "") !== ""

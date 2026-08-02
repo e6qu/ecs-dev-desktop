@@ -145,12 +145,15 @@ describe("shauthProvider", () => {
       throw new Error("configured Shauth provider has no profile mapper");
     }
     expect(
-      await provider.profile({
-        sub: "user-1",
-        preferred_username: "e6qu",
-        email: "e6qu@example.com",
-        role: "admin",
-      }),
+      await provider.profile(
+        {
+          sub: "user-1",
+          preferred_username: "e6qu",
+          email: "e6qu@example.com",
+          role: "admin",
+        },
+        {},
+      ),
     ).toEqual({
       id: "user-1",
       name: "e6qu",
