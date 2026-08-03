@@ -1394,6 +1394,42 @@ old STATIC-gate "tokenless behind the gate" framing (see _Resolved (repo)_).
 
 ## External blockers (upstream — `e6qu/sockerless`)
 
+- **AWS sim: the ELBv2 data plane FOLLOWS a target's redirect instead of returning it, so no
+  Shauth sign-in can ever complete behind a simulated ALB — OPEN (`#257`, 2026-08-03).**
+  `elbv2ProxyHTTPRequest` in `simulators/aws/elbv2_dataplane.go` forwards with a default
+  `http.Client`, whose `CheckRedirect` follows up to ten redirects. A load balancer must
+  return the target's 3xx verbatim. Because the forwarded body is not rewindable, Go
+  declines to follow 307/308 but does follow 301/302/303 — exactly the codes Auth.js uses.
+  Observed against `app.edd.dev.e6qu.dev`: the browser reaches
+  `/api/auth/callback/shauth`, the container really does exchange the code (Caddy logs
+  `/oauth2/token` from the simulator VM) and answers `302 → /workspaces` with
+  `Set-Cookie: __Secure-authjs.session-token`; the simulator then fetches `/workspaces`
+  ITSELF (Caddy logs that request from `172.16.0.2` carrying
+  `Referer: http://<task-ip>:3000/api/auth/callback/shauth?code=…`) and returns that page to
+  the browser as a **200**. The intermediate `Set-Cookie` is discarded — the forwarding
+  client has no cookie jar — so the browser lands on the signed-out page at the callback URL
+  with no session, no `Set-Cookie`, and no error logged anywhere. Every symptom of #257
+  follows from that one line. The same defect shows on the logout bridge:
+  `/auth/shauth/logout/complete` is a `303` at the container and a `200` at the edge.
+
+  Repair (upstream, one line):
+
+  ```go
+  client := http.Client{
+      Timeout:       30 * time.Second,
+      CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+  }
+  ```
+
+  No non-test simulator code sets `ErrUseLastResponse` anywhere, so the same bug is present in
+  every simulated data plane: `simulators/aws/amplify_compute.go`,
+  `simulators/azure/containerapps_ingress.go`,
+  `simulators/azure/network_appgateway_dataplane.go`, and
+  `simulators/gcp/compute_loadbalancing.go`. Nothing here can work around it — the application
+  is correct and the redirect it emits IS the contract. What this repository can do, and now
+  does, is fail loudly instead of silently: `scripts/check-deployed-app.sh` asserts that both
+  redirects survive the edge.
+
 - **bleephub: `POST /orgs/{org}/repos` 403'd a GitHub App installation token — fidelity
   gap filed + fixed upstream (`e6qu/sockerless#789`/#788); e2e now uses the org-owner instead
   (2026-07-12).** After scoping the App git-credential to a single repo (security fix — org-wide
