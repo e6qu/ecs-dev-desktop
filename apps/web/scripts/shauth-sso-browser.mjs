@@ -10,6 +10,15 @@ const validatorProbePassword = process.env.EDD_VALIDATOR_PROBE_PASSWORD;
 const expectedBuildSha = process.env.EDD_BUILD_SHA;
 const expectedBuildTime = process.env.EDD_BUILD_TIME;
 
+/**
+ * How long provider-initiated logout has to close this application's session.
+ * The provider dispatches Back-Channel Logout without waiting for relying
+ * parties, so this bounds an inherently asynchronous step. Ten seconds is far
+ * beyond the ~100ms it actually takes, and far below any window in which a
+ * still-open session would be acceptable.
+ */
+const PROVIDER_LOGOUT_REVOCATION_MS = 10_000;
+
 assert.ok(password, "SHAUTH_BOOTSTRAP_ADMIN_PASSWORD is required");
 assert.ok(validatorProbePassword, "EDD_VALIDATOR_PROBE_PASSWORD is required");
 assert.ok(expectedBuildSha, "EDD_BUILD_SHA is required");
@@ -224,11 +233,22 @@ try {
   await page.goto(`${providerOrigin}/logout`);
   await page.getByRole("button", { name: "Sign out of all apps", exact: true }).click();
   await waitForURL(page, `${providerOrigin}/signed-out`, navigationTrace, browserErrors);
-  const revokedApi = await context.request.get(`${applicationOrigin}/api/workspaces`);
+  // Back-Channel Logout is asynchronous by specification: the provider posts a
+  // logout token to every relying party and returns the browser without waiting
+  // for any of them to answer. Reaching the signed-out page therefore does not
+  // prove this application has consumed its token yet, and asserting at that
+  // exact instant is a race — one this application loses by roughly a tenth of a
+  // second on a slower machine while winning it on CI. Still require the
+  // revocation; require it within a stated window instead of instantly.
+  const revoked = await revokedWithin(
+    context,
+    `${applicationOrigin}/api/workspaces`,
+    PROVIDER_LOGOUT_REVOCATION_MS,
+  );
   assert.equal(
-    revokedApi.status(),
+    revoked.status,
     401,
-    `provider logout left protected API open: ${await revokedApi.text()}`,
+    `provider logout left protected API open for ${PROVIDER_LOGOUT_REVOCATION_MS}ms: ${revoked.body}`,
   );
   await page.goto(`${applicationOrigin}/workspaces`);
   await page.waitForURL((url) => url.origin === providerOrigin && url.pathname === "/login");
@@ -242,6 +262,23 @@ try {
 function sanitizeURL(value) {
   const parsed = new URL(value);
   return `${parsed.origin}${parsed.pathname}`;
+}
+
+/**
+ * Polls a protected endpoint until it answers 401, or the deadline passes.
+ * Returns the LAST response either way, so a failure reports what the endpoint
+ * was still serving rather than only that it timed out.
+ */
+async function revokedWithin(context, url, deadlineMs) {
+  const started = Date.now();
+  for (;;) {
+    const response = await context.request.get(url);
+    if (response.status() === 401) return { status: 401, body: "" };
+    if (Date.now() - started >= deadlineMs) {
+      return { status: response.status(), body: await response.text() };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
 }
 
 async function waitForApplication(page, trace, errors) {

@@ -501,7 +501,7 @@ jobs:
       - uses: actions/checkout@v6.0.2
         with:
           repository: e6qu/shauth
-          ref: 08f5a78fb8b159fcbfe8317f24f430dbdfd3ed56
+          ref: 7fc8caf1a01402e79a4f0dcaa9b999a1a039ecde
           path: temp/shauth
       - name: Shauth single sign-on browser contract
         env:
