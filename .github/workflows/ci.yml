@@ -213,8 +213,13 @@ jobs:
       # The application assumes AWS: a region, where the API answers, and
       # credentials to sign with — as it would against a real account. The
       # simulator accepts any credential.
+      #
+      # This tier drives the simulators over TLS (every step sets
+      # EDD_SIM_SCHEME=https and trusts the generated CA), so the endpoint is
+      # HTTPS on the same port. An http:// value here would silently talk past
+      # the TLS listener.
       AWS_REGION: us-east-1
-      AWS_ENDPOINT_URL: http://127.0.0.1:4566
+      AWS_ENDPOINT_URL: https://127.0.0.1:4566
       AWS_ACCESS_KEY_ID: test
       AWS_SECRET_ACCESS_KEY: test
     steps:
