@@ -25,7 +25,14 @@ docker compose -f docker-compose.dev.yml $profiles up -d --wait
 # through from the caller's env (the tiers — see docs/running-locally.md).
 # The sim's DynamoDB serves on :4566 (the unified AWS endpoint) — the same one CI
 # uses. DynamoDB Local is no longer needed for the dev loop.
+# The AWS coordinates every client needs. The application assumes AWS and reads
+# these exactly as it would in a real account: a region, where the API answers,
+# and credentials to sign with. The simulator accepts any credential; naming one
+# here keeps the application free of knowledge about what is answering.
+export AWS_REGION="${AWS_REGION:-us-east-1}"
 export AWS_ENDPOINT_URL="${AWS_ENDPOINT_URL:-http://127.0.0.1:4566}"
+export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-test}"
+export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-test}"
 export EDD_DEV_AUTH="${EDD_DEV_AUTH:-1}"
 
 # Ensure the table + a base image exist (idempotent), then run the dev server on

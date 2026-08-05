@@ -14,4 +14,12 @@ here="$(dirname "$0")"
 
 sh "$here/reap-local.sh"
 docker compose -f docker-compose.tier2.yml up -d --build --wait
+# The AWS coordinates every client needs. The application assumes AWS and reads
+# these exactly as it would in a real account: a region, where the API answers,
+# and credentials to sign with. The simulator accepts any credential; naming one
+# here keeps the application free of knowledge about what is answering.
+export AWS_REGION="${AWS_REGION:-us-east-1}"
+export AWS_ENDPOINT_URL="${AWS_ENDPOINT_URL:-http://127.0.0.1:4566}"
+export AWS_ACCESS_KEY_ID="${AWS_ACCESS_KEY_ID:-test}"
+export AWS_SECRET_ACCESS_KEY="${AWS_SECRET_ACCESS_KEY:-test}"
 pnpm test:integ

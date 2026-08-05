@@ -154,6 +154,10 @@ module "edd" {
     aws.us_east_1 = aws.us_east_1
   }
 
+  # The same endpoint the providers above use: the application's AWS clients
+  # resolve it exactly as the Terraform providers do, and neither branches on it.
+  aws_endpoint_url = var.sim_endpoint
+
   name                            = "eddsim"
   availability_zones              = ["us-east-1a", "us-east-1b"]
   deletion_protection             = false
@@ -261,6 +265,10 @@ module "edd_shared" {
     aws           = aws
     aws.us_east_1 = aws.us_east_1
   }
+
+  # The same endpoint the providers above use: the application's AWS clients
+  # resolve it exactly as the Terraform providers do, and neither branches on it.
+  aws_endpoint_url = var.sim_endpoint
 
   name                            = "eddsharedsim"
   dynamodb_table_name             = "ecs-dev-desktop-shared"
