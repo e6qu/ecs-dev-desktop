@@ -34,8 +34,8 @@ const AGENT_SECRET = "d".repeat(64);
 const CONNECTION_SECRET = "c".repeat(64);
 const ENV_FILE = join(import.meta.dirname, "../temp/live-pw.env");
 
-const dynamoEndpoint = process.env.DYNAMODB_ENDPOINT ?? dynamodb.endpoint;
-process.env.DYNAMODB_ENDPOINT = dynamoEndpoint;
+const dynamoEndpoint = process.env.AWS_ENDPOINT_URL ?? dynamodb.endpoint;
+process.env.AWS_ENDPOINT_URL = dynamoEndpoint;
 process.env.AWS_ENDPOINT_URL ??= aws.endpoint;
 process.env.AWS_REGION ??= awsSimClientConfig().region;
 process.env.AWS_ACCESS_KEY_ID ??= awsSimClientConfig().credentials.accessKeyId;
@@ -71,7 +71,7 @@ const hostAlias = simulatorWorkloadHost;
 const lines = [
   exportLine("EDD_DEV_AUTH", "1"),
   exportLine("AUTH_SECRET", "pw-live-secret"),
-  exportLine("DYNAMODB_ENDPOINT", dynamoEndpoint),
+  exportLine("AWS_ENDPOINT_URL", dynamoEndpoint),
   exportLine("DYNAMODB_TABLE", TABLE),
   exportLine("EDD_APP_NAME", "edd-playwright-live"),
   exportLine("EDD_GOLDEN", "omnibus"),

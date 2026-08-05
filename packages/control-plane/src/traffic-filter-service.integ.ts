@@ -12,7 +12,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { AuditAction } from "./stored-audit-source";
 import { TrafficFilterService, type WafApplier } from "./index";
 
-process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
+process.env.AWS_ENDPOINT_URL ??= dynamodb.endpoint;
 
 const TABLE = "ecs-dev-desktop-traffic-filter-itest";
 const CLOCK = fixedClock("2026-07-11T10:00:00.000Z");

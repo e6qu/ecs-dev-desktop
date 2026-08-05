@@ -38,12 +38,15 @@ resource "aws_ecs_cluster_capacity_providers" "this" {
 
 locals {
   base_environment = {
-    NODE_ENV        = "production"
-    PORT            = tostring(var.control_plane_port)
-    AWS_REGION      = local.region
-    DYNAMODB_TABLE  = var.dynamodb_table_name
-    ECS_CLUSTER     = local.ecs_cluster_name
-    EDD_KMS_KEY_ARN = aws_kms_key.this.arn
+    NODE_ENV   = "production"
+    PORT       = tostring(var.control_plane_port)
+    AWS_REGION = local.region
+    # The endpoint every AWS client resolves through. Empty selects AWS's own
+    # endpoints; the SDK ignores an empty value, so this is set unconditionally.
+    AWS_ENDPOINT_URL = var.aws_endpoint_url
+    DYNAMODB_TABLE   = var.dynamodb_table_name
+    ECS_CLUSTER      = local.ecs_cluster_name
+    EDD_KMS_KEY_ARN  = aws_kms_key.this.arn
     # Real adapter selection: tells apps/web to use EcsComputeProvider + Ec2StorageProvider.
     COMPUTE_PROVIDER  = "ecs"
     CONTROL_PLANE_URL = local.dns_enabled ? "https://${local.control_plane_fqdn}" : "http://${aws_lb.this.dns_name}"

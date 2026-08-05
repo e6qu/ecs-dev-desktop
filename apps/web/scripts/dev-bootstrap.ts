@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Local dev bootstrap: ensure the DynamoDB table exists and seed the enabled base
 // images, so `next dev` against DynamoDB Local has a usable control plane out of
-// the box. Idempotent — safe to re-run; targets whatever DYNAMODB_ENDPOINT points
+// the box. Idempotent — safe to re-run; targets whatever AWS_ENDPOINT_URL points
 // at (DynamoDB Local by default). Invoked by scripts/dev.sh.
 import { CatalogService } from "@edd/control-plane";
 import { baseImage, systemClock } from "@edd/core";

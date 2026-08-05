@@ -19,7 +19,7 @@ import {
   type Task,
 } from "@aws-sdk/client-ecs";
 import { EcsComputeProvider } from "@edd/compute-ecs";
-import { DEFAULT_AWS_REGION, DEFAULT_WORKSPACE_PORT as WORKSPACE_PORT } from "@edd/config";
+import { HARNESS_AWS_REGION, DEFAULT_WORKSPACE_PORT as WORKSPACE_PORT } from "@edd/config";
 import { baseImage, workspaceId } from "@edd/core";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -34,6 +34,8 @@ import {
 } from "./aws-sim";
 import { simulatorWorkloadHost } from "./docker-host";
 import { generateUserKey, startSshAuthorizeStub, taskExitCode } from "./golden-ssh-helpers";
+
+const HARNESS_AWS_REGION = "us-east-1";
 
 configureAwsSimEnv();
 
@@ -273,7 +275,7 @@ describe(
                 logDriver: "awslogs",
                 options: {
                   "awslogs-group": LOG_GROUP,
-                  "awslogs-region": DEFAULT_AWS_REGION,
+                  "awslogs-region": HARNESS_AWS_REGION,
                   "awslogs-stream-prefix": "golden-client",
                 },
               },

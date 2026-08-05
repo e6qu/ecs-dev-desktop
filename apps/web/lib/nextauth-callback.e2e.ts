@@ -33,7 +33,7 @@ const TEST_TABLE = "ecs-dev-des-web-nextauth-callback-e2e";
 
 // Provider + role env BEFORE auth.ts is imported (it reads env at module load).
 process.env.AUTH_SECRET = "edd-callback-e2e-secret";
-process.env.DYNAMODB_ENDPOINT ??= aws.endpoint;
+process.env.AWS_ENDPOINT_URL ??= aws.endpoint;
 process.env.DYNAMODB_TABLE = TEST_TABLE;
 process.env.AUTH_TRUST_HOST = "1";
 process.env.AUTH_GITHUB_ID = OAUTH_APP.id;

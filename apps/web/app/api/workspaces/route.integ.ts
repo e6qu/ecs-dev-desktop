@@ -16,7 +16,7 @@ import { GET, POST } from "./route";
 const TEST_TABLE = "ecs-dev-desktop-web-integ";
 
 process.env[DEV_AUTH_ENV] = DEV_AUTH_ENABLED;
-process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
+process.env.AWS_ENDPOINT_URL ??= dynamodb.endpoint;
 process.env.DYNAMODB_TABLE = TEST_TABLE;
 
 const url = "http://localhost/api/workspaces";

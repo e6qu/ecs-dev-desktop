@@ -46,7 +46,7 @@ import {
  */
 
 configureAwsSimEnv();
-process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
+process.env.AWS_ENDPOINT_URL ??= dynamodb.endpoint;
 
 const RUN_ID = randomUUID().slice(0, 8);
 const TABLE = `edd-durability-${RUN_ID}`;

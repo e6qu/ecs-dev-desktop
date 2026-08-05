@@ -42,7 +42,7 @@ import { devHeaders, imageSourceEnv, startWebApp, type WebApp } from "./web-app"
  */
 
 configureAwsSimEnv();
-process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
+process.env.AWS_ENDPOINT_URL ??= dynamodb.endpoint;
 
 const RUN_ID = randomUUID().slice(0, 8);
 const TABLE = `edd-user-journey-${RUN_ID}`;
@@ -170,7 +170,6 @@ describe(
       // awsvpc task network's actual gateway on every supported runtime.
       const hostAlias = simulatorWorkloadHost;
       web = await startWebApp((port) => ({
-        DYNAMODB_ENDPOINT: process.env.DYNAMODB_ENDPOINT ?? dynamodb.endpoint,
         DYNAMODB_TABLE: TABLE,
         COMPUTE_PROVIDER: "ecs",
         AWS_ENDPOINT_URL: aws.endpoint,

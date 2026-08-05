@@ -12,7 +12,7 @@ import {
 } from "./auth-sessions";
 
 const TEST_TABLE = "edd-auth-sessions-integ";
-process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
+process.env.AWS_ENDPOINT_URL ??= dynamodb.endpoint;
 process.env.DYNAMODB_TABLE = TEST_TABLE;
 
 describe("durable Shauth session correlation (DynamoDB Local)", () => {

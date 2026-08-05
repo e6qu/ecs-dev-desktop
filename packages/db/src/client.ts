@@ -1,14 +1,9 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import {
-  AWS_SDK_MAX_ATTEMPTS,
-  AWS_SDK_RETRY_MODE,
-  DEFAULT_AWS_REGION,
-  simulatorCredentialOverride,
-} from "@edd/config";
+import { AWS_SDK_MAX_ATTEMPTS, AWS_SDK_RETRY_MODE, awsRegion } from "@edd/config";
 
 /**
- * Build a DynamoDB client. The endpoint coordinate is `DYNAMODB_ENDPOINT` ONLY — the test
+ * Build a DynamoDB client. The endpoint coordinate is `AWS_ENDPOINT_URL` ONLY — the test
  * tiers set it (from the `@edd/config` `dynamodb.endpoint` default, the sockerless sim at
  * :4566) and the `pnpm dev` loop sets it (the sim). When it is set the client points
  * there with dummy credentials; when UNSET (e.g. real cloud) the client deliberately falls
@@ -20,11 +15,9 @@ import {
  * `TransactionConflict` cancellations are best absorbed by adaptive backoff.
  */
 export function createDynamoClient(): DynamoDBClient {
-  const endpoint = process.env.DYNAMODB_ENDPOINT;
   return new DynamoDBClient({
-    region: process.env.AWS_REGION ?? DEFAULT_AWS_REGION,
+    region: awsRegion(),
     maxAttempts: AWS_SDK_MAX_ATTEMPTS,
     retryMode: AWS_SDK_RETRY_MODE,
-    ...(endpoint ? { endpoint, ...simulatorCredentialOverride() } : {}),
   });
 }

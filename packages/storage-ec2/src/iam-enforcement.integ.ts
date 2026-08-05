@@ -7,13 +7,15 @@ import {
 } from "@aws-sdk/client-ec2";
 import { IAMClient } from "@aws-sdk/client-iam";
 import { inlinePolicy, provisionRestrictedCredentials } from "@edd/aws-itest-support";
-import { aws, DEFAULT_AWS_REGION } from "@edd/config";
+import { aws } from "@edd/config";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+const HARNESS_AWS_REGION = "us-east-1";
 
 // Point the AWS SDK at whatever AWS coordinates the environment supplies (the sockerless
 // sim in the Tier-2 harness, or real AWS in e2e-aws) — §6.9, coordinates not targets.
 process.env.AWS_ENDPOINT_URL ??= aws.endpoint;
-process.env.AWS_REGION ??= DEFAULT_AWS_REGION;
+process.env.AWS_REGION ??= HARNESS_AWS_REGION;
 process.env.AWS_ACCESS_KEY_ID ??= "test";
 process.env.AWS_SECRET_ACCESS_KEY ??= "test";
 

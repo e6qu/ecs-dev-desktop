@@ -44,6 +44,10 @@ provider "aws" {
 module "ecs_dev_desktop" {
   source = "../../modules/ecs-dev-desktop"
 
+  # Empty: this example targets AWS itself. A simulator deployment sets the
+  # endpoint its APIs answer on.
+  aws_endpoint_url = ""
+
   providers = {
     aws           = aws
     aws.us_east_1 = aws.us_east_1

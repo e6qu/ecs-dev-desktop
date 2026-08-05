@@ -723,3 +723,17 @@ variable "monthly_budget_usd" {
   type        = number
   default     = 0
 }
+
+variable "aws_endpoint_url" {
+  type        = string
+  description = <<-EOT
+    Base endpoint for the AWS APIs this deployment targets, published to the
+    control plane and reconciler as AWS_ENDPOINT_URL.
+
+    Empty selects AWS's own endpoints. Set it to point every AWS client at an
+    API-compatible implementation instead. The application holds no knowledge of
+    what answers: it builds ordinary AWS clients, and this module supplies the
+    coordinate. Required rather than defaulted so a deployment states where its
+    AWS calls go instead of inheriting one.
+  EOT
+}

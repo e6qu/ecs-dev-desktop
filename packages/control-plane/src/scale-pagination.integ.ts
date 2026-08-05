@@ -15,7 +15,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { WorkspaceService } from "./index";
 
-process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
+process.env.AWS_ENDPOINT_URL ??= dynamodb.endpoint;
 
 const TABLE = "ecs-dev-desktop-cp-scale-integ";
 // >1 MB of items forces multi-page reads (a single DynamoDB page caps at 1 MB).

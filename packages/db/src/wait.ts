@@ -21,7 +21,7 @@ export async function waitForDynamo(
   timeoutMs = DEFAULT_READY_TIMEOUT_MS,
 ): Promise<void> {
   const deadline = Date.now() + timeoutMs;
-  const target = process.env.DYNAMODB_ENDPOINT ?? "AWS DynamoDB endpoint resolution";
+  const target = process.env.AWS_ENDPOINT_URL ?? "AWS DynamoDB endpoint resolution";
   for (;;) {
     try {
       await client.send(new ListTablesCommand({}));

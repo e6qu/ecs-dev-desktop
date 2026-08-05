@@ -13,7 +13,7 @@ import {
   waitUntilTasksStopped,
 } from "@aws-sdk/client-ecs";
 import { EC2Client } from "@aws-sdk/client-ec2";
-import { aws, dynamodb } from "@edd/config";
+import { aws } from "@edd/config";
 import { CatalogService } from "@edd/control-plane";
 import { baseImage, systemClock, type EditorKind } from "@edd/core";
 import { createDynamoClient, dropTable, ensureTable, makeBaseImageEntity } from "@edd/db";
@@ -63,7 +63,6 @@ export async function startLiveEcsApp(opts: LiveEcsAppOptions): Promise<LiveEcsA
   const table = `edd-live-${opts.runId}`;
   const cluster = `edd-live-${opts.runId}`;
   const logGroup = `/edd/e2e/live-${opts.runId}`;
-  const dynamoEndpoint = process.env.DYNAMODB_ENDPOINT ?? dynamodb.endpoint;
 
   const dynamo = createDynamoClient();
   await dropTable(dynamo, table);
@@ -89,7 +88,6 @@ export async function startLiveEcsApp(opts: LiveEcsAppOptions): Promise<LiveEcsA
 
   const hostAlias = simulatorWorkloadHost;
   const web = await startWebApp((port) => ({
-    DYNAMODB_ENDPOINT: dynamoEndpoint,
     DYNAMODB_TABLE: table,
     COMPUTE_PROVIDER: "ecs",
     AWS_ENDPOINT_URL: aws.endpoint,

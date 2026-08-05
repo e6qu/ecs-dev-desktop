@@ -59,7 +59,7 @@ export function postLifecycle(
  */
 export function useWorkspaceTable(table: string): void {
   process.env[DEV_AUTH_ENV] = DEV_AUTH_ENABLED;
-  process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
+  process.env.AWS_ENDPOINT_URL ??= dynamodb.endpoint;
   process.env.DYNAMODB_TABLE = table;
 
   let client: ReturnType<typeof createDynamoClient>;

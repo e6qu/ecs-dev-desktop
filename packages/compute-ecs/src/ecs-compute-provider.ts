@@ -26,14 +26,13 @@ import {
   AWS_SDK_RETRY_MODE,
   COST_SCOPE,
   COST_SCOPE_TAG_KEY,
-  DEFAULT_AWS_REGION,
+  awsRegion,
   DEFAULT_ECS_CLUSTER,
   DEFAULT_WORKSPACE_CONTAINER,
   DEFAULT_WORKSPACE_LOG_STREAM_PREFIX,
   DEFAULT_WORKSPACE_MOUNT_PATH,
   DEFAULT_WORKSPACE_PORT,
   DEFAULT_WORKSPACE_TERMINAL_PORT,
-  simulatorCredentialOverride,
 } from "@edd/config";
 import {
   DEFAULT_HEARTBEAT_INTERVAL_S,
@@ -424,7 +423,7 @@ export class EcsComputeProvider implements ComputeProvider {
                     logDriver: "awslogs",
                     options: {
                       "awslogs-group": this.config.logGroupName,
-                      "awslogs-region": process.env.AWS_REGION ?? DEFAULT_AWS_REGION,
+                      "awslogs-region": awsRegion(),
                       "awslogs-stream-prefix": DEFAULT_WORKSPACE_LOG_STREAM_PREFIX,
                     },
                   },
@@ -972,25 +971,21 @@ export class EcsComputeProvider implements ComputeProvider {
     );
   }
 
-  /** Build an ECS client from the ambient AWS env (`AWS_ENDPOINT_URL` → the sim). */
+  /** Build an ECS client from the ambient AWS env. */
   static client(): ECSClient {
-    const endpoint = process.env.AWS_ENDPOINT_URL;
     return new ECSClient({
-      region: process.env.AWS_REGION ?? DEFAULT_AWS_REGION,
+      region: awsRegion(),
       maxAttempts: AWS_SDK_MAX_ATTEMPTS,
       retryMode: AWS_SDK_RETRY_MODE,
-      ...(endpoint ? { endpoint, ...simulatorCredentialOverride() } : {}),
     });
   }
 
-  /** Build a Secrets Manager client from the ambient AWS env (endpoint → the sim). */
+  /** Build a Secrets Manager client from the ambient AWS env. */
   static secretsClient(): SecretsManagerClient {
-    const endpoint = process.env.AWS_ENDPOINT_URL;
     return new SecretsManagerClient({
-      region: process.env.AWS_REGION ?? DEFAULT_AWS_REGION,
+      region: awsRegion(),
       maxAttempts: AWS_SDK_MAX_ATTEMPTS,
       retryMode: AWS_SDK_RETRY_MODE,
-      ...(endpoint ? { endpoint, ...simulatorCredentialOverride() } : {}),
     });
   }
 

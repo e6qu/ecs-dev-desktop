@@ -7,7 +7,20 @@ import { z } from "zod";
  * per-module configs) — type-checked, never hardcoded in feature code.
  */
 
-export const DEFAULT_AWS_REGION = "us-east-1";
+/**
+ * The AWS region every client is built for. Required, with no default: a region
+ * is a deployment coordinate, and guessing one sends real calls somewhere the
+ * operator did not choose. Reading it through a function rather than letting the
+ * SDK resolve it implicitly keeps the value explicit at each call site and
+ * directly testable.
+ */
+export function awsRegion(env: Partial<NodeJS.ProcessEnv> = process.env): string {
+  const region = env.AWS_REGION ?? "";
+  if (region.length === 0) {
+    throw new Error("AWS_REGION is required; set it to the region this deployment runs in.");
+  }
+  return region;
+}
 export const DEFAULT_DYNAMODB_TABLE = "ecs-dev-desktop";
 export const COST_SCOPE_TAG_KEY = "edd:cost-scope";
 export const DEFAULT_COST_SCOPE = "edd-alpha";
@@ -81,11 +94,11 @@ export const DEFAULT_HEARTBEAT_INTERVAL_S = 120;
 const DYNAMODB_HOST = "127.0.0.1";
 // The sockerless sim serves DynamoDB on the same unified endpoint as the rest of the
 // AWS API (:4566) — used by CI, integration tests, and the local dev loop alike.
-// Real cloud is reached by the SDK's standard resolution / `DYNAMODB_ENDPOINT`.
+// Real cloud is reached by the SDK's standard resolution / `AWS_ENDPOINT_URL`.
 const DYNAMODB_PORT = 4566;
 
 /** DynamoDB endpoint coordinate. Defaults to the local sim (`:4566`); overridden by
- * `DYNAMODB_ENDPOINT` (e.g. `host.docker.internal:4566` for in-container access). */
+ * `AWS_ENDPOINT_URL` (e.g. `host.docker.internal:4566` for in-container access). */
 export const dynamodb = {
   host: DYNAMODB_HOST,
   port: DYNAMODB_PORT,
@@ -117,36 +130,6 @@ export const aws = {
   port: AWS_PORT,
   endpoint: `${LOCAL_SCHEME}://${AWS_HOST}:${AWS_PORT}`,
 } as const;
-
-/**
- * Credentials to sign with when `AWS_ENDPOINT_URL` points a client at a
- * simulator.
- *
- * A simulator enforces IAM exactly as AWS does, so a task that runs with a role
- * has to sign as that role. Hard-coding a placeholder whenever an endpoint was
- * set — which is always true of a simulator deployment — made every authorized
- * call arrive as an unrecognised principal, and the simulator rejected it as an
- * invalid security token. That is what stopped the control plane launching any
- * workspace.
- *
- * A developer running against a local simulator has no credential source at all,
- * so the placeholder still applies there. Anything that can present real
- * credentials — an ECS task role, a web identity, explicit keys, a profile —
- * signs with them and is authorized against its actual policy.
- */
-export function simulatorCredentialOverride(
-  env: Partial<NodeJS.ProcessEnv> = process.env,
-): { credentials: { accessKeyId: string; secretAccessKey: string } } | Record<string, never> {
-  const resolvable = [
-    "AWS_ACCESS_KEY_ID",
-    "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
-    "AWS_CONTAINER_CREDENTIALS_FULL_URI",
-    "AWS_WEB_IDENTITY_TOKEN_FILE",
-    "AWS_PROFILE",
-  ].some((name) => (env[name] ?? "").length > 0);
-  if (resolvable) return {};
-  return { credentials: { accessKeyId: "local", secretAccessKey: "local" } };
-}
 
 const GITHUB_HOST = "127.0.0.1";
 const GITHUB_PORT = 5555;
@@ -389,7 +372,7 @@ export const QUOTA_ENV_PREFIX = "EDD_QUOTA_";
  */
 export const baseEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  AWS_REGION: z.string().min(1).default(DEFAULT_AWS_REGION),
+  AWS_REGION: z.string().min(1),
   DYNAMODB_TABLE: z.string().min(1).default(DEFAULT_DYNAMODB_TABLE),
   EDD_COST_SCOPE: z.string().min(1).default(DEFAULT_COST_SCOPE),
   // "1" scopes the AWS account-cost summary to the edd:cost-scope tag (shared-account

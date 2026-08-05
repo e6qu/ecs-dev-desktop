@@ -1,13 +1,15 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { CreateClusterCommand, ECSClient } from "@aws-sdk/client-ecs";
-import { aws, DEFAULT_AWS_REGION } from "@edd/config";
+import { aws } from "@edd/config";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { EcsComputeProvider } from "./index";
 
+const HARNESS_AWS_REGION = "us-east-1";
+
 // Point the AWS SDK at the sockerless AWS simulator (Tier-2 harness, from source).
 process.env.AWS_ENDPOINT_URL ??= aws.endpoint;
-process.env.AWS_REGION ??= DEFAULT_AWS_REGION;
+process.env.AWS_REGION ??= HARNESS_AWS_REGION;
 process.env.AWS_ACCESS_KEY_ID ??= "test";
 process.env.AWS_SECRET_ACCESS_KEY ??= "test";
 
@@ -25,7 +27,7 @@ function providerFor(cluster: string): EcsComputeProvider {
 describe("EcsComputeProvider.health against the sockerless AWS sim", () => {
   beforeAll(async () => {
     await new ECSClient({
-      region: process.env.AWS_REGION ?? DEFAULT_AWS_REGION,
+      region: process.env.AWS_REGION ?? HARNESS_AWS_REGION,
       endpoint: process.env.AWS_ENDPOINT_URL,
       credentials: { accessKeyId: "test", secretAccessKey: "test" },
     }).send(new CreateClusterCommand({ clusterName: CLUSTER }));
