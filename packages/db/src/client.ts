@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { AWS_SDK_MAX_ATTEMPTS, AWS_SDK_RETRY_MODE, DEFAULT_AWS_REGION } from "@edd/config";
+import {
+  AWS_SDK_MAX_ATTEMPTS,
+  AWS_SDK_RETRY_MODE,
+  DEFAULT_AWS_REGION,
+  simulatorCredentialOverride,
+} from "@edd/config";
 
 /**
  * Build a DynamoDB client. The endpoint coordinate is `DYNAMODB_ENDPOINT` ONLY — the test
@@ -20,8 +25,6 @@ export function createDynamoClient(): DynamoDBClient {
     region: process.env.AWS_REGION ?? DEFAULT_AWS_REGION,
     maxAttempts: AWS_SDK_MAX_ATTEMPTS,
     retryMode: AWS_SDK_RETRY_MODE,
-    ...(endpoint
-      ? { endpoint, credentials: { accessKeyId: "local", secretAccessKey: "local" } }
-      : {}),
+    ...(endpoint ? { endpoint, ...simulatorCredentialOverride() } : {}),
   });
 }

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { IAMClient, SimulatePrincipalPolicyCommand } from "@aws-sdk/client-iam";
 import { GetCallerIdentityCommand, STSClient } from "@aws-sdk/client-sts";
-import { DEFAULT_AWS_REGION } from "@edd/config";
+import { DEFAULT_AWS_REGION, simulatorCredentialOverride } from "@edd/config";
 import {
   IAM_CONTEXT_TOKENS,
   IAM_REQUIREMENTS,
@@ -207,7 +207,7 @@ function clientConfig(): ClientConfig {
         region,
         maxAttempts: 2,
         endpoint,
-        credentials: { accessKeyId: "local", secretAccessKey: "local" },
+        ...simulatorCredentialOverride(),
       }
     : { region, maxAttempts: 2 };
 }

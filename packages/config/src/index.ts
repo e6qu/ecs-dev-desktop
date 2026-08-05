@@ -118,6 +118,36 @@ export const aws = {
   endpoint: `${LOCAL_SCHEME}://${AWS_HOST}:${AWS_PORT}`,
 } as const;
 
+/**
+ * Credentials to sign with when `AWS_ENDPOINT_URL` points a client at a
+ * simulator.
+ *
+ * A simulator enforces IAM exactly as AWS does, so a task that runs with a role
+ * has to sign as that role. Hard-coding a placeholder whenever an endpoint was
+ * set — which is always true of a simulator deployment — made every authorized
+ * call arrive as an unrecognised principal, and the simulator rejected it as an
+ * invalid security token. That is what stopped the control plane launching any
+ * workspace.
+ *
+ * A developer running against a local simulator has no credential source at all,
+ * so the placeholder still applies there. Anything that can present real
+ * credentials — an ECS task role, a web identity, explicit keys, a profile —
+ * signs with them and is authorized against its actual policy.
+ */
+export function simulatorCredentialOverride(
+  env: Partial<NodeJS.ProcessEnv> = process.env,
+): { credentials: { accessKeyId: string; secretAccessKey: string } } | Record<string, never> {
+  const resolvable = [
+    "AWS_ACCESS_KEY_ID",
+    "AWS_CONTAINER_CREDENTIALS_RELATIVE_URI",
+    "AWS_CONTAINER_CREDENTIALS_FULL_URI",
+    "AWS_WEB_IDENTITY_TOKEN_FILE",
+    "AWS_PROFILE",
+  ].some((name) => (env[name] ?? "").length > 0);
+  if (resolvable) return {};
+  return { credentials: { accessKeyId: "local", secretAccessKey: "local" } };
+}
+
 const GITHUB_HOST = "127.0.0.1";
 const GITHUB_PORT = 5555;
 
