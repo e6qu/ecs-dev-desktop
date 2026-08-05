@@ -12,7 +12,7 @@ const readyzBody = z.object({
 
 const TEST_TABLE = "ecs-dev-desktop-readyz-integ";
 
-process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
+process.env.AWS_ENDPOINT_URL ??= dynamodb.endpoint;
 process.env.DYNAMODB_TABLE = TEST_TABLE;
 
 describe("GET /api/readyz (DynamoDB Local)", () => {

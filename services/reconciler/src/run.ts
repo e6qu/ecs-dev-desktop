@@ -6,7 +6,7 @@
  *
  * Required env: DYNAMODB_TABLE, ECS_CLUSTER, ECS_SUBNETS, ECS_EBS_ROLE_ARN.
  * Optional env read by the SDK adapters: AWS_REGION, AWS_ENDPOINT_URL,
- * DYNAMODB_ENDPOINT — same as the rest of the platform.
+ * AWS_ENDPOINT_URL — same as the rest of the platform.
  * Optional tuning (defaults in @edd/core; overridable via Terraform variables):
  * EDD_IDLE_THRESHOLD_MS, EDD_SNAPSHOT_INTERVAL_MS, EDD_EARLY_SNAPSHOT_INTERVAL_MS,
  * EDD_UNDELETE_RETENTION_MS,

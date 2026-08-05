@@ -10,7 +10,7 @@ import {
 import { CloudTrailClient, LookupEventsCommand } from "@aws-sdk/client-cloudtrail";
 import { CreateClusterCommand, ECSClient } from "@aws-sdk/client-ecs";
 import { auditFeedResponse, logStreamResult } from "@edd/api-contracts";
-import { aws, DEFAULT_AWS_REGION } from "@edd/config";
+import { aws } from "@edd/config";
 import { Ec2StorageProvider } from "@edd/storage-ec2";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -23,8 +23,10 @@ import {
 import { GET as auditGet } from "./audit/route";
 import { GET as logsGet } from "./logs/route";
 
+const HARNESS_AWS_REGION = "us-east-1";
+
 process.env.AWS_ENDPOINT_URL ??= aws.endpoint;
-process.env.AWS_REGION ??= DEFAULT_AWS_REGION;
+process.env.AWS_REGION ??= HARNESS_AWS_REGION;
 process.env.AWS_ACCESS_KEY_ID ??= "test";
 process.env.AWS_SECRET_ACCESS_KEY ??= "test";
 process.env[DEV_AUTH_ENV] = DEV_AUTH_ENABLED;
@@ -41,7 +43,7 @@ const SEEDED_CLUSTER = `edd-web-admin-observability-${RUN_ID}`;
 const SEEDED_LOG = "info: live admin route read from CloudWatch";
 
 const SIM = {
-  region: DEFAULT_AWS_REGION,
+  region: HARNESS_AWS_REGION,
   endpoint: aws.endpoint,
   credentials: { accessKeyId: "test", secretAccessKey: "test" },
 };

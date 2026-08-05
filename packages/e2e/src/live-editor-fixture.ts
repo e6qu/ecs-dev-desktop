@@ -20,7 +20,7 @@ export const WORKSPACE_IMAGE = process.env.WORKSPACE_IMAGE ?? "edd-workspace:e2e
 /** Point a live suite at the sim AWS env + DynamoDB Local (call once at module load). */
 export function initLiveEnv(): void {
   configureAwsSimEnv();
-  process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
+  process.env.AWS_ENDPOINT_URL ??= dynamodb.endpoint;
 }
 
 /** A fresh 32-byte hex secret (agent / connection HMAC master key). */

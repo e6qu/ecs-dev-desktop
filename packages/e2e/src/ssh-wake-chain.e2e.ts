@@ -52,7 +52,7 @@ const USER_KEY = join(
 );
 const CMD_TIMEOUT_MS = 30_000;
 
-process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
+process.env.AWS_ENDPOINT_URL ??= dynamodb.endpoint;
 
 function run(
   cmd: string,
@@ -92,7 +92,7 @@ describe("SSH wake-on-connect chain against the real control plane", { timeout: 
     }).create({ name: "Node 20", image: baseImage(NODE_IMAGE) });
 
     web = await startWebApp(() => ({
-      DYNAMODB_ENDPOINT: process.env.DYNAMODB_ENDPOINT ?? dynamodb.endpoint,
+      AWS_ENDPOINT_URL: process.env.AWS_ENDPOINT_URL ?? dynamodb.endpoint,
       DYNAMODB_TABLE: TABLE,
       EDD_GATEWAY_SECRET: GATEWAY_SECRET,
       EDD_FAKE_SSH_HOST: FAKE_SSH_HOST,

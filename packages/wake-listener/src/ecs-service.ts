@@ -8,12 +8,7 @@
  * by `AWS_ENDPOINT_URL` / `AWS_REGION` alone (AGENTS.md §6.9).
  */
 import { DescribeServicesCommand, ECSClient, UpdateServiceCommand } from "@aws-sdk/client-ecs";
-import {
-  AWS_SDK_MAX_ATTEMPTS,
-  AWS_SDK_RETRY_MODE,
-  DEFAULT_AWS_REGION,
-  simulatorCredentialOverride,
-} from "@edd/config";
+import { AWS_SDK_MAX_ATTEMPTS, AWS_SDK_RETRY_MODE, awsRegion } from "@edd/config";
 
 type Env = Readonly<Record<string, string | undefined>>;
 
@@ -36,16 +31,12 @@ export interface EcsServicePort {
   }): Promise<void>;
 }
 
-/** Build an ECS client from the ambient AWS env (`AWS_ENDPOINT_URL` → the sim). */
+/** Build an ECS client from the ambient AWS env. */
 export function ecsClientFromEnv(env: Env = process.env): ECSClient {
-  const endpoint = env.AWS_ENDPOINT_URL;
   return new ECSClient({
-    region: env.AWS_REGION ?? DEFAULT_AWS_REGION,
+    region: awsRegion(env),
     maxAttempts: AWS_SDK_MAX_ATTEMPTS,
     retryMode: AWS_SDK_RETRY_MODE,
-    ...(endpoint !== undefined && endpoint.length > 0
-      ? { endpoint, ...simulatorCredentialOverride() }
-      : {}),
   });
 }
 

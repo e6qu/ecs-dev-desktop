@@ -6,14 +6,16 @@ import {
   PutLogEventsCommand,
   ResourceAlreadyExistsException,
 } from "@aws-sdk/client-cloudwatch-logs";
-import { aws, DEFAULT_AWS_REGION } from "@edd/config";
+import { aws } from "@edd/config";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import { CloudWatchLogSource } from "../src/cloudwatch-log-source";
 
+const HARNESS_AWS_REGION = "us-east-1";
+
 // Point the AWS SDK at the sockerless AWS simulator (Tier-2 harness, from source).
 process.env.AWS_ENDPOINT_URL ??= aws.endpoint;
-process.env.AWS_REGION ??= DEFAULT_AWS_REGION;
+process.env.AWS_REGION ??= HARNESS_AWS_REGION;
 process.env.AWS_ACCESS_KEY_ID ??= "test";
 process.env.AWS_SECRET_ACCESS_KEY ??= "test";
 

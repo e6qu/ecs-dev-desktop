@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { IAMClient, SimulatePrincipalPolicyCommand } from "@aws-sdk/client-iam";
 import { GetCallerIdentityCommand, STSClient } from "@aws-sdk/client-sts";
-import { DEFAULT_AWS_REGION, simulatorCredentialOverride } from "@edd/config";
+import { awsRegion } from "@edd/config";
 import {
   IAM_CONTEXT_TOKENS,
   IAM_REQUIREMENTS,
@@ -66,17 +66,22 @@ export function resolveCoordinates(
   env: Env,
   account: string,
 ): { ok: true; coords: PreflightCoordinates } | { ok: false; missing: string[] } {
-  const region = env.AWS_REGION ?? DEFAULT_AWS_REGION;
+  // The region is a required coordinate like the rest. This function reports a
+  // missing coordinate rather than throwing, so the preflight degrades to
+  // `unknown` instead of failing the admin page it feeds.
+  const region = env.AWS_REGION;
   const cluster = env.ECS_CLUSTER;
   const table = env.DYNAMODB_TABLE;
   const logGroup = env.ECS_LOG_GROUP_WORKSPACES;
   const taskRole = env.ECS_TASK_ROLE_ARN;
   const missing: string[] = [];
+  if (region === undefined || region.length === 0) missing.push("AWS_REGION");
   if (cluster === undefined || cluster.length === 0) missing.push("ECS_CLUSTER");
   if (table === undefined || table.length === 0) missing.push("DYNAMODB_TABLE");
   if (logGroup === undefined || logGroup.length === 0) missing.push("ECS_LOG_GROUP_WORKSPACES");
   if (taskRole === undefined || taskRole.length === 0) missing.push("ECS_TASK_ROLE_ARN");
   if (
+    region === undefined ||
     cluster === undefined ||
     table === undefined ||
     logGroup === undefined ||
@@ -195,21 +200,10 @@ interface ClientConfig {
   /** Fail fast: a preflight that can't reach STS/IAM should degrade to `unknown`
    * quickly, not retry-storm and stall the admin page render. */
   readonly maxAttempts: number;
-  readonly endpoint?: string;
-  readonly credentials?: { accessKeyId: string; secretAccessKey: string };
 }
 
 function clientConfig(): ClientConfig {
-  const endpoint = process.env.AWS_ENDPOINT_URL;
-  const region = process.env.AWS_REGION ?? DEFAULT_AWS_REGION;
-  return endpoint !== undefined && endpoint.length > 0
-    ? {
-        region,
-        maxAttempts: 2,
-        endpoint,
-        ...simulatorCredentialOverride(),
-      }
-    : { region, maxAttempts: 2 };
+  return { region: awsRegion(), maxAttempts: 2 };
 }
 
 const unavailable = (reason: string): IamPreflightSignal => ({ kind: "unavailable", reason });

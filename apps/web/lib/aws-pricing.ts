@@ -4,12 +4,7 @@ import {
   PricingClient,
   type GetProductsCommandOutput,
 } from "@aws-sdk/client-pricing";
-import {
-  AWS_SDK_MAX_ATTEMPTS,
-  AWS_SDK_RETRY_MODE,
-  DEFAULT_AWS_REGION,
-  workspacePricing,
-} from "@edd/config";
+import { AWS_SDK_MAX_ATTEMPTS, AWS_SDK_RETRY_MODE, awsRegion, workspacePricing } from "@edd/config";
 import type { Pricing } from "@edd/core";
 
 import { ttlCache } from "./ttl-cache";
@@ -261,7 +256,7 @@ function defaultPricingClient(): PricingClient {
  * live Price List rates (all four required, or a loud error). Wrapped by the TTL cache below. */
 async function resolveWorkspacePricingUncached(): Promise<Pricing> {
   if (process.env[AWS_PRICING_ENV] !== "1") return workspacePricing();
-  const region = process.env.AWS_REGION ?? DEFAULT_AWS_REGION;
+  const region = awsRegion();
   return requireLivePricing(region, await fetchAwsPricing(region, defaultPricingClient()));
 }
 

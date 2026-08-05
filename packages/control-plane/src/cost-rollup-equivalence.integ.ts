@@ -22,7 +22,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { CostService, StoredAuditSource, StoredCostRollupStore } from "./index";
 
-process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
+process.env.AWS_ENDPOINT_URL ??= dynamodb.endpoint;
 
 const TABLE = "ecs-dev-desktop-cp-cost-rollup-equiv-integ";
 const PRICING = workspacePricing();

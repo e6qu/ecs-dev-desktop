@@ -10,7 +10,7 @@ here="$(dirname "$0")"
 
 # DynamoDB is served by the sim (the default `dynamodb.endpoint` is the sim at :4566;
 # the standalone DynamoDB-Local container was retired from this tier once the sim's
-# DynamoDB became conformant). `DYNAMODB_ENDPOINT` may still override it if set.
+# DynamoDB became conformant). `AWS_ENDPOINT_URL` may still override it if set.
 
 sh "$here/reap-local.sh"
 docker compose -f docker-compose.tier2.yml up -d --build --wait

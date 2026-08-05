@@ -2,15 +2,17 @@
 import { randomUUID } from "node:crypto";
 
 import { DescribeVolumesCommand, EC2Client } from "@aws-sdk/client-ec2";
-import { aws, DEFAULT_AWS_REGION } from "@edd/config";
+import { aws } from "@edd/config";
 import { describe, expect, it } from "vitest";
 
 import { runEbsSmoke } from "./ebs-smoke";
 
+const HARNESS_AWS_REGION = "us-east-1";
+
 // Point the SDK at the sockerless AWS simulator — the SAME `runEbsSmoke` the manual
 // `e2e-aws` tier runs against real AWS (it differs only by these coordinates).
 process.env.AWS_ENDPOINT_URL ??= aws.endpoint;
-process.env.AWS_REGION ??= DEFAULT_AWS_REGION;
+process.env.AWS_REGION ??= HARNESS_AWS_REGION;
 process.env.AWS_ACCESS_KEY_ID ??= "test";
 process.env.AWS_SECRET_ACCESS_KEY ??= "test";
 

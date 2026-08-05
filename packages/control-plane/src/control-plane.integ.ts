@@ -44,7 +44,7 @@ import {
   WorkspaceService,
 } from "./index";
 
-process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
+process.env.AWS_ENDPOINT_URL ??= dynamodb.endpoint;
 
 /** A compute provider whose launch always fails — to exercise the
  * compute-unavailable (503/handled) path without an unexpected throw. */

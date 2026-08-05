@@ -24,7 +24,7 @@ import {
 
 import { EC2Client } from "@aws-sdk/client-ec2";
 import { EcsComputeProvider } from "@edd/compute-ecs";
-import { dynamodb, DEFAULT_AWS_REGION } from "@edd/config";
+import { dynamodb, HARNESS_AWS_REGION } from "@edd/config";
 import { WorkspaceService } from "@edd/control-plane";
 import { baseImage, ownerId, systemClock, workspaceId } from "@edd/core";
 import { createDynamoClient, dropTable, ensureTable, makeWorkspaceEntity } from "@edd/db";
@@ -39,6 +39,8 @@ import {
   required,
   sleep,
 } from "./aws-sim";
+
+const HARNESS_AWS_REGION = "us-east-1";
 
 /**
  * Container-mode e2e: EventBridge Scheduler fires → ECS RunTask → real
@@ -55,7 +57,7 @@ import {
  */
 
 configureAwsSimEnv();
-process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
+process.env.AWS_ENDPOINT_URL ??= dynamodb.endpoint;
 
 // The reconciler image must be pre-built: `docker build -f services/reconciler/Dockerfile -t edd-reconciler:e2e .`
 const RECONCILER_IMAGE = process.env.RECONCILER_IMAGE ?? "edd-reconciler:e2e";
@@ -211,11 +213,9 @@ describe(
               image: RECONCILER_IMAGE,
               essential: true,
               environment: [
+                // One endpoint serves the whole AWS API surface here, DynamoDB included.
                 { name: "AWS_ENDPOINT_URL", value: "http://host.docker.internal:4566" },
-                // DynamoDB is served by the sim (same endpoint as the rest of AWS); the
-                // standalone DynamoDB-Local container was retired from this tier.
-                { name: "DYNAMODB_ENDPOINT", value: "http://host.docker.internal:4566" },
-                { name: "AWS_REGION", value: DEFAULT_AWS_REGION },
+                { name: "AWS_REGION", value: HARNESS_AWS_REGION },
                 { name: "AWS_ACCESS_KEY_ID", value: "test" },
                 { name: "AWS_SECRET_ACCESS_KEY", value: "test" },
                 { name: "DYNAMODB_TABLE", value: TABLE },
@@ -227,7 +227,7 @@ describe(
                 logDriver: "awslogs",
                 options: {
                   "awslogs-group": LOG_GROUP,
-                  "awslogs-region": DEFAULT_AWS_REGION,
+                  "awslogs-region": HARNESS_AWS_REGION,
                   "awslogs-stream-prefix": "reconciler",
                 },
               },

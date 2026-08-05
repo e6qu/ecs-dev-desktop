@@ -15,7 +15,7 @@ import { ImageSourceService, type SourceObservation } from "./image-source";
 
 const TEST_TABLE = "ecs-dev-desktop-image-source-integ";
 
-process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
+process.env.AWS_ENDPOINT_URL ??= dynamodb.endpoint;
 
 class FakeImageOps implements ImageOps {
   readonly starts: StartImageBuildInput[] = [];

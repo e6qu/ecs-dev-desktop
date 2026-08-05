@@ -13,7 +13,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { awsSimClientConfig, configureAwsSimEnv, e2eEbsRoleArn, required, sleep } from "./aws-sim";
 
 configureAwsSimEnv();
-process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
+process.env.AWS_ENDPOINT_URL ??= dynamodb.endpoint;
 
 const TABLE = "ecs-dev-desktop-e2e-lifecycle";
 const CLUSTER = "edd-workspaces";

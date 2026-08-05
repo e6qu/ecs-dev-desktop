@@ -20,9 +20,21 @@ import { describe, expect, it } from "vitest";
 
 import { Ec2StorageProvider } from "./index";
 
+// The coordinates the provider requires, stated once. Each test spreads these and
+// overrides exactly the one it is about, so no value a test depends on is implied.
+const COORDS = {
+  region: "us-east-1",
+  availabilityZone: "us-east-1a",
+  costScope: "edd-alpha",
+  settleWaitSeconds: 60,
+} as const;
+
 // Pure checks — no AWS calls (constructing a client does no I/O).
 describe("Ec2StorageProvider (unit)", () => {
-  const sp = new Ec2StorageProvider({ client: new EC2Client({ region: "us-east-1" }) });
+  const sp = new Ec2StorageProvider({
+    ...COORDS,
+    client: new EC2Client({ region: "us-east-1" }),
+  });
 
   it("defers volume file I/O to the compute layer", () => {
     expect(() => sp.readFile()).toThrow(/compute/);
@@ -70,14 +82,20 @@ describe("Ec2StorageProvider create cleanup on a failed settle", () => {
 
   it("deletes a volume that never becomes available (no leaked EBS)", async () => {
     const deletes: string[] = [];
-    const sp = new Ec2StorageProvider({ client: volumeStuckClient(deletes) });
+    const sp = new Ec2StorageProvider({
+      ...COORDS,
+      client: volumeStuckClient(deletes),
+    });
     await expect(sp.createVolume()).rejects.toThrow();
     expect(deletes).toEqual(["vol-stuck"]);
   });
 
   it("deletes a snapshot that reports a terminal error state (no leaked snapshot)", async () => {
     const deletes: string[] = [];
-    const sp = new Ec2StorageProvider({ client: snapshotStuckClient(deletes) });
+    const sp = new Ec2StorageProvider({
+      ...COORDS,
+      client: snapshotStuckClient(deletes),
+    });
     await expect(sp.createSnapshot(volumeId("vol-source"))).rejects.toThrow();
     expect(deletes).toEqual(["snap-stuck"]);
   });
@@ -107,6 +125,7 @@ describe("Ec2StorageProvider create cleanup on a failed settle", () => {
     const deletes: string[] = [];
     // Tiny settle window so the waiter times out near-instantly (the snapshot stays pending).
     const sp = new Ec2StorageProvider({
+      ...COORDS,
       client: snapshotPendingClient(deletes),
       settleWaitSeconds: 1,
     });
@@ -132,17 +151,26 @@ describe("Ec2StorageProvider delete idempotency", () => {
   }
 
   it("deleteVolume swallows InvalidVolume.NotFound (already gone)", async () => {
-    const sp = new Ec2StorageProvider({ client: deleteFailingClient("InvalidVolume.NotFound") });
+    const sp = new Ec2StorageProvider({
+      ...COORDS,
+      client: deleteFailingClient("InvalidVolume.NotFound"),
+    });
     await expect(sp.deleteVolume(volumeId("vol-gone"))).resolves.toBeUndefined();
   });
 
   it("deleteSnapshot swallows InvalidSnapshot.NotFound (already gone)", async () => {
-    const sp = new Ec2StorageProvider({ client: deleteFailingClient("InvalidSnapshot.NotFound") });
+    const sp = new Ec2StorageProvider({
+      ...COORDS,
+      client: deleteFailingClient("InvalidSnapshot.NotFound"),
+    });
     await expect(sp.deleteSnapshot(snapshotId("snap-gone"))).resolves.toBeUndefined();
   });
 
   it("deleteVolume still throws a real (non-not-found) error", async () => {
-    const sp = new Ec2StorageProvider({ client: deleteFailingClient("VolumeInUse") });
+    const sp = new Ec2StorageProvider({
+      ...COORDS,
+      client: deleteFailingClient("VolumeInUse"),
+    });
     await expect(sp.deleteVolume(volumeId("vol-busy"))).rejects.toThrow(/gone/);
   });
 });
@@ -203,7 +231,11 @@ describe("Ec2StorageProvider AWS request shape (managed tags + filters + branche
 
   it("tags a fresh volume edd:managed=true and sizes it (no SnapshotId)", async () => {
     const sent: Sent[] = [];
-    const sp = new Ec2StorageProvider({ client: capturing(sent), region: "us-east-1" });
+    const sp = new Ec2StorageProvider({
+      ...COORDS,
+      client: capturing(sent),
+      region: "us-east-1",
+    });
     await sp.createVolume();
     const input = inputOf(sent, "CreateVolumeCommand") as CreateVolumeCommandInput;
     expect(input.AvailabilityZone).toBe("us-east-1a");
@@ -215,7 +247,11 @@ describe("Ec2StorageProvider AWS request shape (managed tags + filters + branche
 
   it("hydrates from a snapshot (SnapshotId set, no Size) and tags it managed", async () => {
     const sent: Sent[] = [];
-    const sp = new Ec2StorageProvider({ client: capturing(sent), region: "us-east-1" });
+    const sp = new Ec2StorageProvider({
+      ...COORDS,
+      client: capturing(sent),
+      region: "us-east-1",
+    });
     const vol = await sp.createVolume({ fromSnapshot: snapshotId("snap-src") });
     expect(vol.hydratedFrom).toBe("snap-src");
     const input = inputOf(sent, "CreateVolumeCommand") as CreateVolumeCommandInput;
@@ -227,7 +263,11 @@ describe("Ec2StorageProvider AWS request shape (managed tags + filters + branche
 
   it("tags snapshots with managed, retain, and workspace attribution when provided", async () => {
     const sent: Sent[] = [];
-    const sp = new Ec2StorageProvider({ client: capturing(sent), region: "us-east-1" });
+    const sp = new Ec2StorageProvider({
+      ...COORDS,
+      client: capturing(sent),
+      region: "us-east-1",
+    });
     await sp.createSnapshot(volumeId("vol-new"), {
       retain: true,
       workspaceId: workspaceId("ws-tagged"),
@@ -248,6 +288,7 @@ describe("Ec2StorageProvider AWS request shape (managed tags + filters + branche
   it("scopes enumeration with server-side tag filters (+ OwnerIds:self for snapshots)", async () => {
     const sent: Sent[] = [];
     const sp = new Ec2StorageProvider({
+      ...COORDS,
       client: capturing(sent),
       region: "us-east-1",
       scope: "team-a",
@@ -294,7 +335,11 @@ describe("Ec2StorageProvider AWS request shape (managed tags + filters + branche
       return Promise.reject(new Error("unexpected command"));
     };
     (client as unknown as { send: typeof send }).send = send;
-    const sp = new Ec2StorageProvider({ client, region: "us-east-1" });
+    const sp = new Ec2StorageProvider({
+      ...COORDS,
+      client,
+      region: "us-east-1",
+    });
 
     const byId = new Map((await sp.listSnapshots()).map((s) => [s.id, s]));
     const attributed = byId.get(snapshotId("snap-attributed"));
@@ -313,6 +358,7 @@ describe("Ec2StorageProvider AWS request shape (managed tags + filters + branche
     const destSent: Sent[] = [];
     const dest = capturing(destSent);
     const sp = new Ec2StorageProvider({
+      ...COORDS,
       client: capturing(srcSent),
       region: "us-east-1",
       clientForRegion: () => dest,

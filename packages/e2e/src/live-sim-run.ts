@@ -21,7 +21,7 @@ configureAwsSimEnv();
 // Pin DynamoDB to the standalone DynamoDB-Local container (8000), not the sim's
 // own DynamoDB (reached via AWS_ENDPOINT_URL): the harness and the web app must
 // agree on one store, or the app reads an empty table the harness never wrote to.
-process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
+process.env.AWS_ENDPOINT_URL ??= dynamodb.endpoint;
 
 const WORKSPACE_IMAGE = process.env.WORKSPACE_IMAGE ?? "edd-workspace:e2e";
 

@@ -9,7 +9,9 @@ import {
   DescribeRouteTablesCommand,
   type EC2Client,
 } from "@aws-sdk/client-ec2";
-import { aws, DEFAULT_AWS_REGION } from "@edd/config";
+import { aws } from "@edd/config";
+
+const HARNESS_AWS_REGION = "us-east-1";
 
 interface AwsSimCredentials {
   accessKeyId: string;
@@ -29,7 +31,7 @@ const DEFAULT_CREDENTIALS: AwsSimCredentials = {
 
 export function configureAwsSimEnv(): void {
   process.env.AWS_ENDPOINT_URL ??= aws.endpoint;
-  process.env.AWS_REGION ??= DEFAULT_AWS_REGION;
+  process.env.AWS_REGION ??= HARNESS_AWS_REGION;
   process.env.AWS_ACCESS_KEY_ID ??= DEFAULT_CREDENTIALS.accessKeyId;
   process.env.AWS_SECRET_ACCESS_KEY ??= DEFAULT_CREDENTIALS.secretAccessKey;
 }
@@ -38,7 +40,7 @@ export function awsSimClientConfig(
   credentials: AwsSimCredentials = DEFAULT_CREDENTIALS,
 ): AwsSimClientConfig {
   return {
-    region: DEFAULT_AWS_REGION,
+    region: HARNESS_AWS_REGION,
     endpoint: aws.endpoint,
     credentials,
   };

@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { createDynamoClient, dynamodb, waitForDynamo } from "./index";
 
-process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
+process.env.AWS_ENDPOINT_URL ??= dynamodb.endpoint;
 
 describe("waitForDynamo", () => {
   it("resolves once DynamoDB is answering", async () => {

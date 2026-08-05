@@ -21,8 +21,7 @@ import {
   AWS_SDK_RETRY_MODE,
   COST_SCOPE,
   COST_SCOPE_TAG_KEY,
-  DEFAULT_AWS_REGION,
-  simulatorCredentialOverride,
+  awsRegion,
 } from "@edd/config";
 import {
   isoTimestamp,
@@ -62,22 +61,22 @@ const WORKSPACE_TAG_KEY = "edd:workspace-id";
 
 export interface Ec2StorageProviderDeps {
   client: EC2Client;
-  /** AZ for new volumes; defaults to `${region}a`. */
-  availabilityZone?: string;
-  region?: string;
+  /** AZ for new volumes. */
+  availabilityZone: string;
+  region: string;
   /** Restrict managed resources to this scope (tagged + filtered on enumerate). */
   scope?: string;
   /** Value for the shared AWS cost-allocation tag key (`edd:cost-scope`). */
-  costScope?: string;
+  costScope: string;
   /** Build an EC2 client for another region (cross-region snapshot copy / DR). The
    * same coordinates as the source — only the region changes — so it hits the sim
    * (shared endpoint) or real AWS (per-region endpoint) by config alone (§6.9).
    * Absent ⇒ `copySnapshot` is unavailable. */
   clientForRegion?: (region: string) => EC2Client;
   /** Seconds to wait for a created volume/snapshot to settle before checking state.
-   * Defaults to {@link SETTLE_WAIT_SECONDS}. Overridable so tests can exercise the
-   * settle-timeout path without real-time waits. */
-  settleWaitSeconds?: number;
+   * Required so the wait a caller gets is the wait it asked for, and so tests can
+   * exercise the settle-timeout path without real-time waits. */
+  settleWaitSeconds: number;
 }
 
 /** Throw if a required field the cloud should have returned is absent. */
@@ -121,28 +120,30 @@ export class Ec2StorageProvider implements StorageProvider {
 
   constructor(deps: Ec2StorageProviderDeps) {
     this.client = deps.client;
-    this.region = deps.region ?? DEFAULT_AWS_REGION;
-    this.availabilityZone = deps.availabilityZone ?? `${this.region}a`;
+    this.region = deps.region;
+    this.availabilityZone = deps.availabilityZone;
     this.scope = deps.scope;
-    this.costScope = deps.costScope ?? COST_SCOPE;
+    this.costScope = deps.costScope;
     this.clientForRegion = deps.clientForRegion;
-    this.settleWaitSeconds = deps.settleWaitSeconds ?? SETTLE_WAIT_SECONDS;
+    this.settleWaitSeconds = deps.settleWaitSeconds;
   }
 
-  /** Build a provider from the ambient AWS env (`AWS_ENDPOINT_URL` → the sim). */
-  static fromEnv(opts: { scope?: string; costScope?: string } = {}): Ec2StorageProvider {
-    const region = process.env.AWS_REGION ?? DEFAULT_AWS_REGION;
-    const endpoint = process.env.AWS_ENDPOINT_URL;
+  /** Build a provider from the ambient AWS env. */
+  static fromEnv(opts: { scope?: string } = {}): Ec2StorageProvider {
+    const region = awsRegion();
+
     const clientForRegion = (r: string): EC2Client =>
       new EC2Client({
         region: r,
         maxAttempts: AWS_SDK_MAX_ATTEMPTS,
         retryMode: AWS_SDK_RETRY_MODE,
-        ...(endpoint ? { endpoint, ...simulatorCredentialOverride() } : {}),
       });
     return new Ec2StorageProvider({
       client: clientForRegion(region),
       region,
+      availabilityZone: `${region}a`,
+      costScope: COST_SCOPE,
+      settleWaitSeconds: SETTLE_WAIT_SECONDS,
       clientForRegion,
       ...opts,
     });

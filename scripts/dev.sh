@@ -25,7 +25,7 @@ docker compose -f docker-compose.dev.yml $profiles up -d --wait
 # through from the caller's env (the tiers — see docs/running-locally.md).
 # The sim's DynamoDB serves on :4566 (the unified AWS endpoint) — the same one CI
 # uses. DynamoDB Local is no longer needed for the dev loop.
-export DYNAMODB_ENDPOINT="${DYNAMODB_ENDPOINT:-http://127.0.0.1:4566}"
+export AWS_ENDPOINT_URL="${AWS_ENDPOINT_URL:-http://127.0.0.1:4566}"
 export EDD_DEV_AUTH="${EDD_DEV_AUTH:-1}"
 
 # Ensure the table + a base image exist (idempotent), then run the dev server on

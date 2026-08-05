@@ -13,7 +13,7 @@ import {
 } from "./index";
 
 // Tier-2: runs against the configured DynamoDB endpoint (the sockerless sim in CI; §6.9).
-process.env.DYNAMODB_ENDPOINT ??= dynamodb.endpoint;
+process.env.AWS_ENDPOINT_URL ??= dynamodb.endpoint;
 
 const TEST_TABLE = "ecs-dev-desktop-integ";
 

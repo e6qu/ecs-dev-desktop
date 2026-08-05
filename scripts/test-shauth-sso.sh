@@ -195,7 +195,6 @@ export AUTH_SHAUTH_SECRET="$client_secret"
 export AUTH_SHAUTH_POST_LOGOUT_URL="$application_origin/auth/shauth/logout/complete"
 export AWS_REGION=us-east-1
 export AWS_ENDPOINT_URL=http://127.0.0.1:4566
-export DYNAMODB_ENDPOINT=http://127.0.0.1:4566
 export DYNAMODB_TABLE=ecs-dev-desktop-shauth-sso
 export EDD_APP_NAME=edd-shauth-sso
 export EDD_GOLDEN=omnibus

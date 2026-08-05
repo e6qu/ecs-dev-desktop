@@ -19,9 +19,11 @@ import {
   RunTaskCommand,
   type Task,
 } from "@aws-sdk/client-ecs";
-import { DEFAULT_AWS_REGION } from "@edd/config";
+import {} from "@edd/config";
 
 import { required, sleep } from "./aws-sim";
+
+const HARNESS_AWS_REGION = "us-east-1";
 
 /** spawnSync wrapper returning a normalized status (-1 if the child never ran). */
 function run(cmd: string, args: string[]): { status: number; stderr: string } {
@@ -207,7 +209,7 @@ export async function runSshClientTask(ecs: ECSClient, opts: SshClientRun): Prom
             logDriver: "awslogs",
             options: {
               "awslogs-group": opts.logGroup,
-              "awslogs-region": DEFAULT_AWS_REGION,
+              "awslogs-region": HARNESS_AWS_REGION,
               "awslogs-stream-prefix": opts.family,
             },
           },
