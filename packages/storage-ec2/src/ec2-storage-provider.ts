@@ -22,6 +22,7 @@ import {
   COST_SCOPE,
   COST_SCOPE_TAG_KEY,
   DEFAULT_AWS_REGION,
+  simulatorCredentialOverride,
 } from "@edd/config";
 import {
   isoTimestamp,
@@ -137,9 +138,7 @@ export class Ec2StorageProvider implements StorageProvider {
         region: r,
         maxAttempts: AWS_SDK_MAX_ATTEMPTS,
         retryMode: AWS_SDK_RETRY_MODE,
-        ...(endpoint
-          ? { endpoint, credentials: { accessKeyId: "local", secretAccessKey: "local" } }
-          : {}),
+        ...(endpoint ? { endpoint, ...simulatorCredentialOverride() } : {}),
       });
     return new Ec2StorageProvider({
       client: clientForRegion(region),

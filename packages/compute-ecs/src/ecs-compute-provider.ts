@@ -28,11 +28,12 @@ import {
   COST_SCOPE_TAG_KEY,
   DEFAULT_AWS_REGION,
   DEFAULT_ECS_CLUSTER,
-  DEFAULT_WORKSPACE_LOG_STREAM_PREFIX,
   DEFAULT_WORKSPACE_CONTAINER,
+  DEFAULT_WORKSPACE_LOG_STREAM_PREFIX,
   DEFAULT_WORKSPACE_MOUNT_PATH,
   DEFAULT_WORKSPACE_PORT,
   DEFAULT_WORKSPACE_TERMINAL_PORT,
+  simulatorCredentialOverride,
 } from "@edd/config";
 import {
   DEFAULT_HEARTBEAT_INTERVAL_S,
@@ -978,9 +979,7 @@ export class EcsComputeProvider implements ComputeProvider {
       region: process.env.AWS_REGION ?? DEFAULT_AWS_REGION,
       maxAttempts: AWS_SDK_MAX_ATTEMPTS,
       retryMode: AWS_SDK_RETRY_MODE,
-      ...(endpoint
-        ? { endpoint, credentials: { accessKeyId: "local", secretAccessKey: "local" } }
-        : {}),
+      ...(endpoint ? { endpoint, ...simulatorCredentialOverride() } : {}),
     });
   }
 
@@ -991,9 +990,7 @@ export class EcsComputeProvider implements ComputeProvider {
       region: process.env.AWS_REGION ?? DEFAULT_AWS_REGION,
       maxAttempts: AWS_SDK_MAX_ATTEMPTS,
       retryMode: AWS_SDK_RETRY_MODE,
-      ...(endpoint
-        ? { endpoint, credentials: { accessKeyId: "local", secretAccessKey: "local" } }
-        : {}),
+      ...(endpoint ? { endpoint, ...simulatorCredentialOverride() } : {}),
     });
   }
 

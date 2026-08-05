@@ -8,7 +8,12 @@
  * by `AWS_ENDPOINT_URL` / `AWS_REGION` alone (AGENTS.md §6.9).
  */
 import { DescribeServicesCommand, ECSClient, UpdateServiceCommand } from "@aws-sdk/client-ecs";
-import { AWS_SDK_MAX_ATTEMPTS, AWS_SDK_RETRY_MODE, DEFAULT_AWS_REGION } from "@edd/config";
+import {
+  AWS_SDK_MAX_ATTEMPTS,
+  AWS_SDK_RETRY_MODE,
+  DEFAULT_AWS_REGION,
+  simulatorCredentialOverride,
+} from "@edd/config";
 
 type Env = Readonly<Record<string, string | undefined>>;
 
@@ -39,7 +44,7 @@ export function ecsClientFromEnv(env: Env = process.env): ECSClient {
     maxAttempts: AWS_SDK_MAX_ATTEMPTS,
     retryMode: AWS_SDK_RETRY_MODE,
     ...(endpoint !== undefined && endpoint.length > 0
-      ? { endpoint, credentials: { accessKeyId: "local", secretAccessKey: "local" } }
+      ? { endpoint, ...simulatorCredentialOverride() }
       : {}),
   });
 }
