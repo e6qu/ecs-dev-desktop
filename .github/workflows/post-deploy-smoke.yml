@@ -76,12 +76,7 @@ jobs:
         editor: [openvscode, monaco, terminal, opencode]
     steps:
       - uses: actions/checkout@v6.0.2
-      - uses: actions/setup-node@v6.4.0
-        with:
-          node-version: 22
-      - name: Enable Corepack
-        run: corepack enable
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/pnpm-install
       - name: Install Playwright Chromium
         run: pnpm --filter web exec playwright install chromium
       - name: Open one real workspace through Shauth
@@ -105,12 +100,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6.0.2
-      - uses: actions/setup-node@v6.4.0
-        with:
-          node-version: 22
-      - name: Enable Corepack
-        run: corepack enable
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/pnpm-install
       - name: Install Playwright Chromium
         run: pnpm --filter web exec playwright install chromium
       - name: Remove any smoke-owned workspace left by an interrupted matrix cell

@@ -41,12 +41,7 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6.0.2
-      - uses: actions/setup-node@v6.4.0
-        with:
-          node-version: 22
-      - name: Enable Corepack
-        run: corepack enable
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/pnpm-install
       - run: pnpm lint
       - run: pnpm build
       - run: pnpm test
@@ -57,12 +52,7 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6.0.2
-      - uses: actions/setup-node@v6.4.0
-        with:
-          node-version: 22
-      - name: Enable Corepack
-        run: corepack enable
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/pnpm-install
       # Dead code (unused files/exports/deps) and copy-paste duplication. Both fail
       # the build on regressions; jscpd is gated by the threshold in .jscpd.json.
       - run: pnpm dead-code
@@ -89,12 +79,7 @@ jobs:
       - uses: actions/checkout@v6.0.2
         with:
           submodules: recursive # third_party/sockerless — the sim is built from source
-      - uses: actions/setup-node@v6.4.0
-        with:
-          node-version: 22
-      - name: Enable Corepack
-        run: corepack enable
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/pnpm-install
       - run: pnpm build
       # Retry bring-up: image pulls can transiently hit registry rate limits
       # (public.ecr.aws / Docker Hub) on shared runner IPs.
@@ -133,12 +118,7 @@ jobs:
       - uses: actions/checkout@v6.0.2
         with:
           submodules: recursive # third_party/sockerless — the sim is built from source
-      - uses: actions/setup-node@v6.4.0
-        with:
-          node-version: 22
-      - name: Enable Corepack
-        run: corepack enable
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/pnpm-install
       - run: pnpm build
       # Build test Docker images needed by the e2e tests.
       - name: Build reconciler Docker image
@@ -226,12 +206,7 @@ jobs:
       - uses: actions/checkout@v6.0.2
         with:
           submodules: recursive # third_party/sockerless — the sims are built from source
-      - uses: actions/setup-node@v6.4.0
-        with:
-          node-version: 22
-      - name: Enable Corepack
-        run: corepack enable
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/pnpm-install
       - run: pnpm build
       # Fresh self-signed CA + server cert into ./temp/sim-tls (gitignored); the
       # sims mount it and the test trusts the CA. No key is committed.
@@ -289,12 +264,7 @@ jobs:
       NOT_A_RELEASE: "Ephemeral CI fixture for the e2e jobs. NOT a release image — do not pull or deploy; rebuilt from PR code every run."
     steps:
       - uses: actions/checkout@v6.0.2
-      - uses: actions/setup-node@v6.4.0
-        with:
-          node-version: 22
-      - name: Enable Corepack
-        run: corepack enable
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/pnpm-install
       - uses: docker/setup-buildx-action@v4.2.0
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
@@ -416,12 +386,7 @@ jobs:
       - uses: actions/checkout@v6.0.2
         with:
           submodules: recursive # third_party/sockerless — compose references its build context
-      - uses: actions/setup-node@v6.4.0
-        with:
-          node-version: 22
-      - name: Enable Corepack
-        run: corepack enable
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/pnpm-install
       - run: pnpm build
       # Provide a Docker engine on macOS via colima (a lightweight x86_64 Linux VM
       # via QEMU+HVF on the Intel runner). `brew install docker` ships only the CLI,
@@ -503,12 +468,7 @@ jobs:
       - uses: actions/checkout@v6.0.2
         with:
           submodules: recursive # third_party/sockerless — the sim serves the portal's DynamoDB
-      - uses: actions/setup-node@v6.4.0
-        with:
-          node-version: 22
-      - name: Enable Corepack
-        run: corepack enable
-      - run: pnpm install --frozen-lockfile
+      - uses: ./.github/actions/pnpm-install
       # DynamoDB is served by the process-mode sim (the standalone DynamoDB-Local
       # container was retired); the portal's web app targets it at :4566.
       - name: Build & start the sockerless AWS simulator (from source, API-only mode)
@@ -553,15 +513,10 @@ jobs:
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6.0.2
-      - uses: actions/setup-node@v6.4.0
-        with:
-          node-version: 22
-      - name: Enable Corepack
-        run: corepack enable
+      - uses: ./.github/actions/pnpm-install
       - uses: hashicorp/setup-terraform@v4.0.1
         with:
           terraform_wrapper: false
-      - run: pnpm install --frozen-lockfile
       - name: Dependency freshness (Node + Terraform)
         run: bash scripts/check-latest-deps.sh
 
