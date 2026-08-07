@@ -1,0 +1,36 @@
+name: Install dependencies
+description: >
+  Set up Node and pnpm, restore the pnpm content-addressable store from cache,
+  and install with a frozen lockfile.
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v6.4.0
+      with:
+        node-version: 22
+    - name: Enable Corepack
+      run: corepack enable
+      shell: bash
+    - name: Locate the pnpm store
+      id: store
+      run: echo "dir=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      shell: bash
+    # restore-keys is the point of this action, not the exact key. Every job used
+    # to install from an empty store — "reused 0, downloaded 258" — which usually
+    # squeaked under the fifteen-minute job bound and sometimes did not: one run
+    # spent 8m48s on Next's 33 MB SWC binary alone at 46 KiB/s, and e2e-https was
+    # cancelled mid-build having burned 12m43s of its budget on `pnpm install`.
+    #
+    # A prefix restore makes that cost proportional to the change. Bumping a
+    # dependency misses the exact key but still restores the previous store, so
+    # only the packages that actually moved are fetched. Without it, the repo's
+    # own dependency-freshness gate — which REQUIRES regular bumps — put every
+    # such bump one slow registry response away from a red build.
+    - uses: actions/cache@v6.1.0
+      with:
+        path: ${{ steps.store.outputs.dir }}
+        key: pnpm-store-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}
+        restore-keys: |
+          pnpm-store-${{ runner.os }}-
+    - run: pnpm install --frozen-lockfile
+      shell: bash
