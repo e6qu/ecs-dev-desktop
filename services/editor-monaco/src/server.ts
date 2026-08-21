@@ -65,6 +65,20 @@ function sendJson(res: ServerResponse, status: number, value: unknown): void {
   send(res, status, JSON.stringify(value), MIME[".json"]);
 }
 
+/**
+ * Whether a thrown value is the filesystem saying "there is nothing here".
+ *
+ * ENOENT is the leaf itself being absent; ENOTDIR is a parent component that
+ * exists but is not a directory, which is the same answer to the caller. Both
+ * carry an errno `code`, which is what separates them from the workspace-root
+ * escape in file-api.ts — that throws a plain Error and must stay a 400.
+ */
+function isNotFound(e: unknown): boolean {
+  if (!(e instanceof Error)) return false;
+  const code = (e as Error & { code?: unknown }).code;
+  return code === "ENOENT" || code === "ENOTDIR";
+}
+
 async function readBody(req: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) chunks.push(chunk as Buffer);
@@ -170,7 +184,20 @@ export function createEditorServer(opts: EditorServerOptions): Server {
           return;
         }
       } catch (e) {
-        send(res, 400, e instanceof Error ? e.message : "bad request");
+        // A file that is not there is not a bad request. Collapsing every
+        // failure into 400 made "you asked wrongly" and "it does not exist"
+        // indistinguishable to a caller, and the two need different handling:
+        // a client retries or renders empty on 404, and fixes its request on
+        // 400. The post-apply SSO gate deletes a marker file and polls for the
+        // 404 that says the delete landed; it got 400 forever and reported the
+        // run as an ECS Dev Desktop browser failure.
+        //
+        // Only the absence is remapped. A path that escapes the workspace root
+        // throws a plain Error with no errno code and stays 400 — it IS a bad
+        // request, and answering 404 there would also quietly turn a rejected
+        // traversal into "no such file", which reads like a probe worth
+        // repeating.
+        send(res, isNotFound(e) ? 404 : 400, e instanceof Error ? e.message : "bad request");
         return;
       }
       send(res, 405, "method not allowed");

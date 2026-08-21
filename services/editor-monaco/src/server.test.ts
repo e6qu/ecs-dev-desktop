@@ -91,6 +91,24 @@ describe("editor server file API", () => {
     expect(await back.text()).toBe("# todo");
   });
 
+  // These three are a set, and the gap between them is the point. Every failure
+  // here used to be a 400, so a caller could not tell "you asked wrongly" from
+  // "it is not there" — and testing any one of them alone would let a single
+  // catch-all status pass again.
+  it("answers 404 for a file that is not there", async () => {
+    const res = await fetch(`${origin}${BASE}api/file?path=never-written.txt`, {
+      headers: cookie,
+    });
+    expect(res.status).toBe(404);
+  });
+
+  it("answers 404 when a parent path component is a file rather than a directory", async () => {
+    const res = await fetch(`${origin}${BASE}api/file?path=main.go/nested.txt`, {
+      headers: cookie,
+    });
+    expect(res.status).toBe(404);
+  });
+
   it("rejects a path that escapes the workspace root", async () => {
     const res = await fetch(
       `${origin}${BASE}api/file?path=${encodeURIComponent("../../etc/passwd")}`,
@@ -98,6 +116,8 @@ describe("editor server file API", () => {
         headers: cookie,
       },
     );
+    // Deliberately NOT 404. A rejected traversal answered as "no such file"
+    // reads like a probe worth repeating, and hides that the guard fired.
     expect(res.status).toBe(400);
   });
 

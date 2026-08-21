@@ -12,12 +12,12 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@aws-sdk/client-ecs": "^3.1104.0",
+    "@aws-sdk/client-ecs": "^3.1114.0",
     "@edd/config": "workspace:*",
     "@edd/core": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.1.2",
-    "esbuild": "^0.28.1"
+    "@types/node": "^26.2.0",
+    "esbuild": "^0.28.2"
   }
 }
