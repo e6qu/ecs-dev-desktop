@@ -23,16 +23,16 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@types/node": "^26.1.2",
-    "eslint": "^10.8.0",
+    "@types/node": "^26.2.0",
+    "eslint": "^10.8.1",
     "eslint-config-prettier": "^10.1.8",
-    "jscpd": "^5.0.14",
-    "knip": "^6.32.0",
-    "turbo": "^2.10.8",
-    "typescript": "^6.0.3",
-    "typescript-eslint": "^8.66.0",
-    "vite": "^8.2.0",
-    "vitest": "^4.1.10"
+    "jscpd": "^5.0.16",
+    "knip": "^6.32.2",
+    "turbo": "^2.10.11",
+    "typescript": "^7.0.2",
+    "typescript-eslint": "^8.67.0",
+    "vite": "^8.2.2",
+    "vitest": "^4.1.11"
   },
   "pnpm": {
     "overrides": {

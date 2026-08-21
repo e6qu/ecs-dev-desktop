@@ -16,7 +16,7 @@
     "test": "vitest run"
   },
   "devDependencies": {
-    "@types/node": "^26.1.2",
+    "@types/node": "^26.2.0",
     "fast-check": "^4.9.0"
   }
 }
