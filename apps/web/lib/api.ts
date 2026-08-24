@@ -136,6 +136,37 @@ export function lifecyclePOST(
   );
 }
 
+/** A zod-shaped body parser — structural, so this module needs no zod import. */
+interface BodySchema<T> {
+  safeParse(input: unknown): { success: true; data: T } | { success: false; error: unknown };
+}
+
+/**
+ * {@link lifecyclePOST} for routes whose action takes a request body: the same
+ * authz + Result-mapping shell, with the body read and contract-validated
+ * first. A malformed or non-JSON body is a 400 before any service call.
+ */
+export function lifecyclePOSTWithBody<T>(
+  name: string,
+  schema: BodySchema<T>,
+  run: (ctx: OwnedWorkspace, body: T) => Promise<Result<WorkspaceDto, DomainError>>,
+) {
+  return withObservability(
+    name,
+    async (req: Request, { params }: { params: Promise<{ id: string }> }) => {
+      let raw: unknown;
+      try {
+        raw = await req.json();
+      } catch {
+        return badRequest();
+      }
+      const parsed = schema.safeParse(raw);
+      if (!parsed.success) return badRequest();
+      return ownedLifecycleAction(req, params, (ctx) => run(ctx, parsed.data));
+    },
+  );
+}
+
 async function ownedLifecycleAction(
   req: Request,
   params: Promise<{ id: string }>,

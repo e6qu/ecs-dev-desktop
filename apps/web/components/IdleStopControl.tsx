@@ -2,8 +2,9 @@
 "use client";
 
 import { ApiClient } from "@edd/api-client";
-import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+
+import { SettingError, useSettingSave } from "../lib/useSettingSave";
 
 const api = new ApiClient({ baseUrl: "" });
 
@@ -38,42 +39,12 @@ export function IdleStopControl({
   idleStopMs: number | undefined;
   alwaysOn: boolean | undefined;
 }) {
-  const router = useRouter();
   const [value, setValue] = useState<ChoiceKey>(choiceFor(idleStopMs, alwaysOn));
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // Same dirty discipline as SnapshotIntervalControl: an unsaved choice must not
-  // be clobbered by the periodic list refresh; a clean field resyncs so another
-  // admin's change becomes visible on an already-mounted card.
-  const dirtyRef = useRef(false);
+  const { busy, error, dirtyRef, save } = useSettingSave("idle-stop update failed");
 
   useEffect(() => {
     if (!dirtyRef.current) setValue(choiceFor(idleStopMs, alwaysOn));
-  }, [idleStopMs, alwaysOn]);
-
-  async function save(next: ChoiceKey): Promise<void> {
-    setBusy(true);
-    setError(null);
-    try {
-      // Every save states BOTH fields: picking a window must also clear a prior
-      // always-on, and vice versa — a one-field patch would leave the other
-      // override silently in force.
-      const choice = CHOICES.find((c) => c.key === next);
-      await api.updateWorkspace(
-        id,
-        next === "always-on"
-          ? { alwaysOn: true, idleStopMs: null }
-          : { alwaysOn: false, idleStopMs: choice?.ms ?? null },
-      );
-      dirtyRef.current = false;
-      router.refresh();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "idle-stop update failed");
-      router.refresh();
-    } finally {
-      setBusy(false);
-    }
-  }
+  }, [idleStopMs, alwaysOn, dirtyRef]);
 
   return (
     <div className="meta-line" style={{ alignItems: "center", flexWrap: "wrap", gap: 8 }}>
@@ -89,7 +60,18 @@ export function IdleStopControl({
           dirtyRef.current = true;
           const next = e.target.value as ChoiceKey;
           setValue(next);
-          void save(next);
+          // Every save states BOTH fields: picking a window must also clear a
+          // prior always-on, and vice versa — a one-field patch would leave
+          // the other override silently in force.
+          const choice = CHOICES.find((c) => c.key === next);
+          void save(() =>
+            api.updateWorkspace(
+              id,
+              next === "always-on"
+                ? { alwaysOn: true, idleStopMs: null }
+                : { alwaysOn: false, idleStopMs: choice?.ms ?? null },
+            ),
+          );
         }}
         style={{ width: 120 }}
       >
@@ -99,11 +81,7 @@ export function IdleStopControl({
           </option>
         ))}
       </select>
-      {error !== null && (
-        <span role="alert" className="mono" style={{ color: "var(--st-error)", fontSize: 11 }}>
-          {error}
-        </span>
-      )}
+      <SettingError error={error} />
     </div>
   );
 }
