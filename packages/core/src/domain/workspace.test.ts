@@ -21,6 +21,7 @@ import {
   markWaking,
   provision,
   recordSnapshot,
+  restoreToSnapshot,
 } from "./workspace";
 
 const t0 = isoTimestamp("2026-06-01T00:00:00.000Z");
@@ -329,5 +330,25 @@ describe("markStopping / cancelStopping (cancelable manual stop)", () => {
     expect(stopped.state).toBe("stopped");
     expect(stopped.stopRequestedAt).toBeUndefined();
     expect(stopped.latestSnapshotId).toBe(snapshotId("s")); // resume-from data
+  });
+});
+
+describe("restoreToSnapshot (checkpoint rewind)", () => {
+  const stopped = unwrap(markStopped(base, { id: snapshotId("snap-new"), at: t1 }, t1));
+  const older = { id: snapshotId("snap-old"), takenAt: t0 };
+
+  it("re-points a stopped workspace at the chosen snapshot, keeping its taken-at time", () => {
+    const restored = unwrap(restoreToSnapshot(stopped, older, t1));
+    expect(restored.state).toBe("stopped");
+    expect(restored.latestSnapshotId).toBe(older.id);
+    // latestSnapshotAt is the SNAPSHOT's time, so scheduled-snapshot timing
+    // still measures from real data age after a rewind.
+    expect(restored.latestSnapshotAt).toBe(t0);
+  });
+
+  it("refuses every non-stopped state — a live volume must not be silently shadowed", () => {
+    expect(restoreToSnapshot(base, older, t1).ok).toBe(false); // running
+    const terminated = unwrap(markTerminated(unwrap(markDeleting(stopped, t1)), t1));
+    expect(restoreToSnapshot(terminated, older, t1).ok).toBe(false);
   });
 });

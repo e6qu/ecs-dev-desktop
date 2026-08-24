@@ -20,6 +20,8 @@ import {
   registerSshKeyResponse,
   sshConnectInfo,
   updateBaseImageRequest,
+  listWorkspaceSnapshotsResponse,
+  restoreWorkspaceRequest,
   updateWorkspaceRequest,
   workspace,
   workspaceLogs,
@@ -44,6 +46,8 @@ import {
   type SshConnectInfo,
   type SshKeyDto,
   type UpdateBaseImageRequest,
+  type ListWorkspaceSnapshotsResponse,
+  type RestoreWorkspaceRequest,
   type UpdateWorkspaceRequest,
   type WorkspaceDto,
   type WorkspaceLogsDto,
@@ -130,6 +134,23 @@ export class ApiClient {
     const body = updateWorkspaceRequest.parse(req);
     const res = await this.send(`/api/workspaces/${id}`, {
       method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return workspace.parse(await res.json());
+  }
+
+  /** The workspace's own checkpoint history (newest first, current point marked). */
+  async listWorkspaceSnapshots(id: string): Promise<ListWorkspaceSnapshotsResponse> {
+    const res = await this.send(`/api/workspaces/${id}/snapshots`);
+    return listWorkspaceSnapshotsResponse.parse(await res.json());
+  }
+
+  /** Rewind a STOPPED workspace to one of its own snapshots. */
+  async restoreWorkspace(id: string, req: RestoreWorkspaceRequest): Promise<WorkspaceDto> {
+    const body = restoreWorkspaceRequest.parse(req);
+    const res = await this.send(`/api/workspaces/${id}/restore`, {
+      method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });

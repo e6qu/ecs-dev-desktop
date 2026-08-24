@@ -28,6 +28,8 @@ export function toWorkspaceDto(ws: Workspace): WorkspaceDto {
     ...(ws.latestSnapshotId === undefined ? {} : { latestSnapshotId: ws.latestSnapshotId }),
     ...(ws.latestSnapshotAt === undefined ? {} : { latestSnapshotAt: ws.latestSnapshotAt }),
     ...(ws.snapshotIntervalMs === undefined ? {} : { snapshotIntervalMs: ws.snapshotIntervalMs }),
+    ...(ws.idleStopMs === undefined ? {} : { idleStopMs: ws.idleStopMs }),
+    ...(ws.alwaysOn === undefined ? {} : { alwaysOn: ws.alwaysOn }),
     ...(ws.terminatedAt === undefined ? {} : { terminatedAt: ws.terminatedAt }),
     ...(ws.shareEnabled === undefined ? {} : { shareEnabled: ws.shareEnabled }),
   };
@@ -56,6 +58,8 @@ export function toWorkspaceDetail(ws: Workspace): WorkspaceDetailDto {
     ...(ws.latestSnapshotId === undefined ? {} : { latestSnapshotId: ws.latestSnapshotId }),
     ...(ws.latestSnapshotAt === undefined ? {} : { latestSnapshotAt: ws.latestSnapshotAt }),
     ...(ws.snapshotIntervalMs === undefined ? {} : { snapshotIntervalMs: ws.snapshotIntervalMs }),
+    ...(ws.idleStopMs === undefined ? {} : { idleStopMs: ws.idleStopMs }),
+    ...(ws.alwaysOn === undefined ? {} : { alwaysOn: ws.alwaysOn }),
     ...(ws.sshHost === undefined ? {} : { sshHost: ws.sshHost }),
     ...(ws.functional === undefined ? {} : { functional: ws.functional }),
     ...(ws.functionalDetail === undefined ? {} : { functionalDetail: ws.functionalDetail }),

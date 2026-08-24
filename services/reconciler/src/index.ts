@@ -35,6 +35,10 @@ import {
 export interface ActiveWorkspace {
   id: WorkspaceId;
   lastActivity: IsoTimestamp;
+  /** Per-workspace idle-stop window; absent = the deployment default applies. */
+  idleStopMs?: number;
+  /** Always-on: the idle sweep must never stop this workspace. */
+  alwaysOn?: boolean;
 }
 
 /**
@@ -114,7 +118,11 @@ export interface ReconcilerService {
   purgeExpiredTombstones(retentionMs: number): Promise<number>;
 }
 
-/** Pure: the ids of workspaces idle for at least `idleThresholdMs`. */
+/**
+ * Pure: the ids of workspaces idle past their window. Each workspace's own
+ * `idleStopMs` overrides the deployment default `idleThresholdMs`; an
+ * `alwaysOn` workspace is never selected, whatever its idle age.
+ */
 export function selectIdle(
   active: readonly ActiveWorkspace[],
   now: IsoTimestamp,
@@ -122,7 +130,8 @@ export function selectIdle(
 ): WorkspaceId[] {
   const nowMs = Date.parse(now);
   return active
-    .filter((w) => nowMs - Date.parse(w.lastActivity) >= idleThresholdMs)
+    .filter((w) => w.alwaysOn !== true)
+    .filter((w) => nowMs - Date.parse(w.lastActivity) >= (w.idleStopMs ?? idleThresholdMs))
     .map((w) => w.id);
 }
 

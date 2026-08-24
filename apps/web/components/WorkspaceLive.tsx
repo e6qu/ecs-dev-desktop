@@ -10,6 +10,7 @@ import { TESTID } from "../lib/testids";
 import { usePoll } from "../lib/usePoll";
 import { StatusBadge } from "./StatusBadge";
 import { WorkspaceActions } from "./WorkspaceActions";
+import { WorkspaceSnapshots } from "./WorkspaceSnapshots";
 
 const api = new ApiClient({ baseUrl: "" });
 /** Poll cadence while the workspace is in a transitional phase (provisioning / booting /
@@ -372,6 +373,8 @@ export function WorkspaceLive({ id }: { id: string }) {
           </p>
         )}
       </section>
+
+      <WorkspaceSnapshots id={ws.id} state={ws.state} />
 
       <section>
         <h2>Boot &amp; runtime log</h2>

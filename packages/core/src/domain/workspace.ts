@@ -74,6 +74,11 @@ export interface Workspace {
   readonly latestSnapshotAt?: IsoTimestamp;
   /** Optional per-workspace scheduled snapshot interval. Absent means deployment default. */
   readonly snapshotIntervalMs?: number;
+  /** Optional per-workspace idle-stop window (ms). Absent means deployment default. */
+  readonly idleStopMs?: number;
+  /** Always-on: the idle sweep never stops this workspace. Manual stop, delete and
+   * drift reconciliation are unaffected — this only exempts it from `idleTimeout`. */
+  readonly alwaysOn?: boolean;
   /** Private IP of the running task's ENI — used by the SSH gateway to forward. Absent when stopped. */
   readonly sshHost?: string;
   /** Last functional self-report from the in-workspace agent: is the desktop actually
@@ -117,6 +122,8 @@ export interface ProvisionParams {
   editor?: EditorKind;
   resources?: WorkspaceResources;
   snapshotIntervalMs?: number;
+  idleStopMs?: number;
+  alwaysOn?: boolean;
   volumeId: VolumeId;
   taskId: TaskId;
   at: IsoTimestamp;
@@ -147,6 +154,8 @@ export function reserve(
     editor: params.editor ?? DEFAULT_EDITOR,
     resources,
     snapshotIntervalMs: params.snapshotIntervalMs,
+    idleStopMs: params.idleStopMs,
+    alwaysOn: params.alwaysOn,
     state: "provisioning",
     desiredState: "present",
     createdAt: params.at,
@@ -168,6 +177,8 @@ export function provision(params: ProvisionParams): Workspace {
     editor: params.editor ?? DEFAULT_EDITOR,
     resources,
     snapshotIntervalMs: params.snapshotIntervalMs,
+    idleStopMs: params.idleStopMs,
+    alwaysOn: params.alwaysOn,
     state: "running",
     desiredState: "present",
     createdAt: params.at,
@@ -373,6 +384,33 @@ export function retryProvisioning(ws: Workspace, at: IsoTimestamp): Result<Works
 /** Record a point-in-time snapshot on a running workspace. */
 export function recordSnapshot(ws: Workspace, snapshot: SnapshotId, at: IsoTimestamp): Workspace {
   return { ...ws, latestSnapshotId: snapshot, latestSnapshotAt: at, lastActivity: at };
+}
+
+/**
+ * Choose the restore point a stopped workspace wakes from — the checkpoint/rewind
+ * half of the snapshot feature. Only a `stopped` workspace can be re-pointed: a
+ * live one has a running volume the chosen snapshot would silently shadow, and
+ * every other state has no legal wake. The shell verifies the snapshot actually
+ * exists AND belongs to this workspace before calling this; here the change is
+ * purely the reference. `takenAt` is the SNAPSHOT's creation time (not "now"),
+ * so scheduled-snapshot timing keeps its meaning after a rewind.
+ */
+export function restoreToSnapshot(
+  ws: Workspace,
+  snapshot: { id: SnapshotId; takenAt: IsoTimestamp },
+  at: IsoTimestamp,
+): Result<Workspace, DomainError> {
+  if (ws.state !== "stopped") {
+    return err(
+      conflictError(`cannot restore ${ws.id} while '${ws.state}': stop the workspace first`),
+    );
+  }
+  return ok({
+    ...ws,
+    latestSnapshotId: snapshot.id,
+    latestSnapshotAt: snapshot.takenAt,
+    lastActivity: at,
+  });
 }
 
 /**

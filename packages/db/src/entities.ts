@@ -72,6 +72,10 @@ export function makeWorkspaceEntity(client: DynamoDBClient, table = TABLE) {
         latestSnapshotAt: { type: "string", required: false },
         // Optional per-workspace scheduled snapshot interval. Absent means deployment default.
         snapshotIntervalMs: { type: "number", required: false },
+        // Optional per-workspace idle-stop window (ms). Absent means deployment default.
+        idleStopMs: { type: "number", required: false },
+        // Always-on: the idle sweep never stops this workspace.
+        alwaysOn: { type: "boolean", required: false },
         // Private IP of the running task's ENI; absent when stopped/scaled-to-zero.
         sshHost: { type: "string", required: false },
         // Functional self-report from the in-workspace agent (is the desktop usable:

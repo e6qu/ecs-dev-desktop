@@ -106,6 +106,8 @@ async function handlePOST(req: Request) {
       ...(parsed.data.snapshotIntervalMs === undefined
         ? {}
         : { snapshotIntervalMs: parsed.data.snapshotIntervalMs }),
+      ...(parsed.data.idleStopMs === undefined ? {} : { idleStopMs: parsed.data.idleStopMs }),
+      ...(parsed.data.alwaysOn === undefined ? {} : { alwaysOn: parsed.data.alwaysOn }),
       ...(parsed.data.resources === undefined ? {} : { resources: parsed.data.resources }),
       baseImage: image,
       editor,
