@@ -83,9 +83,22 @@ const WORKSPACE_TAG_KEY = "edd:workspace-id";
 /** SSH port the workspace sshd listens on (declared in the task def alongside
  * the OpenVSCode HTTP port {@link DEFAULT_WORKSPACE_PORT}). */
 const WORKSPACE_SSH_PORT = 22;
-/** Max attempts (×2s) to observe the new task become READY (RUNNING + volume +
- * ENI). 90 × 2s = 180s — covers a real Fargate cold start; the sim is sub-second. */
-const READY_ATTEMPTS = 90;
+/** Poll interval for the readiness wait (ms). */
+const READY_POLL_MS = 2_000;
+/**
+ * Default deadline (seconds) for a launched task to become READY (RUNNING +
+ * volume + ENI), overridable via `readyDeadlineS` / `EDD_WORKSPACE_READY_DEADLINE_S`.
+ *
+ * Calibrated against measurements, not assumptions (#264 — the old 180s rested
+ * on "the sim is sub-second", which was false): on the deployed simulator a
+ * manual `RunTask` of the golden workspace reaches RUNNING in 11–17s, and on
+ * real Fargate a cold start pulling the ~5.9 GB golden image can comfortably
+ * exceed 180s. 600s covers the slowest measured workload with headroom. The
+ * value matters doubly because the timeout path stops the task (leak
+ * prevention), so an under-calibrated deadline destroys a workspace that may
+ * be seconds from serving.
+ */
+const DEFAULT_READY_DEADLINE_S = 600;
 
 export interface EcsComputeConfig {
   /** ECS cluster the tasks run in. */
@@ -103,6 +116,10 @@ export interface EcsComputeConfig {
   taskRoleArn?: string;
   /** Whether the task gets a public IP (to pull images from a public subnet). */
   assignPublicIp?: boolean;
+  /** Deadline (seconds) for a launched task to become READY before the launch
+   * fails and the task is stopped. Defaults to {@link DEFAULT_READY_DEADLINE_S};
+   * env override `EDD_WORKSPACE_READY_DEADLINE_S`. */
+  readyDeadlineS?: number;
   containerName?: string;
   mountPath?: string;
   /** Base URL of the control plane injected into the workspace container. */
@@ -342,6 +359,11 @@ export class EcsComputeProvider implements ComputeProvider {
     this.config = deps.config;
     this.secrets = deps.secretsClient;
     this.metrics = deps.metrics;
+  }
+
+  /** Readiness deadline in seconds (see {@link DEFAULT_READY_DEADLINE_S}). */
+  private get readyDeadlineS(): number {
+    return this.config.readyDeadlineS ?? DEFAULT_READY_DEADLINE_S;
   }
 
   private cluster(): string {
@@ -711,21 +733,40 @@ export class EcsComputeProvider implements ComputeProvider {
    * if the task stops first, or on timeout.
    */
   private async awaitTaskReady(taskArn: string): Promise<{ volumeId: string; sshHost: string }> {
-    for (let i = 0; i < READY_ATTEMPTS; i++) {
+    const attempts = Math.ceil((this.readyDeadlineS * 1000) / READY_POLL_MS);
+    // Carried into the timeout error: the last state the poll actually observed.
+    // "Timed out" alone once cost days — the task was parked in PENDING by a
+    // simulator status-semantics bug (sockerless#904), and nothing in the error
+    // said so. Naming the observed state separates "never left PENDING"
+    // (status/semantics problem) from "RUNNING but no volume/ENI" (attachment
+    // problem) at first read.
+    let observed = "never observed";
+    for (let i = 0; i < attempts; i++) {
       const out = await this.client.send(
         new DescribeTasksCommand({ cluster: this.cluster(), tasks: [taskArn] }),
       );
       const task = out.tasks?.[0];
       const ready = taskReady(task);
       if (ready !== undefined) return ready;
+      if (task !== undefined) {
+        const detail = [
+          `lastStatus=${task.lastStatus ?? "unknown"}`,
+          ...(ebsVolumeId(task) === undefined ? ["no volume attached"] : []),
+          ...(taskPrivateIp(task) === undefined ? ["no ENI IP"] : []),
+        ];
+        observed = detail.join(", ");
+      }
       if (task?.lastStatus === "STOPPED") {
         throw new Error(
           `task ${taskArn} stopped before becoming ready: ${task.stoppedReason ?? "unknown"}`,
         );
       }
-      await sleep(2000);
+      if (i + 1 < attempts) await sleep(READY_POLL_MS);
     }
-    throw new Error(`timed out awaiting task ${taskArn} to become ready (RUNNING + volume + ENI)`);
+    throw new Error(
+      `timed out after ${String(this.readyDeadlineS)}s awaiting task ${taskArn} to become ready ` +
+        `(RUNNING + volume + ENI); last observed: ${observed}`,
+    );
   }
 
   private async timeStartupPhase<T>(
@@ -1009,6 +1050,7 @@ export class EcsComputeProvider implements ComputeProvider {
     if (!ebsRoleArn) throw new Error("COMPUTE_PROVIDER=ecs requires ECS_EBS_ROLE_ARN");
     const heartbeatIntervalS =
       positiveIntEnv("EDD_HEARTBEAT_INTERVAL_S") ?? DEFAULT_HEARTBEAT_INTERVAL_S;
+    const readyDeadlineS = positiveIntEnv("EDD_WORKSPACE_READY_DEADLINE_S");
     return new EcsComputeProvider({
       client: EcsComputeProvider.client(),
       ...(metrics === undefined ? {} : { metrics }),
@@ -1029,6 +1071,7 @@ export class EcsComputeProvider implements ComputeProvider {
         taskRoleArn: process.env.ECS_TASK_ROLE_ARN,
         // Public-subnet egress (image pulls; sim route-table model needs it too).
         assignPublicIp: process.env.ECS_ASSIGN_PUBLIC_IP === "1",
+        ...(readyDeadlineS === undefined ? {} : { readyDeadlineS }),
         controlPlaneUrl: process.env.CONTROL_PLANE_URL,
         agentSecret,
         connectionSecret,
