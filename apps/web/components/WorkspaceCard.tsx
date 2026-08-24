@@ -6,6 +6,7 @@ import { gib } from "../lib/format";
 import { TESTID } from "../lib/testids";
 import { PurgeButton } from "./PurgeButton";
 import { ShareToggle } from "./ShareToggle";
+import { IdleStopControl } from "./IdleStopControl";
 import { SnapshotIntervalControl } from "./SnapshotIntervalControl";
 import { StatusBadge } from "./StatusBadge";
 import { WorkspaceActions } from "./WorkspaceActions";
@@ -157,7 +158,10 @@ export function WorkspaceCard({
         <span className="meta-value mono">{snapshotLabel(ws.latestSnapshotAt)}</span>
       </div>
       {canUpdateSettings ? (
-        <SnapshotIntervalControl id={ws.id} valueMs={ws.snapshotIntervalMs} />
+        <>
+          <SnapshotIntervalControl id={ws.id} valueMs={ws.snapshotIntervalMs} />
+          <IdleStopControl id={ws.id} idleStopMs={ws.idleStopMs} alwaysOn={ws.alwaysOn} />
+        </>
       ) : (
         ws.snapshotIntervalMs !== undefined && (
           <div className="meta-line">

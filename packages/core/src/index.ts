@@ -169,6 +169,7 @@ export {
   markTaskLost,
   recordFunctional,
   recordSnapshot,
+  restoreToSnapshot,
 } from "./domain/workspace";
 
 // In-app path-based proxy authorization (pure): path→id + access decision.

@@ -282,6 +282,58 @@ describe("EcsComputeProvider.runTask cleanup on a failed launch", () => {
     // running (its managed EBS volume is reaped by deleteOnTermination).
     expect(stops).toEqual([LAUNCHED_ARN]);
   });
+
+  /** A client whose launched task never leaves PENDING — the readiness poll must
+   * time out, and the error must name what it last observed (#264: a bare
+   * "timed out" hid a status-semantics bug for days). */
+  function pendingForeverClient(stops: string[]): ECSClient {
+    const send = (command: unknown): Promise<unknown> => {
+      if (command instanceof RegisterTaskDefinitionCommand) {
+        return Promise.resolve({
+          taskDefinition: { taskDefinitionArn: "arn:aws:ecs:::task-definition/edd:1" },
+        });
+      }
+      if (command instanceof RunTaskCommand) {
+        return Promise.resolve({ tasks: [{ taskArn: LAUNCHED_ARN }] });
+      }
+      if (command instanceof DescribeTasksCommand) {
+        return Promise.resolve({ tasks: [{ taskArn: LAUNCHED_ARN, lastStatus: "PENDING" }] });
+      }
+      if (command instanceof StopTaskCommand) {
+        stops.push(command.input.task ?? "");
+        return Promise.resolve({});
+      }
+      return Promise.reject(new Error("unexpected command"));
+    };
+    return { send } as unknown as ECSClient;
+  }
+
+  it("times out against the configured deadline and names the last observed state", async () => {
+    const stops: string[] = [];
+    const provider = new EcsComputeProvider({
+      client: pendingForeverClient(stops),
+      config: {
+        subnets: ["subnet-1"],
+        ebsRoleArn: "arn:aws:iam::123456789012:role/ebs",
+        // One poll attempt (ceil(1s / 2s)) — the test exercises the timeout path
+        // without waiting out a production-scale deadline.
+        readyDeadlineS: 1,
+      },
+    });
+
+    await expect(
+      provider.runTask({
+        workspaceId: workspaceId("ws-timeout"),
+        baseImage: baseImage("edd-workspace:e2e"),
+        resources: RESOURCES,
+      }),
+    ).rejects.toThrow(
+      /timed out after 1s .*last observed: lastStatus=PENDING, no volume attached, no ENI IP/,
+    );
+
+    // Leak prevention still holds on the timeout path.
+    expect(stops).toEqual([LAUNCHED_ARN]);
+  });
 });
 
 // Assert the actual RunTask request shape — the security-critical bits a regression

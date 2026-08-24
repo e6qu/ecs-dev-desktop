@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import type { ReactNode } from "react";
 
 import { StatusBadge } from "../../../../components/StatusBadge";
+import { IdleStopControl } from "../../../../components/IdleStopControl";
 import { SnapshotIntervalControl } from "../../../../components/SnapshotIntervalControl";
 import { WorkspaceActions } from "../../../../components/WorkspaceActions";
 import { getCatalogList, getControlPlane } from "../../../../lib/control-plane";
@@ -94,6 +95,7 @@ export default async function InspectWorkspacePage({
         </dl>
         <div style={{ marginTop: 16 }}>
           <SnapshotIntervalControl id={ws.id} valueMs={ws.snapshotIntervalMs} />
+          <IdleStopControl id={ws.id} idleStopMs={ws.idleStopMs} alwaysOn={ws.alwaysOn} />
         </div>
         {imageTags.length > 0 && (
           <div className="pill-row" style={{ marginTop: 16 }}>

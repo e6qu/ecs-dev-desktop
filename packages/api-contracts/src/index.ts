@@ -147,6 +147,10 @@ export const workspace = z.object({
   latestSnapshotId: z.string().optional(),
   latestSnapshotAt: z.iso.datetime().optional(),
   snapshotIntervalMs: z.number().int().positive().optional(),
+  /** Per-workspace idle-stop window (ms); absent = deployment default. */
+  idleStopMs: z.number().int().positive().optional(),
+  /** Always-on: the idle sweep never stops this workspace. */
+  alwaysOn: z.boolean().optional(),
   /** When teardown finished — the undelete retention window counts from here. */
   terminatedAt: z.iso.datetime().optional(),
   /** Owner-controlled spectate flag: viewers may watch a read-only mirror. */
@@ -221,6 +225,16 @@ export type SecurityEventRequest = z.infer<typeof securityEventRequest>;
 export const MIN_SNAPSHOT_INTERVAL_MS = 60 * 1000;
 export const MAX_SNAPSHOT_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
+/** Bounds for the per-workspace idle-stop window. The floor stops a typo'd
+ * "0" from stop-thrashing a session the moment it goes quiet; the ceiling (7
+ * days) is a cost guard — past that, `alwaysOn` says what is actually meant. */
+export const MIN_IDLE_STOP_MS = 60 * 1000;
+export const MAX_IDLE_STOP_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Per-workspace idle-stop window (ms); `null` clears back to the deployment
+ * default on update. */
+const idleStopMs = z.number().int().min(MIN_IDLE_STOP_MS).max(MAX_IDLE_STOP_MS);
+
 export const createWorkspaceRequest = z.object({
   baseImage: z.string().trim().min(1),
   /** Optional git repo to clone into the session at first boot ("one repo per
@@ -237,6 +251,10 @@ export const createWorkspaceRequest = z.object({
     .min(MIN_SNAPSHOT_INTERVAL_MS)
     .max(MAX_SNAPSHOT_INTERVAL_MS)
     .optional(),
+  /** Per-workspace idle-stop window. Absent = deployment default. */
+  idleStopMs: idleStopMs.optional(),
+  /** Always-on: the idle sweep never stops this workspace (manual stop still works). */
+  alwaysOn: z.boolean().optional(),
   /** Per-workspace Fargate task size. Absent = product default. */
   resources: workspaceResources.optional(),
 });
@@ -250,11 +268,38 @@ export const updateWorkspaceRequest = z
       .min(MIN_SNAPSHOT_INTERVAL_MS)
       .max(MAX_SNAPSHOT_INTERVAL_MS)
       .optional(),
+    /** `null` clears the override back to the deployment default. */
+    idleStopMs: idleStopMs.nullable().optional(),
+    alwaysOn: z.boolean().optional(),
   })
-  .refine((p) => p.snapshotIntervalMs !== undefined, {
-    message: "at least one field is required",
-  });
+  .refine(
+    (p) => p.snapshotIntervalMs !== undefined || p.idleStopMs !== undefined || p.alwaysOn !== undefined,
+    { message: "at least one field is required" },
+  );
 export type UpdateWorkspaceRequest = z.infer<typeof updateWorkspaceRequest>;
+
+/** One of a workspace's own snapshots (checkpoint history), newest first. */
+export const workspaceSnapshot = z.object({
+  id: z.string().min(1),
+  createdAt: z.iso.datetime(),
+  sizeGiB: z.number().positive().optional(),
+  /** Data-safety keep (survives orphan GC). */
+  retained: z.boolean(),
+  /** The restore point the next start hydrates from. */
+  current: z.boolean(),
+});
+export type WorkspaceSnapshotDto = z.infer<typeof workspaceSnapshot>;
+
+export const listWorkspaceSnapshotsResponse = z.object({
+  snapshots: z.array(workspaceSnapshot),
+});
+export type ListWorkspaceSnapshotsResponse = z.infer<typeof listWorkspaceSnapshotsResponse>;
+
+/** Rewind a STOPPED workspace to one of its own snapshots. */
+export const restoreWorkspaceRequest = z.object({
+  snapshotId: z.string().min(1),
+});
+export type RestoreWorkspaceRequest = z.infer<typeof restoreWorkspaceRequest>;
 
 export const listWorkspacesResponse = z.object({
   workspaces: z.array(workspace),
@@ -363,6 +408,10 @@ export const workspaceDetail = z.object({
   latestSnapshotId: z.string().optional(),
   latestSnapshotAt: z.iso.datetime().optional(),
   snapshotIntervalMs: z.number().int().positive().optional(),
+  /** Per-workspace idle-stop window (ms); absent = deployment default. */
+  idleStopMs: z.number().int().positive().optional(),
+  /** Always-on: the idle sweep never stops this workspace. */
+  alwaysOn: z.boolean().optional(),
   /** Private IP of the running task's ENI; absent when stopped/scaled-to-zero. */
   sshHost: z.string().optional(),
   /** Functional usability self-report from the in-workspace agent (is the desktop

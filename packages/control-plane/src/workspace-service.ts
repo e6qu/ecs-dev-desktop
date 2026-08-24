@@ -40,6 +40,7 @@ import {
   ownerId,
   planConnect,
   recordSnapshot,
+  restoreToSnapshot,
   snapshotId,
   taskId,
   transition,
@@ -148,6 +149,7 @@ type AuditAction =
   | "session.purged"
   | "session.access"
   | "session.settings"
+  | "session.restore"
   | "session.share_enabled"
   | "session.share_disabled"
   | "session.snapshot_lost"
@@ -261,6 +263,10 @@ function throwForCanceledCreate(
 export interface ActiveWorkspace {
   id: WorkspaceId;
   lastActivity: IsoTimestamp;
+  /** Per-workspace idle-stop window; absent = deployment default. */
+  idleStopMs?: number;
+  /** Always-on: the idle sweep must never stop this workspace. */
+  alwaysOn?: boolean;
 }
 
 /**
@@ -276,6 +282,16 @@ export interface AdminSnapshotView {
   readonly createdAt: IsoTimestamp;
   readonly retained: boolean;
   readonly referenced: boolean;
+}
+
+/** One of a workspace's own snapshots (its checkpoint history), owner-facing. */
+export interface WorkspaceSnapshotView {
+  readonly id: SnapshotId;
+  readonly createdAt: IsoTimestamp;
+  readonly sizeGiB?: number;
+  readonly retained: boolean;
+  /** The restore point the next wake hydrates from. */
+  readonly current: boolean;
 }
 
 /** The string-shaped persistence record (the DynamoDB boundary). */
@@ -300,6 +316,8 @@ interface WorkspaceRecord {
   latestSnapshotId?: string;
   latestSnapshotAt?: string;
   snapshotIntervalMs?: number;
+  idleStopMs?: number;
+  alwaysOn?: boolean;
   sshHost?: string;
   functional?: FunctionalStatus;
   functionalDetail?: string;
@@ -368,6 +386,8 @@ function toWorkspace(r: WorkspaceRecord): Workspace {
     latestSnapshotAt:
       r.latestSnapshotAt === undefined ? undefined : isoTimestamp(r.latestSnapshotAt),
     snapshotIntervalMs: r.snapshotIntervalMs,
+    idleStopMs: r.idleStopMs,
+    alwaysOn: r.alwaysOn,
     sshHost: r.sshHost,
     functional: r.functional,
     functionalDetail: r.functionalDetail,
@@ -436,6 +456,8 @@ export class WorkspaceService {
     editor?: EditorKind;
     resources?: WorkspaceResources;
     snapshotIntervalMs?: number;
+    idleStopMs?: number;
+    alwaysOn?: boolean;
     repoUrl?: string;
     quotaLimit?: number;
   }): Promise<WorkspaceDto> {
@@ -453,6 +475,9 @@ export class WorkspaceService {
       ...(input.snapshotIntervalMs === undefined
         ? {}
         : { snapshotIntervalMs: input.snapshotIntervalMs }),
+      ...(input.idleStopMs === undefined ? {} : { idleStopMs: input.idleStopMs }),
+      // `alwaysOn: false` is the default, modelled as absence (see updateSettings).
+      ...(input.alwaysOn === true ? { alwaysOn: true } : {}),
       at,
     });
     await this.persistNew(
@@ -473,21 +498,40 @@ export class WorkspaceService {
 
   async updateSettings(
     id: WorkspaceId,
-    patch: { snapshotIntervalMs?: number },
+    patch: { snapshotIntervalMs?: number; idleStopMs?: number | null; alwaysOn?: boolean },
     actor: string,
   ): Promise<Result<WorkspaceDto, DomainError>> {
     const loaded = await this.require(id);
     if (!loaded.ok) return loaded;
-    const next = { ...loaded.value.ws, ...patch };
+    // Absent field = leave alone. `idleStopMs: null` clears the override back to
+    // the deployment default; `alwaysOn: false` likewise — both defaults are
+    // modelled as field absence, so persistTransition's clearable list removes
+    // the stored value.
+    const next = {
+      ...loaded.value.ws,
+      ...(patch.snapshotIntervalMs === undefined
+        ? {}
+        : { snapshotIntervalMs: patch.snapshotIntervalMs }),
+      ...(patch.idleStopMs === undefined
+        ? {}
+        : { idleStopMs: patch.idleStopMs ?? undefined }),
+      ...(patch.alwaysOn === undefined ? {} : { alwaysOn: patch.alwaysOn ? true : undefined }),
+    };
+    const changes = [
+      ...(patch.snapshotIntervalMs === undefined
+        ? []
+        : [`snapshot interval ${String(patch.snapshotIntervalMs)}ms`]),
+      ...(patch.idleStopMs === undefined
+        ? []
+        : [patch.idleStopMs === null ? "idle stop: default" : `idle stop ${String(patch.idleStopMs)}ms`]),
+      ...(patch.alwaysOn === undefined ? [] : [patch.alwaysOn ? "always on" : "always on cleared"]),
+    ];
     try {
       await this.persistTransition(next, loaded.value.version, {
         action: "session.settings",
         target: id,
         actor,
-        detail:
-          patch.snapshotIntervalMs === undefined
-            ? "settings updated"
-            : `snapshot interval ${String(patch.snapshotIntervalMs)}ms`,
+        detail: changes.length === 0 ? "settings updated" : changes.join("; "),
       });
       return ok(toWorkspaceDto(next));
     } catch (e) {
@@ -630,6 +674,8 @@ export class WorkspaceService {
     return records.map((r) => ({
       id: workspaceId(r.id),
       lastActivity: isoTimestamp(r.lastActivity),
+      ...(r.idleStopMs === undefined ? {} : { idleStopMs: r.idleStopMs }),
+      ...(r.alwaysOn === undefined ? {} : { alwaysOn: r.alwaysOn }),
     }));
   }
 
@@ -964,8 +1010,16 @@ export class WorkspaceService {
     // scaled to zero. Checking against THIS read's `lastActivity` (not the stale list)
     // closes the race — a still-active workspace is a benign skip, not a stop.
     if (opts?.requireIdleForMs !== undefined) {
+      // The guard re-reads the workspace's OWN settings, not just the sweep's
+      // deployment default: an `alwaysOn` workspace refuses an idle-sweep stop
+      // outright (a setting flipped after the sweep listed it must still win),
+      // and a per-workspace `idleStopMs` extends the required quiet window.
+      if (ws.alwaysOn === true) {
+        return err(conflictError(`stop of ${id} skipped: workspace is always-on`));
+      }
+      const requiredMs = Math.max(opts.requireIdleForMs, ws.idleStopMs ?? 0);
       const idleForMs = Date.parse(this.deps.clock.now()) - Date.parse(ws.lastActivity);
-      if (idleForMs < opts.requireIdleForMs) {
+      if (idleForMs < requiredMs) {
         return err(conflictError(`stop of ${id} skipped: last active ${String(idleForMs)}ms ago`));
       }
     }
@@ -1416,6 +1470,82 @@ export class WorkspaceService {
       return err(conflictError(`snapshot of ${id} lost a concurrent update`));
     }
     return ok(toWorkspaceDto(next));
+  }
+
+  /**
+   * The workspace's own snapshot history (checkpoints), newest first — every
+   * EBS snapshot carrying this workspace's `edd:workspace-id` tag. `current`
+   * marks the restore point the next wake hydrates from. Untagged (legacy)
+   * snapshots never appear: attribution is exactly the tag, the same rule the
+   * admin console uses.
+   */
+  async listWorkspaceSnapshots(
+    id: WorkspaceId,
+  ): Promise<Result<readonly WorkspaceSnapshotView[], DomainError>> {
+    const found = await this.require(id);
+    if (!found.ok) return found;
+    const { ws } = found.value;
+    const all = await this.deps.storage.listSnapshots();
+    return ok(
+      all
+        .filter((s) => s.workspaceId === id)
+        .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
+        .map((s) => ({
+          id: s.id,
+          createdAt: s.createdAt,
+          ...(s.sizeGiB === undefined ? {} : { sizeGiB: s.sizeGiB }),
+          retained: s.retained === true,
+          current: s.id === ws.latestSnapshotId,
+        })),
+    );
+  }
+
+  /**
+   * Rewind: point a STOPPED workspace at one of its own snapshots, so the next
+   * start hydrates that checkpoint ("resume from where I left off" for a chosen
+   * point, not just the latest). This is the disk half of a CRIU-style resume —
+   * the cloud primitives in play (ECS/Fargate + EBS) checkpoint a volume
+   * crash-consistently and cheaply (copy-on-write backends make CreateSnapshot
+   * near-instant), but expose nothing that could checkpoint process memory, so
+   * processes restart while files, checkouts and shell state resume exactly.
+   *
+   * The snapshot must EXIST and CARRY THIS WORKSPACE'S TAG — the tag check is
+   * the authorization boundary that stops a caller restoring another
+   * workspace's data into their own by guessing snapshot ids.
+   */
+  async restoreSnapshot(
+    id: WorkspaceId,
+    snapshot: SnapshotId,
+    actor: string = SYSTEM_ACTOR,
+  ): Promise<Result<WorkspaceDto, DomainError>> {
+    const found = await this.require(id);
+    if (!found.ok) return found;
+    const { ws, version } = found.value;
+    const all = await this.deps.storage.listSnapshots();
+    const target = all.find((s) => s.id === snapshot);
+    if (target?.workspaceId !== id) {
+      // One answer for both "no such snapshot" and "someone else's snapshot":
+      // an existence oracle over other tenants' snapshot ids is itself a leak.
+      return err(notFoundError("snapshot", snapshot));
+    }
+    const next = restoreToSnapshot(
+      ws,
+      { id: target.id, takenAt: target.createdAt },
+      isoTimestamp(this.deps.clock.now()),
+    );
+    if (!next.ok) return next;
+    try {
+      await this.persistTransition(next.value, version, {
+        action: "session.restore",
+        target: id,
+        actor,
+        detail: `restore point set to ${snapshot} (taken ${target.createdAt})`,
+      });
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+      return err(conflictError(`restore of ${id} lost a concurrent update`));
+    }
+    return ok(toWorkspaceDto(next.value));
   }
 
   /**
@@ -2104,6 +2234,11 @@ export class WorkspaceService {
       "functional",
       "functionalDetail",
       "functionalAt",
+      // Settings overrides: clearing one (idleStopMs: null / alwaysOn: false)
+      // returns the workspace to the deployment default, which is modelled as
+      // field absence — so the stored value must actually be removed.
+      "idleStopMs",
+      "alwaysOn",
     ] as const;
     const cleared = clearable.filter((field) => detail[field] === undefined);
     const { id, ...fields } = detail;

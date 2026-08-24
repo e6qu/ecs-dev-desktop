@@ -57,4 +57,30 @@ describe("selectIdle (fuzz)", () => {
     ];
     expect(selectIdle(active, NOW, 0)).toEqual([]);
   });
+
+  it("never selects an always-on workspace, whatever its idle age or the threshold", () => {
+    fc.assert(
+      fc.property(
+        activeArb,
+        fc.integer({ min: 0, max: 30 * 86_400_000 }),
+        ({ active }, threshold) => {
+          const alwaysOn = active.map((w) => ({ ...w, alwaysOn: true }));
+          expect(selectIdle(alwaysOn, NOW, threshold)).toEqual([]);
+        },
+      ),
+    );
+  });
+
+  it("honors a per-workspace idleStopMs over the deployment default", () => {
+    const hourOld: ActiveWorkspace = {
+      id: workspaceId("ws-hour"),
+      lastActivity: isoTimestamp(new Date(NOW_MS - 3_600_000).toISOString()),
+    };
+    // Deployment default (5s) would select it; its own longer window must win.
+    expect(selectIdle([{ ...hourOld, idleStopMs: 7_200_000 }], NOW, 5_000)).toEqual([]);
+    // And its own shorter window must select it even under a huge default.
+    expect(selectIdle([{ ...hourOld, idleStopMs: 60_000 }], NOW, 86_400_000)).toEqual([
+      hourOld.id,
+    ]);
+  });
 });
