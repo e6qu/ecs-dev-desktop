@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { mapClaimsToRole } from "@edd/auth";
-import { isRole, type Role } from "@edd/authz";
+import { isRole } from "@edd/authz";
 import { ownerId } from "@edd/core";
 import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
@@ -223,10 +223,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     async session({ session, token }) {
       const authSession = await requireAuthSessionStore(token);
       if (authSession === null) {
-        const user = session.user as { id?: string; role?: Role; authSessionId?: string };
-        delete user.id;
-        delete user.role;
-        delete user.authSessionId;
+        // No valid server-side record means NO session -- not an anonymous
+        // husk. Stripping only id/role used to leave a `user` object still
+        // carrying name/email/image, so a replayed post-logout cookie (or a
+        // revoked session) answered /api/auth/session with an identity. The
+        // signed-out contract is that `user` is ABSENT.
+        delete (session as { user?: unknown }).user;
         return session;
       }
       const { uid, role } = token;

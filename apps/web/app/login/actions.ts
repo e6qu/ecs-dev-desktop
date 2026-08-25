@@ -9,7 +9,7 @@ import { field } from "../../lib/forms";
 import { expireCookie } from "../../lib/expire-cookie";
 import { devAuthEnabled } from "../../lib/principal";
 import { shauthEndSessionURL, shauthOidcConfig } from "../../lib/shauth";
-import { getAuthSessionLogoutContext } from "../../lib/auth-sessions";
+import { getAuthSessionLogoutContext, revokeAuthSession } from "../../lib/auth-sessions";
 
 // Host-only (no Domain), so the dev cookies are scoped to the exact host the app
 // is served from (e.g. edd.localhost) and never leak to other localhost apps.
@@ -53,6 +53,13 @@ export async function signOutAction(): Promise<void> {
   const authSessionId = currentSession?.user.authSessionId;
   const logoutContext =
     typeof authSessionId === "string" ? await getAuthSessionLogoutContext(authSessionId) : null;
+  // Revoke the server-side record HERE, synchronously: the JWT cookie stays
+  // cryptographically valid until it expires, so without this the only thing
+  // ending the session server-side was Shauth's asynchronous back-channel
+  // logout -- and a replayed pre-logout cookie kept authenticating until it
+  // arrived. Fail-loud on a store error: an incomplete sign-out must not
+  // pretend to have signed out.
+  if (typeof authSessionId === "string") await revokeAuthSession(authSessionId);
   await signOut({ redirect: false });
   for (const cookie of store.getAll()) {
     if (

@@ -7,6 +7,7 @@ const devAuthEnabled = vi.fn();
 const shauthOidcConfig = vi.fn();
 const shauthEndSessionURL = vi.fn();
 const getAuthSessionLogoutContext = vi.fn();
+const revokeAuthSession = vi.fn();
 const auth = vi.fn();
 const signOut = vi.fn();
 const signIn = vi.fn();
@@ -15,7 +16,7 @@ vi.mock("next/headers", () => ({ cookies }));
 vi.mock("next/navigation", () => ({ redirect }));
 vi.mock("../../lib/principal", () => ({ devAuthEnabled }));
 vi.mock("../../lib/shauth", () => ({ shauthEndSessionURL, shauthOidcConfig }));
-vi.mock("../../lib/auth-sessions", () => ({ getAuthSessionLogoutContext }));
+vi.mock("../../lib/auth-sessions", () => ({ getAuthSessionLogoutContext, revokeAuthSession }));
 vi.mock("../../auth", () => ({ auth, signIn, signOut }));
 
 const { localAccountSignIn, signOutAction } = await import("./actions");
@@ -69,6 +70,10 @@ describe("signOutAction", () => {
     await expect(signOutAction()).rejects.toThrow("NEXT_REDIRECT");
 
     expect(getAuthSessionLogoutContext).toHaveBeenCalledWith("app-session");
+    // The server-side record is revoked SYNCHRONOUSLY: without it, a replayed
+    // pre-logout JWT cookie keeps authenticating until Shauth's asynchronous
+    // back-channel logout lands.
+    expect(revokeAuthSession).toHaveBeenCalledWith("app-session");
     expect(signOut).toHaveBeenCalledWith({ redirect: false });
     // The secure-prefixed deletion MUST carry Secure or the browser drops it
     // and the session survives sign-out (measured on the deployed app).
@@ -93,6 +98,7 @@ describe("signOutAction", () => {
 
     await expect(signOutAction()).rejects.toThrow("NEXT_REDIRECT");
 
+    expect(revokeAuthSession).toHaveBeenCalledWith("github-session");
     expect(signOut).toHaveBeenCalledWith({ redirect: false });
     expect(setCookie).toHaveBeenCalledWith(expiredSecure("__Secure-authjs.session-token"));
     expect(shauthEndSessionURL).not.toHaveBeenCalled();
