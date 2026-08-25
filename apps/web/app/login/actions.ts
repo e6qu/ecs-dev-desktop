@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { DEV_ROLE_COOKIE, DEV_USER_COOKIE } from "../../lib/constants";
 import { findDevUser } from "../../lib/dev-users";
 import { field } from "../../lib/forms";
+import { expireCookie } from "../../lib/expire-cookie";
 import { devAuthEnabled } from "../../lib/principal";
 import { shauthEndSessionURL, shauthOidcConfig } from "../../lib/shauth";
 import { getAuthSessionLogoutContext } from "../../lib/auth-sessions";
@@ -57,7 +58,10 @@ export async function signOutAction(): Promise<void> {
     if (
       AUTH_COOKIE_STEMS.some((stem) => cookie.name === stem || cookie.name.startsWith(`${stem}.`))
     ) {
-      store.delete(cookie.name);
+      // Attribute-correct expiry, not store.delete: a deletion for a
+      // __Secure-/__Host- cookie without the Secure attribute is rejected by
+      // the browser, which left the session cookie alive after sign-out.
+      expireCookie(store, cookie.name);
     }
   }
   if (shauth !== null && logoutContext?.provider === "shauth") {

@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 
 import { PERSONA_COOKIE } from "../lib/constants";
 import { encodePersonaCookie, getPagePrincipal } from "../lib/principal";
+import { expireCookie } from "../lib/expire-cookie";
 
 // Host-only (no Domain), matching the dev-auth cookie convention.
 const PERSONA_COOKIE_OPTS = { httpOnly: true, sameSite: "lax", path: "/" } as const;
@@ -46,7 +47,9 @@ export async function setPersonaAction(formData: FormData): Promise<void> {
 export async function resetCookiesAction(): Promise<void> {
   const store = await cookies();
   for (const cookie of store.getAll()) {
-    store.delete(cookie.name);
+    // Attribute-correct expiry (see lib/expire-cookie): a bare delete of a
+    // __Secure-/__Host- cookie is rejected by the browser and survives.
+    expireCookie(store, cookie.name);
   }
   redirect("/login");
 }
