@@ -32,16 +32,15 @@ export function SignOutButton({
       disabled={busy}
       onClick={() => {
         setBusy(true);
-        void signOutAction()
-          .then(({ redirectTo }) => {
-            window.location.assign(redirectTo);
-          })
-          .catch(() => {
-            // The action failed before ending the session (it fails loudly on
-            // an incomplete sign-out) — re-enable the control so the user can
-            // retry rather than being stuck on a dead button.
-            setBusy(false);
-          });
+        // No catch: a failed sign-out must FAIL, visibly. The action fails
+        // loudly on an incomplete sign-out (revocation or cookie expiry), and
+        // swallowing that here would leave a signed-in session behind a button
+        // that looked like it worked. The rejection surfaces as an unhandled
+        // error and the control stays disabled -- a dead button is the honest
+        // representation of a sign-out that did not happen.
+        void signOutAction().then(({ redirectTo }) => {
+          window.location.assign(redirectTo);
+        });
       }}
     >
       Sign out
