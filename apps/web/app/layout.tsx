@@ -10,8 +10,8 @@ import { HelpToggle } from "../components/HelpToggle";
 import { PersonaSwitcher } from "../components/PersonaSwitcher";
 import { getPagePrincipal } from "../lib/principal";
 import { resetCookiesAction } from "./actions";
-import { signOutAction } from "./login/actions";
 import "./globals.css";
+import { SignOutButton } from "../components/SignOutButton";
 
 export const metadata: Metadata = {
   title: "ecs-dev-desktop — control plane",
@@ -77,11 +77,7 @@ export default async function RootLayout({ children }: { children: ReactNode }) 
               <Link href="/settings/ssh-keys" className="btn">
                 ssh keys
               </Link>
-              <form action={signOutAction}>
-                <button className="btn" type="submit" data-shauth-sign-out>
-                  Sign out
-                </button>
-              </form>
+              <SignOutButton />
             </span>
           ) : (
             <Link href="/login" className="btn primary">

@@ -67,7 +67,9 @@ describe("signOutAction", () => {
     });
     shauthEndSessionURL.mockReturnValue("https://auth.dev.e6qu.dev/oauth2/sessions/logout");
 
-    await expect(signOutAction()).rejects.toThrow("NEXT_REDIRECT");
+    await expect(signOutAction()).resolves.toEqual({
+      redirectTo: "https://auth.dev.e6qu.dev/oauth2/sessions/logout",
+    });
 
     expect(getAuthSessionLogoutContext).toHaveBeenCalledWith("app-session");
     // The server-side record is revoked SYNCHRONOUSLY: without it, a replayed
@@ -81,8 +83,11 @@ describe("signOutAction", () => {
     expect(setCookie).toHaveBeenCalledWith(expired("authjs.csrf-token"));
     const expiredNames = setCookie.mock.calls.map((call) => (call[0] as { name: string }).name);
     expect(expiredNames).not.toContain("unrelated");
+    // The action RETURNS the cross-origin destination rather than
+    // redirect()ing to it -- an action redirect to another origin is attempted
+    // as an RSC fetch and blocked by CORS before the router's fallback.
     expect(shauthEndSessionURL).toHaveBeenCalledWith(config, "provider-id-token");
-    expect(redirect).toHaveBeenCalledWith("https://auth.dev.e6qu.dev/oauth2/sessions/logout");
+    expect(redirect).not.toHaveBeenCalled();
   });
 
   it("does not claim global Shauth logout for another identity provider", async () => {
@@ -96,13 +101,13 @@ describe("signOutAction", () => {
     auth.mockResolvedValue({ user: { authSessionId: "github-session" } });
     getAuthSessionLogoutContext.mockResolvedValue(null);
 
-    await expect(signOutAction()).rejects.toThrow("NEXT_REDIRECT");
+    await expect(signOutAction()).resolves.toEqual({ redirectTo: "/login" });
 
     expect(revokeAuthSession).toHaveBeenCalledWith("github-session");
     expect(signOut).toHaveBeenCalledWith({ redirect: false });
     expect(setCookie).toHaveBeenCalledWith(expiredSecure("__Secure-authjs.session-token"));
     expect(shauthEndSessionURL).not.toHaveBeenCalled();
-    expect(redirect).toHaveBeenCalledWith("/login");
+    expect(redirect).not.toHaveBeenCalled();
   });
 });
 

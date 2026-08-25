@@ -40,12 +40,25 @@ export async function devSignIn(formData: FormData): Promise<void> {
  * not — it only knows its own session cookie); otherwise it ends the Auth.js
  * session.
  */
-export async function signOutAction(): Promise<void> {
+/**
+ * End the session and say where the browser should go next.
+ *
+ * The action RETURNS the destination instead of `redirect()`ing to it: the
+ * Shauth end-session URL is CROSS-ORIGIN, and an action redirect to another
+ * origin makes Next's router attempt it as an RSC fetch first -- which CORS
+ * blocks (visible as "blocked by CORS policy" + `net::ERR_FAILED` console
+ * errors with an `_rsc=` query) before the router falls back to a document
+ * navigation. The sign-out still worked, but every sign-out risked a burst of
+ * browser errors. The client button performs a plain `window.location`
+ * navigation with the returned URL, which follows cross-origin redirects the
+ * way logout flows expect.
+ */
+export async function signOutAction(): Promise<{ redirectTo: string }> {
   const store = await cookies();
   if (devAuthEnabled()) {
     store.delete(DEV_USER_COOKIE);
     store.delete(DEV_ROLE_COOKIE);
-    redirect("/login");
+    return { redirectTo: "/login" };
   }
   const shauth = shauthOidcConfig();
   const { auth, signOut } = await import("../../auth");
@@ -72,9 +85,9 @@ export async function signOutAction(): Promise<void> {
     }
   }
   if (shauth !== null && logoutContext?.provider === "shauth") {
-    redirect(shauthEndSessionURL(shauth, logoutContext.providerIdToken));
+    return { redirectTo: shauthEndSessionURL(shauth, logoutContext.providerIdToken) };
   }
-  redirect("/login");
+  return { redirectTo: "/login" };
 }
 
 export async function localAccountSignIn(formData: FormData): Promise<void> {
