@@ -1,17 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-"use client";
-
-import { useState } from "react";
-
-import { signOutAction } from "../app/login/actions";
 
 /**
- * Sign out with a DOCUMENT navigation to the destination the action returns.
- * The Shauth end-session URL is cross-origin, and letting the server action
- * `redirect()` there made Next's router try it as an RSC fetch first — CORS
- * blocked it with console errors before the fallback navigation salvaged the
- * flow. The action ends the session (revocation + cookie expiry ride its
- * response); this button then simply goes where it was told.
+ * Sign out with a plain HTML form POST to the /auth/sign-out route handler —
+ * a DOCUMENT request whose 303 the browser follows natively, cross-origin
+ * included. Deliberately neither a server action (an action redirect to the
+ * cross-origin Shauth end-session URL is attempted as an RSC fetch and
+ * CORS-blocked) nor an onClick navigation (which needs hydration; a click
+ * landing before hydration was a silent no-op the SSO browser smoke caught).
+ * Works with JavaScript disabled, which is the point.
  */
 export function SignOutButton({
   className = "btn",
@@ -23,27 +19,15 @@ export function SignOutButton({
    * the marker keep finding exactly one control per page. */
   contractAttribute?: boolean;
 }) {
-  const [busy, setBusy] = useState(false);
   return (
-    <button
-      className={className}
-      type="button"
-      {...(contractAttribute ? { "data-shauth-sign-out": true } : {})}
-      disabled={busy}
-      onClick={() => {
-        setBusy(true);
-        // No catch: a failed sign-out must FAIL, visibly. The action fails
-        // loudly on an incomplete sign-out (revocation or cookie expiry), and
-        // swallowing that here would leave a signed-in session behind a button
-        // that looked like it worked. The rejection surfaces as an unhandled
-        // error and the control stays disabled -- a dead button is the honest
-        // representation of a sign-out that did not happen.
-        void signOutAction().then(({ redirectTo }) => {
-          window.location.assign(redirectTo);
-        });
-      }}
-    >
-      Sign out
-    </button>
+    <form action="/auth/sign-out" method="post">
+      <button
+        className={className}
+        type="submit"
+        {...(contractAttribute ? { "data-shauth-sign-out": true } : {})}
+      >
+        Sign out
+      </button>
+    </form>
   );
 }
