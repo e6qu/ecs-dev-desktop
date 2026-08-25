@@ -3,7 +3,7 @@ import { applicationReleaseRevision } from "@edd/config";
 import { redirect } from "next/navigation";
 
 import { getPagePrincipal } from "../../../lib/principal";
-import { signOutAction } from "../../login/actions";
+import { SignOutButton } from "../../../components/SignOutButton";
 
 export const dynamic = "force-dynamic";
 
@@ -42,11 +42,7 @@ export default async function AuthenticationValidationPage() {
           {releaseRevision}
         </dd>
       </dl>
-      <form action={signOutAction}>
-        <button className="btn primary" type="submit">
-          Sign out
-        </button>
-      </form>
+      <SignOutButton className="btn primary" contractAttribute={false} />
     </section>
   );
 }
