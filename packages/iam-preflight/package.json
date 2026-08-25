@@ -12,12 +12,12 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@aws-sdk/client-iam": "^3.1116.0",
-    "@aws-sdk/client-sts": "^3.1116.0",
+    "@aws-sdk/client-iam": "^3.1117.0",
+    "@aws-sdk/client-sts": "^3.1117.0",
     "@edd/config": "workspace:*",
     "@edd/core": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0"
+    "@types/node": "^26.3.0"
   }
 }
