@@ -80,6 +80,13 @@ locals {
     EDD_UNDELETE_RETENTION_MS      = tostring(var.undelete_retention_ms)
     EDD_PROVISIONING_TIMEOUT_MS    = tostring(var.provisioning_timeout_ms)
     EDD_HEARTBEAT_INTERVAL_S       = tostring(var.heartbeat_interval_s)
+    # The control plane's own Fargate footprint, so it can price itself in the
+    # monitoring observation. These are the values this very task definition is
+    # created with, passed in rather than guessed: a run-rate that invented the
+    # control plane's size would misstate every total it reports.
+    EDD_CONTROL_PLANE_CPU_UNITS = tostring(var.control_plane_cpu)
+    EDD_CONTROL_PLANE_MEMORY_MB = tostring(var.control_plane_memory)
+    EDD_CONTROL_PLANE_REPLICAS  = tostring(local.control_plane_active_desired)
   }
   control_plane_environment = merge(local.base_environment, var.extra_environment)
 }
