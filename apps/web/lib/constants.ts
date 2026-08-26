@@ -71,3 +71,9 @@ export const CONNECTION_SECRET_ENV = "EDD_CONNECTION_SECRET";
 export const GATEWAY_SECRET_ENV = "EDD_GATEWAY_SECRET";
 /** Bearer token header sent by machine callers (idle-agent, SSH gateway). */
 export const MACHINE_AUTH_HEADER = "authorization";
+/** Env var on the control plane: the shared bearer Shauth presents when reading
+ * this deployment's monitoring observation. Unlike the agent and gateway
+ * secrets it derives nothing per workspace -- the observation is fleet-wide, so
+ * the token is compared directly (in constant time) rather than used as an HMAC
+ * key. Shauth holds the same value against this app's catalog registration. */
+export const MONITORING_TOKEN_ENV = "EDD_MONITORING_TOKEN";
