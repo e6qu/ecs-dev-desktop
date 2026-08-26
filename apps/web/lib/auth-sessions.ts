@@ -179,10 +179,18 @@ async function revokeAuthSessionsByCorrelation(
 }
 
 /**
- * Consumes a verified provider logout token exactly once, then revokes every
- * matching application session. Back-channel logout identifies the provider
- * session by `sid`, the provider account by `sub`, or both; either standard
- * correlation key therefore invalidates every matching EDD browser session.
+ * Consumes a verified provider logout token exactly once, then revokes the
+ * sessions that token actually ended.
+ *
+ * `sid` NAMES the ended provider session, so when it is present it is the only
+ * correlation used. Also revoking by `sub` (which both keys being present used
+ * to trigger) logs the account out of sessions the provider did not end --
+ * including sessions established AFTER the logout event, since back-channel
+ * delivery is asynchronous and can arrive minutes late. That is what happened
+ * in the live acceptance suite: one application's sign-out fanned out a logout
+ * token, and its late arrival killed a DIFFERENT, newer session of the same
+ * account mid-journey. `sub` alone remains the OpenID Connect meaning of
+ * "log this account out everywhere" and still revokes account-wide.
  */
 export async function consumeProviderLogoutToken(
   provider: string,
@@ -207,14 +215,15 @@ export async function consumeProviderLogoutToken(
     })
     .go();
 
-  let revoked = 0;
   if (token.providerSessionId !== undefined) {
-    revoked += await revokeAuthSessionsByProviderSession(provider, token.providerSessionId);
+    return await revokeAuthSessionsByProviderSession(provider, token.providerSessionId);
   }
   if (token.providerSubject !== undefined) {
-    revoked += await revokeAuthSessionsByProviderSubject(provider, token.providerSubject);
+    // No sid: the token ends the ACCOUNT's sessions, which is the specified
+    // meaning of a sub-only logout token.
+    return await revokeAuthSessionsByProviderSubject(provider, token.providerSubject);
   }
-  return revoked;
+  throw new Error("provider logout token did not contain sid or sub");
 }
 
 export async function validateAuthSessionToken(

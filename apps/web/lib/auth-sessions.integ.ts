@@ -100,7 +100,7 @@ describe("durable Shauth session correlation (DynamoDB Local)", () => {
     await expect(getAuthSessionLogoutContext(local.id)).resolves.toBeNull();
   });
 
-  it("consumes each signed-token identifier once and revokes by sid and sub", async () => {
+  it("revokes only the session the sid names, leaving the account's other sessions alone", async () => {
     const sameSession = await createAuthSession({
       ownerId: "user-correlated",
       role: "developer",
@@ -133,26 +133,44 @@ describe("durable Shauth session correlation (DynamoDB Local)", () => {
       providerSubject: "user-correlated",
     };
 
-    await expect(consumeProviderLogoutToken("shauth", token, nowMs)).resolves.toBe(2);
+    // ONE session: the one `sid` names. Revoking the account's other sessions
+    // too (which a sid+sub token used to do) logs the user out of sessions the
+    // provider never ended -- including ones established after the logout
+    // event, since back-channel delivery is asynchronous. Every application
+    // that shared this SSO session still logs out, because they share the sid.
+    await expect(consumeProviderLogoutToken("shauth", token, nowMs)).resolves.toBe(1);
     await expect(consumeProviderLogoutToken("shauth", token, nowMs)).rejects.toThrow();
 
-    for (const session of [sameSession, sameSubject]) {
-      await expect(
-        validateAuthSessionToken({
-          authSessionId: session.id,
-          authSessionVersion: AUTH_SESSION_SCHEMA_VERSION,
-          uid: "user-correlated",
-          role: "developer",
-        }),
-      ).resolves.toBeNull();
-    }
-    await expect(
+    const validate = async (id: string, uid: string, role: "developer" | "admin") =>
       validateAuthSessionToken({
-        authSessionId: unrelated.id,
+        authSessionId: id,
         authSessionVersion: AUTH_SESSION_SCHEMA_VERSION,
-        uid: "user-unrelated",
-        role: "admin",
-      }),
-    ).resolves.toMatchObject({ id: unrelated.id });
+        uid,
+        role,
+      });
+
+    // The named session is gone...
+    await expect(validate(sameSession.id, "user-correlated", "developer")).resolves.toBeNull();
+    // ...the same account's OTHER provider session is untouched...
+    await expect(validate(sameSubject.id, "user-correlated", "developer")).resolves.toMatchObject({
+      id: sameSubject.id,
+    });
+    // ...and another account is of course untouched.
+    await expect(validate(unrelated.id, "user-unrelated", "admin")).resolves.toMatchObject({
+      id: unrelated.id,
+    });
+
+    // A sub-only token keeps its OpenID Connect meaning: end every session the
+    // account holds, including the one the sid-scoped revocation spared.
+    const accountWide = {
+      tokenId: "logout-token-account-wide",
+      expiresAtEpochSeconds: Math.floor(nowMs / 1000) + 300,
+      providerSubject: "user-correlated",
+    };
+    await expect(consumeProviderLogoutToken("shauth", accountWide, nowMs)).resolves.toBe(1);
+    await expect(validate(sameSubject.id, "user-correlated", "developer")).resolves.toBeNull();
+    await expect(validate(unrelated.id, "user-unrelated", "admin")).resolves.toMatchObject({
+      id: unrelated.id,
+    });
   });
 });
