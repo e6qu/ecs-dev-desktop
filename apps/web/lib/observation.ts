@@ -241,11 +241,26 @@ export function buildObservation(input: ObservationInput): Observation {
 }
 
 /**
- * A container taking socket throttles is degraded even though it is serving:
- * the kernel is stalling it and dropping its allocations. Unreadable counters
- * are `unknown`, which is not the same as healthy.
+ * A container hitting its memory ceiling, or taking socket throttles, is
+ * degraded even though it is still serving: the kernel is stalling it and
+ * refusing its allocations.
+ *
+ * Judged on whichever counters this kernel actually exposes, not on all of
+ * them. `sock_throttled` is not in every kernel's memory.events -- the
+ * deployed control plane runs on a 6.1 guest that has `max` but not
+ * `sock_throttled`, while the 7.0 host has both. Requiring both meant that
+ * container reported `unknown` forever while sitting on a perfectly good
+ * `ceiling_hits` of 0, throwing away the primary signal because a secondary
+ * one was missing. `unknown` now means what it says: nothing was readable.
+ *
+ * Deliberately not defaulting a missing counter to 0. Absent is not zero --
+ * zero is the healthy reading, and pretending an unreadable counter is healthy
+ * is the exact failure this resource exists to expose.
  */
 function containerHealth(self: ObservationInput["self"]): ResourceHealth {
-  if (self.socketThrottles === undefined || self.ceilingHits === undefined) return "unknown";
-  return self.socketThrottles > 0 || self.ceilingHits > 0 ? "degraded" : "healthy";
+  const readable = [self.ceilingHits, self.socketThrottles].filter(
+    (counter): counter is number => counter !== undefined,
+  );
+  if (readable.length === 0) return "unknown";
+  return readable.some((counter) => counter > 0) ? "degraded" : "healthy";
 }

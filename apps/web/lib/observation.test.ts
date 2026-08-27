@@ -93,6 +93,28 @@ describe("resources", () => {
     expect(container?.health).toBe("degraded");
   });
 
+  // The deployed control plane runs on a 6.1 guest kernel whose memory.events
+  // has `max` but no `sock_throttled`; the 7.0 host has both. Requiring both
+  // made that container report `unknown` forever while carrying a perfectly
+  // good ceiling-hits reading -- observed live on the deployment.
+  it("judges on the counters this kernel exposes, not on all of them", () => {
+    const healthy = buildObservation(
+      input({ self: { memoryCurrentBytes: 1, memoryMaxBytes: 2, ceilingHits: 0 } }),
+    ).resources.find((r) => r.id === "web-container");
+    expect(healthy?.health).toBe("healthy");
+
+    const degraded = buildObservation(
+      input({ self: { memoryCurrentBytes: 1, memoryMaxBytes: 2, ceilingHits: 7 } }),
+    ).resources.find((r) => r.id === "web-container");
+    expect(degraded?.health).toBe("degraded");
+
+    // The mirror case: throttles readable, ceiling hits not.
+    const throttled = buildObservation(
+      input({ self: { socketThrottles: 42 } }),
+    ).resources.find((r) => r.id === "web-container");
+    expect(throttled?.health).toBe("degraded");
+  });
+
   it("reports the container as unknown when the counters cannot be read", () => {
     const observation = buildObservation(input({ self: {} }));
     const container = observation.resources.find((r) => r.id === "web-container");
