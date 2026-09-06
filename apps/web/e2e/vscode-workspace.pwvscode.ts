@@ -52,11 +52,18 @@ async function assertFileMenuOpens(page: Page): Promise<void> {
       timeout: 30_000,
     },
   );
-  await fileMenu.click();
-  await expect(
-    page.locator(".monaco-menu-container, .context-view.monaco-menu, [role='menu']").first(),
-    "OpenVSCode File menu must open from a real click",
-  ).toBeVisible({ timeout: 10_000 });
+  // A real click must open the menu — but on a cold workbench the first click can land
+  // while extension activation (and its "sign in" prompts) is still re-focusing the
+  // window, which closes a just-opened menu again. Retry the click until the menu
+  // stays open; the assertion is still that a click opens it, not that it is merely
+  // rendered.
+  await expect(async () => {
+    await fileMenu.click();
+    await expect(
+      page.locator(".monaco-menu-container, .context-view.monaco-menu, [role='menu']").first(),
+      "OpenVSCode File menu must open from a real click",
+    ).toBeVisible({ timeout: 3_000 });
+  }).toPass({ timeout: 30_000 });
   await expect(
     page.getByRole("menuitem", { name: /New (Text )?File|Open File|Open Folder/ }).first(),
     "OpenVSCode File menu must expose real file actions",
