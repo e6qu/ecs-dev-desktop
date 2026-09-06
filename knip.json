@@ -6,7 +6,7 @@
     "infra/images/base/patch-openvscode.mjs",
     "infra/images/base/vendor-harness-server.js"
   ],
-  "ignoreBinaries": ["ssh-keygen"],
+  "ignoreBinaries": ["ssh-keygen", "openssl"],
   "workspaces": {
     "apps/demo": {
       "entry": [

@@ -28,6 +28,7 @@ import {
   editorTokenRedirect,
   isTerminalOverlayRequest,
   isWorkspaceDocumentNavigation,
+  isAbsentEditorAsset,
   proxyWorkspaceHttp,
   proxyWorkspaceUpgrade,
   resolveWorkspaceTerminalUpstream,
@@ -143,6 +144,11 @@ const server = createServer((req, res) => {
       // leaked in a Referer header to any sub-resource or outbound link.
       res.writeHead(302, { location: tokenRedirect, "referrer-policy": "no-referrer" });
       res.end();
+      return;
+    }
+    if (isAbsentEditorAsset(new URL(req.url ?? "/", "http://internal").pathname, authz.editor)) {
+      res.writeHead(404, { "content-type": "text/plain" });
+      res.end("Not found");
       return;
     }
     try {

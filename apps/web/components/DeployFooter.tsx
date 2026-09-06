@@ -32,7 +32,7 @@ export function DeployFooter({ sha, time }: { sha: string; time: string }) {
   const footerStyle = {
     marginTop: 32,
     paddingTop: 12,
-    borderTop: "1px solid var(--line, #2a2f27)",
+    borderTop: "1px solid var(--line)",
     color: "var(--dim)",
     fontSize: 12,
   } as const;
@@ -59,11 +59,7 @@ export function DeployFooter({ sha, time }: { sha: string; time: string }) {
       style={footerStyle}
     >
       deployed{" "}
-      {sha === "" ? (
-        "(unknown commit)"
-      ) : (
-        <code style={{ color: "var(--accent, #9fef00)" }}>{sha}</code>
-      )}
+      {sha === "" ? "(unknown commit)" : <code style={{ color: "var(--accent)" }}>{sha}</code>}
       {hasTime && (
         <>
           {" · "}

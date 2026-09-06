@@ -115,9 +115,49 @@ test("developer chooses a session environment from the metadata picker", async (
     .locator(sel(TESTID.catalogPickerOption, { "data-image": NODE_IMAGE }))
     .first();
   await expect(option).toBeVisible();
+  // Some entry is preselected (the first the catalog lists — an order that depends on
+  // generated ids, so which one is not asserted); choosing this one selects it.
+  await expect(
+    page.locator(sel(TESTID.catalogPickerOption, { "data-selected": "true" })),
+  ).toHaveCount(1);
+  await option.click();
   await expect(option).toHaveAttribute("data-selected", "true");
   await expect(option).toHaveAttribute("data-tags", "typescript,node");
   await expect(option).toHaveAttribute("data-tools", "pnpm,eslint");
+});
+
+test("a public repository URL that cannot be cloned is refused before any session exists", async ({
+  page,
+  context,
+  request,
+}) => {
+  await loginAs(context, "alice", "developer");
+  await page.goto("/sessions/new");
+  await expect(page.getByRole("heading", { name: "Start a session" })).toBeVisible();
+
+  const before = await request.get("/api/workspaces", {
+    headers: { cookie: devCookieHeader("alice", "developer") },
+  });
+  const owned = ((await before.json()) as { workspaces: { id: string }[] }).workspaces.length;
+
+  // The one repository mode that needs no linked account: paste a URL. Nothing listens on
+  // this loopback port, so the host is unreachable — the same refusal path a typo'd or
+  // private GitHub URL takes (the create request checks the repository before reserving).
+  await page.locator(sel(TESTID.sessionModeOption, { "data-mode": "public" })).click();
+  await page
+    .getByRole("textbox", { name: "public repository URL" })
+    .fill("https://127.0.0.1:1/acme/app.git");
+  await page.locator(sel(TESTID.sessionStart)).click();
+
+  const notice = page.locator(sel(TESTID.sessionError));
+  await expect(notice).toBeVisible();
+  await expect(notice).toContainText("https://127.0.0.1:1/acme/app.git could not be reached");
+  // Still on the launcher (no navigation to a booting session), and nothing was created.
+  await expect(page).toHaveURL(/\/sessions\/new$/);
+  const after = await request.get("/api/workspaces", {
+    headers: { cookie: devCookieHeader("alice", "developer") },
+  });
+  expect(((await after.json()) as { workspaces: { id: string }[] }).workspaces).toHaveLength(owned);
 });
 
 test("developer creates, stops, and deletes a workspace from the catalog", async ({

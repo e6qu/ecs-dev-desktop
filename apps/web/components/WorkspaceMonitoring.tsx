@@ -51,7 +51,7 @@ function Sparkline({ series, unit }: { series: MonitoringSeriesDto; unit: string
         <polyline
           points={path}
           fill="none"
-          stroke="var(--accent, #9fef00)"
+          stroke="var(--accent)"
           strokeWidth="1.5"
           vectorEffect="non-scaling-stroke"
         />

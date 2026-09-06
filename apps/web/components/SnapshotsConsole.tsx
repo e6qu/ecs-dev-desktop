@@ -39,15 +39,15 @@ function shortWorkspace(id: string): string {
  * so out-of-band changes converge without a hard refresh, and a load failure is
  * shown loudly (never a silently empty table — §6.5).
  */
+function loadSnapshots(): Promise<ListSnapshotsResponse> {
+  return fetch("/api/admin/snapshots").then((r) => jsonOrThrow<ListSnapshotsResponse>(r));
+}
+
 export function SnapshotsConsole() {
-  // Bumping the nonce swaps `load`'s identity, so usePoll re-runs immediately after
-  // a purge — the table reflects the reap without waiting a poll interval.
+  // Bumping the nonce re-runs the poll immediately after a purge — the table reflects
+  // the reap without waiting a poll interval.
   const [nonce, setNonce] = useState(0);
-  const load = useCallback(() => {
-    void nonce;
-    return fetch("/api/admin/snapshots").then((r) => jsonOrThrow<ListSnapshotsResponse>(r));
-  }, [nonce]);
-  const { data, error } = usePoll(load, SNAPSHOTS_POLL_MS, "snapshots unavailable");
+  const { data, error } = usePoll(loadSnapshots, SNAPSHOTS_POLL_MS, "snapshots unavailable", nonce);
 
   const [confirming, setConfirming] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);

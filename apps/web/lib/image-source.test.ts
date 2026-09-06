@@ -27,12 +27,7 @@ function webhookHeaders(extra: Record<string, string> = {}): Headers {
 
 describe("decideImageSourceBuild", () => {
   it("tracks every main push as a CI-published golden image candidate", () => {
-    expect(decideImageSourceBuild(["infra/images/base/entrypoint.sh"])).toEqual({
-      decision: "build",
-      reason: "main push publishes golden images",
-      target: "golden",
-    });
-    expect(decideImageSourceBuild(["apps/web/components/ImagesConsole.tsx"])).toEqual({
+    expect(decideImageSourceBuild()).toEqual({
       decision: "build",
       reason: "main push publishes golden images",
       target: "golden",

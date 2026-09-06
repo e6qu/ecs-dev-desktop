@@ -453,6 +453,27 @@ export function workspaceProxyRequestPath(
   return `${url.pathname}${url.search}`;
 }
 
+/**
+ * Editor assets the workbench requests on every connection that the editor build does not
+ * ship. OpenVSCode (the OSS build) omits Microsoft's proprietary `vsda` message-signing
+ * module, yet the web workbench still fetches its two files on each connect, then carries on
+ * unsigned when they are missing. The server answers 404 either way, but it also logs each
+ * miss as `File not found: …` to the container's stderr — two spurious error lines in the
+ * workspace boot log per editor open. Answering them at the proxy keeps the outcome
+ * identical for the browser and the workspace log truthful.
+ */
+const ABSENT_OPENVSCODE_ASSETS: readonly string[] = [
+  "/node_modules/vsda/rust/web/vsda.js",
+  "/node_modules/vsda/rust/web/vsda_bg.wasm",
+];
+
+/** True when `pathname` (the workspace-relative path) names an asset the editor build is
+ * known not to ship, so the proxy answers 404 itself. Pure. */
+export function isAbsentEditorAsset(pathname: string, editor: EditorKind): boolean {
+  if (editor !== "openvscode") return false;
+  return ABSENT_OPENVSCODE_ASSETS.some((asset) => pathname.endsWith(asset));
+}
+
 export function opencodeProxyAuthorization(secret: string, wsId: WorkspaceId): string {
   if (secret.length === 0) {
     throw new Error(`${CONNECTION_SECRET_ENV} is required to proxy opencode workspaces`);

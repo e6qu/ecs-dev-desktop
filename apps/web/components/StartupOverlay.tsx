@@ -47,7 +47,7 @@ export function StartupOverlay() {
         alignItems: "center",
         justifyContent: "center",
         gap: 16,
-        background: "var(--bg, #0d0f0c)",
+        background: "var(--bg)",
         opacity: leaving ? 0 : 1,
         transition: `opacity ${String(FADE_MS)}ms ease`,
         // Never capture input: the overlay is purely cosmetic (`aria-hidden`), yet a
@@ -62,8 +62,8 @@ export function StartupOverlay() {
           width: 34,
           height: 34,
           borderRadius: "50%",
-          border: "3px solid var(--line, #2a2f27)",
-          borderTopColor: "var(--accent, #9fef00)",
+          border: "3px solid var(--line)",
+          borderTopColor: "var(--accent)",
           animation: "edd-spin 0.8s linear infinite",
         }}
       />

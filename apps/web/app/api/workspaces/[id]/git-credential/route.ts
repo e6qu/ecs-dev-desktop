@@ -7,29 +7,12 @@ import { ownerId, workspaceId } from "@edd/core";
 import { notFound } from "../../../../../lib/api";
 import { getControlPlane } from "../../../../../lib/control-plane";
 import { getGitProvider } from "../../../../../lib/git-provider";
+import { repoRef } from "../../../../../lib/git-remote";
 import { checkAgentAuth } from "../../../../../lib/machine-auth";
 import { withObservability } from "../../../../../lib/observability";
 
 interface Ctx {
   params: Promise<{ id: string }>;
-}
-
-/** The `{ owner, name }` from an `https://host/owner/repo(.git)` URL — the owner picks the
- * GitHub App installation, and `name` scopes the minted token to exactly that repo. Undefined
- * when there is no/odd repo URL. Exported for property testing (never throws on arbitrary
- * input). The `.git` suffix (git's own clone URLs carry it) is stripped from the name. */
-export function repoRef(repoUrl: string | undefined): { owner: string; name: string } | undefined {
-  if (repoUrl === undefined) return undefined;
-  try {
-    const segments = new URL(repoUrl).pathname.split("/").filter((s) => s.length > 0);
-    // Need both an owner and a repo segment (an owner-only URL yields no credential).
-    if (segments.length < 2) return undefined;
-    const name = segments[1].replace(/\.git$/, "");
-    if (name.length === 0) return undefined;
-    return { owner: segments[0], name };
-  } catch {
-    return undefined;
-  }
 }
 
 /**
@@ -58,9 +41,11 @@ async function handleGET(req: Request, { params }: Ctx) {
 
   const provider = await getGitProvider(ownerId(ws.ownerId));
   const credential = provider === null ? null : await provider.gitCredential(repoRef(ws.repoUrl));
-  if (credential === null) {
-    return NextResponse.json({ error: "no credential" }, { status: 404 });
-  }
+  // "No credential for this session" is a normal, non-error answer (a public-repo session
+  // whose owner never linked a Git account): 204, so the in-workspace helper can tell it
+  // from a 404 (the workspace is gone) and tell the user to link an account rather than
+  // reporting a broker failure.
+  if (credential === null) return new NextResponse(null, { status: 204 });
   // Guarantee the on-the-wire shape against the contract (the one API body that
   // was emitted unvalidated) before the in-workspace helper consumes it.
   return NextResponse.json(gitCredentialResponse.parse(credential));

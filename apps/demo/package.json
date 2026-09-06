@@ -18,18 +18,18 @@
     "monaco-editor": "^0.56.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
-    "react-router-dom": "^7.18.2",
-    "zod": "^4.4.3"
+    "react-router-dom": "^7.18.3",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@playwright/test": "^1.62.1",
-    "@types/node": "^26.3.0",
+    "@playwright/test": "^1.63.0",
+    "@types/node": "^26.4.1",
     "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.5",
-    "@vitejs/plugin-react": "^6.1.0",
+    "@types/react-dom": "^19.2.7",
+    "@vitejs/plugin-react": "^6.1.1",
     "fast-check": "^4.9.0",
     "typescript": "^6.0.3",
     "vite": "^8.2.2",
-    "vitest": "^4.1.11"
+    "vitest": "^5.0.0"
   }
 }

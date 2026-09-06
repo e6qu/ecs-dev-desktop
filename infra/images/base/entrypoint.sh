@@ -106,8 +106,10 @@ if [ -n "${EDD_REPO_URL:-}" ]; then
         echo "Reason:"
         echo "  ${_clone_err}"
         echo
-        echo "The workspace is running. For a private repo, link your Git account in"
-        echo "the portal, then clone manually from the terminal."
+        echo "The workspace is running. Git hosts answer 'authentication required' for a"
+        echo "repository that does not exist exactly as for a private one, so first check the"
+        echo "URL. For a private repo, link your Git account in the portal. Then clone manually"
+        echo "from the terminal."
       } >"${_boot_status}"
       chown workspace:workspace "${_boot_status}" 2>/dev/null || true
     fi

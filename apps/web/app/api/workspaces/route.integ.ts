@@ -3,6 +3,13 @@ import { listWorkspacesResponse, workspace } from "@edd/api-contracts";
 import { CatalogService } from "@edd/control-plane";
 import { baseImage, systemClock } from "@edd/core";
 import { createDynamoClient, dropTable, dynamodb, ensureTable, makeBaseImageEntity } from "@edd/db";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { createServer, type Server } from "node:https";
+import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { getCACertificates, setDefaultCACertificates } from "node:tls";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -20,6 +27,86 @@ process.env.AWS_ENDPOINT_URL ??= dynamodb.endpoint;
 process.env.DYNAMODB_TABLE = TEST_TABLE;
 
 const url = "http://localhost/api/workspaces";
+
+/**
+ * A minimal git host speaking the one protocol surface the create check uses: the
+ * smart-HTTP ref advertisement. `/acme/app.git` exists (branch `main`, tag `v1`);
+ * every other path answers as GitHub does for a private or nonexistent repository
+ * (401 + Basic challenge). The create request only ever sees this host's URL, exactly
+ * as it would see github.com's. It serves real TLS (the contract only accepts https —
+ * the check may carry the owner's credential) under a throwaway certificate that is
+ * trusted for this process only.
+ */
+function pkt(payload: string): string {
+  return (payload.length + 4).toString(16).padStart(4, "0") + payload;
+}
+const SHA = "b".repeat(40);
+const ADVERTISEMENT =
+  pkt("# service=git-upload-pack\n") +
+  "0000" +
+  pkt(`${SHA} HEAD\0symref=HEAD:refs/heads/main\n`) +
+  pkt(`${SHA} refs/heads/main\n`) +
+  pkt(`${SHA} refs/tags/v1\n`) +
+  "0000";
+
+function throwawayCertificate(): { key: string; cert: string } {
+  const dir = mkdtempSync(join(tmpdir(), "edd-git-host-"));
+  try {
+    execFileSync(
+      "openssl",
+      [
+        "req",
+        "-x509",
+        "-newkey",
+        "ec",
+        "-pkeyopt",
+        "ec_paramgen_curve:prime256v1",
+        "-nodes",
+        "-days",
+        "1",
+        "-subj",
+        "/CN=127.0.0.1",
+        "-addext",
+        "subjectAltName=IP:127.0.0.1",
+        "-keyout",
+        join(dir, "key.pem"),
+        "-out",
+        join(dir, "cert.pem"),
+      ],
+      { stdio: "ignore" },
+    );
+    return {
+      key: readFileSync(join(dir, "key.pem"), "utf8"),
+      cert: readFileSync(join(dir, "cert.pem"), "utf8"),
+    };
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+function startGitHost(): Promise<{ server: Server; baseUrl: string; restoreTrust: () => void }> {
+  const { key, cert } = throwawayCertificate();
+  const trusted = getCACertificates("default");
+  setDefaultCACertificates([...trusted, cert]);
+  const restoreTrust = () => {
+    setDefaultCACertificates(trusted);
+  };
+  const server = createServer({ key, cert }, (req, res) => {
+    if (req.url === "/acme/app.git/info/refs?service=git-upload-pack") {
+      res.writeHead(200, { "content-type": "application/x-git-upload-pack-advertisement" });
+      res.end(ADVERTISEMENT);
+      return;
+    }
+    res.writeHead(401, { "www-authenticate": 'Basic realm="git"' });
+    res.end();
+  });
+  return new Promise((resolve) => {
+    server.listen(0, "127.0.0.1", () => {
+      const { port } = server.address() as AddressInfo;
+      resolve({ server, baseUrl: `https://127.0.0.1:${port.toString()}`, restoreTrust });
+    });
+  });
+}
 const headers = {
   [USER_ID_HEADER]: "alice",
   [ROLE_HEADER]: "developer",
@@ -73,6 +160,62 @@ describe("workspaces API end-to-end (DynamoDB Local)", () => {
       }),
     );
     expect(res.status).toBe(409);
+  });
+
+  describe("session repository check", () => {
+    let host: Server;
+    let gitBase: string;
+    let restoreTrust: () => void;
+    beforeAll(async () => {
+      ({ server: host, baseUrl: gitBase, restoreTrust } = await startGitHost());
+    });
+    afterAll(() => {
+      host.close();
+      restoreTrust();
+    });
+
+    const create = (body: Record<string, unknown>) =>
+      POST(
+        new Request(url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ baseImage: "golden/node:20", ...body }),
+        }),
+      );
+
+    it("creates (201) a session from a repository the host advertises, at a real branch", async () => {
+      const res = await create({ repoUrl: `${gitBase}/acme/app.git`, repoRef: "main" });
+      expect(res.status).toBe(201);
+      expect(workspace.parse(await res.json()).repoUrl).toBe(`${gitBase}/acme/app.git`);
+    });
+
+    it("accepts a tag as the ref", async () => {
+      expect((await create({ repoUrl: `${gitBase}/acme/app.git`, repoRef: "v1" })).status).toBe(
+        201,
+      );
+    });
+
+    it("refuses (422) a repository the host will not advertise, naming the URL and the fix", async () => {
+      const res = await create({ repoUrl: `${gitBase}/acme/typo.git` });
+      expect(res.status).toBe(422);
+      const body = (await res.json()) as { error: string };
+      expect(body.error).toContain(`${gitBase}/acme/typo.git was not found, or it is private`);
+      expect(body.error).toContain("connect your Git account");
+    });
+
+    it("refuses (422) a ref the repository does not have", async () => {
+      const res = await create({ repoUrl: `${gitBase}/acme/app.git`, repoRef: "trunk" });
+      expect(res.status).toBe(422);
+      expect(((await res.json()) as { error: string }).error).toBe(
+        `${gitBase}/acme/app.git has no branch or tag named 'trunk'.`,
+      );
+    });
+
+    it("refuses (422) a host that cannot be reached, rather than creating a doomed session", async () => {
+      const res = await create({ repoUrl: "https://127.0.0.1:1/acme/app.git" });
+      expect(res.status).toBe(422);
+      expect(((await res.json()) as { error: string }).error).toMatch(/could not be reached/);
+    });
   });
 
   it("enforces the per-role workspace quota (409 when reached)", async () => {

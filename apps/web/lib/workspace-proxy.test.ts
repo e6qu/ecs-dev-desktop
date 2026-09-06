@@ -42,6 +42,7 @@ const {
   injectOpencodeBasePathShim,
   injectOpencodeTerminalOverlay,
   injectWorkspaceHomeLink,
+  isAbsentEditorAsset,
   isDocumentNavigation,
   isTerminalOverlayRequest,
   isWorkspaceDocumentNavigation,
@@ -131,6 +132,30 @@ describe("authorizeWorkspace (in-app proxy authz glue)", () => {
 // initial navigation to the editor is redirected to carry the per-workspace token, so
 // the workbench loads without the user ever handling it. Exercises every gate that
 // decides whether to inject (secret configured, document nav, no token yet).
+describe("isAbsentEditorAsset (assets the OSS editor build never ships)", () => {
+  const ws = "ws-abc";
+  it("answers OpenVSCode's vsda signing-module fetches at the proxy", () => {
+    expect(isAbsentEditorAsset(`/w/${ws}/node_modules/vsda/rust/web/vsda.js`, "openvscode")).toBe(
+      true,
+    );
+    expect(
+      isAbsentEditorAsset(`/w/${ws}/node_modules/vsda/rust/web/vsda_bg.wasm`, "openvscode"),
+    ).toBe(true);
+  });
+  it("lets every other OpenVSCode path through to the workspace", () => {
+    expect(isAbsentEditorAsset(`/w/${ws}/`, "openvscode")).toBe(false);
+    expect(isAbsentEditorAsset(`/w/${ws}/node_modules/vsda/package.json`, "openvscode")).toBe(
+      false,
+    );
+    expect(isAbsentEditorAsset(`/w/${ws}/out/vs/workbench/workbench.js`, "openvscode")).toBe(false);
+  });
+  it("never intercepts for other editors, which do not request vsda", () => {
+    expect(isAbsentEditorAsset(`/w/${ws}/node_modules/vsda/rust/web/vsda.js`, "opencode")).toBe(
+      false,
+    );
+  });
+});
+
 describe("isDocumentNavigation (status-page hand-off gate)", () => {
   it("is true for a top-level document navigation (sec-fetch-dest)", () => {
     expect(isDocumentNavigation({ headers: { "sec-fetch-dest": "document" } })).toBe(true);

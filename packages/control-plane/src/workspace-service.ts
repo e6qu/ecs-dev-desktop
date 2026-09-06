@@ -512,9 +512,7 @@ export class WorkspaceService {
       ...(patch.snapshotIntervalMs === undefined
         ? {}
         : { snapshotIntervalMs: patch.snapshotIntervalMs }),
-      ...(patch.idleStopMs === undefined
-        ? {}
-        : { idleStopMs: patch.idleStopMs ?? undefined }),
+      ...(patch.idleStopMs === undefined ? {} : { idleStopMs: patch.idleStopMs ?? undefined }),
       ...(patch.alwaysOn === undefined ? {} : { alwaysOn: patch.alwaysOn ? true : undefined }),
     };
     const changes = [
@@ -523,7 +521,11 @@ export class WorkspaceService {
         : [`snapshot interval ${String(patch.snapshotIntervalMs)}ms`]),
       ...(patch.idleStopMs === undefined
         ? []
-        : [patch.idleStopMs === null ? "idle stop: default" : `idle stop ${String(patch.idleStopMs)}ms`]),
+        : [
+            patch.idleStopMs === null
+              ? "idle stop: default"
+              : `idle stop ${String(patch.idleStopMs)}ms`,
+          ]),
       ...(patch.alwaysOn === undefined ? [] : [patch.alwaysOn ? "always on" : "always on cleared"]),
     ];
     try {
@@ -1096,7 +1098,6 @@ export class WorkspaceService {
     // reconciler backstop) — NOT a detached promise here. A floating promise in a
     // Next route handler isn't reliably run after the response is sent, so a manual
     // stop could otherwise hang at `stopping` until the 5-min reconciler sweep.
-    void actor;
     return ok(toWorkspaceDto(next.value));
   }
 

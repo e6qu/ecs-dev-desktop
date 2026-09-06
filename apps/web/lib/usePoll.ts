@@ -18,11 +18,16 @@ import { useEffect, useState } from "react";
  * `errorStatus` carries the HTTP status when the failure was an {@link ApiError}
  * (null otherwise), so callers can distinguish e.g. a genuine 404 ("this resource
  * no longer exists") from a transient failure.
+ *
+ * `refreshKey` is an optional value whose change re-runs `load` immediately (e.g. a
+ * counter bumped after a mutation), so a view reflects its own action without waiting
+ * for the next interval and without re-creating `load`.
  */
 export function usePoll<T>(
   load: () => Promise<T>,
   intervalMs: number,
   fallbackError: string,
+  refreshKey?: unknown,
 ): { data: T | null; error: string | null; errorStatus: number | null } {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +71,7 @@ export function usePoll<T>(
       clearInterval(timer);
       document.removeEventListener("visibilitychange", tick);
     };
-  }, [load, intervalMs, fallbackError]);
+  }, [load, intervalMs, fallbackError, refreshKey]);
 
   return { data, error, errorStatus };
 }
