@@ -6,13 +6,9 @@ import { baseImage } from "@edd/core";
 import { taskDefinitionFamily } from "@edd/compute-ecs";
 import type { CloudWatchMetricReader } from "@edd/cloudwatch-metrics";
 
-import { isResponse, loadOwnedWorkspaceDetail } from "../../../../../lib/api";
+import { isResponse, loadOwnedWorkspaceDetail, type IdRouteContext } from "../../../../../lib/api";
 import { getCostReport, getMetricReader } from "../../../../../lib/control-plane";
 import { withObservability } from "../../../../../lib/observability";
-
-interface Ctx {
-  params: Promise<{ id: string }>;
-}
 
 /** Utilization/IOPS lookback window and datapoint period. */
 const SERIES_WINDOW_MS = 3 * 60 * 60 * 1000;
@@ -46,7 +42,7 @@ async function readSeries(
 // GET /api/workspaces/:id/monitoring — the owner-facing monitoring bundle:
 // provisioned sizing, uptime, cost so far (incl. the snapshot-storage line),
 // task utilization (Container Insights), and per-volume EBS IOPS.
-async function handleGET(req: Request, { params }: Ctx) {
+async function handleGET(req: Request, { params }: IdRouteContext) {
   const loaded = await loadOwnedWorkspaceDetail(req, params);
   if (isResponse(loaded)) return loaded;
   const { ctx, detail } = loaded;

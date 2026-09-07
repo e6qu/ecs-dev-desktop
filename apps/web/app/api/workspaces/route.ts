@@ -4,7 +4,18 @@ import { NextResponse } from "next/server";
 import { createWorkspaceRequest, type WorkspaceDto } from "@edd/api-contracts";
 import { defineAbilityFor } from "@edd/authz";
 import { ComputeUnavailableError, QuotaExceededError } from "@edd/control-plane";
-import { baseImage, ownerId, unavailableError, withinWorkspaceQuota, workspaceId } from "@edd/core";
+import {
+  baseImage,
+  ownerId,
+  parseGitRemote,
+  repoRef,
+  repositoryProblem,
+  unavailableError,
+  withinWorkspaceQuota,
+  workspaceId,
+  type GitRemoteProbe,
+  type OfferedCredential,
+} from "@edd/core";
 
 import {
   authenticate,
@@ -18,7 +29,10 @@ import {
 import { getCatalog, getCatalogList, getControlPlane } from "../../../lib/control-plane";
 import { log } from "../../../lib/logger";
 import { getGitProvider } from "../../../lib/git-provider";
-import { probeGitRemote, repoRef, repositoryProblem } from "../../../lib/git-remote";
+import { gitIntegration } from "../../../lib/git-integration";
+import { probeGitRemoteOverHttps, probeGitRemoteOverSsh } from "../../../lib/git-remote";
+import { getGitSshKeys } from "../../../lib/git-credentials";
+import { gitHostKnownHosts } from "../../../lib/github";
 import { getMetrics } from "../../../lib/metrics";
 import { catalogByImage, enrichWorkspace } from "../../../lib/workspace-enrich";
 import { resolveOwnerEmail } from "../../../lib/owner-email";
@@ -83,21 +97,35 @@ async function handlePOST(req: Request) {
   }
 
   // A session's repository must be clonable BEFORE the session exists: ask the host for
-  // its ref advertisement the way `git clone` does, with the same credential the workspace
-  // will present at boot (none for a public repo). A typo'd or private-and-unlinked URL is
-  // a clear 422 here rather than a workspace that boots, fails its clone minutes later,
-  // and leaves the user with git's "could not read Username" in the boot log.
+  // its ref advertisement the way `git clone` does, over the transport the URL names and
+  // with what the workspace will present at boot — the owner's git token (none for a
+  // public repo) over https, the owner's platform-generated SSH keys over ssh. A typo'd,
+  // private-and-unlinked, or key-less URL is a clear 422 here rather than a workspace that
+  // boots, fails its clone minutes later, and leaves git's "could not read Username" (or
+  // "Permission denied (publickey)") in the boot log.
   if (parsed.data.repoUrl !== undefined) {
-    const provider = await getGitProvider(ownerId(principal.id));
-    const credential =
-      provider === null ? null : await provider.gitCredential(repoRef(parsed.data.repoUrl));
-    const probe = await probeGitRemote(parsed.data.repoUrl, credential);
-    const problem = repositoryProblem(
-      probe,
-      parsed.data.repoUrl,
-      parsed.data.repoRef,
-      credential !== null,
-    );
+    const remote = parseGitRemote(parsed.data.repoUrl);
+    if (remote === null) return badRequest("repoUrl is not a clone URL");
+    let probe: GitRemoteProbe;
+    let offered: OfferedCredential;
+    if (remote.transport === "https") {
+      const provider = await getGitProvider(ownerId(principal.id));
+      const credential = provider === null ? null : await provider.gitCredential(repoRef(remote));
+      offered = credential === null ? "none" : "token";
+      probe = await probeGitRemoteOverHttps(remote, credential);
+    } else {
+      const integration = gitIntegration();
+      const identities = integration.sshKeys
+        ? await getGitSshKeys().materials(ownerId(principal.id))
+        : [];
+      offered = "ssh-keys";
+      probe = await probeGitRemoteOverSsh(
+        remote,
+        identities,
+        await gitHostKnownHosts(integration.apiUrl, integration.host),
+      );
+    }
+    const problem = repositoryProblem(probe, remote.url, parsed.data.repoRef, offered);
     if (problem !== null) return unprocessable(problem);
   }
 

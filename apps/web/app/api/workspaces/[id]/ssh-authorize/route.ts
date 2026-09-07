@@ -4,14 +4,10 @@ import { NextResponse } from "next/server";
 import { sshAuthorizeRequest } from "@edd/api-contracts";
 import { sshPublicKey, workspaceId, workspacePrincipal } from "@edd/core";
 
-import { badRequest, notFound } from "../../../../../lib/api";
+import { badRequest, notFound, type IdRouteContext } from "../../../../../lib/api";
 import { getControlPlane, getSshKeyService } from "../../../../../lib/control-plane";
 import { checkAgentAuth, checkGatewayAuth } from "../../../../../lib/machine-auth";
 import { withObservability } from "../../../../../lib/observability";
-
-interface Ctx {
-  params: Promise<{ id: string }>;
-}
 
 const unauthorized = () => NextResponse.json({ error: "unauthorized" }, { status: 401 });
 
@@ -23,7 +19,7 @@ const unauthorized = () => NextResponse.json({ error: "unauthorized" }, { status
 // decision. Given the public key the connecting client offered, authorize iff the
 // key is registered AND its owner owns this workspace. Works on a stopped
 // workspace — the ownership record persists across scale-to-zero.
-async function handlePOST(req: Request, { params }: Ctx) {
+async function handlePOST(req: Request, { params }: IdRouteContext) {
   const { id } = await params;
   const authed = checkGatewayAuth(req, id) === "valid" || checkAgentAuth(req, id) === "valid";
   if (!authed) return unauthorized();

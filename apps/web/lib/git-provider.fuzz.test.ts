@@ -6,7 +6,11 @@ import { describe, expect, it } from "vitest";
 // GitHub App installation AND scope the minted token to one repo) parses a stored,
 // potentially odd `repoUrl`, so it must be total: never throw on arbitrary/odd strings,
 // returning the owner + repo name (`.git` stripped) or undefined.
-import { repoRef } from "./git-remote";
+import { parseGitRemote, repoRef as coreRepoRef } from "@edd/core";
+
+/** The route's composition: a stored (possibly odd) repoUrl → the App installation ref. */
+const repoRef = (repoUrl: string | undefined) =>
+  coreRepoRef(repoUrl === undefined ? undefined : (parseGitRemote(repoUrl) ?? undefined));
 
 describe("repoRef (property)", () => {
   it("never throws on arbitrary input", () => {

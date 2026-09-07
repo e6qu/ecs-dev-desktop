@@ -11,6 +11,7 @@ import {
   type WorkspaceMemoryMiBDto,
   type WorkspaceVolumeGiBDto,
 } from "@edd/api-contracts";
+import { parseGitRemote } from "@edd/core/domain/git-remote";
 import { defaultResourcesForEditor } from "@edd/core/domain/workspace-resources";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
@@ -94,9 +95,9 @@ const MODE_META: Record<StartMode, { title: string; detail: string }> = {
     detail: "Pick a repository you can access; it's cloned into the session at boot.",
   },
   public: {
-    title: "Public repository URL",
+    title: "Repository URL",
     detail:
-      "Paste the HTTPS clone URL of a public repository on GitHub or any other git host; no account link is required.",
+      "Paste a clone URL. A public repository needs nothing more over HTTPS; a private one needs a linked GitHub account (https://…) or one of your GitHub SSH keys (git@…).",
   },
   create: {
     title: "Create a new repository",
@@ -104,22 +105,14 @@ const MODE_META: Record<StartMode, { title: string; detail: string }> = {
   },
 };
 
-/** The pasted text as an HTTPS clone URL, or null when it is not one. Only the shape is
- * checked here (https, a host, a repository path); whether the host will actually serve
- * the repository is the control plane's create-time check, which answers with the reason. */
-function publicCloneUrl(input: string): string | null {
-  let url: URL;
-  try {
-    url = new URL(input.trim());
-  } catch {
-    return null;
-  }
-  if (url.protocol !== "https:" || url.hostname === "") return null;
-  url.search = "";
-  url.hash = "";
-  url.pathname = url.pathname.replace(/\/+$/, "");
-  if (url.pathname.split("/").filter((part) => part.length > 0).length === 0) return null;
-  return url.toString();
+/** What this deployment can do for git access, decided server-side from configuration
+ * (see `lib/git-integration.ts`), so the launcher never offers a link it cannot honour. */
+export interface LauncherGitIntegration {
+  readonly tokens: "app" | "oauth" | "none";
+  readonly sshKeys: boolean;
+  readonly host: string;
+  /** How many GitHub SSH keys the user has generated (0 when the feature is off). */
+  readonly sshKeyCount: number;
 }
 
 function snapshotIntervalMsFromInput(input: string): number | null {
@@ -137,7 +130,13 @@ function snapshotIntervalMsFromInput(input: string): number | null {
  * server-side `/api/github/*` routes. On success the browser lands on the
  * workspace's live status page (`/workspaces/<id>`), which follows the boot.
  */
-export function NewSession({ images }: { images: readonly CatalogOption[] }) {
+export function NewSession({
+  images,
+  git,
+}: {
+  images: readonly CatalogOption[];
+  git: LauncherGitIntegration;
+}) {
   const router = useRouter();
   const { data: refreshedImages, error: catalogError } = usePoll(
     loadCatalogOptions,
@@ -300,9 +299,16 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
         if (selectedRepo === null) throw new Error("Pick a repository first.");
         wsId = await launch(selectedRepo.cloneUrl, selectedRepo.defaultBranch);
       } else if (mode === "public") {
-        const parsed = publicCloneUrl(publicRepoUrl);
-        if (parsed === null) throw new Error("Enter the HTTPS clone URL of a public repository.");
-        wsId = await launch(parsed, publicRepoRef.trim() === "" ? undefined : publicRepoRef.trim());
+        // Shape only (https://, ssh://, or git@host:path); whether the host will serve the
+        // repository is the control plane's create-time check, which answers with the reason.
+        const parsed = parseGitRemote(publicRepoUrl);
+        if (parsed === null) {
+          throw new Error("Enter a clone URL: https://host/owner/repo or git@host:owner/repo.");
+        }
+        wsId = await launch(
+          parsed.url,
+          publicRepoRef.trim() === "" ? undefined : publicRepoRef.trim(),
+        );
       } else if (mode === "create") {
         const namespace = namespaces.find((n) => n.login === ns);
         if (namespace === undefined || repoName.trim().length === 0) {
@@ -460,16 +466,50 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
             );
           })}
         </div>
-        {!ghConnected && (
+        {!ghConnected && git.tokens === "oauth" && (
           <div className="stack" style={{ gap: 8 }}>
             <p className="mono" style={{ color: "var(--dim)", margin: 0 }}>
-              Repository modes need a connected GitHub account.
+              Browsing and creating repositories needs a connected GitHub account.
             </p>
             <a className="btn" href="/api/github/connect/start">
               Connect GitHub
             </a>
           </div>
         )}
+        {!ghConnected && git.tokens === "none" && (
+          <p
+            className="mono"
+            data-testid={TESTID.sessionGitUnavailable}
+            style={{ color: "var(--dim)", margin: 0 }}
+          >
+            This deployment has no GitHub account linking, so repositories cannot be browsed or
+            created here. Paste a clone URL instead: public repositories work over HTTPS, and
+            private ones over SSH with one of your{" "}
+            <a href="/settings/ssh-keys" className="inline-link">
+              GitHub SSH keys
+            </a>
+            .
+          </p>
+        )}
+        {mode === "public" &&
+          parseGitRemote(publicRepoUrl)?.transport === "ssh" &&
+          git.sshKeyCount === 0 && (
+            <p
+              className="mono"
+              role="status"
+              data-testid={TESTID.sessionSshKeyHint}
+              style={{ color: "var(--st-idle)", margin: 0 }}
+            >
+              An SSH clone URL is authenticated with a GitHub SSH key, and you have none yet.{" "}
+              {git.sshKeys ? (
+                <a href="/settings/ssh-keys" className="inline-link">
+                  Generate one in Settings
+                </a>
+              ) : (
+                "GitHub SSH keys are not enabled on this deployment."
+              )}
+            </p>
+          )}
 
         {mode === "repo" && ghConnected && (
           <div className="stack" style={{ gap: 10 }}>
@@ -555,8 +595,8 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
           <div className="stack" style={{ gap: 10 }}>
             <input
               className="input"
-              aria-label="public repository URL"
-              placeholder="https://github.com/owner/repo"
+              aria-label="repository clone URL"
+              placeholder={`https://${git.host}/owner/repo or git@${git.host}:owner/repo`}
               value={publicRepoUrl}
               onChange={(e) => {
                 setPublicRepoUrl(e.target.value);

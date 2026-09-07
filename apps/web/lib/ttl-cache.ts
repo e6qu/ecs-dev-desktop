@@ -7,9 +7,16 @@
  * if the load rejects — the next call reloads. Time is passed in (`nowMs`) so the
  * behaviour is deterministic and testable; production callers default it to now.
  */
-export function ttlCache<T>(load: () => Promise<T>, ttlMs: number): (nowMs: number) => Promise<T> {
+export interface TtlCache<T> {
+  (nowMs: number): Promise<T>;
+  /** Drop the cached value so the next call reloads — for a writer in this process that
+   * knows the underlying data changed (a read right after a write must see the write). */
+  invalidate(): void;
+}
+
+export function ttlCache<T>(load: () => Promise<T>, ttlMs: number): TtlCache<T> {
   let entry: { readonly at: number; readonly value: Promise<T> } | undefined;
-  return (nowMs) => {
+  const read = (nowMs: number): Promise<T> => {
     if (entry !== undefined && nowMs - entry.at < ttlMs) return entry.value;
     const value = load();
     const current = { at: nowMs, value };
@@ -21,4 +28,8 @@ export function ttlCache<T>(load: () => Promise<T>, ttlMs: number): (nowMs: numb
     });
     return value;
   };
+  read.invalidate = () => {
+    entry = undefined;
+  };
+  return read;
 }

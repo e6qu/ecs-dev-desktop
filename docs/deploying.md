@@ -290,7 +290,8 @@ Secrets (`secret_environment`):
 | IdP (GitHub) | `AUTH_GITHUB_ID`, `AUTH_GITHUB_SECRET`                         | GitHub OAuth/App                                                       |
 | IdP (Entra)  | `AUTH_MICROSOFT_ENTRA_ID_ID`, `AUTH_MICROSOFT_ENTRA_ID_SECRET` | Azure Entra OIDC client                                                |
 | IdP (Shauth) | `AUTH_SHAUTH_SECRET`                                           | Shauth OpenID Connect client secret                                    |
-| Crypto       | `EDD_TOKEN_ENC_KEY`                                            | 32-byte hex AES key — gates git-credential storage                     |
+| Crypto       | `EDD_TOKEN_ENC_KEY`                                            | 32-byte hex AES key — gates git-token storage and user git SSH keys    |
+| GitHub App   | `EDD_GITHUB_APP_ID`, `EDD_GITHUB_APP_KEY`                      | App id + private key (PEM or base64) — see _Git access for sessions_   |
 | Crypto       | `EDD_GATEWAY_SECRET`                                           | gateway↔control-plane machine-auth HMAC (connect/wake + ssh-authorize) |
 | Crypto       | `EDD_AGENT_SECRET`                                             | idle-agent heartbeat + workspace ssh-authorize HMAC                    |
 | Crypto       | `EDD_CONNECTION_SECRET`                                        | per-workspace OpenVSCode connection token HMAC (editor-proxy handoff)  |
@@ -343,6 +344,31 @@ Shauth's end-session endpoint, traverses the fixed EDD bridge, and finishes on E
 receivers, making sign out from EDD a coordinated SSO logout rather than an application-only
 cookie deletion. Logout initiated directly in Shauth has no relying-party context and therefore
 finishes on Shauth's own signed-out page.
+
+### Git access for sessions
+
+A session clones its repository at first boot and the user pushes from the workspace. What
+the workspace can reach depends on which of three independent paths the deployment
+configures; the admin **Health** board reports the result on its `git-integration` row, and
+the launcher only offers what is configured.
+
+| Path                         | Configure                                                                                                                  | What it gives sessions                                                                                                                                                                                                                                                                                                              |
+| ---------------------------- | -------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **GitHub App** (recommended) | `EDD_GITHUB_APP_ID` + `EDD_GITHUB_APP_KEY` (secret), App installed on each org/user whose repositories should be reachable | HTTPS clone/push of every repository the installation grants, browse + create repositories in the launcher, no per-user action. Works with any sign-in provider (Shauth, Entra).                                                                                                                                                    |
+| **GitHub account linking**   | `AUTH_GITHUB_ID` + `AUTH_GITHUB_SECRET` (secrets) and `EDD_TOKEN_ENC_KEY`                                                  | The user clicks **Connect GitHub** once; their OAuth token is stored encrypted and brokered into their workspaces. Same launcher features as the App, per user.                                                                                                                                                                     |
+| **User SSH keys**            | `EDD_TOKEN_ENC_KEY` only                                                                                                   | Under **Settings → SSH keys** a user generates named ed25519 keys the platform holds; they add the public half to GitHub (account key or deploy key) and clone with `git@github.com:…` URLs. Private halves are encrypted at rest and delivered into the user's running workspaces only (container-local `/run`, never the volume). |
+
+With none of these, sessions can still clone **public** repositories over HTTPS. A
+Shauth-only deployment (no GitHub sign-in) therefore needs the GitHub App, or its users
+rely on SSH keys. The create-session request checks the repository the way `git clone`
+starts — a ref advertisement over the URL's transport, with the credential the workspace
+will present — and refuses with the reason (not found or private, missing branch, no keys,
+unreachable host) before any session exists.
+
+The git host is the deployment's GitHub coordinate (`AUTH_GITHUB_URL` / `AUTH_GITHUB_API_URL`;
+GitHub.com by default). Its published SSH host keys (`GET /meta`) are pinned into each
+workspace's `known_hosts`; a host that publishes none is trusted on first connection and
+the workspace boot log says so.
 
 ## Step 4 — SSH access (registered keys)
 

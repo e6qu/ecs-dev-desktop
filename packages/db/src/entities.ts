@@ -194,6 +194,44 @@ export function makeGitCredentialEntity(client: DynamoDBClient, table = TABLE) {
 export type GitCredentialEntity = ReturnType<typeof makeGitCredentialEntity>;
 
 /**
+ * A platform-generated SSH keypair a user adds to their git host (GitHub account key or
+ * deploy key) so their workspaces can clone and push over SSH. The private half is stored
+ * ONLY as AES-256-GCM ciphertext under `EDD_TOKEN_ENC_KEY` and is decrypted solely for the
+ * boot-time broker that delivers it into a workspace's tmpfs; the public half is what the
+ * user copies out. Per-owner, many keys, each named.
+ */
+export const GIT_SSH_KEY_SCHEMA_VERSION = 1;
+
+export function makeGitSshKeyEntity(client: DynamoDBClient, table = TABLE) {
+  return new Entity(
+    {
+      model: { entity: "gitSshKey", version: "1", service: "edd" },
+      attributes: {
+        id: { type: "string", required: true },
+        ownerId: { type: "string", required: true },
+        schemaVersion: { type: "number", required: true },
+        label: { type: "string", required: true },
+        keyType: { type: "string", required: true },
+        fingerprint: { type: "string", required: true },
+        publicKey: { type: "string", required: true },
+        // AES-256-GCM ciphertext (iv.tag.ct base64) of the OpenSSH-format private key.
+        privateKeyCiphertext: { type: "string", required: true },
+        createdAt: { type: "string", required: true },
+      },
+      indexes: {
+        primary: {
+          pk: { field: "PK", composite: ["ownerId"] },
+          sk: { field: "SK", composite: ["id"] },
+        },
+      },
+    },
+    { client, table },
+  );
+}
+
+export type GitSshKeyEntity = ReturnType<typeof makeGitSshKeyEntity>;
+
+/**
  * Server-side auth-session ledger. Auth.js still signs the browser cookie, but
  * the cookie now carries only a session id/version that must be ACTIVE here on
  * every authorization decision. Deleting/revoking this row makes an otherwise

@@ -19,6 +19,10 @@ export interface HealthServiceDeps {
   /** Reads the reconciler's last-successful-sweep timestamp, or null if none yet.
    * Absent → the board reports the reconciler `unknown` (no source wired). */
   reconcilerHeartbeat?: () => Promise<{ lastRunAt: string } | null>;
+  /** How this deployment obtains git access for sessions (GitHub App / account linking /
+   * nothing beyond public HTTPS and user SSH keys), with a live check where one is
+   * possible. Absent → not reported. */
+  gitIntegration?: () => Promise<ComponentHealth>;
   clock: Clock;
 }
 
@@ -49,6 +53,7 @@ export class HealthService {
       await providerHealth("compute", this.deps.compute),
       await providerHealth("storage", this.deps.storage),
       await this.reconcilerHealth(now),
+      ...(this.deps.gitIntegration === undefined ? [] : [await this.deps.gitIntegration()]),
     ];
     return summarizeHealth(components, now);
   }

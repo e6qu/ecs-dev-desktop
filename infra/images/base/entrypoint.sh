@@ -67,10 +67,16 @@ cp -p /etc/ssh/ssh_host_* "${host_key_dir}"/
 # Start idle-agent in the background.
 gosu workspace edd-idle-agent &
 
+# Install the owner's platform-generated git SSH keys (private halves into /run, never the
+# volume) and the ssh_config that points the git host at them — BEFORE the clone, which may
+# be an ssh:// URL. Re-fetched on every boot; a failure is logged, not fatal.
+node /usr/local/bin/edd-git-ssh-keys
+
 # Clone the session repo on first boot ("one repo per session"). Idempotent: on
 # wake the snapshot already contains the clone, so skip when the dir exists. The
 # git credential for private repos is brokered by the idle-agent over its
-# authenticated channel (not injected here); public repos clone as-is.
+# authenticated channel (not injected here); public repos clone as-is; ssh:// URLs
+# use the keys installed above.
 #
 # A clone failure is non-fatal — the workspace still starts so the user can fix it
 # (link a private repo, then clone manually) rather than losing the session. But it
@@ -108,8 +114,9 @@ if [ -n "${EDD_REPO_URL:-}" ]; then
         echo
         echo "The workspace is running. Git hosts answer 'authentication required' for a"
         echo "repository that does not exist exactly as for a private one, so first check the"
-        echo "URL. For a private repo, link your Git account in the portal. Then clone manually"
-        echo "from the terminal."
+        echo "URL. For a private repo, link your Git account in the portal (https URLs) or add"
+        echo "one of your GitHub SSH keys from Settings to the host (ssh URLs). Then clone"
+        echo "manually from the terminal."
       } >"${_boot_status}"
       chown workspace:workspace "${_boot_status}" 2>/dev/null || true
     fi

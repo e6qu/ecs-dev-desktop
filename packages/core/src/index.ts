@@ -40,6 +40,16 @@ export {
   workspaceId,
 } from "./domain/ids";
 
+// Git remotes: clone-URL classification, ref advertisements, and refusal reasons.
+export type { GitRemote, GitRemoteProbe, OfferedCredential } from "./domain/git-remote";
+export {
+  parseGitRemote,
+  parseRefAdvertisement,
+  refIsAdvertised,
+  repoRef,
+  repositoryProblem,
+} from "./domain/git-remote";
+
 // Compile-time exhaustiveness guard.
 export { assertNever } from "./assert-never";
 

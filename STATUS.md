@@ -6,6 +6,34 @@
 
 ## Current branch
 
+The `feat/git-ssh-keys` branch answered "why don't repositories clone in the dev
+environment?" and gave users a way to clone private repositories there. The dev
+control plane carried the encrypted store key but neither a GitHub App nor the
+GitHub OAuth pair, so no session could ever hold a git token; the launcher still
+offered a "Connect GitHub" button that returned a 500. The deployment's git access
+became a pure function of configuration (`gitIntegrationFromEnv`), reported on the
+admin Health board as a `git-integration` row (live-checked for a GitHub App),
+shown honestly in the launcher, answered as a `409` by the connect route, and
+documented under _Git access for sessions_.
+
+Users gained platform-generated GitHub SSH keys: named ed25519 keypairs generated
+server-side (ssh2, injected as a port), stored with the private half AES-256-GCM
+encrypted under `EDD_TOKEN_ENC_KEY`, listed and deleted under Settings → SSH keys
+with a copy-public-key control, and delivered into the owner's workspaces at every
+boot over the agent's HMAC channel into container-local `/run/edd/ssh` (never the
+volume) with an `ssh_config` block for the git host, its published host keys pinned
+in `known_hosts`, and an `Include` in `~/.ssh/config`. The launcher accepted
+`git@host:path` and `ssh://` clone URLs; the create-time repository check probed
+SSH remotes by running `git-upload-pack` over ssh2 with each of the owner's keys in
+turn (deploy keys are per-repository), reusing the pkt-line parser now in
+`@edd/core`. Verified against real GitHub: an unregistered key was refused with the
+key named, a temporary deploy key read the target repository, and a workspace
+container offered the delivered key with GitHub's host key verified. The catalog
+list cache gained invalidation on every catalog write, so a just-added base image
+appears in the launcher immediately.
+
+## Previous branch (merged as #274)
+
 The `fix/repo-validation-and-a11y` branch made session creation refuse a
 repository that cannot be cloned, and made the portal's light theme pass a
 whole-portal WCAG 2.2 AA audit. Creating a workspace from a public repository
@@ -32,7 +60,7 @@ versions (Vitest 5, Playwright 1.63, Next 16.3.4, the AWS SDK clients, and the
 Terraform AWS provider lock across all three platforms), and the three `void`
 no-ops the newer typescript-eslint flagged were removed at their root.
 
-## Previous branch
+## Earlier branch
 
 The `fix/shauth-sso-terminal-contract` branch completed the ECS Dev Desktop
 relying-party contract for Shauth and the real browser terminal. Direct entry and
@@ -75,6 +103,10 @@ helper kept the newest 20 versions of each package and retried only bounded,
 idempotent transient GitHub API failures.
 
 ## Verified state
+
+- The portal Chromium suite passed 94/94 (settings key generate/copy/remove, launcher honesty and SSH-key hint, health board `git-integration` row) and the 60-audit accessibility sweep stayed green with the new UI.
+- Integration: the key service against DynamoDB proved OpenSSH derives the stored public key from the delivered private half (`ssh-keygen -y`); the broker and user routes passed 9/9; the create route 9/9 including an ssh:// refusal without keys.
+- Real GitHub over SSH: unknown key → refused naming the key; a temporary read-only deploy key → ref advertisement (then removed); the workspace base image offered the delivered key with GitHub's published host key pinned.
 
 - The 60-audit accessibility sweep (30 routes × light/dark, WCAG 2.2 AA via axe-core) passed, and the complete Chromium portal suite passed 92/92 including the new repository-refusal flow.
 - The create-route integration suite passed 8/8 against DynamoDB on the simulator, with a TLS git-host fixture proving the reachable, missing-ref, not-found, and unreachable outcomes; the credential broker suite passed 5/5 with the `204` contract.

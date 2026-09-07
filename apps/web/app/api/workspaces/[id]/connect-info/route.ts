@@ -3,12 +3,14 @@ import { NextResponse } from "next/server";
 
 import { sshConnectInfo } from "@edd/api-contracts";
 
-import { conflict, isResponse, loadConnectableWorkspace, notFound } from "../../../../../lib/api";
+import {
+  conflict,
+  isResponse,
+  loadConnectableWorkspace,
+  notFound,
+  type IdRouteContext,
+} from "../../../../../lib/api";
 import { withObservability } from "../../../../../lib/observability";
-
-interface Ctx {
-  params: Promise<{ id: string }>;
-}
 
 const SSH_PORT = 22;
 
@@ -19,7 +21,7 @@ const SSH_PORT = 22;
 // machine-auth token as well as a user session. (Browser VS Code is served by the
 // control-plane app's own in-app proxy, which resolves the editor upstream in
 // process — it does not use this endpoint.)
-async function handleGET(req: Request, { params }: Ctx) {
+async function handleGET(req: Request, { params }: IdRouteContext) {
   const ctx = await loadConnectableWorkspace(req, params, "read");
   if (isResponse(ctx)) return ctx;
 

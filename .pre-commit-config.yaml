@@ -60,7 +60,9 @@ repos:
       - id: eslint
         name: eslint (fix)
         language: system
-        entry: pnpm exec eslint --fix
+        # `--no-warn-ignored`: the hook passes every staged .ts file, including config
+        # files ESLint deliberately ignores; the "file ignored" warning is not a finding.
+        entry: pnpm exec eslint --fix --no-warn-ignored
         files: \.(ts|tsx|mjs|cjs|js)$
 
       # TypeScript type-check (whole graph; Turbo-cached).

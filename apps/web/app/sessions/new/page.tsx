@@ -4,6 +4,8 @@ import { defineAbilityFor } from "@edd/authz";
 import { NewSession } from "../../../components/NewSession";
 import { StateBlock } from "../../../components/StateBlock";
 import { getCatalogList } from "../../../lib/control-plane";
+import { gitIntegration } from "../../../lib/git-integration";
+import { getGitSshKeys } from "../../../lib/git-credentials";
 import { getPagePrincipal } from "../../../lib/principal";
 
 export const dynamic = "force-dynamic";
@@ -49,6 +51,14 @@ export default async function NewSessionPage() {
       tools: entry.tools,
     }));
 
+  const integration = gitIntegration();
+  const git = {
+    tokens: integration.tokens,
+    sshKeys: integration.sshKeys,
+    host: integration.host,
+    sshKeyCount: integration.sshKeys ? (await getGitSshKeys().list(principal.id)).length : 0,
+  };
+
   return (
     <>
       <div className="page-head">
@@ -58,7 +68,7 @@ export default async function NewSessionPage() {
           <p>Pick an environment and a repository — your code, one repo per session.</p>
         </div>
       </div>
-      <NewSession images={images} />
+      <NewSession images={images} git={git} />
     </>
   );
 }

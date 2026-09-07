@@ -54,6 +54,10 @@ export const TESTID = {
   sessionStart: "session-start",
   /** The New-session failure notice (why the session could not be started). */
   sessionError: "session-error",
+  /** The New-session note that this deployment has no GitHub account linking. */
+  sessionGitUnavailable: "session-git-unavailable",
+  /** The New-session hint that an SSH clone URL needs a generated GitHub SSH key. */
+  sessionSshKeyHint: "session-ssh-key-hint",
   /** The interface (editor/agent) selector on New session. Attr: `data-editor`. */
   sessionEditor: "session-editor",
   sessionResourceHint: "session-resource-hint",
@@ -116,6 +120,14 @@ export const TESTID = {
   sshKeyInput: "ssh-key-input",
   /** Submit button to register the entered SSH key. */
   sshKeyAdd: "ssh-key-add",
+  /** A platform-generated GitHub SSH key row on Settings → SSH keys. Attr: `data-fingerprint`. */
+  gitSshKeyRow: "git-ssh-key-row",
+  /** The public-key text inside a GitHub SSH key row. */
+  gitSshKeyPublic: "git-ssh-key-public",
+  /** The name input for a new GitHub SSH key. */
+  gitSshKeyLabel: "git-ssh-key-label",
+  /** The generate button for a new GitHub SSH key. */
+  gitSshKeyGenerate: "git-ssh-key-generate",
   /** The per-workspace `ssh` connect command on a workspace card. Attr: `data-host`. */
   workspaceSshCommand: "workspace-ssh-command",
   /** The "Open editor" link on a workspace card (path-based `/w/<id>/` proxy). Attr: `data-href`. */

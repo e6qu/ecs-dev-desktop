@@ -24,6 +24,30 @@ export const notFound = () => NextResponse.json({ error: "not found" }, { status
 export const badRequest = (message = "invalid request") =>
   NextResponse.json({ error: message }, { status: 400 });
 export const conflict = (message: string) => NextResponse.json({ error: message }, { status: 409 });
+/** The second argument Next.js hands an `/api/…/[id]/…` route handler. */
+export interface IdRouteContext {
+  params: Promise<{ id: string }>;
+}
+
+/**
+ * DELETE of a resource the caller owns: authenticate, run the ownership-scoped `remove`
+ * (which answers false when the caller has no such resource), and reply 404 or `{ ok }`.
+ * Shared by every "one of the caller's keys" route so the auth + not-found shape is one.
+ */
+export async function deleteOwned(
+  req: Request,
+  params: Promise<{ id: string }>,
+  remove: (principal: Principal, id: string) => Promise<boolean | NextResponse>,
+): Promise<NextResponse> {
+  const principal = await authenticate(req);
+  if (isResponse(principal)) return principal;
+  const { id } = await params;
+  const removed = await remove(principal, id);
+  if (isResponse(removed)) return removed;
+  if (!removed) return notFound();
+  return NextResponse.json({ ok: true });
+}
+
 /** A well-formed request whose content cannot be acted on (e.g. a repository that does not exist). */
 export const unprocessable = (message: string) =>
   NextResponse.json({ error: message }, { status: 422 });

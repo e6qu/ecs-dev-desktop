@@ -3,19 +3,20 @@ import type { PurgeSnapshotResponse } from "@edd/api-contracts";
 import { snapshotId } from "@edd/core";
 import { NextResponse } from "next/server";
 
-import { domainErrorResponse, isResponse, requireAdmin } from "../../../../../lib/api";
+import {
+  domainErrorResponse,
+  isResponse,
+  requireAdmin,
+  type IdRouteContext,
+} from "../../../../../lib/api";
 import { auditActor } from "../../../../../lib/audit";
 import { getControlPlane } from "../../../../../lib/control-plane";
 import { withObservability } from "../../../../../lib/observability";
 
-interface Ctx {
-  params: Promise<{ id: string }>;
-}
-
 // DELETE /api/admin/snapshots/:id — permanently reap one EBS snapshot (admin only).
 // Refused with 409 when a live/stopped workspace still restores from it (purging it
 // would strand that workspace); an already-gone snapshot is an idempotent success.
-async function handleDELETE(req: Request, { params }: Ctx) {
+async function handleDELETE(req: Request, { params }: IdRouteContext) {
   const principal = await requireAdmin(req);
   if (isResponse(principal)) return principal;
   const cp = await getControlPlane();

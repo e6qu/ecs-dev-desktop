@@ -10,13 +10,10 @@ import {
   isResponse,
   loadOwnedWorkspace,
   notFound,
+  type IdRouteContext,
 } from "../../../../../lib/api";
 import { getControlPlane } from "../../../../../lib/control-plane";
 import { withObservability } from "../../../../../lib/observability";
-
-interface Ctx {
-  params: Promise<{ id: string }>;
-}
 
 /** Optional self-reports: functional (IDE reachable + workspace writable) and
  * activity (real usage since the last beat vs merely alive). Best-effort on BOTH
@@ -41,7 +38,7 @@ async function parseReport(
 //   1. Session auth (browser / API client with Auth.js session cookie)
 //   2. Agent machine-auth: Authorization: Bearer <HMAC-SHA256(secret, wsId)>
 //      — used by the idle-agent running inside the workspace container.
-async function handlePOST(req: Request, { params }: Ctx) {
+async function handlePOST(req: Request, { params }: IdRouteContext) {
   const { id } = await params;
 
   const agentResult = checkAgentAuth(req, id);
