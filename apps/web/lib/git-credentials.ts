@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { GitCredentialService } from "@edd/control-plane";
+import { GitCredentialService, GitSshKeyService } from "@edd/control-plane";
 import { systemClock } from "@edd/core";
-import { createDynamoClient, makeGitCredentialEntity, TABLE } from "@edd/db";
+import { createDynamoClient, makeGitCredentialEntity, makeGitSshKeyEntity, TABLE } from "@edd/db";
+// ssh2 is CommonJS: a default import is the one shape that works under both the bundled
+// (Next.js) and native-ESM (tsx) consumers.
+import ssh2 from "ssh2";
 
 /**
  * Server-side accessor for the per-user git credential store (encrypted at
@@ -11,7 +14,9 @@ import { createDynamoClient, makeGitCredentialEntity, TABLE } from "@edd/db";
  *
  * The feature is gated on `EDD_TOKEN_ENC_KEY` (32-byte AES key, hex). When it is
  * absent the feature is simply off (public repos still clone); when present the
- * key is required and a missing/invalid one fails loudly.
+ * key is required and a missing/invalid one fails loudly. The same key protects the
+ * user-generated git SSH keys ({@link getGitSshKeys}), whose private halves are
+ * decrypted only for the workspace broker.
  */
 function tableName(): string {
   return process.env.DYNAMODB_TABLE ?? TABLE;
@@ -38,4 +43,21 @@ export function getGitCredentials(): GitCredentialService {
     clock: systemClock,
   });
   return instance;
+}
+
+let sshKeys: GitSshKeyService | undefined;
+
+export function getGitSshKeys(): GitSshKeyService {
+  const key = encryptionKey();
+  if (key === undefined) throw new Error("EDD_TOKEN_ENC_KEY is required for git SSH keys");
+  sshKeys ??= new GitSshKeyService({
+    keys: makeGitSshKeyEntity(createDynamoClient(), tableName()),
+    encryptionKeyHex: key,
+    generateKeyPair: (comment) => {
+      const pair = ssh2.utils.generateKeyPairSync("ed25519", { comment });
+      return { publicKey: pair.public, privateKey: pair.private };
+    },
+    clock: systemClock,
+  });
+  return sshKeys;
 }

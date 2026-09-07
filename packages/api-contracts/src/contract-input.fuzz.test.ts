@@ -27,26 +27,40 @@ describe("createWorkspaceRequest (fuzz)", () => {
     );
   });
 
-  it("rejects non-string repoUrl; accepts valid HTTPS URL or undefined", () => {
+  it("rejects non-string repoUrl; accepts a valid https:// or ssh:// URL or undefined", () => {
     fc.assert(
       fc.property(fc.anything(), (repoUrl) => {
         const result = createWorkspaceRequest.safeParse({ baseImage: "golden/node:20", repoUrl });
-        if (typeof repoUrl === "string" && isHttpsUrl(repoUrl)) {
+        if (typeof repoUrl === "string" && (isHttpsUrl(repoUrl) || isSshUrl(repoUrl))) {
           expect(result.success).toBe(true);
         } else if (repoUrl === undefined) {
           expect(result.success).toBe(true);
         } else {
-          // Non-URL strings, non-strings → rejected by z.url().startsWith("https://")
+          // Non-URL strings, other schemes, non-strings → rejected
           expect(result.success).toBe(false);
         }
       }),
     );
+  });
+
+  it("accepts the launcher's normalised ssh:// form and rejects scp-like and other schemes", () => {
+    const ok = (repoUrl: string) =>
+      createWorkspaceRequest.safeParse({ baseImage: "golden/node:20", repoUrl }).success;
+    expect(ok("ssh://git@github.com/e6qu/pos3ql.git")).toBe(true);
+    expect(ok("https://github.com/e6qu/pos3ql.git")).toBe(true);
+    expect(ok("git@github.com:e6qu/pos3ql.git")).toBe(false);
+    expect(ok("http://github.com/e6qu/pos3ql.git")).toBe(false);
+    expect(ok("git://github.com/e6qu/pos3ql.git")).toBe(false);
   });
 });
 
 /** Lightweight URL check without the URL constructor (not available in this tsconfig). */
 function isHttpsUrl(s: string): boolean {
   return s.startsWith("https://") && s.length > 8 && /^https:\/\/[^\s/$.?#].[^\s]*$/.test(s);
+}
+
+function isSshUrl(s: string): boolean {
+  return s.startsWith("ssh://") && s.length > 6 && /^ssh:\/\/[^\s/$.?#].[^\s]*$/.test(s);
 }
 
 describe("createBaseImageRequest (fuzz)", () => {

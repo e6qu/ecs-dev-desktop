@@ -1,28 +1,27 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { GIT_REMOTE_PROBE_TIMEOUT_MS } from "@edd/config";
+import { parseRefAdvertisement, type GitRemote, type GitRemoteProbe } from "@edd/core";
+// ssh2 is CommonJS: a default import is the one shape that works under both the bundled
+// (Next.js) and native-ESM (tsx) consumers.
+import ssh2, { type ConnectConfig } from "ssh2";
 
 /**
  * Create-time check that a session's repository can actually be cloned, done the way git
- * itself starts a clone: a smart-HTTP ref advertisement (`GET <repo>/info/refs?service=
- * git-upload-pack`). It is the one standard surface every git host exposes, so the same
- * call works for GitHub, GHES, or any host the URL names — no provider API involved.
+ * itself starts a clone: by asking the host for the repository's ref advertisement over
+ * the transport the URL names —
  *
- * Why this exists: a git host answers "authentication required" for a repository that
- * does not exist exactly as it does for a private one, so without this check a typo'd
- * URL sailed through create and only failed minutes later inside the workspace with the
- * opaque `could not read Username for 'https://github.com'` — after the user had already
- * been navigated to a booting session.
+ * - `https://`: smart-HTTP `GET <repo>/info/refs?service=git-upload-pack`, with the
+ *   owner's git token as HTTP Basic auth when one exists (exactly what git's credential
+ *   helper supplies in the workspace);
+ * - `ssh://`: an SSH session running `git-upload-pack '<path>'`, authenticated with the
+ *   owner's platform-generated keys, tried in turn the way `ssh` walks `IdentityFile`s.
+ *
+ * Both are the one standard surface every git host exposes, so the same call works for
+ * GitHub, GHES, or any host the URL names. Why this exists: a git host answers
+ * "authentication required" for a repository that does not exist exactly as it does for
+ * a private one, so without this check a typo'd URL sailed through create and only
+ * failed minutes later inside the workspace with the opaque `could not read Username`.
  */
-
-/** The outcome of probing a repository URL. */
-export type GitRemoteProbe =
-  /** The host advertised the repository's refs (it exists and the credential, if any, can read it). */
-  | { readonly kind: "reachable"; readonly refs: readonly string[] }
-  /** The host refused (401/403) or has no such repository (404): not found, or private
-   * and unreadable with the credential offered. Indistinguishable by design on GitHub. */
-  | { readonly kind: "unavailable"; readonly status: number }
-  /** The host could not be reached or answered outside the protocol. */
-  | { readonly kind: "unreachable"; readonly detail: string };
 
 /** A git HTTPS credential (`username:token` for Basic auth), as the workspace helper sends it. */
 export interface GitCredential {
@@ -30,114 +29,31 @@ export interface GitCredential {
   readonly token: string;
 }
 
+/** One of the owner's SSH keys, private half in OpenSSH format, as the workspace gets it. */
+export interface SshIdentity {
+  readonly label: string;
+  readonly privateKey: string;
+}
+
 const GIT_UPLOAD_PACK_SERVICE = "git-upload-pack";
 const ADVERTISEMENT_CONTENT_TYPE = "application/x-git-upload-pack-advertisement";
-const PKT_LINE_LENGTH_DIGITS = 4;
-const PKT_FLUSH = "0000";
 /** HTTP statuses a git host uses for "you may not see this repository" (which for a
  * nonexistent repository is the same answer, so existence is not leaked). */
 const UNAVAILABLE_STATUSES: ReadonlySet<number> = new Set([401, 403, 404]);
-const FULL_SHA_PATTERN = /^[0-9a-f]{40}$/i;
+const PKT_FLUSH = "0000";
+const PKT_LINE_LENGTH_DIGITS = 4;
 
-/** The `{ owner, name }` from an `https://host/owner/repo(.git)` URL — the owner picks the
- * GitHub App installation, and `name` scopes the minted token to exactly that repo. Undefined
- * when there is no/odd repo URL. Exported for property testing (never throws on arbitrary
- * input). The `.git` suffix (git's own clone URLs carry it) is stripped from the name. */
-export function repoRef(repoUrl: string | undefined): { owner: string; name: string } | undefined {
-  if (repoUrl === undefined) return undefined;
-  try {
-    const segments = new URL(repoUrl).pathname.split("/").filter((s) => s.length > 0);
-    // Need both an owner and a repo segment (an owner-only URL yields no credential).
-    if (segments.length < 2) return undefined;
-    const name = segments[1].replace(/\.git$/, "");
-    if (name.length === 0) return undefined;
-    return { owner: segments[0], name };
-  } catch {
-    return undefined;
-  }
-}
-
-/** The `info/refs` URL for a repository clone URL (with or without a `.git` suffix). */
-export function refAdvertisementUrl(repoUrl: string): string {
-  const url = new URL(repoUrl);
+/** The `info/refs` URL for an https clone URL. */
+export function refAdvertisementUrl(remote: GitRemote & { transport: "https" }): string {
+  const url = new URL(remote.url);
   url.pathname = `${url.pathname.replace(/\/+$/, "")}/info/refs`;
   url.search = `service=${GIT_UPLOAD_PACK_SERVICE}`;
-  url.hash = "";
   return url.toString();
 }
 
-/**
- * Ref names from a smart-HTTP v0 ref advertisement (pkt-line framed:
- * `# service=git-upload-pack`, flush, then `<sha> <ref>[\0caps]` per line). Pure; a
- * malformed body yields the refs parsed so far (never throws). `HEAD` is included.
- */
-export function parseRefAdvertisement(body: string): string[] {
-  const refs: string[] = [];
-  let offset = 0;
-  while (offset + PKT_LINE_LENGTH_DIGITS <= body.length) {
-    const lengthHex = body.slice(offset, offset + PKT_LINE_LENGTH_DIGITS);
-    if (!/^[0-9a-f]{4}$/i.test(lengthHex)) break;
-    if (lengthHex === PKT_FLUSH) {
-      offset += PKT_LINE_LENGTH_DIGITS;
-      continue;
-    }
-    const length = Number.parseInt(lengthHex, 16);
-    // A line that runs past the body is a truncated transfer: stop, never emit a partial ref.
-    if (length < PKT_LINE_LENGTH_DIGITS || offset + length > body.length) break;
-    const payload = body.slice(offset + PKT_LINE_LENGTH_DIGITS, offset + length);
-    offset += length;
-    if (payload.startsWith("#")) continue; // the service banner
-    const line = payload.split("\0")[0].replace(/\n$/, "");
-    const space = line.indexOf(" ");
-    if (space < 0) continue;
-    const ref = line.slice(space + 1);
-    if (ref.length > 0) refs.push(ref);
-  }
-  return refs;
-}
-
-/**
- * Whether `ref` (a branch, tag, or commit as the user typed it) can be checked out from
- * the advertised refs. A full 40-hex SHA is accepted unverified (an advertisement lists
- * only ref tips, so a reachable commit is not knowable here); a short SHA is treated as
- * a name and must match a branch or tag. Pure.
- */
-export function refIsAdvertised(refs: readonly string[], ref: string): boolean {
-  if (FULL_SHA_PATTERN.test(ref)) return true;
-  return refs.includes(`refs/heads/${ref}`) || refs.includes(`refs/tags/${ref}`);
-}
-
-/** The user-facing reason a session cannot be created from `repoUrl`, or null when the
- * probe found a clonable repository (and `ref`, when given, is checked out-able). Pure. */
-export function repositoryProblem(
-  probe: GitRemoteProbe,
-  repoUrl: string,
-  ref: string | undefined,
-  hasCredential: boolean,
-): string | null {
-  switch (probe.kind) {
-    case "reachable":
-      if (ref !== undefined && !refIsAdvertised(probe.refs, ref)) {
-        return `${repoUrl} has no branch or tag named '${ref}'.`;
-      }
-      return null;
-    case "unavailable":
-      return hasCredential
-        ? `${repoUrl} was not found, or your connected Git account cannot read it. Check the URL and the repository's access.`
-        : `${repoUrl} was not found, or it is private. Check the URL, or connect your Git account to use a private repository.`;
-    case "unreachable":
-      return `${repoUrl} could not be reached: ${probe.detail}`;
-  }
-}
-
-/**
- * Ask the host for the repository's ref advertisement, as `git clone` does first. The
- * credential (when present) goes as HTTP Basic auth exactly like git's credential
- * helper supplies it, so the answer matches what the workspace will get at boot.
- * Network/protocol failures become an `unreachable` probe — this never throws.
- */
-export async function probeGitRemote(
-  repoUrl: string,
+/** Ask the host over smart HTTP, as `git clone https://…` does first. Never throws. */
+export async function probeGitRemoteOverHttps(
+  remote: GitRemote & { transport: "https" },
   credential: GitCredential | null,
   fetchImpl: typeof fetch = fetch,
 ): Promise<GitRemoteProbe> {
@@ -148,7 +64,7 @@ export async function probeGitRemote(
   }
   let res: Response;
   try {
-    res = await fetchImpl(refAdvertisementUrl(repoUrl), {
+    res = await fetchImpl(refAdvertisementUrl(remote), {
       headers,
       redirect: "follow",
       signal: AbortSignal.timeout(GIT_REMOTE_PROBE_TIMEOUT_MS),
@@ -156,7 +72,9 @@ export async function probeGitRemote(
   } catch (e) {
     return { kind: "unreachable", detail: e instanceof Error ? e.message : String(e) };
   }
-  if (UNAVAILABLE_STATUSES.has(res.status)) return { kind: "unavailable", status: res.status };
+  if (UNAVAILABLE_STATUSES.has(res.status)) {
+    return { kind: "unavailable", detail: `HTTP ${res.status.toString()}` };
+  }
   if (!res.ok) {
     return { kind: "unreachable", detail: `the host answered HTTP ${res.status.toString()}` };
   }
@@ -170,4 +88,138 @@ export async function probeGitRemote(
     };
   }
   return { kind: "reachable", refs: parseRefAdvertisement(await res.text()) };
+}
+
+/** Whether `body` holds a complete advertisement: a flush packet at a pkt boundary. */
+function advertisementComplete(body: string): boolean {
+  let offset = 0;
+  while (offset + PKT_LINE_LENGTH_DIGITS <= body.length) {
+    const lengthHex = body.slice(offset, offset + PKT_LINE_LENGTH_DIGITS);
+    if (lengthHex === PKT_FLUSH) return true;
+    const length = Number.parseInt(lengthHex, 16);
+    if (!Number.isInteger(length) || length < PKT_LINE_LENGTH_DIGITS) return false;
+    offset += length;
+  }
+  return false;
+}
+
+/** The raw host-key blobs from OpenSSH `known_hosts` lines (`host type base64`). */
+function knownHostKeyBlobs(knownHosts: readonly string[]): Buffer[] {
+  const blobs: Buffer[] = [];
+  for (const line of knownHosts) {
+    const [, , blob = ""] = line.trim().split(/\s+/);
+    if (blob.length > 0) blobs.push(Buffer.from(blob, "base64"));
+  }
+  return blobs;
+}
+
+type SshAttempt =
+  | { readonly outcome: "refs"; readonly body: string }
+  | { readonly outcome: "auth-rejected" }
+  | { readonly outcome: "repo-rejected"; readonly detail: string }
+  | { readonly outcome: "failed"; readonly detail: string };
+
+/** One SSH session with one key: connect, run git-upload-pack, read the advertisement. */
+function sshAttempt(
+  remote: GitRemote & { transport: "ssh" },
+  identity: SshIdentity,
+  hostKeys: readonly Buffer[],
+): Promise<SshAttempt> {
+  return new Promise((resolve) => {
+    const client = new ssh2.Client();
+    let settled = false;
+    const finish = (attempt: SshAttempt): void => {
+      if (settled) return;
+      settled = true;
+      client.end();
+      resolve(attempt);
+    };
+    const config: ConnectConfig = {
+      host: remote.host,
+      port: remote.port,
+      username: remote.user,
+      privateKey: identity.privateKey,
+      readyTimeout: GIT_REMOTE_PROBE_TIMEOUT_MS,
+      // Only the host keys the git host publishes are trusted when it publishes any; a
+      // host that publishes none is accepted for this read-only advertisement (the
+      // workspace records the same fact in its boot log).
+      ...(hostKeys.length > 0
+        ? { hostVerifier: (key: Buffer) => hostKeys.some((known) => known.equals(key)) }
+        : {}),
+    };
+    client.on("error", (error: Error & { level?: string }) => {
+      if (error.level === "client-authentication") {
+        finish({ outcome: "auth-rejected" });
+        return;
+      }
+      finish({ outcome: "failed", detail: error.message });
+    });
+    client.on("ready", () => {
+      // The path is quoted for the remote shell the way git does it.
+      client.exec(`git-upload-pack '${remote.path.replace(/'/g, "'\\''")}'`, (err, stream) => {
+        if (err) {
+          finish({ outcome: "failed", detail: err.message });
+          return;
+        }
+        let body = "";
+        let stderr = "";
+        stream.on("data", (chunk: Buffer) => {
+          body += chunk.toString("utf8");
+          // The server now waits for our "want"s; we have what we came for.
+          if (advertisementComplete(body)) finish({ outcome: "refs", body });
+        });
+        stream.stderr.on("data", (chunk: Buffer) => {
+          stderr += chunk.toString("utf8");
+        });
+        stream.on("close", (code: number | null) => {
+          if (advertisementComplete(body)) {
+            finish({ outcome: "refs", body });
+            return;
+          }
+          const detail = stderr.trim().length > 0 ? stderr.trim() : `exit ${String(code)}`;
+          finish({ outcome: "repo-rejected", detail });
+        });
+      });
+    });
+    try {
+      client.connect(config);
+    } catch (e) {
+      // ssh2 throws synchronously on key material it cannot parse.
+      finish({ outcome: "failed", detail: e instanceof Error ? e.message : String(e) });
+    }
+  });
+}
+
+/**
+ * Ask the host over SSH, as `git clone ssh://…` does, trying each identity in turn the way
+ * `ssh` walks `IdentityFile`s. A deploy key is bound to one repository, so a key the host
+ * accepts for authentication can still be refused for THIS repository — that also moves
+ * on to the next key. Never throws.
+ */
+export async function probeGitRemoteOverSsh(
+  remote: GitRemote & { transport: "ssh" },
+  identities: readonly SshIdentity[],
+  knownHosts: readonly string[],
+): Promise<GitRemoteProbe> {
+  if (identities.length === 0) {
+    return { kind: "unavailable", detail: "you have no GitHub SSH keys yet" };
+  }
+  const hostKeys = knownHostKeyBlobs(knownHosts);
+  const refusals: string[] = [];
+  for (const identity of identities) {
+    const attempt = await sshAttempt(remote, identity, hostKeys);
+    switch (attempt.outcome) {
+      case "refs":
+        return { kind: "reachable", refs: parseRefAdvertisement(attempt.body) };
+      case "auth-rejected":
+        refusals.push(`'${identity.label}' was not accepted by ${remote.host}`);
+        break;
+      case "repo-rejected":
+        refusals.push(`'${identity.label}': ${attempt.detail}`);
+        break;
+      case "failed":
+        return { kind: "unreachable", detail: attempt.detail };
+    }
+  }
+  return { kind: "unavailable", detail: refusals.join("; ") };
 }

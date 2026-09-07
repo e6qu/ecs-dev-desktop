@@ -6,7 +6,7 @@ import { defineAbilityFor } from "@edd/authz";
 import { baseImage } from "@edd/core";
 
 import { authenticate, badRequest, forbidden, isResponse } from "../../../lib/api";
-import { getCatalog, getCatalogList } from "../../../lib/control-plane";
+import { getCatalog, getCatalogList, invalidateCatalogList } from "../../../lib/control-plane";
 import { withObservability } from "../../../lib/observability";
 
 // GET /api/base-images — list the catalog (any authenticated user can browse it).
@@ -44,6 +44,7 @@ async function handlePOST(req: Request) {
     enabled: parsed.data.enabled,
     editor: parsed.data.editor,
   });
+  invalidateCatalogList();
   return NextResponse.json(entry, { status: 201 });
 }
 

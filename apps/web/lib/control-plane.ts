@@ -51,6 +51,7 @@ import { Ec2StorageProvider } from "@edd/storage-ec2";
 
 import { AGENT_SECRET_ENV, CONNECTION_SECRET_ENV } from "./constants";
 import { RealWafApplier } from "./waf-applier";
+import { gitIntegrationHealth } from "./git-integration-health";
 
 /**
  * Process-wide control plane. Persistence is always real DynamoDB.
@@ -178,6 +179,12 @@ export function getCatalogList(
   return cachedCatalogList(nowMs);
 }
 
+/** Called by every catalog mutation route, so a read in this process right after an
+ * admin's change sees it (other replicas converge within the TTL). */
+export function invalidateCatalogList(): void {
+  cachedCatalogList.invalidate();
+}
+
 type FleetCostReport = Awaited<ReturnType<CostService["report"]>>;
 
 /** Short TTL for the cached windowed cost report. Even with rollup checkpoints the report
@@ -257,6 +264,7 @@ export async function getHealthService(): Promise<HealthService> {
     compute,
     pingDatabase: () => pingTable(client, table),
     reconcilerHeartbeat: reconcilerHeartbeatReader(client, table),
+    gitIntegration: gitIntegrationHealth,
     clock: systemClock,
   });
 }

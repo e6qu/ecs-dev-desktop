@@ -53,3 +53,15 @@ describe("ttlCache", () => {
     expect(load).toHaveBeenCalledTimes(2);
   });
 });
+
+describe("ttlCache.invalidate", () => {
+  it("makes the next read reload within the TTL, sharing the new load as before", async () => {
+    let n = 0;
+    const cached = ttlCache(() => Promise.resolve(++n), 10_000);
+    expect(await cached(0)).toBe(1);
+    expect(await cached(1_000)).toBe(1);
+    cached.invalidate();
+    expect(await cached(2_000)).toBe(2);
+    expect(await cached(3_000)).toBe(2);
+  });
+});

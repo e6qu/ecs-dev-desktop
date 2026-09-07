@@ -1,4 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import { randomBytes } from "node:crypto";
+
 import { defineConfig, devices } from "@playwright/test";
 import { immutableReleaseEnvironment } from "./scripts/release-env";
 
@@ -29,6 +31,9 @@ const appEnv = {
   EDD_IMAGE_SOURCE_REPO: "e6qu/ecs-dev-desktop",
   EDD_IMAGE_SOURCE_BRANCH: "main",
   EDD_IMAGE_SOURCE_WEBHOOK_SECRET: "playwright-image-source-webhook-secret",
+  // Enables the encrypted git-token / GitHub-SSH-key store (a fresh key per run; nothing
+  // persists across runs, and no secret-shaped literal lives in the repository).
+  EDD_TOKEN_ENC_KEY: randomBytes(32).toString("hex"),
   ...RELEASE_ENVIRONMENT,
 };
 // global-setup runs in this process and reads these.

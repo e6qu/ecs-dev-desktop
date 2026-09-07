@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-import { DEFAULT_GITHUB_API_URL } from "@edd/config";
+import { DEFAULT_GITHUB_API_URL, GIT_HOST_META_TIMEOUT_MS } from "@edd/config";
 import { z } from "zod";
 
 import { GITHUB_API_URL_ENV } from "./constants";
@@ -182,4 +182,31 @@ export async function createRepo(
   });
   if (!res.ok) throw new GitHubApiError(res.status, "create repo");
   return toRepoSummary(repoSchema.parse(await res.json()));
+}
+
+/** GitHub's published SSH host keys (`GET /meta` → `ssh_keys`), the standard API way to
+ * pin a `known_hosts` entry. Lines are returned in `known_hosts` form for `host`. */
+const metaSchema = z.object({ ssh_keys: z.array(z.string()).optional() });
+
+/**
+ * `known_hosts` lines for the git host, from what it publishes. An empty list means the
+ * host publishes none (GHES and simulators may not implement `/meta`, and a network
+ * failure is reported the same way): the caller states that fact where it matters — the
+ * workspace boot log says it is trusting the host on first use — rather than failing a
+ * session create over a pin it can do without.
+ */
+export async function gitHostKnownHosts(apiUrl: string, host: string): Promise<string[]> {
+  let res: Response;
+  try {
+    res = await fetch(`${apiUrl}/meta`, {
+      headers: { Accept: "application/vnd.github+json" },
+      signal: AbortSignal.timeout(GIT_HOST_META_TIMEOUT_MS),
+    });
+  } catch {
+    return [];
+  }
+  if (!res.ok) return [];
+  const parsed = metaSchema.safeParse(await res.json());
+  if (!parsed.success) return [];
+  return (parsed.data.ssh_keys ?? []).map((key) => `${host} ${key}`);
 }

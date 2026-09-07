@@ -232,6 +232,10 @@ export const WORKSPACE_PROXY_UPSTREAM_TIMEOUT_MS = 30000;
  * longer is reported as unreachable rather than holding the create request open. */
 export const GIT_REMOTE_PROBE_TIMEOUT_MS = 10000;
 
+/** Max ms to wait for a git host's published metadata (GitHub `GET /meta`, which lists its
+ * SSH host keys) when assembling a workspace's `known_hosts`. */
+export const GIT_HOST_META_TIMEOUT_MS = 5000;
+
 /** Max bytes the proxy buffers when it must rewrite an editor response body (HTML shell
  * / opencode asset). Only rewritable content types are buffered at all, but the buffer is
  * still fully in-memory, so an oversized (or maliciously large) upstream body could

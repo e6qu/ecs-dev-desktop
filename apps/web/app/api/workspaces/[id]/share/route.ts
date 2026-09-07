@@ -3,20 +3,21 @@ import { NextResponse } from "next/server";
 
 import { shareRequest } from "@edd/api-contracts";
 
-import { domainErrorResponse, isResponse, loadOwnedWorkspace } from "../../../../../lib/api";
+import {
+  domainErrorResponse,
+  isResponse,
+  loadOwnedWorkspace,
+  type IdRouteContext,
+} from "../../../../../lib/api";
 import { auditActor } from "../../../../../lib/audit";
 import { withObservability } from "../../../../../lib/observability";
-
-interface Ctx {
-  params: Promise<{ id: string }>;
-}
 
 // POST /api/workspaces/:id/share {enabled} — toggle the owner's spectate flag.
 // Session-only and OWNER-only ("update" grant): sharing exposes the live session
 // (including keystrokes) to every signed-in viewer, so nobody but the owner may
 // enable it — an admin can inspect through the admin surface, not impersonate a
 // share decision. Disabling is always accepted for the same principal.
-async function handlePOST(req: Request, { params }: Ctx) {
+async function handlePOST(req: Request, { params }: IdRouteContext) {
   const ctx = await loadOwnedWorkspace(req, params, "update");
   if (isResponse(ctx)) return ctx;
   const parsed = shareRequest.safeParse(await req.json().catch(() => null));

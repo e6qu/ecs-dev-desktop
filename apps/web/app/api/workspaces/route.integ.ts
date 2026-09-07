@@ -4,6 +4,7 @@ import { CatalogService } from "@edd/control-plane";
 import { baseImage, systemClock } from "@edd/core";
 import { createDynamoClient, dropTable, dynamodb, ensureTable, makeBaseImageEntity } from "@edd/db";
 import { execFileSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { createServer, type Server } from "node:https";
 import type { AddressInfo } from "node:net";
@@ -209,6 +210,19 @@ describe("workspaces API end-to-end (DynamoDB Local)", () => {
       expect(((await res.json()) as { error: string }).error).toBe(
         `${gitBase}/acme/app.git has no branch or tag named 'trunk'.`,
       );
+    });
+
+    it("refuses (422) an ssh:// repository when the owner has no GitHub SSH keys, naming the fix", async () => {
+      process.env.EDD_TOKEN_ENC_KEY = randomBytes(32).toString("hex");
+      try {
+        const res = await create({ repoUrl: "ssh://git@github.com/e6qu/pos3ql.git" });
+        expect(res.status).toBe(422);
+        expect(((await res.json()) as { error: string }).error).toContain(
+          "you have no GitHub SSH keys yet",
+        );
+      } finally {
+        process.env.EDD_TOKEN_ENC_KEY = "";
+      }
     });
 
     it("refuses (422) a host that cannot be reached, rather than creating a doomed session", async () => {

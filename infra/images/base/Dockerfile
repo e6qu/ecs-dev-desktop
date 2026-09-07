@@ -196,6 +196,8 @@ COPY --chmod=0755 authorized-keys.sh /usr/local/bin/edd-authorized-keys
 # Git credential helper: clone/push private repos using the session owner's token
 # fetched from the control plane at use time (nothing stored on the EBS volume).
 COPY --chmod=0755 git-credential-helper.sh /usr/local/bin/edd-git-credential
+# Boot-time installer for the owner's platform-generated git SSH keys (see the script).
+COPY --chmod=0755 git-ssh-keys.mjs /usr/local/bin/edd-git-ssh-keys
 RUN git config --system credential.helper /usr/local/bin/edd-git-credential
 
 # Privilege guard: stands in (on PATH, ahead of /usr/bin) for tools that need

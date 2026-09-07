@@ -1,13 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { NextResponse } from "next/server";
 
-import { domainErrorResponse, isResponse, loadConnectableWorkspace } from "../../../../../lib/api";
+import {
+  domainErrorResponse,
+  isResponse,
+  loadConnectableWorkspace,
+  type IdRouteContext,
+} from "../../../../../lib/api";
 import { auditActor } from "../../../../../lib/audit";
 import { withObservability } from "../../../../../lib/observability";
-
-interface Ctx {
-  params: Promise<{ id: string }>;
-}
 
 // POST /api/workspaces/:id/connect — wake-on-connect: ensure the workspace is
 // reachable (idempotent), waking it from its snapshot if it is scaled to zero.
@@ -15,7 +16,7 @@ interface Ctx {
 // accepts the gateway's machine-auth token as well as a user session. The
 // control plane records `session.start` only when this actually wakes a
 // scaled-to-zero workspace — idempotent reconnects log nothing (no flood).
-async function handlePOST(req: Request, { params }: Ctx) {
+async function handlePOST(req: Request, { params }: IdRouteContext) {
   const ctx = await loadConnectableWorkspace(req, params, "update");
   if (isResponse(ctx)) return ctx;
   const result = await ctx.cp.connect(

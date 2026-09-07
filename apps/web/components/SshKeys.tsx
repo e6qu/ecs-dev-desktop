@@ -6,7 +6,8 @@ import type { SshKeyDto } from "@edd/api-contracts";
 import { useEffect, useState } from "react";
 
 import { TESTID } from "../lib/testids";
-import { StateBlock } from "./StateBlock";
+import { ConfirmRemove } from "./ConfirmRemove";
+import { ErrorNotice, KeyIdentity, KeyList } from "./KeyList";
 
 const api = new ApiClient({ baseUrl: "" });
 
@@ -111,73 +112,39 @@ export function SshKeys() {
         >
           register key
         </button>
-        {error !== null && (
-          <p role="alert" className="mono" style={{ color: "var(--st-error)" }}>
-            {error}
-          </p>
-        )}
+        <ErrorNotice error={error} />
       </section>
 
       <section className="stack" style={{ gap: 8 }}>
         <h2 className="mono section-h">your keys</h2>
-        {keys === null ? (
-          <p className="state-note" role="status">
-            loading…
-          </p>
-        ) : keys.length === 0 ? (
-          <StateBlock
-            title="No SSH keys yet"
-            detail="Add a public key above to SSH into your workspaces."
-          />
-        ) : (
-          <ul className="list">
-            {keys.map((k) => (
-              <li
-                key={k.id}
-                className="row"
-                data-testid={TESTID.sshKeyRow}
-                data-fingerprint={k.fingerprint}
-              >
-                <span className="stack" style={{ gap: 2 }}>
-                  <span>{k.label}</span>
-                  <span className="mono" style={{ color: "var(--dim)", fontSize: 12 }}>
-                    {k.keyType} · {k.fingerprint}
-                  </span>
-                </span>
-                <span className="foot">
-                  <button
-                    type="button"
-                    className="btn danger"
-                    disabled={busy}
-                    aria-label={
-                      confirmingId === k.id ? "confirm delete — removes this SSH key" : "remove"
-                    }
-                    onClick={() => {
-                      if (confirmingId !== k.id) {
-                        setConfirmingId(k.id);
-                        return;
-                      }
-                      void remove(k.id);
-                    }}
-                  >
-                    {confirmingId === k.id ? "confirm delete?" : "remove"}
-                  </button>
-                  {confirmingId === k.id && !busy && (
-                    <button
-                      type="button"
-                      className="btn"
-                      onClick={() => {
-                        setConfirmingId(null);
-                      }}
-                    >
-                      cancel
-                    </button>
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-        )}
+        <KeyList
+          keys={keys}
+          emptyTitle="No SSH keys yet"
+          emptyDetail="Add a public key above to SSH into your workspaces."
+          renderRow={(k) => (
+            <li
+              key={k.id}
+              className="row"
+              data-testid={TESTID.sshKeyRow}
+              data-fingerprint={k.fingerprint}
+            >
+              <span className="stack" style={{ gap: 2 }}>
+                <KeyIdentity label={k.label} keyType={k.keyType} fingerprint={k.fingerprint} />
+              </span>
+              <span className="foot">
+                <ConfirmRemove
+                  id={k.id}
+                  confirmingId={confirmingId}
+                  setConfirmingId={setConfirmingId}
+                  busy={busy}
+                  armLabel={"remove"}
+                  confirmLabel={"confirm delete — removes this SSH key"}
+                  onConfirm={(id) => void remove(id)}
+                />
+              </span>
+            </li>
+          )}
+        />
       </section>
     </div>
   );

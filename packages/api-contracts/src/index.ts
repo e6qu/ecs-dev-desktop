@@ -238,8 +238,16 @@ const idleStopMs = z.number().int().min(MIN_IDLE_STOP_MS).max(MAX_IDLE_STOP_MS);
 export const createWorkspaceRequest = z.object({
   baseImage: z.string().trim().min(1),
   /** Optional git repo to clone into the session at first boot ("one repo per
-   * session"). HTTPS URL; private repos use the owner's git credential. */
-  repoUrl: z.url().startsWith("https://").optional(),
+   * session"). An `https://` clone URL (private repos use the owner's git credential) or
+   * an `ssh://user@host/path` one (the owner's platform-generated SSH keys). The scp-like
+   * `git@host:path` form is normalised to `ssh://` by the launcher before it gets here. */
+  repoUrl: z
+    .url()
+    .refine(
+      (u) => u.startsWith("https://") || u.startsWith("ssh://"),
+      "repoUrl must be https:// or ssh://",
+    )
+    .optional(),
   /** Optional branch/tag/SHA to check out (defaults to the repo's default). */
   repoRef: z.string().trim().min(1).max(255).optional(),
   /** Per-session interface override; absent = the base image's catalog choice. */
@@ -273,7 +281,8 @@ export const updateWorkspaceRequest = z
     alwaysOn: z.boolean().optional(),
   })
   .refine(
-    (p) => p.snapshotIntervalMs !== undefined || p.idleStopMs !== undefined || p.alwaysOn !== undefined,
+    (p) =>
+      p.snapshotIntervalMs !== undefined || p.idleStopMs !== undefined || p.alwaysOn !== undefined,
     { message: "at least one field is required" },
   );
 export type UpdateWorkspaceRequest = z.infer<typeof updateWorkspaceRequest>;
@@ -837,6 +846,56 @@ export type ListSshKeysResponse = z.infer<typeof listSshKeysResponse>;
 /** DELETE /api/ssh-keys/:id — response body. */
 export const deleteSshKeyResponse = z.object({ ok: z.literal(true) });
 export type DeleteSshKeyResponse = z.infer<typeof deleteSshKeyResponse>;
+
+/** POST /api/git-ssh-keys — generate a named SSH keypair for the caller's git host. */
+export const generateGitSshKeyRequest = z.object({
+  label: z.string().trim().min(1, "label is required").max(100, "label is too long"),
+});
+export type GenerateGitSshKeyRequest = z.infer<typeof generateGitSshKeyRequest>;
+
+/** A platform-generated git SSH key as returned to its owner: the public half to add to
+ * the git host, never the private half (that only ever reaches the owner's workspaces). */
+export const gitSshKeyDto = z.object({
+  id: z.string(),
+  label: z.string(),
+  /** Algorithm field, e.g. "ssh-ed25519". */
+  keyType: z.string(),
+  /** OpenSSH SHA256 fingerprint, e.g. "SHA256:…" — what GitHub shows for the key. */
+  fingerprint: z.string(),
+  publicKey: z.string(),
+  createdAt: z.iso.datetime(),
+});
+export type GitSshKeyDto = z.infer<typeof gitSshKeyDto>;
+
+export const generateGitSshKeyResponse = z.object({ key: gitSshKeyDto });
+export type GenerateGitSshKeyResponse = z.infer<typeof generateGitSshKeyResponse>;
+
+export const listGitSshKeysResponse = z.object({ keys: z.array(gitSshKeyDto) });
+export type ListGitSshKeysResponse = z.infer<typeof listGitSshKeysResponse>;
+
+export const deleteGitSshKeyResponse = z.object({ ok: z.literal(true) });
+export type DeleteGitSshKeyResponse = z.infer<typeof deleteGitSshKeyResponse>;
+
+/** GET /api/workspaces/:id/git-ssh-keys — the agent-authenticated broker body: every key of
+ * the workspace owner, private half included, plus the ssh_config target so the workspace
+ * can write `Host <host>` with `IdentityFile`s, and the host's published SSH host keys for
+ * `known_hosts` when the git host publishes them (GitHub does, via `GET /meta`). */
+export const workspaceGitSshKeysResponse = z.object({
+  /** The git host the keys are for (from the deployment's GitHub coordinate). */
+  host: z.string().min(1),
+  /** OpenSSH `known_hosts`-style lines (`<host> <type> <base64>`), possibly empty when the
+   * host does not publish them — the workspace then says so in its boot log. */
+  knownHosts: z.array(z.string()),
+  keys: z.array(
+    z.object({
+      id: z.string(),
+      label: z.string(),
+      publicKey: z.string(),
+      privateKey: z.string(),
+    }),
+  ),
+});
+export type WorkspaceGitSshKeysResponse = z.infer<typeof workspaceGitSshKeysResponse>;
 
 /** POST /api/workspaces/:id/ssh-authorize — the SSH gateway's connect-time
  * decision: does the presented public key belong to a user who owns this

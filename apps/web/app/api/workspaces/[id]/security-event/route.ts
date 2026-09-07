@@ -4,21 +4,22 @@ import { NextResponse } from "next/server";
 import { securityEventRequest } from "@edd/api-contracts";
 import { workspaceId } from "@edd/core";
 
-import { badRequest, domainErrorResponse, notFound } from "../../../../../lib/api";
+import {
+  badRequest,
+  domainErrorResponse,
+  notFound,
+  type IdRouteContext,
+} from "../../../../../lib/api";
 import { getControlPlane } from "../../../../../lib/control-plane";
 import { checkAgentAuth } from "../../../../../lib/machine-auth";
 import { withObservability } from "../../../../../lib/observability";
-
-interface Ctx {
-  params: Promise<{ id: string }>;
-}
 
 // POST /api/workspaces/:id/security-event — the in-workspace privilege guard reports a
 // blocked privileged-tool attempt (docker, sudo, …). Agent machine-auth only (the same
 // HMAC bearer the idle-agent uses); a browser/session has no reason to call this. The
 // control plane records a first-class audit event + emits the security metric, so the
 // attempt surfaces in admin monitoring (audit/Logs view, dashboard, alarm).
-async function handlePOST(req: Request, { params }: Ctx) {
+async function handlePOST(req: Request, { params }: IdRouteContext) {
   const { id } = await params;
   if (checkAgentAuth(req, id) !== "valid") {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });

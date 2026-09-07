@@ -13,6 +13,9 @@ import {
   healthReport,
   infrastructureReport,
   listBaseImagesResponse,
+  generateGitSshKeyRequest,
+  generateGitSshKeyResponse,
+  listGitSshKeysResponse,
   listSshKeysResponse,
   listWorkspacesResponse,
   logStreamResult,
@@ -31,6 +34,8 @@ import {
   type BaseImageEntryDto,
   type CreateBaseImageRequest,
   type CreateWorkspaceRequest,
+  type GenerateGitSshKeyRequest,
+  type GitSshKeyDto,
   type CostReport,
   type CostWindow,
   type QuotaReportDto,
@@ -264,6 +269,30 @@ export class ApiClient {
   /** Delete one of the caller's registered SSH keys. */
   async deleteSshKey(id: string): Promise<void> {
     await this.send(`/api/ssh-keys/${id}`, { method: "DELETE" });
+  }
+
+  // --- Platform-generated git SSH keys (for GitHub) ---
+
+  /** The caller's generated git SSH keys (public halves only). */
+  async listGitSshKeys(): Promise<GitSshKeyDto[]> {
+    const res = await this.send("/api/git-ssh-keys");
+    return listGitSshKeysResponse.parse(await res.json()).keys;
+  }
+
+  /** Generate a new named git SSH key; the private half stays on the platform. */
+  async generateGitSshKey(req: GenerateGitSshKeyRequest): Promise<GitSshKeyDto> {
+    const body = generateGitSshKeyRequest.parse(req);
+    const res = await this.send("/api/git-ssh-keys", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return generateGitSshKeyResponse.parse(await res.json()).key;
+  }
+
+  /** Delete one of the caller's generated git SSH keys. */
+  async deleteGitSshKey(id: string): Promise<void> {
+    await this.send(`/api/git-ssh-keys/${id}`, { method: "DELETE" });
   }
 
   // --- Base-image catalog ---

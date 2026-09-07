@@ -14,6 +14,8 @@ import {
 import type { SshKeyDto } from "@edd/api-contracts";
 import { writeTransaction, type SshKeyEntity, type SshKeyFingerprintEntity } from "@edd/db";
 
+import { newestFirst } from "./newest-first";
+
 /**
  * Account-level SSH public keys a user registers for SSH access to their
  * workspaces. The gateway authenticates a connecting human by matching the
@@ -139,9 +141,7 @@ export class SshKeyService {
     // `pages: "all"` is mandatory — a bare `.go()` returns only the first 1 MB Query
     // page, silently truncating a user's key list (the codebase's documented footgun).
     const { data } = await this.deps.keys.query.primary({ ownerId }).go({ pages: "all" });
-    return data
-      .map(toDto)
-      .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
+    return newestFirst(data.map(toDto));
   }
 
   /**

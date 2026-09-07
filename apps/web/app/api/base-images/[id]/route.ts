@@ -12,13 +12,10 @@ import {
   forbidden,
   isResponse,
   notFound,
+  type IdRouteContext,
 } from "../../../../lib/api";
-import { getCatalog } from "../../../../lib/control-plane";
+import { getCatalog, invalidateCatalogList } from "../../../../lib/control-plane";
 import { withObservability } from "../../../../lib/observability";
-
-interface Ctx {
-  params: Promise<{ id: string }>;
-}
 
 /** Authenticate + check `action` on BaseImage. Returns the principal or a Response. */
 async function authorize(req: Request, action: Action): Promise<NextResponse | null> {
@@ -29,7 +26,7 @@ async function authorize(req: Request, action: Action): Promise<NextResponse | n
 }
 
 // GET /api/base-images/:id — read a single catalog entry.
-async function handleGET(req: Request, { params }: Ctx) {
+async function handleGET(req: Request, { params }: IdRouteContext) {
   const denied = await authorize(req, "read");
   if (denied) return denied;
   const entry = await getCatalog().get(baseImageId((await params).id));
@@ -37,7 +34,7 @@ async function handleGET(req: Request, { params }: Ctx) {
 }
 
 // PATCH /api/base-images/:id — update name/description/enabled (admins only).
-async function handlePATCH(req: Request, { params }: Ctx) {
+async function handlePATCH(req: Request, { params }: IdRouteContext) {
   const denied = await authorize(req, "update");
   if (denied) return denied;
 
@@ -55,14 +52,16 @@ async function handlePATCH(req: Request, { params }: Ctx) {
     ...patch,
     ...(image === undefined ? {} : { image: baseImage(image) }),
   });
+  if (result.ok) invalidateCatalogList();
   return result.ok ? NextResponse.json(result.value) : domainErrorResponse(result.error);
 }
 
 // DELETE /api/base-images/:id — remove a catalog entry (admins only).
-async function handleDELETE(req: Request, { params }: Ctx) {
+async function handleDELETE(req: Request, { params }: IdRouteContext) {
   const denied = await authorize(req, "delete");
   if (denied) return denied;
   const result = await getCatalog().remove(baseImageId((await params).id));
+  if (result.ok) invalidateCatalogList();
   return result.ok ? new NextResponse(null, { status: 204 }) : domainErrorResponse(result.error);
 }
 

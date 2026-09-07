@@ -14,7 +14,13 @@ const loginAs = (context: BrowserContext, id: string, role: string): Promise<voi
   loginAsAt(context, BASE_URL, id, role);
 
 test.beforeAll(async ({ request }) => {
-  // Seed one enabled catalog entry so the developer can launch a workspace.
+  // Seed one enabled catalog entry so the developer can launch a workspace. Playwright
+  // re-runs this hook in every restarted worker (after a failure), and catalog entries
+  // are keyed by id, so seed only when the image is not listed yet.
+  const listed = await request.get("/api/base-images", { headers: { cookie: adminCookieHeader } });
+  expect(listed.ok(), `list catalog: ${listed.status().toString()}`).toBeTruthy();
+  const { baseImages } = (await listed.json()) as { baseImages: { image: string }[] };
+  if (baseImages.some((entry) => entry.image === NODE_IMAGE)) return;
   const res = await request.post("/api/base-images", {
     headers: { cookie: adminCookieHeader },
     data: {
@@ -145,7 +151,7 @@ test("a public repository URL that cannot be cloned is refused before any sessio
   // private GitHub URL takes (the create request checks the repository before reserving).
   await page.locator(sel(TESTID.sessionModeOption, { "data-mode": "public" })).click();
   await page
-    .getByRole("textbox", { name: "public repository URL" })
+    .getByRole("textbox", { name: "repository clone URL" })
     .fill("https://127.0.0.1:1/acme/app.git");
   await page.locator(sel(TESTID.sessionStart)).click();
 
@@ -363,6 +369,12 @@ test("admin sees the system health board with a live DynamoDB check", async ({ p
   await expect(
     page.locator(sel(TESTID.healthRow, { "data-component": "reconciler" })),
   ).toHaveAttribute("data-h", "unknown");
+  // This deployment has no GitHub App and no account linking: the board says so (degraded,
+  // not hidden) and notes that user SSH keys are on.
+  const gitRow = page.locator(sel(TESTID.healthRow, { "data-component": "git-integration" }));
+  await expect(gitRow).toHaveAttribute("data-h", "degraded");
+  await expect(gitRow).toContainText("no GitHub App or account linking");
+  await expect(gitRow).toContainText("user SSH keys on");
 });
 
 test("non-admins are denied the admin console", async ({ page, context }) => {
@@ -592,4 +604,72 @@ test("admin logs page shows the derived audit feed and the CloudWatch streams", 
     "data-available",
     "false",
   );
+});
+
+test("a developer generates a GitHub SSH key, copies its public half, and removes it", async ({
+  page,
+  context,
+}) => {
+  await loginAs(context, "keyholder", "developer");
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/settings/ssh-keys");
+  await expect(page.getByRole("heading", { name: "GitHub SSH keys" })).toBeVisible();
+
+  await page.locator(sel(TESTID.gitSshKeyLabel)).fill("work laptop");
+  await page.locator(sel(TESTID.gitSshKeyGenerate)).click();
+
+  const row = page.locator(sel(TESTID.gitSshKeyRow));
+  await expect(row).toHaveCount(1);
+  await expect(row).toContainText("work laptop");
+  await expect(row).toContainText("ssh-ed25519");
+  const publicKey = await row.locator(sel(TESTID.gitSshKeyPublic)).innerText();
+  expect(publicKey).toMatch(/^ssh-ed25519 AAAA[0-9A-Za-z+/=]+ edd:keyholder:work-laptop$/);
+  // The page never shows a private key.
+  await expect(page.locator("body")).not.toContainText("PRIVATE KEY");
+
+  await row.getByRole("button", { name: /copy the public key/ }).click();
+  await expect(row.getByRole("button", { name: /copy the public key/ })).toHaveText("copied");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(publicKey);
+
+  await row.getByRole("button", { name: /remove the key/ }).click();
+  await row.getByRole("button", { name: /confirm delete/ }).click();
+  await expect(page.locator(sel(TESTID.gitSshKeyRow))).toHaveCount(0);
+});
+
+test("the launcher is honest about git access: no dead Connect button, and an SSH URL needs a key", async ({
+  page,
+  context,
+}) => {
+  // This deployment (the Playwright app) has no GitHub App and no GitHub OAuth pair.
+  await loginAs(context, "alice", "developer");
+  await page.goto("/sessions/new");
+  await expect(page.locator(sel(TESTID.sessionGitUnavailable))).toBeVisible();
+  await expect(page.getByRole("link", { name: "Connect GitHub" })).toHaveCount(0);
+  // The direct connect route says why instead of failing with a 500.
+  const connect = await page.request.get("/api/github/connect/start", { maxRedirects: 0 });
+  expect(connect.status()).toBe(409);
+
+  await page.locator(sel(TESTID.sessionModeOption, { "data-mode": "public" })).click();
+  const urlInput = page.getByRole("textbox", { name: "repository clone URL" });
+  await urlInput.fill("git@github.com:e6qu/pos3ql.git");
+  await expect(page.locator(sel(TESTID.sessionSshKeyHint))).toContainText("you have none yet");
+  await page.locator(sel(TESTID.sessionStart)).click();
+  await expect(page.locator(sel(TESTID.sessionError))).toContainText(
+    "you have no GitHub SSH keys yet",
+  );
+  await expect(page).toHaveURL(/\/sessions\/new$/);
+
+  // With a key, the check reaches the host: an unreachable one is refused with that reason.
+  const generated = await page.request.post("/api/git-ssh-keys", {
+    data: { label: "launcher test" },
+  });
+  expect(generated.status()).toBe(201);
+  await page.reload();
+  await page.locator(sel(TESTID.sessionModeOption, { "data-mode": "public" })).click();
+  await page
+    .getByRole("textbox", { name: "repository clone URL" })
+    .fill("ssh://git@127.0.0.1:1/acme/app.git");
+  await expect(page.locator(sel(TESTID.sessionSshKeyHint))).toHaveCount(0);
+  await page.locator(sel(TESTID.sessionStart)).click();
+  await expect(page.locator(sel(TESTID.sessionError))).toContainText("could not be reached");
 });

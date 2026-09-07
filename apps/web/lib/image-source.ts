@@ -18,7 +18,7 @@ import {
 } from "@edd/db";
 
 import { GITHUB_API_URL_ENV } from "./constants";
-import { getCatalog, tableName } from "./control-plane";
+import { getCatalog, invalidateCatalogList, tableName } from "./control-plane";
 import { getImageOps, type ImageOps } from "./image-ops";
 
 const SOURCE_SCHEMA_VERSION = 2;
@@ -567,6 +567,7 @@ export function getImageSourceService(): ImageSourceService {
     rollCatalogImageTag: async (repo, tag) => {
       const result = await getCatalog().rollImageTag({ repo, tag });
       if (!result.ok) throw new Error(domainErrorMessage(result.error));
+      invalidateCatalogList();
     },
     cfg: imageSourceConfigFromEnv(),
     now: () => new Date(),
