@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import Link from "next/link";
 
+import { ShauthAutoSignInReset } from "../../components/ShauthSignInRedirect";
 import { ShauthSignInLink } from "../../components/ShauthSignInLink";
 
 const panelStyle = { maxWidth: 560, margin: "56px auto", textAlign: "center" as const };
@@ -9,6 +10,9 @@ const kicker = { color: "var(--accent)", letterSpacing: "0.2em", fontSize: 11 } 
 export default function SignedOutPage() {
   return (
     <section className="panel" style={panelStyle} aria-labelledby="signed-out-heading">
+      {/* The tab is settled: the sign-out that brought it here is complete, and a
+          later signed-out render of a Shauth page may auto-enter again. */}
+      <ShauthAutoSignInReset />
       <div className="mono" style={kicker}>
         SESSION ENDED
       </div>

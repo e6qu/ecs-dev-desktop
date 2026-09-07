@@ -3,36 +3,35 @@
 
 import { useEffect, useState } from "react";
 
+import {
+  type AutoSignInDecision,
+  clearAutoSignInMarkers,
+  decideAutoSignIn,
+} from "../lib/shauth-auto-sign-in";
 import { ShauthSignInLink } from "./ShauthSignInLink";
 
 const SHAUTH_SIGN_IN_PATH = "/login/shauth";
 
-/**
- * One-shot marker: set when this tab auto-enters Shauth, cleared by
- * {@link ShauthAutoSignInReset} once a signed-in page renders. Landing here
- * signed out while it is still set means the previous auto-entry round-trip
- * did not produce a session (session-store failure, abandoned login), so
- * redirecting again would loop the browser forever.
- */
-const AUTO_SIGN_IN_MARKER = "edd-shauth-auto-sign-in";
+const isoNow = (): string => new Date().toISOString();
 
-function readAndSetMarker(): boolean {
+function decide(): AutoSignInDecision {
   try {
-    if (window.sessionStorage.getItem(AUTO_SIGN_IN_MARKER) !== null) return true;
-    window.sessionStorage.setItem(AUTO_SIGN_IN_MARKER, new Date().toISOString());
-    return false;
+    return decideAutoSignIn(window.sessionStorage, isoNow);
   } catch {
     // Storage unavailable (privacy mode): retries cannot be bounded, so never
     // auto-redirect — fall back to the explicit sign-in control.
-    return true;
+    return "hold";
   }
 }
 
-/** Clears the one-shot marker; mounted only by signed-in pages. */
+/**
+ * Clears the per-tab markers; mounted by signed-in pages and by the signed-out
+ * landing, the two states in which the tab is settled (see lib/shauth-auto-sign-in).
+ */
 export function ShauthAutoSignInReset() {
   useEffect(() => {
     try {
-      window.sessionStorage.removeItem(AUTO_SIGN_IN_MARKER);
+      clearAutoSignInMarkers(window.sessionStorage);
     } catch {
       // Storage unavailable: nothing to clear.
     }
@@ -47,23 +46,36 @@ export function ShauthAutoSignInReset() {
  *
  * Auto-entry is one-shot per tab: a signed-out landing while the marker is
  * still set renders the explicit sign-in surface instead of redirecting again.
+ * A tab that is signing out never auto-enters: the render that sees the session
+ * gone is a background refresh of the page that hosted the sign-out button, and
+ * a `location.replace` from it would cancel the logout navigation in flight.
  */
 export function ShauthSignInRedirect() {
-  const [held, setHeld] = useState(false);
+  const [decision, setDecision] = useState<AutoSignInDecision | null>(null);
 
   useEffect(() => {
-    if (readAndSetMarker()) {
-      setHeld(true);
-      return;
-    }
-    window.location.replace(SHAUTH_SIGN_IN_PATH);
+    const next = decide();
+    setDecision(next);
+    if (next === "redirect") window.location.replace(SHAUTH_SIGN_IN_PATH);
   }, []);
 
-  if (held) {
+  if (decision === "hold") {
     return (
       <div className="empty" role="status" aria-live="polite">
         <h2 className="big">Sign in required</h2>
         <p>Automatic sign-in did not complete a session. Continue to Shauth to sign in.</p>
+        <p style={{ marginTop: 18 }}>
+          <ShauthSignInLink />
+        </p>
+      </div>
+    );
+  }
+
+  if (decision === "signing-out") {
+    return (
+      <div className="empty" role="status" aria-live="polite">
+        <h2 className="big">Signing you out</h2>
+        <p>Shauth is ending the shared sign-in session.</p>
         <p style={{ marginTop: 18 }}>
           <ShauthSignInLink />
         </p>
