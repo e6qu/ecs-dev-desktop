@@ -2,9 +2,37 @@
 
 > Current project snapshot. Durable history lives in git and [WHAT_WE_DID.md](WHAT_WE_DID.md).
 
-**Last updated:** 2026-07-21
+**Last updated:** 2026-09-07
 
 ## Current branch
+
+The `fix/repo-validation-and-a11y` branch made session creation refuse a
+repository that cannot be cloned, and made the portal's light theme pass a
+whole-portal WCAG 2.2 AA audit. Creating a workspace from a public repository
+URL that did not exist (`e6qu/pos3q`, a typo for `e6qu/pos3ql`) had produced a
+booting session whose only diagnostic was git's `could not read Username` and a
+misleading `404` from the credential broker. The create request now asks the git
+host for the repository's ref advertisement with the credential the workspace
+will use, and answers a `422` naming the URL, the missing branch or tag, or the
+unreachable host; the launcher shows that message and creates nothing. The
+credential broker answers an empty `204` for an owner with no linked account,
+and the in-workspace helper explains that case instead of reporting a broker
+failure. The public-URL launcher mode accepted any HTTPS git host instead of a
+hardcoded `github.com`.
+
+The light theme had rendered the sticky top bar with the dark theme's literal
+background under dark text, and the green accent under white text at 3.3:1. The
+chrome, focus halo, chip/code surfaces, and notice text became theme tokens, the
+light accent became a deep leaf green that clears 4.5:1 as text and under white
+ink, and a new axe-core sweep audited every route in both colour schemes. The
+editor proxy answered OpenVSCode's two always-missing `vsda` asset requests
+itself, so workspace boot logs no longer carried two spurious `File not found`
+errors per editor open. Dependencies advanced to their latest age-eligible
+versions (Vitest 5, Playwright 1.63, Next 16.3.4, the AWS SDK clients, and the
+Terraform AWS provider lock across all three platforms), and the three `void`
+no-ops the newer typescript-eslint flagged were removed at their root.
+
+## Previous branch
 
 The `fix/shauth-sso-terminal-contract` branch completed the ECS Dev Desktop
 relying-party contract for Shauth and the real browser terminal. Direct entry and
@@ -47,6 +75,12 @@ helper kept the newest 20 versions of each package and retried only bounded,
 idempotent transient GitHub API failures.
 
 ## Verified state
+
+- The 60-audit accessibility sweep (30 routes × light/dark, WCAG 2.2 AA via axe-core) passed, and the complete Chromium portal suite passed 92/92 including the new repository-refusal flow.
+- The create-route integration suite passed 8/8 against DynamoDB on the simulator, with a TLS git-host fixture proving the reachable, missing-ref, not-found, and unreachable outcomes; the credential broker suite passed 5/5 with the `204` contract.
+- The probe answered correctly against real GitHub for the reported URL (`e6qu/pos3q` refused, `e6qu/pos3ql` and `e6qu/ecs-dev-desktop` accepted, a missing ref named).
+- The in-workspace credential helper was exercised under `sh`, `bash`, and `zsh` against a broker answering 200, 204, 404, and 500, and passed ShellCheck.
+- Repository lint (typescript-eslint 8.69), all 38 unit-tier tasks, and the web production build passed after the dependency bumps.
 
 - The real Shauth, Ory Hydra, PostgreSQL, DynamoDB, production Next.js, Sockerless AWS simulator, and Chromium contract passed against merged Shauth commit `08f5a78fb8b159fcbfe8317f24f430dbdfd3ed56`.
 - Direct entry, catalog launch, silent SSO reuse, `/me`, relying-party logout, provider global logout, Back-Channel Logout revocation, and fail-closed re-entry passed in one browser lifecycle.

@@ -94,8 +94,9 @@ const MODE_META: Record<StartMode, { title: string; detail: string }> = {
     detail: "Pick a repository you can access; it's cloned into the session at boot.",
   },
   public: {
-    title: "Public GitHub URL",
-    detail: "Paste a public repository URL; no GitHub account link is required.",
+    title: "Public repository URL",
+    detail:
+      "Paste the HTTPS clone URL of a public repository on GitHub or any other git host; no account link is required.",
   },
   create: {
     title: "Create a new repository",
@@ -103,23 +104,22 @@ const MODE_META: Record<StartMode, { title: string; detail: string }> = {
   },
 };
 
-function publicGithubCloneUrl(input: string): string | null {
+/** The pasted text as an HTTPS clone URL, or null when it is not one. Only the shape is
+ * checked here (https, a host, a repository path); whether the host will actually serve
+ * the repository is the control plane's create-time check, which answers with the reason. */
+function publicCloneUrl(input: string): string | null {
   let url: URL;
   try {
     url = new URL(input.trim());
   } catch {
     return null;
   }
-  if (url.protocol !== "https:" || url.hostname !== "github.com") return null;
-  const parts = url.pathname
-    .replace(/\/$/, "")
-    .split("/")
-    .filter((part) => part.length > 0);
-  if (parts.length !== 2) return null;
-  const [owner, repoPart] = parts;
-  const repo = repoPart.endsWith(".git") ? repoPart.slice(0, -4) : repoPart;
-  if (owner === "" || repo === "") return null;
-  return `https://github.com/${owner}/${repo}.git`;
+  if (url.protocol !== "https:" || url.hostname === "") return null;
+  url.search = "";
+  url.hash = "";
+  url.pathname = url.pathname.replace(/\/+$/, "");
+  if (url.pathname.split("/").filter((part) => part.length > 0).length === 0) return null;
+  return url.toString();
 }
 
 function snapshotIntervalMsFromInput(input: string): number | null {
@@ -300,8 +300,8 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
         if (selectedRepo === null) throw new Error("Pick a repository first.");
         wsId = await launch(selectedRepo.cloneUrl, selectedRepo.defaultBranch);
       } else if (mode === "public") {
-        const parsed = publicGithubCloneUrl(publicRepoUrl);
-        if (parsed === null) throw new Error("Enter a valid public GitHub repository URL.");
+        const parsed = publicCloneUrl(publicRepoUrl);
+        if (parsed === null) throw new Error("Enter the HTTPS clone URL of a public repository.");
         wsId = await launch(parsed, publicRepoRef.trim() === "" ? undefined : publicRepoRef.trim());
       } else if (mode === "create") {
         const namespace = namespaces.find((n) => n.login === ns);
@@ -555,7 +555,7 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
           <div className="stack" style={{ gap: 10 }}>
             <input
               className="input"
-              aria-label="public GitHub repository URL"
+              aria-label="public repository URL"
               placeholder="https://github.com/owner/repo"
               value={publicRepoUrl}
               onChange={(e) => {
@@ -782,7 +782,12 @@ export function NewSession({ images }: { images: readonly CatalogOption[] }) {
       </section>
 
       {error !== null && (
-        <p role="alert" className="mono" style={{ color: "var(--st-error)" }}>
+        <p
+          role="alert"
+          className="mono"
+          data-testid={TESTID.sessionError}
+          style={{ color: "var(--st-error)" }}
+        >
           {error}
         </p>
       )}

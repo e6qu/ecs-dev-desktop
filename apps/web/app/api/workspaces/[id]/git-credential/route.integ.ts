@@ -14,8 +14,8 @@ import { GET } from "./route";
 /**
  * The boot-time git credential broker against DynamoDB Local: a stored token is
  * returned only to the workspace's own agent (HMAC machine-auth), encrypted at
- * rest in between. Every other caller (no token, wrong token, no credential) is
- * refused.
+ * rest in between. Every other caller (no token, wrong token) is refused, and an
+ * owner with no linked account gets an empty 204 rather than an error.
  */
 const AGENT_SECRET = randomBytes(32).toString("hex");
 const TOKEN = "ghp_exampleSessionToken_not_real_001";
@@ -80,10 +80,11 @@ describe("git credential broker", () => {
     expect(res.status).toBe(401);
   });
 
-  it("returns 404 when the owner has no stored credential", async () => {
+  it("answers 204 (no content, not an error) when the owner has no stored credential", async () => {
     const token = agentToken(AGENT_SECRET, otherWsId);
     const res = await GET(brokerRequest(otherWsId, token), ctx(otherWsId));
-    expect(res.status).toBe(404);
+    expect(res.status).toBe(204);
+    expect(await res.text()).toBe("");
   });
 
   it("refuses to mint a credential for a workspace being torn down (deleting tombstone)", async () => {

@@ -28,12 +28,12 @@ function shortRepo(repo: string): string {
 }
 
 function statusColor(status: string): string {
-  if (status === "succeeded") return "var(--accent, #9fef00)";
+  if (status === "succeeded") return "var(--accent)";
   if (status === "in_progress" || status === "queued" || status === "building") {
-    return "var(--accent, #9fef00)";
+    return "var(--accent)";
   }
   if (status === "stopped") return "var(--dim)";
-  return "var(--st-error, #ff6b6b)";
+  return "var(--st-error)";
 }
 
 function shortSha(sha: string | undefined): string {
@@ -372,7 +372,7 @@ function ImageRows({
                       height: 10,
                       width: `${String((l.sizeBytes / maxLayer) * 100)}%`,
                       minWidth: 2,
-                      background: "var(--accent, #9fef00)",
+                      background: "var(--accent)",
                       borderRadius: 2,
                       opacity: 0.75,
                     }}

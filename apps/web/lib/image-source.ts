@@ -169,12 +169,12 @@ export function validateGithubWebhookBody(
   return null;
 }
 
-export function decideImageSourceBuild(paths: readonly string[]): {
+/** Every main push publishes the golden images (the changed paths do not narrow it). */
+export function decideImageSourceBuild(): {
   readonly decision: "build" | "skip";
   readonly reason: string;
   readonly target?: BuildTargetDto;
 } {
-  void paths;
   return { decision: "build", reason: CI_PUBLISHED_GOLDEN_IMAGE_REASON, target: "golden" };
 }
 
@@ -272,7 +272,7 @@ export class ImageSourceService {
       );
     }
 
-    const decision = decideImageSourceBuild(observation.changedPaths);
+    const decision = decideImageSourceBuild();
     const now = this.nowIso();
     const base = triggerRecordFromObservation({
       source,

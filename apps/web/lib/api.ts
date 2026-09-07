@@ -24,6 +24,9 @@ export const notFound = () => NextResponse.json({ error: "not found" }, { status
 export const badRequest = (message = "invalid request") =>
   NextResponse.json({ error: message }, { status: 400 });
 export const conflict = (message: string) => NextResponse.json({ error: message }, { status: 409 });
+/** A well-formed request whose content cannot be acted on (e.g. a repository that does not exist). */
+export const unprocessable = (message: string) =>
+  NextResponse.json({ error: message }, { status: 422 });
 
 // The ONE place a domain failure becomes an HTTP status. `Record<…kind, number>`
 // is total, so adding a `DomainError` kind without a status here is a compile

@@ -210,8 +210,8 @@ export function SpectateViewer({ id, owner }: { id: string; owner: string }) {
             width: 10,
             height: 10,
             borderRadius: "50%",
-            background: "var(--accent, #9fef00)",
-            boxShadow: "0 0 6px var(--accent, #9fef00)",
+            background: "var(--accent)",
+            boxShadow: "0 0 6px var(--accent)",
             pointerEvents: "none",
             // Above the raised content panes (zIndex 42) so the owner's mouse dot stays visible.
             zIndex: 43,

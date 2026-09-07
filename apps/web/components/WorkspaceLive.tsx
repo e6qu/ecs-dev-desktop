@@ -65,11 +65,11 @@ function StepDot({ state }: { state: StepState }) {
   const glyph = state === "done" ? "✓" : state === "failed" ? "✕" : state === "active" ? "●" : "○";
   const color =
     state === "done"
-      ? "var(--accent, #9fef00)"
+      ? "var(--accent)"
       : state === "failed"
-        ? "var(--st-error, #ff6b6b)"
+        ? "var(--st-error)"
         : state === "active"
-          ? "var(--accent, #9fef00)"
+          ? "var(--accent)"
           : "var(--dim)";
   return (
     <span aria-hidden="true" style={{ color, width: 16, display: "inline-block" }}>
@@ -265,11 +265,7 @@ export function WorkspaceLive({ id }: { id: string }) {
           {phase}
         </p>
         {ws.state === "error" && ws.functionalDetail !== undefined && (
-          <p
-            className="mono"
-            role="alert"
-            style={{ color: "var(--st-error, #ff6b6b)", fontSize: 13 }}
-          >
+          <p className="mono" role="alert" style={{ color: "var(--st-error)", fontSize: 13 }}>
             {ws.functionalDetail}
           </p>
         )}
@@ -326,7 +322,7 @@ export function WorkspaceLive({ id }: { id: string }) {
             className="mono"
             role="alert"
             data-testid={TESTID.workspaceResumeError}
-            style={{ color: "var(--st-error, #ff6b6b)", fontSize: 13 }}
+            style={{ color: "var(--st-error)", fontSize: 13 }}
           >
             resume failed: {resumeError} — you can try again below.
           </p>

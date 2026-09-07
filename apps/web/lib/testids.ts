@@ -52,6 +52,8 @@ export const TESTID = {
   sessionModeOption: "session-mode-option",
   /** The single prominent Start button on New session. */
   sessionStart: "session-start",
+  /** The New-session failure notice (why the session could not be started). */
+  sessionError: "session-error",
   /** The interface (editor/agent) selector on New session. Attr: `data-editor`. */
   sessionEditor: "session-editor",
   sessionResourceHint: "session-resource-hint",

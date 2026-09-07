@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 // GitHub App installation AND scope the minted token to one repo) parses a stored,
 // potentially odd `repoUrl`, so it must be total: never throw on arbitrary/odd strings,
 // returning the owner + repo name (`.git` stripped) or undefined.
-import { repoRef } from "../app/api/workspaces/[id]/git-credential/route";
+import { repoRef } from "./git-remote";
 
 describe("repoRef (property)", () => {
   it("never throws on arbitrary input", () => {

@@ -227,6 +227,11 @@ export const COST_ROLLUP_CADENCE_MS = 15 * 60 * 1000;
  * must not leave the client socket hung open indefinitely. */
 export const WORKSPACE_PROXY_UPSTREAM_TIMEOUT_MS = 30000;
 
+/** Max ms the create-session check waits for a git host to advertise a repository's refs
+ * (the smart-HTTP `info/refs` request). One round-trip to the host; a host that takes
+ * longer is reported as unreachable rather than holding the create request open. */
+export const GIT_REMOTE_PROBE_TIMEOUT_MS = 10000;
+
 /** Max bytes the proxy buffers when it must rewrite an editor response body (HTML shell
  * / opencode asset). Only rewritable content types are buffered at all, but the buffer is
  * still fully in-memory, so an oversized (or maliciously large) upstream body could
