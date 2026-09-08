@@ -167,6 +167,11 @@ jobs:
       # (declared in turbo.json test:e2e env). Missing coordinates fail the suite.
       - run: . ./temp/github-app/coords.env && pnpm test:e2e
         env:
+          # Stream each package's output as it is produced. Grouped (turbo's
+          # default) buffers a task's whole log until it exits, so a suite that
+          # hangs until the job's timeout prints nothing at all and the run says
+          # only that it was cancelled.
+          TURBO_LOG_ORDER: stream
           RECONCILER_IMAGE: edd-reconciler:e2e
           PROXY_IMAGE: edd-ssh-proxy:e2e
           NODE_IMAGE: edd-workspace-node:e2e
@@ -182,6 +187,15 @@ jobs:
       # integrated terminal, verify the build artifact (uses edd-workspace:e2e).
       - name: VS Code workspace browser proof
         run: pnpm --filter web test:pw:vscode
+      # What the harness saw. A failed or timed-out suite is diagnosed from the
+      # simulator's own log, not from the runner's stdout; without this a hang
+      # leaves nothing behind, because `down` discards the containers.
+      - name: Harness state and logs
+        if: failure() || cancelled()
+        run: |
+          docker compose -f docker-compose.e2e.yml ps --all
+          docker ps --all --format '{{.Names}}\t{{.Image}}\t{{.Status}}'
+          docker compose -f docker-compose.e2e.yml logs --tail 400 --no-color
       - if: always()
         run: docker compose -f docker-compose.e2e.yml down
 

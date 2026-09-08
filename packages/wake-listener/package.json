@@ -17,7 +17,7 @@
     "@edd/core": "workspace:*"
   },
   "devDependencies": {
-    "@types/node": "^26.4.1",
+    "@types/node": "^26.5.0",
     "esbuild": "^0.28.2"
   }
 }

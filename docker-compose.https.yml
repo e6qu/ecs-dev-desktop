@@ -16,7 +16,7 @@ services:
   # when served over TLS (it derives the scheme from the request). Drives the
   # mock-free Entra auth smoke (Graph provisioning + ROPC).
   azure-sim:
-    image: ghcr.io/e6qu/sockerless-simulator-azure@sha256:790af4c38d343dc1c9a0f1110e8427c60711589202665b15a522012569981c23
+    image: ghcr.io/e6qu/sockerless-simulator-azure@sha256:a70426f000480b5edc26db6d2b97e7d17d07bd97b28b54b4661c2adbac5f7d25
     environment:
       SIM_RUNTIME: process
       SIM_TLS_CERT: /tls/server.pem
@@ -40,7 +40,7 @@ services:
 
   # AWS sim over TLS (process mode — no workloads needed to prove the TLS surface).
   aws-sim:
-    image: ghcr.io/e6qu/sockerless-simulator-aws@sha256:77f2e38f40ebd17a6e960428d7f4660b5eb8b70b36c27ccac232639c3cbe1a76
+    image: ghcr.io/e6qu/sockerless-simulator-aws@sha256:6df3e4879c990fe8935c21636eaf1f29a09556196169dc55f383dc1af30bebbb
     environment:
       SIM_RUNTIME: process
       SIM_TLS_CERT: /tls/server.pem
