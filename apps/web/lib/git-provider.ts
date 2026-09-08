@@ -13,7 +13,6 @@ import {
 import { getGitCredentials, gitCredentialsEnabled } from "./git-credentials";
 import {
   createRepo,
-  GitHubApiError,
   listNamespaces,
   listRepos,
   repoSchema,
@@ -155,21 +154,7 @@ class InstallationGitProvider implements GitProvider {
 
   async createRepo(params: CreateRepoParams): Promise<RepoSummary> {
     const inst = await this.installationFor(params.owner);
-    const url = params.isPersonal
-      ? `${apiBase()}/user/repos`
-      : `${apiBase()}/orgs/${params.owner}/repos`;
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { ...ghHeaders(await this.token(inst.id)), "content-type": "application/json" },
-      body: JSON.stringify({
-        name: params.name,
-        private: params.private,
-        description: params.description ?? "",
-        auto_init: true,
-      }),
-    });
-    if (!res.ok) throw new GitHubApiError(res.status, "App create repo");
-    return toRepoSummary(repoSchema.parse(await res.json()));
+    return createRepo(await this.token(inst.id), params);
   }
 
   async gitCredential(repo?: GitRepoRef): Promise<{ username: string; token: string } | null> {

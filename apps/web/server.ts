@@ -10,7 +10,7 @@
  */
 import { createServer } from "node:http";
 
-import { STOPPING_SWEEP_MS, applicationReleaseRevision } from "@edd/config";
+import { applicationReleaseRevision } from "@edd/config";
 
 import { workspaceId, workspaceIdFromPath, type WorkspaceId } from "@edd/core";
 import next from "next";
@@ -18,6 +18,7 @@ import { WebSocketServer } from "ws";
 
 import { getControlPlane } from "./lib/control-plane";
 import { startImageSourceReconcileSweep } from "./lib/image-source-reconcile-sweep";
+import { startLifecycleConvergeSweep } from "./lib/lifecycle-converge-sweep";
 import { log } from "./lib/logger";
 import { NO_PUBLISHER_CODE, spectateRelay } from "./lib/spectate-relay";
 import { recordSystemActivity } from "./lib/system-activity";
@@ -245,25 +246,11 @@ setInterval(() => {
   void sweepPresence();
 }, PRESENCE_SWEEP_MS).unref();
 
-// Stopping-converger sweep: converge every workspace in the cancelable `stopping`
-// state to `stopped` once its grace has elapsed. This runs in the long-lived server
-// process (reliable), unlike a detached promise in the requestStop route handler
-// which Next doesn't guarantee to run after the response. finishStop is idempotent +
-// grace-honoring, so calling it every tick is safe: it no-ops until the workspace is
-// due, then snapshots + tears down. The reconciler's finishStopping is the
-// cross-replica / server-restart backstop.
-setInterval(() => {
-  void (async () => {
-    try {
-      const cp = await getControlPlane();
-      for (const ws of await cp.listStopping()) await cp.finishStop(ws.id);
-    } catch (err) {
-      log.warn("stopping-converger sweep failed (will retry)", {
-        error: err instanceof Error ? err.message : String(err),
-      });
-    }
-  })();
-}, STOPPING_SWEEP_MS).unref();
+// Lifecycle-converger sweep: converge the `stopping` and `deleting` tombstones
+// in this long-lived process (see lib/lifecycle-converge-sweep). A detached
+// promise in a route handler is not guaranteed to run after the response, and
+// the reconciler's five-minute tick is the backstop, not the path.
+startLifecycleConvergeSweep();
 
 startImageSourceReconcileSweep();
 

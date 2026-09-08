@@ -21,9 +21,9 @@ import {
   type EditorKind,
   type WorkspaceId,
 } from "@edd/core";
-import { getToken } from "next-auth/jwt";
+import { getToken, type JWT } from "next-auth/jwt";
 
-import { validateAuthSessionToken } from "./auth-sessions";
+import { validateAuthSessionToken, type ValidAuthSession } from "./auth-sessions";
 import { CONNECTION_SECRET_ENV } from "./constants";
 import { getControlPlane } from "./control-plane";
 import { log } from "./logger";
@@ -244,6 +244,33 @@ export interface CookieBearingRequest {
 }
 
 /**
+ * The caller's Auth.js session token, or null when the cookie carries none or
+ * the session it names is no longer live. The secure-cookie variant is detected
+ * from the cookie the browser actually sent, so the read matches whatever
+ * Auth.js wrote (forcing it from NODE_ENV was a login-redirect loop for
+ * already-authenticated users). A missing AUTH_SECRET fails loud rather than
+ * reading tokens with `?? ""`, which would silently reject every session.
+ */
+async function liveSessionToken(
+  cookieHeader: string,
+  purpose: string,
+): Promise<{ readonly token: JWT; readonly authSession: ValidAuthSession } | null> {
+  const authSecret = process.env.AUTH_SECRET;
+  if (authSecret === undefined || authSecret === "") {
+    throw new Error(`AUTH_SECRET is required to authorize ${purpose} requests`);
+  }
+  const token = await getToken({
+    req: { headers: { cookie: cookieHeader } },
+    secret: authSecret,
+    secureCookie: cookieHeader.includes(`__Secure-${SESSION_COOKIE_STEM}`),
+  });
+  if (token === null) return null;
+  const authSession = await validateAuthSessionToken(token);
+  if (authSession === null) return null;
+  return { token, authSession };
+}
+
+/**
  * Authorize a `/w/<id>/…` request: decode the Auth.js session (same-origin cookie),
  * load the workspace, and allow only an admin or the owner (subject match — one IdP,
  * so the session `uid` equals the workspace `ownerId`). Pure I/O at the edges; the
@@ -261,21 +288,9 @@ export async function authorizeWorkspace(
   // (Auth.js writes the secure cookie but getToken would look for the plain one → null →
   // a login-redirect loop for already-authenticated users). Instead, detect it from the
   // cookie the browser actually sent, so the read matches whatever Auth.js wrote.
-  const cookieHeader = req.headers.cookie ?? "";
-  // Fail loud on a missing secret rather than reading tokens with `?? ""` — an empty secret would
-  // silently reject every session (→ login-redirect loop) instead of surfacing the misconfig.
-  const authSecret = process.env.AUTH_SECRET;
-  if (authSecret === undefined || authSecret === "") {
-    throw new Error("AUTH_SECRET is required to authorize workspace-proxy requests");
-  }
-  const token = await getToken({
-    req: { headers: { cookie: cookieHeader } },
-    secret: authSecret,
-    secureCookie: cookieHeader.includes(`__Secure-${SESSION_COOKIE_STEM}`),
-  });
-  if (token === null) return { kind: "unauthenticated" };
-  const authSession = await validateAuthSessionToken(token);
-  if (authSession === null) return { kind: "unauthenticated" };
+  const live = await liveSessionToken(req.headers.cookie ?? "", "workspace-proxy");
+  if (live === null) return { kind: "unauthenticated" };
+  const { token, authSession } = live;
 
   const callerSubject = typeof token.uid === "string" ? token.uid : undefined;
   const detail = await (await getControlPlane()).inspect(wsId);
@@ -353,18 +368,9 @@ export async function authorizeSpectate(
   wsId: WorkspaceId,
   role: SpectateRole,
 ): Promise<SpectateAuthz> {
-  const cookieHeader = req.headers.cookie ?? "";
-  const authSecret = process.env.AUTH_SECRET;
-  if (authSecret === undefined || authSecret === "") {
-    throw new Error("AUTH_SECRET is required to authorize spectate requests");
-  }
-  const token = await getToken({
-    req: { headers: { cookie: cookieHeader } },
-    secret: authSecret,
-    secureCookie: cookieHeader.includes(`__Secure-${SESSION_COOKIE_STEM}`),
-  });
-  if (token === null) return { kind: "unauthenticated" };
-  if ((await validateAuthSessionToken(token)) === null) return { kind: "unauthenticated" };
+  const live = await liveSessionToken(req.headers.cookie ?? "", "spectate");
+  if (live === null) return { kind: "unauthenticated" };
+  const { token } = live;
 
   const detail = await (await getControlPlane()).inspect(wsId);
   if (detail === null) return { kind: "forbidden" };
