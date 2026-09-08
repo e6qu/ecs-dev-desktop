@@ -6,7 +6,9 @@
 # RSA key and writes, into the output dir (default ./temp/github-app):
 #   app.pem     the App's private key (PKCS#1) — mounted into bleephub as the seed
 #   seed.json   bleephub operator seed (BLEEPHUB_SEED_APPS_FILE): a pre-registered
-#               App with this key + an installation on the test org
+#               App with this key, installed on the admin USER — the only account
+#               that exists when bleephub seeds at startup. The test org and its
+#               installation are created afterwards by bootstrap-sim-github-org.sh
 #   coords.env  the COORDINATES the e2e consumes (sourced before `pnpm test:e2e`):
 #               AUTH_GITHUB_API_URL + EDD_GITHUB_APP_ID/_KEY/_TEST_ORG/_TEST_REPO
 #
@@ -37,9 +39,12 @@ seed_key_path="${EDD_GITHUB_APP_SEED_KEY_PATH:-/seed/app.pem}"
 openssl genrsa -out "$out_dir/app.pem" 2048 >/dev/null 2>&1
 chmod 644 "$out_dir/app.pem" # mounted read-only into bleephub (non-root uid)
 
-# 2. The operator seed: a pre-registered App + an installation on the test org
-#    (unknown org is created by bleephub). Permissions allow repo admin so the
-#    App can create the test repo.
+# 2. The operator seed: a pre-registered App installed on the admin user.
+#    bleephub resolves every seeded installation account at startup and refuses
+#    to boot on one that does not exist, so the seed cannot name the test org —
+#    nothing has created it yet. bootstrap-sim-github-org.sh creates the org and
+#    installs this App onto it once the server is up. Permissions allow repo
+#    admin so the App can create the test repo.
 cat >"$out_dir/seed.json" <<JSON
 [
   {
@@ -50,8 +55,8 @@ cat >"$out_dir/seed.json" <<JSON
     "permissions": { "administration": "write", "contents": "write", "metadata": "read" },
     "installations": [
       {
-        "account": "$app_org",
-        "target_type": "Organization",
+        "account": "admin",
+        "target_type": "User",
         "permissions": { "administration": "write", "contents": "write", "metadata": "read" }
       }
     ]

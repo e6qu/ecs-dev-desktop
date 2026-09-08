@@ -429,6 +429,11 @@ jobs:
             sleep 2
           done
           if [ "$ok" != 1 ]; then echo "::error::sim not reachable after wait"; docker ps -a; exit 1; fi
+      # The startup seed installs the App on the admin user — the only account
+      # bleephub can resolve while it boots. The org and its installation are
+      # created here, once the server is serving.
+      - name: Create the e2e GitHub org and install the seeded App
+        run: sh scripts/bootstrap-sim-github-org.sh
       - name: Full IDE flow e2e (create workspace → real OpenVSCode through the bridge)
         run: pnpm --filter @edd/e2e exec vitest run --config vitest.e2e.config.ts src/live-ide-flow.e2e.ts
       # If the flow fails (e.g. the task container didn't stay up), capture why.

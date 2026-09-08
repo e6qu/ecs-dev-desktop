@@ -66,6 +66,9 @@ fi
 sh "$here/gen-sim-tls-cert.sh"
 sh "$here/gen-sim-github-app.sh"
 docker compose -f docker-compose.e2e.yml up -d --build --wait
+# The seeded App is installed on the admin user (bleephub resolves seed accounts
+# at startup); the org and its installation exist only once the server is up.
+sh "$here/bootstrap-sim-github-org.sh"
 # Registered-key SSH e2e are self-contained (each docker-runs its own node + proxy);
 # they only need the node image pre-built.
 if [ "$is_podman" = true ]; then
