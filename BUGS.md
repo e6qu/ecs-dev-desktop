@@ -4,6 +4,20 @@
 
 ## Open
 
+- **Two e2e tests fail once the simulator is the published release rather than the two-month-old submodule build — found 2026-09-08, still open.** `third_party/sockerless` pinned `e6qu/sockerless` at `b5126463` (2026-07-07), and that repository no longer contains `simulators/` at all: the simulators now live in `e6qu/sockerless-cloud` and ship as published images. Consuming those images (branch `chore/sim-from-published-images`) moves the simulator forward by two months, and two `@edd/e2e` tests stop passing:
+
+  - `golden-workspace-ssh.e2e.ts` → `workspace@10.71.1.4: Permission denied (publickey)`. The TCP connection and the SSH banner both succeed, so this is not reachability — the workspace's `AuthorizedKeysCommand` (`ssh-authorize`) returns no key.
+  - `user-journey.e2e.ts` → `idle-agent heartbeat never advanced lastActivity`. The in-workspace idle-agent's HMAC heartbeat never reaches the control plane.
+
+  Both are the workspace container calling back to `CONTROL_PLANE_URL` (`http://host.docker.internal:<port>`), and nothing else in the suite depends on that direction. Everything reached through the simulator's API — ECS Exec, the toolchain suite, snapshot/restore, wake-on-connect — passes, and the simulator itself is fast (`RUNNING total=391ms`).
+
+  Ruled out by local probes against the published simulator (a task driven directly with the AWS CLI on a private port, so `@edd/config`'s hardcoded `:4566` cannot reach another developer's simulator):
+  - not task launch: a managed-EBS awsvpc task reaches `RUNNING` + `ATTACHED` in 2s;
+  - not security groups: inbound to a task port is allowed even with an empty group, so the newer simulator does not enforce them here;
+  - not egress or routing: inside the task netns the host coordinate resolves (`/etc/hosts` carries it), `ip route get` returns a route via the awsvpc gateway, and a TCP connect reaches the host and is refused rather than dropped.
+
+  Next step: capture the harness control-plane process output during those two tests. That distinguishes "the callback never arrived" from "it arrived and machine auth rejected it", which the failure text alone cannot. Until then the two tests cost 180s each twice over and push the `e2e` job past its 15-minute budget, so the branch stays in draft.
+
 - **Golden images still resolve most of their toolchain from "latest" at build time — same defect class that broke CI on 2026-08-02.** The `e2e fixture (workspace)` job failed because `infra/images/{omnibus,java}/Dockerfile` resolved google-java-format via the GitHub `releases/latest` redirect: upstream 1.36.0 moved to a Java 21 target (class file 65) while the images' JDK is Debian bookworm `default-jdk-headless` (Java 17 / class file 61), so the install step died with `UnsupportedClassVersionError`. **FIXED for google-java-format** (pinned `ARG GJF_VERSION=1.35.0`, the newest Java 17 target). The identical pattern remains everywhere else in `infra/images/*/Dockerfile`, so any of them can break the build the day upstream ships an incompatible release, and none of the images is byte-reproducible:
   - `omnibus`, `java`: Gradle from `services.gradle.org/versions/current` — **the same JDK-17 coupling**, so a future Gradle that requires Java 21 reproduces this failure exactly.
   - `omnibus`, `go`: Go from `go.dev/VERSION?m=text`, plus four `go install …@latest` tools (golangci-lint, staticcheck, deadcode, dupl).
