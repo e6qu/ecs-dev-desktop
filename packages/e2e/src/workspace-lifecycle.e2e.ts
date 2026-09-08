@@ -20,7 +20,11 @@ const CLUSTER = "edd-workspaces";
 const IMAGE = "nginx:alpine"; // long-running default CMD, so the task stays RUNNING
 const EBS_ROLE = e2eEbsRoleArn();
 
-const SIM = awsSimClientConfig({ accessKeyId: "local", secretAccessKey: "local" });
+// The simulator verifies SigV4 against its seeded IAM keys, so sign as the
+// credential it actually provisions (the helper default) — "local" is not a
+// principal, the same placeholder that once made the control plane unable to
+// launch a task.
+const SIM = awsSimClientConfig();
 
 describe("workspace lifecycle through WorkspaceService on the sim (real ECS + EBS)", () => {
   let dynamo: ReturnType<typeof createDynamoClient>;
