@@ -165,7 +165,15 @@ jobs:
       # Source the generated GitHub App coordinates so the coordinate-only App e2e
       # (github-app.e2e.ts) targets the seeded bleephub; turbo passes them through
       # (declared in turbo.json test:e2e env). Missing coordinates fail the suite.
-      - run: . ./temp/github-app/coords.env && pnpm test:e2e
+      # TEMPORARY (chore/sim-from-published-images): the full suite exceeds the
+      # job budget because two tests burn 180s twice each, and the cancellation
+      # discards vitest's failure report. Run just those two, without the retry,
+      # so the run prints why they fail. Restored before this leaves draft.
+      - run: |
+          . ./temp/github-app/coords.env
+          pnpm --filter @edd/e2e exec vitest run --config vitest.e2e.config.ts \
+            --retry=0 --reporter=verbose \
+            src/user-journey.e2e.ts src/golden-workspace-ssh.e2e.ts
         env:
           # Stream each package's output as it is produced. Grouped (turbo's
           # default) buffers a task's whole log until it exits, so a suite that
