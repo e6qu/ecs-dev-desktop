@@ -24,7 +24,7 @@ import {
 
 import { EC2Client } from "@aws-sdk/client-ec2";
 import { EcsComputeProvider } from "@edd/compute-ecs";
-import { dynamodb, HARNESS_AWS_REGION } from "@edd/config";
+import { dynamodb } from "@edd/config";
 import { WorkspaceService } from "@edd/control-plane";
 import { baseImage, ownerId, systemClock, workspaceId } from "@edd/core";
 import { createDynamoClient, dropTable, ensureTable, makeWorkspaceEntity } from "@edd/db";

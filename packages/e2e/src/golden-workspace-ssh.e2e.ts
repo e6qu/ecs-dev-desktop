@@ -19,7 +19,7 @@ import {
   type Task,
 } from "@aws-sdk/client-ecs";
 import { EcsComputeProvider } from "@edd/compute-ecs";
-import { HARNESS_AWS_REGION, DEFAULT_WORKSPACE_PORT as WORKSPACE_PORT } from "@edd/config";
+import { DEFAULT_WORKSPACE_PORT as WORKSPACE_PORT } from "@edd/config";
 import { baseImage, workspaceId } from "@edd/core";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -316,7 +316,15 @@ describe(
         );
         const clientTask = required(clientRun.tasks?.[0]?.taskArn, "client taskArn");
         const stopped = await waitForTask(ecs, clientTask, "STOPPED", CLIENT_STOP_TIMEOUT_MS);
-        expect(taskExitCode(stopped), await logMessages()).toBe(0);
+        // The ssh client's own log says only "Permission denied (publickey)".
+        // What the workspace asked the authorize stub is what separates a
+        // callback that never arrived from one that was answered no.
+        const authorizeCalls = stub.requests();
+        const authorizeReport =
+          authorizeCalls.length === 0
+            ? "ssh-authorize stub: NO request arrived from the workspace"
+            : `ssh-authorize stub:\n  ${authorizeCalls.join("\n  ")}`;
+        expect(taskExitCode(stopped), `${await logMessages()}\n${authorizeReport}`).toBe(0);
       } finally {
         stub.stop();
         await ecs.send(new StopTaskCommand({ cluster: CLUSTER, task: workspaceTaskArn }));
