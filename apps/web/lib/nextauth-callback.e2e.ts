@@ -69,6 +69,19 @@ function absorb(jar: Map<string, string>, res: Response): void {
 const cookieHeader = (jar: Map<string, string>): string =>
   [...jar.entries()].map(([k, v]) => `${k}=${v}`).join("; ");
 
+/** A fresh browser jar that began GitHub sign-in, and the callback URL GitHub
+ * redirected it to after the seeded user approved: the state every callback
+ * test starts from. */
+async function approvedGithubCallback(): Promise<{
+  jar: Map<string, string>;
+  callbackLocation: string;
+}> {
+  const cookie = await githubSession(USER);
+  const jar = new Map<string, string>();
+  const authorizeUrl = await beginSignIn(jar, "github");
+  return { jar, callbackLocation: await githubApprove(cookie, authorizeUrl) };
+}
+
 /** csrf → signin: returns the IdP authorize URL Auth.js redirects to.
  * `extraQuery` params on the signin request are forwarded into the authorize
  * URL by Auth.js (e.g. the standard OIDC `login_hint`). */
@@ -142,10 +155,8 @@ describe("Auth.js callback routes against the live sims", { timeout: 60_000 }, (
   // target that real defense.
 
   it("rejects a callback missing the PKCE verifier cookie (CSRF defense)", async () => {
-    const cookie = await githubSession(USER);
-    const jar = new Map<string, string>();
-    const authorizeUrl = await beginSignIn(jar, "github");
-    const callbackLocation = await githubApprove(cookie, authorizeUrl);
+    // The victim's jar is never presented: that is the point of the test.
+    const { callbackLocation } = await approvedGithubCallback();
 
     // An attacker who captured the callback URL has the code but NOT the
     // victim's sealed pkce cookie — replay it from a fresh jar.
@@ -169,10 +180,7 @@ describe("Auth.js callback routes against the live sims", { timeout: 60_000 }, (
   });
 
   it("rejects a REPLAYED callback — a consumed authorization code is single-use", async () => {
-    const cookie = await githubSession(USER);
-    const jar = new Map<string, string>();
-    const authorizeUrl = await beginSignIn(jar, "github");
-    const callbackLocation = await githubApprove(cookie, authorizeUrl);
+    const { jar, callbackLocation } = await approvedGithubCallback();
 
     // First use succeeds and consumes the code at the IdP.
     const first = await GET(

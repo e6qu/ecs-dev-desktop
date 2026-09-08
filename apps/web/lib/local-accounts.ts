@@ -254,21 +254,21 @@ export async function listAuthSessions(): Promise<readonly LocalSession[]> {
 }
 
 export async function revokeUserSessions(ownerId: string): Promise<number> {
-  const rows = await sessions().query.byOwner({ ownerId }).go({ pages: "all" });
-  let count = 0;
-  for (const row of rows.data) {
-    if (row.revokedAt === undefined) {
-      await sessions().patch({ id: row.id }).set({ revokedAt: new Date().toISOString() }).go();
-      count += 1;
-    }
-  }
-  return count;
+  return revokeLiveSessions(
+    (await sessions().query.byOwner({ ownerId }).go({ pages: "all" })).data,
+  );
 }
 
 export async function revokeAllSessions(): Promise<number> {
-  const rows = await sessions().scan.go({ pages: "all" });
+  return revokeLiveSessions((await sessions().scan.go({ pages: "all" })).data);
+}
+
+/** Revoke every session row that is still live; returns how many were revoked. */
+async function revokeLiveSessions(
+  rows: readonly { readonly id: string; readonly revokedAt?: string | undefined }[],
+): Promise<number> {
   let count = 0;
-  for (const row of rows.data) {
+  for (const row of rows) {
     if (row.revokedAt === undefined) {
       await sessions().patch({ id: row.id }).set({ revokedAt: new Date().toISOString() }).go();
       count += 1;
