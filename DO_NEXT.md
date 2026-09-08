@@ -15,10 +15,6 @@ remained the next shared-environment steps.
 
 The shared dev environment (`e6qu/infra`) still configures no GitHub App and no GitHub sign-in, so its Health board reports `git-integration` degraded and users can clone private repositories only with their generated SSH keys. Installing a GitHub App on the `e6qu` org and supplying `EDD_GITHUB_APP_ID` + `EDD_GITHUB_APP_KEY` (see `docs/deploying.md`, _Git access for sessions_) restores repository browsing and creation in the launcher and HTTPS clone/push without per-user setup.
 
-## Open decision: the simulator pin
-
-The pinned `third_party/sockerless` (`b5126463`, 2026-07-07) is 127 commits behind upstream `main` and predates the `#906` awsvpc-resolver fix that explains multi-minute silent container starts; the shared dev environment showed 185 s and 239 s starts on 2026-09-06 (`BUGS.md`, external blockers, `#931`). Upstream `#922` since moved the simulators into `e6qu/sockerless-cloud`, consumed as pinned modules, so the next bump is a restructuring of how `docker-compose.tier2.yml`/`.e2e.yml` build the sim (submodule of the new repo, or a published image coordinate), not a one-line pin change. This needs a decision before the work starts; until then the dev environment's slow starts should be verified against a simulator build that includes `#906`.
-
 ## Existing product follow-ups
 
 - The open CodeBuild ARM64 bootstrap, IAM propagation, and per-task `DescribeTasks` tolerance defects remained tracked in [BUGS.md](BUGS.md).

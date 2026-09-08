@@ -4,7 +4,9 @@
 # workspace data-fidelity loop. Needs a container runtime: the Docker/podman
 # socket mounted + --privileged. Consumed endpoint-only (AGENTS.md §6.8).
 #
-# Built from the pinned third_party/sockerless submodule (same image as Tier-2).
+# The published sockerless-cloud simulators, pinned by digest to the release the
+# shared dev environment runs (scripts/check-sim-pins.sh); the container-mode
+# variant is the same image plus the netns toolchain (infra/sim).
 #
 # DynamoDB is served by the sim (the container-mode `sockerless-aws-exec` at :4566, same
 # AWS surface as Tier-2); the standalone DynamoDB-Local container was retired from CI.
@@ -16,8 +18,10 @@ services:
     # The Linux path still `up --build`s and tags it with this same name.
     image: edd-sim-aws-exec:e2e
     build:
-      context: ./third_party/sockerless/simulators
-      dockerfile: ../../../infra/sim/sockerless-aws-exec.Dockerfile
+      context: ./infra/sim
+      dockerfile: sockerless-aws-exec.Dockerfile
+      args:
+        SOCKERLESS_AWS_IMAGE: ghcr.io/e6qu/sockerless-simulator-aws@sha256:77f2e38f40ebd17a6e960428d7f4660b5eb8b70b36c27ccac232639c3cbe1a76
     privileged: true
     pid: host
     volumes:
@@ -32,9 +36,7 @@ services:
 
   # bleephub: the sockerless GitHub server (mock-free auth e2e).
   bleephub:
-    build:
-      context: .
-      dockerfile: infra/sim/bleephub.Dockerfile
+    image: ghcr.io/e6qu/bleephub@sha256:b8930d312075e07a034f6f7a04783b2282c91d201f14d8e65e0728f3bdcffe8f
     environment:
       # Required since sockerless#501 / PR#506: bleephub log.Fatal on startup if unset.
       # Any non-PAT value; this is a test credential, not a real GitHub token.
@@ -48,7 +50,9 @@ services:
     ports:
       - "5555:5555"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:5555/api/v3/rate_limit"]
+      # The published image carries no HTTP client; the listener accepting a
+      # connection is what "up" means for a server that binds only once it serves.
+      test: ["CMD", "/bin/bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/5555"]
       interval: 3s
       timeout: 3s
       retries: 20
@@ -58,9 +62,7 @@ services:
   # group membership, and the ROPC token grant — so the test is swappable with
   # real Entra by base-URL alone (AGENTS.md §6.8).
   azure-sim:
-    build:
-      context: ./third_party/sockerless/simulators
-      dockerfile: azure/Dockerfile
+    image: ghcr.io/e6qu/sockerless-simulator-azure@sha256:790af4c38d343dc1c9a0f1110e8427c60711589202665b15a522012569981c23
     # API-only: the auth flow (Graph + OAuth) executes no workloads, so the sim
     # needs no container runtime — process mode (same as the Tier-2 harness).
     environment:

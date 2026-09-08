@@ -73,7 +73,6 @@ changing coordinates alone (`AGENTS.md` §6.8/§6.9):
 ### Local quickstart
 
 ```sh
-git submodule update --init --recursive   # the sims build from third_party/sockerless
 pnpm install
 pnpm dev                                   # app on http://edd.localhost:3700 (fakes + DynamoDB Local + dev-auth)
 ```

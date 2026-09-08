@@ -57,6 +57,8 @@ jobs:
       # the build on regressions; jscpd is gated by the threshold in .jscpd.json.
       - run: pnpm dead-code
       - run: pnpm cpd
+      # Every tier runs the same published simulator release, pinned by digest.
+      - run: sh scripts/check-sim-pins.sh
 
   integration:
     name: integration
@@ -77,13 +79,11 @@ jobs:
     # #650/#651). Readiness is handled in-harness (`waitForDynamo` in `@edd/db`).
     steps:
       - uses: actions/checkout@v6.0.2
-        with:
-          submodules: recursive # third_party/sockerless — the sim is built from source
       - uses: ./.github/actions/pnpm-install
       - run: pnpm build
       # Retry bring-up: image pulls can transiently hit registry rate limits
       # (public.ecr.aws / Docker Hub) on shared runner IPs.
-      - name: Build & start the sockerless AWS simulator (from source, API-only mode)
+      - name: Start the sockerless AWS simulator (published image, API-only mode)
         run: |
           for attempt in 1 2 3; do
             if docker compose -f docker-compose.tier2.yml up -d --build --wait sockerless-aws; then
@@ -116,8 +116,6 @@ jobs:
       AWS_SECRET_ACCESS_KEY: test
     steps:
       - uses: actions/checkout@v6.0.2
-        with:
-          submodules: recursive # third_party/sockerless — the sim is built from source
       - uses: ./.github/actions/pnpm-install
       - run: pnpm build
       # Build test Docker images needed by the e2e tests.
@@ -204,8 +202,6 @@ jobs:
       AWS_SECRET_ACCESS_KEY: test
     steps:
       - uses: actions/checkout@v6.0.2
-        with:
-          submodules: recursive # third_party/sockerless — the sims are built from source
       - uses: ./.github/actions/pnpm-install
       - run: pnpm build
       # Fresh self-signed CA + server cert into ./temp/sim-tls (gitignored); the
@@ -214,7 +210,7 @@ jobs:
         run: sh scripts/gen-sim-tls-cert.sh
       # Retry bring-up: image pulls can transiently hit registry rate limits
       # (public.ecr.aws / Docker Hub) on shared runner IPs.
-      - name: Build & start the HTTPS simulators (sockerless AWS + Azure + bleephub)
+      - name: Start the HTTPS simulators (sockerless AWS + Azure + bleephub)
         run: |
           for attempt in 1 2 3; do
             if docker compose -f docker-compose.https.yml up -d --build --wait; then
@@ -337,17 +333,15 @@ jobs:
       NOT_A_RELEASE: "Ephemeral CI fixture for the e2e jobs. NOT a release image — do not pull or deploy; rebuilt from PR code every run."
     steps:
       - uses: actions/checkout@v6.0.2
-        with:
-          submodules: recursive # third_party/sockerless — the sim image is built from source
       - uses: docker/setup-buildx-action@v4.2.0
       - name: Log in to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
-      - name: Build & push the container-mode AWS sim image (CI fixture)
+      - name: Build & push the container-mode AWS sim image (published sim + netns tools; CI fixture)
         run: |
           docker buildx build --push -f infra/sim/sockerless-aws-exec.Dockerfile \
             --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
             --label "org.opencontainers.image.description=${NOT_A_RELEASE}" \
-            -t "${SIM}:ci-${{ github.run_id }}" third_party/sockerless/simulators
+            -t "${SIM}:ci-${{ github.run_id }}" infra/sim
       - name: Retain only the newest 20 fixture versions
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -384,8 +378,6 @@ jobs:
       SIM: ghcr.io/${{ github.repository_owner }}/edd-ci-sim-aws-exec
     steps:
       - uses: actions/checkout@v6.0.2
-        with:
-          submodules: recursive # third_party/sockerless — compose references its build context
       - uses: ./.github/actions/pnpm-install
       - run: pnpm build
       # Provide a Docker engine on macOS via colima (a lightweight x86_64 Linux VM
@@ -466,12 +458,10 @@ jobs:
       AWS_SECRET_ACCESS_KEY: test
     steps:
       - uses: actions/checkout@v6.0.2
-        with:
-          submodules: recursive # third_party/sockerless — the sim serves the portal's DynamoDB
       - uses: ./.github/actions/pnpm-install
       # DynamoDB is served by the process-mode sim (the standalone DynamoDB-Local
       # container was retired); the portal's web app targets it at :4566.
-      - name: Build & start the sockerless AWS simulator (from source, API-only mode)
+      - name: Start the sockerless AWS simulator (published image, API-only mode)
         run: |
           for attempt in 1 2 3; do
             if docker compose -f docker-compose.tier2.yml up -d --build --wait sockerless-aws; then
@@ -563,8 +553,6 @@ jobs:
       AWS_SECRET_ACCESS_KEY: test
     steps:
       - uses: actions/checkout@v6.0.2
-        with:
-          submodules: recursive # third_party/sockerless — the sim is built from source
       - uses: hashicorp/setup-terraform@v4.0.1
         with:
           terraform_wrapper: false
@@ -574,7 +562,7 @@ jobs:
           key: tf-providers-${{ runner.os }}-${{ hashFiles('infra/terraform/modules/ecs-dev-desktop/.terraform.lock.hcl', 'infra/terraform/modules/ecs-dev-desktop/tests/sim/.terraform.lock.hcl') }}
       # Retry bring-up: image pulls can transiently hit registry rate limits
       # (public.ecr.aws / Docker Hub) on shared runner IPs.
-      - name: Build & start the sockerless AWS simulator (from source, API-only mode)
+      - name: Start the sockerless AWS simulator (published image, API-only mode)
         run: |
           for attempt in 1 2 3; do
             if docker compose -f docker-compose.tier2.yml -f docker-compose.tier2.host.yml up -d --build --wait sockerless-aws; then
