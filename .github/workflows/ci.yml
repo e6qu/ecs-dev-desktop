@@ -149,6 +149,11 @@ jobs:
             sleep "$((attempt * 20))"
           done
           exit 1
+      # The startup seed installs the App on the admin user — the only account
+      # bleephub can resolve while it boots. The org and its installation are
+      # created here, once the server is serving.
+      - name: Create the e2e GitHub org and install the seeded App
+        run: sh scripts/bootstrap-sim-github-org.sh
       # Registered-key SSH e2e (ssh-proxy.e2e.ts, ssh-wake-chain.e2e.ts) are
       # self-contained: each docker-runs its own workspace node + gateway proxy.
       - name: Build SSH workspace-node Docker image
