@@ -13,6 +13,47 @@ const FORM_HEADERS = {
 const tokenResponse = z.object({ access_token: z.string() });
 const graphCreated = z.object({ id: z.string() });
 
+const applicationCreated = z.object({ id: z.string(), appId: z.string() });
+const passwordCreated = z.object({ secretText: z.string() });
+
+/**
+ * Register a confidential client the way an operator does on real Microsoft
+ * Entra: an application registration, a password credential on it, and a
+ * service principal in the tenant — the last is what makes the
+ * client_credentials grant resolvable, and Entra rejects the grant with
+ * AADSTS700016 without it. The harness therefore owns a client of its own
+ * rather than assuming well-known credentials exist in the directory.
+ */
+export async function registerEntraApp(
+  displayName: string,
+): Promise<{ clientId: string; clientSecret: string }> {
+  const created = applicationCreated.parse(
+    await graphJson("/applications", { method: "POST", body: JSON.stringify({ displayName }) }),
+  );
+  const password = passwordCreated.parse(
+    await graphJson(`/applications/${created.id}/addPassword`, {
+      method: "POST",
+      body: JSON.stringify({ passwordCredential: { displayName: `${displayName}-secret` } }),
+    }),
+  );
+  await graphJson("/servicePrincipals", {
+    method: "POST",
+    body: JSON.stringify({ appId: created.appId }),
+  });
+  return { clientId: created.appId, clientSecret: password.secretText };
+}
+
+async function graphJson(path: string, init: RequestInit): Promise<unknown> {
+  const res = await fetch(`${entra.graphUrl}${path}`, {
+    ...init,
+    headers: { "Content-Type": "application/json", Accept: "application/json" },
+  });
+  if (!res.ok) {
+    throw new Error(`Graph ${path} failed: ${String(res.status)} ${await res.text()}`);
+  }
+  return res.json();
+}
+
 /** App-only token (client_credentials) — the admin credential Graph provisioning
  * requires on real cloud. Sent as Bearer on every Graph call below. */
 export async function acquireGraphToken(clientId: string, clientSecret: string): Promise<string> {
