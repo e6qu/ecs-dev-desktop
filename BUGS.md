@@ -4,18 +4,25 @@
 
 ## Open
 
-- **Shauth's `from_app` validation of ECS Dev Desktop fails on an aborted navigation — reproducible, found 2026-09-08.** On the deployed dev environment (edd release `4169baf2d37f`), 19 of 20 Shauth application validations pass and the whole browser SSO suite passes, including this app's single sign-on and its global logout in both directions. The one failure is `ecs-dev-desktop` / `from_app`:
+- **Shauth's `from_app` validation of ECS Dev Desktop fails on an aborted navigation — reproducible in Shauth, not reproduced by hand, found 2026-09-08.** On the deployed dev environment (edd release `4169baf2d37f`), 19 of 20 Shauth application validations pass and the whole browser SSO suite passes, including this app's single sign-on and its global logout in both directions. The one failure is `ecs-dev-desktop` / `from_app`:
 
   ```
   verify Shauth provider logout revoked ecs-dev-desktop:
   page.goto: net::ERR_ABORTED at https://app.edd.dev.e6qu.dev/auth/validation
   ```
 
-  It reproduces on a re-queued cycle, so it is not a deploy-window transient. It is also not the endpoint: an isolated browser navigation to `/auth/validation` answers `307 → /signed-out → 200`, and `curl` agrees.
+  It fails on every re-queued cycle, so it is not a deploy-window transient.
 
-  What the recorded flow shows is the validator driving five routes at once — `/workspaces`, `/`, `/me`, `/settings/ssh-keys`, `/sessions/new` — and `/me` aborting the same way before `/auth/validation` does. Aborting a navigation is what a *second* navigation on the same page does to the first, so the suspect is concurrent navigation against this app rather than anything `/auth/validation` returns. Why only this app: it is the one Next.js client-router app in the catalog, so it is the one where a router-driven navigation can supersede an in-flight `page.goto`.
+  The failing step (`validator/validate.mjs`) polls up to 120 times, and each turn of the loop is a bare `await page.goto(job.validation_url)`. A rejection there ends the whole validation, so one aborted navigation out of up to 120 fails the app.
 
-  Not caused by the simulator re-pin (that release changed no edd code, though the apply did roll the control-plane service). Next step: read Shauth's validator flow for `from_app` and establish whether it issues overlapping navigations; if it does, the repair is in the validator, and if it does not, the repair is in this app's post-logout routing.
+  Driving that exact sequence by hand against the live environment — sign in through Shauth, global logout at Shauth, then the same polling `goto` — shows:
+  - the poll is needed: `/auth/validation` answered `200` (still authenticated) for two attempts before answering `307 -> /signed-out`, and the loop then reached the signed-out page and stopped;
+  - no `goto` rejected across those attempts, so the abort is intermittent and has not been reproduced by hand;
+  - the app client-navigates on its own during that window (`/` then `/login`), which is the kind of thing that supersedes a driver's in-flight navigation.
+
+  **Correcting an earlier reading of this entry:** the `requestfailed GET /me net::ERR_ABORTED` lines in the recorded flow are Next.js route prefetches being cancelled — the probe shows the same lines for `/admin`, `/me`, `/workspaces` and `/settings/ssh-keys` on a perfectly healthy page. They are not the failure and not evidence of overlapping navigations.
+
+  Repair not yet made. Tolerating `net::ERR_ABORTED` in the loop and re-reading `page.url()` would make the check survive a superseded navigation, and a superseded navigation genuinely leaves the browser where it was sent — but nothing yet proves that is what happens here, and a revocation check that ignores a navigation error on a guess is a weakened guard, not a fix. What is needed first is the abort captured with its cause: the validator recording the response or failure text of the aborted navigation, rather than only the driver's message.
 
 - **Two e2e tests fail once the simulator is the published release rather than the two-month-old submodule build — found 2026-09-08, still open.** `third_party/sockerless` pinned `e6qu/sockerless` at `b5126463` (2026-07-07), and that repository no longer contains `simulators/` at all: the simulators now live in `e6qu/sockerless-cloud` and ship as published images. Consuming those images (branch `chore/sim-from-published-images`) moves the simulator forward by two months, and two `@edd/e2e` tests stop passing:
 
