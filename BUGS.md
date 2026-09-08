@@ -4,6 +4,19 @@
 
 ## Open
 
+- **Shauth's `from_app` validation of ECS Dev Desktop fails on an aborted navigation — reproducible, found 2026-09-08.** On the deployed dev environment (edd release `4169baf2d37f`), 19 of 20 Shauth application validations pass and the whole browser SSO suite passes, including this app's single sign-on and its global logout in both directions. The one failure is `ecs-dev-desktop` / `from_app`:
+
+  ```
+  verify Shauth provider logout revoked ecs-dev-desktop:
+  page.goto: net::ERR_ABORTED at https://app.edd.dev.e6qu.dev/auth/validation
+  ```
+
+  It reproduces on a re-queued cycle, so it is not a deploy-window transient. It is also not the endpoint: an isolated browser navigation to `/auth/validation` answers `307 → /signed-out → 200`, and `curl` agrees.
+
+  What the recorded flow shows is the validator driving five routes at once — `/workspaces`, `/`, `/me`, `/settings/ssh-keys`, `/sessions/new` — and `/me` aborting the same way before `/auth/validation` does. Aborting a navigation is what a *second* navigation on the same page does to the first, so the suspect is concurrent navigation against this app rather than anything `/auth/validation` returns. Why only this app: it is the one Next.js client-router app in the catalog, so it is the one where a router-driven navigation can supersede an in-flight `page.goto`.
+
+  Not caused by the simulator re-pin (that release changed no edd code, though the apply did roll the control-plane service). Next step: read Shauth's validator flow for `from_app` and establish whether it issues overlapping navigations; if it does, the repair is in the validator, and if it does not, the repair is in this app's post-logout routing.
+
 - **Two e2e tests fail once the simulator is the published release rather than the two-month-old submodule build — found 2026-09-08, still open.** `third_party/sockerless` pinned `e6qu/sockerless` at `b5126463` (2026-07-07), and that repository no longer contains `simulators/` at all: the simulators now live in `e6qu/sockerless-cloud` and ship as published images. Consuming those images (branch `chore/sim-from-published-images`) moves the simulator forward by two months, and two `@edd/e2e` tests stop passing:
 
   - `golden-workspace-ssh.e2e.ts` → `workspace@10.71.1.4: Permission denied (publickey)`. The TCP connection and the SSH banner both succeed, so this is not reachability — the workspace's `AuthorizedKeysCommand` (`ssh-authorize`) returns no key.
