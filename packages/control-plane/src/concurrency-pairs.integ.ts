@@ -65,6 +65,12 @@ class BarrierSnapshotStorage implements StorageProvider {
     return this.inner.createSnapshot(volumeId, opts);
   }
 
+  /** Open the gate without waiting for the remaining parties, so a test can
+   * hold a snapshot open while some other writer lands underneath it. */
+  release(): void {
+    this.resolveGate();
+  }
+
   tagSnapshotRetained(snapshotId: SnapshotId): Promise<void> {
     return this.inner.tagSnapshotRetained(snapshotId);
   }
@@ -175,6 +181,30 @@ describe("concurrent transition pairs are version-safe (DynamoDB + fakes)", () =
       service.heartbeat(workspaceId(id)),
     ]);
     expect(tally([stop, beat])).toEqual({ ok: 1, conflict: 1 });
+  });
+
+  it("snapshot vs heartbeat: the snapshot survives the beat that lands under it", async () => {
+    const id = await runningWorkspace("pair-c-beat");
+    // The snapshot is held open until the beat has already been written, so
+    // the snapshot's own write is guaranteed to be conditioned on a version
+    // that is stale by then — the shape the in-workspace idle-agent produces
+    // every few seconds. Two parties, so nothing opens the gate but the test.
+    const barrier = new BarrierSnapshotStorage(storage, 2);
+    const racingService = new WorkspaceService({
+      workspaces: makeWorkspaceEntity(client, TABLE),
+      storage: barrier,
+      compute,
+      clock: systemClock,
+    });
+    const snapshotting = racingService.snapshot(workspaceId(id));
+    const beat = await racingService.heartbeat(workspaceId(id));
+    barrier.release();
+    const snap = await snapshotting;
+    // A heartbeat touches lastActivity and nothing the snapshot decides, so it
+    // is not a lost update and must not fail the user's snapshot.
+    expect(tally([snap, beat])).toEqual({ ok: 2, conflict: 0 });
+    const final = await service.get(workspaceId(id));
+    expect(final?.latestSnapshotId).toBeDefined();
   });
 
   it("two concurrent snapshots: one wins, one conflicts (no lost update)", async () => {

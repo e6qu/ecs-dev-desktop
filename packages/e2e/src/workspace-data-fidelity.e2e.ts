@@ -6,12 +6,13 @@ import {
   RunTaskCommand,
   type Task,
 } from "@aws-sdk/client-ecs";
+import { EC2Client } from "@aws-sdk/client-ec2";
 import { EcsComputeProvider } from "@edd/compute-ecs";
 import { volumeId } from "@edd/core";
 import { Ec2StorageProvider } from "@edd/storage-ec2";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { configureAwsSimEnv, required, sleep } from "./aws-sim";
+import { awsSimClientConfig, configureAwsSimEnv, createVpcWithEgress, required, sleep } from "./aws-sim";
 
 configureAwsSimEnv();
 
@@ -24,9 +25,18 @@ const IMAGE = "alpine:3.20";
 describe("workspace data fidelity (write → snapshot → restore → read) on the sim", () => {
   const ecs = EcsComputeProvider.client();
   const storage = Ec2StorageProvider.fromEnv();
+  let subnetId: string;
 
   beforeAll(async () => {
     await ecs.send(new CreateClusterCommand({ clusterName: CLUSTER }));
+    // Fargate runs only on awsvpc, so the task needs a subnet to put its ENI
+    // in — the same shape every other Fargate spec here uses.
+    const vpc = await createVpcWithEgress(new EC2Client(awsSimClientConfig()), {
+      vpcCidr: "10.74.0.0/16",
+      subnetCidr: "10.74.1.0/24",
+      securityGroupName: "data-fidelity-sg",
+    });
+    subnetId = vpc.subnetId;
   });
 
   /** Register a Fargate task def that mounts a managed-EBS volume at /work. */
@@ -35,7 +45,9 @@ describe("workspace data fidelity (write → snapshot → restore → read) on t
       new RegisterTaskDefinitionCommand({
         family,
         requiresCompatibilities: ["FARGATE"],
-        networkMode: "none",
+        // Fargate supports no other network mode: registering "none" and
+        // launching it is rejected by real AWS, and now by the simulator too.
+        networkMode: "awsvpc",
         cpu: "256",
         memory: "512",
         containerDefinitions: [
@@ -58,6 +70,7 @@ describe("workspace data fidelity (write → snapshot → restore → read) on t
         cluster: CLUSTER,
         taskDefinition: family,
         launchType: "FARGATE",
+        networkConfiguration: { awsvpcConfiguration: { subnets: [subnetId] } },
         volumeConfigurations: [
           {
             name: "work",
