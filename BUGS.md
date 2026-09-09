@@ -4,7 +4,7 @@
 
 ## Open
 
-- **Shauth's `from_app` validation of ECS Dev Desktop fails on an aborted navigation — reproducible in Shauth, not reproduced by hand, found 2026-09-08.** On the deployed dev environment (edd release `4169baf2d37f`), 19 of 20 Shauth application validations pass and the whole browser SSO suite passes, including this app's single sign-on and its global logout in both directions. The one failure is `ecs-dev-desktop` / `from_app`:
+- **Shauth's `from_app` validation of ECS Dev Desktop failed on an aborted navigation — stopped reproducing at release `8436631e38ac` on 2026-09-09, cause never established.** On the deployed dev environment (edd release `4169baf2d37f`), 19 of 20 Shauth application validations pass and the whole browser SSO suite passes, including this app's single sign-on and its global logout in both directions. The one failure is `ecs-dev-desktop` / `from_app`:
 
   ```
   verify Shauth provider logout revoked ecs-dev-desktop:
@@ -22,9 +22,20 @@
 
   **Correcting an earlier reading of this entry:** the `requestfailed GET /me net::ERR_ABORTED` lines in the recorded flow are Next.js route prefetches being cancelled — the probe shows the same lines for `/admin`, `/me`, `/workspaces` and `/settings/ssh-keys` on a perfectly healthy page. They are not the failure and not evidence of overlapping navigations.
 
+  **Where it ended.** After the control plane moved to `8436631e38ac`, a full
+  post-apply gate passed with all twenty validations green, this flow included,
+  and it has stayed green on re-queued cycles since. Nothing was changed that
+  targets this: the tolerance described above was written and then deliberately
+  reverted, unproven. So the failure is gone and the cause is not known. It is
+  left recorded rather than deleted, because an intermittent failure that
+  disappears without explanation is the kind that returns; if it does, the
+  paragraphs above are the evidence to start from, and the missing piece is
+  still the same one — the validator recording the aborted navigation's own
+  response or failure text rather than only the driver's message.
+
   Repair not yet made. Tolerating `net::ERR_ABORTED` in the loop and re-reading `page.url()` would make the check survive a superseded navigation, and a superseded navigation genuinely leaves the browser where it was sent — but nothing yet proves that is what happens here, and a revocation check that ignores a navigation error on a guess is a weakened guard, not a fix. What is needed first is the abort captured with its cause: the validator recording the response or failure text of the aborted navigation, rather than only the driver's message.
 
-- **Workspace containers cannot reach the control plane under the simulator's netns tier — root cause found 2026-09-09, fix belongs in sockerless-cloud.** Consuming the published simulators (branch `chore/sim-from-published-images`) moves the simulator forward two months, and two `@edd/e2e` tests stop passing: `golden-workspace-ssh.e2e.ts` (`Permission denied (publickey)`) and `user-journey.e2e.ts` (`idle-agent heartbeat never advanced lastActivity`).
+- ~~**Workspace containers cannot reach the control plane under the simulator's netns tier — root cause found 2026-09-09; FIXED in sockerless-cloud#148, released 0.31.4, deployed.**~~ Consuming the published simulators (branch `chore/sim-from-published-images`) moves the simulator forward two months, and two `@edd/e2e` tests stop passing: `golden-workspace-ssh.e2e.ts` (`Permission denied (publickey)`) and `user-journey.e2e.ts` (`idle-agent heartbeat never advanced lastActivity`).
 
   Both are one fault. The instrumented stub says it plainly — `ssh-authorize stub: NO request arrived from the workspace` — and the workspace container's own log shows every outbound call failing, not just the one the test watches:
 
@@ -45,7 +56,14 @@
 
   The e2e harness runs that tier — CI's container list carries the `…-pause` container that owns the ENI netns — so the workspace gets no mapping for the name it is told to call, and every request fails to resolve. It is invisible on a developer's Mac because Podman injects `host.docker.internal` and `host.containers.internal` into containers itself; Docker on Linux does not.
 
-  Repair is in sockerless-cloud, not here. Note that Docker rejects a per-container host mapping when the network mode is `container:<id>`, so the netns tier probably cannot simply copy the awsvpc branch: the durable fix is for the simulator's own resolver to answer `host.docker.internal`, which the task netns already reaches — its DNS is DNAT'd to the simulator (the `dnspc…` nftables table maps `169.254.169.253:53` to the simulator's resolver port).
+  **Fixed.** sockerless-cloud#148 answers the alias from the simulator's own
+  resolver, which the task namespace already reaches, with the same address
+  every other tier receives in `/etc/hosts`. Release 0.31.4 carries it and this
+  repository consumes it. Both tests pass, and the suite that had been cancelled
+  at the job's budget now completes.
+
+  The original note, kept because the reasoning is what made the fix safe:
+  repair is in sockerless-cloud, not here. Note that Docker rejects a per-container host mapping when the network mode is `container:<id>`, so the netns tier probably cannot simply copy the awsvpc branch: the durable fix is for the simulator's own resolver to answer `host.docker.internal`, which the task netns already reaches — its DNS is DNAT'd to the simulator (the `dnspc…` nftables table maps `169.254.169.253:53` to the simulator's resolver port).
 
 - **Golden images still resolve most of their toolchain from "latest" at build time — same defect class that broke CI on 2026-08-02.** The `e2e fixture (workspace)` job failed because `infra/images/{omnibus,java}/Dockerfile` resolved google-java-format via the GitHub `releases/latest` redirect: upstream 1.36.0 moved to a Java 21 target (class file 65) while the images' JDK is Debian bookworm `default-jdk-headless` (Java 17 / class file 61), so the install step died with `UnsupportedClassVersionError`. **FIXED for google-java-format** (pinned `ARG GJF_VERSION=1.35.0`, the newest Java 17 target). The identical pattern remains everywhere else in `infra/images/*/Dockerfile`, so any of them can break the build the day upstream ships an incompatible release, and none of the images is byte-reproducible:
   - `omnibus`, `java`: Gradle from `services.gradle.org/versions/current` — **the same JDK-17 coupling**, so a future Gradle that requires Java 21 reproduces this failure exactly.
