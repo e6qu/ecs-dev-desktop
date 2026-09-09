@@ -23,7 +23,12 @@ const TABLE = process.env.DYNAMODB_TABLE ?? "ecs-dev-desktop-pw";
 const ENDPOINT = process.env.AWS_ENDPOINT_URL ?? "http://127.0.0.1:4566";
 const REGION = process.env.AWS_REGION ?? "us-east-1";
 const APP_NAME = process.env.EDD_APP_NAME ?? "edd-playwright";
-const credentials = { accessKeyId: "local", secretAccessKey: "local" };
+// The simulator verifies SigV4 against its seeded IAM keys; "local" is not a
+// principal there. Sign as the harness credential the run already exports.
+const credentials = {
+  accessKeyId: process.env.AWS_ACCESS_KEY_ID ?? "test",
+  secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY ?? "test",
+};
 
 const client = new DynamoDBClient({
   region: REGION,

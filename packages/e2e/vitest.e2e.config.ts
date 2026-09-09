@@ -14,5 +14,11 @@ export default defineConfig({
     hookTimeout: 180_000,
     testTimeout: 180_000,
     retry: IS_CI ? 1 : 0,
+    // Report each failure where it happens, not only in the closing summary.
+    // This suite is long enough to outlive the job that runs it, and the
+    // default reporter keeps every message for a summary a cancelled job never
+    // reaches: two failures here were seen three runs in a row as a bare name
+    // and a duration, with nothing said about why.
+    reporters: IS_CI ? ["verbose"] : ["default"],
   },
 });

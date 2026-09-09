@@ -20,7 +20,7 @@
   "devDependencies": {
     "@aws-sdk/client-dynamodb": "^3.1127.0",
     "@edd/config": "workspace:*",
-    "@types/node": "^26.4.1",
+    "@types/node": "^26.5.0",
     "@types/ssh2": "^1.15.6",
     "fast-check": "^4.9.0",
     "ssh2": "^1.17.0"

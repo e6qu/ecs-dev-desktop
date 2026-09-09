@@ -1462,15 +1462,42 @@ export class WorkspaceService {
     }
     const snap = await this.snapshotForTransition(id, ws.volumeId, version);
     if (!snap.ok) return snap;
-    const next = recordSnapshot(ws, snap.value, isoTimestamp(this.deps.clock.now()));
-    try {
-      await this.persistTransition(next, version);
-    } catch (e) {
-      if (!isVersionConflict(e)) throw e;
-      // The snapshot itself exists either way; an unreferenced one is GC'd.
-      return err(conflictError(`snapshot of ${id} lost a concurrent update`));
+    const at = isoTimestamp(this.deps.clock.now());
+    // Creating the EBS snapshot takes seconds, and the in-workspace agent beats
+    // throughout, so the record has usually advanced by the time there is a
+    // snapshot to record. Conditioning the write on the version read before it
+    // failed the user's snapshot because a heartbeat landed — while the
+    // snapshot itself existed, orphaned.
+    //
+    // Retry, but only against a writer that did not itself snapshot: two
+    // concurrent snapshots must still resolve to exactly one winner, because
+    // the second would otherwise overwrite the reference to the first and
+    // silently orphan it. `latestSnapshotId` is what separates the two cases.
+    for (let attempt = 0; ; attempt++) {
+      const latest = await this.require(id);
+      if (!latest.ok) return latest;
+      const current = latest.value;
+      // Re-checked every attempt: whatever won the race may have been a stop or
+      // a delete, and a tombstone must not gain a fresh `latestSnapshotId`.
+      if (current.ws.state !== "running" && current.ws.state !== "idle") {
+        return err(conflictError(`cannot snapshot ${id}: not running (state=${current.ws.state})`));
+      }
+      if (current.ws.latestSnapshotId !== ws.latestSnapshotId) {
+        // The snapshot itself exists either way; an unreferenced one is GC'd.
+        return err(conflictError(`snapshot of ${id} lost a concurrent update`));
+      }
+      const next = recordSnapshot(current.ws, snap.value, at);
+      try {
+        await this.persistTransition(next, current.version);
+      } catch (e) {
+        if (isVersionConflict(e) && attempt === 0) continue;
+        if (isVersionConflict(e)) {
+          return err(conflictError(`snapshot of ${id} lost a concurrent update`));
+        }
+        throw e;
+      }
+      return ok(toWorkspaceDto(next));
     }
-    return ok(toWorkspaceDto(next));
   }
 
   /**

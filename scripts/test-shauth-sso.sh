@@ -24,10 +24,6 @@ fi
   echo "SHAUTH_SOURCE_DIR does not contain compose.yaml" >&2
   exit 1
 }
-[ -f "$root/third_party/sockerless/simulators/aws/Dockerfile" ] || {
-  echo "third_party/sockerless is not initialized; run git submodule update --init --recursive" >&2
-  exit 1
-}
 
 work_dir=$(mktemp -d)
 provider_project=edd-shauth-provider

@@ -62,6 +62,12 @@ export async function waitForTask(
 export interface SshAuthorizeStub {
   /** Control-plane URL reachable from inside a sim task container (host alias + port). */
   controlPlaneUrl: string;
+  /** What the workspace actually asked this stub, in order, with the answer it
+   * got. `Permission denied (publickey)` is the same symptom whether the
+   * request never arrived, arrived with the wrong HMAC token, or arrived with a
+   * key that did not match — and the three need different repairs. An empty
+   * list means the workspace never reached the host at all. */
+  requests: () => string[];
   stop: () => void;
 }
 
@@ -92,6 +98,7 @@ export function startSshAuthorizeStub(
   agentSecret: string,
 ): Promise<SshAuthorizeStub> {
   const want = publicKey.trim().split(/\s+/).slice(0, 2).join(" "); // "<type> <blob>"
+  const seen: string[] = [];
   return new Promise((resolve) => {
     const server = createServer((req, res) => {
       res.setHeader("content-type", "application/json");
@@ -101,6 +108,7 @@ export function startSshAuthorizeStub(
         // be the per-workspace HMAC token derived from the workspace id in the path.
         const expected = `Bearer ${agentToken(agentSecret, wsMatch[1] ?? "")}`;
         if (req.headers.authorization !== expected) {
+          seen.push(`POST ${req.url ?? ""} -> 401 (bearer token mismatch)`);
           res.writeHead(401);
           res.end(JSON.stringify({ error: "unauthorized" }));
           return;
@@ -109,11 +117,14 @@ export function startSshAuthorizeStub(
         req.on("data", (c: Buffer) => chunks.push(c));
         req.on("end", () => {
           const pk = presentedKey(Buffer.concat(chunks).toString());
+          const authorized = pk === want;
+          seen.push(`POST ${req.url ?? ""} -> 200 authorized=${String(authorized)}`);
           res.writeHead(200);
-          res.end(JSON.stringify(pk === want ? { authorized: true } : { authorized: false }));
+          res.end(JSON.stringify({ authorized }));
         });
         return;
       }
+      seen.push(`${req.method ?? "?"} ${req.url ?? ""} -> 200 (not an ssh-authorize route)`);
       res.writeHead(200);
       res.end("{}");
     });
@@ -122,6 +133,7 @@ export function startSshAuthorizeStub(
       const port = typeof addr === "object" && addr !== null ? addr.port : 0;
       resolve({
         controlPlaneUrl: `http://${hostAlias}:${String(port)}`,
+        requests: () => [...seen],
         stop: () => server.close(),
       });
     });

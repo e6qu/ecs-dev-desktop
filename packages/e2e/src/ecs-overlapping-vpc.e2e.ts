@@ -82,6 +82,12 @@ describe(
               essential: true,
               entryPoint: ["sh", "-c"],
               command: [script],
+              // `sh` waiting on a foreground child runs no trap, so SIGTERM is
+              // ignored and the platform default of 30s is spent in full on
+              // every stop — four of them here, which was most of this file's
+              // runtime. A probe container has nothing to flush; say so, the
+              // way a real task definition would.
+              stopTimeout: 2,
             },
           ],
         }),

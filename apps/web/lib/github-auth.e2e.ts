@@ -11,6 +11,7 @@ import {
   githubOAuthLogin,
   githubProvisionTeam,
   JSON_HEADERS,
+  registerOAuthApp,
 } from "./test-support/github-oauth";
 
 /**
@@ -35,21 +36,20 @@ const USER = "admin";
 const ORG = "acme";
 const TEAM = "platform-admins";
 const TEAM_GROUP = `${ORG}/${TEAM}`;
-// Arbitrary OAuth app coordinates (fixtures); real cloud supplies real app creds.
-// Provisioning uses admin:org (team creation/membership requires it); the login
-// subject uses read:org (the scope our Auth.js provider requests).
-const OAUTH_ADMIN = {
-  client_id: "edd",
-  client_secret: "secret",
-  redirect_uri: "http://localhost/callback",
-  scope: "admin:org",
+// GitHub mints an OAuth App's client id and secret, so this run registers its
+// own (see registerOAuthApp) and uses what the server issued — a chosen pair is
+// not a client the server knows, and authorize answers
+// incorrect_client_credentials. Provisioning uses admin:org (team creation and
+// membership require it); the login subject uses read:org, the scope our
+// Auth.js provider requests.
+const REDIRECT_URI = "http://localhost/callback";
+let OAUTH_ADMIN: {
+  client_id: string;
+  client_secret: string;
+  redirect_uri: string;
+  scope: string;
 };
-const OAUTH_READ = {
-  client_id: "edd",
-  client_secret: "secret",
-  redirect_uri: "http://localhost/callback",
-  scope: "read:org",
-};
+let OAUTH_READ: typeof OAUTH_ADMIN;
 
 describe("GitHub login via github → team → role (mock-free, conformant flow)", () => {
   let token: string;
@@ -57,6 +57,10 @@ describe("GitHub login via github → team → role (mock-free, conformant flow)
 
   beforeAll(async () => {
     // Provision with admin:org scope (team creation/membership requires it).
+    const app = await registerOAuthApp("edd-github-auth-e2e", REDIRECT_URI);
+    const client = { client_id: app.clientId, client_secret: app.clientSecret };
+    OAUTH_ADMIN = { ...client, redirect_uri: REDIRECT_URI, scope: "admin:org" };
+    OAUTH_READ = { ...client, redirect_uri: REDIRECT_URI, scope: "read:org" };
     const adminToken = await githubOAuthLogin(USER, OAUTH_ADMIN);
     await githubProvisionTeam(adminToken, ORG, TEAM);
 

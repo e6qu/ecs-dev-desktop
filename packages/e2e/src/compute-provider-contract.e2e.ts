@@ -19,7 +19,11 @@ configureAwsSimEnv();
 const CLUSTER = "edd-compute-contract";
 // A long-running default CMD so the launched task stays RUNNING for observation.
 const IMAGE = "nginx:alpine";
-const SIM = awsSimClientConfig({ accessKeyId: "local", secretAccessKey: "local" });
+// The simulator verifies SigV4 against its seeded IAM keys, so sign as the
+// credential it actually provisions (the helper default) — "local" is not a
+// principal, the same placeholder that once made the control plane unable to
+// launch a task.
+const SIM = awsSimClientConfig();
 
 let subnetId: string;
 

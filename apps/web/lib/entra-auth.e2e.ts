@@ -7,7 +7,11 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { normalizeClaims } from "./claims";
-import { acquireGraphToken, provisionEntraUserWithGroup } from "./test-support/entra-graph";
+import {
+  acquireGraphToken,
+  provisionEntraUserWithGroup,
+  registerEntraApp,
+} from "./test-support/entra-graph";
 
 /**
  * Mock-free Entra login → group → role e2e, driven entirely through STANDARD
@@ -22,8 +26,11 @@ import { acquireGraphToken, provisionEntraUserWithGroup } from "./test-support/e
  * App-registration coordinates (client/tenant) and the test identity are plain
  * fixtures; against real Entra they'd come from env-supplied app credentials.
  */
-const CLIENT_ID = "edd-e2e-client";
-const CLIENT_SECRET = "edd-e2e-secret";
+// Entra mints the client id and secret when the application is registered, so
+// this run registers its own (see registerEntraApp) rather than assuming a
+// well-known pair exists in the directory.
+let CLIENT_ID: string;
+let CLIENT_SECRET: string;
 const RUN_ID = randomUUID().slice(0, 8);
 const USER_UPN = `alice-${RUN_ID}@edd-e2e.example.com`;
 // ROPC password — real Entra validates it against the user's passwordProfile; the
@@ -49,6 +56,8 @@ describe("Entra login → group → role (mock-free, standard Graph + ROPC)", ()
   let groupId: string;
 
   beforeAll(async () => {
+    ({ clientId: CLIENT_ID, clientSecret: CLIENT_SECRET } =
+      await registerEntraApp("edd-entra-auth-e2e"));
     const accessToken = await acquireGraphToken(CLIENT_ID, CLIENT_SECRET);
     ({ groupId } = await provisionEntraUserWithGroup(accessToken, {
       userPrincipalName: USER_UPN,

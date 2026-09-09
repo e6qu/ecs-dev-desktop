@@ -3,11 +3,11 @@
 # integration tests run against; `pnpm test:integ` targets it by endpoint only
 # (AGENTS.md §6.8).
 #
-# `sockerless-aws` is built FROM SOURCE from the pinned `third_party/sockerless`
-# submodule (no published release — see WHAT_WE_DID.md). It runs with
-# SIM_RUNTIME=process so the AWS API surface (EC2/EBS lifecycle, DynamoDB, etc.)
-# serves without a container runtime; real container execution would additionally
-# need a runtime + sockerless #333.
+# `sockerless-aws` is the published sockerless-cloud simulator image, pinned by
+# digest to the same release the shared dev environment runs (e6qu/infra
+# scaleway/simulator-images.json); scripts/check-sim-pins.sh keeps every tier
+# on one digest. It runs with SIM_RUNTIME=process so the AWS API surface
+# (EC2/EBS lifecycle, DynamoDB, etc.) serves without a container runtime.
 #
 # DynamoDB is served BY THE SIM in this tier (the integ run sets AWS_ENDPOINT_URL to
 # the sim at :4566); the standalone DynamoDB-Local container was retired here once the
@@ -17,12 +17,9 @@
 
 services:
   sockerless-aws:
-    build:
-      # Upstream Dockerfile, shared simulators/ context (fixed by sockerless #370).
-      context: ./third_party/sockerless/simulators
-      dockerfile: aws/Dockerfile
+    image: ghcr.io/e6qu/sockerless-simulator-aws@sha256:407b230954ae528313ed1f9c089636c74cfc61c889b416845599c30f73a9d7e9
     environment:
-      SIM_RUNTIME: process # API-only startup mode, no container runtime — sockerless #367
+      SIM_RUNTIME: process # API-only startup mode, no container runtime
     ports:
       - "4566:4566"
       - "15353:5353/tcp"

@@ -20,15 +20,23 @@ import {
   githubExchangeCode,
   githubProvisionTeam,
   githubSession,
+  registerOAuthApp,
 } from "./test-support/github-oauth";
-import { acquireGraphToken, provisionEntraUserWithGroup } from "./test-support/entra-graph";
+import {
+  acquireGraphToken,
+  provisionEntraUserWithGroup,
+  registerEntraApp,
+} from "./test-support/entra-graph";
 
 const ORIGIN = "http://localhost:3000";
 const USER = "admin";
 const ORG = "acme";
 const TEAM = "platform-admins";
-const OAUTH_APP = { id: "edd", secret: "secret" };
-const ENTRA_APP = { id: "edd-e2e-client", secret: "edd-e2e-secret" };
+// Both clients are registered against the running IdPs in beforeAll: GitHub and
+// Entra each mint their own client id and secret, so the credentials cannot be
+// known before the run. Filled in before the route module is imported.
+let OAUTH_APP: { id: string; secret: string };
+let ENTRA_APP: { id: string; secret: string };
 const TEST_TABLE = "ecs-dev-des-web-nextauth-callback-e2e";
 
 // Provider + role env BEFORE auth.ts is imported (it reads env at module load).
@@ -36,12 +44,8 @@ process.env.AUTH_SECRET = "edd-callback-e2e-secret";
 process.env.AWS_ENDPOINT_URL ??= aws.endpoint;
 process.env.DYNAMODB_TABLE = TEST_TABLE;
 process.env.AUTH_TRUST_HOST = "1";
-process.env.AUTH_GITHUB_ID = OAUTH_APP.id;
-process.env.AUTH_GITHUB_SECRET = OAUTH_APP.secret;
 process.env[GITHUB_URL_ENV] = github.url;
 process.env[GITHUB_API_URL_ENV] = github.apiUrl;
-process.env.AUTH_MICROSOFT_ENTRA_ID_ID = ENTRA_APP.id;
-process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET = ENTRA_APP.secret;
 process.env.AUTH_MICROSOFT_ENTRA_ID_ISSUER = `${entra.authority}/v2.0`;
 process.env[ADMIN_GROUPS_ENV] = `${ORG}/${TEAM}`;
 
@@ -138,6 +142,19 @@ describe("Auth.js callback routes against the live sims", { timeout: 60_000 }, (
   beforeAll(async () => {
     await dropTable(client, TEST_TABLE);
     await ensureTable(client, TEST_TABLE);
+    // Register this run's own clients, then publish their issued credentials as
+    // the provider env the route module reads at import.
+    const githubApp = await registerOAuthApp(
+      "edd-callback-e2e",
+      `${ORIGIN}/api/auth/callback/github`,
+    );
+    OAUTH_APP = { id: githubApp.clientId, secret: githubApp.clientSecret };
+    process.env.AUTH_GITHUB_ID = OAUTH_APP.id;
+    process.env.AUTH_GITHUB_SECRET = OAUTH_APP.secret;
+    const entraApp = await registerEntraApp("edd-callback-e2e");
+    ENTRA_APP = { id: entraApp.clientId, secret: entraApp.clientSecret };
+    process.env.AUTH_MICROSOFT_ENTRA_ID_ID = ENTRA_APP.id;
+    process.env.AUTH_MICROSOFT_ENTRA_ID_SECRET = ENTRA_APP.secret;
     // Import the real route module AFTER env is in place.
     const route = await import("../app/api/auth/[...nextauth]/route");
     GET = route.GET as Handler;

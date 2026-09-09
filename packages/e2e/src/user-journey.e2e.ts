@@ -232,7 +232,12 @@ describe(
         }
         await sleep(2_000);
       }
-      expect(advanced, "idle-agent heartbeat never advanced lastActivity").toBe(true);
+      // Whether the beat never left the workspace or was rejected on arrival is
+      // invisible from lastActivity alone; the control plane's own log says which.
+      expect(
+        advanced,
+        `idle-agent heartbeat never advanced lastActivity\ncontrol plane output:\n${web.output()}`,
+      ).toBe(true);
     });
 
     it("registers an account SSH key the workspace authorizes by ownership", async () => {

@@ -106,6 +106,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               ? { enterprise: { baseUrl: githubEnterpriseUrl } }
               : {}),
             authorization: { params: { scope: "read:user user:email read:org repo" } },
+            // GitHub's token endpoint takes the client credentials in the form
+            // body. Without this the OAuth client falls back to HTTP Basic and
+            // the exchange comes back as an error document, which surfaces as
+            // Auth.js failing to find `access_token` in the response — the same
+            // reason the Entra provider below pins its method.
+            client: { token_endpoint_auth_method: "client_secret_post" },
           }),
         ]),
     ...(configuredEntraClient === null

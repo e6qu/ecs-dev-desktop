@@ -112,13 +112,12 @@ packages/
   auth/              IdP claim→role mapping
   config/            typed config: endpoints, ports, defaults, env schema
 infra/terraform/     all AWS infra        infra/images/   golden base images
-third_party/sockerless/   pinned submodule (Tier-2 AWS simulator, from source)
 ```
 
-The Tier-2 AWS substrate is the **sockerless** simulator built from source
-(`third_party/sockerless` submodule, its own `simulators/aws/Dockerfile`), run via
-`docker-compose.tier2.yml` with `SIM_RUNTIME=process`. Consumed endpoint-only
-(§6.8); no published release is awaited.
+The Tier-2 AWS substrate is the published **sockerless-cloud** simulator image
+(`ghcr.io/e6qu/sockerless-simulator-aws`, pinned by digest to the release the
+shared dev environment runs), run via `docker-compose.tier2.yml` with
+`SIM_RUNTIME=process`. Consumed endpoint-only (§6.8).
 
 ---
 

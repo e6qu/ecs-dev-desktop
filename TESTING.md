@@ -10,9 +10,11 @@ in a **manual** suite on `main`.
 ## Substrate decision
 
 - **Primary integration substrate: [`sockerless`](https://github.com/e6qu/sockerless)**
-  (AWS simulator, Azure/Entra simulator, and `bleephub` GitHub server), **built
-  from source** from the pinned `third_party/sockerless` submodule (no release
-  awaited). AWS runs in two modes:
+  (AWS simulator, Azure/Entra simulator, and `bleephub` GitHub server), consumed
+  as the **published images** (`ghcr.io/e6qu/sockerless-simulator-{aws,azure}`,
+  `ghcr.io/e6qu/bleephub`), pinned by digest to the release the shared dev
+  environment runs; `scripts/check-sim-pins.sh` keeps every tier on one digest.
+  AWS runs in two modes:
   - `SIM_RUNTIME=process` for fast API-surface integration and Terraform apply.
   - container mode for ECS/Fargate behavior that must execute real task
     containers, including awsvpc networking and scheduler-fired tasks.
@@ -215,5 +217,8 @@ pnpm --filter <pkg> test   # one component in isolation
 # tier 3 (e2e-aws): workflow_dispatch on main, or local only with explicit AWS creds
 ```
 
-The sim is built from the pinned `third_party/sockerless` submodule — clone with
-`git submodule update --init` (CI uses `submodules: recursive`).
+The sim is the published `ghcr.io/e6qu/sockerless-simulator-aws` image pinned
+by digest in each compose file; the container-mode e2e variant is
+`infra/sim/sockerless-aws-exec.Dockerfile`, that image plus the netns
+toolchain. Bump every pin together (`scripts/check-sim-pins.sh` refuses a
+partial bump) to the digests `e6qu/infra` deploys.

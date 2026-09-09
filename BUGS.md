@@ -4,6 +4,49 @@
 
 ## Open
 
+- **Shauth's `from_app` validation of ECS Dev Desktop fails on an aborted navigation — reproducible in Shauth, not reproduced by hand, found 2026-09-08.** On the deployed dev environment (edd release `4169baf2d37f`), 19 of 20 Shauth application validations pass and the whole browser SSO suite passes, including this app's single sign-on and its global logout in both directions. The one failure is `ecs-dev-desktop` / `from_app`:
+
+  ```
+  verify Shauth provider logout revoked ecs-dev-desktop:
+  page.goto: net::ERR_ABORTED at https://app.edd.dev.e6qu.dev/auth/validation
+  ```
+
+  It fails on every re-queued cycle, so it is not a deploy-window transient.
+
+  The failing step (`validator/validate.mjs`) polls up to 120 times, and each turn of the loop is a bare `await page.goto(job.validation_url)`. A rejection there ends the whole validation, so one aborted navigation out of up to 120 fails the app.
+
+  Driving that exact sequence by hand against the live environment — sign in through Shauth, global logout at Shauth, then the same polling `goto` — shows:
+  - the poll is needed: `/auth/validation` answered `200` (still authenticated) for two attempts before answering `307 -> /signed-out`, and the loop then reached the signed-out page and stopped;
+  - no `goto` rejected across those attempts, so the abort is intermittent and has not been reproduced by hand;
+  - the app client-navigates on its own during that window (`/` then `/login`), which is the kind of thing that supersedes a driver's in-flight navigation.
+
+  **Correcting an earlier reading of this entry:** the `requestfailed GET /me net::ERR_ABORTED` lines in the recorded flow are Next.js route prefetches being cancelled — the probe shows the same lines for `/admin`, `/me`, `/workspaces` and `/settings/ssh-keys` on a perfectly healthy page. They are not the failure and not evidence of overlapping navigations.
+
+  Repair not yet made. Tolerating `net::ERR_ABORTED` in the loop and re-reading `page.url()` would make the check survive a superseded navigation, and a superseded navigation genuinely leaves the browser where it was sent — but nothing yet proves that is what happens here, and a revocation check that ignores a navigation error on a guess is a weakened guard, not a fix. What is needed first is the abort captured with its cause: the validator recording the response or failure text of the aborted navigation, rather than only the driver's message.
+
+- **Workspace containers cannot reach the control plane under the simulator's netns tier — root cause found 2026-09-09, fix belongs in sockerless-cloud.** Consuming the published simulators (branch `chore/sim-from-published-images`) moves the simulator forward two months, and two `@edd/e2e` tests stop passing: `golden-workspace-ssh.e2e.ts` (`Permission denied (publickey)`) and `user-journey.e2e.ts` (`idle-agent heartbeat never advanced lastActivity`).
+
+  Both are one fault. The instrumented stub says it plainly — `ssh-authorize stub: NO request arrived from the workspace` — and the workspace container's own log shows every outbound call failing, not just the one the test watches:
+
+  ```
+  edd-git-ssh: could not install GitHub SSH keys: fetch failed
+  edd-idle-agent: heartbeat failed (will retry in 120s)
+  AuthorizedKeysCommand /usr/local/bin/edd-authorized-keys ssh-ed25519 ...
+  Connection closed by authenticating user workspace 10.71.1.5 port 36920 [preauth]
+  ```
+
+  The workspace reaches the control plane at `CONTROL_PLANE_URL`, which is `http://host.docker.internal:<port>`. In `simulator-aws/ecs.go`, the container start switch sets `ExtraHosts` (from `hostMetadataExtraHosts()`, which maps `host.docker.internal:host-gateway`) for host mode, for plain awsvpc, and for bridge mode — but **not** for the netns tier, which is the first case in the switch:
+
+  ```go
+  case sharedNetMode != "":
+      // netns tier: share the pause container's ENI netns.
+      cfg.NetworkMode = sharedNetMode   // no ExtraHosts
+  ```
+
+  The e2e harness runs that tier — CI's container list carries the `…-pause` container that owns the ENI netns — so the workspace gets no mapping for the name it is told to call, and every request fails to resolve. It is invisible on a developer's Mac because Podman injects `host.docker.internal` and `host.containers.internal` into containers itself; Docker on Linux does not.
+
+  Repair is in sockerless-cloud, not here. Note that Docker rejects a per-container host mapping when the network mode is `container:<id>`, so the netns tier probably cannot simply copy the awsvpc branch: the durable fix is for the simulator's own resolver to answer `host.docker.internal`, which the task netns already reaches — its DNS is DNAT'd to the simulator (the `dnspc…` nftables table maps `169.254.169.253:53` to the simulator's resolver port).
+
 - **Golden images still resolve most of their toolchain from "latest" at build time — same defect class that broke CI on 2026-08-02.** The `e2e fixture (workspace)` job failed because `infra/images/{omnibus,java}/Dockerfile` resolved google-java-format via the GitHub `releases/latest` redirect: upstream 1.36.0 moved to a Java 21 target (class file 65) while the images' JDK is Debian bookworm `default-jdk-headless` (Java 17 / class file 61), so the install step died with `UnsupportedClassVersionError`. **FIXED for google-java-format** (pinned `ARG GJF_VERSION=1.35.0`, the newest Java 17 target). The identical pattern remains everywhere else in `infra/images/*/Dockerfile`, so any of them can break the build the day upstream ships an incompatible release, and none of the images is byte-reproducible:
   - `omnibus`, `java`: Gradle from `services.gradle.org/versions/current` — **the same JDK-17 coupling**, so a future Gradle that requires Java 21 reproduces this failure exactly.
   - `omnibus`, `go`: Go from `go.dev/VERSION?m=text`, plus four `go install …@latest` tools (golangci-lint, staticcheck, deadcode, dupl).

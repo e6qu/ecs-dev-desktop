@@ -33,6 +33,32 @@ function loginCredential(): string {
   return token;
 }
 
+const oauthAppCreated = z.object({ client_id: z.string(), client_secret: z.string() });
+
+/**
+ * Register an OAuth App the way a GitHub user does, and return the credentials
+ * the server issued. GitHub mints the client id and secret — a caller cannot
+ * choose them — so a harness that assumes a well-known pair is testing against
+ * a server that never registered one, and every authorize lands on
+ * `incorrect_client_credentials`.
+ */
+export async function registerOAuthApp(
+  name: string,
+  callbackUrl: string,
+): Promise<{ clientId: string; clientSecret: string }> {
+  const cookie = await githubSession("admin");
+  const res = await githubRoot("/settings/oauth-apps/new", {
+    method: "POST",
+    headers: { ...JSON_HEADERS, Cookie: cookie },
+    body: JSON.stringify({ name, url: new URL(callbackUrl).origin, callback_url: callbackUrl }),
+  });
+  if (!res.ok) {
+    throw new Error(`registering OAuth App ${name} failed: ${String(res.status)}`);
+  }
+  const app = oauthAppCreated.parse(await res.json());
+  return { clientId: app.client_id, clientSecret: app.client_secret };
+}
+
 /** Establish a web session for `user` (real GitHub: the interactive login — username +
  * credential). `credential` defaults to the harness's admin login token; every current caller
  * signs in as the admin user, whose token that is. */
