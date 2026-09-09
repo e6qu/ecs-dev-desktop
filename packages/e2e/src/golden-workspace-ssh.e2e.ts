@@ -347,6 +347,10 @@ describe(
               essential: true,
               entryPoint: ["sh", "-c"],
               command: ["sleep 120"],
+              // The test stops this task, and `sh` waiting on a foreground
+              // child runs no trap, so the platform's 30s SIGTERM grace is
+              // spent in full. There is nothing here to flush.
+              stopTimeout: 2,
             },
           ],
         }),
