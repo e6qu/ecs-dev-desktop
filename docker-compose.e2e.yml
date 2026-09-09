@@ -21,7 +21,7 @@ services:
       context: ./infra/sim
       dockerfile: sockerless-aws-exec.Dockerfile
       args:
-        SOCKERLESS_AWS_IMAGE: ghcr.io/e6qu/sockerless-simulator-aws@sha256:6df3e4879c990fe8935c21636eaf1f29a09556196169dc55f383dc1af30bebbb
+        SOCKERLESS_AWS_IMAGE: ghcr.io/e6qu/sockerless-simulator-aws@sha256:407b230954ae528313ed1f9c089636c74cfc61c889b416845599c30f73a9d7e9
     privileged: true
     pid: host
     volumes:
@@ -62,7 +62,7 @@ services:
   # group membership, and the ROPC token grant — so the test is swappable with
   # real Entra by base-URL alone (AGENTS.md §6.8).
   azure-sim:
-    image: ghcr.io/e6qu/sockerless-simulator-azure@sha256:a70426f000480b5edc26db6d2b97e7d17d07bd97b28b54b4661c2adbac5f7d25
+    image: ghcr.io/e6qu/sockerless-simulator-azure@sha256:6a6e7baad174bf24a6b05b3cbe29e56f3f8c1b34a092a2ca3dc3fb609f4ae882
     # API-only: the auth flow (Graph + OAuth) executes no workloads, so the sim
     # needs no container runtime — process mode (same as the Tier-2 harness).
     environment:
