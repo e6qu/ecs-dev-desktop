@@ -3,17 +3,10 @@ import { describe, expect, it } from "vitest";
 
 import { tmuxSessionName } from "./terminal";
 
-describe("tmux session naming decides what a reopened tab rejoins", () => {
-  it("gives each plain tab its own shell, not a view of a shared one", () => {
-    // `new-session -A` attaches when the name exists, so a shared name made two
-    // terminal tabs two views of one shell -- typing in one appeared in the
-    // other. A new tab means a new shell.
-    const a = tmuxSessionName(undefined);
-    const b = tmuxSessionName(undefined);
-    expect(a).not.toBe(b);
-    expect(a).toMatch(/^edd-sh-[0-9a-f]+$/);
-  });
-
+describe("tmux session naming decides what a reopened agent tab rejoins", () => {
+  // Plain shells never reach this function: they spawn directly so that closing a
+  // tab ends the shell rather than leaving one running for the life of the
+  // workspace. Only agent tabs are routed through tmux, and only they persist.
   it("gives each agent command its own session, so two agents are not the same shell", () => {
     expect(tmuxSessionName("claude")).toBe("edd-claude");
     expect(tmuxSessionName("codex")).toBe("edd-codex");

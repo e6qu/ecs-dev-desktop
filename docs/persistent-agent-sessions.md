@@ -92,6 +92,29 @@ is slugged because tmux reads `.` and `:` as session address syntax.
 This survives an editor stop, an editor crash, and a closed browser. It does not
 survive the container stopping, which is the next piece.
 
+**Which terminals go through tmux, and why they differ.** Persistence is not free:
+tmux detaches rather than ends, so a tab routed through it leaves its shell
+running when closed. That is exactly right for an agent and wrong for a plain
+shell, where it means every terminal a user ever opened is still running.
+
+- **Monaco and terminal-only** distinguish the two. An agent-first tab (one
+  started with a command) goes through tmux and persists. A plain tab spawns the
+  shell directly and ends with the tab. The live terminal e2e asserts this
+  directly: it opens two terminals, closes one, and expects the shell count to
+  fall.
+- **OpenVSCode** cannot make that distinction, because there is no agent-tab
+  concept — a user runs `claude` by typing it into an ordinary terminal. Its
+  terminals therefore all go through tmux, since the alternative is that
+  unloading the editor kills an agent the user started by hand.
+
+The cost of that choice is abandoned plain sessions accumulating in an OpenVSCode
+workspace over a long life. They are bounded by the workspace's own lifetime and
+cleared when it stops, but reaping sessions whose pane has been sitting at an
+idle shell — no child process — for a long window is worth adding. It is
+deliberately not in this change: reaping the wrong session takes work away from
+someone, so it wants its own review rather than riding along with the mechanism
+it would reap.
+
 ### 3. Sessions survive the workspace stopping (planned)
 
 tmux state is in `/tmp` and dies with the container. What already persists is

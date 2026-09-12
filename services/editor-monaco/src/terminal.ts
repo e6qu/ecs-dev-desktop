@@ -2,7 +2,6 @@
 // A real terminal for the Monaco editor: a PTY (node-pty) bridged to the browser (xterm) over a
 // WebSocket at `<base>terminal`, behind the same connection-token gate as the HTTP surface. The
 // client speaks a tiny JSON protocol — {type:"input",data} keystrokes and {type:"resize",cols,rows}.
-import { randomBytes } from "node:crypto";
 import type { Server } from "node:http";
 
 import { WebSocketServer, type WebSocket } from "ws";
@@ -112,13 +111,16 @@ const WELCOME_BANNER =
  *
  * tmux treats `.` and `:` as session address syntax, so the command is reduced to
  * a safe slug rather than passed through. */
-/** Short, collision-resistant suffix for a plain tab's own session. */
-function randomSuffix(): string {
-  return randomBytes(4).toString("hex");
-}
-
-export function tmuxSessionName(command: string | undefined, unique: () => string = randomSuffix): string {
-  if (command === undefined) return `edd-sh-${unique()}`;
+/** tmux session name for an agent-first tab: STABLE per command, so reopening the
+ * tab rejoins the `claude` or `codex` already running rather than starting a
+ * second one beside it. That is the whole point of routing agents through tmux.
+ *
+ * Plain shells do not come here -- they spawn directly, so closing a tab ends the
+ * shell instead of leaking one.
+ *
+ * tmux treats `.` and `:` as session address syntax, so the command is reduced to
+ * a safe slug rather than passed through. */
+export function tmuxSessionName(command: string): string {
   const slug = (command.trim().split(/\s+/)[0] ?? "")
     .replace(/[^A-Za-z0-9_-]/g, "-")
     .slice(0, 40);
@@ -149,8 +151,17 @@ const defaultPtySpawner: PtySpawner = async ({ root, command }) => {
   // "reconnect or start" behaviour a reopened tab wants. Each agent command gets
   // its own session so two different agents do not land in the same shell; plain
   // tabs share the workspace session.
-  const tmuxArgs = ["-u", "new-session", "-A", "-s", tmuxSessionName(command), "--", shell, ...args];
-  const pty = nodePty.spawn("tmux", tmuxArgs, {
+  // Only an agent-first tab goes through tmux. Persistence is what an agent needs
+  // -- `claude` must outlive the editor being unloaded -- but it is the wrong
+  // default for a plain shell: tmux detaches instead of ending, so every terminal
+  // a user opened and closed would leave a bash running for the life of the
+  // workspace. The live terminal e2e says so directly by closing a tab and
+  // expecting the shell count to fall.
+  const [program, programArgs] =
+    command === undefined
+      ? [shell, args]
+      : ["tmux", ["-u", "new-session", "-A", "-s", tmuxSessionName(command), "--", shell, ...args]];
+  const pty = nodePty.spawn(program, programArgs, {
     name: "xterm-color",
     cwd: root,
     env: process.env,
