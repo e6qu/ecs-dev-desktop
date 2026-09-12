@@ -30,7 +30,7 @@
 // away. That is the whole point of unloading the editor rather than the task.
 
 import { createServer as createTcpServer, connect } from "node:net";
-import { createServer as createHttpServer } from "node:http";
+import { createServer as createHttpServer, request as httpRequest } from "node:http";
 import { spawn } from "node:child_process";
 
 const PUBLIC_PORT = Number(process.env.EDD_EDITOR_PUBLIC_PORT ?? 3000);
@@ -65,23 +65,37 @@ function editorRunning() {
   return editor !== null && editor.exitCode === null && editor.signalCode === null;
 }
 
-/** Resolves once something is accepting on the editor port, or rejects on timeout. */
-function waitForEditorPort(deadline) {
+/** Resolves once the editor is serving HTTP, or rejects on timeout.
+ *
+ * Accepting a TCP connection is NOT the same as being ready to answer. A cold
+ * OpenVSCode binds its port early and finishes initialising afterwards, and a
+ * request that arrives in that window is closed rather than served — the client
+ * sees `other side closed` and a failed page load, which is exactly how this
+ * first showed up in the live IDE e2e. So readiness is an actual HTTP exchange:
+ * the editor has to produce a response line before a user's bytes are handed to
+ * it. Any status counts, 404 included; the base path means `/` is not
+ * necessarily routable and answering at all is the thing being proven. */
+function waitForEditorReady(deadline) {
   return new Promise((resolve, reject) => {
     const attempt = () => {
-      const probe = connect({ port: EDITOR_PORT, host: "127.0.0.1" });
-      probe.once("connect", () => {
-        probe.destroy();
-        resolve();
-      });
-      probe.once("error", () => {
-        probe.destroy();
+      const req = httpRequest(
+        { host: "127.0.0.1", port: EDITOR_PORT, path: "/", method: "GET", timeout: 4000 },
+        (res) => {
+          res.resume();
+          resolve();
+        },
+      );
+      const retry = () => {
+        req.destroy();
         if (Date.now() > deadline) {
-          reject(new Error(`editor did not listen on ${EDITOR_PORT} in time`));
+          reject(new Error(`editor did not serve HTTP on ${EDITOR_PORT} in time`));
           return;
         }
-        setTimeout(attempt, 150);
-      });
+        setTimeout(attempt, 250);
+      };
+      req.once("error", retry);
+      req.once("timeout", retry);
+      req.end();
     };
     attempt();
   });
@@ -103,9 +117,9 @@ function startEditor() {
     if (editor === child) editor = null;
   });
 
-  startingFor = waitForEditorPort(Date.now() + START_TIMEOUT_MS)
+  startingFor = waitForEditorReady(Date.now() + START_TIMEOUT_MS)
     .then(() => {
-      log("editor is accepting connections");
+      log("editor is serving HTTP");
     })
     .catch((err) => {
       log(`editor failed to start: ${err.message}`);
