@@ -23,11 +23,11 @@
     "@edd/storage-ec2": "workspace:*"
   },
   "devDependencies": {
-    "@aws-sdk/client-cloudtrail": "^3.1129.0",
-    "@aws-sdk/client-ecs": "^3.1129.0",
-    "@aws-sdk/client-scheduler": "^3.1129.0",
+    "@aws-sdk/client-cloudtrail": "^3.1130.0",
+    "@aws-sdk/client-ecs": "^3.1130.0",
+    "@aws-sdk/client-scheduler": "^3.1130.0",
     "@types/node": "^26.5.1",
     "esbuild": "^0.28.2",
-    "fast-check": "^4.9.0"
+    "fast-check": "^4.10.0"
   }
 }

@@ -14,12 +14,12 @@
     "test:images": "vitest run --config vitest.images.config.ts"
   },
   "dependencies": {
-    "@aws-sdk/client-cloudtrail": "^3.1129.0",
-    "@aws-sdk/client-cloudwatch-logs": "^3.1129.0",
-    "@aws-sdk/client-ec2": "^3.1129.0",
-    "@aws-sdk/client-ecs": "^3.1129.0",
-    "@aws-sdk/client-scheduler": "^3.1129.0",
-    "@aws-sdk/client-secrets-manager": "^3.1129.0",
+    "@aws-sdk/client-cloudtrail": "^3.1130.0",
+    "@aws-sdk/client-cloudwatch-logs": "^3.1130.0",
+    "@aws-sdk/client-ec2": "^3.1130.0",
+    "@aws-sdk/client-ecs": "^3.1130.0",
+    "@aws-sdk/client-scheduler": "^3.1130.0",
+    "@aws-sdk/client-secrets-manager": "^3.1130.0",
     "@edd/api-contracts": "workspace:*",
     "@edd/cloudtrail-audit": "workspace:*",
     "@edd/compute-ecs": "workspace:*",

@@ -4,7 +4,7 @@
 // later trust, without needing a tmux server in CI.
 import { describe, expect, it } from "vitest";
 
-import { liveSessions, resumeCommandFor } from "../../../infra/images/base/edd-session.mjs";
+import { liveSessions, resumeCommandFor, waitForShell } from "../../../infra/images/base/edd-session.mjs";
 
 describe("resume commands are data, not guesses at the call site", () => {
   it("knows the agents the image ships", () => {
@@ -33,5 +33,29 @@ describe("a missing tmux server is a normal state, not a failure", () => {
   it("reads the names tmux reports", () => {
     const listing = () => ({ status: 0, stdout: "edd\nedd-claude\n\nedd-codex\n", stderr: "" });
     expect([...liveSessions(listing)].sort()).toEqual(["edd", "edd-claude", "edd-codex"]);
+  });
+});
+
+describe("restore waits for a shell before staging a resume command", () => {
+  it("gives up rather than staging into a pane with no shell", () => {
+    // send-keys delivered before the shell draws its prompt is silently dropped:
+    // the staged command vanishes and the user sees an empty terminal with no
+    // hint anything was meant to be there. Observed for real on the first run.
+    const noShell = () => ({ status: 0, stdout: "node\n", stderr: "" });
+    expect(waitForShell("edd-claude", noShell, 2, 1)).toBe(false);
+  });
+
+  it("proceeds as soon as a pane reports a shell", () => {
+    const withShell = () => ({ status: 0, stdout: "zsh\n", stderr: "" });
+    expect(waitForShell("edd-claude", withShell, 2, 1)).toBe(true);
+  });
+
+  it("keeps waiting while tmux cannot answer yet", () => {
+    let calls = 0;
+    const slow = () => {
+      calls += 1;
+      return calls < 2 ? { status: 1, stdout: "", stderr: "" } : { status: 0, stdout: "bash\n", stderr: "" };
+    };
+    expect(waitForShell("edd-claude", slow, 5, 1)).toBe(true);
   });
 });

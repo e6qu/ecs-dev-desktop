@@ -5,7 +5,9 @@
     "infra/images/base/edd-ui-extension/**",
     "infra/images/base/patch-openvscode.mjs",
     "infra/images/base/git-ssh-keys.mjs",
-    "infra/images/base/vendor-harness-server.js"
+    "infra/images/base/vendor-harness-server.js",
+    "infra/images/base/edd-editor-manager.mjs",
+    "infra/images/base/edd-session.d.mts"
   ],
   "ignoreBinaries": ["ssh-keygen", "openssl"],
   "workspaces": {
