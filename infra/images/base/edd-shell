@@ -1,0 +1,26 @@
+#!/bin/sh
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# The workspace's terminal. Attaches to a tmux session that belongs to the
+# container rather than to the editor.
+#
+# The editor is stopped whenever nobody is looking at it (see
+# edd-editor-manager), and a `claude` or `codex` session started in a terminal
+# has to keep running across that -- as it already has to survive a closed
+# browser tab, a dropped connection, or an editor crash. Terminals used to be
+# PTYs spawned by the editor, so every one of those killed the agent with it.
+#
+# `new-session -A` attaches to the named session if it exists and creates it
+# otherwise, so reopening a terminal rejoins the shell that was already there
+# instead of starting a fresh one beside it.
+set -eu
+
+session="${EDD_TMUX_SESSION:-edd}"
+
+# Record it before attaching, not after: attaching replaces this process, so
+# anything after `exec` never runs. The registry is what lets the workspace --
+# and later the UI, while the workspace is down -- say which sessions exist.
+# A registry failure must never cost the user their terminal.
+edd-session record "${session}" "${PWD:-${HOME}}" "${EDD_TMUX_COMMAND:-shell}" 2>/dev/null || true
+
+exec tmux -u new-session -A -s "${session}"

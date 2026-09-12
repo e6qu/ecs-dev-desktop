@@ -97,6 +97,18 @@ const WELCOME_BANNER =
 
 /** The real PTY backend: node-pty (loaded lazily). Returns `null` when the native binding is
  * absent so the editor still serves; throws on a genuine spawn failure. */
+/** tmux session name for a terminal tab: the workspace session for a plain shell,
+ * a per-command session for an agent-first tab. tmux treats `.` and `:` as session
+ * address syntax, so the command is reduced to a safe slug rather than passed
+ * through. */
+export function tmuxSessionName(command: string | undefined): string {
+  if (command === undefined) return "edd";
+  const slug = (command.trim().split(/\s+/)[0] ?? "")
+    .replace(/[^A-Za-z0-9_-]/g, "-")
+    .slice(0, 40);
+  return slug === "" ? "edd" : `edd-${slug}`;
+}
+
 const defaultPtySpawner: PtySpawner = async ({ root, command }) => {
   const nodePty = await loadPty();
   if (nodePty === null) return null;
@@ -109,7 +121,20 @@ const defaultPtySpawner: PtySpawner = async ({ root, command }) => {
   // for the opencode CLI). Interactive login shell for a plain tab; `-lc "exec <cmd>"` for an
   // agent-first tab, where `exec` replaces the shell so the program's exit closes the PTY.
   const args = command === undefined ? ["-l", "-i"] : ["-lc", `exec ${command}`];
-  const pty = nodePty.spawn(shell, args, {
+  // Attach to a tmux session rather than owning the PTY directly. The editor is
+  // stopped whenever nobody is looking at it (edd-editor-manager), and a restarted
+  // editor loses every terminal it owned -- which for an agent-first tab means
+  // losing a running `claude` or `codex`. tmux keeps the session on the container,
+  // so reopening the tab rejoins the work already in progress instead of starting
+  // it again beside it.
+  //
+  // `new-session -A -s <name>` attaches when the session exists and creates it
+  // otherwise, running the command only in the create case, which is exactly the
+  // "reconnect or start" behaviour a reopened tab wants. Each agent command gets
+  // its own session so two different agents do not land in the same shell; plain
+  // tabs share the workspace session.
+  const tmuxArgs = ["-u", "new-session", "-A", "-s", tmuxSessionName(command), "--", shell, ...args];
+  const pty = nodePty.spawn("tmux", tmuxArgs, {
     name: "xterm-color",
     cwd: root,
     env: process.env,
