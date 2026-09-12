@@ -2,6 +2,7 @@
 // A real terminal for the Monaco editor: a PTY (node-pty) bridged to the browser (xterm) over a
 // WebSocket at `<base>terminal`, behind the same connection-token gate as the HTTP surface. The
 // client speaks a tiny JSON protocol — {type:"input",data} keystrokes and {type:"resize",cols,rows}.
+import { randomBytes } from "node:crypto";
 import type { Server } from "node:http";
 
 import { WebSocketServer, type WebSocket } from "ws";
@@ -97,12 +98,27 @@ const WELCOME_BANNER =
 
 /** The real PTY backend: node-pty (loaded lazily). Returns `null` when the native binding is
  * absent so the editor still serves; throws on a genuine spawn failure. */
-/** tmux session name for a terminal tab: the workspace session for a plain shell,
- * a per-command session for an agent-first tab. tmux treats `.` and `:` as session
- * address syntax, so the command is reduced to a safe slug rather than passed
- * through. */
-export function tmuxSessionName(command: string | undefined): string {
-  if (command === undefined) return "edd";
+/** tmux session name for a terminal tab.
+ *
+ * An agent-first tab gets a STABLE name per command, so reopening it rejoins the
+ * `claude` or `codex` already running rather than starting a second one beside it.
+ * That is the whole point of the tmux inversion.
+ *
+ * A plain shell tab gets a UNIQUE name. Sharing one session across plain tabs
+ * looked tidy and was wrong: `new-session -A` attaches, so two terminal tabs
+ * became two views of a single shell — type in one and it appears in the other.
+ * A new tab means a new shell, and the live terminal e2e says so by opening two
+ * and expecting two.
+ *
+ * tmux treats `.` and `:` as session address syntax, so the command is reduced to
+ * a safe slug rather than passed through. */
+/** Short, collision-resistant suffix for a plain tab's own session. */
+function randomSuffix(): string {
+  return randomBytes(4).toString("hex");
+}
+
+export function tmuxSessionName(command: string | undefined, unique: () => string = randomSuffix): string {
+  if (command === undefined) return `edd-sh-${unique()}`;
   const slug = (command.trim().split(/\s+/)[0] ?? "")
     .replace(/[^A-Za-z0-9_-]/g, "-")
     .slice(0, 40);

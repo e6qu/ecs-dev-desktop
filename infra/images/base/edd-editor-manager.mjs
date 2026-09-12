@@ -38,7 +38,11 @@ const EDITOR_PORT = Number(process.env.EDD_EDITOR_INTERNAL_PORT ?? 3001);
 const STATUS_PORT = Number(process.env.EDD_EDITOR_STATUS_PORT ?? 3002);
 // 15 minutes: the window the product already uses for "not actively used".
 const IDLE_MS = Number(process.env.EDD_EDITOR_IDLE_MS ?? 15 * 60 * 1000);
-const START_TIMEOUT_MS = Number(process.env.EDD_EDITOR_START_TIMEOUT_MS ?? 60_000);
+// A cold OpenVSCode start on a loaded CI runner is slower than a warm one on a
+// developer's machine, and the cost of waiting too long is a slow first load
+// while the cost of giving up too early is a failed connection. 120s favours the
+// former.
+const START_TIMEOUT_MS = Number(process.env.EDD_EDITOR_START_TIMEOUT_MS ?? 120_000);
 
 const editorArgv = process.argv.slice(2);
 if (editorArgv.length === 0) {
@@ -141,14 +145,24 @@ const proxy = createTcpServer((client) => {
   });
   client.on("error", () => client.destroy());
 
+  // One retry before giving up on the client: a first start that loses its race
+  // (the editor died on boot, a transient bind failure) should cost this
+  // connection a second attempt rather than a failed page load.
   startEditor()
+    .catch((first) => {
+      log(`first start attempt failed (${first.message}); retrying once`);
+      return startEditor();
+    })
     .then(() => {
       const upstream = connect({ port: EDITOR_PORT, host: "127.0.0.1" });
       upstream.on("error", () => client.destroy());
       client.pipe(upstream);
       upstream.pipe(client);
     })
-    .catch(() => client.destroy());
+    .catch((err) => {
+      log(`giving up on this connection: ${err.message}`);
+      client.destroy();
+    });
 });
 
 proxy.listen(PUBLIC_PORT, "0.0.0.0", () => {
