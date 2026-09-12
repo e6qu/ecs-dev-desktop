@@ -39,14 +39,26 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.2
       - uses: ./.github/actions/pnpm-install
-      # Build the shared base once, then every variant FROM it (base layer cached).
+      # A hosted runner starts with an empty Docker layer store, so without this the
+      # job rebuilt the base and all five variants from scratch every time: an apt
+      # install, an OpenVSCode download and a native node-pty compile, repeated in
+      # full for a one-line change. That took between 9 and 13 minutes depending on
+      # the runner and once ran past the 15-minute budget and was killed. Reusing
+      # the layers removes the repeated work rather than granting more time for it.
+      #
+      # build.sh already switches to `docker buildx build` when it is handed
+      # buildx-only flags, so passing the cache flags is all that is needed.
+      - uses: docker/setup-buildx-action@v3.11.1
       - name: Build base + language variants
         run: |
           # build.sh stages the first-party Monaco editor (@edd/editor-monaco) into the base
           # context before docker build; variants then build FROM the base unchanged.
-          infra/images/base/build.sh edd-base:e2e
+          infra/images/base/build.sh edd-base:e2e \
+            --load --cache-from type=gha,scope=golden-base --cache-to type=gha,mode=max,scope=golden-base
           for v in typescript python go java rust; do
-            docker build --build-arg BASE=edd-base:e2e -t "edd-ws-${v}:e2e" "infra/images/${v}"
+            docker buildx build --build-arg BASE=edd-base:e2e -t "edd-ws-${v}:e2e" \
+              --load --cache-from "type=gha,scope=golden-${v}" --cache-to "type=gha,mode=max,scope=golden-${v}" \
+              "infra/images/${v}"
           done
           docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' | grep -E 'edd-base|edd-ws-'
       # Each variant: its toolchain present, the shared base behaviour intact, and slim.

@@ -145,6 +145,10 @@ function stopEditor(why) {
 // nobody is looking at, goes away.
 setInterval(() => {
   if (!editorRunning() || live > 0) return;
+  // lastUsed starts at process start, so a workspace nobody connects to drops its
+  // editor one idle window after boot -- which is exactly the case this exists
+  // for: an agent-only session pays for the editor once, briefly, and then not at
+  // all until somebody opens it.
   if (Date.now() - lastUsed >= IDLE_MS) {
     stopEditor(`${Math.round(IDLE_MS / 60000)}m without a connection`);
   }
@@ -180,7 +184,24 @@ const proxy = createTcpServer((client) => {
 });
 
 proxy.listen(PUBLIC_PORT, "0.0.0.0", () => {
-  log(`listening on ${PUBLIC_PORT}; editor starts on demand, idles out after ${Math.round(IDLE_MS / 60000)}m`);
+  log(`listening on ${PUBLIC_PORT}; idles out after ${Math.round(IDLE_MS / 60000)}m`);
+  // Start warming immediately rather than waiting for the first connection.
+  //
+  // Lazy-on-first-connection put OpenVSCode's cold start INSIDE the first
+  // request's latency budget, and the in-app proxy at /w/<id>/ bounds an upstream
+  // request at 30s (WORKSPACE_PROXY_UPSTREAM_TIMEOUT_MS). A cold editor on a
+  // loaded runner does not finish inside that, so the proxy destroyed the
+  // connection and the browser got a failed page load -- which is what the live
+  // IDE e2e was reporting. Raising that timeout would only make a genuine
+  // upstream failure take longer to surface.
+  //
+  // The task has just started, so nothing is waiting on this: the editor warms
+  // while the workspace finishes coming up, and a user's first request meets a
+  // server that is already serving. The saving this whole design exists for is
+  // unaffected, because it comes from the IDLE stop, not from refusing to start:
+  // a workspace nobody opens drops the editor after IDLE_MS and does not restart
+  // it until someone actually connects.
+  startEditor().catch((err) => log(`initial warm failed (a connection will retry): ${err.message}`));
 });
 
 // Status, answered without touching the editor, so probing is free and does not

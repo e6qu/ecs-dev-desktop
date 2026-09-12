@@ -30,9 +30,23 @@ and the second is the one that matters:
 
 ### 1. The editor is socket-activated (done)
 
-`edd-editor-manager` is PID 1. It owns the public port, starts the editor on the
-first connection, and stops it once nothing has used it for
+`edd-editor-manager` is PID 1. It owns the public port, starts warming the editor
+as soon as the task is up, and stops it once nothing has used it for
 `EDD_EDITOR_IDLE_MS` (15 minutes by default).
+
+**It warms at boot rather than on the first connection, and that is deliberate.**
+Starting lazily put OpenVSCode's cold start inside the first request's latency
+budget, and the in-app proxy bounds an upstream request at 30s
+(`WORKSPACE_PROXY_UPSTREAM_TIMEOUT_MS`). A cold editor on a loaded runner does not
+finish inside that, so the proxy destroyed the connection and the browser got a
+failed page load — which is what the live IDE e2e reported. Raising that timeout
+would only have made a genuine upstream failure take longer to surface.
+
+Warming at boot costs nothing that is being waited on: the task has just started,
+and the editor comes up alongside the rest of the workspace. The saving this
+design exists for is untouched, because it comes from the idle **stop**, not from
+refusing to start — a workspace nobody opens drops its editor one idle window
+after boot and does not restart it until somebody actually connects.
 
 | port | who |
 |---|---|
