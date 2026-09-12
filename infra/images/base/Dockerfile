@@ -45,6 +45,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
       gosu \
       openssh-server \
       tini \
+      tmux \
     && rm -rf /var/lib/apt/lists/*
 
 # Download and install OpenVSCode Server.
@@ -189,6 +190,14 @@ COPY --from=node-pty-builder /opt/edd-editor-monaco/node_modules /opt/edd-editor
 # Idle-agent + entrypoint (live in /usr/local/bin).
 COPY --chmod=0755 idle-agent.sh /usr/local/bin/edd-idle-agent
 COPY --chmod=0755 entrypoint.sh /usr/local/bin/edd-entrypoint
+# The editor's lifetime manager (PID 1) and the terminal that attaches to the
+# container's tmux server rather than to the editor. Together they let the editor
+# be stopped while a session's Claude/Codex CLIs keep running.
+COPY --chmod=0755 edd-editor-manager.mjs /usr/local/bin/edd-editor-manager
+COPY --chmod=0755 edd-shell /usr/local/bin/edd-shell
+# The agent-session registry: which sessions exist, and what became of them. Its
+# state lives on the volume, so a workspace that scaled to zero can still say.
+COPY --chmod=0755 edd-session.mjs /usr/local/bin/edd-session
 # sshd AuthorizedKeysCommand (dual-trust): must be root-owned and not group/other-
 # writable per sshd; COPY --chmod=0755 from the build context satisfies that.
 COPY --chmod=0755 authorized-keys.sh /usr/local/bin/edd-authorized-keys
