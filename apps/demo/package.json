@@ -16,20 +16,20 @@
     "@edd/core": "workspace:*",
     "@monaco-editor/react": "^4.7.0",
     "monaco-editor": "^0.56.0",
-    "react": "^19.2.8",
-    "react-dom": "^19.2.8",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
     "react-router-dom": "^7.18.3",
-    "zod": "^4.5.4"
+    "zod": "^4.6.1"
   },
   "devDependencies": {
     "@playwright/test": "^1.63.0",
-    "@types/node": "^26.5.0",
-    "@types/react": "^19.2.18",
-    "@types/react-dom": "^19.2.7",
+    "@types/node": "^26.5.1",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.1",
     "fast-check": "^4.9.0",
     "typescript": "^6.0.3",
-    "vite": "^8.2.2",
+    "vite": "^8.3.0",
     "vitest": "^5.0.0"
   }
 }

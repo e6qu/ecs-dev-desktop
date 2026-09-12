@@ -13,10 +13,10 @@
   },
   "dependencies": {
     "@edd/authz": "workspace:*",
-    "zod": "^4.5.4"
+    "zod": "^4.6.1"
   },
   "devDependencies": {
-    "@types/node": "^26.5.0",
+    "@types/node": "^26.5.1",
     "fast-check": "^4.9.0"
   }
 }

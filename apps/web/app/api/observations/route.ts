@@ -40,8 +40,20 @@ async function handleGET(req: Request) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
+  // getInfrastructureService() is itself two awaited round-trips (activeProviders,
+  // getControlPlane) before report() makes any. Awaiting it *inside* the array
+  // literal suspends this function while the array is still being built, so the
+  // two calls below are not even started until all of that has finished — the
+  // Promise.all reads as three parallel calls while behaving as setup-then-two.
+  // Starting it first and chaining report() onto it overlaps the setup with them.
+  //
+  // This endpoint is what Shauth's monitoring polls, and its client gives up at
+  // five seconds. On 2026-09-11 it was served in 3.31s once and abandoned at
+  // exactly 5.00s twice, so the deployment's own SSO gate failed on a monitoring
+  // card while every user-facing route was healthy.
+  const infrastructureService = getInfrastructureService();
   const [infrastructure, costs, self] = await Promise.all([
-    (await getInfrastructureService()).report(),
+    infrastructureService.then((service) => service.report()),
     // The full lifecycle report: it carries the pricing actually in force and
     // every non-terminated session's sizing, which is exactly what the run-rate
     // projection wants. It is TTL-cached, so a monitoring poll does not re-scan
