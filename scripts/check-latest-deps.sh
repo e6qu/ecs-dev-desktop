@@ -2,7 +2,8 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
 # Dependency-freshness gate, mirroring sockerless's check-deps, for every
-# language in this repo: TypeScript/Node (pnpm) and Terraform (providers).
+# language in this repo: TypeScript/Node (pnpm), Terraform (providers) and the
+# golden workspace images' toolchain pins (infra/images/*/Dockerfile).
 #
 # Policy: stay on the latest version that is >= 1 day old (pnpm
 # `minimumReleaseAge` in pnpm-workspace.yaml — a supply-chain safeguard against
@@ -58,6 +59,14 @@ if command -v terraform >/dev/null 2>&1; then
   fi
 else
   echo "::error::terraform not installed; cannot check provider freshness."
+  fail=1
+fi
+
+echo
+echo "=== Golden images: toolchain ARG pins on latest (>= 1 day old) ==="
+if pnpm check-deps:images; then
+  :
+else
   fail=1
 fi
 

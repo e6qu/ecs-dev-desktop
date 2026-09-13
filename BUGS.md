@@ -4,6 +4,8 @@
 
 ## Open
 
+- **A RunTask placement refusal ends the launch in `error`, where real Fargate expects the caller to try again (found 2026-09-13, while making the simulator refuse placement — sockerless-cloud#162).** `EcsComputeProvider.runTask` correctly reads `failures[0].reason`/`.detail` and throws "ECS RunTask failed to place task: …"; `WorkspaceService.launch` catches every launch throw with `recordLaunchFailure`, so a workspace that Fargate could not place *right now* ("Capacity is unavailable at this time. Please try again later or in a different availability zone" — documented by AWS as transient and retryable) lands in `error` with a "retry the launch" button, indistinguishable from a broken task definition. Until sockerless-cloud#162 the simulator never refused placement, so this path had never run; under the concurrency ECS Dev Desktop is being sized for, capacity refusal is the normal case on real Fargate. Fix shape — not an in-request retry loop: surface the refusal as a typed `PlacementRefused` error from the compute provider; on it, keep the record in `provisioning` with a visible "waiting for capacity" phase (`functionalDetail`) and a `nextPlacementAttemptAt`, and let the reconciler's sweep re-run the launch with backoff and a bounded budget before it becomes `error` — the way the ECS service scheduler itself handles an unplaceable task. Verify against the simulator with its container memory limit set below two workspaces' declared memory.
+
 - **Shauth's `from_app` validation of ECS Dev Desktop failed on an aborted navigation — stopped reproducing at release `8436631e38ac` on 2026-09-09, cause never established.** On the deployed dev environment (edd release `4169baf2d37f`), 19 of 20 Shauth application validations pass and the whole browser SSO suite passes, including this app's single sign-on and its global logout in both directions. The one failure is `ecs-dev-desktop` / `from_app`:
 
   ```
@@ -65,20 +67,16 @@
   The original note, kept because the reasoning is what made the fix safe:
   repair is in sockerless-cloud, not here. Note that Docker rejects a per-container host mapping when the network mode is `container:<id>`, so the netns tier probably cannot simply copy the awsvpc branch: the durable fix is for the simulator's own resolver to answer `host.docker.internal`, which the task netns already reaches — its DNS is DNAT'd to the simulator (the `dnspc…` nftables table maps `169.254.169.253:53` to the simulator's resolver port).
 
-- **Golden images still resolve most of their toolchain from "latest" at build time — same defect class that broke CI on 2026-08-02.** The `e2e fixture (workspace)` job failed because `infra/images/{omnibus,java}/Dockerfile` resolved google-java-format via the GitHub `releases/latest` redirect: upstream 1.36.0 moved to a Java 21 target (class file 65) while the images' JDK is Debian bookworm `default-jdk-headless` (Java 17 / class file 61), so the install step died with `UnsupportedClassVersionError`. **FIXED for google-java-format** (pinned `ARG GJF_VERSION=1.35.0`, the newest Java 17 target). The identical pattern remains everywhere else in `infra/images/*/Dockerfile`, so any of them can break the build the day upstream ships an incompatible release, and none of the images is byte-reproducible:
-  - `omnibus`, `java`: Gradle from `services.gradle.org/versions/current` — **the same JDK-17 coupling**, so a future Gradle that requires Java 21 reproduces this failure exactly.
-  - `omnibus`, `go`: Go from `go.dev/VERSION?m=text`, plus four `go install …@latest` tools (golangci-lint, staticcheck, deadcode, dupl).
-  - `omnibus`, `rust`: `sh.rustup.rs` installer; `cargo install cargo-audit` unversioned.
-  - `omnibus`, `typescript`: `bun.sh/install`; `npm install -g yarn pnpm` / `playwright @playwright/test` unversioned.
-  - `omnibus`, `python`: `astral.sh/uv/install.sh`; `uv tool install ruff|ty|vulture|bandit|semgrep` unversioned.
-  - `base`: Trivy via `raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh`; Open VSX extensions unversioned.
+- ~~**Golden images still resolve most of their toolchain from "latest" at build time — same defect class that broke CI on 2026-08-02. FIXED 2026-09-13: every toolchain and every baked extension is pinned, and `check-deps` gates the pins.**~~ The `e2e fixture (workspace)` job failed because `infra/images/{omnibus,java}/Dockerfile` resolved google-java-format via the GitHub `releases/latest` redirect: upstream 1.36.0 moved to a Java 21 target (class file 65) while the images' JDK is Debian bookworm `default-jdk-headless` (Java 17 / class file 61), so the install step died with `UnsupportedClassVersionError`. google-java-format was pinned first (`ARG GJF_VERSION=1.35.0`, the newest Java 17 target); the identical pattern remained everywhere else — Gradle `versions/current`, `go.dev/VERSION`, four `go install …@latest` tools, `sh.rustup.rs` + unversioned `cargo install cargo-audit`, `bun.sh/install`, unversioned `npm install -g yarn pnpm playwright`, `astral.sh/uv/install.sh` + unversioned `uv tool install`, Trivy's `main`-branch installer, and every Open VSX extension.
 
-  Repair: give each an `ARG <TOOL>_VERSION` pin (the convention `base` already uses for `OPENVSCODE_VERSION`, and `omnibus` now uses for `GJF_VERSION`), and extend the `check-deps` gate to cover image toolchain pins so they are refreshed deliberately instead of drifting. Not done in the google-java-format fix because pinning ~15 toolchains cannot be validated without a full ~5.9 GB omnibus build, and a bad pin would break CI worse than the drift it prevents.
+  Repair, all in one change: every toolchain has an `ARG <TOOL>_VERSION` pin (41 across the seven Dockerfiles; rustup takes `--default-toolchain`, uv/bun/trivy use their versioned installer URLs), every `--install-extension` names `id@version` (extension-pack members such as `ms-python.debugpy` are listed explicitly so nothing is resolved transitively), and `scripts/check-image-pins.mjs` — run by `scripts/check-latest-deps.sh`, i.e. the `check-deps` CI job — applies the same 24-hour age-eligibility rule as the Node check to each pin against its own registry (GitHub releases, npm, PyPI, crates.io, the Go proxy, go.dev, services.gradle.org, Open VSX). Two things the gate had to understand: an extension release only counts when its `engines.vscode` admits the pinned `OPENVSCODE_VERSION` — upstream openvscode-server's newest release is still 1.109.5 (2026-02-20), so `github.vscode-pull-request-github` is held at 0.128.0, the last build for a 1.109 editor, and `ms-python.vscode-python-envs` at 1.20.1 — and a pin that is *ahead* of every installable release (a typo, a pre-release, an editor-incompatible build) is a failure, not "current". The google-java-format hold is declared in the gate with its reason instead of being silently skipped.
+
+  Found while validating the pins: the extension-install loops (`for ext in …; do openvscode-server --install-extension "$ext"; done`) never propagated a failure, so an omnibus build whose `redhat.java` install died with `ENOSPC` still exited 0 and tagged an image missing the extension. Each iteration is now `|| exit 1`.
 
 - **Fresh full-rebuild via `image_build_mode=codebuild` can't bootstrap arm64 services — module gaps found 2026-07-14.** Destroying + recreating the platform from scratch (env `edd`, `build_target="all"`) surfaced a chain of latent bugs in the CodeBuild/`publish-images.sh` path, only masked before because the live stack used `build_target="web"` + was built incrementally by the release pipeline:
   1. **CodeBuild role missing `edd-base` ECR push** — FIXED (PR #244): `data.aws_iam_policy_document` for `${name}-codebuild` listed control-plane/ssh-gateway/golden but not `golden_base`. `publish-images.sh` builds+pushes `edd-base` first (golden variants are FROM it), so `build_target` "golden"/"all" failed on `ecr:InitiateLayerUpload` for `<name>/edd-base`.
   2. **`examples/complete` didn't declare `deletion_protection`** — FIXED (PR #244): `scripts/uninstall.sh`'s `terraform destroy -var deletion_protection=false` errored on the undeclared variable and silently SKIPPED the destroy (only secrets/sweep ran). Also `terraform destroy` doesn't first-apply `deletion_protection=false`, so DynamoDB/ALB/NLB (created protected) + non-empty ECR (force_delete=false) must be disabled/emptied out-of-band before a destroy succeeds.
-  3. **CodeBuild IAM propagation lag (still open)** — the module starts the build (`wait-codebuild.sh`) immediately after creating the `${name}-codebuild` role, so the first build often fails at QUEUED with `logs:CreateLogStream` AccessDenied before IAM propagates. A retry succeeds. Add a short pre-build delay or a retry in `wait-codebuild.sh`.
+  3. **CodeBuild IAM propagation lag — FIXED (2026-09-13):** the module starts the build (`wait-codebuild.sh`) immediately after creating the `${name}-codebuild` role, so the first build often failed at QUEUED with `logs:CreateLogStream` AccessDenied before IAM propagated. `wait-codebuild.sh` now reads the failed build's faulting phase and message and, for exactly that signature — a FAULT in QUEUED/PROVISIONING carrying AccessDenied / not authorized, i.e. the role not yet honoured — starts the build again, at most 8 times 15 s apart; any other failure, or one after the build is running, fails the apply as before. No blind pre-build delay.
   4. **`publish-images.sh` per-arch immutable-tag idempotency — FIXED:** every base, golden, control-plane, and SSH-gateway per-architecture push checked Amazon ECR for `<tag>-<arch>` first, so a retry resumed a partially published immutable release instead of attempting to overwrite it.
   5. **`codebuild` build mode is amd64-only but services/workspaces pin ARM64 (still open — the big one)** — the buildspec hardcodes `EDD_BUILD_ARCHS: amd64`, so a fresh `terragrunt apply` produces amd64-only images and the arm64-pinned services can never start (`CannotPullContainerError: Manifest does not contain descriptor matching platform linux/arm64`). The arm64 images must come from the native-multiarch release + golden pipelines. So "one-apply self-bootstrap" is NOT true for an arm64 stack. Fix options: build multiarch in CodeBuild (ARM CodeBuild compute or QEMU binfmt), or document that a fresh arm64 deploy requires a release-pipeline run before the services are healthy.
   6. **Mutable control-plane tags and the implicit `main` image coordinate — FIXED:** the control-plane Amazon ECR repository became immutable, `image_tag` became a required source-commit prefix, and publication, installation, release deployment, Terraform examples, and tests enforced the same traceable coordinate.
@@ -1458,7 +1456,10 @@ old STATIC-gate "tokenless behind the gate" framing (see _Resolved (repo)_).
 - **AWS sim: a synthetic `container started` CloudWatch event at RunTask time, and no `pullStartedAt`/`pullStoppedAt` on `DescribeTasks` — OPEN (`#931`, 2026-09-07).** The simulator seeds every task's `awslogs` stream with a `container started` event stamped when `RunTask` is accepted (real ECS writes nothing until the container itself does), so the portal's boot log showed the container "up" 185 s (and, on the next launch, 239 s) before its entrypoint's first line; `startedAt` confirmed the gap was simulator-side provisioning. With no pull timestamps the gap cannot be attributed from the standard API. The deployed dev-environment simulator predates the `#906` resolver fix that closed `#905` (six-minute silent starts), so the gap may be that defect — see `DO_NEXT.md`. Harmless to the app; the timeline is simply mislabelled until fixed.
 
 - **AWS sim: the ELBv2 data plane FOLLOWS a target's redirect instead of returning it, so no
-  Shauth sign-in can ever complete behind a simulated ALB — OPEN (`#257`, 2026-08-03).**
+  Shauth sign-in can ever complete behind a simulated ALB — FIXED in the simulator; verified
+  2026-09-13 against sockerless-cloud (`elbv2_dataplane.go` forwards with
+  `CheckRedirect: returnRedirectsToClient`, which returns `http.ErrUseLastResponse`, and
+  `elbv2_dataplane_test.go` asserts the 302 reaches the client). Was OPEN (`#257`, 2026-08-03).**
   `elbv2ProxyHTTPRequest` in `simulators/aws/elbv2_dataplane.go` forwards with a default
   `http.Client`, whose `CheckRedirect` follows up to ten redirects. A load balancer must
   return the target's 3xx verbatim. Because the forwarded body is not rewindable, Go
@@ -1507,8 +1508,11 @@ old STATIC-gate "tokenless behind the gate" framing (see _Resolved (repo)_).
   bump but is not required here.
 
 - **AWS sim: Lambda `GetFunctionCodeSigningConfig` returns 404 for a function with no
-  code-signing config, blocking the Terraform `aws_lambda_function` resource — OPEN,
-  needs an upstream `e6qu/sockerless` issue (2026-07-11).** Found while sim-asserting
+  code-signing config, blocking the Terraform `aws_lambda_function` resource — FIXED in the
+  simulator; verified 2026-09-13 against sockerless-cloud
+  (`handleLambdaGetFunctionCodeSigningConfig` answers 200 with an empty
+  `CodeSigningConfigArn` for a function that has no config; 404 only for a missing
+  function). Was OPEN (2026-07-11).** Found while sim-asserting
   the control-plane scale-to-zero entry (`feat/control-plane-scale-to-zero`,
   `cloudfront.tf` wake Lambda). A full module apply against the sim
   (`tests/sim` with `enable_dns=true` + `enable_cloudfront=true`) creates the wake
@@ -1569,7 +1573,10 @@ old STATIC-gate "tokenless behind the gate" framing (see _Resolved (repo)_).
   only so a future data-source-based form knows the seeding gap exists.
 
 - **AWS sim: ECS task metadata advertised CPU/memory limits that Podman did not enforce
-  — OPEN upstream as sockerless #776 (2026-07-07).** This was originally filed in
+  — FIXED in the simulator; verified 2026-09-13 against sockerless-cloud
+  (`ecsContainerResourceLimits` translates the task/container size into the container's
+  `MemoryBytes`/`NanoCPU`, applied as cgroup `memory.max`/`cpu.max` in `sim/container.go`).
+  Was OPEN upstream as sockerless #776 (2026-07-07).** This was originally filed in
   EDD as #92 but belonged upstream per the repo rule. The simulator reported task
   definition limits in metadata while launching an unbounded container cgroup, so local
   capacity tests could pass when real Fargate would throttle or OOM. The EDD duplicate
@@ -1765,9 +1772,10 @@ ForceDeleteWithoutRecovery` reclaims the name immediately; **CloudTrail `LookupE
   **Follow-up: none** — the panic regression is closed and the path is covered in the
   correct tier.
 
-- **sockerless#583 (open)** — the ECS sim advertises a task's `Limits`
-  (`CPU`/`Memory`) in task metadata but launches the container with **no cgroup
-  limits**, so the sim doesn't enforce the declared Fargate sizing. Code pointer:
+- **sockerless#583 (fixed in the simulator — verified 2026-09-13, see the ECS
+  task-limits entry above)** — the ECS sim advertised a task's `Limits`
+  (`CPU`/`Memory`) in task metadata but launched the container with **no cgroup
+  limits**, so the sim didn't enforce the declared Fargate sizing. Code pointer:
   `simulators/aws/ecs.go` builds metadata `Limits` (~L1718) but the launched
   `ContainerConfig` (~L1573) sets no `Memory`/`NanoCPU`. Local tracker: this repo's
   issue #92. **Mitigation applied:** `DEFAULT_WORKSPACE_MEMORY` was raised from 1024

@@ -17,7 +17,9 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 
 # Rust — system-wide rustup/cargo (world-writable caches so `workspace` builds) +
 # the clippy (linter) and rustfmt (formatter) components.
-RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal \
+# PINNED: rustup installs the named toolchain rather than whatever "stable" is today.
+ARG RUST_VERSION=1.98.1
+RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal --default-toolchain "${RUST_VERSION}" \
     && /opt/rust/cargo/bin/rustup component add clippy rustfmt \
     && chmod -R a+rwX /opt/rust \
     && /opt/rust/cargo/bin/cargo --version \
@@ -28,13 +30,15 @@ RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile min
 # `cargo install` lands it in $CARGO_HOME/bin (/opt/rust/cargo/bin, already on PATH);
 # `--locked` pins its own build deps. Drop the downloaded crate registry afterward to
 # keep the image lean (the advisory DB itself is fetched lazily at first `cargo audit`).
-RUN /opt/rust/cargo/bin/cargo install cargo-audit --locked \
+# PINNED: `cargo install cargo-audit` alone resolved the newest crate each build.
+ARG CARGO_AUDIT_VERSION=0.22.2
+RUN /opt/rust/cargo/bin/cargo install cargo-audit --version "${CARGO_AUDIT_VERSION}" --locked \
     && rm -rf /opt/rust/cargo/registry \
     && chmod -R a+rwX /opt/rust \
     && /opt/rust/cargo/bin/cargo audit --version
 
 # Rust VS Code language support into the built-in extensions dir (baked at build).
-RUN openvscode-server --install-extension rust-lang.rust-analyzer --extensions-dir /opt/openvscode-server/extensions \
+RUN openvscode-server --install-extension rust-lang.rust-analyzer@0.3.3041 --extensions-dir /opt/openvscode-server/extensions \
     && chmod -R a+rX /opt/openvscode-server/extensions
 
 # /opt/rust/cargo/bin isn't on the base PATH — overwrite the PATH drop-ins so login

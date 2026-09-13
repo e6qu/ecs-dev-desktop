@@ -18,10 +18,14 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
     && rm -rf /var/lib/apt/lists/*
 
 # Gradle — current stable release into /opt/gradle (not on the base PATH).
-RUN gradle_ver="$(curl -fsSL https://services.gradle.org/versions/current | sed -n 's/.*"version"[ ]*:[ ]*"\([^"]*\)".*/\1/p')" \
-    && curl -fsSL "https://services.gradle.org/distributions/gradle-${gradle_ver}-bin.zip" -o /tmp/gradle.zip \
+# PINNED. Gradle 9.x needs a JDK 17+ daemon and this image's JDK is Debian's
+# default-jdk-headless (17), so 9.7.1 runs here; a future Gradle that requires
+# Java 21 would reproduce the google-java-format failure exactly, which is why
+# "current" is not resolved at build time. Bump in lockstep with the JDK.
+ARG GRADLE_VERSION=9.7.1
+RUN curl -fsSL "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -o /tmp/gradle.zip \
     && unzip -q /tmp/gradle.zip -d /opt \
-    && mv "/opt/gradle-${gradle_ver}" /opt/gradle \
+    && mv "/opt/gradle-${GRADLE_VERSION}" /opt/gradle \
     && rm /tmp/gradle.zip \
     && /opt/gradle/bin/gradle --version | grep -i version
 
@@ -44,7 +48,7 @@ RUN curl -fsSL "https://github.com/google/google-java-format/releases/download/v
     && google-java-format --version
 
 # Java VS Code language support into the built-in extensions dir (baked at build).
-RUN openvscode-server --install-extension redhat.java --extensions-dir /opt/openvscode-server/extensions \
+RUN openvscode-server --install-extension redhat.java@1.56.0 --extensions-dir /opt/openvscode-server/extensions \
     && chmod -R a+rX /opt/openvscode-server/extensions
 
 # /opt/gradle/bin isn't on the base PATH — overwrite the PATH drop-ins so login

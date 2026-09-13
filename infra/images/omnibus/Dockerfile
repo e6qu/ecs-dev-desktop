@@ -37,29 +37,42 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
     && rm -rf /var/lib/apt/lists/* \
     && ln -s "$(command -v python3)" /usr/local/bin/python
 
-# Go — official toolchain, latest stable for the image arch.
+# Go -- official toolchain, PINNED. Resolving go.dev/VERSION at build time made the
+# image depend on whatever Go shipped that morning, so two builds of the same
+# Dockerfile could differ, and a toolchain change could break CI with no change in
+# this repository. Same defect class as the google-java-format break of 2026-08-02.
+ARG GO_VERSION=1.27.1
 RUN arch="$(dpkg --print-architecture)" \
     && case "${arch}" in amd64) go_arch="amd64" ;; arm64) go_arch="arm64" ;; \
        *) echo "unsupported Go arch: ${arch}" >&2; exit 1 ;; esac \
-    && go_ver="$(curl -fsSL 'https://go.dev/VERSION?m=text' | head -1)" \
-    && curl -fsSL "https://go.dev/dl/${go_ver}.linux-${go_arch}.tar.gz" -o /tmp/go.tgz \
+    && curl -fsSL "https://go.dev/dl/go${GO_VERSION}.linux-${go_arch}.tar.gz" -o /tmp/go.tgz \
     && tar -C /usr/local -xzf /tmp/go.tgz \
     && rm /tmp/go.tgz \
     && /usr/local/go/bin/go version
 
 # Gradle — current stable release (Maven came from apt above).
-RUN gradle_ver="$(curl -fsSL https://services.gradle.org/versions/current | sed -n 's/.*"version"[ ]*:[ ]*"\([^"]*\)".*/\1/p')" \
-    && curl -fsSL "https://services.gradle.org/distributions/gradle-${gradle_ver}-bin.zip" -o /tmp/gradle.zip \
+# PINNED. Gradle 9.x needs a JDK 17+ daemon and this image's JDK is Debian's
+# default-jdk-headless (17), so 9.7.1 runs here; a future Gradle that requires
+# Java 21 would reproduce the google-java-format failure exactly, which is why
+# "current" is not resolved at build time. Bump in lockstep with the JDK.
+ARG GRADLE_VERSION=9.7.1
+RUN curl -fsSL "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -o /tmp/gradle.zip \
     && unzip -q /tmp/gradle.zip -d /opt \
-    && mv "/opt/gradle-${gradle_ver}" /opt/gradle \
+    && mv "/opt/gradle-${GRADLE_VERSION}" /opt/gradle \
     && rm /tmp/gradle.zip \
     && /opt/gradle/bin/gradle --version | grep -i version
 
 # Rust — system-wide rustup/cargo (world-writable caches so `workspace` builds).
-RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal \
+# PINNED: rustup installs the named toolchain rather than whatever "stable" is today.
+ARG RUST_VERSION=1.98.1
+RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal --default-toolchain "${RUST_VERSION}" \
     && chmod -R a+rwX /opt/rust \
     && /opt/rust/cargo/bin/cargo --version
 
+# PINNED: unversioned `npm install -g` and the bun installer both track latest.
+ARG YARN_VERSION=1.22.22
+ARG PNPM_VERSION=12.4.1
+ARG BUN_VERSION=1.4.2
 # Node package managers: yarn + pnpm as real global binaries (disable corepack
 # first — its shims defer the download to first use, which fails in a no-egress
 # workspace and caches per-user); bun. The system installs go to /usr/local —
@@ -67,20 +80,24 @@ RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile min
 RUN export NPM_CONFIG_PREFIX=/usr/local \
     && (corepack disable 2>/dev/null || true) \
     && rm -f /usr/local/bin/yarn /usr/local/bin/yarnpkg /usr/local/bin/pnpm /usr/local/bin/pnpx \
-    && npm install -g yarn pnpm \
-    && curl -fsSL https://bun.sh/install | bash \
+    && npm install -g "yarn@${YARN_VERSION}" "pnpm@${PNPM_VERSION}" \
+    && curl -fsSL https://bun.sh/install | bash -s -- "bun-v${BUN_VERSION}" \
     && yarn --version && pnpm --version && bun --version
 
 # Python project manager: uv (+ uvx).
-RUN curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh \
+# PINNED: the versioned installer URL installs exactly this uv.
+ARG UV_VERSION=0.12.13
+RUN curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh \
     && uv --version
 
+# PINNED: playwright and @playwright/test must match each other exactly.
+ARG PLAYWRIGHT_VERSION=1.63.0
 # Playwright + the headless Chromium shell (browser + OS deps) preinstalled into a
 # shared path. Export the /usr/local prefix for the WHOLE step so BOTH `npm install
 # -g` and `npx` use it — otherwise npx would create the inherited home npm prefix
 # (/data/home/.npm-global) as root, leaving it unwritable by the workspace user.
 RUN export NPM_CONFIG_PREFIX=/usr/local \
-    && npm install -g playwright @playwright/test \
+    && npm install -g "playwright@${PLAYWRIGHT_VERSION}" "@playwright/test@${PLAYWRIGHT_VERSION}" \
     && npx playwright install --with-deps chromium-headless-shell \
     && rm -rf /var/lib/apt/lists/*
 
@@ -89,9 +106,15 @@ RUN export NPM_CONFIG_PREFIX=/usr/local \
 # + staticcheck/deadcode/dupl → /usr/local/bin via GOBIN), Rust (clippy + rustfmt
 # components + cargo-audit), Java (google-java-format, below). The Node lint/format/
 # dead-code/CPD tools and the cross-cutting Trivy scanner come from base.
+# PINNED: each `uv tool install <name>` resolved the newest release at build time.
+ARG RUFF_VERSION=0.16.7
+ARG TY_VERSION=0.0.80
+ARG VULTURE_VERSION=2.16
+ARG BANDIT_VERSION=1.9.4
+ARG SEMGREP_VERSION=1.177.0
 RUN export UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin \
-    && uv tool install ruff && uv tool install ty && uv tool install vulture \
-    && uv tool install bandit && uv tool install semgrep \
+    && uv tool install "ruff==${RUFF_VERSION}" && uv tool install "ty==${TY_VERSION}" && uv tool install "vulture==${VULTURE_VERSION}" \
+    && uv tool install "bandit==${BANDIT_VERSION}" && uv tool install "semgrep==${SEMGREP_VERSION}" \
     && for t in ruff ty vulture bandit semgrep; do command -v "$t" || exit 1; done
 RUN GOBIN=/usr/local/bin /usr/local/go/bin/go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest \
     && GOBIN=/usr/local/bin /usr/local/go/bin/go install honnef.co/go/tools/cmd/staticcheck@latest \
@@ -129,9 +152,9 @@ RUN curl -fsSL "https://github.com/google/google-java-format/releases/download/v
 # VS Code extensions into the built-in extensions dir: every language's (base
 # already baked the cross-cutting formatter/linter/GitHub ones + the AI agents).
 RUN for ext in \
-      ms-python.python detachhead.basedpyright charliermarsh.ruff astral-sh.ty \
-      golang.go redhat.java rust-lang.rust-analyzer ms-playwright.playwright ; do \
-      openvscode-server --install-extension "$ext" --extensions-dir /opt/openvscode-server/extensions ; \
+      ms-python.debugpy@2026.6.0 ms-python.vscode-python-envs@1.20.1 ms-python.python@2026.4.0 detachhead.basedpyright@1.40.1 charliermarsh.ruff@2026.80.0 astral-sh.ty@2026.70.0 semgrep.semgrep@1.17.0 \
+      golang.go@0.56.1 redhat.java@1.56.0 rust-lang.rust-analyzer@0.3.3041 ms-playwright.playwright@1.1.19 ; do \
+      openvscode-server --install-extension "$ext" --extensions-dir /opt/openvscode-server/extensions || exit 1 ; \
     done \
     && chmod -R a+rX /opt/openvscode-server/extensions
 
