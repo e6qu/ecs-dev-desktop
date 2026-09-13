@@ -39,14 +39,19 @@ set -eu
 
 INTERVAL="${EDD_HEARTBEAT_INTERVAL_S:-120}"
 URL="${EDD_CONTROL_PLANE_URL}/api/workspaces/${EDD_WORKSPACE_ID}/heartbeat"
-# OpenVSCode HTTP port (the IDE) — what makes the desktop actually usable.
-# Probe the editor manager's status port, NOT the editor's public port. A request
-# to the public port is exactly what starts the editor, so probing there would
-# wake it every heartbeat and the idle timeout would never once fire. The status
-# port answers without touching the editor, and answers whether the editor is
-# running or deliberately stopped -- so "unreachable" still means a real fault
-# rather than "nobody has opened the IDE yet".
-IDE_STATUS_PORT="${EDD_EDITOR_STATUS_PORT:-3002}"
+# The desktop's HTTP surface -- what makes it actually usable -- probed where it
+# answers WITHOUT being woken. In openvscode mode the editor manager fronts the
+# editor: a request to the public port is exactly what starts the editor, so the
+# probe goes to the manager's status port, which answers whether the editor is
+# running or deliberately stopped -- "unreachable" still means a real fault, not
+# "nobody has opened the IDE yet". The other modes (monaco, terminal, opencode)
+# serve the public port themselves and nothing there unloads, so the probe goes
+# to that port; asking the status port there found nothing to answer and every
+# such workspace reported "IDE unreachable" while serving fine.
+case "${EDD_EDITOR_MODE:-openvscode}" in
+  openvscode) IDE_PROBE_PORT="${EDD_EDITOR_STATUS_PORT:-3002}" ;;
+  *) IDE_PROBE_PORT="${EDD_EDITOR_PUBLIC_PORT:-3000}" ;;
+esac
 # Editor-side activity marker (see the header): tmpfs, container-local.
 ACTIVITY_MARKER="/tmp/edd-activity"
 LOAD_MIN="${EDD_ACTIVITY_LOAD_MIN:-0.5}"
@@ -67,7 +72,7 @@ IDE_PROBE_DELAY_S="${EDD_IDE_PROBE_DELAY_S:-3}"
 ide_up() {
   _tries="${IDE_PROBE_TRIES}"
   while [ "${_tries}" -gt 0 ]; do
-    if curl -s -o /dev/null --max-time 3 "http://127.0.0.1:${IDE_STATUS_PORT}/" 2>/dev/null; then
+    if curl -s -o /dev/null --max-time 3 "http://127.0.0.1:${IDE_PROBE_PORT}/" 2>/dev/null; then
       return 0
     fi
     _tries=$((_tries - 1))
@@ -154,6 +159,15 @@ active_json() {
 
   printf 'false'
 }
+
+# `edd-idle-agent --probe` prints one functional self-report and exits: what the
+# image smoke asserts per editor mode, so a probe that cannot see a healthy
+# desktop fails the build instead of every deployed workspace of that mode.
+if [ "${1:-}" = "--probe" ]; then
+  functional_json
+  echo
+  exit 0
+fi
 
 while true; do
   # Heartbeat (activity + functional self-reports) — failures are logged but do not

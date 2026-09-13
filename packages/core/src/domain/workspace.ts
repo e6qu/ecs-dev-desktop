@@ -526,7 +526,7 @@ export function recordFunctional(
   at: IsoTimestamp,
 ): Workspace {
   const failures: string[] = [];
-  if (!probes.ide) failures.push("IDE unreachable on :3000");
+  if (!probes.ide) failures.push("IDE unreachable (the desktop's HTTP surface did not answer the agent's probe)");
   if (!probes.workspace) failures.push("workspace not writable");
   return {
     ...ws,

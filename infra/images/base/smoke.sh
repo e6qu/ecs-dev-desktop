@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Local smoke for the workspace base image interfaces: build the image via
-# build.sh, run every editor mode, and confirm each serves its browser UI on
-# :3000. The terminal is exercised in CI by the e2e tier. Requires Docker.
+# build.sh, run every editor mode, confirm each serves its browser UI on :3000,
+# and confirm the idle-agent's own functional probe sees that desktop as usable
+# (`ide: true`) — the report the control plane and the deployment gate judge
+# readiness by. The terminal is exercised in CI by the e2e tier. Requires Docker.
 #
 # Usage: infra/images/base/smoke.sh
 set -eu
@@ -63,6 +65,17 @@ smoke_mode() {
           ;;
       esac
       echo "edd: ${mode} serves ${path} on :${port} (OK)"
+      # The agent's probe must agree, from inside the container, without help:
+      # a mode it cannot see reports every deployed workspace as degraded.
+      probe=$(docker exec "$name" gosu workspace env EDD_IDE_PROBE_TRIES=5 edd-idle-agent --probe 2>&1) || true
+      case "$probe" in
+        *'"ide":true'*) echo "edd: ${mode} idle-agent probe sees the desktop (OK)" ;;
+        *)
+          echo "edd: ${mode} idle-agent probe does not see the desktop: ${probe}" >&2
+          docker logs "$name" 2>&1 | tail -20 >&2
+          exit 1
+          ;;
+      esac
       cleanup
       return 0
     fi
