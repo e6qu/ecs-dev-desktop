@@ -4,6 +4,8 @@
 
 ## Open
 
+- **A RunTask placement refusal ends the launch in `error`, where real Fargate expects the caller to try again (found 2026-09-13, while making the simulator refuse placement — sockerless-cloud#162).** `EcsComputeProvider.runTask` correctly reads `failures[0].reason`/`.detail` and throws "ECS RunTask failed to place task: …"; `WorkspaceService.launch` catches every launch throw with `recordLaunchFailure`, so a workspace that Fargate could not place *right now* ("Capacity is unavailable at this time. Please try again later or in a different availability zone" — documented by AWS as transient and retryable) lands in `error` with a "retry the launch" button, indistinguishable from a broken task definition. Until sockerless-cloud#162 the simulator never refused placement, so this path had never run; under the concurrency ECS Dev Desktop is being sized for, capacity refusal is the normal case on real Fargate. Fix shape — not an in-request retry loop: surface the refusal as a typed `PlacementRefused` error from the compute provider; on it, keep the record in `provisioning` with a visible "waiting for capacity" phase (`functionalDetail`) and a `nextPlacementAttemptAt`, and let the reconciler's sweep re-run the launch with backoff and a bounded budget before it becomes `error` — the way the ECS service scheduler itself handles an unplaceable task. Verify against the simulator with its container memory limit set below two workspaces' declared memory.
+
 - **Shauth's `from_app` validation of ECS Dev Desktop failed on an aborted navigation — stopped reproducing at release `8436631e38ac` on 2026-09-09, cause never established.** On the deployed dev environment (edd release `4169baf2d37f`), 19 of 20 Shauth application validations pass and the whole browser SSO suite passes, including this app's single sign-on and its global logout in both directions. The one failure is `ecs-dev-desktop` / `from_app`:
 
   ```
@@ -1454,7 +1456,10 @@ old STATIC-gate "tokenless behind the gate" framing (see _Resolved (repo)_).
 - **AWS sim: a synthetic `container started` CloudWatch event at RunTask time, and no `pullStartedAt`/`pullStoppedAt` on `DescribeTasks` — OPEN (`#931`, 2026-09-07).** The simulator seeds every task's `awslogs` stream with a `container started` event stamped when `RunTask` is accepted (real ECS writes nothing until the container itself does), so the portal's boot log showed the container "up" 185 s (and, on the next launch, 239 s) before its entrypoint's first line; `startedAt` confirmed the gap was simulator-side provisioning. With no pull timestamps the gap cannot be attributed from the standard API. The deployed dev-environment simulator predates the `#906` resolver fix that closed `#905` (six-minute silent starts), so the gap may be that defect — see `DO_NEXT.md`. Harmless to the app; the timeline is simply mislabelled until fixed.
 
 - **AWS sim: the ELBv2 data plane FOLLOWS a target's redirect instead of returning it, so no
-  Shauth sign-in can ever complete behind a simulated ALB — OPEN (`#257`, 2026-08-03).**
+  Shauth sign-in can ever complete behind a simulated ALB — FIXED in the simulator; verified
+  2026-09-13 against sockerless-cloud (`elbv2_dataplane.go` forwards with
+  `CheckRedirect: returnRedirectsToClient`, which returns `http.ErrUseLastResponse`, and
+  `elbv2_dataplane_test.go` asserts the 302 reaches the client). Was OPEN (`#257`, 2026-08-03).**
   `elbv2ProxyHTTPRequest` in `simulators/aws/elbv2_dataplane.go` forwards with a default
   `http.Client`, whose `CheckRedirect` follows up to ten redirects. A load balancer must
   return the target's 3xx verbatim. Because the forwarded body is not rewindable, Go
@@ -1503,8 +1508,11 @@ old STATIC-gate "tokenless behind the gate" framing (see _Resolved (repo)_).
   bump but is not required here.
 
 - **AWS sim: Lambda `GetFunctionCodeSigningConfig` returns 404 for a function with no
-  code-signing config, blocking the Terraform `aws_lambda_function` resource — OPEN,
-  needs an upstream `e6qu/sockerless` issue (2026-07-11).** Found while sim-asserting
+  code-signing config, blocking the Terraform `aws_lambda_function` resource — FIXED in the
+  simulator; verified 2026-09-13 against sockerless-cloud
+  (`handleLambdaGetFunctionCodeSigningConfig` answers 200 with an empty
+  `CodeSigningConfigArn` for a function that has no config; 404 only for a missing
+  function). Was OPEN (2026-07-11).** Found while sim-asserting
   the control-plane scale-to-zero entry (`feat/control-plane-scale-to-zero`,
   `cloudfront.tf` wake Lambda). A full module apply against the sim
   (`tests/sim` with `enable_dns=true` + `enable_cloudfront=true`) creates the wake
@@ -1565,7 +1573,10 @@ old STATIC-gate "tokenless behind the gate" framing (see _Resolved (repo)_).
   only so a future data-source-based form knows the seeding gap exists.
 
 - **AWS sim: ECS task metadata advertised CPU/memory limits that Podman did not enforce
-  — OPEN upstream as sockerless #776 (2026-07-07).** This was originally filed in
+  — FIXED in the simulator; verified 2026-09-13 against sockerless-cloud
+  (`ecsContainerResourceLimits` translates the task/container size into the container's
+  `MemoryBytes`/`NanoCPU`, applied as cgroup `memory.max`/`cpu.max` in `sim/container.go`).
+  Was OPEN upstream as sockerless #776 (2026-07-07).** This was originally filed in
   EDD as #92 but belonged upstream per the repo rule. The simulator reported task
   definition limits in metadata while launching an unbounded container cgroup, so local
   capacity tests could pass when real Fargate would throttle or OOM. The EDD duplicate
@@ -1761,9 +1772,10 @@ ForceDeleteWithoutRecovery` reclaims the name immediately; **CloudTrail `LookupE
   **Follow-up: none** — the panic regression is closed and the path is covered in the
   correct tier.
 
-- **sockerless#583 (open)** — the ECS sim advertises a task's `Limits`
-  (`CPU`/`Memory`) in task metadata but launches the container with **no cgroup
-  limits**, so the sim doesn't enforce the declared Fargate sizing. Code pointer:
+- **sockerless#583 (fixed in the simulator — verified 2026-09-13, see the ECS
+  task-limits entry above)** — the ECS sim advertised a task's `Limits`
+  (`CPU`/`Memory`) in task metadata but launched the container with **no cgroup
+  limits**, so the sim didn't enforce the declared Fargate sizing. Code pointer:
   `simulators/aws/ecs.go` builds metadata `Limits` (~L1718) but the launched
   `ContainerConfig` (~L1573) sets no `Memory`/`NanoCPU`. Local tracker: this repo's
   issue #92. **Mitigation applied:** `DEFAULT_WORKSPACE_MEMORY` was raised from 1024
