@@ -153,6 +153,8 @@ install -d -o workspace -g workspace -m 0755 "${settings_dir}"
   const defaults = {
     "workbench.colorTheme": "Default Dark Modern",
     "files.autoSave": "afterDelay",
+    "terminal.integrated.profiles.linux": { "edd": { "path": "/usr/local/bin/edd-shell" } },
+    "terminal.integrated.defaultProfile.linux": "edd",
   };
   let changed = false;
   for (const [k, v] of Object.entries(defaults)) {
@@ -251,7 +253,7 @@ esac
 # --server-base-path: the control-plane app proxies this editor at the path
 # `/w/<workspace-id>/`, so the server must emit all its URLs under that prefix
 # (the proxy forwards paths unrewritten). Mirrors the in-app `WORKSPACE_PATH_PREFIX`.
-set -- --host 0.0.0.0 --port 3000 --disable-workspace-trust \
+set -- --host 127.0.0.1 --port "${EDD_EDITOR_INTERNAL_PORT:-3001}" --disable-workspace-trust \
   --server-base-path "/w/${EDD_WORKSPACE_ID}/" \
   --extensions-dir /data/extensions \
   --user-data-dir /data/home/.openvscode-server/data \
@@ -268,4 +270,19 @@ else
   set -- "$@" --connection-token "${CONNECTION_TOKEN}"
 fi
 
-exec gosu workspace openvscode-server "$@"
+# Reconcile the agent-session registry against what tmux actually holds. On a cold
+# start tmux holds nothing, so every recorded session is recreated in its own
+# directory with its resume command staged -- the user comes back to the sessions
+# they left rather than an empty screen. `sweep` first so anything that died while
+# the workspace was down is recorded as stopped rather than silently rewritten to
+# running.
+gosu workspace edd-session sweep || true
+gosu workspace edd-session restore || true
+
+# The editor is no longer PID 1. edd-editor-manager owns the public port and the
+# editor's lifetime: it starts the editor on the first connection and stops it once
+# nothing has used it for EDD_EDITOR_IDLE_MS, so a session driven entirely through
+# the Claude or Codex CLI never pays for an IDE server nobody opened. The manager
+# is what keeps the container alive, so stopping the editor is no longer the same
+# thing as ending the task -- which is what makes unloading it safe at all.
+exec gosu workspace node /usr/local/bin/edd-editor-manager openvscode-server "$@"

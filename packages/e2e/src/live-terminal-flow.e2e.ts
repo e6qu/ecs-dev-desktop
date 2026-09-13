@@ -63,7 +63,14 @@ function interactiveShells(container: string): number {
   const processes = execFileSync("docker", ["exec", container, "node", "-e", script], {
     encoding: "utf8",
   });
-  return processes.split("\n").filter((line) => /\/bin\/bash -l -i(?: |$)/.test(line)).length;
+  // Count real shells, not the tmux clients attached to them. Terminals now run
+  // `tmux new-session -A -s <name> -- /bin/bash -l -i`, so the CLIENT's own argv
+  // ends with the same string as the shell it is attached to and matched this
+  // regex twice per terminal. A tmux client is not an interactive shell.
+  return processes
+    .split("\n")
+    .filter((line) => !/^tmux(?: |$)/.test(line.trim()))
+    .filter((line) => /\/bin\/bash -l -i(?: |$)/.test(line)).length;
 }
 
 async function openTerminal(

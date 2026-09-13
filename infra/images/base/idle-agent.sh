@@ -40,7 +40,13 @@ set -eu
 INTERVAL="${EDD_HEARTBEAT_INTERVAL_S:-120}"
 URL="${EDD_CONTROL_PLANE_URL}/api/workspaces/${EDD_WORKSPACE_ID}/heartbeat"
 # OpenVSCode HTTP port (the IDE) — what makes the desktop actually usable.
-IDE_PORT="${EDD_WORKSPACE_PORT:-3000}"
+# Probe the editor manager's status port, NOT the editor's public port. A request
+# to the public port is exactly what starts the editor, so probing there would
+# wake it every heartbeat and the idle timeout would never once fire. The status
+# port answers without touching the editor, and answers whether the editor is
+# running or deliberately stopped -- so "unreachable" still means a real fault
+# rather than "nobody has opened the IDE yet".
+IDE_STATUS_PORT="${EDD_EDITOR_STATUS_PORT:-3002}"
 # Editor-side activity marker (see the header): tmpfs, container-local.
 ACTIVITY_MARKER="/tmp/edd-activity"
 LOAD_MIN="${EDD_ACTIVITY_LOAD_MIN:-0.5}"
@@ -61,7 +67,7 @@ IDE_PROBE_DELAY_S="${EDD_IDE_PROBE_DELAY_S:-3}"
 ide_up() {
   _tries="${IDE_PROBE_TRIES}"
   while [ "${_tries}" -gt 0 ]; do
-    if curl -s -o /dev/null --max-time 3 "http://127.0.0.1:${IDE_PORT}/" 2>/dev/null; then
+    if curl -s -o /dev/null --max-time 3 "http://127.0.0.1:${IDE_STATUS_PORT}/" 2>/dev/null; then
       return 0
     fi
     _tries=$((_tries - 1))

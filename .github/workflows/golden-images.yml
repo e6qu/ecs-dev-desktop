@@ -39,12 +39,40 @@ jobs:
     steps:
       - uses: actions/checkout@v6.0.2
       - uses: ./.github/actions/pnpm-install
-      # Build the shared base once, then every variant FROM it (base layer cached).
+      # A hosted runner starts with an empty Docker layer store, so without this the
+      # job rebuilt the base and all five variants from scratch every time: an apt
+      # install, an OpenVSCode download and a native node-pty compile, repeated in
+      # full for a one-line change. That took between 9 and 13 minutes depending on
+      # the runner and once ran past the 15-minute budget and was killed. Reusing
+      # the layers removes the repeated work rather than granting more time for it.
+      #
+      # build.sh already switches to `docker buildx build` when it is handed
+      # buildx-only flags, so passing the cache flags is all that is needed.
+      - uses: docker/setup-buildx-action@v3.11.1
+        with:
+          # Do NOT alias `docker build` to this builder. The variant builds below
+          # depend on `docker build` resolving `FROM edd-base:e2e` against the local
+          # image store, which the container driver cannot see. Stated rather than
+          # inherited from the action's default, because the whole variant loop
+          # breaks silently if it ever changes.
+          install: false
       - name: Build base + language variants
         run: |
           # build.sh stages the first-party Monaco editor (@edd/editor-monaco) into the base
           # context before docker build; variants then build FROM the base unchanged.
-          infra/images/base/build.sh edd-base:e2e
+          # The base carries the expensive, unchanging work -- the apt install, the
+          # OpenVSCode download and the native node-pty compile -- so it is the one
+          # worth reusing across runs. `--load` puts the result in the local image
+          # store so the variants below can build FROM it.
+          infra/images/base/build.sh edd-base:e2e \
+            --load --cache-from type=gha,scope=golden-base --cache-to type=gha,mode=max,scope=golden-base
+          # Variants stay on plain `docker build`, which resolves `FROM edd-base:e2e`
+          # against the local image store. buildx's docker-container driver cannot:
+          # it runs the build in its own container with no view of that store, so a
+          # buildx variant build tries to PULL edd-base:e2e and fails with "pull
+          # access denied". build.sh carries the same warning for the same reason.
+          # Each variant is a toolchain install on top of a base that is already
+          # built, which is the cheap half of this job.
           for v in typescript python go java rust; do
             docker build --build-arg BASE=edd-base:e2e -t "edd-ws-${v}:e2e" "infra/images/${v}"
           done
