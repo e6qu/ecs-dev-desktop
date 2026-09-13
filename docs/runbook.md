@@ -83,6 +83,11 @@ reconciler is running.
 
 ### A workspace won't wake / connect
 
+- A workspace `provisioning` with `placementRetryAt` set is **waiting for capacity**:
+  ECS refused to place its task and the lifecycle sweep re-runs the launch with
+  backoff (see `workspace.placement.refused` by reason). Nothing to do unless the
+  refusals keep coming — that is the fleet outgrowing its capacity, not a stuck
+  workspace; after `MAX_PLACEMENT_ATTEMPTS` the launch fails and the user sees Retry.
 - A wake that crashed mid-flight leaves the record in `provisioning`; the reconciler
   **self-heals** this back to `stopped` (within `EDD_PROVISIONING_TIMEOUT_MS`, default
   10 min) so a retry works. If it's still stuck, confirm the reconciler is running.

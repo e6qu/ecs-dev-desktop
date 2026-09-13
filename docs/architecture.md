@@ -264,6 +264,16 @@ core tests):
 - **Self-heal:** a wake that crashed mid-flight leaves the record in `provisioning`;
   the reconciler reverts it to `stopped` (within `EDD_PROVISIONING_TIMEOUT_MS`) so a
   retry works. An interrupted delete is resumable via the `deleting` tombstone.
+- **Waiting for capacity:** ECS can refuse to place a task at `RunTask` time
+  (Fargate's "Capacity is unavailable at this time…", `RESOURCE:MEMORY`/`CPU` on
+  EC2) — HTTP 200, no task, a `failures[]` entry — and AWS documents the refusal as
+  transient. A refused launch does not fail the workspace: it stays `provisioning`
+  with `placementRetryAt` set, and the lifecycle sweep re-runs the launch on a
+  15 s → 30 s → 60 s → 2 min schedule (a wake re-hydrates from its snapshot; a create
+  relaunches). After `MAX_PLACEMENT_ATTEMPTS` refusals (~12 min) the launch fails the
+  ordinary way — a create to `error` with Retry, a wake rolled back to `stopped`. The
+  status page shows the wait and the refusal's reason; `workspace.placement.refused`
+  counts refusals by reason.
 - **Teardown data-safety:** `delete` opens a `deleting` tombstone (202); the
   reconciler's `finishDeleting` takes a retained snapshot of the live volume before
   releasing it, so accidental deletes are recoverable.

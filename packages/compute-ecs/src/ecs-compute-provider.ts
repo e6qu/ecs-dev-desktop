@@ -58,6 +58,7 @@ import {
   type WorkspaceAgentSecretRef,
   type WorkspaceResources,
   type WorkspaceTaskRef,
+  PlacementRefusedError,
 } from "@edd/core";
 
 interface EnvironmentEntry {
@@ -695,8 +696,7 @@ export class EcsComputeProvider implements ComputeProvider {
     // `required()` would raise, so the operator (and retry logic) sees "no capacity".
     const failure = out.failures?.[0];
     if (failure !== undefined) {
-      const detail = failure.detail === undefined ? "" : ` (${failure.detail})`;
-      throw new Error(`ECS RunTask failed to place task: ${failure.reason ?? "unknown"}${detail}`);
+      throw new PlacementRefusedError(failure.reason ?? "unknown", failure.detail);
     }
     const arn = required(out.tasks?.[0]?.taskArn, "taskArn");
     // The task is now launched. If it never becomes ready (stops mid-boot, or the

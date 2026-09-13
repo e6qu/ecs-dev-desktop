@@ -30,6 +30,10 @@ export const METRIC_WORKSPACE_STARTUP_PHASE_MS = "workspace.startup.phase_ms";
 export const METRIC_WORKSPACE_STARTUP_PHASE_FAILED = "workspace.startup.phase_failed";
 /** One reconciler maintenance sweep ran to completion. */
 export const METRIC_RECONCILER_SWEEP = "reconciler.sweep.count";
+/** ECS refused to place a workspace launch (count), dimensioned by reason — the
+ * workspace waits for capacity and the launch is re-run; a rising rate is the
+ * fleet outgrowing its capacity. */
+export const METRIC_WORKSPACE_PLACEMENT_REFUSED = "workspace.placement.refused";
 /** A reconciler sweep threw before completing. */
 export const METRIC_RECONCILER_FAILED = "reconciler.sweep.failed";
 /** Idle workspaces scaled to zero in a sweep. */

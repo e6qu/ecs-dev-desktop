@@ -15,7 +15,7 @@ import {
   type UpdateServiceCommandInput,
 } from "@aws-sdk/client-ecs";
 import { COST_SCOPE_TAG_KEY } from "@edd/config";
-import { baseImage, deriveWorkspaceToken, snapshotId, taskId, workspaceId } from "@edd/core";
+import {baseImage, deriveWorkspaceToken, snapshotId, taskId, workspaceId, isPlacementRefused, PlacementRefusedError } from "@edd/core";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -567,18 +567,27 @@ describe("EcsComputeProvider.runTask placement failure (failures[])", () => {
     return { send } as unknown as ECSClient;
   }
 
-  it("surfaces the placement reason, not a generic 'missing taskArn'", async () => {
+  it("throws the typed refusal with the placement reason, not a generic 'missing taskArn'", async () => {
     const provider = new EcsComputeProvider({
       client: placementFailureClient("RESOURCE:MEMORY"),
       config: { subnets: ["subnet-1"], ebsRoleArn: "arn:aws:iam::123456789012:role/ebs" },
     });
-    await expect(
-      provider.runTask({
+    const refused = await provider
+      .runTask({
         workspaceId: workspaceId("ws-cap"),
         baseImage: baseImage("edd-workspace:e2e"),
         resources: RESOURCES,
-      }),
-    ).rejects.toThrow(/RESOURCE:MEMORY/);
+      })
+      .then(
+        () => undefined,
+        (e: unknown) => e,
+      );
+    // The control plane waits for capacity on THIS error and records any other
+    // launch throw as a failed launch, so the type is the contract.
+    expect(isPlacementRefused(refused)).toBe(true);
+    expect(refused).toBeInstanceOf(PlacementRefusedError);
+    expect(refused).toMatchObject({ reason: "RESOURCE:MEMORY", detail: "no capacity" });
+    expect(refused).toHaveProperty("message", expect.stringMatching(/RESOURCE:MEMORY/));
   });
 });
 

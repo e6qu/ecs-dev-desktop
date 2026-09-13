@@ -205,11 +205,14 @@ export function WorkspaceLive({ id }: { id: string }) {
 
   const ready = ws.state === "running" && ws.functional === "ok";
   const booting = ws.state === "running" && ws.functional === undefined;
+  const waitingForCapacity = ws.state === "provisioning" && ws.placementRetryAt !== undefined;
   const phase = ready
     ? "Your dev desktop is ready."
     : booting
       ? "Starting your dev desktop — pulling the image and booting the editor (this can take a minute or two on first start)…"
-      : ws.state === "provisioning"
+      : waitingForCapacity
+        ? `Waiting for capacity — the cloud could not place your dev desktop just now (attempt ${String(ws.placementAttempts ?? 1)}); the launch is retried automatically, next at ${new Date(ws.placementRetryAt ?? 0).toLocaleTimeString()}.`
+        : ws.state === "provisioning"
         ? "Provisioning your dev desktop — starting the container (pulling the image + attaching storage). First start can take a few minutes; it opens itself once ready."
         : ws.state === "stopping"
           ? "Stopping — snapshotting your work so you can resume where you left off. Cancel to keep it running."
@@ -267,6 +270,16 @@ export function WorkspaceLive({ id }: { id: string }) {
         {ws.state === "error" && ws.functionalDetail !== undefined && (
           <p className="mono" role="alert" style={{ color: "var(--st-error)", fontSize: 13 }}>
             {ws.functionalDetail}
+          </p>
+        )}
+        {waitingForCapacity && ws.placementReason !== undefined && (
+          <p
+            className="mono"
+            data-testid={TESTID.workspacePlacementWait}
+            data-attempts={String(ws.placementAttempts ?? 1)}
+            style={{ color: "var(--dim)", fontSize: 12 }}
+          >
+            {ws.placementReason}
           </p>
         )}
         {/* The workspace's own URL — valid from the instant of creation. */}

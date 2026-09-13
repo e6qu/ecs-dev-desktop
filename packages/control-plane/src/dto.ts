@@ -32,6 +32,9 @@ export function toWorkspaceDto(ws: Workspace): WorkspaceDto {
     ...(ws.alwaysOn === undefined ? {} : { alwaysOn: ws.alwaysOn }),
     ...(ws.terminatedAt === undefined ? {} : { terminatedAt: ws.terminatedAt }),
     ...(ws.shareEnabled === undefined ? {} : { shareEnabled: ws.shareEnabled }),
+    ...(ws.placementReason === undefined ? {} : { placementReason: ws.placementReason }),
+    ...(ws.placementAttempts === undefined ? {} : { placementAttempts: ws.placementAttempts }),
+    ...(ws.placementRetryAt === undefined ? {} : { placementRetryAt: ws.placementRetryAt }),
   };
 }
 
@@ -68,6 +71,9 @@ export function toWorkspaceDetail(ws: Workspace): WorkspaceDetailDto {
     ...(ws.diskTotalBytes === undefined ? {} : { diskTotalBytes: ws.diskTotalBytes }),
     ...(ws.terminatedAt === undefined ? {} : { terminatedAt: ws.terminatedAt }),
     ...(ws.shareEnabled === undefined ? {} : { shareEnabled: ws.shareEnabled }),
+    ...(ws.placementReason === undefined ? {} : { placementReason: ws.placementReason }),
+    ...(ws.placementAttempts === undefined ? {} : { placementAttempts: ws.placementAttempts }),
+    ...(ws.placementRetryAt === undefined ? {} : { placementRetryAt: ws.placementRetryAt }),
     availableActions: [...workspaceActions(ws.state)],
   };
 }

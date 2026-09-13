@@ -80,6 +80,23 @@ export const DEFAULT_CONVERGE_BUDGET = 50;
 export const DEFAULT_PROVISIONING_TIMEOUT_MS = 10 * 60 * 1000;
 
 /**
+ * Placement-refusal retry policy. Amazon ECS can refuse to place a task at
+ * RunTask time — Fargate's "Capacity is unavailable at this time. Please try
+ * again later or in a different availability zone", `RESOURCE:MEMORY` /
+ * `RESOURCE:CPU` on EC2 — and documents the refusal as transient: the caller is
+ * expected to try again. A workspace whose launch was refused stays
+ * `provisioning`, waiting for capacity, and the lifecycle sweep re-runs the
+ * launch on this schedule: 15 s, 30 s, 60 s, then every 2 min, for at most
+ * MAX_PLACEMENT_ATTEMPTS launches (about 12 minutes) before the launch is
+ * recorded as failed. Every wait is far inside DEFAULT_PROVISIONING_TIMEOUT_MS,
+ * so the stuck-provisioning recovery never mistakes a waiting workspace for a
+ * crashed one.
+ */
+export const PLACEMENT_RETRY_BASE_MS = 15 * 1000;
+export const PLACEMENT_RETRY_MAX_MS = 2 * 60 * 1000;
+export const MAX_PLACEMENT_ATTEMPTS = 8;
+
+/**
  * Grace window before an unreferenced volume/snapshot becomes GC-eligible: 1
  * hour. Guards against reaping a resource that was just created but is not yet
  * recorded against a workspace in the control plane (a create/persist race).

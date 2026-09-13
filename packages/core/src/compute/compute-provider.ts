@@ -92,6 +92,28 @@ export interface WorkspaceAgentSecretRef {
   readonly createdAt: IsoTimestamp;
 }
 
+/**
+ * RunTask answered, but did not place the task: Amazon ECS returns HTTP 200
+ * with an empty `tasks[]` and the reason in `failures[]` (Fargate: "Capacity is
+ * unavailable at this time…"; EC2: `RESOURCE:MEMORY` / `RESOURCE:CPU`, `AGENT`,
+ * subnet/ENI exhaustion). AWS documents it as transient — try again later — so
+ * a provider throws THIS, not a generic Error, and the control plane waits for
+ * capacity instead of recording a failed launch.
+ */
+export class PlacementRefusedError extends Error {
+  constructor(
+    readonly reason: string,
+    readonly detail?: string,
+  ) {
+    super(`ECS RunTask failed to place task: ${reason}${detail === undefined ? "" : ` (${detail})`}`);
+    this.name = "PlacementRefusedError";
+  }
+}
+
+export function isPlacementRefused(e: unknown): e is PlacementRefusedError {
+  return e instanceof Error && e.name === "PlacementRefusedError";
+}
+
 export interface ComputeProvider {
   /** Launch a task with a fresh or snapshot-hydrated managed EBS volume. */
   runTask(input: RunTaskInput): Promise<ComputeTask>;
