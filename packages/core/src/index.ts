@@ -78,6 +78,9 @@ export {
   DEFAULT_STOP_GRACE_MS,
   DEFAULT_UNDELETE_RETENTION_MS,
   DEFAULT_PROVISIONING_TIMEOUT_MS,
+  PLACEMENT_RETRY_BASE_MS,
+  PLACEMENT_RETRY_MAX_MS,
+  MAX_PLACEMENT_ATTEMPTS,
   DEFAULT_RECONCILER_STALE_MS,
   DEFAULT_SNAPSHOT_INTERVAL_MS,
   DEFAULT_TASKDEF_KEEP_REVISIONS,
@@ -171,6 +174,9 @@ export {
   cancelStopping,
   markTerminated,
   markProvisioningFailed,
+  deferPlacement,
+  placementDue,
+  placementRetryDelayMs,
   reserve,
   retryProvisioning,
   setShare,
@@ -253,6 +259,7 @@ export type {
   WorkspaceAgentSecretRef,
   WorkspaceTaskRef,
 } from "./compute/compute-provider";
+export { isPlacementRefused, PlacementRefusedError } from "./compute/compute-provider";
 export type { FakeComputeConfig } from "./compute/fake-compute-provider";
 export { FakeComputeProvider } from "./compute/fake-compute-provider";
 
@@ -324,6 +331,7 @@ export {
   METRIC_WORKSPACE_STARTUP_PHASE_MS,
   METRIC_WORKSPACE_STARTUP_PHASE_FAILED,
   METRIC_RECONCILER_SWEEP,
+  METRIC_WORKSPACE_PLACEMENT_REFUSED,
   METRIC_RECONCILER_FAILED,
   METRIC_RECONCILER_STOPPED,
   METRIC_RECONCILER_SNAPSHOTTED,

@@ -13,6 +13,10 @@ import { errorField, log } from "./logger";
  * process converges them within one tick, and the reconciler's own passes stay
  * the cross-replica / server-restart backstop.
  *
+ * The same tick re-runs launches that ECS refused to place (`provisioning`,
+ * waiting for capacity, retry due): retryPlacement is version-conditioned and
+ * a launch that is refused again simply schedules the next one.
+ *
  * `deleting` joined this sweep after a measurement on the shared dev
  * environment: the delete route answered 202 at 10:35:50 and the ECS StopTask
  * went out at 10:39:42, on the reconciler's next five-minute tick. A user's
@@ -25,6 +29,8 @@ interface LifecycleConvergeDeps {
     finishStop(id: WorkspaceId): Promise<unknown>;
     listDeleting(): Promise<readonly { readonly id: WorkspaceId }[]>;
     finishDeleting(id: WorkspaceId): Promise<unknown>;
+    listPlacementDue(): Promise<readonly { readonly id: WorkspaceId }[]>;
+    retryPlacement(id: WorkspaceId): Promise<unknown>;
   }>;
   readonly logger: Pick<StructuredLogger, "warn">;
 }
@@ -77,6 +83,8 @@ export function createLifecycleConvergeRunner(
           await converge(ws.id, (id) => cp.finishStop(id), "stopping");
         for (const ws of await cp.listDeleting())
           await converge(ws.id, (id) => cp.finishDeleting(id), "deleting");
+        for (const ws of await cp.listPlacementDue())
+          await converge(ws.id, (id) => cp.retryPlacement(id), "placement retry");
       } catch (err) {
         deps.logger.warn("lifecycle converge sweep failed (will retry)", {
           error: errorField(err),

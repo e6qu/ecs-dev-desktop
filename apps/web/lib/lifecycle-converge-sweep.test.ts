@@ -6,10 +6,11 @@ import { createLifecycleConvergeRunner } from "./lifecycle-converge-sweep";
 
 const stopping = workspaceId("ws-stopping");
 const deleting = workspaceId("ws-deleting");
+const waiting = workspaceId("ws-waiting-for-capacity");
 
 function controlPlane(
   overrides: Partial<
-    Record<"finishStop" | "finishDeleting", (id: unknown) => Promise<unknown>>
+    Record<"finishStop" | "finishDeleting" | "retryPlacement", (id: unknown) => Promise<unknown>>
   > = {},
 ) {
   return {
@@ -17,6 +18,8 @@ function controlPlane(
     finishStop: vi.fn(overrides.finishStop ?? (() => Promise.resolve({ ok: true }))),
     listDeleting: vi.fn().mockResolvedValue([{ id: deleting }]),
     finishDeleting: vi.fn(overrides.finishDeleting ?? (() => Promise.resolve({ ok: true }))),
+    listPlacementDue: vi.fn().mockResolvedValue([{ id: waiting }]),
+    retryPlacement: vi.fn(overrides.retryPlacement ?? (() => Promise.resolve({ ok: true }))),
   };
 }
 
@@ -34,6 +37,34 @@ describe("createLifecycleConvergeRunner", () => {
 
     expect(cp.finishStop).toHaveBeenCalledWith(stopping);
     expect(cp.finishDeleting).toHaveBeenCalledWith(deleting);
+  });
+
+  it("re-runs a launch ECS refused to place, once its retry is due", async () => {
+    const cp = controlPlane();
+    const runner = createLifecycleConvergeRunner({
+      cp: () => Promise.resolve(cp),
+      logger: { warn: vi.fn() },
+    });
+
+    await runner.run();
+
+    expect(cp.retryPlacement).toHaveBeenCalledWith(waiting);
+  });
+
+  it("a placement retry that throws is logged and does not stop the rest of the tick", async () => {
+    const warn = vi.fn();
+    const cp = controlPlane({ retryPlacement: () => Promise.reject(new Error("RunTask 500")) });
+    const runner = createLifecycleConvergeRunner({
+      cp: () => Promise.resolve(cp),
+      logger: { warn },
+    });
+
+    await runner.run();
+
+    expect(warn).toHaveBeenCalledWith(
+      "placement retry converge failed for one workspace (will retry)",
+      expect.objectContaining({ workspaceId: waiting }),
+    );
   });
 
   it("does not start a second finishDeleting for a workspace still being converged", async () => {

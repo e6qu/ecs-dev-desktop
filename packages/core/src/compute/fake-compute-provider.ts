@@ -2,12 +2,13 @@
 import { newTaskId, type TaskId, type VolumeId } from "../domain/ids";
 import type { ComponentHealth } from "../observability/health";
 import type { StorageProvider } from "../storage/storage-provider";
-import type {
-  ClusterInfo,
-  ComputeProvider,
-  ComputeTask,
-  RunTaskInput,
-  TaskLiveness,
+import {
+  type ClusterInfo,
+  type ComputeProvider,
+  type ComputeTask,
+  PlacementRefusedError,
+  type RunTaskInput,
+  type TaskLiveness,
 } from "./compute-provider";
 
 /**
@@ -24,6 +25,7 @@ export interface FakeComputeConfig {
 export class FakeComputeProvider implements ComputeProvider {
   private readonly volumes = new Map<TaskId, VolumeId>();
   private readonly config: FakeComputeConfig;
+  private refusals = 0;
 
   constructor(
     private readonly storage: StorageProvider,
@@ -32,7 +34,19 @@ export class FakeComputeProvider implements ComputeProvider {
     this.config = config;
   }
 
+  /** Test helper: the next `n` launches are refused placement, the way ECS
+   * refuses when it has no capacity (`failures[]`, not a throw from the API). */
+  refuseNextPlacements(n: number): void {
+    this.refusals = n;
+  }
+
   async runTask(input: RunTaskInput): Promise<ComputeTask> {
+    if (this.refusals > 0) {
+      this.refusals -= 1;
+      throw new PlacementRefusedError(
+        "Capacity is unavailable at this time. Please try again later or in a different availability zone",
+      );
+    }
     const volume = await this.storage.createVolume(
       input.fromSnapshot === undefined ? undefined : { fromSnapshot: input.fromSnapshot },
     );

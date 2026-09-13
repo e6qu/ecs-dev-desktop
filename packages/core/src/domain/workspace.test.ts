@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 
 import { unwrap } from "../result";
+import { MAX_PLACEMENT_ATTEMPTS } from "./constants";
 import { baseImage, isoTimestamp, ownerId, snapshotId, taskId, volumeId, workspaceId } from "./ids";
 import {
   isUnrecoverable,
@@ -22,6 +23,12 @@ import {
   provision,
   recordSnapshot,
   restoreToSnapshot,
+  deferPlacement,
+  placementDue,
+  placementRetryDelayMs,
+  markProvisioningFailed,
+  reserve,
+  type Workspace,
 } from "./workspace";
 
 const t0 = isoTimestamp("2026-06-01T00:00:00.000Z");
@@ -350,5 +357,72 @@ describe("restoreToSnapshot (checkpoint rewind)", () => {
     expect(restoreToSnapshot(base, older, t1).ok).toBe(false); // running
     const terminated = unwrap(markTerminated(unwrap(markDeleting(stopped, t1)), t1));
     expect(restoreToSnapshot(terminated, older, t1).ok).toBe(false);
+  });
+});
+
+describe("waiting for capacity (a launch refused placement)", () => {
+  const T0 = isoTimestamp("2026-09-13T10:00:00.000Z");
+  const reason = "ECS RunTask failed to place task: Capacity is unavailable at this time";
+  const reserved = (): Workspace =>
+    reserve({ id: workspaceId("ws-wait"), ownerId: ownerId("o"), baseImage: baseImage("golden/node:20"), at: T0 });
+
+  it("backs off 15 s, 30 s, 60 s, then every two minutes", () => {
+    expect([1, 2, 3, 4, 5, 8].map(placementRetryDelayMs)).toEqual([
+      15_000, 30_000, 60_000, 120_000, 120_000, 120_000,
+    ]);
+  });
+
+  it("keeps the workspace provisioning and schedules the next launch", () => {
+    const waiting = deferPlacement(reserved(), reason, T0);
+    expect(waiting.ok).toBe(true);
+    if (!waiting.ok) return;
+    expect(waiting.value.state).toBe("provisioning");
+    expect(waiting.value.placementAttempts).toBe(1);
+    expect(waiting.value.placementReason).toBe(reason);
+    expect(waiting.value.placementRetryAt).toBe("2026-09-13T10:00:15.000Z");
+    // The stuck-provisioning clock restarts with each refusal, so a waiting
+    // workspace is never mistaken for a crashed launch.
+    expect(waiting.value.lastActivity).toBe(T0);
+    expect(placementDue(waiting.value, isoTimestamp("2026-09-13T10:00:14.999Z"))).toBe(false);
+    expect(placementDue(waiting.value, isoTimestamp("2026-09-13T10:00:15.000Z"))).toBe(true);
+  });
+
+  it("counts refusals and gives up after the budget", () => {
+    let ws: Workspace = reserved();
+    for (let n = 1; n <= MAX_PLACEMENT_ATTEMPTS; n += 1) {
+      const next = deferPlacement(ws, reason, T0);
+      expect(next.ok).toBe(true);
+      if (!next.ok) return;
+      expect(next.value.placementAttempts).toBe(n);
+      ws = next.value;
+    }
+    const spent = deferPlacement(ws, reason, T0);
+    expect(spent.ok).toBe(false);
+    if (!spent.ok && spent.error.kind === "conflict") expect(spent.error.reason).toContain("no capacity");
+    else throw new Error("expected a conflict");
+  });
+
+  it("refuses to defer anything but an unbound provisioning record", () => {
+    const bound = markProvisioned(reserved(), volumeId("vol-1"), taskId("task-1"), T0);
+    expect(bound.ok).toBe(true);
+    if (!bound.ok) return;
+    expect(deferPlacement(bound.value, reason, T0).ok).toBe(false);
+    expect(placementDue(bound.value, isoTimestamp("2026-09-13T11:00:00.000Z"))).toBe(false);
+  });
+
+  it("a launch that binds, fails, or rolls back ends the wait", () => {
+    const waiting = deferPlacement(reserved(), reason, T0);
+    if (!waiting.ok) throw new Error("expected waiting");
+    const bound = markProvisioned(waiting.value, volumeId("vol-1"), taskId("task-1"), T0);
+    if (!bound.ok) throw new Error("expected bound");
+    expect(bound.value.placementRetryAt).toBeUndefined();
+    expect(bound.value.placementAttempts).toBeUndefined();
+    expect(bound.value.placementReason).toBeUndefined();
+    const failed = markProvisioningFailed(waiting.value, "gave up", T0);
+    if (!failed.ok) throw new Error("expected failed");
+    expect(failed.value.placementRetryAt).toBeUndefined();
+    const rolledBack = markStopped(waiting.value, undefined, T0);
+    if (!rolledBack.ok) throw new Error("expected stopped");
+    expect(rolledBack.value.placementRetryAt).toBeUndefined();
   });
 });

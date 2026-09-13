@@ -88,6 +88,11 @@ export function makeWorkspaceEntity(client: DynamoDBClient, table = TABLE) {
         terminatedAt: { type: "string", required: false },
         shareEnabled: { type: "boolean", required: false },
         shareEnabledAt: { type: "string", required: false },
+        // Waiting for capacity: the launch's RunTask was refused placement (the
+        // reason), how many launches were refused, and when the next one is due.
+        placementReason: { type: "string", required: false },
+        placementAttempts: { type: "number", required: false },
+        placementRetryAt: { type: "string", required: false },
         // Optimistic-concurrency version: every lifecycle write is conditioned
         // on the version it read, so concurrent transitions (e.g. two wakes
         // racing) cannot both win and leak a real ECS task.

@@ -155,6 +155,13 @@ export const workspace = z.object({
   terminatedAt: z.iso.datetime().optional(),
   /** Owner-controlled spectate flag: viewers may watch a read-only mirror. */
   shareEnabled: z.boolean().optional(),
+  /** Waiting for capacity: ECS refused to place the launch's task (transient by
+   * AWS's own account), so the workspace is still `provisioning` and the launch
+   * is re-run on a schedule — the refusal's reason, how many launches have been
+   * refused, and when the next one is due. */
+  placementReason: z.string().optional(),
+  placementAttempts: z.number().int().positive().optional(),
+  placementRetryAt: z.iso.datetime().optional(),
 });
 export type WorkspaceDto = z.infer<typeof workspace>;
 
@@ -432,6 +439,10 @@ export const workspaceDetail = z.object({
   diskTotalBytes: z.number().positive().optional(),
   terminatedAt: z.iso.datetime().optional(),
   shareEnabled: z.boolean().optional(),
+  /** Waiting for capacity (see {@link workspace}). */
+  placementReason: z.string().optional(),
+  placementAttempts: z.number().int().positive().optional(),
+  placementRetryAt: z.iso.datetime().optional(),
   /** Lifecycle actions valid from this state (server-computed; see {@link workspace}). */
   availableActions: z.array(workspaceAction),
 });

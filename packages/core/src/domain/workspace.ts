@@ -1,6 +1,11 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { transition, type WorkspaceState } from "../lifecycle/workspace-state-machine";
 import { err, map, ok, type Result } from "../result";
+import {
+  MAX_PLACEMENT_ATTEMPTS,
+  PLACEMENT_RETRY_BASE_MS,
+  PLACEMENT_RETRY_MAX_MS,
+} from "./constants";
 import { DEFAULT_EDITOR, type EditorKind } from "./editor";
 import { conflictError, type DomainError } from "./errors";
 import type {
@@ -107,6 +112,13 @@ export interface Workspace {
    * outlives the live session it exposed). */
   readonly shareEnabled?: boolean;
   readonly shareEnabledAt?: IsoTimestamp;
+  /** The launch's RunTask was refused placement and the workspace is waiting for
+   * capacity — still `provisioning`, no task bound: the refusal's reason, how many
+   * launches have been refused, and when the next one is due. Cleared when a launch
+   * binds a task, is recorded as failed, or the wake is rolled back. */
+  readonly placementReason?: string;
+  readonly placementAttempts?: number;
+  readonly placementRetryAt?: IsoTimestamp;
 }
 
 /** Functional usability of a running workspace, self-reported by the in-workspace agent. */
@@ -245,6 +257,7 @@ export function markStopped(
     // Sharing never outlives the live session it exposed.
     shareEnabled: undefined,
     shareEnabledAt: undefined,
+    ...noPlacementWait,
   }));
 }
 
@@ -342,7 +355,65 @@ export function markProvisioned(
     volumeId,
     taskId,
     sshHost,
+    ...noPlacementWait,
   }));
+}
+
+/** The placement-wait fields, cleared. */
+const noPlacementWait = {
+  placementReason: undefined,
+  placementAttempts: undefined,
+  placementRetryAt: undefined,
+} as const;
+
+/** How long after the n-th refusal the next launch is due: 15 s, 30 s, 60 s,
+ * then every two minutes. */
+export function placementRetryDelayMs(attempts: number): number {
+  return Math.min(PLACEMENT_RETRY_BASE_MS * 2 ** Math.max(0, attempts - 1), PLACEMENT_RETRY_MAX_MS);
+}
+
+/**
+ * A launch was refused placement (see {@link PlacementRefusedError}): stay
+ * `provisioning`, waiting for capacity, and schedule the next launch. Err once
+ * MAX_PLACEMENT_ATTEMPTS launches have been refused — the caller then records
+ * the launch as failed — or when the workspace is not an unbound provisioning
+ * record (a task got bound meanwhile; a stop or delete moved it on).
+ */
+export function deferPlacement(
+  ws: Workspace,
+  reason: string,
+  at: IsoTimestamp,
+): Result<Workspace, DomainError> {
+  if (ws.state !== "provisioning" || ws.taskId !== undefined) {
+    return err(conflictError(`workspace ${ws.id} is not waiting to be placed (${ws.state})`));
+  }
+  const attempts = (ws.placementAttempts ?? 0) + 1;
+  if (attempts > MAX_PLACEMENT_ATTEMPTS) {
+    return err(
+      conflictError(
+        `workspace ${ws.id} was refused placement ${String(attempts)} times; no capacity: ${reason}`,
+      ),
+    );
+  }
+  const retryAt = new Date(Date.parse(at) + placementRetryDelayMs(attempts)).toISOString() as IsoTimestamp;
+  return ok({
+    ...ws,
+    lastActivity: at,
+    placementReason: reason,
+    placementAttempts: attempts,
+    placementRetryAt: retryAt,
+  });
+}
+
+/** Is a waiting workspace's next launch due? False for a workspace that is not
+ * waiting for capacity. */
+export function placementDue(ws: Workspace, now: IsoTimestamp): boolean {
+  return (
+    ws.state === "provisioning" &&
+    ws.taskId === undefined &&
+    ws.placementRetryAt !== undefined &&
+    Date.parse(ws.placementRetryAt) <= Date.parse(now)
+  );
 }
 
 /**
@@ -362,6 +433,7 @@ export function markProvisioningFailed(
     functional: "degraded" as const,
     functionalDetail: reason,
     functionalAt: at,
+    ...noPlacementWait,
   }));
 }
 

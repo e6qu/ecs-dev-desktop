@@ -19,6 +19,7 @@ import {
   type RunTaskInput,
   type TaskId,
   type TaskLiveness,
+  MAX_PLACEMENT_ATTEMPTS,
 } from "@edd/core";
 import {
   createDynamoClient,
@@ -239,6 +240,126 @@ describe("WorkspaceService lifecycle ", () => {
     expect(failed.ok).toBe(false);
     if (!failed.ok) expect(failed.error.kind).toBe("unavailable");
     expect((await service.get(workspaceId(ws.id)))?.state).toBe("stopped");
+  });
+
+  it("a launch ECS refuses to place waits for capacity instead of failing, and is re-run once due", async () => {
+    // Amazon ECS answers a RunTask it cannot place with HTTP 200, no task and a
+    // failures[] entry, and documents the refusal as transient. The sim now does
+    // the same (sockerless-cloud#162), so this path runs against it — and under
+    // the concurrency the fleet is sized for, a refusal is the normal case.
+    const compute = new FakeComputeProvider(storage);
+    const refusing = new WorkspaceService({
+      workspaces: makeWorkspaceEntity(client, TEST_TABLE),
+      storage,
+      compute,
+      clock: fixedClock("2026-09-13T10:00:00.000Z"),
+    });
+
+    // create(): the launch is refused once → the record stays provisioning,
+    // waiting for capacity, with the next launch scheduled 15 s out.
+    compute.refuseNextPlacements(1);
+    const created = await refusing.create({
+      ownerId: ownerId("capacity"),
+      baseImage: baseImage("golden/node:20"),
+    });
+    expect(created.state).toBe("provisioning");
+    expect(created.placementAttempts).toBe(1);
+    expect(created.placementReason).toMatch(/Capacity is unavailable/);
+    expect(created.placementRetryAt).toBe("2026-09-13T10:00:15.000Z");
+
+    // Not due yet: the sweep has nothing to do for it.
+    expect(await refusing.listPlacementDue()).toEqual([]);
+    const early = await refusing.retryPlacement(workspaceId(created.id));
+    expect(early.ok).toBe(false);
+
+    // Due: the sweep re-runs the launch; capacity is back, so it binds a task
+    // and the wait is cleared from the record.
+    const later = new WorkspaceService({
+      workspaces: makeWorkspaceEntity(client, TEST_TABLE),
+      storage,
+      compute,
+      clock: fixedClock("2026-09-13T10:00:15.000Z"),
+    });
+    expect((await later.listPlacementDue()).map((w) => w.id)).toEqual([created.id]);
+    const relaunched = unwrap(await later.retryPlacement(workspaceId(created.id)));
+    expect(relaunched.state).toBe("running");
+    expect(relaunched.placementRetryAt).toBeUndefined();
+    expect(relaunched.placementAttempts).toBeUndefined();
+
+    // start() (a wake): the same wait, and the re-run hydrates from the
+    // snapshot — never a fresh volume.
+    unwrap(await later.stop(workspaceId(created.id)));
+    const stopped = await later.get(workspaceId(created.id));
+    expect(stopped?.state).toBe("stopped");
+    const snapshot = stopped?.latestSnapshotId;
+    expect(snapshot).toBeDefined();
+    compute.refuseNextPlacements(1);
+    const waking = unwrap(await later.start(workspaceId(created.id)));
+    expect(waking.state).toBe("provisioning");
+    expect(waking.placementAttempts).toBe(1);
+    expect(waking.latestSnapshotId).toBe(snapshot);
+    const evenLater = new WorkspaceService({
+      workspaces: makeWorkspaceEntity(client, TEST_TABLE),
+      storage,
+      compute,
+      clock: fixedClock("2026-09-13T10:01:00.000Z"),
+    });
+    const woken = unwrap(await evenLater.retryPlacement(workspaceId(created.id)));
+    expect(woken.state).toBe("running");
+    expect(woken.latestSnapshotId).toBe(snapshot);
+  });
+
+  it("gives up waiting for capacity after the retry budget: a create fails, a wake rolls back", async () => {
+    const compute = new FakeComputeProvider(storage);
+    const clockAt = { iso: "2026-09-13T10:00:00.000Z" };
+    const refusing = new WorkspaceService({
+      workspaces: makeWorkspaceEntity(client, TEST_TABLE),
+      storage,
+      compute,
+      clock: { now: () => clockAt.iso },
+    });
+    compute.refuseNextPlacements(MAX_PLACEMENT_ATTEMPTS + 1);
+    const created = await refusing.create({
+      ownerId: ownerId("nocapacity"),
+      baseImage: baseImage("golden/node:20"),
+    });
+    let id = workspaceId(created.id);
+    for (let attempt = 1; attempt < MAX_PLACEMENT_ATTEMPTS; attempt += 1) {
+      const current = await refusing.get(id);
+      expect(current?.placementAttempts).toBe(attempt);
+      clockAt.iso = current?.placementRetryAt ?? clockAt.iso;
+      await refusing.retryPlacement(id);
+    }
+    const last = await refusing.get(id);
+    expect(last?.placementAttempts).toBe(MAX_PLACEMENT_ATTEMPTS);
+    clockAt.iso = last?.placementRetryAt ?? clockAt.iso;
+    const spent = await refusing.retryPlacement(id);
+    expect(spent.ok).toBe(false);
+    const errored = await refusing.get(id);
+    expect(errored?.state).toBe("error");
+    expect(errored?.functionalDetail).toMatch(/no capacity/);
+    expect(errored?.availableActions).toContain("retry");
+
+    // A wake that never finds capacity goes back to stopped, wake-able, with
+    // its snapshot intact.
+    const running = await service.create({
+      ownerId: ownerId("nocapacity2"),
+      baseImage: baseImage("golden/node:20"),
+    });
+    id = workspaceId(running.id);
+    unwrap(await service.stop(id));
+    const snapshot = (await service.get(id))?.latestSnapshotId;
+    compute.refuseNextPlacements(MAX_PLACEMENT_ATTEMPTS + 1);
+    unwrap(await refusing.start(id));
+    for (let attempt = 1; attempt <= MAX_PLACEMENT_ATTEMPTS; attempt += 1) {
+      const current = await refusing.get(id);
+      clockAt.iso = current?.placementRetryAt ?? clockAt.iso;
+      await refusing.retryPlacement(id);
+    }
+    const rolledBack = await refusing.get(id);
+    expect(rolledBack?.state).toBe("stopped");
+    expect(rolledBack?.latestSnapshotId).toBe(snapshot);
+    expect(rolledBack?.placementRetryAt).toBeUndefined();
   });
 
   it("connect wakes a scaled-to-zero workspace and is a no-op when already running", async () => {

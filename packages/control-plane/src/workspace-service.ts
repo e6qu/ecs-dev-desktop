@@ -34,6 +34,7 @@ import {
   markWaking,
   METRIC_SECURITY_PRIVILEGE_ATTEMPT,
   METRIC_WORKSPACE_WAKE_LATENCY_MS,
+  METRIC_WORKSPACE_PLACEMENT_REFUSED,
   newWorkspaceId,
   notFoundError,
   ok,
@@ -73,6 +74,10 @@ import {
   type WorkspaceResourceInput,
   type WorkspaceState,
   type WorkspaceResources,
+  deferPlacement,
+  isPlacementRefused,
+  placementDue,
+  type PlacementRefusedError,
 } from "@edd/core";
 import {
   writeTransaction,
@@ -327,6 +332,9 @@ interface WorkspaceRecord {
   terminatedAt?: string;
   shareEnabled?: boolean;
   shareEnabledAt?: string;
+  placementReason?: string;
+  placementAttempts?: number;
+  placementRetryAt?: string;
   version: number;
 }
 
@@ -392,6 +400,9 @@ function toWorkspace(r: WorkspaceRecord): Workspace {
     functional: r.functional,
     functionalDetail: r.functionalDetail,
     functionalAt: r.functionalAt === undefined ? undefined : isoTimestamp(r.functionalAt),
+    placementReason: r.placementReason,
+    placementAttempts: r.placementAttempts,
+    placementRetryAt: r.placementRetryAt === undefined ? undefined : isoTimestamp(r.placementRetryAt),
     diskUsedBytes: r.diskUsedBytes,
     diskTotalBytes: r.diskTotalBytes,
     terminatedAt: r.terminatedAt === undefined ? undefined : isoTimestamp(r.terminatedAt),
@@ -574,6 +585,7 @@ export class WorkspaceService {
         ...(opts?.repoRef === undefined ? {} : { repoRef: opts.repoRef }),
       });
     } catch (e) {
+      if (isPlacementRefused(e)) return this.waitForCapacity(id, e);
       return this.recordLaunchFailure(id, `could not launch workspace task: ${asMessage(e)}`);
     }
     const at = isoTimestamp(this.deps.clock.now());
@@ -593,6 +605,75 @@ export class WorkspaceService {
       return err(conflictError(`launch of ${id} lost a concurrent update`));
     }
     return ok(toWorkspaceDto(bound.value));
+  }
+
+  /**
+   * ECS refused to place the launch's task. AWS documents the refusal as
+   * transient, so the workspace does not fail: it stays `provisioning`, waiting
+   * for capacity, with the next launch scheduled ({@link deferPlacement}); the
+   * lifecycle sweep re-runs it ({@link retryPlacement}). Only once the retry
+   * budget is spent does the launch fail the way any other launch failure does —
+   * a create to `error` with Retry, a wake rolled back to `stopped`.
+   */
+  private async waitForCapacity(
+    id: WorkspaceId,
+    refusal: PlacementRefusedError,
+  ): Promise<Result<WorkspaceDto, DomainError>> {
+    const found = await this.find(id);
+    if (found === null) return err(notFoundError("workspace", id));
+    const { ws, version } = found;
+    const now = isoTimestamp(this.deps.clock.now());
+    const waiting = deferPlacement(ws, refusal.message, now);
+    if (!waiting.ok) {
+      const why =
+        waiting.error.kind === "conflict"
+          ? waiting.error.reason
+          : `could not launch workspace task: ${refusal.message}`;
+      if (ws.latestSnapshotId !== undefined) {
+        await this.rollbackWake(id);
+        return err(unavailableError(why));
+      }
+      return this.recordLaunchFailure(id, why);
+    }
+    try {
+      await this.persistTransition(waiting.value, version);
+    } catch (e) {
+      if (!isVersionConflict(e)) throw e;
+      return err(conflictError(`launch of ${id} lost a concurrent update`));
+    }
+    this.deps.metrics?.count(METRIC_WORKSPACE_PLACEMENT_REFUSED, 1, {
+      baseImage: ws.baseImage,
+      reason: refusal.reason,
+    });
+    return ok(toWorkspaceDto(waiting.value));
+  }
+
+  /** Workspaces waiting for capacity whose next launch is due at `now`. */
+  async listPlacementDue(): Promise<ActiveWorkspace[]> {
+    const now = isoTimestamp(this.deps.clock.now());
+    const records = await this.recordsByStates(["provisioning"]);
+    return records
+      .map((r) => toWorkspace(r))
+      .filter((ws) => placementDue(ws, now))
+      .map((ws) => ({ id: ws.id, lastActivity: ws.lastActivity }));
+  }
+
+  /**
+   * Re-run a launch that was refused placement, once its retry is due. A fresh
+   * create re-runs {@link launchReserved}; a wake (the record carries the
+   * snapshot to hydrate from) re-runs the wake's launch phase — never a fresh
+   * volume, which would discard the snapshot's data. Not due, or no longer
+   * waiting: a conflict, nothing done.
+   */
+  async retryPlacement(id: WorkspaceId): Promise<Result<WorkspaceDto, DomainError>> {
+    const found = await this.find(id);
+    if (found === null) return err(notFoundError("workspace", id));
+    const now = isoTimestamp(this.deps.clock.now());
+    if (!placementDue(found.ws, now)) {
+      return err(conflictError(`workspace ${id} has no placement retry due`));
+    }
+    if (found.ws.latestSnapshotId === undefined) return this.launchReserved(id);
+    return this.launchClaimedWake(id, found.ws, now, SYSTEM_ACTOR);
   }
 
   /** Record a failed launch on the reserved record: → `error` + reason. */
@@ -1264,7 +1345,21 @@ export class WorkspaceService {
 
     // PHASE 2 — we are the sole launcher: run the task, then commit
     // provisioning → running.
-    const at = isoTimestamp(this.deps.clock.now());
+    return this.launchClaimedWake(id, ws, isoTimestamp(this.deps.clock.now()), actor);
+  }
+
+  /**
+   * The wake's launch phase, for a record whose claim (stopped → provisioning)
+   * is already persisted: run the task from the snapshot, then commit
+   * provisioning → running. Shared by {@link start} and a placement retry.
+   * `at` is when this launch began — the wake-latency metric counts from it.
+   */
+  private async launchClaimedWake(
+    id: WorkspaceId,
+    ws: Workspace,
+    at: IsoTimestamp,
+    actor: string,
+  ): Promise<Result<WorkspaceDto, DomainError>> {
     let task: ComputeTask;
     try {
       task = await this.deps.compute.runTask({
@@ -1275,6 +1370,9 @@ export class WorkspaceService {
         fromSnapshot: ws.latestSnapshotId,
       });
     } catch (e) {
+      // No capacity right now: keep the claim and wait for it (the snapshot is
+      // untouched either way).
+      if (isPlacementRefused(e)) return this.waitForCapacity(id, e);
       // Launch failed; roll the claim back to stopped (snapshot untouched) so the
       // workspace stays wake-able, then surface a handled 503 (not an uncaught 500).
       await this.rollbackWake(id);
@@ -1383,6 +1481,10 @@ export class WorkspaceService {
         // between our read and start's (another caller woke it concurrently),
         // re-evaluate and converge: running/idle → ready, provisioning → wait.
         const started = await this.start(id, actor);
+        // A wake that is waiting for capacity is still in flight: wait for it
+        // the way a concurrent connect would, rather than handing back a
+        // provisioning workspace as "connected".
+        if (started.ok && started.value.state === "provisioning") return this.awaitWoken(id);
         if (started.ok) return started;
         const reloaded = await this.find(id);
         if (reloaded === null) return started;
@@ -2262,6 +2364,11 @@ export class WorkspaceService {
       "functional",
       "functionalDetail",
       "functionalAt",
+      // A launch that binds a task, fails, or is rolled back ends the wait for
+      // capacity: the stored wait must go with it.
+      "placementReason",
+      "placementAttempts",
+      "placementRetryAt",
       // Settings overrides: clearing one (idleStopMs: null / alwaysOn: false)
       // returns the workspace to the deployment default, which is modelled as
       // field absence — so the stored value must actually be removed.

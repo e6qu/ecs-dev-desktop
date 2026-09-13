@@ -130,6 +130,9 @@ export const TESTID = {
   gitSshKeyGenerate: "git-ssh-key-generate",
   /** The per-workspace `ssh` connect command on a workspace card. Attr: `data-host`. */
   workspaceSshCommand: "workspace-ssh-command",
+  /** The status page's "waiting for capacity" note: ECS refused to place the launch
+   * and it is being retried. Attr: `data-attempts`. */
+  workspacePlacementWait: "workspace-placement-wait",
   /** The "Open editor" link on a workspace card (path-based `/w/<id>/` proxy). Attr: `data-href`. */
   workspaceOpen: "workspace-open",
   /** The "Resume" link on a stopped workspace card → the status page (wakes + opens). Attr: `data-href`. */
