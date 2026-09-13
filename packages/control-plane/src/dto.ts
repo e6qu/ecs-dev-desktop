@@ -25,6 +25,8 @@ export function toWorkspaceDto(ws: Workspace): WorkspaceDto {
     ...(ws.functionalDetail === undefined ? {} : { functionalDetail: ws.functionalDetail }),
     ...(ws.diskUsedBytes === undefined ? {} : { diskUsedBytes: ws.diskUsedBytes }),
     ...(ws.diskTotalBytes === undefined ? {} : { diskTotalBytes: ws.diskTotalBytes }),
+    ...(ws.sessions === undefined ? {} : { sessions: [...ws.sessions] }),
+    ...(ws.sessionsAt === undefined ? {} : { sessionsAt: ws.sessionsAt }),
     ...(ws.latestSnapshotId === undefined ? {} : { latestSnapshotId: ws.latestSnapshotId }),
     ...(ws.latestSnapshotAt === undefined ? {} : { latestSnapshotAt: ws.latestSnapshotAt }),
     ...(ws.snapshotIntervalMs === undefined ? {} : { snapshotIntervalMs: ws.snapshotIntervalMs }),

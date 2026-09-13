@@ -133,6 +133,11 @@ export const TESTID = {
   /** The status page's "waiting for capacity" note: ECS refused to place the launch
    * and it is being retried. Attr: `data-attempts`. */
   workspacePlacementWait: "workspace-placement-wait",
+  /** The agent-session list on the status page. Attrs: `data-reported` ("1" once the
+   * workspace has reported), `data-count`. */
+  workspaceSessions: "workspace-sessions",
+  /** One agent session row. Attrs: `data-name`, `data-command`, `data-live`, `data-status`. */
+  workspaceSession: "workspace-session",
   /** The "Open editor" link on a workspace card (path-based `/w/<id>/` proxy). Attr: `data-href`. */
   workspaceOpen: "workspace-open",
   /** The "Resume" link on a stopped workspace card → the status page (wakes + opens). Attr: `data-href`. */

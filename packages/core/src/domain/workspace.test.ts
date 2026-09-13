@@ -16,6 +16,7 @@ import {
   cancelStopping,
   markTerminated,
   recordFunctional,
+  recordSessions,
   setShare,
   undeleteWorkspace,
   markTaskLost,
@@ -218,6 +219,36 @@ describe("workspace domain (functional core)", () => {
 
   it("markSnapshotLost refuses a running workspace (only stopped/error reference a snapshot)", () => {
     expect(markSnapshotLost(base, t1).ok).toBe(false);
+  });
+
+  it("recordSessions replaces the reported registry wholesale and stamps when", () => {
+    // The registry on the volume is the source of truth. A session absent from
+    // a report no longer exists, so the fold must not merge with the last list --
+    // merging would resurrect a session the workspace had already reaped.
+    const first = recordSessions(
+      base,
+      [
+        {
+          name: "edd-claude",
+          cwd: "/data/project",
+          command: "claude",
+          resumeCommand: "claude --continue",
+          createdAt: "2026-06-01T00:00:00.000Z",
+          lastSeenAt: "2026-06-01T00:05:00.000Z",
+          status: "running",
+          live: true,
+        },
+      ],
+      t1,
+    );
+    expect(first.sessions?.map((x) => x.name)).toEqual(["edd-claude"]);
+    expect(first.sessionsAt).toBe(t1);
+
+    const second = recordSessions(first, [], t1);
+    expect(second.sessions).toEqual([]);
+    // Nothing else on the record moves: reporting sessions is not activity.
+    expect(second.lastActivity).toBe(base.lastActivity);
+    expect(second.state).toBe(base.state);
   });
 
   it("recordFunctional reports ok when the IDE + workspace probes pass", () => {

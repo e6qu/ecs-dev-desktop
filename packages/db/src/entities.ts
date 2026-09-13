@@ -85,6 +85,27 @@ export function makeWorkspaceEntity(client: DynamoDBClient, table = TABLE) {
         functionalAt: { type: "string", required: false },
         diskUsedBytes: { type: "number", required: false },
         diskTotalBytes: { type: "number", required: false },
+        // Agent sessions the workspace last reported (its edd-session registry).
+        // Held here so the UI can list them while the workspace is stopped, when
+        // the registry on the volume is unreachable.
+        sessions: {
+          type: "list",
+          items: {
+            type: "map",
+            properties: {
+              name: { type: "string", required: true },
+              cwd: { type: "string", required: true },
+              command: { type: "string", required: true },
+              resumeCommand: { type: "string", required: false },
+              createdAt: { type: "string", required: true },
+              lastSeenAt: { type: "string", required: true },
+              status: { type: ["running", "stopped", "restored"] as const, required: true },
+              live: { type: "boolean", required: true },
+            },
+          },
+          required: false,
+        },
+        sessionsAt: { type: "string", required: false },
         terminatedAt: { type: "string", required: false },
         shareEnabled: { type: "boolean", required: false },
         shareEnabledAt: { type: "string", required: false },

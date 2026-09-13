@@ -151,7 +151,7 @@ agent unattended on every workspace start is a side-effecting act the user did
 not ask for at that moment. The safer default is to recreate the session and
 leave the resume command staged; auto-resume becomes opt-in per session.
 
-### 4. The UI can see sessions while the workspace is down (planned)
+### 4. The UI can see sessions while the workspace is down (steps 1–3 done)
 
 A registry on the volume is invisible when the workspace is stopped, which is
 exactly when a user most wants to know what is waiting for them. Session state
@@ -171,8 +171,28 @@ That means, in order:
 4. Waking a workspace from a session in that list lands the user back in that
    tmux session.
 
-Steps 1 and 2 are small. Step 3 is UI work. Step 4 needs the wake path to carry
-a session hint.
+Steps 1 and 2 are done: `idle-agent` appends `sessions` (from `edd-session list
+--json`) to every beat, omitting the field rather than sending an empty list when
+the registry cannot be read — an empty list would tell the UI the sessions are
+gone, and a transient failure must never say that. `heartbeatRequest` validates
+it, `recordSessions` folds it onto the record beside `functional`, ElectroDB
+persists it, and the workspace DTO exposes `sessions` and `sessionsAt`. The fold
+replaces the list wholesale: the registry is the source of truth, and merging
+with the previous list would resurrect a session the workspace had already
+reaped.
+
+Step 3 is done: the status page (`WorkspaceLive`) lists the reported sessions
+in an `AgentSessions` section for every workspace state, ordered running →
+waiting → ended, with the report's timestamp. The row's state is derived, not
+copied: inside a stopped workspace no tmux session exists anywhere, so a session
+the last report called `live` is shown as *waiting* (its transcript is on the
+paused volume and its resume command is staged for the next boot), never as
+running — `apps/web/lib/agent-sessions.ts` holds that rule with its tests. The
+same section offers Resume when the workspace is stopped and sessions are
+waiting. `sessions` and `sessionsAt` are part of the public `workspace` contract
+(one `agentSession` schema serves the heartbeat and the DTO).
+
+Step 4 needs the wake path to carry a session hint.
 
 ## What is deliberately not claimed
 

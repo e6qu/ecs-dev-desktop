@@ -103,6 +103,23 @@ export type WorkspaceResourcesDto = z.infer<typeof workspaceResources>;
 export const role = z.enum(["viewer", "developer", "admin"]);
 export type RoleDto = z.infer<typeof role>;
 
+/** One entry of a workspace's agent-session registry (`edd-session list --json`):
+ * a Claude/Codex TUI session the workspace keeps in tmux, where it runs, and what
+ * became of it. `live` is whether the tmux session exists right now; `status` is
+ * the registry's last word on it (`restored` = recreated at boot with its resume
+ * command staged, not yet attached). Times are the registry's own ISO strings. */
+export const agentSession = z.object({
+  name: z.string().min(1),
+  cwd: z.string(),
+  command: z.string(),
+  resumeCommand: z.string().nullable(),
+  createdAt: z.string(),
+  lastSeenAt: z.string(),
+  status: z.enum(["running", "stopped", "restored"]),
+  live: z.boolean(),
+});
+export type AgentSessionDto = z.infer<typeof agentSession>;
+
 export const workspace = z.object({
   id: z.string(),
   ownerId: z.string(),
@@ -162,6 +179,12 @@ export const workspace = z.object({
   placementReason: z.string().optional(),
   placementAttempts: z.number().int().positive().optional(),
   placementRetryAt: z.iso.datetime().optional(),
+  /** The agent sessions the workspace last reported (see {@link agentSession}) and
+   * when. Kept across stop/start: a paused workspace still shows what is waiting
+   * inside it, which is exactly when the user most wants to know. Absent until
+   * the workspace has reported once. */
+  sessions: z.array(agentSession).optional(),
+  sessionsAt: z.iso.datetime().optional(),
 });
 export type WorkspaceDto = z.infer<typeof workspace>;
 
@@ -210,8 +233,15 @@ export const heartbeatRequest = z.object({
         .optional(),
     })
     .optional(),
+  /** The workspace's agent-session registry (edd-session list --json): which
+   * Claude/Codex sessions exist, where, and what became of them. Carried on the
+   * heartbeat so the control plane holds it — the registry itself lives on the
+   * workspace volume, which is exactly the thing a stopped workspace cannot show.
+   * Absent means "not reported this beat", never "no sessions". */
+  sessions: z.array(agentSession).max(200).optional(),
 });
 export type HeartbeatRequest = z.infer<typeof heartbeatRequest>;
+export type AgentSessionReport = AgentSessionDto;
 
 /** Toggle the owner's spectate (read-only mirror) flag. */
 export const shareRequest = z.object({ enabled: z.boolean() });

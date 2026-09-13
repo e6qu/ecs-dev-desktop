@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 import { NextResponse } from "next/server";
 
-import { heartbeatRequest } from "@edd/api-contracts";
+import { type AgentSessionReport, heartbeatRequest } from "@edd/api-contracts";
 import { workspaceId } from "@edd/core";
 
 import { checkAgentAuth } from "../../../../../lib/machine-auth";
@@ -20,12 +20,20 @@ import { withObservability } from "../../../../../lib/observability";
  * auth paths: a missing/malformed body just means a plain activity heartbeat. */
 async function parseReport(
   req: Request,
-): Promise<{ functional?: { ide: boolean; workspace: boolean }; active?: boolean } | undefined> {
+): Promise<
+  | {
+      functional?: { ide: boolean; workspace: boolean };
+      active?: boolean;
+      sessions?: AgentSessionReport[];
+    }
+  | undefined
+> {
   try {
     const parsed = heartbeatRequest.parse(await req.json());
     return {
       ...(parsed.functional !== undefined ? { functional: parsed.functional } : {}),
       ...(parsed.active !== undefined ? { active: parsed.active } : {}),
+      ...(parsed.sessions !== undefined ? { sessions: parsed.sessions } : {}),
     };
   } catch {
     return undefined;

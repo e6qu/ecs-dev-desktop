@@ -96,6 +96,11 @@ export interface Workspace {
   /** Home-volume usage from the same self-report (bytes), when the agent measured it. */
   readonly diskUsedBytes?: number;
   readonly diskTotalBytes?: number;
+  /** Agent sessions the workspace last reported (edd-session registry), kept
+   * here so they are readable while the workspace is stopped or scaled to zero —
+   * the moment a user most wants to know what is waiting for them. */
+  readonly sessions?: readonly AgentSession[];
+  readonly sessionsAt?: IsoTimestamp;
   /** When a manual stop was requested (state became `stopping`) — the converge
    * finishes the stop after a short grace unless the user cancels first. */
   readonly stopRequestedAt?: IsoTimestamp;
@@ -550,6 +555,28 @@ export function recordFunctional(
       ? {}
       : { diskUsedBytes: probes.disk.usedBytes, diskTotalBytes: probes.disk.totalBytes }),
   };
+}
+
+export interface AgentSession {
+  readonly name: string;
+  readonly cwd: string;
+  readonly command: string;
+  readonly resumeCommand: string | null;
+  readonly createdAt: string;
+  readonly lastSeenAt: string;
+  readonly status: "running" | "stopped" | "restored";
+  readonly live: boolean;
+}
+
+/** Fold the workspace's reported agent-session registry onto the record. The
+ * report replaces the previous list wholesale: the registry is the source of
+ * truth and a session absent from it no longer exists. */
+export function recordSessions(
+  ws: Workspace,
+  sessions: readonly AgentSession[],
+  at: IsoTimestamp,
+): Workspace {
+  return { ...ws, sessions: [...sessions], sessionsAt: at };
 }
 
 /** Ok if the workspace may be terminated; a conflict domain error otherwise. */

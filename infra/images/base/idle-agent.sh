@@ -119,6 +119,17 @@ ssh_established() {
 }
 
 # "true" when the workspace saw real usage within ACTIVITY_WINDOW_S — see header.
+# The agent-session registry (edd-session, on the volume), so the control plane
+# can show a workspace's sessions while the workspace is stopped. Omitted -- not
+# emptied -- when the registry cannot be read: an empty list would tell the UI the
+# sessions are gone, and a transient failure must never say that.
+sessions_json() {
+  _s=$(edd-session list --json 2>/dev/null) || return 0
+  case "${_s}" in
+    \[*) printf ',"sessions":%s' "${_s}" ;;
+  esac
+}
+
 active_json() {
   _now=$(date +%s)
   _cutoff=$((_now - ACTIVITY_WINDOW_S))
@@ -153,7 +164,7 @@ while true; do
     --max-time 10 \
     --retry 2 \
     --retry-delay 3 \
-    --data "{\"active\":$(active_json),\"functional\":$(functional_json)}" \
+    --data "{\"active\":$(active_json),\"functional\":$(functional_json)$(sessions_json)}" \
     -o /dev/null 2>&1; then
     echo "edd-idle-agent: heartbeat failed (will retry in ${INTERVAL}s)" >&2
   fi
