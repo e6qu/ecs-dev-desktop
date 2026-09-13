@@ -120,39 +120,34 @@ export const agentSession = z.object({
 });
 export type AgentSessionDto = z.infer<typeof agentSession>;
 
-export const workspace = z.object({
+/**
+ * Fields the public projection ({@link workspace}) and the admin projection
+ * ({@link workspaceDetail}) share, declared once so a field added to one
+ * (with its validation) is added to both.
+ */
+const workspaceCommon = z.object({
   id: z.string(),
   ownerId: z.string(),
   // The owner's role at create time — lets the admin quota view flag a workspace against its
   // owner's per-role limit. Absent on records predating the field.
   ownerRole: role.optional(),
-  /** Who started the workspace (email when known) — shown on the card/status. */
+  /** Who started the workspace (email when known) — shown on the card/status. Validated as
+   * an email (not a bare string) so a malformed value is rejected at the wire boundary,
+   * matching `@edd/core`'s `email()` smart constructor. */
   ownerEmail: z.email().optional(),
+  // The repo cloned into the session ("one repo per session"), when any. Lets
+  // the credential broker pick the right GitHub App installation by repo owner.
+  repoUrl: z.string().optional(),
   baseImage: z.string(),
   editor: editorKind.optional(),
   resources: workspaceResources,
   state: workspaceState,
   createdAt: z.iso.datetime(),
-  /** Last activity/transition timestamp — what the status page's phase-elapsed
-   * timer counts from (resets on wake, so it times the current launch). */
-  lastActivity: z.iso.datetime().optional(),
   /** When a manual (cancelable) stop was requested — set while `stopping`. */
   stopRequestedAt: z.iso.datetime().optional(),
-  // The repo cloned into the session ("one repo per session"), when any. Lets
-  // the credential broker pick the right GitHub App installation by repo owner.
-  repoUrl: z.string().optional(),
   // The lifecycle actions valid from this state — server-computed (from the core
   // state machine) so the UI renders buttons from data, not a client-side mirror.
   availableActions: z.array(workspaceAction),
-  // Resolved catalog presentation for `baseImage` (joined server-side so the UI
-  // doesn't re-fetch + join the catalog). Absent when the image isn't in the catalog.
-  imageName: z.string().optional(),
-  imageDescription: z.string().optional(),
-  imageTags: z.array(z.string()).optional(),
-  imageTools: z.array(z.string()).optional(),
-  // The ready-to-run `ssh …` connect command, when the SSH subdomain is configured —
-  // built server-side from deployment config so a reskin needn't know the convention.
-  sshCommand: z.string().optional(),
   // Functional usability self-report (is the desktop actually usable, not just
   // "running"): surfaced on the owner's card so a degraded-but-running workspace shows.
   functional: z.enum(["ok", "degraded"]).optional(),
@@ -179,6 +174,21 @@ export const workspace = z.object({
   placementReason: z.string().optional(),
   placementAttempts: z.number().int().positive().optional(),
   placementRetryAt: z.iso.datetime().optional(),
+});
+
+export const workspace = workspaceCommon.extend({
+  /** Last activity/transition timestamp — what the status page's phase-elapsed
+   * timer counts from (resets on wake, so it times the current launch). */
+  lastActivity: z.iso.datetime().optional(),
+  // Resolved catalog presentation for `baseImage` (joined server-side so the UI
+  // doesn't re-fetch + join the catalog). Absent when the image isn't in the catalog.
+  imageName: z.string().optional(),
+  imageDescription: z.string().optional(),
+  imageTags: z.array(z.string()).optional(),
+  imageTools: z.array(z.string()).optional(),
+  // The ready-to-run `ssh …` connect command, when the SSH subdomain is configured —
+  // built server-side from deployment config so a reskin needn't know the convention.
+  sshCommand: z.string().optional(),
   /** The agent sessions the workspace last reported (see {@link agentSession}) and
    * when. Kept across stop/start: a paused workspace still shows what is waiting
    * inside it, which is exactly when the user most wants to know. Absent until
@@ -186,6 +196,7 @@ export const workspace = z.object({
   sessions: z.array(agentSession).optional(),
   sessionsAt: z.iso.datetime().optional(),
 });
+
 export type WorkspaceDto = z.infer<typeof workspace>;
 
 /** Config-sync report: is the running deployment wired the way it should be? */
@@ -424,58 +435,22 @@ export type WorkspaceMonitoringDto = z.infer<typeof workspaceMonitoring>;
 
 // --- Admin: per-workspace Inspect (full detail + derived timeline) ---
 
-export const workspaceDetail = z.object({
-  id: z.string(),
-  ownerId: z.string(),
-  /** Owner's email — the identity the proxy matches a caller against for
-   * per-workspace access. Absent on records created without a session email.
-   * Validated as an email (not a bare string) so a malformed value is rejected at
-   * the wire boundary, matching `@edd/core`'s `email()` smart constructor. */
-  ownerEmail: z.email().optional(),
-  /** The owner's role at create time (persisted), for the admin quota view. */
-  ownerRole: role.optional(),
-  /** Git repo cloned into the session, if any ("one repo per session"). */
-  repoUrl: z.string().optional(),
-  baseImage: z.string(),
-  editor: editorKind.optional(),
-  resources: workspaceResources,
-  state: workspaceState,
+export const workspaceDetail = workspaceCommon.extend({
   /** Durable intent: should this workspace exist (`present`) or be torn down
    * (`deleted`). Absent on records predating the field ⇒ treated `present`. */
   desiredState: desiredState.optional(),
   /** When a delete was requested (the `deleting` tombstone began), if any. */
   deleteRequestedAt: z.iso.datetime().optional(),
-  stopRequestedAt: z.iso.datetime().optional(),
   stopRequestedBy: z.string().optional(),
-  createdAt: z.iso.datetime(),
   lastActivity: z.iso.datetime(),
   volumeId: z.string().optional(),
   taskId: z.string().optional(),
-  latestSnapshotId: z.string().optional(),
-  latestSnapshotAt: z.iso.datetime().optional(),
-  snapshotIntervalMs: z.number().int().positive().optional(),
-  /** Per-workspace idle-stop window (ms); absent = deployment default. */
-  idleStopMs: z.number().int().positive().optional(),
-  /** Always-on: the idle sweep never stops this workspace. */
-  alwaysOn: z.boolean().optional(),
   /** Private IP of the running task's ENI; absent when stopped/scaled-to-zero. */
   sshHost: z.string().optional(),
-  /** Functional usability self-report from the in-workspace agent (is the desktop
-   * actually usable, not just running): `ok` / `degraded` + detail + when. */
-  functional: z.enum(["ok", "degraded"]).optional(),
-  functionalDetail: z.string().optional(),
+  /** When the functional self-report was made. */
   functionalAt: z.iso.datetime().optional(),
-  diskUsedBytes: z.number().nonnegative().optional(),
-  diskTotalBytes: z.number().positive().optional(),
-  terminatedAt: z.iso.datetime().optional(),
-  shareEnabled: z.boolean().optional(),
-  /** Waiting for capacity (see {@link workspace}). */
-  placementReason: z.string().optional(),
-  placementAttempts: z.number().int().positive().optional(),
-  placementRetryAt: z.iso.datetime().optional(),
-  /** Lifecycle actions valid from this state (server-computed; see {@link workspace}). */
-  availableActions: z.array(workspaceAction),
 });
+
 export type WorkspaceDetailDto = z.infer<typeof workspaceDetail>;
 
 export const timelineEvent = z.object({

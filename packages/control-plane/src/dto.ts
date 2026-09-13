@@ -40,42 +40,18 @@ export function toWorkspaceDto(ws: Workspace): WorkspaceDto {
   };
 }
 
-/** Full admin projection (keeps runtime bindings) for the Inspect view. */
+/** Full admin projection (keeps runtime bindings) for the Inspect view: the
+ * public DTO plus the bindings and intent the public one deliberately drops. */
 export function toWorkspaceDetail(ws: Workspace): WorkspaceDetailDto {
   return {
-    id: ws.id,
-    ownerId: ws.ownerId,
-    ...(ws.ownerEmail === undefined ? {} : { ownerEmail: ws.ownerEmail }),
-    ...(ws.ownerRole === undefined ? {} : { ownerRole: ws.ownerRole }),
-    ...(ws.repoUrl === undefined ? {} : { repoUrl: ws.repoUrl }),
-    baseImage: ws.baseImage,
-    ...(ws.editor === undefined ? {} : { editor: ws.editor }),
-    resources: ws.resources,
-    state: ws.state,
+    ...toWorkspaceDto(ws),
+    lastActivity: ws.lastActivity,
     ...(ws.desiredState === undefined ? {} : { desiredState: ws.desiredState }),
     ...(ws.deleteRequestedAt === undefined ? {} : { deleteRequestedAt: ws.deleteRequestedAt }),
-    ...(ws.stopRequestedAt === undefined ? {} : { stopRequestedAt: ws.stopRequestedAt }),
     ...(ws.stopRequestedBy === undefined ? {} : { stopRequestedBy: ws.stopRequestedBy }),
-    createdAt: ws.createdAt,
-    lastActivity: ws.lastActivity,
     ...(ws.volumeId === undefined ? {} : { volumeId: ws.volumeId }),
     ...(ws.taskId === undefined ? {} : { taskId: ws.taskId }),
-    ...(ws.latestSnapshotId === undefined ? {} : { latestSnapshotId: ws.latestSnapshotId }),
-    ...(ws.latestSnapshotAt === undefined ? {} : { latestSnapshotAt: ws.latestSnapshotAt }),
-    ...(ws.snapshotIntervalMs === undefined ? {} : { snapshotIntervalMs: ws.snapshotIntervalMs }),
-    ...(ws.idleStopMs === undefined ? {} : { idleStopMs: ws.idleStopMs }),
-    ...(ws.alwaysOn === undefined ? {} : { alwaysOn: ws.alwaysOn }),
     ...(ws.sshHost === undefined ? {} : { sshHost: ws.sshHost }),
-    ...(ws.functional === undefined ? {} : { functional: ws.functional }),
-    ...(ws.functionalDetail === undefined ? {} : { functionalDetail: ws.functionalDetail }),
     ...(ws.functionalAt === undefined ? {} : { functionalAt: ws.functionalAt }),
-    ...(ws.diskUsedBytes === undefined ? {} : { diskUsedBytes: ws.diskUsedBytes }),
-    ...(ws.diskTotalBytes === undefined ? {} : { diskTotalBytes: ws.diskTotalBytes }),
-    ...(ws.terminatedAt === undefined ? {} : { terminatedAt: ws.terminatedAt }),
-    ...(ws.shareEnabled === undefined ? {} : { shareEnabled: ws.shareEnabled }),
-    ...(ws.placementReason === undefined ? {} : { placementReason: ws.placementReason }),
-    ...(ws.placementAttempts === undefined ? {} : { placementAttempts: ws.placementAttempts }),
-    ...(ws.placementRetryAt === undefined ? {} : { placementRetryAt: ws.placementRetryAt }),
-    availableActions: [...workspaceActions(ws.state)],
   };
 }

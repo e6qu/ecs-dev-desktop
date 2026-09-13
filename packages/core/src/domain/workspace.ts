@@ -181,25 +181,9 @@ export function reserve(
 }
 
 export function provision(params: ProvisionParams): Workspace {
-  const resources = assertValidWorkspaceResources(
-    params.resources ?? defaultResourcesForEditor(params.editor ?? DEFAULT_EDITOR),
-  );
   return {
-    id: params.id,
-    ownerId: params.ownerId,
-    ownerEmail: params.ownerEmail,
-    ownerRole: params.ownerRole,
-    repoUrl: params.repoUrl,
-    baseImage: params.baseImage,
-    editor: params.editor ?? DEFAULT_EDITOR,
-    resources,
-    snapshotIntervalMs: params.snapshotIntervalMs,
-    idleStopMs: params.idleStopMs,
-    alwaysOn: params.alwaysOn,
+    ...reserve(params),
     state: "running",
-    desiredState: "present",
-    createdAt: params.at,
-    lastActivity: params.at,
     volumeId: params.volumeId,
     taskId: params.taskId,
     sshHost: params.sshHost,
