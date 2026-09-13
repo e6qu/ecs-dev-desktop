@@ -19,9 +19,14 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 # the prefix to override the inherited home npm prefix (so they aren't installed
 # under $HOME, which is the EBS mount). These land in /usr/local/bin, already on
 # the base PATH for every shell — no PATH drop-in override needed.
+# PINNED: unversioned `npm install -g` and the bun installer both track latest.
+ARG YARN_VERSION=1.22.22
+ARG PNPM_VERSION=12.4.1
+ARG BUN_VERSION=1.4.2
+ARG TYPESCRIPT_VERSION=7.0.2
 RUN export NPM_CONFIG_PREFIX=/usr/local \
     && (corepack disable 2>/dev/null || true) \
     && rm -f /usr/local/bin/yarn /usr/local/bin/yarnpkg /usr/local/bin/pnpm /usr/local/bin/pnpx \
-    && npm install -g yarn pnpm typescript \
-    && curl -fsSL https://bun.sh/install | bash \
+    && npm install -g "yarn@${YARN_VERSION}" "pnpm@${PNPM_VERSION}" "typescript@${TYPESCRIPT_VERSION}" \
+    && curl -fsSL https://bun.sh/install | bash -s -- "bun-v${BUN_VERSION}" \
     && yarn --version && pnpm --version && bun --version && tsc --version

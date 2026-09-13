@@ -531,7 +531,11 @@ jobs:
       - uses: hashicorp/setup-terraform@v4.0.1
         with:
           terraform_wrapper: false
-      - name: Dependency freshness (Node + Terraform)
+      - name: Dependency freshness (Node + Terraform + image toolchains)
+        env:
+          # The image-pin check reads GitHub releases; unauthenticated calls share
+          # a 60/hour budget across every runner on the same egress IP.
+          GITHUB_TOKEN: ${{ github.token }}
         run: bash scripts/check-latest-deps.sh
 
   terraform:

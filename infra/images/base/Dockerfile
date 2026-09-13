@@ -81,14 +81,20 @@ RUN node /tmp/patch-openvscode.mjs && rm /tmp/patch-openvscode.mjs
 # Built-in extensions load read-only with no runtime copy (a first-boot copy would
 # slow every workspace start); the user still installs their own into the volume's
 # extensions dir. Variants add their own language extensions to the same built-in dir.
+# Every extension is pinned (`id@version`), like every toolchain above. A pin is
+# the newest stable Open VSX release whose `engines.vscode` admits the pinned
+# OPENVSCODE_VERSION — `scripts/check-image-pins.mjs` (part of `check-deps`)
+# computes that, so e.g. github.vscode-pull-request-github stays on the last
+# release built for a 1.109 editor until OPENVSCODE_VERSION moves. A failed
+# install fails the build: the loop used to scroll past one and exit 0.
 RUN for ext in \
-      esbenp.prettier-vscode \
-      dbaeumer.vscode-eslint \
-      github.vscode-pull-request-github \
-      github.vscode-github-actions \
-      anthropic.claude-code \
-      openai.chatgpt ; do \
-      openvscode-server --install-extension "$ext" --extensions-dir /opt/openvscode-server/extensions ; \
+      esbenp.prettier-vscode@12.4.0 \
+      dbaeumer.vscode-eslint@3.0.34 \
+      github.vscode-pull-request-github@0.128.0 \
+      github.vscode-github-actions@0.32.3 \
+      anthropic.claude-code@2.1.270 \
+      openai.chatgpt@26.908.40401 ; do \
+      openvscode-server --install-extension "$ext" --extensions-dir /opt/openvscode-server/extensions || exit 1 ; \
     done \
     && chmod -R a+rX /opt/openvscode-server/extensions
 
@@ -113,7 +119,16 @@ RUN cd /tmp/edd-ui-extension \
 # lint/format/dead-code/CPD tools that match this repo's own CI (prettier, eslint,
 # knip, jscpd), and the AI coding agent CLIs (Claude Code, Codex, opencode) — every variant
 # carries both, not just omnibus.
-RUN npm install -g prettier eslint knip jscpd @anthropic-ai/claude-code @openai/codex opencode-ai@1.17.15 \
+# PINNED: every unversioned name here tracked npm's latest at build time; opencode
+# was already pinned, which is the convention the rest now follows.
+ARG PRETTIER_VERSION=3.9.6
+ARG ESLINT_VERSION=10.10.0
+ARG KNIP_VERSION=6.35.1
+ARG JSCPD_VERSION=5.2.0
+ARG CLAUDE_CODE_VERSION=2.1.270
+ARG CODEX_VERSION=0.154.0
+RUN npm install -g "prettier@${PRETTIER_VERSION}" "eslint@${ESLINT_VERSION}" "knip@${KNIP_VERSION}" "jscpd@${JSCPD_VERSION}" \
+      "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" "@openai/codex@${CODEX_VERSION}" opencode-ai@1.17.15 \
     && prettier --version && eslint --version \
     && knip --version && jscpd --version \
     && command -v claude && command -v codex && command -v opencode && opencode --version
@@ -124,8 +139,10 @@ RUN npm install -g prettier eslint knip jscpd @anthropic-ai/claude-code @openai/
 # binary into /usr/local/bin (on PATH for every shell); its vuln DB is fetched lazily
 # at first scan, not baked. Language-agnostic, so it lives in base (every variant
 # inherits it); per-language SCA (e.g. cargo-audit) is added by the variants.
-RUN curl -fsSL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
-      | sh -s -- -b /usr/local/bin \
+# PINNED: the installer takes a release tag; without one it installs the newest.
+ARG TRIVY_VERSION=v0.74.0
+RUN curl -fsSL "https://raw.githubusercontent.com/aquasecurity/trivy/${TRIVY_VERSION}/contrib/install.sh" \
+      | sh -s -- -b /usr/local/bin "${TRIVY_VERSION}" \
     && trivy --version
 
 # User-installable CLIs without root: the system npm prefix is /usr/local (root-
