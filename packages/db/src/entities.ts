@@ -279,6 +279,9 @@ export function makeAuthSessionEntity(client: DynamoDBClient, table = TABLE) {
         createdAt: { type: "string", required: true },
         refreshedAt: { type: "string", required: true },
         expiresAt: { type: "string", required: true },
+        // Epoch seconds: the table's time-to-live attribute. DynamoDB's TTL ignores
+        // the ISO `expiresAt`, so without this a session row was never deleted.
+        expiresAtEpochSeconds: { type: "number", required: true },
         revokedAt: { type: "string", required: false },
       },
       indexes: {

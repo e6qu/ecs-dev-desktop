@@ -222,7 +222,12 @@ export type {
   WorkspaceEvent,
   WorkspaceState,
 } from "./lifecycle/workspace-state-machine";
-export { can, transition, workspaceActions } from "./lifecycle/workspace-state-machine";
+export {
+  can,
+  transition,
+  WORKSPACE_STATES,
+  workspaceActions,
+} from "./lifecycle/workspace-state-machine";
 
 // Connect-time wake decision (wake-on-connect).
 export type { ConnectAction } from "./lifecycle/connect";

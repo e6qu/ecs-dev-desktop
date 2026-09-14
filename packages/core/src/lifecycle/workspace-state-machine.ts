@@ -22,6 +22,33 @@ export type WorkspaceState =
   | "terminated"
   | "error";
 
+/**
+ * Requires `states` to name every {@link WorkspaceState}: a state added to the
+ * union but not to the list fails to compile here instead of silently dropping
+ * out of every read that enumerates states.
+ */
+function listEveryWorkspaceState<const T extends readonly WorkspaceState[]>(
+  states: T & ([Exclude<WorkspaceState, T[number]>] extends [never] ? unknown : "a WorkspaceState is missing"),
+): T {
+  return states;
+}
+
+/**
+ * Every workspace state, once. A workspace record is always in exactly one, so a
+ * query of the state index per state returns every workspace without reading the
+ * rest of the single table (sessions, audit events, cost rollups).
+ */
+export const WORKSPACE_STATES = listEveryWorkspaceState([
+  "provisioning",
+  "running",
+  "idle",
+  "stopped",
+  "stopping",
+  "deleting",
+  "terminated",
+  "error",
+]);
+
 export type WorkspaceEvent =
   | "provisioned" // task is up and reachable
   | "activity" // user/editor/ssh activity observed

@@ -80,6 +80,7 @@ export async function createAuthSession(input: {
   const providerSubject = input.providerSubject ?? input.ownerId;
   const nowIso = new Date(nowMs).toISOString();
   const expiry = expiresAt(nowMs);
+  const expiresAtEpochSeconds = Math.floor(parseExpiry(expiry) / 1000);
   const session = {
     id,
     schemaVersion: AUTH_SESSION_SCHEMA_VERSION,
@@ -92,9 +93,9 @@ export async function createAuthSession(input: {
     createdAt: nowIso,
     refreshedAt: nowIso,
     expiresAt: expiry,
+    expiresAtEpochSeconds,
   };
   if (provider === "shauth") {
-    const expiresAtEpochSeconds = Math.floor(parseExpiry(expiry) / 1000);
     const result = await writeTransaction(
       { session: sessions(), correlation: correlations() },
       ({ session: sessionEntity, correlation }) => [
@@ -250,15 +251,20 @@ export async function validateAuthSessionToken(
   // session the consistent read above just proved is active. Each write catches
   // its own failure so nothing rejects into the validation result.
   const refreshedExpiry = expiresAt(nowMs);
+  const refreshedExpiresAtEpochSeconds = Math.floor(parseExpiry(refreshedExpiry) / 1000);
   void sessions()
     .patch({ id: data.id })
-    .set({ refreshedAt: new Date(nowMs).toISOString(), expiresAt: refreshedExpiry })
+    .set({
+      refreshedAt: new Date(nowMs).toISOString(),
+      expiresAt: refreshedExpiry,
+      expiresAtEpochSeconds: refreshedExpiresAtEpochSeconds,
+    })
     .go()
     .catch((error: unknown) => {
       console.error(`auth session ${data.id} refresh write failed`, error);
     });
   if (data.provider === "shauth") {
-    const expiresAtEpochSeconds = Math.floor(parseExpiry(refreshedExpiry) / 1000);
+    const expiresAtEpochSeconds = refreshedExpiresAtEpochSeconds;
     for (const [kind, value] of [
       ["session", data.providerSessionId],
       ["subject", data.providerSubject],

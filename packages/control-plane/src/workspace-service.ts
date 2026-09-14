@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 
 import type { WorkspaceDto, WorkspaceInspectionDto } from "@edd/api-contracts";
 import {
+  WORKSPACE_STATES,
   assertNever,
   assertTerminable,
   assertValidWorkspaceResources,
@@ -770,10 +771,14 @@ export class WorkspaceService {
     // bare `.go()` silently truncates. That undercounts the per-owner list used
     // for quota enforcement (a quota BYPASS at scale) and hides workspaces from
     // the admin all-list. ElectroDB paginates fully only when asked.
-    const { data } = owner
-      ? await this.deps.workspaces.query.byOwner({ ownerId: owner }).go({ pages: "all" })
-      : await this.deps.workspaces.scan.go({ pages: "all" });
-    return data.map((r: WorkspaceRecord) => toWorkspaceDto(toWorkspace(r)));
+    // The admin all-list reads the state index, never the table: the table holds
+    // every entity, so a scan read each session, audit event and cost rollup to
+    // find the workspaces, and the list slowed with every sign-in — 32 s on the
+    // dev stack on 2026-09-14, past the post-apply gate's 30 s.
+    const records = owner
+      ? (await this.deps.workspaces.query.byOwner({ ownerId: owner }).go({ pages: "all" })).data
+      : await this.allRecords();
+    return records.map((r: WorkspaceRecord) => toWorkspaceDto(toWorkspace(r)));
   }
 
   async get(id: WorkspaceId): Promise<WorkspaceDto | null> {
@@ -875,7 +880,7 @@ export class WorkspaceService {
 
   /** Every volume/snapshot id still referenced by a workspace — GC's keep-set. */
   async listReferencedStorage(): Promise<ReferencedStorage> {
-    const { data } = await this.deps.workspaces.scan.go({ pages: "all" });
+    const data = await this.allRecords();
     const volumeIds: VolumeId[] = [];
     const snapshotIds: SnapshotId[] = [];
     data.forEach((r: WorkspaceRecord) => {
@@ -887,14 +892,14 @@ export class WorkspaceService {
 
   /**
    * Every maintenance keep-set (storage refs + task refs + secret-owning workspace ids) from
-   * ONE workspace-table scan. The reconciler's maintenance tick reaps orphan tasks, orphan
+   * ONE read of every workspace record. The reconciler's maintenance tick reaps orphan tasks, orphan
    * secrets, and orphan storage back-to-back — each keyed off a full-table projection. Reading
-   * them in a single pass replaces three identical `scan.go` sweeps per tick with one. The
+   * them in a single pass replaces three identical full reads per tick with one. The
    * individual `listReferenced*` methods remain for callers that need just one projection
    * (e.g. the admin snapshot console); this is a superset for the tick that needs all three.
    */
   async listFleetReferences(): Promise<FleetReferences> {
-    const { data } = await this.deps.workspaces.scan.go({ pages: "all" });
+    const data = await this.allRecords();
     const volumeIds: VolumeId[] = [];
     const snapshotIds: SnapshotId[] = [];
     const taskIds: TaskId[] = [];
@@ -1008,7 +1013,7 @@ export class WorkspaceService {
    * not RUNNING, so it is not a reap candidate anyway), so a task any record names is
    * never reaped. A RUNNING workspace task in no record is the orphan. */
   async listReferencedTasks(): Promise<readonly TaskId[]> {
-    const { data } = await this.deps.workspaces.scan.go({ pages: "all" });
+    const data = await this.allRecords();
     const taskIds: TaskId[] = [];
     data.forEach((r: WorkspaceRecord) => {
       if (r.taskId !== undefined) taskIds.push(taskId(r.taskId));
@@ -1020,7 +1025,7 @@ export class WorkspaceService {
    * reaper's keep-set. Stopped/deleted tombstones recreate deterministic runtime
    * secrets on wake, so they do not keep Secrets Manager entries alive. */
   async listRuntimeSecretWorkspaceIds(): Promise<readonly WorkspaceId[]> {
-    const { data } = await this.deps.workspaces.scan.go({ pages: "all" });
+    const data = await this.allRecords();
     return data.flatMap((r: WorkspaceRecord) =>
       r.taskId === undefined ? [] : [workspaceId(r.id)],
     );
@@ -1041,7 +1046,7 @@ export class WorkspaceService {
     const oc = this.deps.ownerCounts;
     if (oc === undefined) return 0;
     const actual = new Map<string, number>();
-    const { data: records } = await this.deps.workspaces.scan.go({ pages: "all" });
+    const records = await this.allRecords();
     records.forEach((r: WorkspaceRecord) => {
       // Terminated tombstones already freed their quota at finishDeleting —
       // counting them would drift every counter upward each sweep.
@@ -1073,6 +1078,12 @@ export class WorkspaceService {
   }
 
   /** Fetch all workspace records in the given lifecycle states (fully paginated). */
+  /** Every workspace record, one state-index query per state. Never a table scan:
+   * in this single-table design a scan reads every other entity to find these. */
+  private async allRecords(): Promise<WorkspaceRecord[]> {
+    return this.recordsByStates(WORKSPACE_STATES);
+  }
+
   private async recordsByStates(states: readonly WorkspaceState[]): Promise<WorkspaceRecord[]> {
     const pages = await Promise.all(
       states.map((state) => this.deps.workspaces.query.byState({ state }).go({ pages: "all" })),

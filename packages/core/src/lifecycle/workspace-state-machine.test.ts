@@ -8,6 +8,7 @@ import {
   workspaceActions,
   type WorkspaceEvent,
   type WorkspaceState,
+  WORKSPACE_STATES,
 } from "./workspace-state-machine";
 
 const STATES: WorkspaceState[] = [
@@ -110,5 +111,11 @@ describe("workspaceActions", () => {
   });
   it("offers only undelete once terminated (restorable until the retention purge)", () => {
     expect(workspaceActions("terminated")).toEqual(["undelete"]);
+  });
+});
+
+describe("WORKSPACE_STATES", () => {
+  it("names each state once", () => {
+    expect(new Set(WORKSPACE_STATES).size).toBe(WORKSPACE_STATES.length);
   });
 });

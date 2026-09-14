@@ -2,6 +2,7 @@
 import {
   deriveFleetAudit,
   isoTimestamp,
+  WORKSPACE_STATES,
   type AuditEvent,
   type AuditSource,
   type FleetAuditInput,
@@ -30,7 +31,14 @@ export class DerivedAuditSource implements AuditSource {
   constructor(private readonly deps: DerivedAuditSourceDeps) {}
 
   async recent(limit?: number): Promise<AuditEvent[]> {
-    const { data } = await this.deps.workspaces.scan.go({ pages: "all" });
+    // The state index holds exactly the workspace records; scanning this single
+    // table read every session and audit row to find them.
+    const pages = await Promise.all(
+      WORKSPACE_STATES.map((state) =>
+        this.deps.workspaces.query.byState({ state }).go({ pages: "all" }),
+      ),
+    );
+    const data = pages.flatMap((page) => page.data);
     const inputs: FleetAuditInput[] = data.map((r: AuditRecord) => ({
       workspaceId: r.id,
       createdAt: isoTimestamp(r.createdAt),

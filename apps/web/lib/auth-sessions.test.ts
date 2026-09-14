@@ -98,6 +98,19 @@ describe("validateAuthSessionToken store-failure handling", () => {
     });
   });
 
+  it("refreshes the time-to-live attribute with the rolling expiry", async () => {
+    sessionGetGo.mockResolvedValue({ data: activeSessionRow() });
+    sessionPatchGo.mockResolvedValue({});
+    correlationPatchGo.mockResolvedValue({});
+
+    await validateAuthSessionToken(token, NOW_MS);
+
+    const set = sessionPatchSet.mock.lastCall as unknown as [
+      { expiresAt: string; expiresAtEpochSeconds: number },
+    ];
+    expect(set[0].expiresAtEpochSeconds).toBe(Math.floor(Date.parse(set[0].expiresAt) / 1000));
+  });
+
   it("still returns null for an absent session", async () => {
     sessionGetGo.mockResolvedValue({ data: null });
 
