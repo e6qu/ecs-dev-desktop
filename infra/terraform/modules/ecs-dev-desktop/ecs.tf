@@ -177,6 +177,14 @@ resource "aws_ecs_service" "control_plane" {
   }
 
   lifecycle {
+    # The idle threshold is measured from the agent's last heartbeat, and a beat
+    # takes time of its own (up to a minute when the IDE probe retries): an
+    # interval near the threshold scales a workspace kept alive only by its agent
+    # to zero while it is in use. The default was 300 s against a 300 s threshold.
+    precondition {
+      condition     = var.heartbeat_interval_s * 1000 * 2 <= var.idle_threshold_ms
+      error_message = "heartbeat_interval_s must fit at least twice inside idle_threshold_ms: the idle threshold is measured from the workspace agent's last heartbeat, so an interval near it scales a workspace kept alive only by its agent to zero while it is in use."
+    }
     # Desired count is owned by the scale-to-zero controllers once they attach.
     # Terraform owns the task-definition attachment and rolls it whenever the
     # declared image, environment, resources, or role coordinates change.

@@ -114,11 +114,13 @@ export const DEFAULT_AUDIT_FEED_LIMIT = 100;
 export const DEFAULT_RECONCILER_STALE_MS = 15 * 60 * 1000;
 
 /**
- * Default heartbeat interval injected into workspace tasks: 5 minutes. The
- * in-workspace idle-agent posts an HMAC heartbeat to the control plane at this
- * cadence; the `lastActivity` timestamp it updates is what the reconciler's
- * idle-detection reads. Short enough that idle-to-zero is responsive (within
- * `threshold + one heartbeat`), long enough to avoid excessive control-plane
- * load at 200+ scale.
+ * Default heartbeat interval injected into workspace tasks: 2 minutes. The
+ * idle-agent's beat refreshes `lastActivity`, which the idle threshold (5 minutes)
+ * is measured from, and a beat takes time of its own — up to a minute when the
+ * IDE probe retries — so the interval has to fit well inside the threshold. At 5
+ * minutes it equalled it: a workspace kept alive only by its agent (SSH, background
+ * compute) could age past the threshold between beats and be scaled to zero while
+ * in use. Two minutes is also the idle-agent's own default; at 200 workspaces it is
+ * under two requests a second.
  */
-export const DEFAULT_HEARTBEAT_INTERVAL_S = 5 * 60;
+export const DEFAULT_HEARTBEAT_INTERVAL_S = 2 * 60;

@@ -61,6 +61,18 @@ class FailingCompute implements ComputeProvider {
   }
 }
 
+/** A fake compute provider that runs `during` inside the launch — before the
+ * task is handed back — the way a real workspace's agent reports while the
+ * control plane is still waiting for the task to be ready. */
+class ReportingDuringLaunch extends FakeComputeProvider {
+  during: (id: RunTaskInput["workspaceId"]) => Promise<void> = () => Promise.resolve();
+
+  override async runTask(input: RunTaskInput): Promise<ComputeTask> {
+    await this.during(input.workspaceId);
+    return super.runTask(input);
+  }
+}
+
 const TEST_TABLE = "ecs-dev-desktop-cp-integ";
 
 describe("WorkspaceService lifecycle ", () => {
@@ -360,6 +372,68 @@ describe("WorkspaceService lifecycle ", () => {
     expect(rolledBack?.state).toBe("stopped");
     expect(rolledBack?.latestSnapshotId).toBe(snapshot);
     expect(rolledBack?.placementRetryAt).toBeUndefined();
+  });
+
+  it("an agent heartbeat while provisioning keeps its reports, and the launch still commits", async () => {
+    // The 2026-09-14 post-apply gate: the agent booted and reported while the
+    // launch was still waiting for the task to be ready; the report was refused
+    // (409, provisioning), the next came a full interval later, and the workspace
+    // never read as ready in time. A report that lands mid-launch must be kept
+    // AND must not make the launch's commit lose.
+    const reportDuringLaunch = new ReportingDuringLaunch(storage);
+    const svc = new WorkspaceService({
+      workspaces: makeWorkspaceEntity(client, TEST_TABLE),
+      storage,
+      compute: reportDuringLaunch,
+      clock: fixedClock(),
+    });
+    reportDuringLaunch.during = async (id) => {
+      const beat = await svc.heartbeat(id, {
+        active: true,
+        functional: { ide: true, workspace: true, disk: { usedBytes: 1, totalBytes: 2 } },
+        sessions: [],
+      });
+      expect(beat.ok, beat.ok ? "" : JSON.stringify(beat.error)).toBe(true);
+    };
+    const created = await svc.create({ ownerId: ownerId("mid-launch"), baseImage: baseImage("golden/node:20") });
+    expect(created.state).toBe("running");
+    const stored = await svc.get(workspaceId(created.id));
+    expect(stored?.functional).toBe("ok");
+    expect(stored?.sessions).toEqual([]);
+  });
+
+  it("a session with nothing to resume round-trips, and heartbeats carrying it keep succeeding", async () => {
+    // An OpenVSCode terminal is recorded as a `shell` session, whose resume
+    // command is null; ElectroDB refused null, so every heartbeat after the
+    // first terminal was opened failed with a 500.
+    const ws = await service.create({ ownerId: ownerId("plain-terminal"), baseImage: baseImage("golden/node:20") });
+    const session = {
+      name: "edd",
+      cwd: "/data/home",
+      command: "shell",
+      resumeCommand: null,
+      createdAt: "2026-09-14T06:50:00.000Z",
+      lastSeenAt: "2026-09-14T06:55:00.000Z",
+      status: "running" as const,
+      live: true,
+    };
+    for (let beat = 0; beat < 2; beat += 1) {
+      const r = await service.heartbeat(workspaceId(ws.id), { active: true, sessions: [session] });
+      expect(r.ok, r.ok ? "" : JSON.stringify(r.error)).toBe(true);
+    }
+    const stored = await service.get(workspaceId(ws.id));
+    expect(stored?.sessions).toEqual([session]);
+    expect(stored?.sessionsAt).toBeDefined();
+  });
+
+  it("stopping clears the agent's functional report", async () => {
+    const ws = await service.create({ ownerId: ownerId("stop-functional"), baseImage: baseImage("golden/node:20") });
+    unwrap(await service.heartbeat(workspaceId(ws.id), { active: true, functional: { ide: true, workspace: true } }));
+    expect((await service.get(workspaceId(ws.id)))?.functional).toBe("ok");
+    unwrap(await service.stop(workspaceId(ws.id)));
+    const stopped = await service.get(workspaceId(ws.id));
+    expect(stopped?.state).toBe("stopped");
+    expect(stopped?.functional).toBeUndefined();
   });
 
   it("connect wakes a scaled-to-zero workspace and is a no-op when already running", async () => {
