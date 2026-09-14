@@ -41,7 +41,8 @@ export function awsSimClientConfig(
 ): AwsSimClientConfig {
   return {
     region: HARNESS_AWS_REGION,
-    endpoint: aws.endpoint,
+    // The run's endpoint when one was given; the harness default otherwise.
+    endpoint: process.env.AWS_ENDPOINT_URL ?? aws.endpoint,
     credentials,
   };
 }

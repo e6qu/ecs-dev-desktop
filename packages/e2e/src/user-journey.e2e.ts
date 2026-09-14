@@ -8,7 +8,7 @@ import { CloudWatchLogsClient, CreateLogGroupCommand } from "@aws-sdk/client-clo
 import { CreateClusterCommand, DescribeTasksCommand, ECSClient } from "@aws-sdk/client-ecs";
 import { EC2Client } from "@aws-sdk/client-ec2";
 import { workspace, workspaceInspection, type WorkspaceDetailDto } from "@edd/api-contracts";
-import { aws, dynamodb } from "@edd/config";
+import { dynamodb } from "@edd/config";
 import { CatalogService } from "@edd/control-plane";
 import { baseImage, systemClock } from "@edd/core";
 import { createDynamoClient, dropTable, ensureTable, makeBaseImageEntity } from "@edd/db";
@@ -172,7 +172,7 @@ describe(
       web = await startWebApp((port) => ({
         DYNAMODB_TABLE: TABLE,
         COMPUTE_PROVIDER: "ecs",
-        AWS_ENDPOINT_URL: aws.endpoint,
+        AWS_ENDPOINT_URL: SIM.endpoint,
         AWS_REGION: SIM.region,
         AWS_ACCESS_KEY_ID: SIM.credentials.accessKeyId,
         AWS_SECRET_ACCESS_KEY: SIM.credentials.secretAccessKey,

@@ -18,7 +18,7 @@ import { simulatorWorkloadHost } from "@edd/e2e/docker-host";
 import { CatalogService } from "@edd/control-plane";
 import { baseImage, systemClock } from "@edd/core";
 import { createDynamoClient, dropTable, ensureTable, makeBaseImageEntity } from "@edd/db";
-import { aws, dynamodb } from "@edd/config";
+import { dynamodb } from "@edd/config";
 
 const PORT = 3220; // must match playwright.live.config.ts
 const RUN_ID = randomUUID().slice(0, 8);
@@ -36,7 +36,6 @@ const ENV_FILE = join(import.meta.dirname, "../temp/live-pw.env");
 
 const dynamoEndpoint = process.env.AWS_ENDPOINT_URL ?? dynamodb.endpoint;
 process.env.AWS_ENDPOINT_URL = dynamoEndpoint;
-process.env.AWS_ENDPOINT_URL ??= aws.endpoint;
 process.env.AWS_REGION ??= awsSimClientConfig().region;
 process.env.AWS_ACCESS_KEY_ID ??= awsSimClientConfig().credentials.accessKeyId;
 process.env.AWS_SECRET_ACCESS_KEY ??= awsSimClientConfig().credentials.secretAccessKey;
@@ -79,7 +78,6 @@ const lines = [
   exportLine("EDD_IMAGE_SOURCE_BRANCH", "main"),
   exportLine("EDD_IMAGE_SOURCE_WEBHOOK_SECRET", "playwright-live-image-source-webhook-secret"),
   exportLine("COMPUTE_PROVIDER", "ecs"),
-  exportLine("AWS_ENDPOINT_URL", aws.endpoint),
   exportLine("AWS_REGION", SIM.region),
   exportLine("AWS_ACCESS_KEY_ID", SIM.credentials.accessKeyId),
   exportLine("AWS_SECRET_ACCESS_KEY", SIM.credentials.secretAccessKey),

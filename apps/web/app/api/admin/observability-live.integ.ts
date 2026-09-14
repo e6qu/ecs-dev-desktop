@@ -25,7 +25,10 @@ import { GET as logsGet } from "./logs/route";
 
 const HARNESS_AWS_REGION = "us-east-1";
 
-process.env.AWS_ENDPOINT_URL ??= aws.endpoint;
+// Every client below uses the endpoint the run was given; `aws.endpoint` is only
+// the default. Building them from the constant sent this suite to :4566 even when
+// AWS_ENDPOINT_URL named another simulator.
+const AWS_ENDPOINT = (process.env.AWS_ENDPOINT_URL ??= aws.endpoint);
 process.env.AWS_REGION ??= HARNESS_AWS_REGION;
 process.env.AWS_ACCESS_KEY_ID ??= "test";
 process.env.AWS_SECRET_ACCESS_KEY ??= "test";
@@ -44,7 +47,7 @@ const SEEDED_LOG = "info: live admin route read from CloudWatch";
 
 const SIM = {
   region: HARNESS_AWS_REGION,
-  endpoint: aws.endpoint,
+  endpoint: AWS_ENDPOINT,
   credentials: { accessKeyId: "test", secretAccessKey: "test" },
 };
 

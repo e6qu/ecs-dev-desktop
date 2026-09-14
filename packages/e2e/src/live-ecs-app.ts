@@ -13,7 +13,6 @@ import {
   waitUntilTasksStopped,
 } from "@aws-sdk/client-ecs";
 import { EC2Client } from "@aws-sdk/client-ec2";
-import { aws } from "@edd/config";
 import { CatalogService } from "@edd/control-plane";
 import { baseImage, systemClock, type EditorKind } from "@edd/core";
 import { createDynamoClient, dropTable, ensureTable, makeBaseImageEntity } from "@edd/db";
@@ -90,7 +89,7 @@ export async function startLiveEcsApp(opts: LiveEcsAppOptions): Promise<LiveEcsA
   const web = await startWebApp((port) => ({
     DYNAMODB_TABLE: table,
     COMPUTE_PROVIDER: "ecs",
-    AWS_ENDPOINT_URL: aws.endpoint,
+    AWS_ENDPOINT_URL: sim.endpoint,
     AWS_REGION: sim.region,
     AWS_ACCESS_KEY_ID: sim.credentials.accessKeyId,
     AWS_SECRET_ACCESS_KEY: sim.credentials.secretAccessKey,

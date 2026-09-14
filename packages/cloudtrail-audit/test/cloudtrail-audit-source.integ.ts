@@ -9,14 +9,15 @@ import { CloudTrailAuditSource } from "../src/cloudtrail-audit-source";
 const HARNESS_AWS_REGION = "us-east-1";
 
 // Point the AWS SDK at the sockerless AWS simulator (Tier-2 harness, from source).
-process.env.AWS_ENDPOINT_URL ??= aws.endpoint;
+// The clients use the endpoint the run was given; `aws.endpoint` is only the default.
+const AWS_ENDPOINT = (process.env.AWS_ENDPOINT_URL ??= aws.endpoint);
 process.env.AWS_REGION ??= HARNESS_AWS_REGION;
 process.env.AWS_ACCESS_KEY_ID ??= "test";
 process.env.AWS_SECRET_ACCESS_KEY ??= "test";
 
 const SIM = {
   region: HARNESS_AWS_REGION,
-  endpoint: aws.endpoint,
+  endpoint: AWS_ENDPOINT,
   credentials: { accessKeyId: "test", secretAccessKey: "test" },
 };
 
