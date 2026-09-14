@@ -302,6 +302,25 @@ export interface WorkspaceSnapshotView {
 }
 
 /** The string-shaped persistence record (the DynamoDB boundary). */
+/** A session as stored. DynamoDB (through ElectroDB) has no null, so a session
+ * with nothing to resume is stored without `resumeCommand`; toWorkspace reads
+ * the absence back as null. */
+interface StoredAgentSession {
+  name: string;
+  cwd: string;
+  command: string;
+  resumeCommand?: string;
+  createdAt: string;
+  lastSeenAt: string;
+  status: AgentSession["status"];
+  live: boolean;
+}
+
+function toStoredSession(s: AgentSession): StoredAgentSession {
+  const { resumeCommand, ...rest } = s;
+  return resumeCommand === null ? rest : { ...rest, resumeCommand };
+}
+
 interface WorkspaceRecord {
   id: string;
   ownerId: string;
@@ -337,6 +356,8 @@ interface WorkspaceRecord {
   placementReason?: string;
   placementAttempts?: number;
   placementRetryAt?: string;
+  sessions?: StoredAgentSession[];
+  sessionsAt?: string;
   version: number;
 }
 
@@ -405,6 +426,11 @@ function toWorkspace(r: WorkspaceRecord): Workspace {
     placementReason: r.placementReason,
     placementAttempts: r.placementAttempts,
     placementRetryAt: r.placementRetryAt === undefined ? undefined : isoTimestamp(r.placementRetryAt),
+    sessions:
+      r.sessions === undefined
+        ? undefined
+        : r.sessions.map((s) => ({ ...s, resumeCommand: s.resumeCommand ?? null })),
+    sessionsAt: r.sessionsAt === undefined ? undefined : isoTimestamp(r.sessionsAt),
     diskUsedBytes: r.diskUsedBytes,
     diskTotalBytes: r.diskTotalBytes,
     terminatedAt: r.terminatedAt === undefined ? undefined : isoTimestamp(r.terminatedAt),
@@ -571,7 +597,7 @@ export class WorkspaceService {
   ): Promise<Result<WorkspaceDto, DomainError>> {
     const found = await this.find(id);
     if (found === null) return err(notFoundError("workspace", id));
-    const { ws, version } = found;
+    const { ws } = found;
     if (ws.state !== "provisioning" || ws.taskId !== undefined) {
       // Already launched / already converged elsewhere — idempotent success.
       return ok(toWorkspaceDto(ws));
@@ -591,12 +617,29 @@ export class WorkspaceService {
       return this.recordLaunchFailure(id, `could not launch workspace task: ${asMessage(e)}`);
     }
     const at = isoTimestamp(this.deps.clock.now());
-    const bound = markProvisioned(ws, task.volumeId, task.id, at, task.sshHost);
+    // Bind the task to the record as it is NOW, not as it was before a launch
+    // that can take minutes: the workspace's own agent reports into the record
+    // while it boots, so the pre-launch version is routinely stale by the time
+    // the task is ready, and committing against it stopped a healthy launch. A
+    // record that moved elsewhere meanwhile (deleted, failed, already bound) is
+    // still a conflict, and the fresh task is stopped.
+    const current = await this.find(id);
+    if (current?.ws.state !== "provisioning" || current.ws.taskId !== undefined) {
+      try {
+        await this.deps.compute.stopTask(task.id);
+      } catch {
+        /* reaper backstop reaps the leaked task by its workspace tag */
+      }
+      return current === null
+        ? err(notFoundError("workspace", id))
+        : err(conflictError(`launch of ${id} lost a concurrent update (now ${current.ws.state})`));
+    }
+    const bound = markProvisioned(current.ws, task.volumeId, task.id, at, task.sshHost);
     if (!bound.ok) return bound;
     try {
-      await this.persistTransition(bound.value, version);
+      await this.persistTransition(bound.value, current.version);
     } catch (e) {
-      // The record moved while we launched (most likely a delete): stop the
+      // The record moved between that read and this write (most likely a delete): stop the
       // fresh task so nothing real leaks; the reaper is the backstop.
       try {
         await this.deps.compute.stopTask(task.id);
@@ -1527,10 +1570,18 @@ export class WorkspaceService {
       if (!found.ok) return found;
       const at = isoTimestamp(this.deps.clock.now());
       let ws = found.value.ws;
-      if (ws.state !== "running" && ws.state !== "idle") {
+      // A workspace still `provisioning` is booting under a launch that has not
+      // committed yet, and its agent is already up and reporting. The reports are
+      // facts about the desktop, not lifecycle transitions, so they are kept:
+      // refusing them lost the agent's first report after every launch, and the
+      // workspace then read as not ready for a whole heartbeat interval after it
+      // reached `running`. Activity is not recorded — provisioning has no idle
+      // window to refresh.
+      const provisioning = ws.state === "provisioning";
+      if (!provisioning && ws.state !== "running" && ws.state !== "idle") {
         return err(conflictError(`cannot heartbeat ${id}: workspace is ${ws.state}`));
       }
-      if (report?.active !== false) {
+      if (!provisioning && report?.active !== false) {
         const active = markActivity(ws, at);
         if (!active.ok) return active;
         ws = active.value;
@@ -2381,7 +2432,14 @@ export class WorkspaceService {
     ] as const;
     const cleared = clearable.filter((field) => detail[field] === undefined);
     const { id, ...fields } = detail;
-    const next = { ...fields, version: observedVersion + 1 };
+    const next = {
+      ...fields,
+      // DynamoDB has no null: a session with nothing to resume is stored without
+      // the attribute (a null there failed ElectroDB's validation and turned every
+      // heartbeat from a workspace with an open plain terminal into a 500).
+      ...(ws.sessions === undefined ? {} : { sessions: ws.sessions.map(toStoredSession) }),
+      version: observedVersion + 1,
+    };
 
     const auditItem = audit === undefined ? undefined : this.auditItem(audit);
     if (auditItem === undefined) {

@@ -246,6 +246,11 @@ export function markStopped(
     // Sharing never outlives the live session it exposed.
     shareEnabled: undefined,
     shareEnabledAt: undefined,
+    // Nor does the agent's functional report outlive the desktop it described:
+    // kept, it made a woken workspace read "ok" before its container existed.
+    functional: undefined,
+    functionalDetail: undefined,
+    functionalAt: undefined,
     ...noPlacementWait,
   }));
 }

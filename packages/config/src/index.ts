@@ -87,9 +87,6 @@ export const DEFAULT_WORKSPACE_TERMINAL_PORT = 3001;
  * ever colliding with an opencode path.
  */
 export const WORKSPACE_TERMINAL_OVERLAY_SEGMENT = "__edd_term";
-/** How often the idle-agent POSTs /heartbeat (seconds). 2 minutes: fires within
- * every 5-minute reconciler window; 15× within the 30-minute idle threshold. */
-export const DEFAULT_HEARTBEAT_INTERVAL_S = 120;
 
 const DYNAMODB_HOST = "127.0.0.1";
 // The sockerless sim serves DynamoDB on the same unified endpoint as the rest of the

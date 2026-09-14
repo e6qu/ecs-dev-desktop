@@ -457,3 +457,25 @@ describe("waiting for capacity (a launch refused placement)", () => {
     expect(rolledBack.value.placementRetryAt).toBeUndefined();
   });
 });
+
+describe("stopping ends the functional report", () => {
+  it("clears functional, its detail and its time, so a woken workspace is not read as ready early", () => {
+    const at = isoTimestamp("2026-09-14T10:00:00.000Z");
+    const running = provision({
+      id: workspaceId("ws-stop-functional"),
+      ownerId: ownerId("o"),
+      baseImage: baseImage("golden/node:20"),
+      volumeId: volumeId("vol-1"),
+      taskId: taskId("task-1"),
+      at,
+    });
+    const reported = recordFunctional(running, { ide: true, workspace: true }, at);
+    expect(reported.functional).toBe("ok");
+    const stopped = markStopped(reported, undefined, at);
+    expect(stopped.ok).toBe(true);
+    if (!stopped.ok) return;
+    expect(stopped.value.functional).toBeUndefined();
+    expect(stopped.value.functionalDetail).toBeUndefined();
+    expect(stopped.value.functionalAt).toBeUndefined();
+  });
+});

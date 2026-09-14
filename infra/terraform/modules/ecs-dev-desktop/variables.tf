@@ -651,9 +651,9 @@ variable "provisioning_timeout_ms" {
 }
 
 variable "heartbeat_interval_s" {
-  description = "Idle-agent heartbeat interval (seconds) injected into workspace tasks. The agent posts to the control plane at this cadence; the idle threshold is measured from the last heartbeat. Default: 5 min."
+  description = "Idle-agent heartbeat interval (seconds) injected into workspace tasks. The agent posts its activity and functional reports at this cadence, and the idle threshold is measured from the last beat, so the interval must fit at least twice inside idle_threshold_ms (checked at plan). Default: 2 min."
   type        = number
-  default     = 300
+  default     = 120
 }
 
 variable "log_retention_days" {

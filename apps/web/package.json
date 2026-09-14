@@ -47,7 +47,7 @@
     "react-dom": "^19.3.0",
     "ssh2": "^1.17.0",
     "ws": "^8.21.3",
-    "zod": "^4.6.2"
+    "zod": "^4.6.4"
   },
   "devDependencies": {
     "@aws-sdk/client-cloudtrail": "^3.1131.0",
