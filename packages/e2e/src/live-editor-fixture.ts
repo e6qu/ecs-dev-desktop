@@ -67,7 +67,38 @@ async function waitForWorkspaceState(
   }
 }
 
-/** Create a workspace through the real HTTP API and assert it reached `running`. */
+/**
+ * Poll until the running workspace's agent reports the desktop USABLE
+ * (`functional: ok`), the way the deployment gate and the status page judge
+ * readiness — `running` only says the task is up. A mode whose agent probe
+ * cannot see its own desktop stays `degraded` here and fails the flow, which is
+ * how the terminal/monaco/opencode modes reporting "IDE unreachable" after the
+ * editor manager landed would have been caught before a deployment was.
+ */
+async function waitForFunctionallyReady(
+  app: LiveEcsApp,
+  owner: string,
+  id: string,
+): Promise<WorkspaceDto> {
+  const deadline = Date.now() + 180_000;
+  for (;;) {
+    const res = await fetch(`${app.web.baseUrl}/api/workspaces/${id}`, {
+      headers: devHeaders(owner, "developer"),
+    });
+    expect(res.status).toBe(200);
+    const ws = workspace.parse(await res.json());
+    if (ws.state === "running" && ws.functional === "ok") return ws;
+    if (Date.now() > deadline) {
+      throw new Error(
+        `workspace ${id} never became functionally ready (state ${ws.state}, functional ${ws.functional ?? "unreported"}: ${ws.functionalDetail ?? ""})`,
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+}
+
+/** Create a workspace through the real HTTP API and assert it reached `running`
+ * AND its agent reported the desktop usable. */
 export async function createRunningWorkspace(
   app: LiveEcsApp,
   owner: string,
@@ -80,5 +111,6 @@ export async function createRunningWorkspace(
   expect(created.status).toBe(201);
   const ws = workspace.parse(await created.json());
   expect(["provisioning", "running"]).toContain(ws.state);
-  return ws.state === "running" ? ws : waitForWorkspaceState(app, owner, ws.id, "running");
+  if (ws.state !== "running") await waitForWorkspaceState(app, owner, ws.id, "running");
+  return waitForFunctionallyReady(app, owner, ws.id);
 }

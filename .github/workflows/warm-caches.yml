@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# Why this exists: the CI workflow runs only on pull requests, and GitHub lets a
+# pull request restore caches only from its own branch and from its base branch.
+# Nothing ever ran on main, so nothing ever SAVED a cache there, and every new
+# branch started cold — its first `terraform init` downloaded every provider
+# from releases.hashicorp.com, which is where a dropped download failed two
+# terraform-sim slices on 2026-09-13. This warms the Terraform plugin cache on
+# main under the exact key CI restores, so a branch that changed no lock file
+# never downloads a provider at all.
+name: warm-caches
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "**/.terraform.lock.hcl"
+      - ".github/workflows/warm-caches.yml"
+      - "scripts/terraform-init.sh"
+  # The cache expires after seven days without a hit; a weekly warm keeps a
+  # quiet repository's next branch warm too.
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/.terraform-plugin-cache
+
+jobs:
+  terraform-providers:
+    name: terraform providers
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: hashicorp/setup-terraform@v4.0.1
+        with:
+          terraform_wrapper: false
+      - uses: actions/cache@v6.1.0
+        with:
+          path: .terraform-plugin-cache
+          key: tf-plugin-cache-${{ runner.os }}-${{ hashFiles('**/.terraform.lock.hcl') }}
+          restore-keys: tf-plugin-cache-${{ runner.os }}-
+      # Every directory CI inits: the platform module, the complete example and
+      # the sim-backed test. Init fills the plugin cache from their lock files.
+      - name: Fill the plugin cache from every lock file CI uses
+        run: |
+          for dir in infra/terraform/modules/ecs-dev-desktop infra/terraform/examples/complete infra/terraform/modules/ecs-dev-desktop/tests/sim; do
+            scripts/terraform-init.sh "$dir" -backend=false
+          done
+          du -sh "$TF_PLUGIN_CACHE_DIR"

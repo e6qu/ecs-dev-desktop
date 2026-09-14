@@ -38,7 +38,7 @@ if command -v terraform >/dev/null 2>&1; then
     cd -- infra/terraform || exit 1
     init_log=$(mktemp "${TMPDIR:-/tmp}/edd-terraform-init.XXXXXX")
     trap 'rm -f "$init_log"' EXIT HUP INT TERM
-    if ! terraform init -backend=false -upgrade -input=false -no-color >"$init_log" 2>&1; then
+    if ! "$repo_root/scripts/terraform-init.sh" . -backend=false -upgrade -no-color >"$init_log" 2>&1; then
       cat "$init_log"
       exit 1
     fi

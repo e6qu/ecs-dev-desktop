@@ -31,6 +31,8 @@ import {
   DEFAULT_STOP_GRACE_MS,
   undeleteWorkspace,
   recordFunctional,
+  recordSessions,
+  type AgentSession,
   markWaking,
   METRIC_SECURITY_PRIVILEGE_ATTEMPT,
   METRIC_WORKSPACE_WAKE_LATENCY_MS,
@@ -1517,6 +1519,7 @@ export class WorkspaceService {
         disk?: { usedBytes: number; totalBytes: number };
       };
       active?: boolean;
+      sessions?: readonly AgentSession[];
     },
   ): Promise<Result<WorkspaceDto, DomainError>> {
     for (let attempt = 0; ; attempt++) {
@@ -1534,8 +1537,9 @@ export class WorkspaceService {
       }
       // Fold in the in-workspace agent's functional self-report (IDE reachable +
       // workspace writable), so the admin sees whether the desktop is actually usable.
-      const next =
+      let next =
         report?.functional === undefined ? ws : recordFunctional(ws, report.functional, at);
+      if (report?.sessions !== undefined) next = recordSessions(next, report.sessions, at);
       try {
         await this.persistTransition(next, found.value.version);
       } catch (e) {

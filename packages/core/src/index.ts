@@ -156,6 +156,7 @@ export {
 export type {
   DesiredState,
   FunctionalStatus,
+  AgentSession,
   ProvisionParams,
   Workspace,
   WorkspaceOwnerRole,
@@ -184,6 +185,7 @@ export {
   provision,
   markTaskLost,
   recordFunctional,
+  recordSessions,
   recordSnapshot,
   restoreToSnapshot,
 } from "./domain/workspace";

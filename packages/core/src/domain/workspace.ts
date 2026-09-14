@@ -96,6 +96,11 @@ export interface Workspace {
   /** Home-volume usage from the same self-report (bytes), when the agent measured it. */
   readonly diskUsedBytes?: number;
   readonly diskTotalBytes?: number;
+  /** Agent sessions the workspace last reported (edd-session registry), kept
+   * here so they are readable while the workspace is stopped or scaled to zero —
+   * the moment a user most wants to know what is waiting for them. */
+  readonly sessions?: readonly AgentSession[];
+  readonly sessionsAt?: IsoTimestamp;
   /** When a manual stop was requested (state became `stopping`) — the converge
    * finishes the stop after a short grace unless the user cancels first. */
   readonly stopRequestedAt?: IsoTimestamp;
@@ -176,25 +181,9 @@ export function reserve(
 }
 
 export function provision(params: ProvisionParams): Workspace {
-  const resources = assertValidWorkspaceResources(
-    params.resources ?? defaultResourcesForEditor(params.editor ?? DEFAULT_EDITOR),
-  );
   return {
-    id: params.id,
-    ownerId: params.ownerId,
-    ownerEmail: params.ownerEmail,
-    ownerRole: params.ownerRole,
-    repoUrl: params.repoUrl,
-    baseImage: params.baseImage,
-    editor: params.editor ?? DEFAULT_EDITOR,
-    resources,
-    snapshotIntervalMs: params.snapshotIntervalMs,
-    idleStopMs: params.idleStopMs,
-    alwaysOn: params.alwaysOn,
+    ...reserve(params),
     state: "running",
-    desiredState: "present",
-    createdAt: params.at,
-    lastActivity: params.at,
     volumeId: params.volumeId,
     taskId: params.taskId,
     sshHost: params.sshHost,
@@ -537,7 +526,7 @@ export function recordFunctional(
   at: IsoTimestamp,
 ): Workspace {
   const failures: string[] = [];
-  if (!probes.ide) failures.push("IDE unreachable on :3000");
+  if (!probes.ide) failures.push("IDE unreachable (the desktop's HTTP surface did not answer the agent's probe)");
   if (!probes.workspace) failures.push("workspace not writable");
   return {
     ...ws,
@@ -550,6 +539,28 @@ export function recordFunctional(
       ? {}
       : { diskUsedBytes: probes.disk.usedBytes, diskTotalBytes: probes.disk.totalBytes }),
   };
+}
+
+export interface AgentSession {
+  readonly name: string;
+  readonly cwd: string;
+  readonly command: string;
+  readonly resumeCommand: string | null;
+  readonly createdAt: string;
+  readonly lastSeenAt: string;
+  readonly status: "running" | "stopped" | "restored";
+  readonly live: boolean;
+}
+
+/** Fold the workspace's reported agent-session registry onto the record. The
+ * report replaces the previous list wholesale: the registry is the source of
+ * truth and a session absent from it no longer exists. */
+export function recordSessions(
+  ws: Workspace,
+  sessions: readonly AgentSession[],
+  at: IsoTimestamp,
+): Workspace {
+  return { ...ws, sessions: [...sessions], sessionsAt: at };
 }
 
 /** Ok if the workspace may be terminated; a conflict domain error otherwise. */

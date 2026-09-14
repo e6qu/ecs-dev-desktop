@@ -8,6 +8,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { TESTID } from "../lib/testids";
 import { usePoll } from "../lib/usePoll";
+import { AgentSessions } from "./AgentSessions";
 import { StatusBadge } from "./StatusBadge";
 import { WorkspaceActions } from "./WorkspaceActions";
 import { WorkspaceSnapshots } from "./WorkspaceSnapshots";
@@ -382,6 +383,13 @@ export function WorkspaceLive({ id }: { id: string }) {
           </p>
         )}
       </section>
+
+      <AgentSessions
+        sessions={ws.sessions}
+        reportedAt={ws.sessionsAt}
+        workspaceState={ws.state}
+        resume={ws.state === "stopped" && !resuming ? resume : undefined}
+      />
 
       <WorkspaceSnapshots id={ws.id} state={ws.state} />
 
