@@ -47,13 +47,25 @@ export class HealthService {
 
   async report(): Promise<HealthReport> {
     const now = isoTimestamp(this.deps.clock.now());
+    // The checks are independent, so they run at once. Awaited one after another
+    // their round-trips added up: this report feeds GET /api/observations, which
+    // Shauth's monitoring abandons after five seconds, and on 2026-09-14 the
+    // observation took 5.8 s and failed the Scaleway post-apply gate. The order of
+    // the components is unchanged.
+    const [database, compute, storage, reconciler, git] = await Promise.all([
+      this.deps.pingDatabase(),
+      providerHealth("compute", this.deps.compute),
+      providerHealth("storage", this.deps.storage),
+      this.reconcilerHealth(now),
+      this.deps.gitIntegration === undefined ? undefined : this.deps.gitIntegration(),
+    ]);
     const components: ComponentHealth[] = [
       { component: "control-plane", status: "ok", detail: "API responding" },
-      await this.deps.pingDatabase(),
-      await providerHealth("compute", this.deps.compute),
-      await providerHealth("storage", this.deps.storage),
-      await this.reconcilerHealth(now),
-      ...(this.deps.gitIntegration === undefined ? [] : [await this.deps.gitIntegration()]),
+      database,
+      compute,
+      storage,
+      reconciler,
+      ...(git === undefined ? [] : [git]),
     ];
     return summarizeHealth(components, now);
   }
