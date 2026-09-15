@@ -189,6 +189,12 @@ resource "aws_ecs_service" "ssh_gateway" {
     container_port   = local.workspace_ssh_port
   }
 
+  # The NLB's TCP check marks a target unhealthy after two failures ten seconds
+  # apart, sooner than a Fargate task gets its process listening; without a grace
+  # period the scheduler replaces a gateway that is still starting (see the
+  # control-plane service in ecs.tf).
+  health_check_grace_period_seconds = 60
+
   deployment_minimum_healthy_percent = 100
   deployment_maximum_percent         = 200
 
