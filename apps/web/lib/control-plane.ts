@@ -68,6 +68,25 @@ let ownerCounts: ReturnType<typeof makeOwnerWorkspaceCountEntity> | undefined;
 let controlPlaneActivity: ControlPlaneActivityService | undefined;
 let trafficFilter: TrafficFilterService | undefined;
 let costRollups: StoredCostRollupStore | undefined;
+// AWS clients and the adapters that wrap them are built once per process. Built
+// per call, every Health board, Infrastructure view, readiness probe and
+// monitoring observation resolved credentials again and opened new connections
+// to each service before doing any work: the observation Shauth polls with a
+// five-second budget built a DynamoDB, an EC2 and an ECS client on every poll.
+let sharedDynamo: ReturnType<typeof createDynamoClient> | undefined;
+let realProviders: { storage: Ec2StorageProvider; compute: EcsComputeProvider } | undefined;
+let fakeProviders: Promise<{ storage: FakeStorageProvider; compute: FakeComputeProvider }> | undefined;
+let healthService: Promise<HealthService> | undefined;
+let infrastructureService: Promise<InfrastructureService> | undefined;
+let auditSource: CloudTrailAuditSource | DerivedAuditSource | undefined;
+let metricReader: CloudWatchMetricReader | null | undefined;
+let logSource: CloudWatchLogSource | DerivedLogSource | undefined;
+
+/** The process's shared DynamoDB client for the read-side services built below. */
+function dynamo(): ReturnType<typeof createDynamoClient> {
+  sharedDynamo ??= createDynamoClient();
+  return sharedDynamo;
+}
 
 /** The shared `auditEvent` entity over the single table. `WorkspaceService`
  * writes lifecycle events to it atomically with each transition; the audit log
@@ -251,43 +270,52 @@ async function activeProviders(): Promise<{
 }> {
   if (useRealProviders()) return buildRealProviders();
   assertFakeProvidersAllowed();
-  const storage = await FakeStorageProvider.create();
-  return { storage, compute: new FakeComputeProvider(storage) };
+  fakeProviders ??= (async () => {
+    const storage = await FakeStorageProvider.create();
+    return { storage, compute: new FakeComputeProvider(storage) };
+  })();
+  return fakeProviders;
 }
 
-export async function getHealthService(): Promise<HealthService> {
-  const client = createDynamoClient();
-  const table = tableName();
-  const { storage, compute } = await activeProviders();
-  return new HealthService({
-    storage,
-    compute,
-    pingDatabase: () => pingTable(client, table),
-    reconcilerHeartbeat: reconcilerHeartbeatReader(client, table),
-    gitIntegration: gitIntegrationHealth,
-    clock: systemClock,
-  });
+export function getHealthService(): Promise<HealthService> {
+  healthService ??= (async () => {
+    const client = dynamo();
+    const table = tableName();
+    const { storage, compute } = await activeProviders();
+    return new HealthService({
+      storage,
+      compute,
+      pingDatabase: () => pingTable(client, table),
+      reconcilerHeartbeat: reconcilerHeartbeatReader(client, table),
+      gitIntegration: gitIntegrationHealth,
+      clock: systemClock,
+    });
+  })();
+  return healthService;
 }
 
 /** Admin Infrastructure view: the Health board + live ECS cluster state + fleet
  * metrics + the component topology, sharing one compute backend. */
-export async function getInfrastructureService(): Promise<InfrastructureService> {
-  const client = createDynamoClient();
-  const table = tableName();
-  const { storage, compute } = await activeProviders();
-  const health = new HealthService({
-    storage,
-    compute,
-    pingDatabase: () => pingTable(client, table),
-    reconcilerHeartbeat: reconcilerHeartbeatReader(client, table),
-    clock: systemClock,
-  });
-  const cp = await getControlPlane();
-  return new InfrastructureService({
-    health,
-    compute,
-    listWorkspaceStates: async () => (await cp.list()).map((w) => w.state),
-  });
+export function getInfrastructureService(): Promise<InfrastructureService> {
+  infrastructureService ??= (async () => {
+    const client = dynamo();
+    const table = tableName();
+    const { storage, compute } = await activeProviders();
+    const health = new HealthService({
+      storage,
+      compute,
+      pingDatabase: () => pingTable(client, table),
+      reconcilerHeartbeat: reconcilerHeartbeatReader(client, table),
+      clock: systemClock,
+    });
+    const cp = await getControlPlane();
+    return new InfrastructureService({
+      health,
+      compute,
+      listWorkspaceStates: async () => (await cp.list()).map((w) => w.state),
+    });
+  })();
+  return infrastructureService;
 }
 
 /**
@@ -321,35 +349,40 @@ export async function getConfigSyncReport(): Promise<ConfigSyncReport> {
  * killed. Returns the table's `ComponentHealth` for the route to map to 200/503.
  */
 export async function checkReadiness(): Promise<ComponentHealth> {
-  return pingTable(createDynamoClient(), tableName());
+  return pingTable(dynamo(), tableName());
 }
 
 /** Admin audit feed: CloudTrail on AWS; derived from state locally. */
 export function getAuditSource(): CloudTrailAuditSource | DerivedAuditSource {
-  if (process.env.AUDIT_PROVIDER === "cloudtrail") {
-    return CloudTrailAuditSource.fromEnv();
-  }
-  return new DerivedAuditSource({
-    workspaces: makeWorkspaceEntity(createDynamoClient(), tableName()),
-  });
+  auditSource ??=
+    process.env.AUDIT_PROVIDER === "cloudtrail"
+      ? CloudTrailAuditSource.fromEnv()
+      : new DerivedAuditSource({ workspaces: makeWorkspaceEntity(dynamo(), tableName()) });
+  return auditSource;
 }
 
 /** Per-workspace utilization/IOPS series: CloudWatch on AWS; null locally (the
  * monitoring view then shows an explicit "streams from CloudWatch on AWS" note,
  * mirroring the log source's behavior — §6.5, no silent empty). */
 export function getMetricReader(): CloudWatchMetricReader | null {
-  return process.env.LOG_PROVIDER === "cloudwatch" ? CloudWatchMetricReader.fromEnv() : null;
+  if (metricReader === undefined) {
+    metricReader = process.env.LOG_PROVIDER === "cloudwatch" ? CloudWatchMetricReader.fromEnv() : null;
+  }
+  return metricReader;
 }
 
 /** Admin log streams: CloudWatch on AWS; derived from state locally. */
 export function getLogSource(): CloudWatchLogSource | DerivedLogSource {
+  if (logSource !== undefined) return logSource;
   if (process.env.LOG_PROVIDER === "cloudwatch") {
     const appName = process.env.EDD_APP_NAME;
     if (appName === undefined || appName.length === 0)
       throw new Error("EDD_APP_NAME is required when LOG_PROVIDER=cloudwatch");
-    return CloudWatchLogSource.fromEnv(appName);
+    logSource = CloudWatchLogSource.fromEnv(appName);
+  } else {
+    logSource = new DerivedLogSource({ audit: getAuditSource() });
   }
-  return new DerivedLogSource({ audit: getAuditSource() });
+  return logSource;
 }
 
 export function realProviderSecrets(env: Record<string, string | undefined>): {
@@ -368,10 +401,14 @@ export function realProviderSecrets(env: Record<string, string | undefined>): {
 }
 
 function buildRealProviders(): { storage: Ec2StorageProvider; compute: EcsComputeProvider } {
-  const { agentSecret, connectionSecret } = realProviderSecrets(process.env);
-  const storage = Ec2StorageProvider.fromEnv();
-  const compute = EcsComputeProvider.fromEnv(agentSecret, connectionSecret);
-  return { storage, compute };
+  if (realProviders === undefined) {
+    const { agentSecret, connectionSecret } = realProviderSecrets(process.env);
+    realProviders = {
+      storage: Ec2StorageProvider.fromEnv(),
+      compute: EcsComputeProvider.fromEnv(agentSecret, connectionSecret),
+    };
+  }
+  return realProviders;
 }
 
 /** The real EBS/ECS adapters are selected by `COMPUTE_PROVIDER=ecs`. */
