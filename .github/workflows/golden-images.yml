@@ -31,55 +31,83 @@ permissions:
   packages: write
 
 jobs:
-  validate:
-    name: validate golden images
+  # Pull-request validation builds the shared base once and each language variant in
+  # its own job, the same split the publish jobs below use so every unit has its own
+  # 15-minute cap. One job built the base and all five variants in sequence: a cold
+  # base took 4.3 minutes and the variants never had a cache at all, so a branch's
+  # first run -- ecs-dev-desktop #288 on 2026-09-15 -- was cancelled at 15 minutes
+  # still compiling cargo-audit in the fifth variant.
+  #
+  # The cache scopes are the ones scripts/publish-images.sh uses on main for amd64
+  # (image and architecture, no tag), and a pull request may restore its base
+  # branch's caches, so a new branch starts from main's layers instead of cold.
+  validate-base:
+    name: validate golden base
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      FIXTURE: ghcr.io/${{ github.repository_owner }}/edd-ci-golden-base
+      BASE_CACHE_SCOPE: ghcr.io-${{ github.repository_owner }}-edd-edd-base-amd64
+      NOT_A_RELEASE: "Ephemeral CI fixture for golden-image validation. NOT a release image -- do not pull or deploy; rebuilt from PR code every run."
+    steps:
+      - uses: actions/checkout@v6.0.2
+      # build.sh stages the first-party Monaco editor (@edd/editor-monaco) into the
+      # base context before it builds.
+      - uses: ./.github/actions/pnpm-install
+      - uses: docker/setup-buildx-action@v4.2.0
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      # The variants build FROM this exact run-scoped image in their own jobs, so it is
+      # pushed rather than loaded into this runner's image store.
+      - name: Build & push the golden base (CI fixture)
+        run: |
+          infra/images/base/build.sh "${FIXTURE}:ci-${{ github.run_id }}" --push \
+            --cache-from "type=gha,scope=${BASE_CACHE_SCOPE}" \
+            --cache-to "type=gha,mode=max,scope=${BASE_CACHE_SCOPE}" \
+            --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
+            --label "org.opencontainers.image.description=${NOT_A_RELEASE}"
+      - name: Retain only the newest 20 golden base fixture versions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OWNER: ${{ github.repository_owner }}
+          PACKAGE_NAME: edd-ci-golden-base
+        run: sh scripts/retain-ghcr-package-versions.sh "$OWNER" "$PACKAGE_NAME" 20
+
+  validate-variant:
+    name: validate golden variant (${{ matrix.variant }})
+    if: github.event_name == 'pull_request'
+    needs: validate-base
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [typescript, python, go, java, rust]
+    env:
+      FIXTURE: ghcr.io/${{ github.repository_owner }}/edd-ci-golden-base
+      VARIANT_CACHE_SCOPE: ghcr.io-${{ github.repository_owner }}-edd-golden-${{ matrix.variant }}-amd64
     steps:
       - uses: actions/checkout@v6.0.2
       - uses: ./.github/actions/pnpm-install
-      # A hosted runner starts with an empty Docker layer store, so without this the
-      # job rebuilt the base and all five variants from scratch every time: an apt
-      # install, an OpenVSCode download and a native node-pty compile, repeated in
-      # full for a one-line change. That took between 9 and 13 minutes depending on
-      # the runner and once ran past the 15-minute budget and was killed. Reusing
-      # the layers removes the repeated work rather than granting more time for it.
-      #
-      # build.sh already switches to `docker buildx build` when it is handed
-      # buildx-only flags, so passing the cache flags is all that is needed.
-      - uses: docker/setup-buildx-action@v3.11.1
-        with:
-          # Do NOT alias `docker build` to this builder. The variant builds below
-          # depend on `docker build` resolving `FROM edd-base:e2e` against the local
-          # image store, which the container driver cannot see. Stated rather than
-          # inherited from the action's default, because the whole variant loop
-          # breaks silently if it ever changes.
-          install: false
-      - name: Build base + language variants
+      - uses: docker/setup-buildx-action@v4.2.0
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+      # buildx pulls the base from the registry, so the variant build can use the GHA
+      # cache; --load puts the result where the smoke test runs it.
+      - name: Build the ${{ matrix.variant }} variant FROM the base fixture
         run: |
-          # build.sh stages the first-party Monaco editor (@edd/editor-monaco) into the base
-          # context before docker build; variants then build FROM the base unchanged.
-          # The base carries the expensive, unchanging work -- the apt install, the
-          # OpenVSCode download and the native node-pty compile -- so it is the one
-          # worth reusing across runs. `--load` puts the result in the local image
-          # store so the variants below can build FROM it.
-          infra/images/base/build.sh edd-base:e2e \
-            --load --cache-from type=gha,scope=golden-base --cache-to type=gha,mode=max,scope=golden-base
-          # Variants stay on plain `docker build`, which resolves `FROM edd-base:e2e`
-          # against the local image store. buildx's docker-container driver cannot:
-          # it runs the build in its own container with no view of that store, so a
-          # buildx variant build tries to PULL edd-base:e2e and fails with "pull
-          # access denied". build.sh carries the same warning for the same reason.
-          # Each variant is a toolchain install on top of a base that is already
-          # built, which is the cheap half of this job.
-          for v in typescript python go java rust; do
-            docker build --build-arg BASE=edd-base:e2e -t "edd-ws-${v}:e2e" "infra/images/${v}"
-          done
-          docker images --format '{{.Repository}}:{{.Tag}} {{.Size}}' | grep -E 'edd-base|edd-ws-'
-      # Each variant: its toolchain present, the shared base behaviour intact, and slim.
-      - name: Variant smoke tests
-        run: pnpm --filter @edd/e2e test:images
+          docker buildx build --load \
+            --build-arg "BASE=${FIXTURE}:ci-${{ github.run_id }}" \
+            --cache-from "type=gha,scope=${VARIANT_CACHE_SCOPE}" \
+            --cache-to "type=gha,mode=max,scope=${VARIANT_CACHE_SCOPE}" \
+            -t "edd-ws-${{ matrix.variant }}:e2e" \
+            "infra/images/${{ matrix.variant }}"
+      # The toolchain present, the shared base behaviour intact, and slim -- for this
+      # variant only. vitest is called directly: pnpm passes a `--` separator through,
+      # and vitest then ignored the name filter and ran every variant.
+      - name: ${{ matrix.variant }} variant smoke test
+        run: pnpm --filter @edd/e2e exec vitest run --config vitest.images.config.ts -t "${{ matrix.variant }} variant"
 
   prepare:
     name: prepare golden publication

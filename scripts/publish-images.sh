@@ -171,7 +171,12 @@ buildx_build() { # <arch> <full-tag> <dockerfile> <context> [extras...]
 
   set -- "$@" "--${buildx_output}"
   if [ "${EDD_BUILDX_CACHE:-}" = "gha" ]; then
-    scope=$(printf '%s' "$full" | tr '/:' '--')
+    # The scope names the image and architecture, never the tag. Derived from the
+    # full reference, it carried the commit tag, so every commit wrote a cache no
+    # later build ever read: each main-branch publish, and every pull request's
+    # golden-image validation, started cold. golden-images.yml's validation jobs
+    # use these same names so a pull request restores what main saved.
+    scope=$(printf '%s' "${full%:*}-${arch}" | tr '/:' '--')
     set -- "$@" \
       --cache-from "type=gha,scope=${scope}" \
       --cache-to "type=gha,scope=${scope},mode=max"
@@ -230,7 +235,8 @@ build_golden_arch() { # <arch>
     echo "edd: building golden base ${base_full}"
     set -- --platform "linux/${arch}" --provenance=false --sbom=false "--${buildx_output}"
     if [ "${EDD_BUILDX_CACHE:-}" = "gha" ]; then
-      scope=$(printf '%s' "$base_full" | tr '/:' '--')
+      # Image and architecture, not the tag -- see buildx_build.
+      scope=$(printf '%s' "${base_full%:*}-${arch}" | tr '/:' '--')
       set -- "$@" \
         --cache-from "type=gha,scope=${scope}" \
         --cache-to "type=gha,scope=${scope},mode=max"

@@ -38,7 +38,7 @@ RUN /opt/rust/cargo/bin/cargo install cargo-audit --version "${CARGO_AUDIT_VERSI
     && /opt/rust/cargo/bin/cargo audit --version
 
 # Rust VS Code language support into the built-in extensions dir (baked at build).
-RUN openvscode-server --install-extension rust-lang.rust-analyzer@0.3.3041 --extensions-dir /opt/openvscode-server/extensions \
+RUN openvscode-server --install-extension rust-lang.rust-analyzer@0.3.3049 --extensions-dir /opt/openvscode-server/extensions \
     && chmod -R a+rX /opt/openvscode-server/extensions
 
 # /opt/rust/cargo/bin isn't on the base PATH — overwrite the PATH drop-ins so login
