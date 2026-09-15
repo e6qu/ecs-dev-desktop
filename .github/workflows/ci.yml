@@ -581,6 +581,10 @@ jobs:
       # complete example below (which passes both providers).
       - name: Init the platform module (parse + provider constraints)
         run: scripts/terraform-init.sh infra/terraform/modules/ecs-dev-desktop -backend=false
+      # The module's own tests plan it against mocked providers. Nothing ran them,
+      # and they had failed since #263 made aws_endpoint_url required.
+      - name: Test the platform module (mocked providers)
+        run: terraform -chdir=infra/terraform/modules/ecs-dev-desktop test
       - name: Validate the complete example (validates the module transitively)
         run: |
           scripts/terraform-init.sh infra/terraform/examples/complete -backend=false
