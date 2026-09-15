@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+import type { Clock, ComputeProvider, StorageProvider } from "@edd/core";
 import {
   FakeComputeProvider,
   FakeStorageProvider,
@@ -49,5 +50,27 @@ describe("HealthService — reconciler health", () => {
       reconcilerHeartbeat: () => Promise.resolve({ lastRunAt: "2026-06-04T00:00:00.000Z" }),
     };
     expect(reconciler(await new HealthService(deps).report()).status).toBe("degraded");
+  });
+});
+
+describe("HealthService.report concurrency", () => {
+  it("starts every dependency check before any of them has answered", () => {
+    // Promise.race of nothing never settles: a check that never answers.
+    const pending = (): Promise<ComponentHealth> => Promise.race([]);
+    const calls: string[] = [];
+    const service = new HealthService({
+      pingDatabase: () => (calls.push("database"), pending()),
+      compute: { health: () => (calls.push("compute"), pending()) } as unknown as ComputeProvider,
+      storage: { health: () => (calls.push("storage"), pending()) } as unknown as StorageProvider,
+      reconcilerHeartbeat: () => (calls.push("reconciler"), Promise.race([])),
+      gitIntegration: () => (calls.push("git"), pending()),
+      clock: { now: () => new Date(0) } as unknown as Clock,
+    });
+
+    // None of the checks ever answers, so a report that awaited them one by one
+    // would have started only the first by the time it returns its promise.
+    void service.report();
+
+    expect(calls.sort()).toEqual(["compute", "database", "git", "reconciler", "storage"]);
   });
 });
