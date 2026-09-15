@@ -153,7 +153,7 @@ RUN curl -fsSL "https://github.com/google/google-java-format/releases/download/v
 # already baked the cross-cutting formatter/linter/GitHub ones + the AI agents).
 RUN for ext in \
       ms-python.debugpy@2026.6.0 ms-python.vscode-python-envs@1.20.1 ms-python.python@2026.4.0 detachhead.basedpyright@1.40.1 charliermarsh.ruff@2026.80.0 astral-sh.ty@2026.70.0 semgrep.semgrep@1.17.0 \
-      golang.go@0.56.1 redhat.java@1.56.0 rust-lang.rust-analyzer@0.3.3041 ms-playwright.playwright@1.1.19 ; do \
+      golang.go@0.56.1 redhat.java@1.56.0 rust-lang.rust-analyzer@0.3.3049 ms-playwright.playwright@1.1.19 ; do \
       openvscode-server --install-extension "$ext" --extensions-dir /opt/openvscode-server/extensions || exit 1 ; \
     done \
     && chmod -R a+rX /opt/openvscode-server/extensions
