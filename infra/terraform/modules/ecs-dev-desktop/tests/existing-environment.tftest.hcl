@@ -22,6 +22,12 @@ mock_provider "aws" {
   alias = "us_east_1"
 }
 
+# Every run plans the module, and the module requires aws_endpoint_url (#263). The
+# empty string is its documented value for AWS's own endpoints.
+variables {
+  aws_endpoint_url = ""
+}
+
 run "shared_environment_does_not_duplicate_network_or_cluster" {
   command = plan
 
@@ -77,6 +83,16 @@ run "shared_environment_does_not_duplicate_network_or_cluster" {
   assert {
     condition     = toset(aws_ecs_service.control_plane.network_configuration[0].subnets) == toset(["subnet-00000000000000003", "subnet-00000000000000004"])
     error_message = "control plane did not target the shared private subnets"
+  }
+
+  assert {
+    condition     = aws_ecs_service.control_plane.health_check_grace_period_seconds == 120
+    error_message = "the control plane service must give a starting task a health check grace period, or the load balancer's first failed checks replace it before it listens"
+  }
+
+  assert {
+    condition     = alltrue([for service in aws_ecs_service.ssh_gateway : service.health_check_grace_period_seconds == 60])
+    error_message = "the SSH gateway service must give a starting task a health check grace period"
   }
 }
 

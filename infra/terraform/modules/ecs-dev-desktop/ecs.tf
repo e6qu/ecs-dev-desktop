@@ -163,6 +163,17 @@ resource "aws_ecs_service" "control_plane" {
     container_port   = var.control_plane_port
   }
 
+  # The scheduler ignores the load balancer's verdict on a new task for this long.
+  # Without it, a task is replaced as soon as its target turns unhealthy — three
+  # failed /api/readyz checks ten seconds apart — and a cold control plane is not
+  # listening yet: on the 2026-09-15 Scaleway deploy it listened 25-26 s after
+  # starting, one task was replaced for "failed ELB health checks" before it could
+  # answer, and its replacement went the same way, leaving a surplus task to trim.
+  # Start plus two passing checks came to about a minute there; 120 s leaves
+  # room for a slower cold start, and the circuit breaker still catches a task
+  # that never becomes healthy.
+  health_check_grace_period_seconds = 120
+
   # Zero-downtime rolling deploys: never drop below desired capacity (100%) while
   # allowing up to double (200%) so new tasks come up and pass health checks
   # alongside the old ones before they're drained -- explicit rather than relying
