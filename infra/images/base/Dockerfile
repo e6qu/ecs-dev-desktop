@@ -92,7 +92,7 @@ RUN for ext in \
       dbaeumer.vscode-eslint@3.0.34 \
       github.vscode-pull-request-github@0.128.0 \
       github.vscode-github-actions@0.32.3 \
-      anthropic.claude-code@2.1.270 \
+      anthropic.claude-code@2.1.272 \
       openai.chatgpt@26.908.40401 ; do \
       openvscode-server --install-extension "$ext" --extensions-dir /opt/openvscode-server/extensions || exit 1 ; \
     done \
@@ -124,8 +124,8 @@ RUN cd /tmp/edd-ui-extension \
 ARG PRETTIER_VERSION=3.9.6
 ARG ESLINT_VERSION=10.10.0
 ARG KNIP_VERSION=6.35.1
-ARG JSCPD_VERSION=5.2.0
-ARG CLAUDE_CODE_VERSION=2.1.271
+ARG JSCPD_VERSION=5.2.1
+ARG CLAUDE_CODE_VERSION=2.1.272
 ARG CODEX_VERSION=0.154.0
 RUN npm install -g "prettier@${PRETTIER_VERSION}" "eslint@${ESLINT_VERSION}" "knip@${KNIP_VERSION}" "jscpd@${JSCPD_VERSION}" \
       "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" "@openai/codex@${CODEX_VERSION}" opencode-ai@1.17.15 \

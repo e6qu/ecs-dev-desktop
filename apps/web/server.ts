@@ -255,7 +255,15 @@ startLifecycleConvergeSweep();
 startImageSourceReconcileSweep();
 
 server.listen(port, bindHost);
-process.stdout.write(`edd control plane listening on http://${bindHost}:${String(port)}\n`);
+// process.uptime() attributes the start: everything before this line happened
+// inside this process (module loading, Next's own boot), and the gap between the
+// task's startedAt and this line's timestamp is everything outside it — image
+// start, and log delivery. On the 2026-09-15 Scaleway deploy the container's
+// first line appeared 23 s after the task started RUNNING, and nothing said
+// which side of this boundary spent them.
+process.stdout.write(
+  `edd control plane listening on http://${bindHost}:${String(port)} after ${process.uptime().toFixed(2)}s\n`,
+);
 
 // Boot/wake activity stamp. Control-plane scale-to-zero wakes this service by scaling
 // its ECS desired count up; the reconciler's idle sweep reads the PERSISTED activity

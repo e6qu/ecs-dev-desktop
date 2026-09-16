@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Next.js control-plane image: runs the production build via the custom server
-# (server.ts, launched with tsx) so the app serves the portal/admin/API AND the
-# in-app path-based `/w/<id>/` workspace editor proxy. The real EBS/ECS adapters
+# (server.ts, built to dist/server.js) so the app serves the portal/admin/API AND
+# the in-app path-based `/w/<id>/` workspace editor proxy. The real EBS/ECS adapters
 # target the sim by coordinates (COMPUTE_PROVIDER=ecs + AWS_ENDPOINT_URL). Build
 # context is the repo root; apps/web/Dockerfile.dockerignore keeps it lean.
 FROM node:22-bookworm-slim AS builder
@@ -64,7 +64,7 @@ COPY --from=builder --chown=node:node /repo /repo
 USER node
 WORKDIR /repo/apps/web
 # Port 3700 (not 3000 — which collides with countless local dev servers). Bind
-# 0.0.0.0 so it is reachable in-network. The custom server (server.ts, run via tsx)
+# 0.0.0.0 so it is reachable in-network. The custom server (built from server.ts)
 # serves the app AND the path-based `/w/<id>/` workspace editor proxy.
 EXPOSE 3700
 # Deploy provenance, baked at build so the running image self-reports which commit
@@ -74,4 +74,10 @@ ARG EDD_BUILD_SHA=""
 ARG EDD_BUILD_TIME=""
 ENV NODE_ENV=production PORT=3700 HOSTNAME=0.0.0.0 \
     EDD_BUILD_SHA=$EDD_BUILD_SHA EDD_BUILD_TIME=$EDD_BUILD_TIME
-CMD ["pnpm", "exec", "tsx", "server.ts"]
+# The built server (dist/server.js, bundled by `pnpm --filter @edd/web build`).
+# This used to be `pnpm exec tsx server.ts`, which resolved pnpm and transpiled
+# server.ts and its whole TypeScript import graph at every container start: on
+# the Scaleway stack the container logged nothing for 23 s before Next.js parsed
+# its config in 156 ms and listened 1.5 s later, while the reconciler — the same
+# image, half the CPU, prebuilt JS — was logging 7.4 s in.
+CMD ["node", "dist/server.js"]

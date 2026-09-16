@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "tsx watch server.ts",
-    "build": "next build",
-    "start": "NODE_ENV=production tsx server.ts",
+    "build": "next build && pnpm run build:server",
+    "start": "NODE_ENV=production node dist/server.js",
     "lint": "eslint .",
     "test": "vitest run",
     "test:integ": "vitest run --config vitest.integ.config.ts",
@@ -15,7 +15,8 @@
     "test:pw:live": "node scripts/run-playwright.mjs --config playwright.live.config.ts",
     "test:pw:live:provision": "tsx e2e/live-cloud-setup.ts",
     "test:pw:vscode": "node scripts/run-playwright.mjs --config playwright.vscode.config.ts",
-    "screenshot": "tsx scripts/screenshot-ui.ts"
+    "screenshot": "tsx scripts/screenshot-ui.ts",
+    "build:server": "esbuild server.ts --bundle --platform=node --target=node22 --format=esm --log-level=warning '--banner:js=import { createRequire } from \"module\"; const require = createRequire(import.meta.url);' --external:next --external:ssh2 --outfile=dist/server.js"
   },
   "dependencies": {
     "@aws-sdk/client-cloudwatch-logs": "^3.1132.0",
@@ -63,6 +64,7 @@
     "@types/react-dom": "^19.3.0",
     "@types/ssh2": "^1.15.6",
     "@types/ws": "^8.18.1",
+    "esbuild": "^0.28.2",
     "fast-check": "^4.10.0",
     "tsx": "^4.23.13"
   }

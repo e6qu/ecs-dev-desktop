@@ -59,7 +59,7 @@ export default defineConfig({
   // flow (stopping → stopped, driven by the sweep) failed here. A production build
   // first (server.ts calls next({dev:false}).prepare(), which needs `.next`).
   webServer: {
-    command: `unset NO_COLOR; pnpm exec next build && PORT=${PORT.toString()} NODE_ENV=production pnpm exec tsx server.ts`,
+    command: `unset NO_COLOR; pnpm run build && PORT=${PORT.toString()} NODE_ENV=production node dist/server.js`,
     url: `${BASE_URL}/login`,
     timeout: 240_000,
     reuseExistingServer: !IS_CI,
