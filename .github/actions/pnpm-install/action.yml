@@ -9,11 +9,20 @@ runs:
       with:
         node-version: 22
     - name: Enable Corepack
-      run: corepack enable
+      run: bash scripts/enable-pnpm.sh
       shell: bash
+    # An empty store path used to reach actions/cache as a missing `path`
+    # input, so a failed pnpm activation was reported as "Input required and
+    # not supplied: path" two steps later. It says what actually happened now.
     - name: Locate the pnpm store
       id: store
-      run: echo "dir=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+      run: |
+        dir=$(pnpm store path --silent)
+        if [ -z "$dir" ]; then
+          echo "pnpm store path printed nothing: pnpm is not usable in this job" >&2
+          exit 1
+        fi
+        echo "dir=$dir" >> "$GITHUB_OUTPUT"
       shell: bash
     # restore-keys is the point of this action, not the exact key. Every job used
     # to install from an empty store — "reused 0, downloaded 258" — which usually
