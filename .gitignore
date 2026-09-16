@@ -56,3 +56,6 @@ _site/
 infra/images/base/editor-monaco/
 # Terraform provider plugin cache (CI restores it; scripts/terraform-init.sh fills it)
 .terraform-plugin-cache/
+
+# Built custom server (apps/web/dist/server.js)
+apps/web/dist/

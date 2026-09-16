@@ -44,7 +44,10 @@ function freePort(): Promise<number> {
 
 /** Build `apps/web` if the production build is missing (CI prebuilds via `pnpm build`). */
 function ensureWebBuilt(): void {
-  if (existsSync(join(WEB_DIR, ".next", "BUILD_ID"))) return;
+  // Both halves of the build: Next's output and the bundled custom server the
+  // image runs. A tree with only one of them must rebuild.
+  if (existsSync(join(WEB_DIR, ".next", "BUILD_ID")) && existsSync(join(WEB_DIR, "dist", "server.js")))
+    return;
   const res = spawnSync("pnpm", ["--filter", "@edd/web", "build"], {
     cwd: REPO_ROOT,
     encoding: "utf8",
@@ -108,7 +111,9 @@ export async function startWebApp(
     ...env,
   });
   // The custom server (server.ts) serves the app AND the /w/<id>/ workspace proxy.
-  const child: ChildProcess = spawn(join(WEB_DIR, "node_modules", ".bin", "tsx"), ["server.ts"], {
+  // Run the artifact the image runs (dist/server.js), not TypeScript through a
+  // loader: the deployed start path is what these tests must exercise.
+  const child: ChildProcess = spawn(process.execPath, [join(WEB_DIR, "dist", "server.js")], {
     cwd: WEB_DIR,
     env: childEnv,
     stdio: ["ignore", "pipe", "pipe"],
