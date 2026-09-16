@@ -61,8 +61,15 @@ const port = Number(process.env.PORT ?? "3700");
 // env for local edge cases.
 const bindHost = process.env.EDD_BIND_HOST ?? "0.0.0.0";
 
+// Boot attribution. The listening line reports process.uptime(), which says how
+// long the whole start took but not where it went: on the Scaleway stack that
+// total was 5.77 s for a server whose bundle listens in 0.35 s on a developer
+// machine. These two marks split it into the module graph this file pulls in,
+// Next's own initialisation, and the rest.
+const importsReadyAt = process.uptime();
 const app = next({ dev, hostname: bindHost, port });
 await app.prepare();
+const prepareDoneAt = process.uptime();
 // Both handlers must be obtained AFTER prepare() — they touch the initialized server.
 const handleRequest = app.getRequestHandler();
 const handleUpgrade = app.getUpgradeHandler();
@@ -262,7 +269,9 @@ server.listen(port, bindHost);
 // first line appeared 23 s after the task started RUNNING, and nothing said
 // which side of this boundary spent them.
 process.stdout.write(
-  `edd control plane listening on http://${bindHost}:${String(port)} after ${process.uptime().toFixed(2)}s\n`,
+  `edd control plane listening on http://${bindHost}:${String(port)} after ${process.uptime().toFixed(2)}s ` +
+    `(imports ${importsReadyAt.toFixed(2)}s, next.prepare ${(prepareDoneAt - importsReadyAt).toFixed(2)}s, ` +
+    `rest ${(process.uptime() - prepareDoneAt).toFixed(2)}s)\n`,
 );
 
 // Boot/wake activity stamp. Control-plane scale-to-zero wakes this service by scaling
