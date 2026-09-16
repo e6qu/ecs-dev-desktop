@@ -71,7 +71,7 @@ RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile min
 
 # PINNED: unversioned `npm install -g` and the bun installer both track latest.
 ARG YARN_VERSION=1.22.22
-ARG PNPM_VERSION=12.4.1
+ARG PNPM_VERSION=12.4.2
 ARG BUN_VERSION=1.4.2
 # Node package managers: yarn + pnpm as real global binaries (disable corepack
 # first — its shims defer the download to first use, which fails in a no-egress
@@ -86,7 +86,7 @@ RUN export NPM_CONFIG_PREFIX=/usr/local \
 
 # Python project manager: uv (+ uvx).
 # PINNED: the versioned installer URL installs exactly this uv.
-ARG UV_VERSION=0.12.14
+ARG UV_VERSION=0.12.15
 RUN curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh \
     && uv --version
 

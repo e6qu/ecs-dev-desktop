@@ -16,7 +16,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 
 # Python project manager: uv (+ uvx) into /usr/local/bin (on the base PATH).
 # PINNED: the versioned installer URL installs exactly this uv.
-ARG UV_VERSION=0.12.14
+ARG UV_VERSION=0.12.15
 RUN curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh \
     && uv --version
 
