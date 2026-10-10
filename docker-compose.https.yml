@@ -57,7 +57,7 @@ services:
 
   # bleephub (GitHub sim) over TLS via its BPH_TLS_* env vars.
   bleephub:
-    image: ghcr.io/e6qu/bleephub@sha256:b8930d312075e07a034f6f7a04783b2282c91d201f14d8e65e0728f3bdcffe8f
+    image: ghcr.io/e6qu/bleephub@sha256:69ffe01331b0291eeca251ed3ed21d9116ac8391e91b5de56dfd9af061ab1d15
     environment:
       BPH_TLS_CERT: /tls/server.pem
       BPH_TLS_KEY: /tls/server-key.pem
