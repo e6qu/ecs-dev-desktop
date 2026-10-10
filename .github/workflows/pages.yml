@@ -36,7 +36,7 @@ jobs:
       - uses: actions/checkout@v6.0.2
       - uses: ./.github/actions/pnpm-install
       - name: Lint
-        run: pnpm --filter @edd/demo lint
+        run: pnpm exec oxlint apps/demo
       - name: Unit tests
         run: pnpm --filter @edd/demo test
       - name: Install Playwright browser
