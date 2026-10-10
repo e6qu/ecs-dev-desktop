@@ -19,6 +19,6 @@
   },
   "devDependencies": {
     "@aws-sdk/client-ecs": "^3.1148.0",
-    "@types/node": "^26.6.4"
+    "@types/node": "^26.6.5"
   }
 }

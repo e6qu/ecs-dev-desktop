@@ -19,7 +19,7 @@
   "devDependencies": {
     "@aws-sdk/client-cloudwatch-logs": "^3.1148.0",
     "@edd/config": "workspace:*",
-    "@types/node": "^26.6.4",
+    "@types/node": "^26.6.5",
     "fast-check": "^4.10.2"
   }
 }
