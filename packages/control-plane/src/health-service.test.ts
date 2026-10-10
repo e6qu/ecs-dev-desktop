@@ -55,15 +55,18 @@ describe("HealthService — reconciler health", () => {
 
 describe("HealthService.report concurrency", () => {
   it("starts every dependency check before any of them has answered", () => {
-    // Promise.race of nothing never settles: a check that never answers.
-    const pending = (): Promise<ComponentHealth> => Promise.race([]);
     const calls: string[] = [];
+    // Promise.race of nothing never settles: a check that never answers.
+    const neverAnswering = (name: string) => (): Promise<never> => {
+      calls.push(name);
+      return Promise.race([]);
+    };
     const service = new HealthService({
-      pingDatabase: () => (calls.push("database"), pending()),
-      compute: { health: () => (calls.push("compute"), pending()) } as unknown as ComputeProvider,
-      storage: { health: () => (calls.push("storage"), pending()) } as unknown as StorageProvider,
-      reconcilerHeartbeat: () => (calls.push("reconciler"), Promise.race([])),
-      gitIntegration: () => (calls.push("git"), pending()),
+      pingDatabase: neverAnswering("database"),
+      compute: { health: neverAnswering("compute") } as unknown as ComputeProvider,
+      storage: { health: neverAnswering("storage") } as unknown as StorageProvider,
+      reconcilerHeartbeat: neverAnswering("reconciler"),
+      gitIntegration: neverAnswering("git"),
       clock: { now: () => new Date(0) } as unknown as Clock,
     });
 

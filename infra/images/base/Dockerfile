@@ -92,10 +92,10 @@ RUN node /tmp/patch-openvscode.mjs && rm /tmp/patch-openvscode.mjs
 # install fails the build: the loop used to scroll past one and exit 0.
 RUN for ext in \
       esbenp.prettier-vscode@12.4.0 \
-      dbaeumer.vscode-eslint@3.0.34 \
+      oxc.oxc-vscode@1.63.0 \
       github.vscode-pull-request-github@0.128.0 \
       github.vscode-github-actions@0.32.3 \
-      anthropic.claude-code@2.1.295 \
+      anthropic.claude-code@2.1.296 \
       openai.chatgpt@26.908.40401 ; do \
       openvscode-server --install-extension "$ext" --extensions-dir /opt/openvscode-server/extensions || exit 1 ; \
     done \
@@ -119,20 +119,22 @@ RUN cd /tmp/edd-ui-extension \
 
 # Cross-cutting CLIs (installed system-wide to /usr/local BEFORE the home npm prefix
 # is set below, so they land in /usr/local — on PATH for every shell): the JS/TS
-# lint/format/dead-code/CPD tools that match this repo's own CI (prettier, eslint,
-# knip, jscpd), and the AI coding agent CLIs (Claude Code, Codex, opencode) — every variant
+# lint/format/dead-code/CPD tools that match this repo's own CI (prettier, oxlint
+# with its type-aware tsgolint backend, knip, jscpd), and the AI coding agent CLIs (Claude Code, Codex, opencode) — every variant
 # carries both, not just omnibus.
 # PINNED: every unversioned name here tracked npm's latest at build time; opencode
 # was already pinned, which is the convention the rest now follows.
 ARG PRETTIER_VERSION=3.9.9
-ARG ESLINT_VERSION=10.12.0
+ARG OXLINT_VERSION=1.87.0
+ARG OXLINT_TSGOLINT_VERSION=7.0.2003
 ARG KNIP_VERSION=6.41.0
 ARG JSCPD_VERSION=5.4.1
 ARG CLAUDE_CODE_VERSION=2.1.296
-ARG CODEX_VERSION=0.162.0
-RUN npm install -g "prettier@${PRETTIER_VERSION}" "eslint@${ESLINT_VERSION}" "knip@${KNIP_VERSION}" "jscpd@${JSCPD_VERSION}" \
+ARG CODEX_VERSION=0.162.1
+RUN npm install -g "prettier@${PRETTIER_VERSION}" "oxlint@${OXLINT_VERSION}" "oxlint-tsgolint@${OXLINT_TSGOLINT_VERSION}" \
+      "knip@${KNIP_VERSION}" "jscpd@${JSCPD_VERSION}" \
       "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" "@openai/codex@${CODEX_VERSION}" opencode-ai@1.17.15 \
-    && prettier --version && eslint --version \
+    && prettier --version && oxlint --version && command -v tsgolint \
     && knip --version && jscpd --version \
     && command -v claude && command -v codex && command -v opencode && opencode --version
 

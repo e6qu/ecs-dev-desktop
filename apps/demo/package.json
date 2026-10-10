@@ -7,7 +7,6 @@
     "dev": "vite",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "preview": "vite preview",
-    "lint": "eslint .",
     "test": "vitest run",
     "test:smoke": "playwright test"
   },
@@ -28,7 +27,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "fast-check": "^4.10.2",
-    "typescript": "^6.0.3",
+    "typescript": "^7.0.2",
     "vite": "^8.3.4",
     "vitest": "^5.0.3"
   }

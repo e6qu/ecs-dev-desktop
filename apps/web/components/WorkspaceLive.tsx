@@ -115,7 +115,7 @@ export function WorkspaceLive({ id }: { id: string }) {
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("autoopen") === "1") setAutoOpen(true);
   }, []);
-  const isReady = ws !== null && ws.state === "running" && ws.functional === "ok";
+  const isReady = ws?.state === "running" && ws.functional === "ok";
   useEffect(() => {
     if (!autoOpen || !isReady || countdown !== null) return;
     setCountdown(AUTO_OPEN_COUNTDOWN_S);

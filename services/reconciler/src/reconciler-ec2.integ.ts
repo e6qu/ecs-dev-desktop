@@ -2,7 +2,7 @@
 import { aws } from "@edd/config";
 import { WorkspaceService } from "@edd/control-plane";
 import { baseImage, FakeComputeProvider, ownerId, systemClock } from "@edd/core";
-import { createDynamoClient, dropTable, dynamodb, ensureTable, makeWorkspaceEntity } from "@edd/db";
+import { createDynamoClient, dropTable, ensureTable, makeWorkspaceEntity } from "@edd/db";
 import { Ec2StorageProvider } from "@edd/storage-ec2";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
@@ -10,7 +10,6 @@ import { Reconciler } from "./index";
 
 const HARNESS_AWS_REGION = "us-east-1";
 
-process.env.AWS_ENDPOINT_URL ??= dynamodb.endpoint;
 process.env.AWS_ENDPOINT_URL ??= aws.endpoint;
 process.env.AWS_REGION ??= HARNESS_AWS_REGION;
 process.env.AWS_ACCESS_KEY_ID ??= "test";
