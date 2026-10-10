@@ -3,12 +3,12 @@
 #
 # docker/setup-buildx-action boots that builder by pulling
 # moby/buildkit:buildx-stable-1 from Docker Hub with no credentials, and Docker
-# Hub rate-limits anonymous token requests per source address — an address
-# GitHub's shared runners share with everyone else on them. The pull then fails
-# before the job has built anything: the `e2e fixture (workspace)` job died
-# exactly there on 2026-09-16 ("Get https://auth.docker.io/token ...") on a
-# change that touched no CI, and every buildx job in this repository, the
-# release publishes included, has the same exposure.
+# Hub rate-limits anonymous pulls per source address — an address GitHub's
+# shared runners share with everyone else on them. The pull then fails before
+# the job has built anything: the `e2e fixture (workspace)` job died exactly
+# there on 2026-09-16 ("Get https://auth.docker.io/token ..."). So the builder
+# runs BuildKit from Google's Docker Hub mirror instead, pinned to the index
+# digest Docker Hub serves for that tag.
 #
 # The bootstrap is retried ONLY when the failure is that download. A bad flag,
 # a missing builder or a broken daemon fails on the first attempt, as it
@@ -18,9 +18,11 @@ set -euo pipefail
 
 builder="${BUILDX_BUILDER:-edd-ci}"
 attempts=3
+buildkit_image="mirror.gcr.io/moby/buildkit:buildx-stable-1@sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea"
 
 if ! docker buildx inspect "${builder}" >/dev/null 2>&1; then
-  docker buildx create --name "${builder}" --driver docker-container >/dev/null
+  docker buildx create --name "${builder}" --driver docker-container \
+    --driver-opt "image=${buildkit_image}" >/dev/null
 fi
 docker buildx use "${builder}"
 
@@ -31,7 +33,7 @@ for attempt in $(seq 1 "${attempts}"); do
   fi
   printf '%s\n' "${output}" >&2
   case "${output}" in
-    *registry-1.docker.io* | *auth.docker.io* | *"TLS handshake timeout"* | \
+    *mirror.gcr.io* | *"TLS handshake timeout"* | \
       *"connection reset by peer"* | *"i/o timeout"* | *toomanyrequests* | *"unexpected EOF"*)
       if [ "${attempt}" -lt "${attempts}" ]; then
         echo "setup-buildx: the buildkit image download broke (attempt ${attempt} of ${attempts}); trying again" >&2

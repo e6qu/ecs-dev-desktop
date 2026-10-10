@@ -62,7 +62,7 @@ const port = Number(process.env.PORT ?? "3700");
 const bindHost = process.env.EDD_BIND_HOST ?? "0.0.0.0";
 
 // Boot attribution. The listening line reports process.uptime(), which says how
-// long the whole start took but not where it went: on the Scaleway stack that
+// long the whole start took but not where it went: on a self-hosted deployment that
 // total was 5.77 s for a server whose bundle listens in 0.35 s on a developer
 // machine. These two marks split it into the module graph this file pulls in,
 // Next's own initialisation, and the rest.
@@ -265,7 +265,7 @@ server.listen(port, bindHost);
 // process.uptime() attributes the start: everything before this line happened
 // inside this process (module loading, Next's own boot), and the gap between the
 // task's startedAt and this line's timestamp is everything outside it — image
-// start, and log delivery. On the 2026-09-15 Scaleway deploy the container's
+// start, and log delivery. On a 2026-09-15 self-hosted deploy the container's
 // first line appeared 23 s after the task started RUNNING, and nothing said
 // which side of this boundary spent them.
 process.stdout.write(

@@ -8,7 +8,7 @@ Server, `sshd`, the Monaco service, the idle-agent, and the omnibus toolchain
 It is the wrong shape for a session driven entirely through the Claude or Codex
 CLI, which needs none of the editor and pays for all of it.
 
-The cost is not hypothetical. On the Scaleway host the deployment runs on — 8
+The cost is not hypothetical. On the operator's host the deployment runs on — 8
 cores, 92 GB RAM — a third of the machine at that sizing is about five
 concurrent workspaces, CPU-bound. Reaching hundreds of concurrent agent sessions
 means not paying for an IDE nobody opened.
@@ -48,10 +48,10 @@ design exists for is untouched, because it comes from the idle **stop**, not fro
 refusing to start — a workspace nobody opens drops its editor one idle window
 after boot and does not restart it until somebody actually connects.
 
-| port | who |
-|---|---|
-| 3000 | the manager: accepts, activates, then pipes bytes |
-| 3001 | the editor, on loopback, started and stopped on demand |
+| port | who                                                            |
+| ---- | -------------------------------------------------------------- |
+| 3000 | the manager: accepts, activates, then pipes bytes              |
+| 3001 | the editor, on loopback, started and stopped on demand         |
 | 3002 | the manager's own status, answered without activating anything |
 
 The third port is not tidiness. A health probe against the public port is
@@ -146,7 +146,7 @@ doing:
   recreated, in the recorded cwd, ready to resume.
 
 **Open decision, and it should be made deliberately rather than by default:**
-whether boot *runs* the agent's resume command or only stages it. Re-running an
+whether boot _runs_ the agent's resume command or only stages it. Re-running an
 agent unattended on every workspace start is a side-effecting act the user did
 not ask for at that moment. The safer default is to recreate the session and
 leave the resume command staged; auto-resume becomes opt-in per session.
@@ -185,7 +185,7 @@ Step 3 is done: the status page (`WorkspaceLive`) lists the reported sessions
 in an `AgentSessions` section for every workspace state, ordered running →
 waiting → ended, with the report's timestamp. The row's state is derived, not
 copied: inside a stopped workspace no tmux session exists anywhere, so a session
-the last report called `live` is shown as *waiting* (its transcript is on the
+the last report called `live` is shown as _waiting_ (its transcript is on the
 paused volume and its resume command is staged for the next boot), never as
 running — `apps/web/lib/agent-sessions.ts` holds that rule with its tests. The
 same section offers Resume when the workspace is stopped and sessions are

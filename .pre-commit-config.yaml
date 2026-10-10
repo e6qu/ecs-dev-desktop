@@ -123,6 +123,13 @@ repos:
         pass_filenames: false
         always_run: true
 
+      - id: base-images
+        name: Dockerfile bases are pinned by digest outside Docker Hub
+        language: system
+        entry: sh scripts/check-base-images.sh
+        pass_filenames: false
+        always_run: true
+
       - id: workflow-timeouts
         name: GitHub Actions jobs are bounded to fifteen minutes
         language: system

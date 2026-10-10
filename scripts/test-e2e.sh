@@ -25,7 +25,9 @@ if [ "$is_podman" = true ]; then
   # macOS AirPlay Receiver binds :5000, so use a high port for the local registry.
   registry_port=15000
   docker rm -f edd-e2e-registry >/dev/null 2>&1 || true
-  docker run -d --name edd-e2e-registry -p "127.0.0.1:${registry_port}:5000" docker.io/library/registry:2 >/dev/null
+  # The registry image comes from the Amazon ECR Public copy of Docker's official
+  # images at the digest Docker Hub serves: Docker Hub limits anonymous pulls.
+  docker run -d --name edd-e2e-registry -p "127.0.0.1:${registry_port}:5000" public.ecr.aws/docker/library/registry:2@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373 >/dev/null
   i=0
   while [ "$i" -lt 30 ]; do
     if curl -fsS "http://127.0.0.1:${registry_port}/v2/" >/dev/null 2>&1; then

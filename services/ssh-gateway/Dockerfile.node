@@ -4,7 +4,10 @@
 # presented key is registered to this workspace's owner (per-workspace agent
 # token). Mirrors the golden image's auth (reuses its authorized-keys.sh). The
 # login user is `workspace`; the workspace identifies itself by EDD_WORKSPACE_ID.
-FROM debian:trixie-slim
+# The base comes from the Amazon ECR Public copy of Docker's official images,
+# pinned to the index digest Docker Hub serves for the tag: Docker Hub limits
+# anonymous pulls per address, and the shared CI runners exhaust it.
+FROM public.ecr.aws/docker/library/debian:trixie-slim@sha256:a29215f6a35e51e22adffa17f89e9d2ef06214e64a2bad10d765c46aea49f11f
 RUN apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openssh-server curl \
   && rm -rf /var/lib/apt/lists/* \

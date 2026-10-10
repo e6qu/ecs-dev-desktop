@@ -4,7 +4,10 @@
 # the in-app path-based `/w/<id>/` workspace editor proxy. The real EBS/ECS adapters
 # target the sim by coordinates (COMPUTE_PROVIDER=ecs + AWS_ENDPOINT_URL). Build
 # context is the repo root; apps/web/Dockerfile.dockerignore keeps it lean.
-FROM node:22-bookworm-slim AS builder
+# The base comes from the Amazon ECR Public copy of Docker's official images,
+# pinned to the index digest Docker Hub serves for the tag: Docker Hub limits
+# anonymous pulls per address, and the shared CI runners exhaust it.
+FROM public.ecr.aws/docker/library/node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS builder
 WORKDIR /repo
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 RUN corepack enable && corepack prepare pnpm@10.33.3 --activate
@@ -49,7 +52,7 @@ RUN pnpm --filter @edd/web build
 # the control-plane image must also carry the reconciler bundle. Build it here.
 RUN pnpm --filter @edd/reconciler build
 
-FROM node:22-bookworm-slim AS runner
+FROM public.ecr.aws/docker/library/node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS runner
 WORKDIR /repo
 ENV COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 ENV NODE_ENV=production
@@ -77,7 +80,7 @@ ENV NODE_ENV=production PORT=3700 HOSTNAME=0.0.0.0 \
 # The built server (dist/server.js, bundled by `pnpm --filter @edd/web build`).
 # This used to be `pnpm exec tsx server.ts`, which resolved pnpm and transpiled
 # server.ts and its whole TypeScript import graph at every container start: on
-# the Scaleway stack the container logged nothing for 23 s before Next.js parsed
+# a self-hosted deployment the container logged nothing for 23 s before Next.js parsed
 # its config in 156 ms and listened 1.5 s later, while the reconciler — the same
 # image, half the CPU, prebuilt JS — was logging 7.4 s in.
 CMD ["node", "dist/server.js"]

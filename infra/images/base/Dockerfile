@@ -12,7 +12,10 @@
 # Multi-stage builder for the first-party Monaco editor's only native dependency
 # (node-pty). It is compiled for the target architecture inside the image, so a
 # host of either architecture can produce correct amd64 and arm64 golden images.
-FROM node:22-bookworm-slim AS node-pty-builder
+# The base comes from the Amazon ECR Public copy of Docker's official images,
+# pinned to the index digest Docker Hub serves for the tag: Docker Hub limits
+# anonymous pulls per address, and the shared CI runners exhaust it.
+FROM public.ecr.aws/docker/library/node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392 AS node-pty-builder
 WORKDIR /opt/edd-editor-monaco
 COPY editor-monaco/package.json ./
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -22,7 +25,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
     && npm install --production \
     && rm -rf /var/lib/apt/lists/* /root/.npm
 
-FROM node:22-bookworm-slim
+FROM public.ecr.aws/docker/library/node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392
 
 ARG OPENVSCODE_VERSION=1.109.5
 

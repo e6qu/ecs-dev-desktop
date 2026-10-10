@@ -64,6 +64,9 @@ jobs:
       - run: pnpm cpd
       # Every tier runs the same published simulator release, pinned by digest.
       - run: sh scripts/check-sim-pins.sh
+      # Every Dockerfile base is pinned by digest and pulled from outside Docker
+      # Hub, whose anonymous pull limit the shared runners exhaust.
+      - run: sh scripts/check-base-images.sh
 
   integration:
     name: integration
