@@ -39,7 +39,7 @@ RUN export UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin \
 
 # Python VS Code extensions into the built-in extensions dir (alongside the
 # base/agent extensions).
-RUN for ext in ms-python.debugpy@2026.6.0 ms-python.vscode-python-envs@1.20.1 ms-python.python@2026.4.0 detachhead.basedpyright@1.40.2 charliermarsh.ruff@2026.84.0 astral-sh.ty@2026.76.0 semgrep.semgrep@1.17.1; do \
+RUN for ext in ms-python.debugpy@2026.6.0 ms-python.vscode-python-envs@1.20.1 ms-python.python@2026.4.0 detachhead.basedpyright@1.40.2 charliermarsh.ruff@2026.86.0 astral-sh.ty@2026.76.0 semgrep.semgrep@1.17.1; do \
       openvscode-server --install-extension "$ext" --extensions-dir /opt/openvscode-server/extensions || exit 1 ; \
     done \
     && chmod -R a+rX /opt/openvscode-server/extensions

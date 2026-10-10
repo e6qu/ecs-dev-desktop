@@ -152,7 +152,7 @@ RUN curl -fsSL "https://github.com/google/google-java-format/releases/download/v
 # VS Code extensions into the built-in extensions dir: every language's (base
 # already baked the cross-cutting formatter/linter/GitHub ones + the AI agents).
 RUN for ext in \
-      ms-python.debugpy@2026.6.0 ms-python.vscode-python-envs@1.20.1 ms-python.python@2026.4.0 detachhead.basedpyright@1.40.2 charliermarsh.ruff@2026.84.0 astral-sh.ty@2026.76.0 semgrep.semgrep@1.17.1 \
+      ms-python.debugpy@2026.6.0 ms-python.vscode-python-envs@1.20.1 ms-python.python@2026.4.0 detachhead.basedpyright@1.40.2 charliermarsh.ruff@2026.86.0 astral-sh.ty@2026.76.0 semgrep.semgrep@1.17.1 \
       golang.go@0.56.1 redhat.java@1.56.0 rust-lang.rust-analyzer@0.3.3073 ms-playwright.playwright@1.1.19 ; do \
       openvscode-server --install-extension "$ext" --extensions-dir /opt/openvscode-server/extensions || exit 1 ; \
     done \

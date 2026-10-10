@@ -11,8 +11,8 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@aws-sdk/client-iam": "^3.1148.0",
-    "@aws-sdk/client-sts": "^3.1148.0",
+    "@aws-sdk/client-iam": "^3.1149.0",
+    "@aws-sdk/client-sts": "^3.1149.0",
     "@edd/config": "workspace:*",
     "@edd/core": "workspace:*"
   },

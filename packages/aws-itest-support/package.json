@@ -10,7 +10,7 @@
     "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
-    "@aws-sdk/client-iam": "^3.1148.0"
+    "@aws-sdk/client-iam": "^3.1149.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.5"
