@@ -95,8 +95,7 @@ function requiredBoundary(label: string, value: string | undefined): string {
  * (the real bill; correct for a dedicated EDD account). `tag` = filtered to the
  * `edd:cost-scope` cost-allocation tag (shared-account mode — requires the tag activated). */
 export type AccountScope =
-  | { readonly kind: "account" }
-  | { readonly kind: "tag"; readonly value: string };
+  { readonly kind: "account" } | { readonly kind: "tag"; readonly value: string };
 
 /** The Cost Explorer filter for a scope. Always constrains to `RECORD_TYPE=Usage` (so
  * credits/refunds don't net real usage to ~$0 and hide the true run-rate); adds the

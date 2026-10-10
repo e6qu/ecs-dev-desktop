@@ -201,7 +201,9 @@ proxy.listen(PUBLIC_PORT, "0.0.0.0", () => {
   // unaffected, because it comes from the IDLE stop, not from refusing to start:
   // a workspace nobody opens drops the editor after IDLE_MS and does not restart
   // it until someone actually connects.
-  startEditor().catch((err) => log(`initial warm failed (a connection will retry): ${err.message}`));
+  startEditor().catch((err) =>
+    log(`initial warm failed (a connection will retry): ${err.message}`),
+  );
 });
 
 // Status, answered without touching the editor, so probing is free and does not

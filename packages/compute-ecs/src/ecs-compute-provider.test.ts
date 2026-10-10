@@ -15,7 +15,15 @@ import {
   type UpdateServiceCommandInput,
 } from "@aws-sdk/client-ecs";
 import { COST_SCOPE_TAG_KEY } from "@edd/config";
-import {baseImage, deriveWorkspaceToken, snapshotId, taskId, workspaceId, isPlacementRefused, PlacementRefusedError } from "@edd/core";
+import {
+  baseImage,
+  deriveWorkspaceToken,
+  snapshotId,
+  taskId,
+  workspaceId,
+  isPlacementRefused,
+  PlacementRefusedError,
+} from "@edd/core";
 import { describe, expect, it } from "vitest";
 
 import {

@@ -13,12 +13,10 @@ const NOW = isoTimestamp(new Date(NOW_MS).toISOString());
 const activeArb = fc
   .array(fc.integer({ min: 0, max: 30 * 86_400_000 }), { maxLength: 20 })
   .map((ages) => ({
-    active: ages.map(
-      (ageMs, i): ActiveWorkspace => ({
-        id: workspaceId(`ws-${String(i)}`),
-        lastActivity: isoTimestamp(new Date(NOW_MS - ageMs).toISOString()),
-      }),
-    ),
+    active: ages.map((ageMs, i): ActiveWorkspace => ({
+      id: workspaceId(`ws-${String(i)}`),
+      lastActivity: isoTimestamp(new Date(NOW_MS - ageMs).toISOString()),
+    })),
     ages,
   }));
 
@@ -79,8 +77,6 @@ describe("selectIdle (fuzz)", () => {
     // Deployment default (5s) would select it; its own longer window must win.
     expect(selectIdle([{ ...hourOld, idleStopMs: 7_200_000 }], NOW, 5_000)).toEqual([]);
     // And its own shorter window must select it even under a huge default.
-    expect(selectIdle([{ ...hourOld, idleStopMs: 60_000 }], NOW, 86_400_000)).toEqual([
-      hourOld.id,
-    ]);
+    expect(selectIdle([{ ...hourOld, idleStopMs: 60_000 }], NOW, 86_400_000)).toEqual([hourOld.id]);
   });
 });

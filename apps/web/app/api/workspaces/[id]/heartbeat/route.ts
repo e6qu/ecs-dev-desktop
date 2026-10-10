@@ -18,9 +18,7 @@ import { withObservability } from "../../../../../lib/observability";
 /** Optional self-reports: functional (IDE reachable + workspace writable) and
  * activity (real usage since the last beat vs merely alive). Best-effort on BOTH
  * auth paths: a missing/malformed body just means a plain activity heartbeat. */
-async function parseReport(
-  req: Request,
-): Promise<
+async function parseReport(req: Request): Promise<
   | {
       functional?: { ide: boolean; workspace: boolean };
       active?: boolean;

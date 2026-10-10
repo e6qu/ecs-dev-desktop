@@ -105,7 +105,9 @@ export class PlacementRefusedError extends Error {
     readonly reason: string,
     readonly detail?: string,
   ) {
-    super(`ECS RunTask failed to place task: ${reason}${detail === undefined ? "" : ` (${detail})`}`);
+    super(
+      `ECS RunTask failed to place task: ${reason}${detail === undefined ? "" : ` (${detail})`}`,
+    );
     this.name = "PlacementRefusedError";
   }
 }

@@ -137,8 +137,8 @@ on resource: .../task/edd-prod-workspaces/*`. Cause: `reconciler.tf`'s schedule 
   entry becomes TWO tags keyed literally `"key"` and `"value"`, so every tag collides on those two keys.
   (`propagate_tags = "TASK_DEFINITION"` can't substitute: the release pipeline registers the reconciler
   task-def UNTAGGED, so `:67` has zero tags to propagate.) Fixed by REMOVING the explicit `tags =
-  local.tags` from `reconciler.tf`'s `ecs_parameters` (keeping `enable_ecs_managed_tags` + `propagate_
-  tags`); reconciler tasks are short-lived so the residual cost-attribution gap is small. Both fixes
+local.tags` from `reconciler.tf`'s `ecs_parameters` (keeping `enable_ecs_managed_tags` + `propagate_
+tags`); reconciler tasks are short-lived so the residual cost-attribution gap is small. Both fixes
   applied to prod (targeted) + verified the reconciler resumes and reaps the 27 orphans.
   **Follow-ups (DO_NEXT):** (i) tag the reconciler task-def in the release pipeline so `propagate_tags`
   restores full cost attribution without the broken `ecs_parameters.tags`; (ii) `listWorkspaceTasks`
@@ -225,7 +225,7 @@ auto_deploy]` + an `apigateway.amazonaws.com` invoke permission) — the STANDAR
      `versions.tf` + provider lock regenerated (all platforms). **Live scale-from-zero VERIFIED on prod
      (2026-07-13):** scaled `edd-prod-control-plane` to 0 → at desired0/running0 `app.edd.e6qu.dev/`
      served the 200 reload page (CloudFront 503→wake) → the wake Lambda logged `control-plane wake
-     from:0 to:2` (the `ecs:UpdateService`) → desired bounced to 2 → tasks started → app recovered
+from:0 to:2` (the `ecs:UpdateService`) → desired bounced to 2 → tasks started → app recovered
      (`/`→307, `/login`→200); later requests logged idempotent `hold`. One transient ~1-cycle 502 during
      target warm-up (running=2, not-yet-ready) is normal cold-start and cleared on the next reload; it is
      NOT mapped to the wake page on purpose (502/504 are ambiguous vs a genuine app error — only 503 =

@@ -87,7 +87,9 @@ describe("resources", () => {
   // stays green. Taking socket throttles has to show up as degraded.
   it("reports the container as degraded when it is taking socket throttles", () => {
     const observation = buildObservation(
-      input({ self: { memoryCurrentBytes: 1, memoryMaxBytes: 2, ceilingHits: 12, socketThrottles: 900 } }),
+      input({
+        self: { memoryCurrentBytes: 1, memoryMaxBytes: 2, ceilingHits: 12, socketThrottles: 900 },
+      }),
     );
     const container = observation.resources.find((r) => r.id === "web-container");
     expect(container?.health).toBe("degraded");
@@ -109,9 +111,9 @@ describe("resources", () => {
     expect(degraded?.health).toBe("degraded");
 
     // The mirror case: throttles readable, ceiling hits not.
-    const throttled = buildObservation(
-      input({ self: { socketThrottles: 42 } }),
-    ).resources.find((r) => r.id === "web-container");
+    const throttled = buildObservation(input({ self: { socketThrottles: 42 } })).resources.find(
+      (r) => r.id === "web-container",
+    );
     expect(throttled?.health).toBe("degraded");
   });
 

@@ -426,7 +426,8 @@ function toWorkspace(r: WorkspaceRecord): Workspace {
     functionalAt: r.functionalAt === undefined ? undefined : isoTimestamp(r.functionalAt),
     placementReason: r.placementReason,
     placementAttempts: r.placementAttempts,
-    placementRetryAt: r.placementRetryAt === undefined ? undefined : isoTimestamp(r.placementRetryAt),
+    placementRetryAt:
+      r.placementRetryAt === undefined ? undefined : isoTimestamp(r.placementRetryAt),
     sessions:
       r.sessions === undefined
         ? undefined

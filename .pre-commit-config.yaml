@@ -52,7 +52,7 @@ repos:
       - id: prettier
         name: prettier (format)
         language: node
-        additional_dependencies: ["prettier@3.8.3"]
+        additional_dependencies: ["prettier@3.9.9"]
         entry: prettier --write --ignore-unknown
         types_or: [javascript, jsx, ts, tsx, json, yaml, markdown, css]
 

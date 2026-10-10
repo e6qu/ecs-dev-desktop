@@ -389,7 +389,9 @@ export function deferPlacement(
       ),
     );
   }
-  const retryAt = new Date(Date.parse(at) + placementRetryDelayMs(attempts)).toISOString() as IsoTimestamp;
+  const retryAt = new Date(
+    Date.parse(at) + placementRetryDelayMs(attempts),
+  ).toISOString() as IsoTimestamp;
   return ok({
     ...ws,
     lastActivity: at,
@@ -531,7 +533,8 @@ export function recordFunctional(
   at: IsoTimestamp,
 ): Workspace {
   const failures: string[] = [];
-  if (!probes.ide) failures.push("IDE unreachable (the desktop's HTTP surface did not answer the agent's probe)");
+  if (!probes.ide)
+    failures.push("IDE unreachable (the desktop's HTTP surface did not answer the agent's probe)");
   if (!probes.workspace) failures.push("workspace not writable");
   return {
     ...ws,

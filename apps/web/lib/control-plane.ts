@@ -75,7 +75,8 @@ let costRollups: StoredCostRollupStore | undefined;
 // five-second budget built a DynamoDB, an EC2 and an ECS client on every poll.
 let sharedDynamo: ReturnType<typeof createDynamoClient> | undefined;
 let realProviders: { storage: Ec2StorageProvider; compute: EcsComputeProvider } | undefined;
-let fakeProviders: Promise<{ storage: FakeStorageProvider; compute: FakeComputeProvider }> | undefined;
+let fakeProviders:
+  Promise<{ storage: FakeStorageProvider; compute: FakeComputeProvider }> | undefined;
 let healthService: Promise<HealthService> | undefined;
 let infrastructureService: Promise<InfrastructureService> | undefined;
 let auditSource: CloudTrailAuditSource | DerivedAuditSource | undefined;
@@ -366,7 +367,8 @@ export function getAuditSource(): CloudTrailAuditSource | DerivedAuditSource {
  * mirroring the log source's behavior — §6.5, no silent empty). */
 export function getMetricReader(): CloudWatchMetricReader | null {
   if (metricReader === undefined) {
-    metricReader = process.env.LOG_PROVIDER === "cloudwatch" ? CloudWatchMetricReader.fromEnv() : null;
+    metricReader =
+      process.env.LOG_PROVIDER === "cloudwatch" ? CloudWatchMetricReader.fromEnv() : null;
   }
   return metricReader;
 }

@@ -351,9 +351,7 @@ export async function authorizeWorkspace(
 export type SpectateRole = "publish" | "subscribe";
 
 export type SpectateAuthz =
-  | { kind: "allow"; role: SpectateRole }
-  | { kind: "forbidden" }
-  | { kind: "unauthenticated" };
+  { kind: "allow"; role: SpectateRole } | { kind: "forbidden" } | { kind: "unauthenticated" };
 
 /**
  * Authorize a spectate WebSocket. `publish` is the OWNER's mirror stream (only

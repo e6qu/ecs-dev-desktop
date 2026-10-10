@@ -46,7 +46,10 @@ function freePort(): Promise<number> {
 function ensureWebBuilt(): void {
   // Both halves of the build: Next's output and the bundled custom server the
   // image runs. A tree with only one of them must rebuild.
-  if (existsSync(join(WEB_DIR, ".next", "BUILD_ID")) && existsSync(join(WEB_DIR, "dist", "server.js")))
+  if (
+    existsSync(join(WEB_DIR, ".next", "BUILD_ID")) &&
+    existsSync(join(WEB_DIR, "dist", "server.js"))
+  )
     return;
   const res = spawnSync("pnpm", ["--filter", "@edd/web", "build"], {
     cwd: REPO_ROOT,
