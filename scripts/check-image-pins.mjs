@@ -71,7 +71,8 @@ const SOURCES = {
   TYPESCRIPT_VERSION: { kind: "npm", pkg: "typescript" },
   PLAYWRIGHT_VERSION: { kind: "npm", pkg: "playwright" },
   PRETTIER_VERSION: { kind: "npm", pkg: "prettier" },
-  ESLINT_VERSION: { kind: "npm", pkg: "eslint" },
+  OXLINT_VERSION: { kind: "npm", pkg: "oxlint" },
+  OXLINT_TSGOLINT_VERSION: { kind: "npm", pkg: "oxlint-tsgolint" },
   KNIP_VERSION: { kind: "npm", pkg: "knip" },
   JSCPD_VERSION: { kind: "npm", pkg: "jscpd" },
   CLAUDE_CODE_VERSION: { kind: "npm", pkg: "@anthropic-ai/claude-code" },
@@ -396,7 +397,7 @@ function readBaseImagePins() {
   for (const file of files) {
     const text = readFileSync(join(repoRoot, file), "utf8");
     for (const m of text.matchAll(
-      /\b(public\.ecr\.aws\/docker\/library|mirror\.gcr\.io)\/([a-z0-9._\/-]+):([\w.-]+)@(sha256:[0-9a-f]{64})/g,
+      /\b(public\.ecr\.aws\/docker\/library|mirror\.gcr\.io)\/([a-z0-9._/-]+):([\w.-]+)@(sha256:[0-9a-f]{64})/g,
     )) {
       const [ref, registry, path, tag, digest] = m;
       const hubRepo = registry === "mirror.gcr.io" && path.includes("/") ? path : `library/${path}`;

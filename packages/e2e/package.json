@@ -8,7 +8,7 @@
     "./docker-host": "./src/docker-host.ts"
   },
   "scripts": {
-    "lint": "eslint .",
+    "build": "tsc -p tsconfig.json",
     "test:integ": "vitest run --config vitest.integ.config.ts",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:images": "vitest run --config vitest.images.config.ts"

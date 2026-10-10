@@ -170,7 +170,7 @@ async function revokeAuthSessionsByCorrelation(
     ),
   );
   const active = loaded.flatMap(({ data }) =>
-    data !== null && data.provider === provider && data.revokedAt === undefined ? [data] : [],
+    data?.provider === provider && data.revokedAt === undefined ? [data] : [],
   );
   const revokedAt = new Date().toISOString();
   await Promise.all(

@@ -55,11 +55,10 @@ describe("signAppJwt", () => {
 
 describe("mintInstallationToken", () => {
   it("POSTs the access_tokens endpoint with the app JWT and returns the token", async () => {
-    let seenUrl = "";
-    let seenAuth = "";
+    const seen: { url: string; auth: string | null } = { url: "", auth: null };
     const fetchImpl = (url: string | URL | Request, init?: RequestInit): Promise<Response> => {
-      seenUrl = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
-      seenAuth = (init?.headers as Record<string, string>).Authorization;
+      seen.url = typeof url === "string" ? url : url instanceof URL ? url.href : url.url;
+      seen.auth = new Headers(init?.headers).get("Authorization");
       return Promise.resolve(
         new Response(
           JSON.stringify({ token: "ghs_installation123", expires_at: "2026-01-01T01:00:00Z" }),
@@ -70,7 +69,9 @@ describe("mintInstallationToken", () => {
       );
     };
     const tok = await mintInstallationToken(cfg, 99, NOW, fetchImpl);
-    expect(seenUrl).toBe("https://api.example.test/app/installations/99/access_tokens");
+    expect(seen.url).toBe("https://api.example.test/app/installations/99/access_tokens");
+    const seenAuth = seen.auth;
+    if (seenAuth === null) throw new Error("the mint request carried no Authorization header");
     expect(seenAuth.startsWith("Bearer ")).toBe(true);
     // The bearer is the signed app JWT, verifiable with the app public key.
     await expect(

@@ -7,7 +7,6 @@
     "dev": "tsx watch server.ts",
     "build": "next build && pnpm run build:server",
     "start": "NODE_ENV=production node dist/server.js",
-    "lint": "eslint .",
     "test": "vitest run",
     "test:integ": "vitest run --config vitest.integ.config.ts",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",

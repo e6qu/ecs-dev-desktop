@@ -7,8 +7,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "lint": "eslint ."
+    "build": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "@aws-sdk/client-iam": "^3.1148.0"

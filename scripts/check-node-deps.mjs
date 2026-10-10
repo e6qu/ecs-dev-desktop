@@ -2,71 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-
-const TYPESCRIPT_PACKAGE = "typescript";
-const TYPESCRIPT_ESLINT_PACKAGE = "typescript-eslint";
 
 function fail(message) {
   console.error(`::error::${message}`);
   process.exit(1);
-}
-
-function parseVersion(version) {
-  const match = /^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/.exec(version);
-  if (!match) {
-    fail(`Cannot parse semantic version "${version}".`);
-  }
-  return {
-    major: Number(match[1]),
-    minor: Number(match[2]),
-    patch: Number(match[3]),
-  };
-}
-
-function compareVersions(left, right) {
-  const leftVersion = parseVersion(left);
-  const rightVersion = parseVersion(right);
-  if (leftVersion.major !== rightVersion.major) {
-    return leftVersion.major - rightVersion.major;
-  }
-  if (leftVersion.minor !== rightVersion.minor) {
-    return leftVersion.minor - rightVersion.minor;
-  }
-  return leftVersion.patch - rightVersion.patch;
-}
-
-function satisfiesComparator(version, comparator) {
-  const match = /^(>=|>|<=|<|=)?(\d+\.\d+\.\d+)$/.exec(comparator);
-  if (!match) {
-    fail(`Cannot evaluate unsupported semver comparator "${comparator}".`);
-  }
-  const operator = match[1] ?? "=";
-  const order = compareVersions(version, match[2]);
-  if (operator === ">=") {
-    return order >= 0;
-  }
-  if (operator === ">") {
-    return order > 0;
-  }
-  if (operator === "<=") {
-    return order <= 0;
-  }
-  if (operator === "<") {
-    return order < 0;
-  }
-  return order === 0;
-}
-
-function satisfiesRange(version, range) {
-  if (range.includes("||")) {
-    return range.split("||").some((part) => satisfiesRange(version, part.trim()));
-  }
-  const comparators = range.split(/\s+/).filter(Boolean);
-  if (comparators.length === 0) {
-    fail("Cannot evaluate an empty semver range.");
-  }
-  return comparators.every((comparator) => satisfiesComparator(version, comparator));
 }
 
 function packageNameFromEntry(name, entry) {
@@ -77,46 +16,6 @@ function packageNameFromEntry(name, entry) {
     }
   }
   return name;
-}
-
-function readInstalledPackage(packageName) {
-  const packageJson = readFileSync(`node_modules/${packageName}/package.json`, "utf8");
-  return JSON.parse(packageJson);
-}
-
-function typescriptPeerRange() {
-  const packageJson = readInstalledPackage(TYPESCRIPT_ESLINT_PACKAGE);
-  const peerDependencies = packageJson.peerDependencies;
-  if (
-    typeof peerDependencies !== "object" ||
-    peerDependencies === null ||
-    typeof peerDependencies.typescript !== "string"
-  ) {
-    fail(`${TYPESCRIPT_ESLINT_PACKAGE} does not declare a TypeScript peer range.`);
-  }
-  return peerDependencies.typescript;
-}
-
-function isPeerBlockedTypeScript(name, entry) {
-  if (packageNameFromEntry(name, entry) !== TYPESCRIPT_PACKAGE) {
-    return false;
-  }
-  if (typeof entry.current !== "string" || typeof entry.latest !== "string") {
-    fail("pnpm outdated reported TypeScript without current/latest versions.");
-  }
-  const peerRange = typescriptPeerRange();
-  if (!satisfiesRange(entry.current, peerRange)) {
-    fail(
-      `Installed TypeScript ${entry.current} is outside ${TYPESCRIPT_ESLINT_PACKAGE}'s peer range ${peerRange}.`,
-    );
-  }
-  if (satisfiesRange(entry.latest, peerRange)) {
-    return false;
-  }
-  console.log(
-    `TypeScript ${entry.current} was retained because ${TYPESCRIPT_ESLINT_PACKAGE} requires ${peerRange}; latest age-eligible ${entry.latest} is outside that range.`,
-  );
-  return true;
 }
 
 const result = spawnSync("pnpm", ["outdated", "-r", "--json"], {
@@ -155,13 +54,12 @@ if (typeof outdated !== "object" || outdated === null || Array.isArray(outdated)
   fail("pnpm outdated returned an unexpected JSON shape.");
 }
 
-const staleEntries = Object.entries(outdated).filter(
-  ([name, entry]) => !isPeerBlockedTypeScript(name, entry),
-);
+const staleEntries = Object.entries(outdated);
 
 if (staleEntries.length === 0) {
-  console.log("All JS/TS dependencies are current or explicitly blocked by peer compatibility.");
-  process.exit(0);
+  fail(
+    `pnpm outdated exited with status ${result.status ?? "unknown"} but reported no outdated dependency.`,
+  );
 }
 
 console.error("JS/TS dependencies behind the latest age-eligible version:");
