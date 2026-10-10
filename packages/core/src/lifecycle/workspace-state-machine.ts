@@ -28,7 +28,10 @@ export type WorkspaceState =
  * out of every read that enumerates states.
  */
 function listEveryWorkspaceState<const T extends readonly WorkspaceState[]>(
-  states: T & ([Exclude<WorkspaceState, T[number]>] extends [never] ? unknown : "a WorkspaceState is missing"),
+  states: T &
+    ([Exclude<WorkspaceState, T[number]>] extends [never]
+      ? unknown
+      : "a WorkspaceState is missing"),
 ): T {
   return states;
 }
@@ -144,13 +147,7 @@ export function can(state: WorkspaceState, event: WorkspaceEvent): boolean {
 
 /** A user-initiated lifecycle operation offered for a workspace in the UI. */
 export type WorkspaceAction =
-  | "start"
-  | "stop"
-  | "cancelStop"
-  | "snapshot"
-  | "delete"
-  | "undelete"
-  | "retry";
+  "start" | "stop" | "cancelStop" | "snapshot" | "delete" | "undelete" | "retry";
 
 /**
  * The lifecycle actions valid from a state — the single source of truth for which

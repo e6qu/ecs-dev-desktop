@@ -42,7 +42,10 @@ export function AgentSessions({
           booted and reported in
         </p>
       ) : ordered.length === 0 ? (
-        <p className="state-note">no agent sessions{reportedAt === undefined ? "" : ` as of ${new Date(reportedAt).toLocaleString()}`}</p>
+        <p className="state-note">
+          no agent sessions
+          {reportedAt === undefined ? "" : ` as of ${new Date(reportedAt).toLocaleString()}`}
+        </p>
       ) : (
         <>
           <table className="mono" style={{ fontSize: 12, borderCollapse: "collapse" }}>
@@ -96,13 +99,15 @@ export function AgentSessions({
             </tbody>
           </table>
           <p className="state-note" style={{ margin: 0 }}>
-            {reportedAt === undefined ? "last report" : `reported ${new Date(reportedAt).toLocaleString()}`}
+            {reportedAt === undefined
+              ? "last report"
+              : `reported ${new Date(reportedAt).toLocaleString()}`}
             {workspaceState === "stopped" && waiting > 0 && (
               <>
                 {" "}
                 — {waiting === 1 ? "one session is" : `${String(waiting)} sessions are`} waiting on
-                the paused volume; resuming brings{" "}
-                {waiting === 1 ? "it" : "them"} back with the resume command staged.
+                the paused volume; resuming brings {waiting === 1 ? "it" : "them"} back with the
+                resume command staged.
                 {resume !== undefined && (
                   <>
                     {" "}

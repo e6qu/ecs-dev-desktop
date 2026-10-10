@@ -52,15 +52,13 @@ export function deriveFleetAudit(
       createdAt: w.createdAt,
       lastActivity: w.lastActivity,
       ...(w.latestSnapshotAt === undefined ? {} : { latestSnapshotAt: w.latestSnapshotAt }),
-    }).map(
-      (e): AuditEvent => ({
-        at: e.at,
-        actor: DERIVED_ACTOR,
-        action: `workspace.${e.event}`,
-        target: w.workspaceId,
-        detail: e.detail,
-      }),
-    ),
+    }).map((e): AuditEvent => ({
+      at: e.at,
+      actor: DERIVED_ACTOR,
+      action: `workspace.${e.event}`,
+      target: w.workspaceId,
+      detail: e.detail,
+    })),
   );
   // Newest-first by parsed INSTANT, not string compare (see deriveWorkspaceTimeline):
   // a CloudTrail-sourced timestamp in a non-`Z` surface form must still order

@@ -4,12 +4,7 @@
 // for 4 workspaces, and the admin list's scan took 32 s. This seeds a workspace
 // in every state beside a crowd of unrelated session rows, then records the
 // DynamoDB commands each fleet read sends.
-import {
-  FakeComputeProvider,
-  FakeStorageProvider,
-  systemClock,
-  WORKSPACE_STATES,
-} from "@edd/core";
+import { FakeComputeProvider, FakeStorageProvider, systemClock, WORKSPACE_STATES } from "@edd/core";
 import {
   createDynamoClient,
   dropTable,

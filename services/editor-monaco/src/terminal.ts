@@ -121,9 +121,7 @@ const WELCOME_BANNER =
  * tmux treats `.` and `:` as session address syntax, so the command is reduced to
  * a safe slug rather than passed through. */
 export function tmuxSessionName(command: string): string {
-  const slug = (command.trim().split(/\s+/)[0] ?? "")
-    .replace(/[^A-Za-z0-9_-]/g, "-")
-    .slice(0, 40);
+  const slug = (command.trim().split(/\s+/)[0] ?? "").replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 40);
   return slug === "" ? "edd" : `edd-${slug}`;
 }
 

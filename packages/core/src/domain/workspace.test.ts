@@ -395,7 +395,12 @@ describe("waiting for capacity (a launch refused placement)", () => {
   const T0 = isoTimestamp("2026-09-13T10:00:00.000Z");
   const reason = "ECS RunTask failed to place task: Capacity is unavailable at this time";
   const reserved = (): Workspace =>
-    reserve({ id: workspaceId("ws-wait"), ownerId: ownerId("o"), baseImage: baseImage("golden/node:20"), at: T0 });
+    reserve({
+      id: workspaceId("ws-wait"),
+      ownerId: ownerId("o"),
+      baseImage: baseImage("golden/node:20"),
+      at: T0,
+    });
 
   it("backs off 15 s, 30 s, 60 s, then every two minutes", () => {
     expect([1, 2, 3, 4, 5, 8].map(placementRetryDelayMs)).toEqual([
@@ -429,7 +434,8 @@ describe("waiting for capacity (a launch refused placement)", () => {
     }
     const spent = deferPlacement(ws, reason, T0);
     expect(spent.ok).toBe(false);
-    if (!spent.ok && spent.error.kind === "conflict") expect(spent.error.reason).toContain("no capacity");
+    if (!spent.ok && spent.error.kind === "conflict")
+      expect(spent.error.reason).toContain("no capacity");
     else throw new Error("expected a conflict");
   });
 

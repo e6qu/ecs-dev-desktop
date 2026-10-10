@@ -395,7 +395,10 @@ describe("WorkspaceService lifecycle ", () => {
       });
       expect(beat.ok, beat.ok ? "" : JSON.stringify(beat.error)).toBe(true);
     };
-    const created = await svc.create({ ownerId: ownerId("mid-launch"), baseImage: baseImage("golden/node:20") });
+    const created = await svc.create({
+      ownerId: ownerId("mid-launch"),
+      baseImage: baseImage("golden/node:20"),
+    });
     expect(created.state).toBe("running");
     const stored = await svc.get(workspaceId(created.id));
     expect(stored?.functional).toBe("ok");
@@ -406,7 +409,10 @@ describe("WorkspaceService lifecycle ", () => {
     // An OpenVSCode terminal is recorded as a `shell` session, whose resume
     // command is null; ElectroDB refused null, so every heartbeat after the
     // first terminal was opened failed with a 500.
-    const ws = await service.create({ ownerId: ownerId("plain-terminal"), baseImage: baseImage("golden/node:20") });
+    const ws = await service.create({
+      ownerId: ownerId("plain-terminal"),
+      baseImage: baseImage("golden/node:20"),
+    });
     const session = {
       name: "edd",
       cwd: "/data/home",
@@ -427,8 +433,16 @@ describe("WorkspaceService lifecycle ", () => {
   });
 
   it("stopping clears the agent's functional report", async () => {
-    const ws = await service.create({ ownerId: ownerId("stop-functional"), baseImage: baseImage("golden/node:20") });
-    unwrap(await service.heartbeat(workspaceId(ws.id), { active: true, functional: { ide: true, workspace: true } }));
+    const ws = await service.create({
+      ownerId: ownerId("stop-functional"),
+      baseImage: baseImage("golden/node:20"),
+    });
+    unwrap(
+      await service.heartbeat(workspaceId(ws.id), {
+        active: true,
+        functional: { ide: true, workspace: true },
+      }),
+    );
     expect((await service.get(workspaceId(ws.id)))?.functional).toBe("ok");
     unwrap(await service.stop(workspaceId(ws.id)));
     const stopped = await service.get(workspaceId(ws.id));

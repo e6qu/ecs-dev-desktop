@@ -52,9 +52,9 @@ export function WorkspaceSnapshots({ id, state }: { id: string; state: string })
     <section data-testid="workspace-snapshots">
       <h2>Checkpoints</h2>
       <p className="state-note">
-        Point-in-time snapshots of the workspace volume. Stop the workspace, restore a
-        checkpoint, and start again to resume from that point — files and checkouts return
-        exactly; programs start fresh.
+        Point-in-time snapshots of the workspace volume. Stop the workspace, restore a checkpoint,
+        and start again to resume from that point — files and checkouts return exactly; programs
+        start fresh.
       </p>
       {error !== null && (
         <p role="alert" className="mono" style={{ color: "var(--st-error)", fontSize: 12 }}>
@@ -64,7 +64,9 @@ export function WorkspaceSnapshots({ id, state }: { id: string; state: string })
       {snapshots === null ? (
         <p className="state-note">loading checkpoints…</p>
       ) : snapshots.length === 0 ? (
-        <p className="state-note">no checkpoints yet — take one with Snapshot, or stop the workspace</p>
+        <p className="state-note">
+          no checkpoints yet — take one with Snapshot, or stop the workspace
+        </p>
       ) : (
         <ul className="mono" style={{ listStyle: "none", padding: 0, fontSize: 13 }}>
           {snapshots.map((s) => (
@@ -74,14 +76,18 @@ export function WorkspaceSnapshots({ id, state }: { id: string; state: string })
             >
               <span style={{ color: "var(--dim)" }}>{new Date(s.createdAt).toLocaleString()}</span>
               <span>{s.id}</span>
-              {s.sizeGiB !== undefined && <span style={{ color: "var(--dim)" }}>{s.sizeGiB} GiB</span>}
+              {s.sizeGiB !== undefined && (
+                <span style={{ color: "var(--dim)" }}>{s.sizeGiB} GiB</span>
+              )}
               {s.current && <span className="pill">restore point</span>}
               {!s.current && (
                 <button
                   type="button"
                   className="btn"
                   disabled={!restorable || busy !== null}
-                  title={restorable ? "make this the restore point" : "stop the workspace to restore"}
+                  title={
+                    restorable ? "make this the restore point" : "stop the workspace to restore"
+                  }
                   onClick={() => void restore(s.id)}
                 >
                   {busy === s.id ? "..." : "restore"}

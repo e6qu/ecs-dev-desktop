@@ -49,15 +49,20 @@ describe("shortCwd", () => {
 describe("orderSessions", () => {
   it("puts running first, then waiting, then ended, newest-seen first within each", () => {
     const ended = session({ name: "ended", live: false, resumeCommand: null });
-    const waitingOld = session({ name: "waiting-old", live: false, lastSeenAt: "2026-09-13T09:00:00.000Z" });
-    const waitingNew = session({ name: "waiting-new", live: false, lastSeenAt: "2026-09-13T09:30:00.000Z" });
+    const waitingOld = session({
+      name: "waiting-old",
+      live: false,
+      lastSeenAt: "2026-09-13T09:00:00.000Z",
+    });
+    const waitingNew = session({
+      name: "waiting-new",
+      live: false,
+      lastSeenAt: "2026-09-13T09:30:00.000Z",
+    });
     const running = session({ name: "running" });
-    expect(orderSessions([ended, waitingOld, running, waitingNew], "running").map((s) => s.name)).toEqual([
-      "running",
-      "waiting-new",
-      "waiting-old",
-      "ended",
-    ]);
+    expect(
+      orderSessions([ended, waitingOld, running, waitingNew], "running").map((s) => s.name),
+    ).toEqual(["running", "waiting-new", "waiting-old", "ended"]);
   });
 
   it("does not mutate its input", () => {

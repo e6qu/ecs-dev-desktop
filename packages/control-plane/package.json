@@ -18,11 +18,11 @@
     "@edd/db": "workspace:*"
   },
   "devDependencies": {
-    "@aws-sdk/client-dynamodb": "^3.1132.0",
+    "@aws-sdk/client-dynamodb": "^3.1148.0",
     "@edd/config": "workspace:*",
-    "@types/node": "^26.5.1",
+    "@types/node": "^26.6.5",
     "@types/ssh2": "^1.15.6",
-    "fast-check": "^4.10.0",
+    "fast-check": "^4.10.2",
     "ssh2": "^1.17.0"
   }
 }

@@ -214,22 +214,22 @@ export function WorkspaceLive({ id }: { id: string }) {
       : waitingForCapacity
         ? `Waiting for capacity — the cloud could not place your dev desktop just now (attempt ${String(ws.placementAttempts ?? 1)}); the launch is retried automatically, next at ${new Date(ws.placementRetryAt ?? 0).toLocaleTimeString()}.`
         : ws.state === "provisioning"
-        ? "Provisioning your dev desktop — starting the container (pulling the image + attaching storage). First start can take a few minutes; it opens itself once ready."
-        : ws.state === "stopping"
-          ? "Stopping — snapshotting your work so you can resume where you left off. Cancel to keep it running."
-          : ws.state === "error"
-            ? "Provisioning failed — you can retry the launch or delete this session."
-            : ws.functional === "degraded"
-              ? "The editor is still finishing startup — this usually clears on its own within a minute. If it persists, check the log below."
-              : ws.state === "stopped"
-                ? resuming
-                  ? "Resuming — waking your dev desktop from its snapshot…"
-                  : "Paused (snapshotted) — resume to pick up where you left off."
-                : ws.state === "terminated"
-                  ? "This workspace has been deleted. If it's within the restore window you can undelete it from the workspaces list."
-                  : ws.state === "deleting"
-                    ? "This workspace is being deleted — tearing down the task and reclaiming storage."
-                    : `Workspace is ${ws.state}.`;
+          ? "Provisioning your dev desktop — starting the container (pulling the image + attaching storage). First start can take a few minutes; it opens itself once ready."
+          : ws.state === "stopping"
+            ? "Stopping — snapshotting your work so you can resume where you left off. Cancel to keep it running."
+            : ws.state === "error"
+              ? "Provisioning failed — you can retry the launch or delete this session."
+              : ws.functional === "degraded"
+                ? "The editor is still finishing startup — this usually clears on its own within a minute. If it persists, check the log below."
+                : ws.state === "stopped"
+                  ? resuming
+                    ? "Resuming — waking your dev desktop from its snapshot…"
+                    : "Paused (snapshotted) — resume to pick up where you left off."
+                  : ws.state === "terminated"
+                    ? "This workspace has been deleted. If it's within the restore window you can undelete it from the workspaces list."
+                    : ws.state === "deleting"
+                      ? "This workspace is being deleted — tearing down the task and reclaiming storage."
+                      : `Workspace is ${ws.state}.`;
 
   return (
     <div className="stack" style={{ gap: 20 }}>

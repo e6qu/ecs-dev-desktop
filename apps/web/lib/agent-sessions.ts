@@ -40,7 +40,8 @@ export function orderSessions(
 ): AgentSessionDto[] {
   const rank: Record<SessionPresentation, number> = { running: 0, waiting: 1, ended: 2 };
   return [...sessions].sort((a, b) => {
-    const byState = rank[presentSession(a, workspaceState)] - rank[presentSession(b, workspaceState)];
+    const byState =
+      rank[presentSession(a, workspaceState)] - rank[presentSession(b, workspaceState)];
     if (byState !== 0) return byState;
     return b.lastSeenAt.localeCompare(a.lastSeenAt);
   });

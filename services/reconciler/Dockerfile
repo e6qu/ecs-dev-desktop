@@ -8,7 +8,10 @@
 # docker build -f services/reconciler/Dockerfile -t edd-reconciler .
 
 # ---- Stage 1: install deps + bundle ----------------------------------------
-FROM node:22-alpine AS build
+# The base comes from the Amazon ECR Public copy of Docker's official images,
+# pinned to the index digest Docker Hub serves for the tag: Docker Hub limits
+# anonymous pulls per address, and the shared CI runners exhaust it.
+FROM public.ecr.aws/docker/library/node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402 AS build
 WORKDIR /app
 RUN corepack enable pnpm
 
@@ -55,7 +58,7 @@ COPY services/reconciler/tsconfig.json services/reconciler/
 RUN pnpm --filter @edd/reconciler build
 
 # ---- Stage 2: minimal runtime image ----------------------------------------
-FROM node:22-alpine
+FROM public.ecr.aws/docker/library/node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402
 WORKDIR /app
 
 # Keep node_modules available for Node's module metadata lookup and future

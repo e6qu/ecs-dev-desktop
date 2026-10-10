@@ -25,9 +25,17 @@
 // ships, and a gate that demanded it would be asking for a pin that cannot
 // install. An extension listed without `@version` fails the gate outright.
 //
+// Base images pulled from a Docker Hub copy (public.ecr.aws/docker/library for
+// official images, mirror.gcr.io for the rest) are pinned by tag and digest;
+// scripts/check-base-images.sh says why. A digest that never moves rots like any
+// other pin, so each one is compared with the digest Docker Hub serves for its
+// tag now, under the same 24-hour rule (Docker Hub's `tag_last_pushed`). A bump
+// takes the new digest only after confirming the copy serves the same one.
+//
 // Registries are looked up read-only. A lookup that fails is reported and does
 // not pass silently: an unreachable registry must not look like "current".
 
+import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
@@ -42,7 +50,11 @@ const imagesDir = new URL("../infra/images/", import.meta.url).pathname;
  * their version endpoints, so those two report only whether a newer release
  * exists and cannot apply the age rule. */
 const SOURCES = {
-  OPENVSCODE_VERSION: { kind: "ghRelease", repo: "gitpod-io/openvscode-server", strip: /^openvscode-server-v/ },
+  OPENVSCODE_VERSION: {
+    kind: "ghRelease",
+    repo: "gitpod-io/openvscode-server",
+    strip: /^openvscode-server-v/,
+  },
   TRIVY_VERSION: { kind: "ghRelease", repo: "aquasecurity/trivy", keepV: true },
   UV_VERSION: { kind: "ghRelease", repo: "astral-sh/uv" },
   BUN_VERSION: { kind: "ghRelease", repo: "oven-sh/bun", strip: /^bun-v/ },
@@ -71,7 +83,10 @@ const SOURCES = {
   SEMGREP_VERSION: { kind: "pypi", pkg: "semgrep" },
   GO_VERSION: { kind: "goDev" },
   GRADLE_VERSION: { kind: "gradle" },
-  GJF_VERSION: { kind: "pinnedOnPurpose", why: "held to the newest release targeting the image's Java 17 JDK; see infra/images/java/Dockerfile" },
+  GJF_VERSION: {
+    kind: "pinnedOnPurpose",
+    why: "held to the newest release targeting the image's Java 17 JDK; see infra/images/java/Dockerfile",
+  },
 };
 
 /** Does `version` satisfy a VS Code `engines.vscode` range? Extensions use the
@@ -80,34 +95,66 @@ const SOURCES = {
 function satisfiesEngine(version, range) {
   const v = numeric(version.replace(/-.*$/, "")).slice(0, 3);
   const lt = (a, b) => compare(a.join("."), b.join(".")) < 0;
-  return range.trim().split(/\s*\|\|\s*/).some((alt) =>
-    alt.trim().split(/\s+/).every((comp) => {
-      if (comp === "*" || comp === "" || /^[xX]/.test(comp)) return true;
-      const m = comp.match(/^(\^|~|>=|<=|>|<|=)?(\d+)(?:\.(\d+|x))?(?:\.(\d+|x))?/);
-      if (!m) return false;
-      const op = m[1] ?? "";
-      const base = [Number(m[2]), m[3] === undefined || m[3] === "x" ? 0 : Number(m[3]), m[4] === undefined || m[4] === "x" ? 0 : Number(m[4])];
-      const upper = op === "^" ? (base[0] > 0 ? [base[0] + 1, 0, 0] : [0, base[1] + 1, 0])
-        : op === "~" || m[3] === undefined || m[3] === "x" ? [base[0], base[1] + 1, 0]
-        : m[4] === undefined || m[4] === "x" ? [base[0], base[1] + 1, 0] : null;
-      switch (op) {
-        case ">": return !lt(v, base) && compare(v.join("."), base.join(".")) !== 0;
-        case ">=": return !lt(v, base);
-        case "<": return lt(v, base);
-        case "<=": return !lt(base, v);
-        default: return !lt(v, base) && (upper === null ? compare(v.join("."), base.join(".")) === 0 : lt(v, upper));
-      }
-    }));
+  return range
+    .trim()
+    .split(/\s*\|\|\s*/)
+    .some((alt) =>
+      alt
+        .trim()
+        .split(/\s+/)
+        .every((comp) => {
+          if (comp === "*" || comp === "" || /^[xX]/.test(comp)) return true;
+          const m = comp.match(/^(\^|~|>=|<=|>|<|=)?(\d+)(?:\.(\d+|x))?(?:\.(\d+|x))?/);
+          if (!m) return false;
+          const op = m[1] ?? "";
+          const base = [
+            Number(m[2]),
+            m[3] === undefined || m[3] === "x" ? 0 : Number(m[3]),
+            m[4] === undefined || m[4] === "x" ? 0 : Number(m[4]),
+          ];
+          const upper =
+            op === "^"
+              ? base[0] > 0
+                ? [base[0] + 1, 0, 0]
+                : [0, base[1] + 1, 0]
+              : op === "~" || m[3] === undefined || m[3] === "x"
+                ? [base[0], base[1] + 1, 0]
+                : m[4] === undefined || m[4] === "x"
+                  ? [base[0], base[1] + 1, 0]
+                  : null;
+          switch (op) {
+            case ">":
+              return !lt(v, base) && compare(v.join("."), base.join(".")) !== 0;
+            case ">=":
+              return !lt(v, base);
+            case "<":
+              return lt(v, base);
+            case "<=":
+              return !lt(base, v);
+            default:
+              return (
+                !lt(v, base) &&
+                (upper === null ? compare(v.join("."), base.join(".")) === 0 : lt(v, upper))
+              );
+          }
+        }),
+    );
 }
 
 // Semver: anything after a hyphen is a prerelease or a build tag (`-rc.1`,
 // `-win32-x64`); registries that don't use hyphens spell it out in the version.
 const stable = (v) => !v.includes("-") && !/(rc|beta|alpha|pre|dev|next)/i.test(v);
-const numeric = (v) => v.replace(/^v/, "").split(/[.\-+]/).map((p) => (/^\d+$/.test(p) ? Number(p) : p));
+const numeric = (v) =>
+  v
+    .replace(/^v/, "")
+    .split(/[.\-+]/)
+    .map((p) => (/^\d+$/.test(p) ? Number(p) : p));
 function compare(a, b) {
-  const x = numeric(a), y = numeric(b);
+  const x = numeric(a),
+    y = numeric(b);
   for (let i = 0; i < Math.max(x.length, y.length); i += 1) {
-    const p = x[i] ?? 0, q = y[i] ?? 0;
+    const p = x[i] ?? 0,
+      q = y[i] ?? 0;
     if (p === q) continue;
     if (typeof p === "number" && typeof q === "number") return p - q;
     return String(p) < String(q) ? -1 : 1;
@@ -126,28 +173,40 @@ async function releases(src) {
   switch (src.kind) {
     case "ghRelease": {
       const token = process.env.GITHUB_TOKEN ?? process.env.GH_TOKEN;
-      const rows = await getJson(`https://api.github.com/repos/${src.repo}/releases?per_page=40`,
-        token ? { authorization: `Bearer ${token}` } : {});
+      const rows = await getJson(
+        `https://api.github.com/repos/${src.repo}/releases?per_page=40`,
+        token ? { authorization: `Bearer ${token}` } : {},
+      );
       return rows
         .filter((r) => !r.draft && !r.prerelease)
         .map((r) => ({ tag: r.tag_name, publishedAt: Date.parse(r.published_at) }))
         .filter((r) => !src.tagOnly || src.tagOnly.test(r.tag))
-        .map((r) => ({ version: src.keepV ? r.tag : r.tag.replace(src.strip ?? /^v/, ""), publishedAt: r.publishedAt }))
+        .map((r) => ({
+          version: src.keepV ? r.tag : r.tag.replace(src.strip ?? /^v/, ""),
+          publishedAt: r.publishedAt,
+        }))
         .filter((r) => stable(r.version));
     }
     case "npm": {
       const d = await getJson(`https://registry.npmjs.org/${src.pkg}`);
-      return Object.keys(d.versions ?? {}).filter(stable)
+      return Object.keys(d.versions ?? {})
+        .filter(stable)
         .map((v) => ({ version: v, publishedAt: Date.parse(d.time?.[v] ?? "") || null }));
     }
     case "pypi": {
       const d = await getJson(`https://pypi.org/pypi/${src.pkg}/json`);
-      return Object.entries(d.releases ?? {}).filter(([v, files]) => stable(v) && files.length > 0)
-        .map(([v, files]) => ({ version: v, publishedAt: Math.max(...files.map((f) => Date.parse(f.upload_time_iso_8601))) }));
+      return Object.entries(d.releases ?? {})
+        .filter(([v, files]) => stable(v) && files.length > 0)
+        .map(([v, files]) => ({
+          version: v,
+          publishedAt: Math.max(...files.map((f) => Date.parse(f.upload_time_iso_8601))),
+        }));
     }
     case "crates": {
       const d = await getJson(`https://crates.io/api/v1/crates/${src.crate}/versions`);
-      return d.versions.filter((v) => !v.yanked && stable(v.num)).map((v) => ({ version: v.num, publishedAt: Date.parse(v.created_at) }));
+      return d.versions
+        .filter((v) => !v.yanked && stable(v.num))
+        .map((v) => ({ version: v.num, publishedAt: Date.parse(v.created_at) }));
     }
     case "goProxy": {
       const res = await fetch(`https://proxy.golang.org/${src.module}/@v/list`);
@@ -199,9 +258,15 @@ async function releases(src) {
 
 function readPins() {
   const pins = [];
-  for (const dir of readdirSync(imagesDir, { withFileTypes: true }).filter((d) => d.isDirectory())) {
+  for (const dir of readdirSync(imagesDir, { withFileTypes: true }).filter((d) =>
+    d.isDirectory(),
+  )) {
     let text;
-    try { text = readFileSync(join(imagesDir, dir.name, "Dockerfile"), "utf8"); } catch { continue; }
+    try {
+      text = readFileSync(join(imagesDir, dir.name, "Dockerfile"), "utf8");
+    } catch {
+      continue;
+    }
     for (const m of text.matchAll(/^ARG ([A-Z_]+_VERSION)=(\S+)/gm)) {
       pins.push({ image: dir.name, name: m[1], value: m[2] });
     }
@@ -213,7 +278,12 @@ function readPins() {
         if (tok.endsWith(".vsix")) continue;
         const m = tok.match(/^([a-z0-9-]+\.[a-z0-9-]+)(?:@(\d[\w.]*))?$/i);
         if (!m) continue;
-        pins.push({ image: dir.name, name: `extension ${m[1]}`, value: m[2] ?? null, extension: m[1] });
+        pins.push({
+          image: dir.name,
+          name: `extension ${m[1]}`,
+          value: m[2] ?? null,
+          extension: m[1],
+        });
       }
     }
   }
@@ -228,15 +298,24 @@ for (const p of pins) {
   byName.set(p.name, list);
 }
 
-let drift = 0, failed = 0;
+let drift = 0,
+  failed = 0;
 for (const [name, entries] of [...byName.entries()].sort()) {
   const src = entries[0].extension
-    ? { kind: "openvsx", id: entries[0].extension, editor: byName.get("OPENVSCODE_VERSION")?.[0]?.value ?? "*" }
+    ? {
+        kind: "openvsx",
+        id: entries[0].extension,
+        editor: byName.get("OPENVSCODE_VERSION")?.[0]?.value ?? "*",
+      }
     : SOURCES[name];
-  const values = [...new Set(entries.map((e) => e.value))].sort((a, b) => (a === null) - (b === null));
+  const values = [...new Set(entries.map((e) => e.value))].sort(
+    (a, b) => (a === null) - (b === null),
+  );
   const where = entries.map((e) => e.image).join(",");
   if (values.length > 1) {
-    console.log(`  DRIFT  ${name}: pinned differently across images (${entries.map((e) => `${e.image}=${e.value}`).join(", ")})`);
+    console.log(
+      `  DRIFT  ${name}: pinned differently across images (${entries.map((e) => `${e.image}=${e.value}`).join(", ")})`,
+    );
     drift += 1;
     continue;
   }
@@ -247,7 +326,9 @@ for (const [name, entries] of [...byName.entries()].sort()) {
     continue;
   }
   if (src === undefined) {
-    console.log(`  ::error::${name} (${where}): no registry source registered in scripts/check-image-pins.mjs`);
+    console.log(
+      `  ::error::${name} (${where}): no registry source registered in scripts/check-image-pins.mjs`,
+    );
     failed += 1;
     continue;
   }
@@ -266,20 +347,100 @@ for (const [name, entries] of [...byName.entries()].sort()) {
     continue;
   }
   const newest = rels[0];
-  if (newest === undefined) { console.log(`  ::error::${name}: registry returned no stable releases`); failed += 1; continue; }
+  if (newest === undefined) {
+    console.log(`  ::error::${name}: registry returned no stable releases`);
+    failed += 1;
+    continue;
+  }
   const eligible = rels.find((r) => r.publishedAt === null || now - r.publishedAt >= ONE_DAY_MS);
   if (compare(pinned, newest.version) > 0 && !rels.some((r) => r.version === pinned)) {
     // Ahead of every release the registry admits: a typo, a pre-release, or (for
     // an extension) a build that the pinned editor cannot load.
-    console.log(`  DRIFT  ${name}=${pinned} (${where}): not a stable release the image can install — newest installable is ${newest.version}`);
+    console.log(
+      `  DRIFT  ${name}=${pinned} (${where}): not a stable release the image can install — newest installable is ${newest.version}`,
+    );
     drift += 1;
   } else if (compare(pinned, newest.version) >= 0) {
     console.log(`  ok     ${name}=${pinned} (${where})`);
   } else if (eligible === undefined || compare(pinned, eligible.version) >= 0) {
-    console.log(`  HELD   ${name}=${pinned} (${where}): ${newest.version} is inside the 24h quarantine`);
+    console.log(
+      `  HELD   ${name}=${pinned} (${where}): ${newest.version} is inside the 24h quarantine`,
+    );
   } else {
-    console.log(`  DRIFT  ${name}=${pinned} (${where}): latest age-eligible ${eligible.version} (newest ${newest.version})`);
+    console.log(
+      `  DRIFT  ${name}=${pinned} (${where}): latest age-eligible ${eligible.version} (newest ${newest.version})`,
+    );
     drift += 1;
+  }
+}
+
+/** Every Docker Hub copy a Dockerfile or the CI BuildKit builder pins, keyed
+ * by reference, with the Docker Hub repository it copies. */
+function readBaseImagePins() {
+  const repoRoot = new URL("../", import.meta.url).pathname;
+  const files = execFileSync(
+    "git",
+    [
+      "ls-files",
+      "*Dockerfile",
+      "*Dockerfile.*",
+      "*.Dockerfile",
+      "scripts/setup-buildx.sh",
+      "scripts/test-e2e.sh",
+    ],
+    { cwd: repoRoot, encoding: "utf8" },
+  )
+    .split("\n")
+    .filter((f) => f && !f.endsWith(".dockerignore"));
+  const out = new Map();
+  for (const file of files) {
+    const text = readFileSync(join(repoRoot, file), "utf8");
+    for (const m of text.matchAll(
+      /\b(public\.ecr\.aws\/docker\/library|mirror\.gcr\.io)\/([a-z0-9._\/-]+):([\w.-]+)@(sha256:[0-9a-f]{64})/g,
+    )) {
+      const [ref, registry, path, tag, digest] = m;
+      const hubRepo = registry === "mirror.gcr.io" && path.includes("/") ? path : `library/${path}`;
+      const seen = out.get(ref) ?? { hubRepo, tag, digest, files: [] };
+      seen.files.push(file);
+      out.set(ref, seen);
+    }
+  }
+  return out;
+}
+
+let baseDrift = 0;
+const basePins = readBaseImagePins();
+for (const [ref, pin] of [...basePins.entries()].sort()) {
+  const where = [...new Set(pin.files)].join(",");
+  let tagInfo;
+  try {
+    tagInfo = await getJson(
+      `https://hub.docker.com/v2/repositories/${pin.hubRepo}/tags/${pin.tag}`,
+    );
+  } catch (err) {
+    console.log(
+      `  ::error::${pin.hubRepo}:${pin.tag} (${where}): could not read Docker Hub — ${err.message}`,
+    );
+    failed += 1;
+    continue;
+  }
+  const pushedAt = Date.parse(tagInfo.tag_last_pushed ?? "");
+  if (typeof tagInfo.digest !== "string" || Number.isNaN(pushedAt)) {
+    console.log(
+      `  ::error::${pin.hubRepo}:${pin.tag} (${where}): Docker Hub returned no digest or push time`,
+    );
+    failed += 1;
+  } else if (tagInfo.digest === pin.digest) {
+    console.log(`  ok     ${ref.replace(/@.*/, "")} (${where})`);
+  } else if (now - pushedAt < ONE_DAY_MS) {
+    console.log(
+      `  HELD   ${ref.replace(/@.*/, "")} (${where}): Docker Hub moved the tag to ${tagInfo.digest} inside the 24h quarantine`,
+    );
+  } else {
+    console.log(
+      `  DRIFT  ${ref.replace(/@.*/, "")} (${where}): pinned ${pin.digest}, Docker Hub serves ${tagInfo.digest} for the tag`,
+    );
+    baseDrift += 1;
   }
 }
 
@@ -288,7 +449,16 @@ if (failed > 0) {
   process.exit(1);
 }
 if (drift > 0) {
-  console.error(`::error::${drift} golden-image toolchain pin(s) behind the latest age-eligible release — bump the ARG in infra/images/*/Dockerfile.`);
-  process.exit(1);
+  console.error(
+    `::error::${drift} golden-image toolchain pin(s) behind the latest age-eligible release — bump the ARG in infra/images/*/Dockerfile.`,
+  );
 }
-console.log(`All ${byName.size} golden-image toolchain pins are current or held.`);
+if (baseDrift > 0) {
+  console.error(
+    `::error::${baseDrift} base image digest pin(s) behind the digest Docker Hub serves for their tag — bump them once the copy serves the same digest.`,
+  );
+}
+if (drift > 0 || baseDrift > 0) process.exit(1);
+console.log(
+  `All ${byName.size} golden-image toolchain pins and ${basePins.size} base image digests are current or held.`,
+);

@@ -41,7 +41,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 # image depend on whatever Go shipped that morning, so two builds of the same
 # Dockerfile could differ, and a toolchain change could break CI with no change in
 # this repository. Same defect class as the google-java-format break of 2026-08-02.
-ARG GO_VERSION=1.27.1
+ARG GO_VERSION=1.27.2
 RUN arch="$(dpkg --print-architecture)" \
     && case "${arch}" in amd64) go_arch="amd64" ;; arm64) go_arch="arm64" ;; \
        *) echo "unsupported Go arch: ${arch}" >&2; exit 1 ;; esac \
@@ -52,10 +52,10 @@ RUN arch="$(dpkg --print-architecture)" \
 
 # Gradle — current stable release (Maven came from apt above).
 # PINNED. Gradle 9.x needs a JDK 17+ daemon and this image's JDK is Debian's
-# default-jdk-headless (17), so 9.7.1 runs here; a future Gradle that requires
+# default-jdk-headless (17), so 9.8.1 runs here; a future Gradle that requires
 # Java 21 would reproduce the google-java-format failure exactly, which is why
 # "current" is not resolved at build time. Bump in lockstep with the JDK.
-ARG GRADLE_VERSION=9.7.1
+ARG GRADLE_VERSION=9.8.1
 RUN curl -fsSL "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -o /tmp/gradle.zip \
     && unzip -q /tmp/gradle.zip -d /opt \
     && mv "/opt/gradle-${GRADLE_VERSION}" /opt/gradle \
@@ -64,14 +64,14 @@ RUN curl -fsSL "https://services.gradle.org/distributions/gradle-${GRADLE_VERSIO
 
 # Rust — system-wide rustup/cargo (world-writable caches so `workspace` builds).
 # PINNED: rustup installs the named toolchain rather than whatever "stable" is today.
-ARG RUST_VERSION=1.98.1
+ARG RUST_VERSION=1.99.0
 RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal --default-toolchain "${RUST_VERSION}" \
     && chmod -R a+rwX /opt/rust \
     && /opt/rust/cargo/bin/cargo --version
 
 # PINNED: unversioned `npm install -g` and the bun installer both track latest.
 ARG YARN_VERSION=1.22.22
-ARG PNPM_VERSION=12.4.2
+ARG PNPM_VERSION=12.11.2
 ARG BUN_VERSION=1.4.2
 # Node package managers: yarn + pnpm as real global binaries (disable corepack
 # first — its shims defer the download to first use, which fails in a no-egress
@@ -86,12 +86,12 @@ RUN export NPM_CONFIG_PREFIX=/usr/local \
 
 # Python project manager: uv (+ uvx).
 # PINNED: the versioned installer URL installs exactly this uv.
-ARG UV_VERSION=0.12.15
+ARG UV_VERSION=0.12.24
 RUN curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh \
     && uv --version
 
 # PINNED: playwright and @playwright/test must match each other exactly.
-ARG PLAYWRIGHT_VERSION=1.63.0
+ARG PLAYWRIGHT_VERSION=1.64.0
 # Playwright + the headless Chromium shell (browser + OS deps) preinstalled into a
 # shared path. Export the /usr/local prefix for the WHOLE step so BOTH `npm install
 # -g` and `npx` use it — otherwise npx would create the inherited home npm prefix
@@ -107,11 +107,11 @@ RUN export NPM_CONFIG_PREFIX=/usr/local \
 # components + cargo-audit), Java (google-java-format, below). The Node lint/format/
 # dead-code/CPD tools and the cross-cutting Trivy scanner come from base.
 # PINNED: each `uv tool install <name>` resolved the newest release at build time.
-ARG RUFF_VERSION=0.16.7
-ARG TY_VERSION=0.0.81
+ARG RUFF_VERSION=0.16.10
+ARG TY_VERSION=0.0.85
 ARG VULTURE_VERSION=2.16
 ARG BANDIT_VERSION=1.9.4
-ARG SEMGREP_VERSION=1.177.0
+ARG SEMGREP_VERSION=1.180.0
 RUN export UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin \
     && uv tool install "ruff==${RUFF_VERSION}" && uv tool install "ty==${TY_VERSION}" && uv tool install "vulture==${VULTURE_VERSION}" \
     && uv tool install "bandit==${BANDIT_VERSION}" && uv tool install "semgrep==${SEMGREP_VERSION}" \
@@ -152,8 +152,8 @@ RUN curl -fsSL "https://github.com/google/google-java-format/releases/download/v
 # VS Code extensions into the built-in extensions dir: every language's (base
 # already baked the cross-cutting formatter/linter/GitHub ones + the AI agents).
 RUN for ext in \
-      ms-python.debugpy@2026.6.0 ms-python.vscode-python-envs@1.20.1 ms-python.python@2026.4.0 detachhead.basedpyright@1.40.1 charliermarsh.ruff@2026.80.0 astral-sh.ty@2026.70.0 semgrep.semgrep@1.17.0 \
-      golang.go@0.56.1 redhat.java@1.56.0 rust-lang.rust-analyzer@0.3.3049 ms-playwright.playwright@1.1.19 ; do \
+      ms-python.debugpy@2026.6.0 ms-python.vscode-python-envs@1.20.1 ms-python.python@2026.4.0 detachhead.basedpyright@1.40.2 charliermarsh.ruff@2026.84.0 astral-sh.ty@2026.76.0 semgrep.semgrep@1.17.1 \
+      golang.go@0.56.1 redhat.java@1.56.0 rust-lang.rust-analyzer@0.3.3073 ms-playwright.playwright@1.1.19 ; do \
       openvscode-server --install-extension "$ext" --extensions-dir /opt/openvscode-server/extensions || exit 1 ; \
     done \
     && chmod -R a+rX /opt/openvscode-server/extensions

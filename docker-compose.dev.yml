@@ -38,7 +38,7 @@ services:
   # AUTH_GITHUB_API_URL / AUTH_GITHUB_URL (see docs/running-locally.md).
   bleephub:
     profiles: ["github"]
-    image: ghcr.io/e6qu/bleephub@sha256:b8930d312075e07a034f6f7a04783b2282c91d201f14d8e65e0728f3bdcffe8f
+    image: ghcr.io/e6qu/bleephub@sha256:69ffe01331b0291eeca251ed3ed21d9116ac8391e91b5de56dfd9af061ab1d15
     environment:
       BLEEPHUB_ADMIN_TOKEN: edd-dev-admin-token
     ports:

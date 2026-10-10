@@ -53,12 +53,10 @@ export interface LogSource {
  * On AWS the CloudWatch adapter replaces it with the app's emitted logs.
  */
 export function auditToLogLines(events: readonly AuditEvent[]): LogLine[] {
-  return events.map(
-    (e): LogLine => ({
-      at: e.at,
-      level: "info",
-      source: e.target,
-      message: `${e.action} (${e.actor}) — ${e.detail}`,
-    }),
-  );
+  return events.map((e): LogLine => ({
+    at: e.at,
+    level: "info",
+    source: e.target,
+    message: `${e.action} (${e.actor}) — ${e.detail}`,
+  }));
 }

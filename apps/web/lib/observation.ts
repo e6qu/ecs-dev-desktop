@@ -166,7 +166,8 @@ function costEstimate(
     "Snapshot storage is excluded from the running rate: a snapshot bills while a workspace is stopped, which the projection does not model.",
     "Public on-demand rates with no discounts, so Savings Plans, Reserved capacity and private pricing are not reflected.",
     ...unpriced.map(
-      (entry) => `Workspace ${entry.workspaceId} is not priced and is missing from this total: ${entry.reason}`,
+      (entry) =>
+        `Workspace ${entry.workspaceId} is not priced and is missing from this total: ${entry.reason}`,
     ),
   ];
   return {
@@ -193,7 +194,12 @@ export function buildObservation(input: ObservationInput): Observation {
       metrics: [
         metric("cluster.running_tasks", "Running tasks", "tasks", input.cluster.runningTasks),
         metric("cluster.pending_tasks", "Pending tasks", "tasks", input.cluster.pendingTasks),
-        metric("cluster.active_services", "Active services", "services", input.cluster.activeServices),
+        metric(
+          "cluster.active_services",
+          "Active services",
+          "services",
+          input.cluster.activeServices,
+        ),
       ],
     },
     {
@@ -204,7 +210,12 @@ export function buildObservation(input: ObservationInput): Observation {
       metrics: [
         metric("fleet.total", "Workspaces", "workspaces", input.fleet.total),
         metric("fleet.active", "Active workspaces", "workspaces", input.fleet.active),
-        metric("cost.run_rate_hourly", "Projected run-rate", "USD/hour", input.runRate.totalUsdPerHour),
+        metric(
+          "cost.run_rate_hourly",
+          "Projected run-rate",
+          "USD/hour",
+          input.runRate.totalUsdPerHour,
+        ),
       ],
     },
     {
@@ -219,18 +230,21 @@ export function buildObservation(input: ObservationInput): Observation {
         metric("memory.current_bytes", "Memory in use", "bytes", input.self.memoryCurrentBytes),
         metric("memory.limit_bytes", "Memory limit", "bytes", input.self.memoryMaxBytes),
         metric("memory.ceiling_hits", "Memory ceiling hits", "events", input.self.ceilingHits),
-        metric("memory.socket_throttles", "Socket allocation throttles", "events", input.self.socketThrottles),
+        metric(
+          "memory.socket_throttles",
+          "Socket allocation throttles",
+          "events",
+          input.self.socketThrottles,
+        ),
       ],
     },
-    ...input.health.components.map(
-      (component): ObservationResource => ({
-        id: `dependency:${component.component}`,
-        name: component.component,
-        kind: "dependency",
-        health: mapHealth(component.status),
-        metrics: [],
-      }),
-    ),
+    ...input.health.components.map((component): ObservationResource => ({
+      id: `dependency:${component.component}`,
+      name: component.component,
+      kind: "dependency",
+      health: mapHealth(component.status),
+      metrics: [],
+    })),
   ];
   return {
     schema_version: SCHEMA_VERSION,

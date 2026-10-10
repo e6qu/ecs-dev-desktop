@@ -52,7 +52,7 @@ repos:
       - id: prettier
         name: prettier (format)
         language: node
-        additional_dependencies: ["prettier@3.8.3"]
+        additional_dependencies: ["prettier@3.9.9"]
         entry: prettier --write --ignore-unknown
         types_or: [javascript, jsx, ts, tsx, json, yaml, markdown, css]
 
@@ -120,6 +120,13 @@ repos:
         name: immutable multi-architecture container publication contract
         language: system
         entry: sh scripts/check-container-publication.sh
+        pass_filenames: false
+        always_run: true
+
+      - id: base-images
+        name: Dockerfile bases are pinned by digest outside Docker Hub
+        language: system
+        entry: sh scripts/check-base-images.sh
         pass_filenames: false
         always_run: true
 

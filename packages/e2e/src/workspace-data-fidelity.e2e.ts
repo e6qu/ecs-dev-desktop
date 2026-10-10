@@ -12,7 +12,13 @@ import { volumeId } from "@edd/core";
 import { Ec2StorageProvider } from "@edd/storage-ec2";
 import { beforeAll, describe, expect, it } from "vitest";
 
-import { awsSimClientConfig, configureAwsSimEnv, createVpcWithEgress, required, sleep } from "./aws-sim";
+import {
+  awsSimClientConfig,
+  configureAwsSimEnv,
+  createVpcWithEgress,
+  required,
+  sleep,
+} from "./aws-sim";
 
 configureAwsSimEnv();
 

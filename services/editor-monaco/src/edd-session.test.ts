@@ -4,7 +4,11 @@
 // later trust, without needing a tmux server in CI.
 import { describe, expect, it } from "vitest";
 
-import { liveSessions, resumeCommandFor, waitForShell } from "../../../infra/images/base/edd-session.mjs";
+import {
+  liveSessions,
+  resumeCommandFor,
+  waitForShell,
+} from "../../../infra/images/base/edd-session.mjs";
 
 describe("resume commands are data, not guesses at the call site", () => {
   it("knows the agents the image ships", () => {
@@ -54,7 +58,9 @@ describe("restore waits for a shell before staging a resume command", () => {
     let calls = 0;
     const slow = () => {
       calls += 1;
-      return calls < 2 ? { status: 1, stdout: "", stderr: "" } : { status: 0, stdout: "bash\n", stderr: "" };
+      return calls < 2
+        ? { status: 1, stdout: "", stderr: "" }
+        : { status: 0, stdout: "bash\n", stderr: "" };
     };
     expect(waitForShell("edd-claude", slow, 5, 1)).toBe(true);
   });

@@ -166,7 +166,7 @@ resource "aws_ecs_service" "control_plane" {
   # The scheduler ignores the load balancer's verdict on a new task for this long.
   # Without it, a task is replaced as soon as its target turns unhealthy — three
   # failed /api/readyz checks ten seconds apart — and a cold control plane is not
-  # listening yet: on the 2026-09-15 Scaleway deploy it listened 25-26 s after
+  # listening yet: on a 2026-09-15 self-hosted deploy it listened 25-26 s after
   # starting, one task was replaced for "failed ELB health checks" before it could
   # answer, and its replacement went the same way, leaving a surplus task to trim.
   # Start plus two passing checks came to about a minute there; 120 s leaves

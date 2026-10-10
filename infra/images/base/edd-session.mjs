@@ -152,7 +152,9 @@ function restore() {
     }
     if (resume !== null && resume !== undefined) {
       if (!waitForShell(entry.name)) {
-        process.stderr.write(`edd-session: ${entry.name} has no shell yet; not staging its resume\n`);
+        process.stderr.write(
+          `edd-session: ${entry.name} has no shell yet; not staging its resume\n`,
+        );
         write({ ...entry, status: "restored" });
         continue;
       }
@@ -190,24 +192,24 @@ const [cmd, ...rest] = invokedDirectly ? process.argv.slice(2) : ["__imported__"
 if (cmd === "__imported__") {
   // no-op: imported for its exports
 } else
-switch (cmd) {
-  case "record":
-    if (rest.length < 3) {
-      process.stderr.write("usage: edd-session record <name> <cwd> <command...>\n");
+  switch (cmd) {
+    case "record":
+      if (rest.length < 3) {
+        process.stderr.write("usage: edd-session record <name> <cwd> <command...>\n");
+        process.exit(64);
+      }
+      record(rest[0], rest[1], rest.slice(2).join(" "));
+      break;
+    case "sweep":
+      sweep();
+      break;
+    case "restore":
+      restore();
+      break;
+    case "list":
+      list(rest.includes("--json"));
+      break;
+    default:
+      process.stderr.write("usage: edd-session record|sweep|restore|list\n");
       process.exit(64);
-    }
-    record(rest[0], rest[1], rest.slice(2).join(" "));
-    break;
-  case "sweep":
-    sweep();
-    break;
-  case "restore":
-    restore();
-    break;
-  case "list":
-    list(rest.includes("--json"));
-    break;
-  default:
-    process.stderr.write("usage: edd-session record|sweep|restore|list\n");
-    process.exit(64);
-}
+  }

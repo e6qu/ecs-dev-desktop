@@ -36,7 +36,7 @@ services:
 
   # bleephub: the sockerless GitHub server (mock-free auth e2e).
   bleephub:
-    image: ghcr.io/e6qu/bleephub@sha256:b8930d312075e07a034f6f7a04783b2282c91d201f14d8e65e0728f3bdcffe8f
+    image: ghcr.io/e6qu/bleephub@sha256:69ffe01331b0291eeca251ed3ed21d9116ac8391e91b5de56dfd9af061ab1d15
     environment:
       # Required since sockerless#501 / PR#506: bleephub log.Fatal on startup if unset.
       # Any non-PAT value; this is a test credential, not a real GitHub token.

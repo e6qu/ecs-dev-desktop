@@ -4,7 +4,7 @@ set -eu
 
 unset CDPATH
 unset EDD_VALIDATOR_PROBE_PASSWORD SHAUTH_BOOTSTRAP_ADMIN_PASSWORD SHAUTH_BOOTSTRAP_APPS_JSON
-unset SHAUTH_VALIDATOR_TOKEN SHAUTH_VALIDATION_STATUS_TOKEN
+unset SHAUTH_VALIDATOR_TOKEN SHAUTH_VALIDATION_STATUS_TOKEN SHAUTH_TOKEN_HOOK_TOKEN
 root=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 shauth_root=${SHAUTH_SOURCE_DIR:?SHAUTH_SOURCE_DIR must point to a Shauth checkout}
 
@@ -14,7 +14,7 @@ for command in curl docker git jq node openssl pnpm; do
     exit 1
   }
 done
-expected_shauth_commit=${SHAUTH_EXPECTED_COMMIT:-7fc8caf1a01402e79a4f0dcaa9b999a1a039ecde}
+expected_shauth_commit=${SHAUTH_EXPECTED_COMMIT:-226ffffb9a046378334098c9bf34cc31776c34d4}
 actual_shauth_commit=$(git -C "$shauth_root" rev-parse HEAD)
 if [ "$actual_shauth_commit" != "$expected_shauth_commit" ]; then
   printf 'Shauth checkout is %s; expected %s\n' "$actual_shauth_commit" "$expected_shauth_commit" >&2
@@ -79,6 +79,7 @@ auth_secret=$(openssl rand -base64 48 | tr -d '\n')
 validator_probe_password=$(openssl rand -hex 48)
 validator_token=$(openssl rand -hex 48)
 validation_status_token=$(openssl rand -hex 48)
+token_hook_token=$(openssl rand -hex 48)
 EDD_BUILD_SHA=$(git -C "$root" rev-parse HEAD)
 EDD_BUILD_TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
 export EDD_BUILD_SHA EDD_BUILD_TIME
@@ -92,7 +93,6 @@ provider_compose() {
     POSTGRES_PASSWORD="$postgres_password" \
     HYDRA_SYSTEM_SECRET="$hydra_secret" \
     HYDRA_DSN="postgres://shauth:${postgres_password}@postgres:5432/hydra?sslmode=disable" \
-    HYDRA_PUBLIC_URL="$provider_origin" \
     SHAUTH_PUBLIC_URL="$provider_origin" \
     SHAUTH_DATABASE_URL="postgres://shauth:${postgres_password}@postgres:5432/shauth?sslmode=disable" \
     GITHUB_CLIENT_ID=edd-integration \
@@ -100,6 +100,7 @@ provider_compose() {
     SHAUTH_BOOTSTRAP_ADMIN_PASSWORD="$admin_password" \
     SHAUTH_VALIDATOR_TOKEN="$validator_token" \
     SHAUTH_VALIDATION_STATUS_TOKEN="$validation_status_token" \
+    SHAUTH_TOKEN_HOOK_TOKEN="$token_hook_token" \
     SHAUTH_BOOTSTRAP_APPS_JSON="$bootstrap_apps" \
     docker compose --project-name "$provider_project" --project-directory "$shauth_root" \
     -f "$shauth_root/compose.yaml" -f "$work_dir/provider-ports.yaml" "$@"

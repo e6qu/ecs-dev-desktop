@@ -50,7 +50,7 @@ export class HealthService {
     // The checks are independent, so they run at once. Awaited one after another
     // their round-trips added up: this report feeds GET /api/observations, which
     // Shauth's monitoring abandons after five seconds, and on 2026-09-14 the
-    // observation took 5.8 s and failed the Scaleway post-apply gate. The order of
+    // observation took 5.8 s and failed a self-hosted deployment's post-apply gate. The order of
     // the components is unchanged.
     const [database, compute, storage, reconciler, git] = await Promise.all([
       this.deps.pingDatabase(),
