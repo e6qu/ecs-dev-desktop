@@ -15,21 +15,21 @@
     "@edd/authz": "workspace:*",
     "@edd/core": "workspace:*",
     "@monaco-editor/react": "^4.7.0",
-    "monaco-editor": "^0.56.0",
+    "monaco-editor": "^0.57.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
-    "react-router-dom": "^7.18.3",
+    "react-router-dom": "^7.18.4",
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@playwright/test": "^1.63.0",
-    "@types/node": "^26.5.1",
+    "@playwright/test": "^1.64.0",
+    "@types/node": "^26.6.4",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
-    "@vitejs/plugin-react": "^6.1.1",
-    "fast-check": "^4.10.0",
-    "typescript": "^6.0.3",
-    "vite": "^8.3.0",
-    "vitest": "^5.0.1"
+    "@vitejs/plugin-react": "^6.1.2",
+    "fast-check": "^4.10.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4",
+    "vitest": "^5.0.3"
   }
 }

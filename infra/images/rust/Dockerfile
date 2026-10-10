@@ -18,7 +18,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 # Rust — system-wide rustup/cargo (world-writable caches so `workspace` builds) +
 # the clippy (linter) and rustfmt (formatter) components.
 # PINNED: rustup installs the named toolchain rather than whatever "stable" is today.
-ARG RUST_VERSION=1.98.1
+ARG RUST_VERSION=1.99.0
 RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile minimal --default-toolchain "${RUST_VERSION}" \
     && /opt/rust/cargo/bin/rustup component add clippy rustfmt \
     && chmod -R a+rwX /opt/rust \
@@ -38,7 +38,7 @@ RUN /opt/rust/cargo/bin/cargo install cargo-audit --version "${CARGO_AUDIT_VERSI
     && /opt/rust/cargo/bin/cargo audit --version
 
 # Rust VS Code language support into the built-in extensions dir (baked at build).
-RUN openvscode-server --install-extension rust-lang.rust-analyzer@0.3.3049 --extensions-dir /opt/openvscode-server/extensions \
+RUN openvscode-server --install-extension rust-lang.rust-analyzer@0.3.3073 --extensions-dir /opt/openvscode-server/extensions \
     && chmod -R a+rX /opt/openvscode-server/extensions
 
 # /opt/rust/cargo/bin isn't on the base PATH — overwrite the PATH drop-ins so login

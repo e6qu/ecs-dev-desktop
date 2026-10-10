@@ -95,7 +95,7 @@ RUN for ext in \
       dbaeumer.vscode-eslint@3.0.34 \
       github.vscode-pull-request-github@0.128.0 \
       github.vscode-github-actions@0.32.3 \
-      anthropic.claude-code@2.1.272 \
+      anthropic.claude-code@2.1.295 \
       openai.chatgpt@26.908.40401 ; do \
       openvscode-server --install-extension "$ext" --extensions-dir /opt/openvscode-server/extensions || exit 1 ; \
     done \
@@ -124,12 +124,12 @@ RUN cd /tmp/edd-ui-extension \
 # carries both, not just omnibus.
 # PINNED: every unversioned name here tracked npm's latest at build time; opencode
 # was already pinned, which is the convention the rest now follows.
-ARG PRETTIER_VERSION=3.9.6
-ARG ESLINT_VERSION=10.10.0
-ARG KNIP_VERSION=6.35.1
-ARG JSCPD_VERSION=5.2.1
-ARG CLAUDE_CODE_VERSION=2.1.272
-ARG CODEX_VERSION=0.154.0
+ARG PRETTIER_VERSION=3.9.9
+ARG ESLINT_VERSION=10.12.0
+ARG KNIP_VERSION=6.41.0
+ARG JSCPD_VERSION=5.4.1
+ARG CLAUDE_CODE_VERSION=2.1.296
+ARG CODEX_VERSION=0.162.0
 RUN npm install -g "prettier@${PRETTIER_VERSION}" "eslint@${ESLINT_VERSION}" "knip@${KNIP_VERSION}" "jscpd@${JSCPD_VERSION}" \
       "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}" "@openai/codex@${CODEX_VERSION}" opencode-ai@1.17.15 \
     && prettier --version && eslint --version \
@@ -143,7 +143,7 @@ RUN npm install -g "prettier@${PRETTIER_VERSION}" "eslint@${ESLINT_VERSION}" "kn
 # at first scan, not baked. Language-agnostic, so it lives in base (every variant
 # inherits it); per-language SCA (e.g. cargo-audit) is added by the variants.
 # PINNED: the installer takes a release tag; without one it installs the newest.
-ARG TRIVY_VERSION=v0.74.0
+ARG TRIVY_VERSION=v0.75.0
 RUN curl -fsSL "https://raw.githubusercontent.com/aquasecurity/trivy/${TRIVY_VERSION}/contrib/install.sh" \
       | sh -s -- -b /usr/local/bin "${TRIVY_VERSION}" \
     && trivy --version

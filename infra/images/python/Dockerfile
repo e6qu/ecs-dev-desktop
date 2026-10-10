@@ -16,7 +16,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 
 # Python project manager: uv (+ uvx) into /usr/local/bin (on the base PATH).
 # PINNED: the versioned installer URL installs exactly this uv.
-ARG UV_VERSION=0.12.15
+ARG UV_VERSION=0.12.24
 RUN curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh \
     && uv --version
 
@@ -24,11 +24,11 @@ RUN curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | env UV_INSTALL_
 # `uv tool install` defaults to ~/.local (the EBS mount, shadowed) — pin the tool +
 # bin dirs to system paths so they survive and stay on the base PATH (/usr/local/bin).
 # PINNED: each `uv tool install <name>` resolved the newest release at build time.
-ARG RUFF_VERSION=0.16.7
-ARG TY_VERSION=0.0.81
+ARG RUFF_VERSION=0.16.10
+ARG TY_VERSION=0.0.85
 ARG VULTURE_VERSION=2.16
 ARG BANDIT_VERSION=1.9.4
-ARG SEMGREP_VERSION=1.177.0
+ARG SEMGREP_VERSION=1.180.0
 RUN export UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin \
     && uv tool install "ruff==${RUFF_VERSION}" \
     && uv tool install "ty==${TY_VERSION}" \
@@ -39,7 +39,7 @@ RUN export UV_TOOL_DIR=/opt/uv-tools UV_TOOL_BIN_DIR=/usr/local/bin \
 
 # Python VS Code extensions into the built-in extensions dir (alongside the
 # base/agent extensions).
-RUN for ext in ms-python.debugpy@2026.6.0 ms-python.vscode-python-envs@1.20.1 ms-python.python@2026.4.0 detachhead.basedpyright@1.40.1 charliermarsh.ruff@2026.80.0 astral-sh.ty@2026.70.0 semgrep.semgrep@1.17.0; do \
+RUN for ext in ms-python.debugpy@2026.6.0 ms-python.vscode-python-envs@1.20.1 ms-python.python@2026.4.0 detachhead.basedpyright@1.40.2 charliermarsh.ruff@2026.84.0 astral-sh.ty@2026.76.0 semgrep.semgrep@1.17.1; do \
       openvscode-server --install-extension "$ext" --extensions-dir /opt/openvscode-server/extensions || exit 1 ; \
     done \
     && chmod -R a+rX /opt/openvscode-server/extensions

@@ -19,10 +19,10 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 
 # Gradle — current stable release into /opt/gradle (not on the base PATH).
 # PINNED. Gradle 9.x needs a JDK 17+ daemon and this image's JDK is Debian's
-# default-jdk-headless (17), so 9.7.1 runs here; a future Gradle that requires
+# default-jdk-headless (17), so 9.8.1 runs here; a future Gradle that requires
 # Java 21 would reproduce the google-java-format failure exactly, which is why
 # "current" is not resolved at build time. Bump in lockstep with the JDK.
-ARG GRADLE_VERSION=9.7.1
+ARG GRADLE_VERSION=9.8.1
 RUN curl -fsSL "https://services.gradle.org/distributions/gradle-${GRADLE_VERSION}-bin.zip" -o /tmp/gradle.zip \
     && unzip -q /tmp/gradle.zip -d /opt \
     && mv "/opt/gradle-${GRADLE_VERSION}" /opt/gradle \

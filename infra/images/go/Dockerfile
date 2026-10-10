@@ -18,7 +18,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 # image depend on whatever Go shipped that morning, so two builds of the same
 # Dockerfile could differ, and a toolchain change could break CI with no change in
 # this repository. Same defect class as the google-java-format break of 2026-08-02.
-ARG GO_VERSION=1.27.1
+ARG GO_VERSION=1.27.2
 RUN arch="$(dpkg --print-architecture)" \
     && case "${arch}" in amd64) go_arch="amd64" ;; arm64) go_arch="arm64" ;; \
        *) echo "unsupported Go arch: ${arch}" >&2; exit 1 ;; esac \
@@ -36,9 +36,9 @@ RUN arch="$(dpkg --print-architecture)" \
 # #95. One `go clean` after all installs (the module/build cache is ~GBs, shadowed by
 # the EBS mount anyway).
 # PINNED: `@latest` resolved a different module version on every build.
-ARG GOLANGCI_LINT_VERSION=v2.13.2
+ARG GOLANGCI_LINT_VERSION=v2.14.0
 ARG STATICCHECK_VERSION=v0.8.1
-ARG X_TOOLS_VERSION=v0.50.0
+ARG X_TOOLS_VERSION=v0.51.0
 ARG DUPL_VERSION=v1.1.0
 RUN GOBIN=/usr/local/bin /usr/local/go/bin/go install "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}" \
     && GOBIN=/usr/local/bin /usr/local/go/bin/go install "honnef.co/go/tools/cmd/staticcheck@${STATICCHECK_VERSION}" \
