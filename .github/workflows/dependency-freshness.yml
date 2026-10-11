@@ -1,0 +1,30 @@
+name: Dependency freshness
+
+# Pull requests judge freshness as of their head commit (scripts/deps-reference-
+# time.mjs), so drift that appears after a merge would otherwise go unseen
+# until the next pull request. This judges main as of now, every day.
+on:
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check-deps:
+    name: check-deps (main, as of now)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6.0.2
+      - uses: ./.github/actions/pnpm-install
+      - uses: hashicorp/setup-terraform@v4.0.1
+        with:
+          terraform_wrapper: false
+      - name: Dependency freshness (Node + Terraform + image toolchains)
+        env:
+          # The image-pin check reads GitHub releases; unauthenticated calls share
+          # a 60/hour budget across every runner on the same egress IP.
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bash scripts/check-latest-deps.sh
