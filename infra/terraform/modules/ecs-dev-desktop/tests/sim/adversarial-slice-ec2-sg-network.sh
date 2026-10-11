@@ -131,7 +131,7 @@ aws ecs register-task-definition \
   --cpu 256 \
   --memory 512 \
   --execution-role-arn "arn:aws:iam::123456789012:role/ecsTaskExecutionRole" \
-  --container-definitions '[{"name":"probe","image":"busybox:latest","essential":true,"command":["sleep","300"]}]' \
+  --container-definitions '[{"name":"probe","image":"public.ecr.aws/docker/library/busybox:latest@sha256:fd7dc98638c8e305f4dc34e979f1c0fdfdcaeb0fbf8fcff77ae834b6da3d7e6e","essential":true,"command":["sleep","300"]}]' \
   >/dev/null || fail "RegisterTaskDefinition rejected"
 pass "ECS cluster and awsvpc task definition created"
 

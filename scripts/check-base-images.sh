@@ -1,9 +1,9 @@
 #!/usr/bin/env sh
 # SPDX-License-Identifier: AGPL-3.0-or-later
 #
-# Every external image a Dockerfile builds FROM is pulled from a registry that
-# does not limit anonymous pulls the way Docker Hub does, and is pinned by tag
-# AND digest. Docker Hub limits anonymous pulls per source address, and GitHub's
+# Every external image a Dockerfile builds FROM, or a test, simulator probe or
+# workflow runs as a task, is pulled from a registry that does not limit
+# anonymous pulls the way Docker Hub does, and is pinned by tag AND digest. Docker Hub limits anonymous pulls per source address, and GitHub's
 # shared runners exhaust that limit for everyone on them, so an unqualified
 # `FROM node:22` fails CI for reasons this repository cannot control. The tag
 # keeps the pin readable and lets scripts/check-image-pins.mjs find the newer
@@ -75,5 +75,27 @@ if git grep -nE 'docker/setup-buildx-action' -- .github >/dev/null; then
   fail=1
 fi
 
-[ "$fail" -eq 0 ] && echo "check-base-images: every Dockerfile base is pinned by digest outside Docker Hub"
+# Images that tests, simulator probes and workflows run as ECS tasks are pulled
+# the same way when the simulator runs real containers, so the same rule holds
+# for them. First, every reference to a Docker Hub copy carries its digest
+# (scripts/check-image-pins.mjs keeps the digest current).
+unpinned=$(git grep -nE '(public\.ecr\.aws/docker/library|mirror\.gcr\.io)/[a-z0-9._/-]+(:[A-Za-z0-9._-]+)?([^@A-Za-z0-9._:/-]|$)' -- ':!*.md' || true)
+if [ -n "$unpinned" ]; then
+  echo "check-base-images: these references to a Docker Hub copy have no digest:" >&2
+  printf '%s\n' "$unpinned" >&2
+  fail=1
+fi
+# Second, a task image written as a literal names a registry; a bare name like
+# `busybox:latest` is pulled from Docker Hub. Images this repository builds
+# locally (`edd-...`) are the exception.
+task_image='("image" *: *"|(^|[^A-Za-z0-9_])(image: *"|IMAGE = "))'
+bare=$(git grep -nE "${task_image}[^\"]*\"" -- '*.sh' '*.yml' '*.yaml' 'packages/e2e/src/*.ts' 'services/*/src/*.ts' |
+  grep -vE "${task_image}([a-z0-9-]+\.[a-z0-9.-]+(:[0-9]+)?/|edd-)" || true)
+if [ -n "$bare" ]; then
+  echo "check-base-images: these task images name no registry, so they are pulled from Docker Hub:" >&2
+  printf '%s\n' "$bare" >&2
+  fail=1
+fi
+
+[ "$fail" -eq 0 ] && echo "check-base-images: every Dockerfile base and task image is pinned by digest outside Docker Hub"
 exit "$fail"

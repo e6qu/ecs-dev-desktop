@@ -11,13 +11,14 @@ import { Ec2StorageProvider } from "@edd/storage-ec2";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { awsSimClientConfig, configureAwsSimEnv, e2eEbsRoleArn, required, sleep } from "./aws-sim";
+import { NGINX_ALPINE } from "./public-images";
 
 configureAwsSimEnv();
 process.env.AWS_ENDPOINT_URL ??= dynamodb.endpoint;
 
 const TABLE = "ecs-dev-desktop-e2e-lifecycle";
 const CLUSTER = "edd-workspaces";
-const IMAGE = "nginx:alpine"; // long-running default CMD, so the task stays RUNNING
+const IMAGE = NGINX_ALPINE;
 const EBS_ROLE = e2eEbsRoleArn();
 
 // The simulator verifies SigV4 against its seeded IAM keys, so sign as the

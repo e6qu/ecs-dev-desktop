@@ -22,7 +22,7 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 # PINNED: unversioned `npm install -g` and the bun installer both track latest.
 ARG YARN_VERSION=1.22.22
 ARG PNPM_VERSION=12.11.2
-ARG BUN_VERSION=1.4.2
+ARG BUN_VERSION=1.4.3
 ARG TYPESCRIPT_VERSION=7.0.2
 RUN export NPM_CONFIG_PREFIX=/usr/local \
     && (corepack disable 2>/dev/null || true) \

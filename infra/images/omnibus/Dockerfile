@@ -72,7 +72,7 @@ RUN curl -fsSL https://sh.rustup.rs | sh -s -- -y --no-modify-path --profile min
 # PINNED: unversioned `npm install -g` and the bun installer both track latest.
 ARG YARN_VERSION=1.22.22
 ARG PNPM_VERSION=12.11.2
-ARG BUN_VERSION=1.4.2
+ARG BUN_VERSION=1.4.3
 # Node package managers: yarn + pnpm as real global binaries (disable corepack
 # first — its shims defer the download to first use, which fails in a no-egress
 # workspace and caches per-user); bun. The system installs go to /usr/local —

@@ -34,6 +34,7 @@ import {
 } from "./aws-sim";
 import { simulatorWorkloadHost } from "./docker-host";
 import { generateUserKey, startSshAuthorizeStub, taskExitCode } from "./golden-ssh-helpers";
+import { BUSYBOX } from "./public-images";
 
 const HARNESS_AWS_REGION = "us-east-1";
 
@@ -343,7 +344,7 @@ describe(
           containerDefinitions: [
             {
               name: "app",
-              image: "public.ecr.aws/docker/library/busybox:latest",
+              image: BUSYBOX,
               essential: true,
               entryPoint: ["sh", "-c"],
               command: ["sleep 120"],

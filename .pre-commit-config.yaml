@@ -124,7 +124,7 @@ repos:
         always_run: true
 
       - id: base-images
-        name: Dockerfile bases are pinned by digest outside Docker Hub
+        name: Dockerfile bases and task images are pinned by digest outside Docker Hub
         language: system
         entry: sh scripts/check-base-images.sh
         pass_filenames: false

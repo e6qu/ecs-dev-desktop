@@ -8,6 +8,7 @@ import { Ec2StorageProvider } from "@edd/storage-ec2";
 import { beforeAll } from "vitest";
 
 import { awsSimClientConfig, configureAwsSimEnv, e2eEbsRoleArn, required } from "./aws-sim";
+import { NGINX_ALPINE } from "./public-images";
 
 // The shared ComputeProvider port contract against the REAL EcsComputeProvider on
 // the CONTAINER-MODE sim — the only tier where a task actually reaches RUNNING
@@ -17,8 +18,7 @@ import { awsSimClientConfig, configureAwsSimEnv, e2eEbsRoleArn, required } from 
 configureAwsSimEnv();
 
 const CLUSTER = "edd-compute-contract";
-// A long-running default CMD so the launched task stays RUNNING for observation.
-const IMAGE = "nginx:alpine";
+const IMAGE = NGINX_ALPINE;
 // The simulator verifies SigV4 against its seeded IAM keys, so sign as the
 // credential it actually provisions (the helper default) — "local" is not a
 // principal, the same placeholder that once made the control plane unable to

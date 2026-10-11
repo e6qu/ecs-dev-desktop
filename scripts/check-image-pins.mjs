@@ -25,8 +25,9 @@
 // ships, and a gate that demanded it would be asking for a pin that cannot
 // install. An extension listed without `@version` fails the gate outright.
 //
-// Base images pulled from a Docker Hub copy (public.ecr.aws/docker/library for
-// official images, mirror.gcr.io for the rest) are pinned by tag and digest;
+// Images pulled from a Docker Hub copy (public.ecr.aws/docker/library for
+// official images, mirror.gcr.io for the rest), whether a Dockerfile builds FROM
+// them or a test or workflow runs them as a task, are pinned by tag and digest;
 // scripts/check-base-images.sh says why. A digest that never moves rots like any
 // other pin, so each one is compared with the digest Docker Hub serves for its
 // tag now, under the same 24-hour rule (Docker Hub's `tag_last_pushed`). A bump
@@ -376,24 +377,25 @@ for (const [name, entries] of [...byName.entries()].sort()) {
   }
 }
 
-/** Every Docker Hub copy a Dockerfile or the CI BuildKit builder pins, keyed
- * by reference, with the Docker Hub repository it copies. */
+/** Every Docker Hub copy pinned anywhere in the tracked tree (Dockerfiles, the
+ * CI BuildKit builder, workflows, simulator probes, tests), keyed by reference,
+ * with the Docker Hub repository it copies. Markdown is history and prose, not
+ * a pin, so it is left out. */
 function readBaseImagePins() {
   const repoRoot = new URL("../", import.meta.url).pathname;
   const files = execFileSync(
     "git",
     [
-      "ls-files",
-      "*Dockerfile",
-      "*Dockerfile.*",
-      "*.Dockerfile",
-      "scripts/setup-buildx.sh",
-      "scripts/test-e2e.sh",
+      "grep",
+      "-lE",
+      "(public\\.ecr\\.aws/docker/library|mirror\\.gcr\\.io)/[a-z0-9._/-]+:[A-Za-z0-9._-]+@sha256:",
+      "--",
+      ":!*.md",
     ],
     { cwd: repoRoot, encoding: "utf8" },
   )
     .split("\n")
-    .filter((f) => f && !f.endsWith(".dockerignore"));
+    .filter(Boolean);
   const out = new Map();
   for (const file of files) {
     const text = readFileSync(join(repoRoot, file), "utf8");
