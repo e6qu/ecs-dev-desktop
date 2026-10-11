@@ -375,8 +375,8 @@ importers:
         specifier: ^3.1149.0
         version: 3.1149.0
       '@aws-sdk/client-secrets-manager':
-        specifier: ^3.1148.0
-        version: 3.1148.0
+        specifier: ^3.1149.0
+        version: 3.1149.0
       '@edd/config':
         specifier: workspace:*
         version: link:../config
@@ -490,8 +490,8 @@ importers:
         specifier: ^3.1149.0
         version: 3.1149.0
       '@aws-sdk/client-secrets-manager':
-        specifier: ^3.1148.0
-        version: 3.1148.0
+        specifier: ^3.1149.0
+        version: 3.1149.0
       '@edd/api-contracts':
         specifier: workspace:*
         version: link:../api-contracts
@@ -750,8 +750,8 @@ packages:
     resolution: {integrity: sha512-ToH3sYyr9aW9FWpISfR0vGO6WbSFa2opxIPimO/JSdst7hBFh8lBfLCdcEWOazKfWUhCFcAVoE/BsVcSCri+9g==}
     engines: {node: '>=20.0.0'}
 
-  '@aws-sdk/client-secrets-manager@3.1148.0':
-    resolution: {integrity: sha512-4RY62/miKuFhbafL8zhS7nJlRVocvvAdRAVMIf9LnAcu1kRCWzRM6KZWIFlD3t2ZRqHMn1nD1KgMsP4LKB9mGQ==}
+  '@aws-sdk/client-secrets-manager@3.1149.0':
+    resolution: {integrity: sha512-HzMpERTdEuAoKn042iwbkSs4hqW4u3ryLd5LLU/QDcgKZl4hIfZk2hQRrrcQ/P4isWfMDAi+LV/W2JZidiyB5w==}
     engines: {node: '>=20.0.0'}
 
   '@aws-sdk/client-sesv2@3.1149.0':
@@ -2793,7 +2793,7 @@ snapshots:
       '@smithy/types': 4.19.0
       tslib: 2.8.1
 
-  '@aws-sdk/client-secrets-manager@3.1148.0':
+  '@aws-sdk/client-secrets-manager@3.1149.0':
     dependencies:
       '@aws-sdk/core': 3.978.2
       '@aws-sdk/credential-provider-node': 3.972.85
