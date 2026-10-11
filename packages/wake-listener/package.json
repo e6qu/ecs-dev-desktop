@@ -8,11 +8,10 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json && esbuild src/handler.ts --bundle --platform=node --target=node22 --format=esm --log-level=warning '--banner:js=import { createRequire } from \"module\"; const require = createRequire(import.meta.url);' --outfile=dist/index.mjs && rm -f dist/wake-listener.zip && cd dist && zip -qX wake-listener.zip index.mjs",
-    "lint": "eslint .",
     "test": "vitest run"
   },
   "dependencies": {
-    "@aws-sdk/client-ecs": "^3.1148.0",
+    "@aws-sdk/client-ecs": "^3.1149.0",
     "@edd/config": "workspace:*",
     "@edd/core": "workspace:*"
   },

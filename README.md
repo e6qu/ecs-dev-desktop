@@ -57,6 +57,7 @@ UI, and an admin control plane. Think self-hosted Coder / GitHub Codespaces.
 | State store | DynamoDB single-table + ElectroDB                                                                              |
 | Simulators  | sockerless AWS + Azure/Entra + bleephub, built from source                                                     |
 | IaC         | Terraform · Monorepo: Turborepo + pnpm                                                                         |
+| Toolchain   | TypeScript 7 (`tsc`) type-checks every package; oxlint with type-aware tsgolint lints (`pnpm lint`)            |
 
 ## Running the app
 

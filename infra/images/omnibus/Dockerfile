@@ -86,7 +86,7 @@ RUN export NPM_CONFIG_PREFIX=/usr/local \
 
 # Python project manager: uv (+ uvx).
 # PINNED: the versioned installer URL installs exactly this uv.
-ARG UV_VERSION=0.12.24
+ARG UV_VERSION=0.13.0
 RUN curl -LsSf "https://astral.sh/uv/${UV_VERSION}/install.sh" | env UV_INSTALL_DIR=/usr/local/bin INSTALLER_NO_MODIFY_PATH=1 sh \
     && uv --version
 
@@ -107,8 +107,8 @@ RUN export NPM_CONFIG_PREFIX=/usr/local \
 # components + cargo-audit), Java (google-java-format, below). The Node lint/format/
 # dead-code/CPD tools and the cross-cutting Trivy scanner come from base.
 # PINNED: each `uv tool install <name>` resolved the newest release at build time.
-ARG RUFF_VERSION=0.16.10
-ARG TY_VERSION=0.0.85
+ARG RUFF_VERSION=0.17.0
+ARG TY_VERSION=0.0.86
 ARG VULTURE_VERSION=2.16
 ARG BANDIT_VERSION=1.9.4
 ARG SEMGREP_VERSION=1.180.0
@@ -152,7 +152,7 @@ RUN curl -fsSL "https://github.com/google/google-java-format/releases/download/v
 # VS Code extensions into the built-in extensions dir: every language's (base
 # already baked the cross-cutting formatter/linter/GitHub ones + the AI agents).
 RUN for ext in \
-      ms-python.debugpy@2026.6.0 ms-python.vscode-python-envs@1.20.1 ms-python.python@2026.4.0 detachhead.basedpyright@1.40.2 charliermarsh.ruff@2026.84.0 astral-sh.ty@2026.76.0 semgrep.semgrep@1.17.1 \
+      ms-python.debugpy@2026.6.0 ms-python.vscode-python-envs@1.20.1 ms-python.python@2026.4.0 detachhead.basedpyright@1.40.2 charliermarsh.ruff@2026.86.0 astral-sh.ty@2026.78.0 semgrep.semgrep@1.17.1 \
       golang.go@0.56.1 redhat.java@1.56.0 rust-lang.rust-analyzer@0.3.3073 ms-playwright.playwright@1.1.19 ; do \
       openvscode-server --install-extension "$ext" --extensions-dir /opt/openvscode-server/extensions || exit 1 ; \
     done \

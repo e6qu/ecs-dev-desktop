@@ -51,11 +51,8 @@ export interface PreflightCoordinates {
  */
 export function callerToPrincipalArn(callerArn: string | undefined): string | null {
   if (callerArn === undefined || callerArn.length === 0) return null;
-  const assumed = /^arn:(aws[\w-]*):sts::(\d+):assumed-role\/([^/]+)\/.+$/.exec(callerArn);
-  if (assumed) {
-    const [, partition, account, role] = assumed;
-    return `arn:${partition}:iam::${account}:role/${role}`;
-  }
+  const assumedRole = /^arn:(aws[\w-]*):sts::(\d+):assumed-role\/([^/]+)\/.+$/;
+  if (assumedRole.test(callerArn)) return callerArn.replace(assumedRole, "arn:$1:iam::$2:role/$3");
   if (/^arn:[\w-]+:iam::\d+:(role|user)\/.+$/.test(callerArn)) return callerArn;
   return null;
 }

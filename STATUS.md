@@ -2,9 +2,18 @@
 
 > Current project snapshot. Durable history lives in git and [WHAT_WE_DID.md](WHAT_WE_DID.md).
 
-**Last updated:** 2026-09-07
+**Last updated:** 2026-10-10
 
 ## Current branch
+
+The `chore/typescript-7-oxlint` branch moved every package to TypeScript 7.0.2
+and replaced ESLint and typescript-eslint with oxlint 1.87.0, whose type-aware
+rules run through oxlint-tsgolint 7.0.2003 on the TypeScript 7 checker. Every
+package build, `next build`, the unit tier, `knip`, `jscpd`, `check-deps` and the
+new lint passed. The one typescript-eslint rule oxlint lacks,
+`no-unsafe-enum-assignment`, is recorded in WHAT_WE_DID.md.
+
+## Earlier branch (git SSH keys)
 
 The `feat/git-ssh-keys` branch answered "why don't repositories clone in the dev
 environment?" and gave users a way to clone private repositories there. The dev

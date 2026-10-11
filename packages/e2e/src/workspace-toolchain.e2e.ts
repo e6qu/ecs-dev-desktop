@@ -173,7 +173,8 @@ describe("golden omnibus: AI agents + dev tooling", { timeout: 60_000 }, () => {
   it("ships curated linters/formatters/SAST across languages [#95]", () => {
     // Cross-cutting (Node + security, from base) + per-language (omnibus carries all).
     expect(sh("prettier --version 2>&1")).toMatch(/\d+\./);
-    expect(sh("eslint --version 2>&1")).toMatch(/\d+\./);
+    expect(sh("oxlint --version 2>&1")).toMatch(/\d+\./);
+    expect(sh("command -v tsgolint")).toContain("tsgolint");
     expect(sh("knip --version 2>&1")).toMatch(/\d+\./);
     expect(sh("ruff --version 2>&1")).toMatch(/ruff \d+\./);
     // `command -v` (not `semgrep --version`): semgrep-core SIGILLs on some arm64

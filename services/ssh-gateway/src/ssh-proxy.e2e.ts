@@ -54,6 +54,9 @@ function run(
 /** "<type> <blob>" — the comment-free key line ssh-authorize compares on. */
 function keyLine(pubPath: string): string {
   const [type, blob] = readFileSync(pubPath, "utf8").trim().split(/\s+/);
+  if (type === undefined || blob === undefined) {
+    throw new Error(`${pubPath} is not an OpenSSH public key line`);
+  }
   return `${type} ${blob}`;
 }
 

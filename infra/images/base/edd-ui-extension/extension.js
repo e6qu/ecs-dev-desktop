@@ -107,6 +107,5 @@ function activate(context) {
   touchActivity();
 }
 
-function deactivate() {}
-
-module.exports = { activate, deactivate };
+// No `deactivate`: VS Code treats it as optional, and there is nothing to release.
+module.exports = { activate };

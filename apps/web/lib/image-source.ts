@@ -413,7 +413,7 @@ export class ImageSourceService {
 
   private async ensureSource(repo: string): Promise<SourceRecord> {
     const existing = (await this.deps.sources.get({ id: SOURCE_ID }).go()).data;
-    if (existing !== null && existing.schemaVersion === SOURCE_SCHEMA_VERSION) return existing;
+    if (existing?.schemaVersion === SOURCE_SCHEMA_VERSION) return existing;
     const now = this.nowIso();
     const source: SourceRecord = {
       id: SOURCE_ID,

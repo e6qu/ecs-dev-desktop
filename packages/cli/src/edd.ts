@@ -76,7 +76,8 @@ async function main(argv: readonly string[], env: NodeJS.ProcessEnv): Promise<nu
       const report = await client.adminHealth();
       process.stdout.write(`health: ${report.status}\n`);
       for (const c of report.components) {
-        process.stdout.write(`  ${sym(c.status)} ${c.component.padEnd(16)} ${c.detail}\n`);
+        const detail = c.detail === undefined ? "" : ` ${c.detail}`;
+        process.stdout.write(`  ${sym(c.status)} ${c.component.padEnd(16)}${detail}\n`);
       }
       return report.status === "ok" ? 0 : 1;
     }

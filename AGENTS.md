@@ -137,7 +137,8 @@ Per task: read them first → do the work → update them (past tense at PR clos
 
 ## 4. Build, dependencies, shell
 
-- `pnpm install`; `pnpm build|test|lint` via Turbo; per-package `pnpm --filter`.
+- `pnpm install`; `pnpm build|test` via Turbo, `pnpm lint` as one oxlint run over
+  the whole repository; per-package `pnpm --filter`.
 - **Deps: the latest version that is ≥ 1 day old** (pnpm `minimumReleaseAge: 1440`
   — supply-chain safeguard; `check-deps` CI enforces it). A `check-deps` failure is
   the gate working, not a flake: a newer age-eligible version exists — bump it and
@@ -216,8 +217,15 @@ and `z.infer`/`ReturnType` aliases.**
 named, documented constants. Endpoints/ports/defaults live in the typed
 `@edd/config` (so the same code hits the sim or real cloud by config alone).
 
-**6.3 Lint.** typescript-eslint `strictTypeChecked` + `stylisticTypeChecked`
-(type-aware). Required CI check; no warnings tolerated.
+**6.3 Lint and type-check.** TypeScript 7 (`tsc`, the Go-native compiler) type-checks
+every package in its `build`; Next.js runs the same `tsc` in `next build`. Lint is
+oxlint, configured in `.oxlintrc.json`, with the type-aware rules run by
+oxlint-tsgolint on the TypeScript 7 checker. It carries over every rule the
+typescript-eslint `strictTypeChecked` + `stylisticTypeChecked` set enforced that
+oxlint implements, plus the custom rules (`_`-prefixed unused names, the
+`@ts-*` comment policy, `as`-only casts with no object-literal casts, numbers
+allowed in template strings, no bare `object` type). Required CI check; warnings
+fail the run. Fix findings in the code; never disable a rule to get green.
 
 **6.4 Functional core, imperative shell.** Decisions are **pure functions** (data
 in → domain object out, no I/O, no doubles) in `@edd/core`; the thin **shell**

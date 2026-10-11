@@ -29,7 +29,7 @@ const DEV_IMAGES: readonly {
     image: "golden/typescript",
     description: "Lean Node and TypeScript environment for app and tooling work.",
     tags: ["typescript", "node", "slim"],
-    tools: ["pnpm", "eslint", "prettier", "trivy"],
+    tools: ["pnpm", "tsc", "oxlint", "prettier", "trivy"],
   },
   {
     name: "Python",

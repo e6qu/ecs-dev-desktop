@@ -26,7 +26,7 @@ const VARIANTS: readonly Variant[] = [
     image: process.env.IMG_TYPESCRIPT ?? "edd-ws-typescript:e2e",
     present: ["tsc --version", "yarn --version", "pnpm --version", "bun --version"],
     absent: ["go", "cargo", "javac"],
-    extensions: [], // base already seeds prettier + eslint
+    extensions: [], // base already seeds prettier + oxc
   },
   {
     name: "python",

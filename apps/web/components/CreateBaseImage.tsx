@@ -124,7 +124,7 @@ export function CreateBaseImage() {
           <span className="field-label">Tools</span>
           <input
             className="input"
-            placeholder="pnpm, eslint, trivy"
+            placeholder="pnpm, oxlint, trivy"
             value={tools}
             onChange={(e) => {
               setTools(e.target.value);
