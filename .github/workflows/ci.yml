@@ -552,6 +552,18 @@ jobs:
           path: .terraform-plugin-cache
           key: tf-plugin-cache-${{ runner.os }}-${{ hashFiles('**/.terraform.lock.hcl') }}
           restore-keys: tf-plugin-cache-${{ runner.os }}-
+      # A pull request is judged as of its head commit, so a release that ages
+      # past the one-day floor while CI runs cannot fail it (see
+      # scripts/deps-reference-time.mjs). main and manual runs judge as of now.
+      - name: Judge a pull request as of its head commit
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          as_of=$(gh api "repos/${GITHUB_REPOSITORY}/commits/${HEAD_SHA}" --jq .commit.committer.date)
+          echo "CHECK_DEPS_AS_OF=${as_of}" >> "$GITHUB_ENV"
+          echo "Judging dependency freshness as of ${as_of} (head ${HEAD_SHA})."
       - name: Dependency freshness (Node + Terraform + image toolchains)
         env:
           # The image-pin check reads GitHub releases; unauthenticated calls share

@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
+import { depsReferenceTime } from "./deps-reference-time.mjs";
 
 function fail(message) {
   console.error(`::error::${message}`);
@@ -18,10 +20,25 @@ function packageNameFromEntry(name, entry) {
   return name;
 }
 
-const result = spawnSync("pnpm", ["outdated", "-r", "--json"], {
-  encoding: "utf8",
-  stdio: ["ignore", "pipe", "pipe"],
-});
+// pnpm measures minimumReleaseAge back from now; widen it by how long ago the
+// reference time was, so a release counts only if it was old enough then.
+const workspaceAge = /^minimumReleaseAge:\s*(\d+)\s*$/m.exec(
+  readFileSync("pnpm-workspace.yaml", "utf8"),
+);
+if (!workspaceAge) {
+  fail("pnpm-workspace.yaml declares no minimumReleaseAge.");
+}
+const minimumReleaseAge =
+  Number(workspaceAge[1]) + Math.floor((Date.now() - depsReferenceTime()) / 60_000);
+
+const result = spawnSync(
+  "pnpm",
+  ["outdated", "-r", "--json", `--config.minimumReleaseAge=${String(minimumReleaseAge)}`],
+  {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+  },
+);
 
 if (result.status === 0) {
   console.log("All JS/TS dependencies are on the latest age-eligible version.");

@@ -38,9 +38,10 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { depsReferenceTime } from "./deps-reference-time.mjs";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
-const now = Date.now();
+const now = depsReferenceTime();
 const imagesDir = new URL("../infra/images/", import.meta.url).pathname;
 
 /** Where each pin comes from, and how to ask that source for its releases with
