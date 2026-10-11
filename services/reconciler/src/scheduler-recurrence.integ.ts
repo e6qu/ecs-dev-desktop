@@ -44,6 +44,10 @@ const RUN = String(Math.floor(Date.now() / 1000) % 1_000_000);
 const CLUSTER = `edd-cron-recur-${RUN}`;
 const SCHEDULE = `edd-cron-recur-${RUN}`;
 const FROM_SUBNET = "subnet-cron-recur"; // never created — the fire is recorded regardless
+// The ECR Public copy of Docker's busybox, pinned by digest; Docker Hub limits
+// anonymous pulls. scripts/check-image-pins.mjs keeps the digest current.
+const BUSYBOX =
+  "public.ecr.aws/docker/library/busybox:latest@sha256:fd7dc98638c8e305f4dc34e979f1c0fdfdcaeb0fbf8fcff77ae834b6da3d7e6e";
 
 describe("recurring rate() schedule fires its ECS target repeatedly (sockerless AWS sim)", () => {
   const ecs = new ECSClient({});
@@ -62,7 +66,7 @@ describe("recurring rate() schedule fires its ECS target repeatedly (sockerless 
         networkMode: "awsvpc",
         cpu: "256",
         memory: "512",
-        containerDefinitions: [{ name: "x", image: "busybox", essential: true }],
+        containerDefinitions: [{ name: "x", image: BUSYBOX, essential: true }],
       }),
     );
 

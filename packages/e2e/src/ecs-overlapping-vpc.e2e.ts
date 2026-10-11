@@ -18,11 +18,12 @@ import {
 import { describe, expect, it } from "vitest";
 
 import { awsSimClientConfig, configureAwsSimEnv, required, sleep } from "./aws-sim";
+import { BUSYBOX } from "./public-images";
 
 configureAwsSimEnv();
 
 const CLUSTER = "edd-overlap-vpc-e2e";
-const IMAGE = "public.ecr.aws/docker/library/busybox:latest";
+const IMAGE = BUSYBOX;
 const OVERLAP_VPC_CIDR = "10.50.0.0/16";
 const OVERLAP_SUBNET_CIDR = "10.50.0.0/24";
 const OVERLAP_IP_PREFIX = "10.50.0.";

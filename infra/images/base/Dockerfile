@@ -124,7 +124,7 @@ RUN cd /tmp/edd-ui-extension \
 # carries both, not just omnibus.
 # PINNED: every unversioned name here tracked npm's latest at build time; opencode
 # was already pinned, which is the convention the rest now follows.
-ARG PRETTIER_VERSION=3.9.9
+ARG PRETTIER_VERSION=3.9.10
 ARG OXLINT_VERSION=1.87.0
 ARG OXLINT_TSGOLINT_VERSION=7.0.2003
 ARG KNIP_VERSION=6.41.0

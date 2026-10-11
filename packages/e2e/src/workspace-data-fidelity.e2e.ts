@@ -19,6 +19,7 @@ import {
   required,
   sleep,
 } from "./aws-sim";
+import { ALPINE } from "./public-images";
 
 configureAwsSimEnv();
 
@@ -26,7 +27,7 @@ const CLUSTER = "edd-e2e";
 const MARKER = "PERSISTED-edd-e2e";
 const MOUNT = "/work";
 const EBS_ROLE_ARN = "arn:aws:iam::123456789012:role/ecsInfrastructureRole";
-const IMAGE = "alpine:3.20";
+const IMAGE = ALPINE;
 
 describe("workspace data fidelity (write → snapshot → restore → read) on the sim", () => {
   const ecs = EcsComputeProvider.client();

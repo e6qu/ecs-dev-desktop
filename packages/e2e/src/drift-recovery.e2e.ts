@@ -24,6 +24,7 @@ import {
   required,
   sleep,
 } from "./aws-sim";
+import { NGINX_ALPINE } from "./public-images";
 
 /**
  * Drift detection e2e on REAL sim compute: a workspace task is killed
@@ -42,7 +43,7 @@ process.env.AWS_ENDPOINT_URL ??= dynamodb.endpoint;
 const RUN_ID = randomUUID().slice(0, 8);
 const TABLE = `edd-drift-${RUN_ID}`;
 const CLUSTER = `edd-drift-${RUN_ID}`;
-const IMAGE = "nginx:alpine"; // long-running default CMD, so the task stays RUNNING
+const IMAGE = NGINX_ALPINE;
 const EBS_ROLE = e2eEbsRoleArn();
 
 const SIM = awsSimClientConfig();

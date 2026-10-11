@@ -46,7 +46,7 @@ aws ecs register-task-definition \
   --requires-compatibilities FARGATE \
   --cpu 256 --memory 512 \
   --execution-role-arn "arn:aws:iam::123456789012:role/ecsTaskExecutionRole" \
-  --container-definitions '[{"name":"probe","image":"busybox:latest","essential":true,"command":["sleep","300"]}]' >/dev/null || fail "RegisterTaskDefinition v1 rejected"
+  --container-definitions '[{"name":"probe","image":"public.ecr.aws/docker/library/busybox:latest@sha256:fd7dc98638c8e305f4dc34e979f1c0fdfdcaeb0fbf8fcff77ae834b6da3d7e6e","essential":true,"command":["sleep","300"]}]' >/dev/null || fail "RegisterTaskDefinition v1 rejected"
 
 aws ecs register-task-definition \
   --family "$td_v2" \
@@ -54,7 +54,7 @@ aws ecs register-task-definition \
   --requires-compatibilities FARGATE \
   --cpu 256 --memory 512 \
   --execution-role-arn "arn:aws:iam::123456789012:role/ecsTaskExecutionRole" \
-  --container-definitions '[{"name":"probe","image":"busybox:latest","essential":true,"command":["sleep","300"]}]' >/dev/null || fail "RegisterTaskDefinition v2 rejected"
+  --container-definitions '[{"name":"probe","image":"public.ecr.aws/docker/library/busybox:latest@sha256:fd7dc98638c8e305f4dc34e979f1c0fdfdcaeb0fbf8fcff77ae834b6da3d7e6e","essential":true,"command":["sleep","300"]}]' >/dev/null || fail "RegisterTaskDefinition v2 rejected"
 pass "Task definitions v1 and v2 registered"
 
 echo "=== ECS rolling update: create service with circuit breaker ==="
