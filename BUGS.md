@@ -1,5 +1,11 @@
 # BUGS.md — ecs-dev-desktop
 
+The November security scan found critical advisories in Next.js 16.4.0 and sanitizer advisories in the editor's DOMPurify 3.4.15. The branch selected Next.js 16.4.6 and DOMPurify 3.5.0, both published more than 24 hours earlier. All 395 web tests, the full 39-task test graph, 23-task build, lint, dead-code and duplication checks passed after these updates. The latest-dependency gate still requires a broader refresh outside the user’s Shauth/infra dependency scope; that scope decision and deployed-browser verification remain pending. Optional ssh2/cpu-features install scripts were explicitly kept disabled after inspecting their native-acceleration-only build behavior.
+
+## Sign-in provider asset
+
+The built-in Auth.js page derived an external icon URL from the custom `shauth` provider ID. Chromium blocked its non-image response with `ERR_BLOCKED_BY_ORB`, failing the shared-environment acceptance gate. Setting the provider's supported `style.logo` option to an empty string removes the invalid asset request without changing OIDC behavior. Live deployment verification remains pending.
+
 > Open/resolved bugs in **our** code, plus external blockers tracked upstream.
 
 ## Open

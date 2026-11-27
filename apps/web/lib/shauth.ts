@@ -148,6 +148,9 @@ export function shauthProvider(): OIDCConfig<ShauthProfile> | null {
   return {
     id: "shauth",
     name: "Shauth",
+    // Custom providers have no image in Auth.js's external provider catalog.
+    // Keep the accessible text button without requesting a nonexistent asset.
+    style: { logo: "" },
     type: "oidc",
     issuer: config.issuer,
     clientId: config.clientId,

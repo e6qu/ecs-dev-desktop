@@ -1,5 +1,11 @@
 # WHAT_WE_DID.md — ecs-dev-desktop
 
+The November security scan found critical advisories in Next.js 16.4.0 and sanitizer advisories in the editor's DOMPurify 3.4.15. The branch selected Next.js 16.4.6 and DOMPurify 3.5.0, both published more than 24 hours earlier. All 395 web tests, the full 39-task test graph, 23-task build, lint, dead-code and duplication checks passed after these updates. The latest-dependency gate still requires a broader refresh outside the user’s Shauth/infra dependency scope; that scope decision and deployed-browser verification remain pending. Optional ssh2/cpu-features install scripts were explicitly kept disabled after inspecting their native-acceleration-only build behavior.
+
+## 2026-11-27 — Custom-provider sign-in asset
+
+A real shared-deployment browser run identified the nonexistent default Shauth icon. The provider configuration explicitly omitted the unsupported external asset; its text control and OIDC settings remained intact. A provider regression was added before the fix and failed on the missing style setting.
+
 > Durable decisions/lessons + a compressed milestone timeline. For the sockerless
 > issue saga see `BUGS.md`. Append new entries at the bottom (past tense).
 
