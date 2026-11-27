@@ -1,5 +1,11 @@
 # DO_NEXT.md — ecs-dev-desktop
 
+The November security scan found critical advisories in Next.js 16.4.0 and sanitizer advisories in the editor's DOMPurify 3.4.15. The branch selected Next.js 16.4.6 and DOMPurify 3.5.0, both published more than 24 hours earlier. All 395 web tests, the full 39-task test graph, 23-task build, lint, dead-code and duplication checks passed after these updates. The latest-dependency gate still requires a broader refresh outside the user’s Shauth/infra dependency scope; that scope decision and deployed-browser verification remain pending. Optional ssh2/cpu-features install scripts were explicitly kept disabled after inspecting their native-acceleration-only build behavior.
+
+## Verify the sign-in asset repair
+
+Publish the merged provider-icon repair, update the infrastructure image pin, and rerun the complete deployed SSO/logout matrix. The local provider regression and repository CI must pass before merge.
+
 > Immediate work remaining after the current branch. Durable defects live in [BUGS.md](BUGS.md).
 
 ## Release and shared-development deployment

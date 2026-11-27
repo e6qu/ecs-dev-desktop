@@ -17,3 +17,9 @@ onlyBuiltDependencies:
   - esbuild
   - node-pty
   - sharp
+
+# ssh2 uses Node crypto without these optional native accelerators. Keep their
+# install scripts disabled explicitly; application SSH authorization is unchanged.
+ignoredBuiltDependencies:
+  - cpu-features
+  - ssh2

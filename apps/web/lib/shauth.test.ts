@@ -140,6 +140,8 @@ describe("shauthProvider", () => {
       client: { token_endpoint_auth_method: "client_secret_post" },
       checks: ["pkce", "state", "nonce"],
       authorization: { params: { scope: "openid profile email offline_access" } },
+      // A custom provider has no icon in Auth.js's external asset catalog.
+      style: { logo: "" },
     });
     if (provider === null || typeof provider.profile !== "function") {
       throw new Error("configured Shauth provider has no profile mapper");

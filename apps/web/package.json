@@ -41,7 +41,7 @@
     "@edd/storage-ec2": "workspace:*",
     "@xterm/xterm": "^6.0.0",
     "jose": "^6.2.12",
-    "next": "^16.4.0",
+    "next": "^16.4.6",
     "next-auth": "5.0.0-beta.32",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",

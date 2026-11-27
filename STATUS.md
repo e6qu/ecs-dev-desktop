@@ -1,5 +1,11 @@
 # STATUS.md — ecs-dev-desktop
 
+The November security scan found critical advisories in Next.js 16.4.0 and sanitizer advisories in the editor's DOMPurify 3.4.15. The branch selected Next.js 16.4.6 and DOMPurify 3.5.0, both published more than 24 hours earlier. All 395 web tests, the full 39-task test graph, 23-task build, lint, dead-code and duplication checks passed after these updates. The latest-dependency gate still requires a broader refresh outside the user’s Shauth/infra dependency scope; that scope decision and deployed-browser verification remain pending. Optional ssh2/cpu-features install scripts were explicitly kept disabled after inspecting their native-acceleration-only build behavior.
+
+## Sign-in page repair
+
+The shared-deployment browser gate identified a request for the nonexistent external `authjs.dev/img/providers/shauth.svg` icon on the built-in Auth.js sign-in page. The Shauth provider now explicitly omits that icon and retains the labeled sign-in control. Regression checks are in progress; deployment remains pending.
+
 > Current project snapshot. Durable history lives in git and [WHAT_WE_DID.md](WHAT_WE_DID.md).
 
 **Last updated:** 2026-10-10
